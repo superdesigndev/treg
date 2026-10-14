@@ -1,0 +1,1 @@
+{"id":"scrape_example","object":"scrape","created":1789992000,"url":"https://example.com","result":{"markdown_content":"# Example Domain\n\nThis domain is for use in illustrative examples.","markdown_hosted_url":"https://example.invalid/scrape.md","page_metadata":{"status_code":200,"title":"Example Domain"},"size_exceeded":false},"credits_consumed":1}

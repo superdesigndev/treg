@@ -1,0 +1,52 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "XkGV0BW-BbXshTRepm4s2wEktH2hxGU_Zj20jYXa3SPWggi7c_D9Q45fO-31r43mmDNjVxLSKIzuer6bGoNIgWKm6dqD-CS6QJwuezWzhc8PiqAahKkucVzNLEH0wz0XNR9moHbQVyjGfTLVfKCvHlPjYXHeQdIfyg1dtn7s-F_NNFhsZ-PCsKno3TyHNxQ1hNJMtWrAZnnahB9YX5knyagaN7hOKt6vr-SvngLeDmJ3qvNfTvan9PnW3227zOo-7JdDF9yB-mS7JpFzriVGiQQNI-iFGbmDbgZrgFEHONUFs0u699LY-wdF9Kbe0v85vcWFzM6doAF2ko1oNLUM9H8jHRmWPzkuTC-1BnV77IJHRokXgqduE58jl7d8Pp0L3IgNlCGmH0h2lfGqTD-cU1vwZ5j6WT4xj4Ft40SUCPgTL8lkXPLkKoRzjPHDLHL-0BIXcH1cQ8gRFmUMDaiUr5l7FB7c3aYL0xG4d73a3SnynfWN4fWS… [552 chars total]",
+      "tweets": [
+        {
+          "bookmarks": 0,
+          "createdUtc": 1789773988,
+          "id": "2101090507728556518",
+          "isPinned": null,
+          "lang": "en",
+          "likes": 0,
+          "media": [],
+          "quotes": 0,
+          "replies": 0,
+          "retweets": 2221,
+          "text": "RT @banteg: &gt;be me\n&gt;discover effective altruism\n&gt;apparently normal charity is inefficient\n&gt;why donate to random sad thing when spreadsheet…",
+          "url": "https://x.com/i/web/status/2101090507728556518",
+          "views": 4786
+        },
+        {
+          "bookmarks": 406,
+          "createdUtc": 1789762704,
+          "id": "2101043181701796296",
+          "isPinned": null,
+          "lang": "en",
+          "likes": 639,
+          "media": [],
+          "quotes": 3,
+          "replies": 10,
+          "retweets": 12,
+          "text": "New (and better) Photopea!",
+          "url": "https://x.com/i/web/status/2101043181701796296",
+          "views": 93370
+        },
+        "… 12 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0005,
+  "items": 14,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-lynx",
+    "name": "Lynx",
+    "kind": "anonymous",
+    "artworkKey": "lynx"
+  },
+  "resultId": "757128fd-4d5b-4f82-b7b4-0cd5e20df0ed"
+}

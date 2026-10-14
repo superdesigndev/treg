@@ -1,0 +1,82 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: step module: 2 null fields across 1 items"
+    ]
+  },
+  "recipe": "ebay-product",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 189,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "available": 5,
+      "badges": [
+        "9 viewed today"
+      ],
+      "categories": [
+        "Collectibles & Art",
+        "Entertainment Memorabilia"
+      ],
+      "condition": null,
+      "currency": "USD",
+      "description": "Find Items Even Easier with Search My Store, here are some navigational hints for our website. To explore our store, please click on our store name. Once you are on the page, you will find a search bar to help you search within our store. To view the categories, look to the left side of the page whe…",
+      "images": [
+        "https://i.ebayimg.com/images/g/agMAAOSwdghl74vc/s-l1600.webp"
+      ],
+      "in_stock": true,
+      "listing_format": "buy_it_now",
+      "location": "Gardnerville, NV, United States",
+      "price": 13.99,
+      "product_id": "204690060416",
+      "seller": {
+        "feedback_count": 23957,
+        "name": "Images From History",
+        "positive_percent": 100.0,
+        "url": "https://www.ebay.com/str/imagesfromhistory"
+      },
+      "sold": 3,
+      "specifications": [
+        {
+          "name": "Seller Notes",
+          "value": "“Prints are new, Made to Order, Printed on Archival Double Weight High Quality Photo Paper”"
+        },
+        {
+          "name": "Country of Origin",
+          "value": "United States"
+        }
+      ],
+      "title": "8x10 Print Joan Taylor The Savage Courtesy Paramount 1952 #SVG",
+      "url": "https://www.ebay.com/itm/204690060416"
+    }
+  ]
+}

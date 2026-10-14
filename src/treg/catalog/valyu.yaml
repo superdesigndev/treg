@@ -1,0 +1,1282 @@
+provider: valyu
+source:
+  docs: https://docs.valyu.ai/home
+  curated: '2026-09-30'
+pricing_url: https://docs.valyu.ai/pricing
+limits: No numeric self-serve rate limit is published. 429 responses may include Retry-After; successful live calls
+  returned no rate headers. Shared-key calls are paced at a conservative policy rate of five per second.
+proposed_capabilities:
+  research.papers.search: Search scholarly publications and preprints
+  stocks.search: Search stock-price data
+  markets.forex.search: Search foreign-exchange data
+  stocks.filings.search: Search SEC filings
+  stocks.insiders.search: Search insider transactions
+  markets.monitor.search: Search commodities and market movers
+  markets.predictions.search: Search prediction-market events
+  health.trials.search: Search clinical studies
+  health.references.search: Search medicine labels and global health data
+  economics.indicators.search: Search official economic indicators
+  research.deep: Run cited asynchronous research
+  research.deep.status: Check asynchronous research
+  research.sources.list: Discover Valyu source IDs
+endpoints:
+- id: valyu.web.search
+  added: '2026-09-29'
+  platform: web
+  domain: search
+  capability: web.search
+  scope: any_account
+  method: POST
+  path: /v1/search
+  body_allowlist: true
+  platform_request:
+    body.search_type: web
+    body.max_price: 1.5
+    body.response_length: short
+  name: Search the open web
+  summary: Return ranked live web results.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: What is example.com?
+      max_num_results:
+        type: integer
+        required: true
+        min: 1
+        max: 10
+        example: 1
+      search_type:
+        type: string
+        required: true
+        enum:
+        - web
+      max_price:
+        type: number
+        required: true
+        enum:
+        - 1.5
+      response_length:
+        type: string
+        required: true
+        enum:
+        - short
+    note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
+  test_request:
+    body:
+      query: What is example.com?
+      max_num_results: 1
+      search_type: web
+      max_price: 1.5
+      response_length: short
+  example_response: examples/valyu.web.search.json
+  cost:
+    type: per_call
+    currency: credit
+    unit: call
+    table:
+    - when:
+        body.search_type: web
+      value: 0.0015
+      times: body.max_num_results
+    fallback:
+      value: 0.015
+      note: Ten requested results at the highest source rate for this view.
+    settle: usage
+    usage:
+      path: total_deduction_dollars
+      unit: credit
+    source: observed
+    source_url: https://api.valyu.ai/v1/datasources
+    checked: '2026-09-30'
+    confidence: verified
+    note: Web costs one and a half credits per 1,000 results; settle the reported deduction.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/search
+- id: valyu.research.papers.search
+  added: '2026-09-29'
+  platform: research
+  domain: papers
+  capability: research.papers.search
+  scope: any_account
+  method: POST
+  path: /v1/search
+  body_allowlist: true
+  platform_request:
+    body.search_type: proprietary
+    body.max_price: 5
+    body.response_length: short
+  name: Search academic papers
+  summary: Search arXiv, PubMed and subscribed preprint sources.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: quantum error correction research
+      max_num_results:
+        type: integer
+        required: true
+        min: 1
+        max: 10
+        example: 1
+      search_type:
+        type: string
+        required: true
+        enum:
+        - proprietary
+      max_price:
+        type: number
+        required: true
+        enum:
+        - 5
+      response_length:
+        type: string
+        required: true
+        enum:
+        - short
+      included_sources:
+        type: array[string]
+        required: true
+        minItems: 1
+        maxItems: 5
+        enum: &id001
+        - valyu/valyu-arxiv
+        - valyu/valyu-pubmed
+        - valyu/valyu-medrxiv
+        - valyu/valyu-biorxiv
+        - valyu/valyu-chemrxiv
+        example: *id001
+    note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
+  test_request:
+    body:
+      query: quantum error correction research
+      max_num_results: 1
+      search_type: proprietary
+      max_price: 5
+      response_length: short
+      included_sources: *id001
+  cost:
+    type: per_call
+    currency: credit
+    unit: call
+    table:
+    - when:
+        body.search_type: proprietary
+      value: 0.005
+      times: body.max_num_results
+    fallback:
+      value: 0.05
+      note: Ten requested results at the highest source rate for this view.
+    settle: usage
+    usage:
+      path: total_deduction_dollars
+      unit: credit
+    source: observed
+    source_url: https://api.valyu.ai/v1/datasources
+    checked: '2026-09-30'
+    confidence: verified
+    note: ChemRxiv is the highest-priced source in this view at five credits per 1,000 results.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/search
+- id: valyu.stocks.search
+  added: '2026-09-29'
+  platform: stocks
+  domain: stocks
+  capability: stocks.search
+  scope: any_account
+  method: POST
+  path: /v1/search
+  body_allowlist: true
+  platform_request:
+    body.search_type: proprietary
+    body.max_price: 6
+    body.response_length: short
+  name: Search stock market data
+  summary: Find stock-price data across global exchanges.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: Apple AAPL stock price
+      max_num_results:
+        type: integer
+        required: true
+        min: 1
+        max: 10
+        example: 1
+      search_type:
+        type: string
+        required: true
+        enum:
+        - proprietary
+      max_price:
+        type: number
+        required: true
+        enum:
+        - 6
+      response_length:
+        type: string
+        required: true
+        enum:
+        - short
+      included_sources:
+        type: array[string]
+        required: true
+        minItems: 1
+        maxItems: 1
+        enum: &id002
+        - valyu/valyu-stocks
+        example: *id002
+    note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
+  test_request:
+    body:
+      query: Apple AAPL stock price
+      max_num_results: 1
+      search_type: proprietary
+      max_price: 6
+      response_length: short
+      included_sources: *id002
+  cost:
+    type: per_call
+    currency: credit
+    unit: call
+    table:
+    - when:
+        body.search_type: proprietary
+      value: 0.006
+      times: body.max_num_results
+    fallback:
+      value: 0.06
+      note: Ten requested results at the highest source rate for this view.
+    settle: usage
+    usage:
+      path: total_deduction_dollars
+      unit: credit
+    source: observed
+    source_url: https://api.valyu.ai/v1/datasources
+    checked: '2026-09-30'
+    confidence: verified
+    note: Stocks cost six credits per 1,000 results.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/search
+- id: valyu.crypto.search
+  added: '2026-09-29'
+  platform: crypto
+  domain: crypto
+  capability: crypto.search
+  scope: any_account
+  method: POST
+  path: /v1/search
+  body_allowlist: true
+  platform_request:
+    body.search_type: proprietary
+    body.max_price: 6
+    body.response_length: short
+  name: Search cryptocurrency prices
+  summary: Find cryptocurrency price and market data.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: Bitcoin BTC price
+      max_num_results:
+        type: integer
+        required: true
+        min: 1
+        max: 10
+        example: 1
+      search_type:
+        type: string
+        required: true
+        enum:
+        - proprietary
+      max_price:
+        type: number
+        required: true
+        enum:
+        - 6
+      response_length:
+        type: string
+        required: true
+        enum:
+        - short
+      included_sources:
+        type: array[string]
+        required: true
+        minItems: 1
+        maxItems: 1
+        enum: &id003
+        - valyu/valyu-crypto
+        example: *id003
+    note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
+  test_request:
+    body:
+      query: Bitcoin BTC price
+      max_num_results: 1
+      search_type: proprietary
+      max_price: 6
+      response_length: short
+      included_sources: *id003
+  cost:
+    type: per_call
+    currency: credit
+    unit: call
+    table:
+    - when:
+        body.search_type: proprietary
+      value: 0.006
+      times: body.max_num_results
+    fallback:
+      value: 0.06
+      note: Ten requested results at the highest source rate for this view.
+    settle: usage
+    usage:
+      path: total_deduction_dollars
+      unit: credit
+    source: observed
+    source_url: https://api.valyu.ai/v1/datasources
+    checked: '2026-09-30'
+    confidence: verified
+    note: Crypto costs six credits per 1,000 results.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/search
+- id: valyu.markets.forex.search
+  added: '2026-09-29'
+  platform: markets
+  domain: forex
+  capability: markets.forex.search
+  scope: any_account
+  method: POST
+  path: /v1/search
+  body_allowlist: true
+  platform_request:
+    body.search_type: proprietary
+    body.max_price: 6
+    body.response_length: short
+  name: Search foreign exchange data
+  summary: Find currency-pair rates and history.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: USD EUR exchange rate
+      max_num_results:
+        type: integer
+        required: true
+        min: 1
+        max: 10
+        example: 1
+      search_type:
+        type: string
+        required: true
+        enum:
+        - proprietary
+      max_price:
+        type: number
+        required: true
+        enum:
+        - 6
+      response_length:
+        type: string
+        required: true
+        enum:
+        - short
+      included_sources:
+        type: array[string]
+        required: true
+        minItems: 1
+        maxItems: 1
+        enum: &id004
+        - valyu/valyu-forex
+        example: *id004
+    note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
+  test_request:
+    body:
+      query: USD EUR exchange rate
+      max_num_results: 1
+      search_type: proprietary
+      max_price: 6
+      response_length: short
+      included_sources: *id004
+  cost:
+    type: per_call
+    currency: credit
+    unit: call
+    table:
+    - when:
+        body.search_type: proprietary
+      value: 0.006
+      times: body.max_num_results
+    fallback:
+      value: 0.06
+      note: Ten requested results at the highest source rate for this view.
+    settle: usage
+    usage:
+      path: total_deduction_dollars
+      unit: credit
+    source: observed
+    source_url: https://api.valyu.ai/v1/datasources
+    checked: '2026-09-30'
+    confidence: verified
+    note: Foreign exchange costs six credits per 1,000 results.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/search
+- id: valyu.stocks.filings.search
+  added: '2026-09-29'
+  platform: stocks
+  domain: filings
+  capability: stocks.filings.search
+  scope: any_account
+  method: POST
+  path: /v1/search
+  body_allowlist: true
+  platform_request:
+    body.search_type: proprietary
+    body.max_price: 12
+    body.response_length: short
+  name: Search SEC filings
+  summary: Find company filings in Valyu’s SEC index.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: Apple 2024 annual 10-K filing
+      max_num_results:
+        type: integer
+        required: true
+        min: 1
+        max: 10
+        example: 1
+      search_type:
+        type: string
+        required: true
+        enum:
+        - proprietary
+      max_price:
+        type: number
+        required: true
+        enum:
+        - 12
+      response_length:
+        type: string
+        required: true
+        enum:
+        - short
+      included_sources:
+        type: array[string]
+        required: true
+        minItems: 1
+        maxItems: 1
+        enum: &id005
+        - valyu/valyu-sec-filings
+        example: *id005
+    note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
+  test_request:
+    body:
+      query: Apple 2024 annual 10-K filing
+      max_num_results: 1
+      search_type: proprietary
+      max_price: 12
+      response_length: short
+      included_sources: *id005
+  cost:
+    type: per_call
+    currency: credit
+    unit: call
+    table:
+    - when:
+        body.search_type: proprietary
+      value: 0.012
+      times: body.max_num_results
+    fallback:
+      value: 0.12
+      note: Ten requested results at the highest source rate for this view.
+    settle: usage
+    usage:
+      path: total_deduction_dollars
+      unit: credit
+    source: observed
+    source_url: https://api.valyu.ai/v1/datasources
+    checked: '2026-09-30'
+    confidence: verified
+    note: SEC filings cost twelve credits per 1,000 results.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/search
+- id: valyu.stocks.insiders.search
+  added: '2026-09-29'
+  platform: stocks
+  domain: insiders
+  capability: stocks.insiders.search
+  scope: any_account
+  method: POST
+  path: /v1/search
+  body_allowlist: true
+  platform_request:
+    body.search_type: proprietary
+    body.max_price: 12
+    body.response_length: short
+  name: Search insider trades
+  summary: Find reported US company insider transactions.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: Apple insider transactions
+      max_num_results:
+        type: integer
+        required: true
+        min: 1
+        max: 10
+        example: 1
+      search_type:
+        type: string
+        required: true
+        enum:
+        - proprietary
+      max_price:
+        type: number
+        required: true
+        enum:
+        - 12
+      response_length:
+        type: string
+        required: true
+        enum:
+        - short
+      included_sources:
+        type: array[string]
+        required: true
+        minItems: 1
+        maxItems: 1
+        enum: &id006
+        - valyu/valyu-insider-transactions-US
+        example: *id006
+    note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
+  test_request:
+    body:
+      query: Apple insider transactions
+      max_num_results: 1
+      search_type: proprietary
+      max_price: 12
+      response_length: short
+      included_sources: *id006
+  cost:
+    type: per_call
+    currency: credit
+    unit: call
+    table:
+    - when:
+        body.search_type: proprietary
+      value: 0.012
+      times: body.max_num_results
+    fallback:
+      value: 0.12
+      note: Ten requested results at the highest source rate for this view.
+    settle: usage
+    usage:
+      path: total_deduction_dollars
+      unit: credit
+    source: observed
+    source_url: https://api.valyu.ai/v1/datasources
+    checked: '2026-09-30'
+    confidence: verified
+    note: Insider transactions cost twelve credits per 1,000 results.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/search
+- id: valyu.markets.monitor.search
+  added: '2026-09-29'
+  platform: markets
+  domain: monitor
+  capability: markets.monitor.search
+  scope: any_account
+  method: POST
+  path: /v1/search
+  body_allowlist: true
+  platform_request:
+    body.search_type: proprietary
+    body.max_price: 12
+    body.response_length: short
+  name: Search commodities and market movers
+  summary: Find commodity prices and US market movers.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: US stocks top gainers today
+      max_num_results:
+        type: integer
+        required: true
+        min: 1
+        max: 10
+        example: 1
+      search_type:
+        type: string
+        required: true
+        enum:
+        - proprietary
+      max_price:
+        type: number
+        required: true
+        enum:
+        - 12
+      response_length:
+        type: string
+        required: true
+        enum:
+        - short
+      included_sources:
+        type: array[string]
+        required: true
+        minItems: 1
+        maxItems: 2
+        enum: &id007
+        - valyu/valyu-commodities
+        - valyu/valyu-market-movers-US
+        example: *id007
+    note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
+  test_request:
+    body:
+      query: US stocks top gainers today
+      max_num_results: 1
+      search_type: proprietary
+      max_price: 12
+      response_length: short
+      included_sources: *id007
+  cost:
+    type: per_call
+    currency: credit
+    unit: call
+    table:
+    - when:
+        body.search_type: proprietary
+      value: 0.012
+      times: body.max_num_results
+    fallback:
+      value: 0.12
+      note: Ten requested results at the highest source rate for this view.
+    settle: usage
+    usage:
+      path: total_deduction_dollars
+      unit: credit
+    source: observed
+    source_url: https://api.valyu.ai/v1/datasources
+    checked: '2026-09-30'
+    confidence: verified
+    note: Market movers are the highest-priced source in this view at twelve credits per 1,000 results.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/search
+- id: valyu.markets.predictions.search
+  added: '2026-09-29'
+  platform: markets
+  domain: predictions
+  capability: markets.predictions.search
+  scope: any_account
+  method: POST
+  path: /v1/search
+  body_allowlist: true
+  platform_request:
+    body.search_type: proprietary
+    body.max_price: 5
+    body.response_length: short
+  name: Search prediction markets
+  summary: Find Polymarket and Kalshi events and prices.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: 2028 presidential election winner
+      max_num_results:
+        type: integer
+        required: true
+        min: 1
+        max: 10
+        example: 1
+      search_type:
+        type: string
+        required: true
+        enum:
+        - proprietary
+      max_price:
+        type: number
+        required: true
+        enum:
+        - 5
+      response_length:
+        type: string
+        required: true
+        enum:
+        - short
+      included_sources:
+        type: array[string]
+        required: true
+        minItems: 1
+        maxItems: 2
+        enum: &id008
+        - valyu/valyu-polymarket
+        - valyu/valyu-kalshi
+        example: *id008
+    note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
+  test_request:
+    body:
+      query: 2028 presidential election winner
+      max_num_results: 1
+      search_type: proprietary
+      max_price: 5
+      response_length: short
+      included_sources: *id008
+  cost:
+    type: per_call
+    currency: credit
+    unit: call
+    table:
+    - when:
+        body.search_type: proprietary
+      value: 0.005
+      times: body.max_num_results
+    fallback:
+      value: 0.05
+      note: Ten requested results at the highest source rate for this view.
+    settle: usage
+    usage:
+      path: total_deduction_dollars
+      unit: credit
+    source: observed
+    source_url: https://api.valyu.ai/v1/datasources
+    checked: '2026-09-30'
+    confidence: verified
+    note: Both prediction sources cost five credits per 1,000 results.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/search
+- id: valyu.health.trials.search
+  added: '2026-09-29'
+  platform: health
+  domain: trials
+  capability: health.trials.search
+  scope: any_account
+  method: POST
+  path: /v1/search
+  body_allowlist: true
+  platform_request:
+    body.search_type: proprietary
+    body.max_price: 5
+    body.response_length: short
+  name: Search clinical trials
+  summary: Find clinical study protocols and outcomes.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: Clinical trials for semaglutide in type 2 diabetes
+      max_num_results:
+        type: integer
+        required: true
+        min: 1
+        max: 10
+        example: 1
+      search_type:
+        type: string
+        required: true
+        enum:
+        - proprietary
+      max_price:
+        type: number
+        required: true
+        enum:
+        - 5
+      response_length:
+        type: string
+        required: true
+        enum:
+        - short
+      included_sources:
+        type: array[string]
+        required: true
+        minItems: 1
+        maxItems: 1
+        enum: &id009
+        - valyu/valyu-clinical-trials
+        example: *id009
+    note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
+  test_request:
+    body:
+      query: Clinical trials for semaglutide in type 2 diabetes
+      max_num_results: 1
+      search_type: proprietary
+      max_price: 5
+      response_length: short
+      included_sources: *id009
+  cost:
+    type: per_call
+    currency: credit
+    unit: call
+    table:
+    - when:
+        body.search_type: proprietary
+      value: 0.005
+      times: body.max_num_results
+    fallback:
+      value: 0.05
+      note: Ten requested results at the highest source rate for this view.
+    settle: usage
+    usage:
+      path: total_deduction_dollars
+      unit: credit
+    source: observed
+    source_url: https://api.valyu.ai/v1/datasources
+    checked: '2026-09-30'
+    confidence: verified
+    note: Clinical trials cost five credits per 1,000 results.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/search
+- id: valyu.health.references.search
+  added: '2026-09-29'
+  platform: health
+  domain: references
+  capability: health.references.search
+  scope: any_account
+  method: POST
+  path: /v1/search
+  body_allowlist: true
+  platform_request:
+    body.search_type: proprietary
+    body.max_price: 3
+    body.response_length: short
+  name: Search drug labels and WHO health data
+  summary: Find FDA drug labels and WHO Global Health Observatory data.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: Ozempic FDA drug label
+      max_num_results:
+        type: integer
+        required: true
+        min: 1
+        max: 10
+        example: 1
+      search_type:
+        type: string
+        required: true
+        enum:
+        - proprietary
+      max_price:
+        type: number
+        required: true
+        enum:
+        - 3
+      response_length:
+        type: string
+        required: true
+        enum:
+        - short
+      included_sources:
+        type: array[string]
+        required: true
+        minItems: 1
+        maxItems: 2
+        enum: &id010
+        - valyu/valyu-drug-labels
+        - valyu/valyu-who-gho
+        example: *id010
+    note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
+  test_request:
+    body:
+      query: Ozempic FDA drug label
+      max_num_results: 1
+      search_type: proprietary
+      max_price: 3
+      response_length: short
+      included_sources: *id010
+  cost:
+    type: per_call
+    currency: credit
+    unit: call
+    table:
+    - when:
+        body.search_type: proprietary
+      value: 0.003
+      times: body.max_num_results
+    fallback:
+      value: 0.03
+      note: Ten requested results at the highest source rate for this view.
+    settle: usage
+    usage:
+      path: total_deduction_dollars
+      unit: credit
+    source: observed
+    source_url: https://api.valyu.ai/v1/datasources
+    checked: '2026-09-30'
+    confidence: verified
+    note: Both health reference sources cost three credits per 1,000 results; the live WHO id is valyu/valyu-who-gho.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/search
+- id: valyu.economics.indicators.search
+  added: '2026-09-29'
+  platform: economics
+  domain: indicators
+  capability: economics.indicators.search
+  scope: any_account
+  method: POST
+  path: /v1/search
+  body_allowlist: true
+  platform_request:
+    body.search_type: proprietary
+    body.max_price: 5
+    body.response_length: short
+  name: Search economic indicators
+  summary: Find BLS and World Bank statistics.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: United States unemployment rate
+      max_num_results:
+        type: integer
+        required: true
+        min: 1
+        max: 10
+        example: 1
+      search_type:
+        type: string
+        required: true
+        enum:
+        - proprietary
+      max_price:
+        type: number
+        required: true
+        enum:
+        - 5
+      response_length:
+        type: string
+        required: true
+        enum:
+        - short
+      included_sources:
+        type: array[string]
+        required: true
+        minItems: 1
+        maxItems: 2
+        enum: &id011
+        - valyu/valyu-bls
+        - valyu/valyu-worldbank-indicators
+        example: *id011
+    note: The selected Valyu sources are fixed for shared-key calls; use a Valyu own tool for arbitrary source mixes.
+  test_request:
+    body:
+      query: United States unemployment rate
+      max_num_results: 1
+      search_type: proprietary
+      max_price: 5
+      response_length: short
+      included_sources: *id011
+  cost:
+    type: per_call
+    currency: credit
+    unit: call
+    table:
+    - when:
+        body.search_type: proprietary
+      value: 0.005
+      times: body.max_num_results
+    fallback:
+      value: 0.05
+      note: Ten requested results at the highest source rate for this view.
+    settle: usage
+    usage:
+      path: total_deduction_dollars
+      unit: credit
+    source: observed
+    source_url: https://api.valyu.ai/v1/datasources
+    checked: '2026-09-30'
+    confidence: verified
+    note: Both official-statistics sources cost five credits per 1,000 results.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/search
+- id: valyu.web.contents
+  added: '2026-09-29'
+  platform: web
+  domain: extract
+  capability: web.extract
+  scope: any_account
+  method: POST
+  path: /v1/contents
+  body_allowlist: true
+  platform_request:
+    body.summary: false
+    body.response_length: short
+  name: Extract a web page
+  summary: Return clean content from one public URL.
+  input:
+    bodyType: json
+    body:
+      urls:
+        type: array[string]
+        required: true
+        minItems: 1
+        maxItems: 1
+        example:
+        - https://example.com
+      summary:
+        type: boolean
+        required: true
+        enum:
+        - false
+      response_length:
+        type: string
+        required: true
+        enum:
+        - short
+      max_price_dollars:
+        type: number
+        required: false
+        min: 0.001
+        max: 0.01
+    note: This one-URL raw extraction excludes AI processing and asynchronous jobs.
+  test_request:
+    body:
+      urls:
+      - https://example.com
+      summary: false
+      response_length: short
+      max_price_dollars: 0.01
+  cost:
+    type: per_call
+    value: 0.001
+    currency: credit
+    unit: call
+    settle: usage
+    usage:
+      path: total_cost_dollars
+      unit: credit
+    fallback:
+      value: 0.001
+      note: One requested URL at the documented raw extraction price.
+    source: observed
+    source_url: https://docs.valyu.ai/api-reference/endpoint/contents
+    checked: '2026-09-30'
+    confidence: verified
+    note: One successful URL cost 0.001 credit live; failed URLs have no extraction charge.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/contents
+- id: valyu.web.answer
+  added: '2026-09-29'
+  platform: web
+  domain: answer
+  capability: web.answer
+  scope: any_account
+  method: POST
+  path: /v1/answer
+  body_allowlist: true
+  platform_blocked: Answer streams SSE and bills variable search plus AI usage; shared-key settlement has no bounded
+    total. Connect your own Valyu key.
+  name: Answer a sourced question
+  summary: Stream a cited answer grounded in Valyu search results.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: What is example.com used for?
+      search_type:
+        type: string
+        required: false
+        enum:
+        - all
+        - web
+        - proprietary
+        - news
+      included_sources:
+        type: array[string]
+        required: false
+      data_max_price:
+        type: number
+        required: false
+        min: 0.001
+      fast_mode:
+        type: boolean
+        required: false
+    note: The upstream response is a text/event-stream; its final metadata event reports the actual variable cost.
+  test_request:
+    body:
+      query: What is example.com used for?
+      search_type: web
+      data_max_price: 0.02
+      fast_mode: true
+  cost:
+    type: per_call
+    value: 0.05
+    currency: credit
+    unit: call
+    source: inferred
+    source_url: https://docs.valyu.ai/api-reference/endpoint/answer
+    checked: '2026-09-30'
+    confidence: inferred
+    note: 'Illustrative estimate only: live web answer cost 0.04205 credit. The true search and AI charge varies;
+      this catalog row is BYOK only.'
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/answer
+- id: valyu.research.deep
+  added: '2026-09-29'
+  platform: research
+  domain: deepresearch
+  capability: research.deep
+  scope: any_account
+  method: POST
+  path: /v1/deepresearch/tasks
+  body_allowlist: true
+  name: Run deep research
+  summary: Start an asynchronous multi-step research report with citations.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        maxLength: 25000
+        example: Briefly explain what example.com is and cite its official page.
+      mode:
+        type: string
+        required: true
+        enum:
+        - fast
+        - standard
+        - heavy
+        - max
+        example: fast
+      output_formats:
+        type: array[string]
+        required: true
+        minItems: 1
+        maxItems: 1
+        enum:
+        - markdown
+        example:
+        - markdown
+      research_strategy:
+        type: string
+        required: false
+        maxLength: 15000
+    note: The shared-key surface produces Markdown only and excludes workflow, tools, webhooks, HITL and deliverable
+      add-ons.
+  test_request:
+    body:
+      query: Briefly explain what example.com is and cite its official page.
+      mode: fast
+      output_formats:
+      - markdown
+  cost:
+    type: per_success
+    table:
+    - when:
+        body.mode: fast
+      value: 0.1
+    - when:
+        body.mode: standard
+      value: 0.5
+    - when:
+        body.mode: heavy
+      value: 2.5
+    - when:
+        body.mode: max
+      value: 15.0
+    fallback:
+      value: 15.0
+      note: Maximum mode price.
+    settle: usage
+    usage:
+      path: cost
+      unit: credit
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.valyu.ai/api-reference/endpoint/deepresearch-create
+    checked: '2026-09-30'
+    confidence: documented
+    note: Mode prices are 0.10, 0.50, 2.50 and 15 credits; a live Fast task completed at 0.10 credit, settled from
+      terminal status cost.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/deepresearch-create
+  async:
+    id_from: deepresearch_id
+    poll:
+      endpoint: valyu.research.deep.status
+      param:
+        in: pathParams
+        name: id
+    status:
+      path: status
+      progress:
+      - queued
+      - running
+      - awaiting_input
+      - paused
+      success:
+      - completed
+      failure:
+      - failed
+      - cancelled
+    result:
+      path: output
+    interval: 20
+- id: valyu.research.deep.status
+  added: '2026-09-29'
+  kind: utility
+  platform: research
+  domain: deepresearch
+  capability: research.deep.status
+  scope: any_account
+  method: GET
+  path: /v1/deepresearch/tasks/{id}/status
+  name: Check a deep research task
+  summary: Read the status and result of a research task started by this team.
+  resource_ownership:
+    requires:
+      kind: poll:valyu.research.deep.status
+      param: id
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        example: 00000000-0000-4000-8000-000000000001
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    note: Valyu publishes no separate polling charge; the completed task reports its total cost.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/deepresearch-status
+- id: valyu.sources.list
+  added: '2026-09-29'
+  kind: utility
+  platform: research
+  domain: sources
+  capability: research.sources.list
+  scope: any_account
+  method: GET
+  path: /v1/datasources
+  name: List Valyu data sources
+  summary: Discover dataset IDs, descriptions and per-source pricing metadata.
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: observed
+    source_url: https://docs.valyu.ai/api-reference/endpoint/datasources-list
+    checked: '2026-09-30'
+    confidence: inferred
+    note: Metadata read returned no charge field; Valyu documents charges for Search, Contents, Answer and DeepResearch,
+      but provides no balance API to verify a zero deduction.
+  docs_url: https://docs.valyu.ai/api-reference/endpoint/datasources-list
+  test_request: {}

@@ -1,0 +1,40 @@
+{
+  "pagination": {
+    "totalElements": 0,
+    "totalPages": 0,
+    "pageNumber": 1,
+    "pageSize": 100
+  },
+  "elements": [
+    {
+      "id": "1234567890",
+      "linkedinUrl": "https://example.com/synthetic-record",
+      "commentary": "Synthetic example",
+      "createdAt": "2026-09-09T18:48:15.713Z",
+      "createdAtTimestamp": 1788979695713,
+      "engagement": {
+        "likes": 0,
+        "comments": 0,
+        "shares": 0,
+        "reactions": []
+      },
+      "postId": "1234567890",
+      "edited": false,
+      "actor": {
+        "id": "1234567890",
+        "type": "profile",
+        "name": "Synthetic example",
+        "linkedinUrl": "https://example.com/synthetic-record",
+        "position": "Synthetic example",
+        "pictureUrl": "https://example.com/synthetic-record",
+        "author": false
+      }
+    }
+  ],
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinPostComments"
+  ],
+  "cost": 0.004
+}

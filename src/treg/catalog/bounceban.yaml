@@ -1,0 +1,138 @@
+# Exposes standard/waterfall single verification, single status, and account usage. JSON and CSV
+# bulk lifecycles are omitted until they have an explicit cost-confirmation and owned-job workflow.
+# /v1/check is also omitted because it uses a separate unfunded Check Plan.
+provider: bounceban
+source:
+  docs: https://bounceban.com/public/doc/api.html
+  openapi: https://bounceban.com/public/doc/api.yaml
+  curated: '2026-09-16'
+pricing_url: https://bounceban.com/pricing
+limits: "Live account limits on 2026-09-16: single and single-status 100/second, bulk create 5/second, bulk reads 25/second, account 5/second. Results remain available for 90 days."
+proposed_capabilities:
+  people.email.verify.status: Poll a single email-verification task
+
+endpoints:
+  - id: bounceban.people.email.verify
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: GET
+    path: /v1/verify/single
+    resource_ownership:
+      produces: [{kind: single, path: id}]
+    # Usually finished at once; `verifying` is polled within BounceBan's 10-polls-in-5-minutes rule.
+    async:
+      id_from: id
+      poll:
+        endpoint: bounceban.people.email.verify.status
+        param: {in: queryParams, name: id}
+      status:
+        path: status
+        progress: [verifying, queue]
+        success: [success]
+      result: {path: result}
+      interval: 30
+      max_age: 300
+      terminal_on_submission: true
+    name: Verify email — catch-all, disposable and role flags
+    summary: Verify email deliverability, including catch-all and protected mailboxes
+    input:
+      queryParams:
+        email: {type: string, required: true, note: "email address to verify", example: "dev@bounceban.com"}
+        mode: {type: string, required: false, enum: [regular, deepverify], default: regular, note: "deepverify assumes the domain matches the person's current company"}
+      note: "The standard endpoint waits up to 15 seconds. A 200 response can have status=verifying; poll bounceban.people.email.verify.status with its id (treg call --await does this), at most every 30 seconds and for five minutes. Platform calls always use full verification: the zero-cost disable_catchall_verify option is not exposed on this tool."
+    test_request: {queryParams: {email: "dev@bounceban.com"}}
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://bounceban.com/public/doc/api.html#tag/Single-Verification
+      checked: '2026-09-16'
+      confidence: verified
+      note: "One verification credit for every accepted standard submission, including a 200 status=verifying response and final unknown results. On treg's key a verifying answer is charged when its result arrives, and released if none arrives within five minutes. Invalid input returned 400 and used no credit. The supplied acquisition rate is $0.004 per credit."
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/bounceban.people.email.verify.json
+    terminal_example_response: examples/bounceban.people.email.verify.json
+    docs_url: https://bounceban.com/public/doc/api.html#tag/Single-Verification
+
+  - id: bounceban.people.email.verify.waterfall
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: GET
+    host: api-waterfall.bounceban.com
+    path: /v1/verify/single
+    name: Verify an email and wait for the result
+    summary: Hold one request open until verification finishes or the configured timeout expires
+    input:
+      queryParams:
+        email: {type: string, required: true, example: "dev@bounceban.com"}
+        mode: {type: string, required: false, enum: [regular, deepverify], default: regular}
+        timeout: {type: integer, required: false, min: 30, max: 300, default: 80, note: "seconds to wait"}
+        disable_catchall_verify: {type: string, required: false, enum: ['0', '1'], default: '0', note: "1 skips catch-all verification; an unknown score=-1 result costs zero"}
+        url: {type: string, required: false, note: "BYOK webhook URL for the final result"}
+      note: "BYOK only. Repeating the same email within 30 minutes is free, but the response repeats the original credits_consumed value, so treg cannot settle a shared-key retry exactly."
+    test_request: {queryParams: {email: "dev@bounceban.com", timeout: 80}}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://bounceban.com/public/doc/api.html#tag/Single-Verification
+      checked: '2026-09-16'
+      confidence: documented
+      note: "Normally one credit. Same-email retries within 30 minutes and catch-all unknown results with disable_catchall_verify=1 can be free. BYOK is not metered by treg."
+    platform_blocked: "Free retry and conditional zero-credit rules cannot be settled from the repeated response; connect your own BounceBan key."
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/bounceban.people.email.verify.waterfall.json
+    docs_url: https://bounceban.com/public/doc/api.html#tag/Single-Verification
+
+  - id: bounceban.people.email.verify.status
+    kind: utility
+    domain: contacts
+    capability: people.email.verify.status
+    platform: people
+    scope: any_account
+    method: GET
+    path: /v1/verify/single/status
+    resource_ownership:
+      requires: {kind: single, param: id}
+    name: Get a single verification result
+    summary: Poll a submitted verification by its task ID
+    input:
+      queryParams:
+        id: {type: string, required: true, note: "task id returned by a standard or waterfall single request", example: "sanitized-task-id"}
+      note: "Free. Poll no more than 10 times per id in five minutes and stop after five minutes. On treg's key, only an id your team's verify call returned is accepted."
+    test_request: {queryParams: {id: "sanitized-task-id"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, confidence: verified, note: "Live status polling used no verification credit"}
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/bounceban.people.email.verify.status.json
+    docs_url: https://bounceban.com/public/doc/api.html#tag/Single-Verification
+  - id: bounceban.account.usage
+    kind: account
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/account
+    name: Check verification-credit balance
+    summary: Get the account credit balance and live per-endpoint rate limits
+    input:
+      note: "No parameters. This free endpoint is also the connection probe and platform capacity source."
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, confidence: verified, note: "Live account probes used no credits"}
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/bounceban.account.usage.json
+    docs_url: https://bounceban.com/public/doc/api.html#tag/Account

@@ -1,0 +1,35 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "brand": "",
+          "currency": "USD",
+          "image": "https://encrypted-tbn0.gstatic.com/shopping?q=tbn:ANd9GcSs3Khr0geBh8BOckRsz9QHO36HXxAcYJBo4em-cmkVzpanPa-m1D2W3AMnv408ue0Sd45qHtAKzBaGTcCd6xYj2t5-0dKCtA",
+          "listPrice": 130,
+          "price": 99.99,
+          "productId": "3293221069798785293",
+          "rating": 4.4,
+          "reviewsCount": 31000,
+          "seller": "Target",
+          "title": "AirPods 4 Apple",
+          "url": "https://google.com/search?ibp=oshop&q=airpods+sale&prds=gpcid:3591805395819257241,rds:PC_3591805395819257241%7CPROD_PC_3591805395819257241,headlineOfferDocid:3511684401561976613,catalogid:329322106979… [232 chars]"
+        },
+        "… 19 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.018,
+  "items": 20,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-fox",
+    "name": "Fox",
+    "kind": "anonymous",
+    "artworkKey": "fox"
+  },
+  "hint": "large_result: this response is ~12 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "e7b91f19-d2e3-468d-80b3-0110763bfb33"
+}

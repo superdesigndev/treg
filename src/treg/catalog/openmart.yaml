@@ -1,0 +1,254 @@
+# Openmart API. Live-verified 2026-09-17 with synthetic inputs.
+# Synchronous data reads whose price and returned-record shape are proven can use either a team's
+# own key or treg's metered platform key. Openmart rounds 0.3-credit record prices up to whole
+# credits per operation; the call runtime applies that provider-specific rule and caps shared-key
+# requests at 25 records. Async lifecycles are omitted; account mutations and unresolved prices
+# remain BYOK-only. The shared balance endpoint is internal capacity infrastructure, not a tool.
+provider: openmart
+source:
+  docs: https://app.openmart.com/api-docs
+  curated: '2026-09-17'
+pricing_url: https://www.openmart.com/pricing
+limits: Search, enrich, and task reads are documented at 20 requests/second; technology tasks at 15; other batch enrichment at 25.
+proposed_capabilities:
+  companies.businesses.search: Search physical business locations.
+  companies.businesses.search.ids: Search and return only provider business IDs.
+  companies.lookup: Retrieve company records by provider identifier.
+  companies.deny-rules.create: Add private company-account deny rules.
+  companies.deny-rules.check: Check private company-account deny rules.
+  companies.deny-rules.delete: Delete private company-account deny rules.
+
+endpoints:
+- id: openmart.businesses.search
+  domain: companies
+  capability: companies.businesses.search
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /api/v1/search
+  name: Search businesses
+  summary: Search local businesses with text, location, category, and attribute filters
+  input: &search_input
+    bodyType: json
+    note: Treat a returned row with match_score 0 as no meaningful match; a live nonsense query returned an unrelated fallback row at that score.
+    body:
+      query: {type: string}
+      limit: {type: integer, min: 1, max: 1000}
+      estimate_total: {type: boolean}
+  test_request: {body: {query: treg-nonexistent-20260917, limit: 1, estimate_total: true}}
+  cost:
+    type: per_result
+    value: 0.3
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://www.openmart.com/pricing
+    checked: '2026-09-17'
+    confidence: verified
+    note: Openmart support confirmed 3 credits per 10 returned records, rounded up per operation; the effective charge is ceil(0.3 × returned records), and zero records cost zero. Ten live one-result calls each deducted one whole credit. Shared-key calls require an explicit limit from 1 to 25; own-key calls keep the upstream limit. Direct callers should treat match_score 0 as a miss.
+  verified: '2026-09-17'
+  added: '2026-09-17'
+  example_response: examples/openmart.businesses.search.json
+  docs_url: https://app.openmart.com/api-docs
+
+- id: openmart.businesses.search.ids
+  domain: companies
+  capability: companies.businesses.search.ids
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /api/v1/search/only_ids
+  name: Search business IDs
+  summary: Search businesses and return only Openmart IDs
+  input: *search_input
+  test_request: {body: {query: treg-nonexistent-20260917, limit: 1}}
+  cost:
+    type: per_result
+    value: null
+    currency: credit
+    per: 1
+    unit: result
+    source: observed
+    source_url: https://app.openmart.com/api-docs
+    checked: '2026-09-17'
+    confidence: unknown
+    note: Documentation says reduced billing; live 1-row, 10-row, and cursor calls moved no whole credit, so no fractional rate is claimed.
+  platform_blocked: The upstream rate is unresolved; connect your own Openmart key.
+  verified: '2026-09-17'
+  added: '2026-09-17'
+  example_response: examples/openmart.businesses.search.ids.json
+  docs_url: https://app.openmart.com/api-docs
+
+- id: openmart.businesses.lookup.openmart
+  domain: companies
+  capability: companies.lookup
+  platform: companies
+  scope: any_account
+  method: GET
+  path: /api/v1/business_records/list/openmart_id
+  name: Get businesses by Openmart ID
+  summary: Get up to 100 full business records by Openmart ID
+  input:
+    bodyType: json
+    note: The upstream request body is a raw JSON array of 1 to 100 Openmart ID strings.
+  # Openmart documents a JSON array on GET. Keep it in the input contract, but omit it from the
+  # generated smoke command because treg intentionally never prints GET commands with bodies.
+  test_request: {body: [00000000-0000-4000-8000-000000000001]}
+  cost: &lookup_record_cost
+    type: per_result
+    value: 0.3
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://www.openmart.com/pricing
+    checked: '2026-09-17'
+    confidence: documented
+    note: Full company records use the same ceil(0.3 × returned records) per-operation charge; omitted IDs are free because the response map contains no value for them. Shared-key calls accept at most 25 IDs; own-key calls keep the upstream limit.
+  verified: '2026-09-17'
+  added: '2026-09-17'
+  example_response: examples/openmart.businesses.lookup.openmart.json
+  docs_url: https://app.openmart.com/api-docs
+
+- id: openmart.businesses.lookup.google-place
+  domain: companies
+  capability: companies.lookup
+  platform: companies
+  scope: any_account
+  method: GET
+  path: /api/v1/business_records/list/google_place_id
+  name: Get businesses by Google Place ID
+  summary: Get up to 100 full business records by Google Place ID
+  input:
+    bodyType: json
+    note: The upstream request body is a raw JSON array of 1 to 100 Google Place ID strings.
+  test_request: {body: [ChIJ00000000000000000000000]}
+  cost: *lookup_record_cost
+  verified: '2026-09-17'
+  added: '2026-09-17'
+  example_response: examples/openmart.businesses.lookup.google-place.json
+  docs_url: https://app.openmart.com/api-docs
+
+- id: openmart.companies.enrich
+  domain: companies
+  capability: companies.enrich
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /api/v1/enrich_company
+  name: Enrich companies
+  summary: Find matching business records from websites or social URLs
+  input:
+    bodyType: json
+    body:
+      website: {type: string}
+      social_media_link: {type: string}
+      limit: {type: integer, min: 1, max: 50}
+      estimate_total: {type: boolean}
+  test_request: {body: {website: example.invalid, limit: 1}}
+  cost:
+    type: per_result
+    value: 0.3
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://www.openmart.com/pricing
+    checked: '2026-09-17'
+    confidence: verified
+    note: Openmart support confirmed ceil(0.3 × returned records) per operation; a no-match returns an empty array and costs zero. Shared-key calls require an explicit limit from 1 to 25; own-key calls keep the upstream limit.
+  verified: '2026-09-17'
+  added: '2026-09-17'
+  example_response: examples/openmart.companies.enrich.json
+  docs_url: https://app.openmart.com/api-docs
+
+- id: openmart.companies.search
+  domain: companies
+  capability: companies.search
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /api/v2/brands/search
+  name: Search companies
+  summary: Search company brands with nested filters and cursor pagination
+  input:
+    bodyType: json
+    body:
+      search_param: {type: object, additionalProperties: true}
+      pagination: {type: object, additionalProperties: true}
+  test_request: {body: {search_param: {search_term: coffee shop, location: [{country: US}]}, pagination: {limit: 10}}}
+  cost:
+    type: per_result
+    value: 0.3
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://www.openmart.com/pricing
+    checked: '2026-09-17'
+    confidence: verified
+    note: Openmart support confirmed ceil(0.3 × returned records) per operation; brand rows are returned in data[], and an empty page costs zero. Shared-key calls require pagination.limit from 1 to 25; own-key calls keep the upstream limit.
+  verified: '2026-09-17'
+  added: '2026-09-17'
+  example_response: examples/openmart.companies.search.json
+  docs_url: https://app.openmart.com/api-docs
+- id: openmart.deny-rules.create
+  domain: governance
+  capability: companies.deny-rules.create
+  platform: companies
+  scope: own_account
+  method: POST
+  path: /api/v2/deny-rules
+  name: Create deny rules
+  summary: Add domains, emails, or other values to the account deny list
+  input: &deny_input
+    bodyType: json
+    body:
+      rules: {type: array, items: {type: object, additionalProperties: true}, minItems: 1}
+  test_request: {body: {rules: [{type: DOMAIN, value: example.invalid}]}}
+  cost: &free_account_write {type: free, value: 0, currency: USD, unit: call, source: observed, checked: '2026-09-17', confidence: verified, note: Deny-rule calls used no credits.}
+  cache: forbidden
+  platform_blocked: This mutates account state; connect your own Openmart key.
+  verified: '2026-09-17'
+  added: '2026-09-17'
+  example_response: examples/openmart.deny-rules.create.json
+  docs_url: https://app.openmart.com/api-docs
+
+- id: openmart.deny-rules.check
+  domain: governance
+  capability: companies.deny-rules.check
+  platform: companies
+  scope: own_account
+  method: POST
+  path: /api/v2/deny-rules/check
+  name: Check deny rules
+  summary: Check values against the account deny list
+  input: *deny_input
+  test_request: {body: {rules: [{type: DOMAIN, value: example.invalid}]}}
+  cost: *free_account_write
+  cache: forbidden
+  platform_blocked: The answer depends on private account state; connect your own Openmart key.
+  verified: '2026-09-17'
+  added: '2026-09-17'
+  example_response: examples/openmart.deny-rules.check.json
+  docs_url: https://app.openmart.com/api-docs
+
+- id: openmart.deny-rules.delete
+  domain: governance
+  capability: companies.deny-rules.delete
+  platform: companies
+  scope: own_account
+  method: DELETE
+  path: /api/v2/deny-rules
+  name: Delete deny rules
+  summary: Delete values from the account deny list
+  input: *deny_input
+  test_request: {body: {rules: [{type: DOMAIN, value: example.invalid}]}}
+  cost: *free_account_write
+  cache: forbidden
+  platform_blocked: This destructive operation mutates account state; connect your own Openmart key.
+  verified: '2026-09-17'
+  added: '2026-09-17'
+  example_response: examples/openmart.deny-rules.delete.json
+  docs_url: https://app.openmart.com/api-docs

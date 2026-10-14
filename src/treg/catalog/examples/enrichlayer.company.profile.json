@@ -1,0 +1,79 @@
+{
+  "linkedin_internal_id": "example-id",
+  "description": "Example description.",
+  "website": "https://example.com/profile/example",
+  "industry": "example",
+  "company_size": [
+    1
+  ],
+  "company_size_on_linkedin": 1,
+  "hq": {
+    "country": "US",
+    "city": "example",
+    "postal_code": "example",
+    "line_1": "example",
+    "is_hq": true,
+    "state": "example"
+  },
+  "company_type": "example",
+  "founded_year": null,
+  "specialities": [
+    "example"
+  ],
+  "locations": [
+    {
+      "country": "US",
+      "city": "example",
+      "postal_code": "example",
+      "line_1": "example",
+      "is_hq": true,
+      "state": "example"
+    }
+  ],
+  "name": "Example Person",
+  "tagline": null,
+  "universal_name_id": "Example Person",
+  "profile_pic_url": "https://example.com/profile/example",
+  "background_cover_image_url": "https://example.com/profile/example",
+  "search_id": "example-id",
+  "similar_companies": [
+    {
+      "name": "Example Person",
+      "link": "https://example.com/profile/example",
+      "industry": "example",
+      "location": "example"
+    }
+  ],
+  "affiliated_companies": [
+    {
+      "name": "Example Person",
+      "link": "https://example.com/profile/example",
+      "industry": "example",
+      "location": "example"
+    }
+  ],
+  "updates": [
+    {
+      "article_link": "https://example.com/profile/example",
+      "image": null,
+      "posted_on": {
+        "day": 1,
+        "month": 1,
+        "year": 1
+      },
+      "text": "example",
+      "total_likes": 1
+    }
+  ],
+  "follower_count": 1,
+  "acquisitions": null,
+  "exit_data": null,
+  "extra": null,
+  "funding_data": [],
+  "categories": null,
+  "customer_list": null,
+  "meta": {
+    "thin_profile": false,
+    "last_updated": "2026-01-01T00:00:00Z"
+  }
+}

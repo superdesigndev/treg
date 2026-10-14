@@ -1,0 +1,35 @@
+{
+  "output": {
+    "data": {
+      "items": [
+        {
+          "articleImage": "https://media.licdn.com/dms/image/sync/v2/D4D27AQEeDk6h2ddHDw/articleshare-shrink_1280_800/B4DaC0nTpIJ0Ag-/0/1789736598471?e=1790416800&v=beta&t=-ZfeN-F4g2JlWwy46TRnKqXUwTXsAvXOR74VeL_5DGg",
+          "articleSubtitle": "nytimes.com",
+          "articleTitle": "Highlights of Warren Buffett’s Career (Published 2025)",
+          "articleUrl": "https://www.nytimes.com/2025/05/04/business/warren-buffett-career-timeline.html",
+          "author": "… {4 field(s) truncated}",
+          "createdUtc": 1789776771,
+          "engagement": "… {3 field(s) truncated}",
+          "id": "7506867871000510464",
+          "images": "… [0 item(s) truncated]",
+          "text": "Congratulations on an extraordinary career, Warren. I’m lucky to call you my friend and mentor. https://nyti.ms/475x4OZ",
+          "url": "https://www.linkedin.com/posts/williamhgates_highlights-of-warren-buffetts-career-published-activity-7506867871000510464-ulus"
+        },
+        "… 9 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.005,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-hedgehog-338ce087",
+    "name": "Hedgehog",
+    "kind": "anonymous",
+    "artworkKey": "hedgehog"
+  },
+  "hint": "large_result: this response is ~14 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "47e33e4e-8b8f-42a2-b711-cb046dd04fe2"
+}

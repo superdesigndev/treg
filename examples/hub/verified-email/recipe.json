@@ -1,0 +1,17 @@
+{
+  "name": "verified-email",
+  "summary": "One person's work email, found and then checked, in one call. Give a LinkedIn URL or a name and a domain. Provider calls at cost, plus $0.01 only when the email is valid or risky.",
+  "capability": "people.email.find",
+  "inputs": {
+    "linkedin_url": { "type": "string", "default": "", "example": "https://www.linkedin.com/in/patrickcollison", "note": "the person's LinkedIn profile; the best identity when you have it" },
+    "full_name": { "type": "string", "default": "", "example": "Patrick Collison", "note": "with domain, when you have no LinkedIn URL" },
+    "first_name": { "type": "string", "default": "", "example": "Patrick" },
+    "last_name": { "type": "string", "default": "", "example": "Collison" },
+    "domain": { "type": "string", "default": "", "example": "stripe.com", "note": "the company's website domain; needed with a name" }
+  },
+  "uses": ["treg.people.email.find", "treg.people.email.verify"],
+  "script": "run.js",
+  "output": { "fields": ["email", "email_status", "found_by", "verified_by", "confidence", "first_name", "last_name", "spent_usd", "units"] },
+  "limits": { "cost_usd": 0.5 },
+  "pricing": { "max_price_usd": 0.01 }
+}

@@ -1,0 +1,168 @@
+{
+  "search_metadata": {
+    "id": "2bc26d6cd5e4af8bc64a79c5",
+    "status": "Success",
+    "created_at": "2026-09-29T13:58:52.213480+00:00",
+    "processed_at": "2026-09-29T13:58:52.985449+00:00",
+    "json_endpoint": "https://api.litescrape.com/api/google/play/games?hl=en&gl=us&store_device=phone",
+    "google_play_url": "https://play.google.com/store/games?hl=en&gl=us&device=phone",
+    "total_time_taken": 0.772
+  },
+  "search_parameters": {
+    "hl": "en",
+    "gl": "us",
+    "store_device": "phone"
+  },
+  "organic_results": [
+    {
+      "title": "Indie Corner",
+      "subtitle": "Play top indie games",
+      "see_more_link": "https://play.google.com/store/apps/collection/cluster?gsr=SnIKbQosCihwcm9tb3Rpb25fZWRpdG9yaWFsZXZlcmdyZWVuX2luZGllX3BpY2tzEAISNwozbmV3X2hvbWVfZGV2aWNlX2ZlYXR1cmVkX3JlY3MyX3RvcGljX3YxX2xhdW5jaF9HQU1FEAIaBAoCCAL4AQE%3D:S:ANO1ljIiffo",
+      "items": [
+        {
+          "title": "Aniimo",
+          "link": "https://play.google.com/store/apps/details?id=com.x.aniimos",
+          "product_id": "com.x.aniimos",
+          "rating": 3.5863636,
+          "author": "Pawprint Studio",
+          "category": "Role Playing",
+          "downloads": "0+",
+          "thumbnail": "https://play-lh.googleusercontent.com/QSRvkun9_MMFiAKzDu2IQAI0BKy-JTlqZk2_AWh5ywA4ioI9BsYZQ222NAFHZKluaJI3iIhqtUHqFwCrofzd",
+          "description": "Aniimo is a free-to-play, next-gen creature-catching open-world RPG. On the vast continent of Idyll, you'll encounter countless unique creatures known as Aniimo…",
+          "video": "https://www.youtube.com/embed/_CTgRHi03sk?vq=large&rel=0&autohide=1&showinfo=0",
+          "screenshots": [
+            null,
+            null
+          ],
+          "extracted_price": 0.0,
+          "currency": "USD"
+        },
+        {
+          "title": "Pixel Gun 2",
+          "link": "https://play.google.com/store/apps/details?id=com.pixelgun2",
+          "product_id": "com.pixelgun2",
+          "rating": 3.695238,
+          "author": "Pixel Gun 3D",
+          "category": "Action",
+          "downloads": "100,000+",
+          "thumbnail": "https://play-lh.googleusercontent.com/pHGfBpuckAocGkzOVJz9prlsa84oigSJHNaPdy46Fq0ecCdHFBEh91VhI6sE6Bfsihfmtyu_6eq-m49Axns0",
+          "description": "Pixel Gun 2 is a multiplayer shooter built on disruption — of old rules, map architecture, traditional loadouts and more! Short matches. Destructible arenas. Wi…",
+          "video": "https://www.youtube.com/embed/Fz3lR7ttnZs?vq=large&rel=0&autohide=1&showinfo=0",
+          "screenshots": [
+            null,
+            null
+          ],
+          "extracted_price": 0.0,
+          "currency": "USD"
+        }
+      ],
+      "litescrape_next_link": "https://api.litescrape.com/api/google/play/games?hl=en&gl=us&store_device=phone&section_page_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJnYW1lcyIsImNvbnRleHQiOnsiaGwiOiJlb…",
+      "section_page_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJnYW1lcyIsImNvbnRleHQiOnsiaGwiOiJlbiIsImdsIjoidXMiLCJzdG9yZV9kZXZpY2UiOiJwaG9uZSJ9LCJraW5kIjoic2VjdGlvbiIsInRva2VuIjoiSUFKaXVRRUtiUW9z…",
+      "see_more_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJnYW1lcyIsImNvbnRleHQiOnsiaGwiOiJlbiIsImdsIjoidXMiLCJzdG9yZV9kZXZpY2UiOiJwaG9uZSJ9LCJraW5kIjoiY29sbGVjdGlvbiIsInRva2VuIjoiU25JS2JRb3ND…",
+      "litescrape_see_more_link": "https://api.litescrape.com/api/google/play/games?hl=en&gl=us&store_device=phone&see_more_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJnYW1lcyIsImNvbnRleHQiOnsiaGwiOiJlbiIsI…"
+    },
+    {
+      "title": "Browse popular games",
+      "subtitle": "A great place to start",
+      "see_more_link": "https://play.google.com/store/apps/collection/cluster?gsr=SnQKbwoqCiZwcm9tb3Rpb25fMzAwMjk3ZV9nYW1lc193ZV9hcmVfcGxheWluZxACEjcKM25ld19ob21lX2RldmljZV9mZWF0dXJlZF9yZWNzMl90b3BpY192MV9sYXVuY2hfR0FNRRACGgQKAggCIgIIAfgBAQ%3D%3D:S:ANO1ljIaD8M",
+      "items": [
+        {
+          "title": "TMNT: Shredder's Revenge",
+          "link": "https://play.google.com/store/apps/details?id=com.playdigious.tmnt",
+          "product_id": "com.playdigious.tmnt",
+          "rating": 4.595652,
+          "author": "Playdigious",
+          "category": "Action",
+          "downloads": "1,000,000+",
+          "thumbnail": "https://play-lh.googleusercontent.com/ZEebMrVv7qgHrpdShmql62Bby_8_FF-M9w5sS6OkQih4zeoM6t0TSKrYIJJEuy_qt2HqFUhgPSDRR4VBzNfo",
+          "description": "*Try TMNT: Shredder's Revenge for free and unlock the full game for the whole adventure!* Kick shell with Leonardo, Raphael, Donatello, Michelangelo or other fa…",
+          "video": "https://www.youtube.com/embed/RWQhWjbzT8M?vq=large&rel=0&autohide=1&showinfo=0",
+          "screenshots": [
+            null,
+            null
+          ],
+          "extracted_price": 0.0,
+          "currency": "USD"
+        },
+        {
+          "title": "Whiteout Survival",
+          "link": "https://play.google.com/store/apps/details?id=com.gof.global",
+          "product_id": "com.gof.global",
+          "rating": 4.0619645,
+          "author": "Century Games PTE. LTD.",
+          "category": "Strategy",
+          "downloads": "100,000,000+",
+          "thumbnail": "https://play-lh.googleusercontent.com/tNMaMiJ4wTQy_TeZSWHdSlP5qH0PGig9g9sDJu2QFvCHdnrbo2u17pX55W4i6KITo56v_ZyICkqLgA2svH9ycQ",
+          "description": "The world's original winter-themed mobile game! Over 400M players! The blizzard has reset the world, and now, a new story awaits your touch! As a rising survivo…",
+          "screenshots": [
+            null,
+            null
+          ],
+          "extracted_price": 0.0,
+          "currency": "USD"
+        }
+      ],
+      "litescrape_next_link": "https://api.litescrape.com/api/google/play/games?hl=en&gl=us&store_device=phone&section_page_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJnYW1lcyIsImNvbnRleHQiOnsiaGwiOiJlb…",
+      "section_page_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJnYW1lcyIsImNvbnRleHQiOnsiaGwiOiJlbiIsImdsIjoidXMiLCJzdG9yZV9kZXZpY2UiOiJwaG9uZSJ9LCJraW5kIjoic2VjdGlvbiIsInRva2VuIjoiSUFOaXZBRUtid29x…",
+      "see_more_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJnYW1lcyIsImNvbnRleHQiOnsiaGwiOiJlbiIsImdsIjoidXMiLCJzdG9yZV9kZXZpY2UiOiJwaG9uZSJ9LCJraW5kIjoiY29sbGVjdGlvbiIsInRva2VuIjoiU25RS2J3b3FD…",
+      "litescrape_see_more_link": "https://api.litescrape.com/api/google/play/games?hl=en&gl=us&store_device=phone&see_more_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJnYW1lcyIsImNvbnRleHQiOnsiaGwiOiJlbiIsI…"
+    }
+  ],
+  "items_highlight": [
+    [
+      {
+        "title": "Genshin Impact 6th Anniversary",
+        "link": "https://play.google.com/store/apps/details?id=com.miHoYo.GenshinImpact",
+        "product_id": "com.miHoYo.GenshinImpact",
+        "rating": 3.211132,
+        "author": "COGNOSPHERE PTE. LTD.",
+        "category": "Adventure",
+        "downloads": "100,000,000+",
+        "thumbnail": "https://play-lh.googleusercontent.com/PQEqjOxr-3uZaNHmWoQinLVQQ9fbSegMKXmqgFm5nGgagqC2REH-1er3BguYStWbH3YStijj5WH1DDlwPh2ehw",
+        "description": "This game includes optional in-game purchases, including random virtual items. Step into Teyvat, a vast world teeming with life and flowing with elemental energ…",
+        "video": "https://www.youtube.com/embed/dEmdy3phWWE?vq=large&rel=0&autohide=1&showinfo=0",
+        "screenshots": [
+          "https://play-lh.googleusercontent.com/ZHLmkdTW2Q_T_DVxu9piEOwkJtcXEkmeIGiJXhwcdYSS6-L51bHuEvlVqpt3dPM_McPJ1enEo6FwnbrxOak",
+          "https://play-lh.googleusercontent.com/qDY_UBz28ambdbrTf4s5v9npYiDiLOcDe4d_h6QvKIhoR6Rc2z1cHR5ULHuy6uILaDSWbb41QkN7xTx5WsjU"
+        ],
+        "extracted_price": 0.0,
+        "currency": "USD",
+        "subtitle": "Event Wish for New Limited-Time 5-Star Character Vesna Now Available!"
+      },
+      {
+        "title": "Love and Deepspace",
+        "link": "https://play.google.com/store/apps/details?id=com.papegames.lysk.en",
+        "product_id": "com.papegames.lysk.en",
+        "rating": 1.7338977,
+        "author": "InFold Pte. Ltd.",
+        "category": "Simulation",
+        "downloads": "10,000,000+",
+        "thumbnail": "https://play-lh.googleusercontent.com/4InqsO3goITLvfm9t2f2SMpSyrzfV7sUgxTmWWQkypBPResa-wBK5x1I-U3cHTgP90hqlOectpgfXqiA_8h_PXY",
+        "description": "As the brand-new installment of the popular Mr. Love series, Love and Deepspace allows you to step into a sci-fi world where love knows no bounds. With immersiv…",
+        "screenshots": [
+          "https://play-lh.googleusercontent.com/shIdWWjlrMmq0xAEefqI9zuMVlrnUyr1IV1T5PAfrGiwA6YNK4IF4ea5w619lbgjrW9n-ryPIm5E0iecNwPL",
+          "https://play-lh.googleusercontent.com/eiTH_-p7D92ELWyrVy10R6jXCZhlGBBC5NY66rPt9jU-LdJPa_t7Qiy26OElWrSg0e3Z7Q_6olrqEbx7PWP70A4"
+        ],
+        "extracted_price": 0.0,
+        "currency": "USD",
+        "subtitle": "A Night That Never Ends",
+        "editorial_link": "https://play.google.com/store/apps/eventdetails/4829111066148900938"
+      }
+    ]
+  ],
+  "charts": [
+    {
+      "title": "Top free",
+      "chart": "topselling_free"
+    },
+    {
+      "title": "Top grossing",
+      "chart": "topgrossing"
+    }
+  ],
+  "litescrape_pagination": {
+    "current": "https://api.litescrape.com/api/google/play/games?hl=en&gl=us&store_device=phone",
+    "next_page_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJnYW1lcyIsImNvbnRleHQiOnsiaGwiOiJlbiIsImdsIjoidXMiLCJzdG9yZV9kZXZpY2UiOiJwaG9uZSJ9LCJraW5kIjoicGFnZSIsInRva2VuIjoiRUFnYTNRRUlDUkQ3cE5t…",
+    "next": "https://api.litescrape.com/api/google/play/games?hl=en&gl=us&store_device=phone&next_page_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJnYW1lcyIsImNvbnRleHQiOnsiaGwiOiJlbiIs…"
+  }
+}

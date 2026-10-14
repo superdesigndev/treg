@@ -1,0 +1,1 @@
+{"id":"crawl_example","object":"crawl","status":"completed","created":1789992000,"start_url":"https://example.com","max_pages":1,"max_depth":0,"current_depth":0,"pages_count":1,"follow_robots_txt":true,"credits_consumed":1}

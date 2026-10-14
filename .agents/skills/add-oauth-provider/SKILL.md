@@ -1,6 +1,8 @@
 ---
 name: add-oauth-provider
 description: Add a provider to treg's OAuth registry (the ones treg holds its own approved app for). Use when asked to "add YouTube/Notion/Meta OAuth", "support connecting X", "add a new OAuth provider", or when a connect flow, capability picker, channel/account picker, or provider health probe needs building. Covers the code changes, the platform-side approval steps, and the pitfalls that don't announce themselves.
+metadata:
+  internal: true  # repo tooling: hidden from `npx skills add superdesigndev/treg`
 ---
 
 # Adding an OAuth provider
@@ -99,8 +101,8 @@ Provider rows, the Connect button and the pickers are all data-driven from
 `tests/test_oauth_providers_m3.py::test_every_provider_is_registered` asserts an
 **exact set** of service names. Add yours or the suite fails.
 
-Then: `uv run pytest -q` (full suite — the registry touches health, tools and
-connections).
+Then: `uv run --with pytest-xdist pytest -n auto -q` (full suite — the registry
+touches health, tools and connections).
 
 ## The platform side (the actual long pole)
 
@@ -184,7 +186,7 @@ instead of matching.
 ## Verify before calling it done
 
 ```
-uv run pytest -q                      # full suite
+uv run --with pytest-xdist pytest -n auto -q   # full suite
 scripts/dev-local.sh up               # see .agents/skills/dev-local
 ```
 

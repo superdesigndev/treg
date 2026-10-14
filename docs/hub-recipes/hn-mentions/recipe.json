@@ -1,0 +1,16 @@
+{
+  "name": "hn-mentions",
+  "summary": "Hacker News stories and comments that mention a term in the last N days, with points, comment counts and links, newest or top first.",
+  "inputs": {
+    "query": {"type": "string", "example": "treg", "note": "a word or phrase; quote a phrase for an exact match"},
+    "days": {"type": "int", "default": 7, "min": 1, "max": 365, "note": "how far back"},
+    "kind": {"type": "string", "default": "all", "note": "all | story | comment"},
+    "sort": {"type": "string", "default": "new", "note": "new (newest first) | top (most points first)"},
+    "min_points": {"type": "int", "default": 0, "min": 0, "max": 5000, "note": "stories only: drop ones below this"},
+    "limit": {"type": "int", "default": 20, "min": 1, "max": 100}
+  },
+  "uses": ["hn"],
+  "script": "run.js",
+  "output": {"fields": ["query", "hits", "count", "total_matches"]},
+  "pricing": {"max_price_usd": 0.002}
+}

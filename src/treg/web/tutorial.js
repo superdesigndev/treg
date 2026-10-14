@@ -32,7 +32,7 @@
     { h: "Tool &amp; skill",
       p: "A <b>tool</b> = an upstream <code>base_url</code> + a list of credential <b>bindings</b> (a request may carry several). A <b>skill / bundle</b> = a recipe (SKILL.md) + its secrets + its tool(s), registered from a folder via <code>treg.json</code>." },
     { h: "Import",
-      p: "<code>treg upload</code> is the bulk on-ramp: it scans a <code>.env</code> (matching ~80 providers) and/or a folder of skills, and registers everything you pick in one pass - building a <code>treg.json</code> for any skill that lacks one. Preview first with <code>treg scan</code> (read-only); idempotent, so re-run freely. <code>treg skill install</code> is the reverse: pull a shared skill onto your machine." },
+      p: "<code>treg upload</code> is the bulk on-ramp: it scans a <code>.env</code> (matching the providers treg recognizes) and/or a folder of skills, and registers everything you pick in one pass - building a <code>treg.json</code> for any skill that lacks one. Preview first with <code>treg scan</code> (read-only); idempotent, so re-run freely. <code>treg skill install</code> is the reverse: pull a shared skill onto your machine." },
     { h: "Two ways to use a tool",
       p: "<code>treg call</code> proxies an HTTP <b>API</b> - the secret is injected server-side and nothing lands on your machine. <code>treg run</code> runs a vendor <b>command-line tool</b> (stripe, gh, gcloud…) with the credential injected, so you use the CLI without owning it or logging in. Two tiers: <code>--local</code> (default; runs on your machine - on Linux the key is isolated under a dedicated <code>treg-run</code> user) and <code>--server</code> (runs on the registry server, so the key never reaches you). The owner opts each tool in first; <code>treg runs</code> is the audit log." },
   ];
@@ -53,7 +53,7 @@
     // ---- Setup ------------------------------------------------------------
     { part: "Setup", who: "sys", title: "Simulate three people on one machine",
       explain: "We play three users on one laptop by giving each its own <code>HOME</code>, so each gets an isolated <code>~/.treg/config.json</code> pointed at the registry. In real life every person is on their own machine and drops the <code>HOME=</code> prefix.",
-      cmd: `for u in tom bob alice; do\n  mkdir -p ~/.treg-personas/$u\n  HOME=~/.treg-personas/$u treg config --base-url https://treg.superdesign.dev\ndone`,
+      cmd: `for u in tom bob alice; do\n  mkdir -p ~/.treg-personas/$u\n  HOME=~/.treg-personas/$u treg config --base-url https://treg.to\ndone`,
       out: `# each persona now points at the registry`,
       notice: "Prefix any command with <code>HOME=~/.treg-personas/&lt;name&gt;</code> to act as that person." },
 
@@ -74,7 +74,7 @@
       notice: "An endpoint treg has no published price for is <b>refused</b>, never served for free — you are told to connect your own key instead." },
 
     { part: "Part 1 · The catalog (no key, no setup)", who: "tom", title: "Call it — with no key anywhere",
-      explain: "No account with TikHub, no signup, no key on the machine. treg holds the credential, injects it server-side, and bills the call to the team's prepaid balance. Every new team starts with <b>$1.00 free</b>, which is hundreds of calls at this price.",
+      explain: "No account with TikHub, no signup, no key on the machine. treg holds the credential, injects it server-side, and bills the call to the team's prepaid balance. New verified accounts receive <b>$1.00 free once</b>, when creating an eligible team, which covers hundreds of calls at this price.",
       cmd: `treg call tikhub.tiktok.user.profile --query uniqueId=tiktok`,
       out: `{\n  "user": {\n    "uniqueId": "tiktok",\n    "nickname": "TikTok",\n    "followerCount": 82400000\n  }\n}`,
       notice: "If your team already has its own key for that provider, it wins automatically — and those calls are never metered." },
@@ -182,7 +182,7 @@
 
     { part: "Part 6 · Call shapes & skills", who: "alice", title: "The raw HTTP underneath",
       explain: "<code>treg call</code> is sugar. Under the hood it's a plain HTTP request to <code>&lt;proxy&gt;/call/&lt;upstream-url&gt;</code> with your token header - any language, any agent, <code>curl</code>.",
-      cmd: `ATOK=$(python3 -c "import json;print(json.load(open('/Users/you/.treg-personas/alice/.treg/config.json'))['token'])")\ncurl -s -H "X-Treg-Token: $ATOK" \\\n  "https://treg.superdesign.dev/call/https://postman-echo.com/get"`,
+      cmd: `ATOK=$(python3 -c "import json;print(json.load(open('/Users/you/.treg-personas/alice/.treg/config.json'))['token'])")\ncurl -s -H "X-Treg-Token: $ATOK" \\\n  "https://treg.to/call/https://postman-echo.com/get"`,
       out: `# the postman-echo JSON again, "authorization": "Bearer sk-demo-secret-123" injected -\n# just curl, no secret on the client.`,
       notice: "The whole product in one line: prefix any upstream URL with the proxy, send your token, treg swaps in the real credential." },
 
@@ -200,7 +200,7 @@
 
     // ---- Part 5b - Import: the magic bulk on-ramp ------------------------
     { part: "Part 6b · Import - the magic bulk on-ramp", who: "bob", title: "Turn your whole .env into tools",
-      explain: "The steps above, but for your <i>entire</i> environment at once. <code>treg upload env</code> reads your <code>.env</code>, matches each variable against a catalog of ~80 providers (OpenAI, Stripe, Resend, Render…), and registers the ones you pick as ready-to-call tools. It reads <b>names only</b> to detect - the value is loaded just for the keys you confirm. Config vars (<code>*_HOST</code>, <code>*_MODEL</code>) and your app's own secrets (<code>SECRET_KEY</code>, <code>DATABASE_URL</code>) are excluded automatically.",
+      explain: "The steps above, but for your <i>entire</i> environment at once. <code>treg upload env</code> reads your <code>.env</code>, matches each variable against the providers treg recognizes (OpenAI, Stripe, Resend, Render…), and registers the ones you pick as ready-to-call tools. It reads <b>names only</b> to detect - the value is loaded just for the keys you confirm. Config vars (<code>*_HOST</code>, <code>*_MODEL</code>) and your app's own secrets (<code>SECRET_KEY</code>, <code>DATABASE_URL</code>) are excluded automatically.",
       cmd: `HOME=~/.treg-personas/bob treg upload env --select openai,stripe,resend`,
       out: `Scanned .env: 6 key(s) to register, 1 OAuth, 4 other.\n  ✓ openai         https://api.openai.com/v1   [Authorization: Bearer {secret}]\n  ✓ stripe         https://api.stripe.com/v1    [Authorization: Bearer {secret}]\n  ✓ resend         https://api.resend.com       [Authorization: Bearer {secret}]\n\nRegistered 3/3 tools.`,
       notice: "One command, three live proxied tools. GitHub-style <code>CLIENT_ID</code>+<code>CLIENT_SECRET</code> pairs are detected as OAuth and offered a guided connect instead of a broken bearer key." },
@@ -294,8 +294,8 @@
 
     // ---- Part 8 - The dashboard -----------------------------------------
     { part: "Part 9 · The dashboard", who: "tom", title: "The same registry, in the browser",
-      explain: "Open <b>treg.superdesign.dev</b> and sign in with the <b>email code</b> door (the same one you used in the terminal): type your email → click <b>Email me a sign-in code</b> → <b>check your inbox</b> for the 6-digit code → paste it in and <b>Sign in</b>. You land on your team org - Tools shows the <code>echo</code> tool, Activity shows the call, and (since Tom is now super-admin) an <b>Admin</b> panel appears.",
-      cmd: `open https://treg.superdesign.dev/`,
+      explain: "Open <b>treg.to</b> and sign in with the <b>email code</b> door (the same one you used in the terminal): type your email → click <b>Email me a sign-in code</b> → <b>check your inbox</b> for the 6-digit code → paste it in and <b>Sign in</b>. You land on your team org - Tools shows the <code>echo</code> tool, Activity shows the call, and (since Tom is now super-admin) an <b>Admin</b> panel appears.",
+      cmd: `open https://treg.to/`,
       out: `# Sign in with email → land on Superdesign\n#   Tools    → the echo tool (Copy a snippet · Try it live)\n#   Activity → Alice's GET echo · 200\n#   Admin    → cross-tenant stats + orgs (super-admin only)`,
       notice: "The dashboard now does it all in the browser - create teams, invite members, add secrets, register tools & skills, plus the super-admin surface - not just read + call." },
 
@@ -315,7 +315,7 @@
     // ---- Further, focused tutorials --------------------------------------
     { part: "Further tutorials", who: "sys", title: "Two deep-dive tutorials",
       explain: "Two features have their own step-by-step tutorials - <b>Import &amp; shell</b> and <b>Team access control</b>. Both are cards on the Tutorial page (← Tutorials, top left), and both also exist as plain markdown.",
-      cmd: `open https://treg.superdesign.dev/tutorial-import-shell.md   # import + shell + the security sandbox\nopen https://treg.superdesign.dev/tutorial-access.md         # per-member tool access control`,
+      cmd: `open https://treg.to/tutorial-import-shell.md   # import + shell + the security sandbox\nopen https://treg.to/tutorial-access.md         # per-member tool access control`,
       out: `# import-shell : treg upload clis (your machine's CLIs -> team tools) + treg shell (stripe/gh just work)\n#                + the local-run sandbox (isolated user, egress allow-list, filesystem jail)\n# access       : choose which tools each member may use + the local-run on/off toggle`,
       notice: "Pick them from the Tutorial page like this one, or open the markdown URLs directly (agent-friendly)." },
   ];
@@ -415,7 +415,7 @@
   const ACCESS = [
     { part: "Setup", who: "sys", title: "Two dials, two people",
       explain: "Every member has two independent dials: <b>tool access</b> (<code>tool_access</code>: which tools they may touch - default <b>all</b>) and <b>local execution</b> (<code>local_run_enabled</code>: may they run a CLI on their own machine - default <b>on</b>). A withheld tool is closed through <i>every</i> door - proxy call, server run, local run. The <b>owner</b> is never restricted. We play two people on one machine: <b>Tom</b> (owner) and <b>Sam</b> (the new teammate we restrict).",
-      cmd: `for u in tom sam; do\n  mkdir -p ~/.treg-personas/$u\n  HOME=~/.treg-personas/$u treg config --base-url https://treg.superdesign.dev\ndone`,
+      cmd: `for u in tom sam; do\n  mkdir -p ~/.treg-personas/$u\n  HOME=~/.treg-personas/$u treg config --base-url https://treg.to\ndone`,
       out: `# each persona now points at the registry`,
       notice: "Prefix a command with <code>HOME=~/.treg-personas/&lt;name&gt;</code> to act as that person. In real life each person is on their own machine and drops the prefix." },
 

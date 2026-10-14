@@ -1,0 +1,12 @@
+{
+  "contacts": [
+    {
+      "name": "Jr Farr",
+      "first_name": "Jr",
+      "email": "jane@example.com",
+      "domain": "stripe.com"
+    }
+  ],
+  "_scrubbed": true,
+  "_note": "captured live 2026-08-28 via treg; emails/phones scrubbed"
+}

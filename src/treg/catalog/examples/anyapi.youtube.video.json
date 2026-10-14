@@ -1,0 +1,26 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "channel": "Rick Astley",
+      "comments": 2400000,
+      "createdUtc": 1256453853,
+      "durationMs": 213000,
+      "id": "dQw4w9WgXcQ",
+      "likes": 19398014,
+      "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)",
+      "views": 1817544602
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0009,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-lynx",
+    "name": "Lynx",
+    "kind": "anonymous",
+    "artworkKey": "lynx"
+  },
+  "resultId": "628eb300-d47b-46b1-80da-e99090dfd74e"
+}

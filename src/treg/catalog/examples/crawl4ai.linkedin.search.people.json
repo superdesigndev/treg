@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "linkedin-people-search",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 173,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "avatar": null,
+      "education": "Manipal Institute of Technology, Manipal, +2 more",
+      "experience": "Microsoft, +4 more",
+      "headline": "Chairman and CEO at Microsoft",
+      "location": "Redmond, WA",
+      "name": "Satya Nadella",
+      "profile_id": "satyanadella",
+      "profile_url": "https://www.linkedin.com/in/satyanadella"
+    },
+    {
+      "avatar": null,
+      "education": "2 total",
+      "experience": "Stuart Olson Inc., +7 more",
+      "headline": null,
+      "location": "Greater Edmonton Metropolitan Area",
+      "name": "Satya Nadella",
+      "profile_id": "satya-nadella-b1566318",
+      "profile_url": "https://www.linkedin.com/in/satya-nadella-b1566318"
+    }
+  ]
+}

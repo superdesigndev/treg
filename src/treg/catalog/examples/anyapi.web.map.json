@@ -1,0 +1,27 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "results": [
+        {
+          "description": "Domain Name Services. We operate and maintain a number of key aspects of the DNS, including the root zone, and the .int and .arpa domains.",
+          "title": "Domain Name Services",
+          "url": "https://www.iana.org/domains"
+        },
+        "… 48 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.001,
+  "items": 49,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-salamander",
+    "name": "Salamander",
+    "kind": "anonymous",
+    "artworkKey": "salamander"
+  },
+  "hint": "large_result: this response is ~15 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "5c512644-2168-48d7-a8cd-072327d27fb3"
+}

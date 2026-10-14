@@ -1,0 +1,36 @@
+{
+  "output": {
+    "data": {
+      "events": [
+        {
+          "coverImage": "https://scontent.fric1-2.fna.fbcdn.net/v/t39.30808-6/689014148_122247901058266627_491191821517760079_n.jpg?_nc_cat=111&_nc_map=urlgen_bucketless&ccb=1-7&_nc_sid=75d36f&_nc_ohc=zwqmF-073p8Q7kNvwHKluBK&… [421 chars]",
+          "dayTimeSentence": "Friday, June 12, 2026 at 5:00 PM PDT",
+          "goingCount": 54,
+          "id": "949591091210525",
+          "interestedCount": 134,
+          "isOnline": false,
+          "isPast": true,
+          "name": "Bear Square Fest",
+          "placeName": "Concrete, WA",
+          "priceRangeText": "",
+          "startTimestamp": 1781308800,
+          "url": "https://www.facebook.com/events/949591091210525/"
+        },
+        "… 4 more item(s) truncated"
+      ],
+      "nextCursor": "rFTA_xa-LDhPlZGDRV22RPaUs3r0y4Yojjv2V2uvR_SoWPGuEhLqxtrdy2tuxkIFpwSxMDm3xxZeCxecWTKelglwyEkfniTpkolE58Q0mp9XhAGfDCT9va7rS0hrqgUQ2xnVJ2eJGV6drfrDWh7wzLnxiAOBONHllt-k"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 5,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "959f2d58-7c36-45c6-a203-156a3c4093eb"
+}

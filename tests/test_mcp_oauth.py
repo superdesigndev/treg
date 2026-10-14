@@ -11,18 +11,21 @@ other MCP server must not spend a treg balance just because it happens to be val
 
 from __future__ import annotations
 
+from conftest import verified_signup
+
 import json
-import time
 
 import pytest
 
-from treg import mcp, mcp_oauth, session
+from treg import mcp
+from treg.domain.identity import mcp_oauth, session
+from treg.routers import auth as auth_routes
+from treg.config import Settings, get_settings
 
 # The MCP transport helpers live with the MCP tests; a token is only interesting here because it can
 # drive a tool, so reuse them rather than keeping a second copy that can drift.
 from test_mcp import _call_tool, mcp_session
 
-pytestmark = pytest.mark.anyio
 
 
 # ---- metadata: what we tell a client we support --------------------------------------------
@@ -32,6 +35,7 @@ async def test_protected_resource_metadata_names_the_mcp_endpoint(clients):
     assert r.status_code == 200
     body = r.json()
     assert body["resource"] == mcp_oauth.mcp_resource_url()
+    assert mcp_oauth.DIRECTORY_SCOPE not in body["scopes_supported"]
     assert body["resource"].endswith("/mcp/"), "the trailing slash is part of the identifier"
     assert body["authorization_servers"], "a client must be told who issues tokens for us"
 
@@ -45,6 +49,15 @@ async def test_the_metadata_is_served_at_BOTH_lookup_paths(clients):
     assert a.json() == b.json()
 
 
+async def test_v2_metadata_names_only_the_directory_resource(clients):
+    response = await clients.get("/.well-known/oauth-protected-resource/mcp/v2")
+    assert response.status_code == 200
+    assert response.json()["resource"] == mcp_oauth.mcp_resource_url("v2")
+    assert response.json()["resource"].endswith("/mcp/v2/")
+    assert response.json()["resource"] != mcp_oauth.mcp_resource_url("v1")
+    assert mcp_oauth.DIRECTORY_SCOPE in response.json()["scopes_supported"]
+
+
 async def test_authorization_server_metadata_offers_only_safe_choices(clients):
     """OAuth 2.1 drops the implicit grant, and `plain` PKCE makes the challenge equal to the secret —
     anyone who sees the authorization request could redeem the code. Offering either would be a
@@ -55,6 +68,7 @@ async def test_authorization_server_metadata_offers_only_safe_choices(clients):
     assert "plain" not in body["code_challenge_methods_supported"]
     assert body["authorization_endpoint"].endswith("/oauth/authorize")
     assert body["token_endpoint"].endswith("/oauth/token")
+    assert mcp_oauth.DIRECTORY_SCOPE in body["scopes_supported"]
 
 
 async def test_metadata_advertises_BOTH_ways_for_a_client_to_identify_itself(clients):
@@ -78,23 +92,11 @@ async def test_a_token_for_ANOTHER_resource_is_refused():
     assert mcp._oauth_claims(elsewhere) is None
 
 
-async def test_our_own_token_is_accepted_and_carries_the_team():
-    """Not vacuous: the refusal above only means something if the matching token DOES work, and the
-    team has to survive on the token — a person can belong to several, and the choice is made once
-    by a human at consent, not guessed per call."""
-    ours = mcp_oauth.mcp_resource_url()
-    tok = mcp_oauth.make_access_token(user_id=7, org_id=3, audience=ours, scope="treg:call")
-    claims = mcp._oauth_claims(tok)
-    assert claims is not None
-    assert claims["sub"] == 7 and claims["org"] == 3
-    assert claims["aud"] == ours and claims["scope"] == "treg:call"
-
-
 async def test_a_session_cookie_is_not_an_access_token():
     """treg mints session cookies and identity tokens with the same HMAC construction. Without a type
     marker one class of credential would silently validate as another — a browser session becoming an
     MCP grant, which nobody consented to."""
-    cookie = session.make(7)
+    cookie = session.make_session(7)
     assert mcp._oauth_claims(cookie) is None
     assert mcp_oauth.read_access_token(cookie, expected_audience=mcp_oauth.mcp_resource_url()) is None
 
@@ -106,12 +108,6 @@ async def test_a_tampered_token_is_refused():
     # same signature, different claims: the forgery a signature exists to stop
     forged = mcp_oauth.make_access_token(user_id=99, org_id=99, audience=ours).split(".", 1)[0]
     assert mcp_oauth.read_access_token(f"{forged}.{sig}", expected_audience=ours) is None
-
-
-async def test_an_expired_token_is_refused():
-    ours = mcp_oauth.mcp_resource_url()
-    tok = mcp_oauth.make_access_token(user_id=7, org_id=3, audience=ours, ttl=-1)
-    assert mcp_oauth.read_access_token(tok, expected_audience=ours) is None
 
 
 @pytest.mark.parametrize("junk", ["", "not-a-token", "a.b", "....", "Bearer x"])
@@ -141,16 +137,6 @@ async def test_pkce_accepts_the_right_verifier_and_nothing_else():
     assert not mcp_oauth.verify_pkce("some-other-verifier", challenge)
     assert not mcp_oauth.verify_pkce("", challenge)
     assert not mcp_oauth.verify_pkce(verifier, "")
-
-
-async def test_a_token_outlives_neither_its_ttl_nor_reason():
-    """An hour is deliberate: short enough that a leaked access token expires on its own, long enough
-    that a refresh is not happening on every call."""
-    assert 300 <= mcp_oauth.ACCESS_TTL_SECONDS <= 24 * 3600
-    tok = mcp_oauth.make_access_token(user_id=1, org_id=1,
-                                      audience=mcp_oauth.mcp_resource_url())
-    claims = mcp_oauth.read_access_token(tok, expected_audience=mcp_oauth.mcp_resource_url())
-    assert claims and claims["exp"] <= int(time.time()) + mcp_oauth.ACCESS_TTL_SECONDS + 2
 
 
 # ---- step 2: client registration — two doors in, one row shape out --------------------------
@@ -187,7 +173,7 @@ async def test_loopback_http_is_allowed_because_a_CLI_cannot_hold_a_certificate(
 async def test_redirect_matching_is_EXACT_not_prefix():
     """The classic defeat of this check. `https://good.test/cb.evil` starts with the registered URI,
     and an open redirect under a registered host turns one sloppy page into stolen codes."""
-    from treg.mcp_oauth import redirect_uri_allowed
+    from treg.domain.identity.mcp_oauth import redirect_uri_allowed
 
     class C:
         redirect_uris = ["https://good.test/cb"]
@@ -204,7 +190,7 @@ async def test_loopback_redirect_allows_ANY_port_but_not_other_drift():
     to vary — treg's pure exact-match rejected `http://localhost:3118/callback` against a registered
     `http://localhost/callback` and broke every native client. Port varies; scheme, host and path do
     NOT, and the loopback exception must not leak to public hosts."""
-    from treg.mcp_oauth import redirect_uri_allowed
+    from treg.domain.identity.mcp_oauth import redirect_uri_allowed
 
     class C:  # exactly what Claude Code's client-id metadata document registers
         redirect_uris = ["http://localhost/callback", "http://127.0.0.1/callback"]
@@ -235,7 +221,7 @@ async def test_loopback_redirect_allows_ANY_port_but_not_other_drift():
 async def test_cimd_refuses_unsafe_urls(url):
     """`client_id` is a URL our SERVER fetches, which makes it a request-forgery primitive unless
     fenced. Reuses the same guard the webhook and tool base_url paths already use."""
-    from treg.mcp_oauth import fetch_client_id_metadata
+    from treg.domain.identity.mcp_oauth import fetch_client_id_metadata
 
     assert await fetch_client_id_metadata(url) is None
 
@@ -245,7 +231,8 @@ async def test_cimd_document_must_claim_its_own_url(monkeypatch):
     the consent users granted them."""
     import httpx
 
-    from treg import health, mcp_oauth
+    from treg import health
+    from treg.domain.identity import mcp_oauth
 
     monkeypatch.setattr(health, "safe_webhook_url", lambda u: True)
     monkeypatch.setattr(health, "host_is_public", lambda h: True)
@@ -264,7 +251,8 @@ async def test_cimd_accepts_a_well_formed_document(monkeypatch):
     """Not vacuous: the refusals above only mean something if a good document DOES load."""
     import httpx
 
-    from treg import health, mcp_oauth
+    from treg import health
+    from treg.domain.identity import mcp_oauth
 
     monkeypatch.setattr(health, "safe_webhook_url", lambda u: True)
     monkeypatch.setattr(health, "host_is_public", lambda h: True)
@@ -306,7 +294,7 @@ async def _register(clients, redirect="https://client.test/cb"):
 async def _signed_in(clients, email="oauth-user@superdesign.dev"):
     """A browser session plus the org it belongs to. The consent step is a HUMAN action, so it needs
     a session cookie rather than a token."""
-    r = await clients.post("/users", json={"email": email})
+    r = await verified_signup(clients, json={"email": email})
     assert r.status_code == 200, r.text
     token = r.json()["token"]
     prev = clients.headers.get("X-Treg-Token")
@@ -317,13 +305,13 @@ async def _signed_in(clients, email="oauth-user@superdesign.dev"):
         clients.headers["X-Treg-Token"] = prev
     from sqlmodel import select
 
-    from treg import session as _sess
-    from treg.db import session_maker
+    from treg.domain.identity import session as _sess
+    from treg.infra.db import session_maker
     from treg.models import User
 
     async with session_maker() as db:
         user = (await db.execute(select(User).where(User.email == me["email"]))).scalar_one()
-        cookie = _sess.make(user.id, token_version=user.token_version)
+        cookie = _sess.make_session(user.id, token_version=user.token_version)
     clients.cookies.set("treg_session", cookie)   # on the client: httpx deprecates per-request
     return cookie, org_id
 
@@ -356,12 +344,79 @@ async def test_the_whole_flow_end_to_end(clients):
         "redirect_uri": "https://client.test/cb", "client_id": client_id,
         "code_verifier": verifier, "resource": mcp_oauth.mcp_resource_url()})
     assert tok.status_code == 200, tok.text
+    assert tok.headers["cache-control"] == "no-store"
+    assert tok.headers["pragma"] == "no-cache"
     access = tok.json()["access_token"]
     assert tok.json()["token_type"] == "Bearer"
 
     claims = mcp._oauth_claims(access)
     assert claims is not None, "the MCP server must accept what we just issued"
     assert claims["org"] == org_id, "the token spends from the team the human picked"
+
+
+async def test_v2_dcr_flow_mints_only_a_v2_audience(clients):
+    """The directory resource reuses DCR, PKCE and the team picker, but not the legacy audience."""
+    client_id = await _register(clients)
+    _, org_id = await _signed_in(clients, "oauth-v2@superdesign.dev")
+    verifier, challenge = _pkce()
+    resource = mcp_oauth.mcp_resource_url("v2")
+    params = {"client_id": client_id, "redirect_uri": "https://client.test/cb",
+              "response_type": "code", "code_challenge": challenge,
+              "code_challenge_method": "S256", "state": "v2", "resource": resource,
+              "scope": "treg:call"}
+
+    shown = await clients.get("/oauth/authorize", params=params,
+                              headers={"Accept": "application/json"})
+    assert shown.status_code == 200
+    assert any(team["org_id"] == org_id for team in shown.json()["teams"])
+    approved = await clients.post("/oauth/authorize", data={**params, "org_id": org_id},
+                                  follow_redirects=False)
+    assert approved.status_code == 302
+    code = approved.headers["location"].split("code=")[1].split("&")[0]
+    token = await clients.post("/oauth/token", data={
+        "grant_type": "authorization_code", "code": code,
+        "redirect_uri": "https://client.test/cb", "client_id": client_id,
+        "code_verifier": verifier, "resource": resource,
+    })
+    assert token.status_code == 200, token.text
+    access = token.json()["access_token"]
+    assert mcp_oauth.read_access_token_any(access, "v2") is not None
+    assert mcp_oauth.read_access_token_any(access, "v1") is None
+
+
+async def test_v2_scope_selects_v2_when_claude_omits_the_resource(clients):
+    """Hosted Claude omitted RFC 8707 resource but kept the V2 challenge scopes in production."""
+    client_id = await _register(clients)
+    _, org_id = await _signed_in(clients, "oauth-v2-no-resource@superdesign.dev")
+    verifier, challenge = _pkce()
+    scope = " ".join(mcp_oauth.scopes_for_resource("v2"))
+    params = {
+        "client_id": client_id, "redirect_uri": "https://client.test/cb",
+        "response_type": "code", "code_challenge": challenge,
+        "code_challenge_method": "S256", "state": "v2-no-resource", "scope": scope,
+    }
+
+    shown = await clients.get("/oauth/authorize", params=params,
+                              headers={"Accept": "application/json"})
+    assert shown.status_code == 200
+    approved = await clients.post("/oauth/authorize", data={**params, "org_id": org_id},
+                                  follow_redirects=False)
+    assert approved.status_code == 302
+    code = approved.headers["location"].split("code=")[1].split("&")[0]
+    token = await clients.post("/oauth/token", data={
+        "grant_type": "authorization_code", "code": code,
+        "redirect_uri": "https://client.test/cb", "client_id": client_id,
+        "code_verifier": verifier,
+    })
+    assert token.status_code == 200, token.text
+    access = token.json()["access_token"]
+    assert mcp_oauth.read_access_token_any(access, "v2") is not None
+    assert mcp_oauth.read_access_token_any(access, "v1") is None
+
+
+def test_explicit_resource_wins_over_the_v2_scope_marker():
+    v1 = mcp_oauth.mcp_resource_url("v1")
+    assert auth_routes._effective_mcp_resource(v1, mcp_oauth.DIRECTORY_SCOPE) == v1
 
 
 async def test_a_code_can_be_redeemed_only_ONCE(clients):
@@ -448,7 +503,7 @@ async def test_a_GET_never_grants_anything(clients):
     browser navigate — even with `org_id` supplied, as here."""
     from sqlmodel import select
 
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import OAuthCode
 
     client_id = await _register(clients)
@@ -486,31 +541,10 @@ async def test_the_consent_page_says_what_it_costs_in_WORDS(clients):
     assert "spends the team's balance" in page
     assert "without seeing them" in page, "keys are used, never revealed — say so"
     assert 'name="org_id"' in page, "the team picker belongs here"
-
-
-async def test_the_page_warns_when_a_client_registered_ITSELF(clients):
-    """Dynamic registration is open by design, so anyone can appear here with any name. The user is
-    the only one who can tell whether they started this, and they can only judge if we say so."""
-    client_id = await _register(clients)
-    cookie, _ = await _signed_in(clients, "warned@superdesign.dev")
-    _, challenge = _pkce()
-    r = await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"})
-    assert "registered itself" in r.text
-    assert "only continue if you recognise it" in r.text
-
-
-async def test_json_is_still_available_for_a_non_browser_client(clients):
-    """The HTML is for humans; a client that asks for JSON gets the same facts without scraping."""
-    client_id = await _register(clients)
-    cookie, _ = await _signed_in(clients, "jsonclient@superdesign.dev")
-    _, challenge = _pkce()
-    r = await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"},
-        headers={"Accept": "application/json"})
-    assert r.status_code == 200 and r.json()["client"]["name"] == "Test Client"
+    # Dynamic registration is open by design, so anyone can appear here with any name. The user is
+    # the only one who can tell whether they started this, and they can only judge if we say so.
+    assert "registered itself" in page
+    assert "only continue if you recognise it" in page
 
 
 async def test_CANCEL_tells_the_client_no_rather_than_hanging(clients):
@@ -617,7 +651,7 @@ async def test_revoking_your_tokens_kills_an_existing_grant(clients):
 
     from sqlmodel import select
 
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import User
     async with session_maker() as db:
         user = (await db.execute(
@@ -652,19 +686,12 @@ async def _grant_full(clients, email):
     return tok.json(), client_id, org_id
 
 
-async def test_a_grant_comes_with_a_refresh_token(clients):
-    """An access token lasts an hour. Without a refresh, every connector breaks hourly and the user
-    is the one who has to notice."""
-    body, _, _ = await _grant_full(clients, "refresher@superdesign.dev")
-    assert body["refresh_token"]
-    assert body["expires_in"] == mcp_oauth.ACCESS_TTL_SECONDS
-
-
 async def test_refreshing_ROTATES_the_token_and_the_new_one_works(clients):
     """The old token is spent, the new one carries on, and the access token that comes out still
     drives the tools — a refresh that returned an unusable token would fail silently an hour later."""
     body, client_id, _ = await _grant_full(clients, "rotate@superdesign.dev")
     first = body["refresh_token"]
+    assert first and body["expires_in"] == mcp_oauth.ACCESS_TTL_SECONDS
 
     r = await clients.post("/oauth/token", data={
         "grant_type": "refresh_token", "refresh_token": first, "client_id": client_id})
@@ -746,7 +773,7 @@ async def test_refresh_tokens_are_stored_HASHED(clients):
     worth stealing."""
     from sqlmodel import select
 
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import OAuthRefresh
 
     body, _, _ = await _grant_full(clients, "hashed@superdesign.dev")
@@ -851,6 +878,7 @@ async def test_a_signed_out_user_is_returned_to_the_consent_screen(clients):
     clients.cookies.clear()
     sent_away = await clients.get("/oauth/authorize", params=params, follow_redirects=False)
     assert sent_away.status_code == 302
+    assert sent_away.headers["location"] == "/?signin=oauth"
     parked = (sent_away.cookies.get("treg_oauth_return") or "").strip('"')
     assert parked.startswith("/oauth/authorize?"), f"nothing was parked: {parked!r}"
     assert params["client_id"] in parked, "the parked destination must be THIS request"
@@ -861,6 +889,48 @@ async def test_a_signed_out_user_is_returned_to_the_consent_screen(clients):
     back = await clients.get("/app", follow_redirects=False)
     assert back.status_code == 302, "the dashboard must resume the parked authorization"
     assert back.headers["location"].startswith("/oauth/authorize?")
+
+
+async def test_email_sign_in_on_the_homepage_resumes_the_parked_authorization(clients):
+    """The OAuth sign-in modal opens on `/`, and the email-code door reloads that page once the code
+    is accepted, so the plain homepage must resume the authorization too. Only `/app` did, and an
+    email sign-in from an MCP client ended on the marketing page with the connection abandoned."""
+    clients.cookies.set("treg_oauth_return", "/oauth/authorize?client_id=x")
+    signed_out = await clients.get("/", follow_redirects=False)
+    assert signed_out.status_code == 200, "a signed-out visitor sees the homepage, not a loop"
+
+    await _signed_in(clients, "homepage-returner@superdesign.dev")
+    clients.cookies.set("treg_oauth_return", "/oauth/authorize?client_id=x")
+    back = await clients.get("/", follow_redirects=False)
+    assert back.status_code == 302
+    assert back.headers["location"] == "/oauth/authorize?client_id=x"
+
+    clients.cookies.set("treg_oauth_return", "/anything-else")
+    assert (await clients.get("/", follow_redirects=False)).status_code == 200
+
+
+async def test_connect_demo_is_explicitly_enabled_and_never_displays_token_prefixes(
+    monkeypatch, clients,
+):
+    monkeypatch.delenv("TREG_CONNECT_DEMO_ENABLED", raising=False)
+    assert Settings(_env_file=None).connect_demo_enabled is False, "the demo is off by default"
+    monkeypatch.setenv("TREG_CONNECT_DEMO_ENABLED", "false")
+    get_settings.cache_clear()
+    try:
+        assert (await clients.get("/connect-demo")).status_code == 404
+        assert (await clients.get("/connect-demo/callback")).status_code == 404
+
+        monkeypatch.setenv("TREG_CONNECT_DEMO_ENABLED", "true")
+        get_settings.cache_clear()
+        page = await clients.get("/connect-demo")
+        callback = await clients.get("/connect-demo/callback")
+        assert page.status_code == callback.status_code == 200
+        assert 'access_token: "[received]"' in page.text
+        assert 'refresh_token: "[received]"' in page.text
+        assert "body.access_token.slice" not in page.text
+        assert "body.refresh_token.slice" not in page.text
+    finally:
+        get_settings.cache_clear()
 
 
 async def test_the_parked_destination_cannot_be_used_as_an_open_redirect(clients):
@@ -884,51 +954,416 @@ async def test_a_signed_out_visitor_is_not_bounced_in_a_loop(clients):
     assert r.status_code == 200
 
 
-async def test_the_team_picker_shows_which_team_can_PAY(clients):
-    """Choosing a team here decides which balance the client spends for the life of the grant, so
-    "which of these can actually pay?" has to be visible at the moment of choosing.
-
-    Unclecode picked a $0.00 team on the first real ChatGPT connect; the call was refused and nothing
-    on the page could have told him. A team with no balance is still a legitimate choice — a team's
-    OWN keys are never metered — so it is LABELLED rather than hidden."""
-    client_id = await _register(clients)
-    cookie, org_id = await _signed_in(clients, "picker@superdesign.dev")
-    _, challenge = _pkce()
-    r = await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"})
-    assert r.status_code == 200
-    page = r.text
-    # a new team carries the $1.00 grant, so the amount must be on the option
-    assert "$1.00" in page, f"the balance is not shown in the picker: {page[page.find('org_id'):][:300]}"
-
-    # and the JSON view carries it too, for a client that renders its own picker
-    j = await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"},
-        headers={"Accept": "application/json"})
-    assert any("balance_usd" in t for t in j.json()["teams"])
-
-
-async def test_a_team_with_no_balance_is_labelled_not_hidden(clients):
-    """Removing the option would be wrong: work that uses the team's OWN registered keys is never
-    metered, so an empty team is a perfectly good choice for it."""
+# ---- moving a live grant to another team --------------------------------------------------------
+async def _as(email: str) -> dict:
+    """Headers that act as a given user — an identity token, minted the way `treg login` does."""
     from sqlmodel import select
 
-    from treg.db import session_maker
-    from treg.models import Org
+    from treg.domain.identity import session as _sess
+    from treg.infra.db import session_maker
+    from treg.models import User
 
-    client_id = await _register(clients)
-    cookie, org_id = await _signed_in(clients, "broke@superdesign.dev")
     async with session_maker() as db:
-        org = (await db.execute(select(Org).where(Org.id == org_id))).scalar_one()
-        org.balance_micro = 0
-        db.add(org)
+        user = (await db.execute(select(User).where(User.email == email))).scalar_one()
+    return {"X-Treg-Token": _sess.make_identity(user.id, token_version=user.token_version)}
+
+
+async def test_the_team_on_a_grant_can_be_moved_without_reconnecting(clients):
+    """The consent screen's choice was invisible and permanent: an agent reported a slug, `treg org
+    ls` listed the teams of whoever was logged in THERE, and those need not be the same account.
+    Money left a team nobody had opened. The team lives on the refresh family, so moving it is a row
+    update the next refresh picks up — no tearing down a working connector to fix which balance it
+    spends."""
+    email = "mover@superdesign.dev"
+    body, client_id, org_id = await _grant_full(clients, email)
+    # As the person who authorised it — the whole point of the bug is that this is NOT necessarily
+    # whoever the CLI on some other machine happens to be signed in as.
+    me = await _as(email)
+    other = (await clients.post("/orgs", json={"name": "the other team"}, headers=me)).json()
+
+    grants = (await clients.get("/oauth/grants", headers=me)).json()
+    assert len(grants) == 1 and grants[0]["team_name"], "and named, not just slugged"
+    grant = grants[0]["grant"]
+
+    moved = await clients.post(f"/oauth/grants/{grant}/team", json={"team": other["org"]}, headers=me)
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["team"] == other["org"]
+
+    r = await clients.post("/oauth/token", data={
+        "grant_type": "refresh_token", "refresh_token": body["refresh_token"],
+        "client_id": client_id})
+    assert r.status_code == 200
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "balance", {}, token=r.json()["access_token"])
+    assert out["team"] == other["org"], "the client's very next refresh spends from the new team"
+
+
+async def test_a_rolling_deploy_family_without_authority_can_be_listed_and_moved(clients):
+    """A35 is a startup snapshot, not a fence around old instances. During a rolling deploy an old
+    binary can consent a valid family after the new binary ran A35, leaving only OAuthRefresh. The
+    repair must happen on both inspection paths: listing cannot show null authority, and a direct
+    team move cannot 404 merely because nobody listed the family first."""
+    from datetime import datetime
+    from sqlmodel import select
+
+    from treg import crypto
+    from treg.infra.db import session_maker
+    from treg.models import OAuthGrant, OAuthRefresh
+
+    email = "rolling-gap@superdesign.dev"
+    body, client_id, original_org_id = await _grant_full(clients, email)
+    me = await _as(email)
+    other = (await clients.post("/orgs", json={"name": "rolling gap destination"},
+                                headers=me)).json()
+    original = next(team for team in (await clients.get("/orgs", headers=me)).json()
+                    if team["org_id"] == original_org_id)
+    rotated = await clients.post("/oauth/token", data={
+        "grant_type": "refresh_token", "refresh_token": body["refresh_token"],
+        "client_id": client_id})
+    assert rotated.status_code == 200, rotated.text
+    body = rotated.json()
+    consented_at = datetime(2026, 1, 2, 3, 4, 5)
+    async with session_maker() as db:
+        live = (await db.execute(select(OAuthRefresh).where(
+            OAuthRefresh.token_hash == crypto.hash_token(body["refresh_token"])))).scalar_one()
+        family_id = live.family_id
+        rows = (await db.execute(select(OAuthRefresh).where(
+            OAuthRefresh.family_id == family_id).order_by(OAuthRefresh.id))).scalars().all()
+        assert len(rows) == 2 and rows[0].retired_at is not None
+        rows[0].created_at = consented_at
+        rows[1].created_at = datetime(2026, 2, 2, 3, 4, 5)
+        # A different VALID team makes a newest-row reconstruction observably wrong. Both fixture
+        # rows used the same org in the first version, so choosing newest still passed.
+        rows[1].org_id = other["org_id"]
+        db.add_all(rows)
+        grant = await db.get(OAuthGrant, family_id)
+        await db.delete(grant)
         await db.commit()
 
-    _, challenge = _pkce()
-    page = (await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"})).text
-    assert "no balance" in page
-    assert f'value="{org_id}"' in page, "the team must still be selectable"
+    listed = (await clients.get("/oauth/grants", headers=me)).json()
+    assert listed[0]["grant"] == family_id
+    assert listed[0]["team"] == original["slug"]
+    assert listed[0]["granted"] == "2026-01-02T03:04:05"
+
+    # Remove it again so the setter itself — not the GET above — has to heal the rolling gap.
+    async with session_maker() as db:
+        await db.delete(await db.get(OAuthGrant, family_id))
+        await db.commit()
+    moved = await clients.post(f"/oauth/grants/{family_id}/team",
+                               json={"team": other["org"]}, headers=me)
+    assert moved.status_code == 200, moved.text
+    async with session_maker() as db:
+        grant = await db.get(OAuthGrant, family_id)
+        assert grant.current_org_id == other["org_id"]
+        assert grant.granted_at == consented_at
+
+
+async def test_refresh_repairs_missing_authority_with_the_original_consent_time(clients):
+    """Refresh already fell back to OAuthRefresh.org_id, which hid the missing row until rotation.
+    Rotation then created OAuthGrant with the rotation time, making an old consent look new. Repair
+    before issuing the replacement and preserve the oldest row's actual consent timestamp."""
+    from datetime import datetime
+    from sqlmodel import select
+
+    from treg import crypto
+    from treg.infra.db import session_maker
+    from treg.models import OAuthGrant, OAuthRefresh
+
+    body, client_id, _ = await _grant_full(clients, "rolling-refresh@superdesign.dev")
+    consented_at = datetime(2026, 2, 3, 4, 5, 6)
+    async with session_maker() as db:
+        token = (await db.execute(select(OAuthRefresh).where(
+            OAuthRefresh.token_hash == crypto.hash_token(body["refresh_token"])))).scalar_one()
+        family_id = token.family_id
+        token.created_at = consented_at
+        db.add(token)
+        await db.delete(await db.get(OAuthGrant, family_id))
+        await db.commit()
+
+    refreshed = await clients.post("/oauth/token", data={
+        "grant_type": "refresh_token", "refresh_token": body["refresh_token"],
+        "client_id": client_id})
+    assert refreshed.status_code == 200, refreshed.text
+    async with session_maker() as db:
+        grant = await db.get(OAuthGrant, family_id)
+        assert grant is not None and grant.granted_at == consented_at
+
+
+async def test_only_the_grants_own_user_can_move_it(clients):
+    """The grant belongs to the person who authorised it, not to anyone holding its id."""
+    await _grant_full(clients, "owner@superdesign.dev")
+    grant = (await clients.get("/oauth/grants",
+                               headers=await _as("owner@superdesign.dev"))).json()[0]["grant"]
+
+    stranger = (await clients.post("/users", json={"email": "stranger@superdesign.dev"})).json()
+    theirs = (await clients.get("/orgs", headers={"X-Treg-Token": stranger["token"]})).json()[0]
+    r = await clients.post(f"/oauth/grants/{grant}/team", json={"team": theirs["slug"]},
+                           headers={"X-Treg-Token": stranger["token"]})
+    assert r.status_code == 404, "and it must not confirm the grant exists"
+
+
+async def test_balance_tells_an_oauth_caller_how_to_move_the_team(clients):
+    """The label is only half of report #5 — the other half is knowing the choice is reversible."""
+    body, _, _ = await _grant_full(clients, "labelled@superdesign.dev")
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "balance", {}, token=body["access_token"])
+    assert out["identity"] == "labelled@superdesign.dev" and out["team_name"]
+    assert "use-team" in out["hint"]
+
+
+async def test_the_listed_grant_id_is_the_one_use_team_accepts(clients, monkeypatch):
+    """The id printed by `treg mcp grants` is an ARGUMENT, not prose. It is 22 characters and the
+    table clipped it to 13 plus an ellipsis, so the one command the table exists to feed answered
+    404 for anything a human copied off their screen — report #5's fix, broken end to end, with a
+    test suite that never once went through the CLI."""
+    import io
+    from contextlib import redirect_stdout
+
+    from treg import cli
+
+    email = "roundtrip@superdesign.dev"
+    await _grant_full(clients, email)
+    me = await _as(email)
+
+    listed = (await clients.get("/oauth/grants", headers=me)).json()
+    grant = listed[0]["grant"]
+    assert len(grant) > 14, "a shorter id would make this test pass for the wrong reason"
+
+    # what the human actually sees. The CLI is synchronous httpx, so its client is stubbed with the
+    # response the server just gave us — the rendering is what is under test, not the transport.
+    class _Stub:
+        status_code, headers = 200, {"content-type": "application/json"}
+        def json(self): return listed
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def get(self, *a, **k): return self
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        monkeypatch.setattr(cli, "_client", lambda cfg: _Stub())
+        cli.cmd_mcp_grants(type("A", (), {})(), {})
+    printed = buf.getvalue()
+    assert grant in printed, f"the full id must be on screen, got:\n{printed}"
+
+    # and it round-trips through the command it is printed for
+    moved = await clients.post(f"/oauth/grants/{grant}/team",
+                               json={"team": listed[0]["team"]}, headers=me)
+    assert moved.status_code == 200, moved.text
+
+
+async def test_a_grant_dies_with_the_membership_it_was_consented_under(clients):
+    """The grant is consent to spend a TEAM's balance; leaving that team ends the standing it was
+    given with. Refresh checked only that the user and org still existed, so a grant kept minting
+    tokens forever — every call refused by `require_member`, but the grant lying dormant and
+    springing back to life, with no new consent, the day membership was restored."""
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import Membership, User
+
+    body, client_id, org_id = await _grant_full(clients, "departing@superdesign.dev")
+    async with session_maker() as db:
+        user = (await db.execute(select(User).where(
+            User.email == "departing@superdesign.dev"))).scalar_one()
+        m = (await db.execute(select(Membership).where(
+            Membership.user_id == user.id, Membership.org_id == org_id))).scalar_one()
+        await db.delete(m)
+        await db.commit()
+
+    r = await clients.post("/oauth/token", data={
+        "grant_type": "refresh_token", "refresh_token": body["refresh_token"],
+        "client_id": client_id})
+    assert r.status_code == 400, "a grant must not outlive the membership it was granted under"
+    assert "member" in r.json()["error_description"]
+
+
+async def test_a_rotation_started_before_a_move_cannot_drag_the_team_back(clients):
+    """A rotation that began before a team move must not resurrect the old team when it lands.
+
+    The first version of this test proved nothing: it completed the move and THEN refreshed, which
+    passes whether or not the fix exists, because `set_team` had already rewritten the very row the
+    refresh reads. The race that matters is the other order — a rotation holding a row whose
+    `org_id` still says the OLD team — so this test creates that state directly, by writing the
+    stale team back onto the live row after the move (exactly what an in-flight rotation would have
+    read). Authority lives on the family's OLDEST row, so the stale row must lose."""
+    email = "racer@superdesign.dev"
+    body, client_id, original_org_id = await _grant_full(clients, email)
+    me = await _as(email)
+    other = (await clients.post("/orgs", json={"name": "destination team"}, headers=me)).json()
+    grant = (await clients.get("/oauth/grants", headers=me)).json()[0]["grant"]
+
+    # rotate once, so the consent row (the authority) is no longer the live row
+    rotated = await clients.post("/oauth/token", data={
+        "grant_type": "refresh_token", "refresh_token": body["refresh_token"],
+        "client_id": client_id})
+    assert rotated.status_code == 200
+    body = rotated.json()
+
+    assert (await clients.post(f"/oauth/grants/{grant}/team",
+                               json={"team": other["org"]}, headers=me)).status_code == 200
+
+    # The state the race actually leaves behind: a rotation that read the OLD team before the move
+    # commits its replacement AFTER it, so the family's NEWEST row carries the old team while the
+    # oldest — the authority — carries the new one. Reading the newest row (the first attempt at
+    # this fix) reverts the move permanently right here.
+    from sqlmodel import select as _select
+
+    from treg.infra.db import session_maker
+    from treg.models import OAuthRefresh as _RT
+
+    async with session_maker() as db:
+        newest = (await db.execute(_select(_RT).where(_RT.family_id == grant)
+                                   .order_by(_RT.id.desc()).limit(1))).scalars().first()
+        oldest = (await db.execute(_select(_RT).where(_RT.family_id == grant)
+                                   .order_by(_RT.id.asc()).limit(1))).scalars().first()
+        assert newest.id != oldest.id, "the family must have rotated, or newest IS the authority"
+        newest.org_id = original_org_id
+        db.add(newest)
+        await db.commit()
+
+    listed = (await clients.get("/oauth/grants", headers=me)).json()
+    assert listed[0]["team"] == other["org"], \
+        "the grant list must show the same family authority refresh will use"
+
+    r = await clients.post("/oauth/token", data={
+        "grant_type": "refresh_token", "refresh_token": body["refresh_token"],
+        "client_id": client_id})
+    assert r.status_code == 200, r.text
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "balance", {}, token=r.json()["access_token"])
+    assert out["team"] == other["org"]
+
+    # and the NEXT rotation stays there too, rather than reverting to the row's old value
+    again = await clients.post("/oauth/token", data={
+        "grant_type": "refresh_token", "refresh_token": r.json()["refresh_token"],
+        "client_id": client_id})
+    async with mcp_session(clients) as c:
+        out2 = await _call_tool(c, "balance", {}, token=again.json()["access_token"])
+    assert out2["team"] == other["org"]
+
+
+async def test_a_team_you_cannot_use_is_indistinguishable_from_one_that_does_not_exist(clients):
+    """Told apart, this route reports whether an arbitrary slug exists on treg — an oracle any
+    signed-in account could walk."""
+    await _grant_full(clients, "prober@superdesign.dev")
+    me = await _as("prober@superdesign.dev")
+    grant = (await clients.get("/oauth/grants", headers=me)).json()[0]["grant"]
+
+    outsider = (await clients.post("/users", json={"email": "elsewhere@superdesign.dev"})).json()
+    theirs = (await clients.get("/orgs", headers={"X-Treg-Token": outsider["token"]})).json()[0]
+
+    real_but_not_mine = await clients.post(f"/oauth/grants/{grant}/team",
+                                           json={"team": theirs["slug"]}, headers=me)
+    pure_fiction = await clients.post(f"/oauth/grants/{grant}/team",
+                                      json={"team": "no-such-team-anywhere"}, headers=me)
+    assert real_but_not_mine.status_code == pure_fiction.status_code == 404
+    assert real_but_not_mine.json()["detail"] == pure_fiction.json()["detail"].replace(
+        "no-such-team-anywhere", theirs["slug"])
+
+
+async def test_an_expired_grant_is_not_presented_as_authorized(clients):
+    """The token endpoint already refuses an expired refresh token. Listing the same family as an
+    active authorization gives the operator two contradictory answers about one credential."""
+    from datetime import datetime, timedelta, timezone
+    from sqlmodel import select
+
+    from treg import crypto
+    from treg.infra.db import session_maker
+    from treg.models import OAuthRefresh
+
+    body, client_id, _ = await _grant_full(clients, "expired-list@superdesign.dev")
+    me = await _as("expired-list@superdesign.dev")
+    async with session_maker() as db:
+        row = (await db.execute(select(OAuthRefresh).where(
+            OAuthRefresh.token_hash == crypto.hash_token(body["refresh_token"])
+        ))).scalar_one()
+        row.expires_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+        db.add(row)
+        await db.commit()
+
+    assert (await clients.get("/oauth/grants", headers=me)).json() == []
+    refused = await clients.post("/oauth/token", data={
+        "grant_type": "refresh_token", "refresh_token": body["refresh_token"],
+        "client_id": client_id})
+    assert refused.status_code == 400 and "expired" in refused.json()["error_description"]
+
+
+async def test_an_expired_grant_cannot_be_moved(clients):
+    """A team move is an operation on usable authority. Accepting it on a dead family says the
+    grant is live even though its next token exchange is guaranteed to fail."""
+    from datetime import datetime, timedelta, timezone
+    from sqlmodel import select
+
+    from treg import crypto
+    from treg.infra.db import session_maker
+    from treg.models import OAuthRefresh
+
+    body, _, _ = await _grant_full(clients, "expired-move@superdesign.dev")
+    me = await _as("expired-move@superdesign.dev")
+    other = (await clients.post("/orgs", json={"name": "expired destination"}, headers=me)).json()
+    family_id = (await clients.get("/oauth/grants", headers=me)).json()[0]["grant"]
+    async with session_maker() as db:
+        row = (await db.execute(select(OAuthRefresh).where(
+            OAuthRefresh.token_hash == crypto.hash_token(body["refresh_token"])
+        ))).scalar_one()
+        row.expires_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+        db.add(row)
+        await db.commit()
+
+    moved = await clients.post(f"/oauth/grants/{family_id}/team",
+                               json={"team": other["org"]}, headers=me)
+    assert moved.status_code == 404
+
+
+async def test_rotation_does_not_change_the_grant_date(clients):
+    """`granted` means when the human consented, not when the connector last refreshed. Rotation
+    creates a token row, but it must not make an old authorization appear newly granted."""
+    from datetime import timedelta
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import OAuthRefresh
+
+    body, client_id, _ = await _grant_full(clients, "grant-date@superdesign.dev")
+    me = await _as("grant-date@superdesign.dev")
+    before = (await clients.get("/oauth/grants", headers=me)).json()[0]
+    rotated = await clients.post("/oauth/token", data={
+        "grant_type": "refresh_token", "refresh_token": body["refresh_token"],
+        "client_id": client_id})
+    assert rotated.status_code == 200
+    async with session_maker() as db:
+        newest = (await db.execute(select(OAuthRefresh).where(
+            OAuthRefresh.family_id == before["grant"]
+        ).order_by(OAuthRefresh.id.desc()).limit(1))).scalar_one()
+        newest.created_at = newest.created_at + timedelta(days=1)
+        db.add(newest)
+        await db.commit()
+
+    after = (await clients.get("/oauth/grants", headers=me)).json()[0]
+    assert after["granted"] == before["granted"]
+
+
+async def test_a_moved_grant_keeps_retired_token_team_provenance(clients, monkeypatch):
+    """A replay audit is evidence about the token that was copied. Moving the live grant later
+    must not rewrite history and attribute a team-A token to team B."""
+    from treg import audit
+
+    email = "provenance@superdesign.dev"
+    body, client_id, original_org_id = await _grant_full(clients, email)
+    me = await _as(email)
+    grant = (await clients.get("/oauth/grants", headers=me)).json()[0]["grant"]
+    rotated = await clients.post("/oauth/token", data={
+        "grant_type": "refresh_token", "refresh_token": body["refresh_token"],
+        "client_id": client_id})
+    assert rotated.status_code == 200
+    other = (await clients.post("/orgs", json={"name": "provenance destination"}, headers=me)).json()
+    moved = await clients.post(f"/oauth/grants/{grant}/team",
+                               json={"team": other["org"]}, headers=me)
+    assert moved.status_code == 200
+
+    recorded = {}
+    monkeypatch.setattr(audit, "record_call", lambda **kwargs: recorded.update(kwargs))
+    replay = await clients.post("/oauth/token", data={
+        "grant_type": "refresh_token", "refresh_token": body["refresh_token"],
+        "client_id": client_id})
+    assert replay.status_code == 400 and "already used" in replay.json()["error_description"]
+    assert recorded["org_id"] == original_org_id

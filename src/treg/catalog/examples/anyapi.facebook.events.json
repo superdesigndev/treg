@@ -1,0 +1,33 @@
+{
+  "output": {
+    "data": {
+      "events": [
+        {
+          "dayTimeSentence": "Sat, Sep 19 at 10:00 AM EDT",
+          "goingCount": 4,
+          "id": "1570255048044018",
+          "interestedCount": 345,
+          "isOnline": false,
+          "name": "Christmas Beach Bum Mini Photoshoots | St. Petersburg, FL",
+          "placeName": "St. Petersburg, FL",
+          "startTimestamp": 1789826400,
+          "url": "https://www.facebook.com/events/1570255048044018/"
+        },
+        "… 11 more item(s) truncated"
+      ],
+      "nextCursor": "gAcZtKnftt8CCkP3ORBwN5NeHjkdQIzEyzajSjeXoXGGNktQb25HPYLRSWFt5wIbN-z5nl4UfoTADFTTVol6j9iv4gqzN1MW0Vnv_9jr60G9Eo1i8TaATACVP8V3QVfnYbQF8T-6rGG2tu2elavtEKaJu1WU3VGAny7QQGKCtFCBCpwydWqf6BMWehiQSfO1wG1qo31R… [1263 chars]"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 12,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "afbe6f85-bcaa-45d8-880c-3e31026dffcb"
+}

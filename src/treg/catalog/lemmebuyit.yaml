@@ -2,27 +2,30 @@ provider: lemmebuyit
 source:
   docs: https://www.lemmebuyit.com/docs
   openapi: https://api.lemmebuyit.com/openapi.yaml
-  curated: 2026-08-12
-limits: "Free: 50,000 requests/month and one API key; higher request allowances are available on paid plans."
+  curated: 2026-10-13
+limits: "Enterprise REST access: custom pricing, request volume, rate limits and retailer coverage. MCP/extension allowances do not apply."
 pricing_url: https://www.lemmebuyit.com/pricing
 proposed_capabilities:
-  walmart.retailers.list: "List the retailers available to an API key"
-  walmart.shopping.search.products: "Search shopping-safe Walmart product listings by keyword or identifier"
-  walmart.shopping.product.detail: "Get a shopping-safe Walmart product listing by retailer SKU"
-  walmart.categories.list: "List a retailer's product-category hierarchy"
-  walmart.promotions.list: "List active promotions for a retailer"
-  walmart.product.price_history: "Get weekly price history for a retailer product"
+  retail.search.products: "Search and filter products across supported retailer catalogs"
+  retail.product.detail: "Get product details by retailer-native SKU"
+  retail.retailers.list: "List the retailers available to an API key"
+  retail.shopping.search.products: "Search shopping-safe retailer product listings by keyword or identifier"
+  retail.shopping.product.detail: "Get a shopping-safe retailer product listing by retailer SKU"
+  retail.categories.list: "List a retailer's product-category hierarchy"
+  retail.promotions.list: "List active promotions for a retailer"
+  retail.product.price_history: "Get weekly price history for a retailer product"
   amazon.product.price_history: "Get weekly Amazon price history by ASIN"
 endpoints:
-  - id: lemmebuyit.walmart.retailers.list
-    capability: walmart.retailers.list
-    platform: walmart
+  - id: lemmebuyit.retail.retailers.list
+    capability: retail.retailers.list
+    platform: retail
     scope: own_account
     kind: account
+    added: 2026-10-14
     method: GET
     path: /retailers
     name: "List available retailers"
-    summary: "Retrieves the retailers that the authenticated API key can access."
+    summary: "List Available Retailers"
     input:
       note: "No parameters. The result is scoped to the API key's retailer permissions."
     test_request: {queryParams: {}}
@@ -32,139 +35,205 @@ endpoints:
       currency: USD
       unit: call
       source: docs
-      checked: '2026-08-12'
+      source_url: https://www.lemmebuyit.com/pricing
+      checked: '2026-10-13'
       confidence: unknown
-      note: "Pricing is a monthly request allowance; no per-endpoint rate is published."
+      note: "Enterprise REST pricing is custom; no public per-endpoint rate is published."
     docs_url: https://api.lemmebuyit.com/openapi.yaml
 
-  - id: lemmebuyit.walmart.search.products
-    capability: walmart.search.products
-    platform: walmart
+  - id: lemmebuyit.retail.search.products
+    capability: retail.search.products
+    platform: retail
     scope: any_account
+    added: 2026-10-14
     method: GET
     path: /retailers/{retailer_id}/products
-    name: "Search Walmart products"
-    summary: "Searches and filters products for a retailer with cursor pagination."
+    name: "Search retailer products"
+    summary: "Search/Filter Products by Retailer (Cursor Paginated)"
     input:
       pathParams:
-        retailer_id: {type: string, required: true, example: "walmart"}
+        retailer_id: {type: string, required: true, note: "Use an ID returned by /retailers; access varies by key.", example: "walmart"}
       queryParams:
-        search_query: {type: string, required: false, note: "Text, SKU, UPC, EAN, GTIN, or MPN query.", example: "Nike socks"}
-        limit: {type: integer, required: false, note: "1–1000; use the smallest value for a cheap request.", example: 1}
-      note: "Use lookup_type=text or gtin only to override automatic detection."
+        lookup_type: {type: "string", required: false, enum: ["gtin", "text"], note: "**OPTIONAL**: Type of lookup to perform when search_query is provided."}
+        search_query: {type: "string", required: false, example: "Nike socks", note: "Search query string with automatic detection of search type."}
+        category: {type: "string", required: false, note: "Filter by product category (exact match). Categories are hierarchical with \">\" separators."}
+        min_price: {type: "number", required: false, format: "float", note: "Filter by minimum product price. Useful for finding premium products or setting budget constraints."}
+        max_price: {type: "number", required: false, format: "float", note: "Filter by maximum product price. Combine with min_price for price range filtering."}
+        brand: {type: "string", required: false, note: "Filter by product brand (exact match). Use exact brand names as they appear in the data."}
+        manufacturer: {type: "string", required: false, note: "Filter by product manufacturer (exact match). The manufacturer may be different from the brand in some cases."}
+        sold_by: {type: "string", required: false, note: "Exact seller/vendor name; combine with first_party_only to require the retailer as seller."}
+        first_party_only: {type: "boolean", required: false, default: false, note: "Only items sold directly by the retailer; resolves its canonical first-party seller."}
+        on_sale: {type: "boolean", required: false, note: "Filter for products that are currently on sale (current_price < original_price)."}
+        deal_type: {type: "string", required: false, enum: ["clearance", "rollback", "reduced"], note: "Enterprise-only Walmart deal filter; other retailers return an empty result set."}
+        min_discount_percent: {type: "number", required: false, minimum: 0, maximum: 100, format: "float", note: "Filter by minimum discount percentage (0-100)."}
+        max_discount_percent: {type: "number", required: false, minimum: 0, maximum: 100, format: "float", note: "Filter by maximum discount percentage (0-100)."}
+        limit: {type: "integer", required: false, minimum: 1, maximum: 10000, default: 25, example: 1, note: "Maximum number of products to return per page. Defaults to 25, max 10000. Returns 400 error if limit exceeds 10000."}
+        after: {type: "string", required: false, note: "**Cursor-based pagination parameter** for fetching the next page of results."}
+        sort_by: {type: "string", required: false, enum: ["price_asc", "price_desc", "discount_asc", "discount_desc", "top_seller_rank_asc", "updated_at_asc", "updated_at_desc", "created_at_asc", "created_at_desc", "order_limit_asc", "order_limit_desc", "units_left_asc", "units_left_desc"], note: "Sorting order for the results. When not specified, results are returned in the database's physical order  for optimal performance."}
+        subcategory: {type: "string", required: false, note: "Filter by product subcategory (exact match)."}
+        currency: {type: "string", required: false, note: "Filter by currency code (e.g., USD, EUR, CAD)."}
+        stock_availability: {type: "string", required: false, note: "Filter by stock availability status."}
+        in_stock: {type: "boolean", required: false, note: "Filter for products that are currently in stock (boolean)."}
+        upc: {type: "string", required: false, note: "Filter by UPC barcode (exact match). Comma-separated values supported; max 10,000 (configurable)."}
+        ean: {type: "string", required: false, note: "Filter by EAN barcode (exact match). Comma-separated values supported; max 10,000 (configurable)."}
+        gtin: {type: "string", required: false, note: "Filter by GTIN code (exact match). Comma-separated values supported; max 10,000 (configurable)."}
+        asin: {type: "string", required: false, note: "Filter by Amazon ASIN (exact match). Comma-separated values supported; max 10,000 (configurable)."}
+        mpn: {type: "string", required: false, note: "Filter by Manufacturer Part Number (exact match)."}
+        unique_merchant_sku: {type: "string", required: false, note: "Filter by unique merchant SKU (exact match). Comma-separated values supported; max 10,000 (configurable)."}
+        model: {type: "string", required: false, note: "Filter by product model (exact match)."}
+        condition: {type: "string", required: false, note: "Filter by product condition (e.g., New, Used, Refurbished)."}
+        color: {type: "string", required: false, note: "Filter by product color (exact match)."}
+        size: {type: "string", required: false, note: "Filter by product size (exact match)."}
+        material: {type: "string", required: false, note: "Filter by product material (exact match)."}
+        min_weight: {type: "number", required: false, minimum: 0, format: "float", note: "Filter by minimum weight (in product's weight unit)."}
+        max_weight: {type: "number", required: false, minimum: 0, format: "float", note: "Filter by maximum weight (in product's weight unit)."}
+        min_order_limit: {type: "integer", required: false, minimum: 0, note: "Filter by minimum per-order purchase cap (`order_limit`). This is a low-stock depth proxy — the cap is clamped toward the true remaining units once stock runs low — so it can drive sell-out-risk sourcing."}
+        max_order_limit: {type: "integer", required: false, minimum: 0, note: "Filter by maximum per-order purchase cap (`order_limit`). Use a small value (e.g. `max_order_limit=10`) to surface only near-sold-out items."}
+        min_units_left: {type: "integer", required: false, minimum: 0, note: "Filter by minimum badge-confirmed remaining units (`units_left`, Walmart \"Only N left\"). Only genuinely low-stock items carry it."}
+        max_units_left: {type: "integer", required: false, minimum: 0, note: "Filter by maximum badge-confirmed remaining units (`units_left`). Use a small value (e.g. `max_units_left=5`) to surface only near-sold-out items."}
+        min_rating: {type: "number", required: false, minimum: 0, maximum: 5, format: "float", note: "Filter by minimum product rating (0-5 scale)."}
+        max_rating: {type: "number", required: false, minimum: 0, maximum: 5, format: "float", note: "Filter by maximum product rating (0-5 scale)."}
+        min_reviews: {type: "integer", required: false, minimum: 0, note: "Filter by minimum number of reviews."}
+        min_sales_rank: {type: "integer", required: false, minimum: 0, note: "Filter by minimum Amazon sales rank."}
+        max_sales_rank: {type: "integer", required: false, minimum: 0, note: "Filter by maximum Amazon sales rank."}
+        max_shipping: {type: "number", required: false, minimum: 0, format: "float", note: "Filter by maximum shipping cost."}
+        created_since: {type: "string", required: false, format: "date-time", note: "Filter products created since this date (ISO 8601 format)."}
+        updated_since: {type: "string", required: false, format: "date-time", note: "Filter products updated since this date (ISO 8601 format)."}
+      note: "Use lookup_type=text or gtin only to override automatic detection. Use page_info.next_cursor as after; omit after on the first page."
     test_request:
       pathParams: {retailer_id: "walmart"}
       queryParams: {search_query: "Nike socks", limit: 1}
     cost: *unknown_cost
     docs_url: https://api.lemmebuyit.com/openapi.yaml
 
-  - id: lemmebuyit.walmart.product.detail
-    capability: walmart.product.detail
-    platform: walmart
+  - id: lemmebuyit.retail.product.detail
+    capability: retail.product.detail
+    platform: retail
     scope: any_account
+    added: 2026-10-14
     method: GET
     path: /retailers/{retailer_id}/products/{product_id}
-    name: "Get Walmart product details"
-    summary: "Retrieves detailed product information by retailer SKU."
+    name: "Get retailer product details"
+    summary: "Get Product Details by SKU"
     input:
       pathParams:
-        retailer_id: {type: string, required: true, example: "walmart"}
+        retailer_id: {type: string, required: true, note: "Use an ID returned by /retailers; access varies by key.", example: "walmart"}
         product_id: {type: string, required: true, note: "Retailer-native SKU.", example: "226595547"}
     test_request:
       pathParams: {retailer_id: "walmart", product_id: "226595547"}
     cost: *unknown_cost
     docs_url: https://api.lemmebuyit.com/openapi.yaml
 
-  - id: lemmebuyit.walmart.shopping.search.products
-    capability: walmart.shopping.search.products
-    platform: walmart
+  - id: lemmebuyit.retail.shopping.search.products
+    capability: retail.shopping.search.products
+    platform: retail
     scope: any_account
+    added: 2026-10-14
     method: GET
     path: /retailers/{retailer_id}/shopping/products
     name: "Search shopping products"
-    summary: "Searches shopping-safe retailer products that include a destination URL."
+    summary: "Search Shopping Products by Retailer"
     input:
       pathParams:
-        retailer_id: {type: string, required: true, example: "walmart"}
+        retailer_id: {type: string, required: true, note: "Use an ID returned by /retailers; access varies by key.", example: "walmart"}
       queryParams:
-        search_query: {type: string, required: false, note: "Text, SKU, UPC, EAN, GTIN, or MPN query.", example: "Nike socks"}
-        limit: {type: integer, required: false, note: "1–100.", example: 1}
-      note: "Shopping endpoints reject asin, sales-rank filters, and top_seller_rank_asc sorting."
+        search_query: {type: "string", required: false, example: "Nike socks", note: "Text, SKU, UPC, EAN, GTIN, or MPN search query."}
+        lookup_type: {type: "string", required: false, enum: ["gtin", "text"], note: "Optional lookup mode override. Omit `lookup_type` for auto-detection."}
+        unique_merchant_sku: {type: "string", required: false, note: "Filter by retailer SKU."}
+        upc: {type: "string", required: false, note: "Filter by UPC barcode."}
+        ean: {type: "string", required: false, note: "Filter by EAN barcode."}
+        gtin: {type: "string", required: false, note: "Filter by GTIN barcode."}
+        mpn: {type: "string", required: false, note: "Filter by Manufacturer Part Number."}
+        min_price: {type: "number", required: false, format: "double", note: "Minimum current price."}
+        max_price: {type: "number", required: false, format: "double", note: "Maximum current price."}
+        brand: {type: "string", required: false, note: "Filter by brand."}
+        category: {type: "string", required: false, note: "Filter by category."}
+        in_stock: {type: "boolean", required: false, note: "Filter by stock status."}
+        sort_by: {type: "string", required: false, enum: ["relevance", "price_asc", "price_desc", "discount_desc", "discount_asc", "created_at_desc", "updated_at_desc"], note: "Sort order. `top_seller_rank_asc` is not supported by shopping endpoints."}
+        limit: {type: "integer", required: false, minimum: 1, maximum: 100, default: 25, example: 1, note: "Maximum number of products to return."}
+        after: {type: "string", required: false, note: "Cursor for the next page of results."}
+      note: "Shopping endpoints reject asin, sales-rank filters, and top_seller_rank_asc sorting. Use page_info.next_cursor as after."
     test_request:
       pathParams: {retailer_id: "walmart"}
       queryParams: {search_query: "Nike socks", limit: 1}
     cost: *unknown_cost
     docs_url: https://api.lemmebuyit.com/openapi.yaml
 
-  - id: lemmebuyit.walmart.shopping.product.detail
-    capability: walmart.shopping.product.detail
-    platform: walmart
+  - id: lemmebuyit.retail.shopping.product.detail
+    capability: retail.shopping.product.detail
+    platform: retail
     scope: any_account
+    added: 2026-10-14
     method: GET
     path: /retailers/{retailer_id}/shopping/products/{product_id}
     name: "Get shopping product details"
-    summary: "Retrieves a shopping-safe product by retailer SKU, including its destination URL."
+    summary: "Get Shopping Product Details by SKU"
     input:
       pathParams:
-        retailer_id: {type: string, required: true, example: "walmart"}
+        retailer_id: {type: string, required: true, note: "Use an ID returned by /retailers; access varies by key.", example: "walmart"}
         product_id: {type: string, required: true, note: "Retailer-native SKU.", example: "226595547"}
     test_request:
       pathParams: {retailer_id: "walmart", product_id: "226595547"}
     cost: *unknown_cost
     docs_url: https://api.lemmebuyit.com/openapi.yaml
 
-  - id: lemmebuyit.walmart.categories.list
-    capability: walmart.categories.list
-    platform: walmart
+  - id: lemmebuyit.retail.categories.list
+    capability: retail.categories.list
+    platform: retail
     scope: any_account
+    added: 2026-10-14
     method: GET
     path: /retailers/{retailer_id}/categories
-    name: "List Walmart categories"
-    summary: "Retrieves a retailer's distinct hierarchical product categories."
+    name: "List retailer categories"
+    summary: "List Retailer Categories"
     input:
       pathParams:
-        retailer_id: {type: string, required: true, example: "walmart"}
+        retailer_id: {type: string, required: true, note: "Use an ID returned by /retailers; access varies by key.", example: "walmart"}
     test_request:
       pathParams: {retailer_id: "walmart"}
       queryParams: {}
     cost: *unknown_cost
     docs_url: https://api.lemmebuyit.com/openapi.yaml
 
-  - id: lemmebuyit.walmart.promotions.list
-    capability: walmart.promotions.list
-    platform: walmart
+  - id: lemmebuyit.retail.promotions.list
+    capability: retail.promotions.list
+    platform: retail
     scope: any_account
+    added: 2026-10-14
     method: GET
     path: /retailers/{retailer_id}/promotions
-    name: "List Walmart promotions"
-    summary: "Lists cursor-paginated promotions for a retailer."
+    name: "List retailer promotions"
+    summary: "List Promotions for a Retailer (Cursor Paginated)"
     input:
       pathParams:
-        retailer_id: {type: string, required: true, example: "walmart"}
+        retailer_id: {type: string, required: true, note: "Use an ID returned by /retailers; access varies by key.", example: "walmart"}
       queryParams:
-        search_query: {type: string, required: false, example: "Nike"}
-        active: {type: boolean, required: false, note: "Defaults to true.", example: true}
-        limit: {type: integer, required: false, note: "1–1000.", example: 1}
+        search_query: {type: "string", required: false, example: "Nike"}
+        active: {type: "boolean", required: false, default: true, example: true}
+        sort_by: {type: "string", required: false, enum: ["relevance", "end_date_asc", "start_date_desc", "last_updated_desc"]}
+        limit: {type: "integer", required: false, maximum: 1000, default: 25, example: 1}
+        after: {type: "string", required: false}
     test_request:
       pathParams: {retailer_id: "walmart"}
       queryParams: {search_query: "Nike", active: true, limit: 1}
     cost: *unknown_cost
     docs_url: https://api.lemmebuyit.com/openapi.yaml
 
-  - id: lemmebuyit.walmart.product.price_history
-    capability: walmart.product.price_history
-    platform: walmart
+  - id: lemmebuyit.retail.product.price_history
+    capability: retail.product.price_history
+    platform: retail
     scope: any_account
+    added: 2026-10-14
     method: GET
     path: /retailers/{retailer_id}/products/{product_id}/price-history
-    name: "Get Walmart price history"
-    summary: "Returns chart-ready weekly price history for a retailer product."
+    name: "Get retailer price history"
+    summary: "Get Weekly Price History for a Product"
     input:
       pathParams:
-        retailer_id: {type: string, required: true, example: "walmart"}
+        retailer_id: {type: string, required: true, note: "Use an ID returned by /retailers; access varies by key.", example: "walmart"}
         product_id: {type: string, required: true, example: "100000867"}
       queryParams:
-        weeks: {type: integer, required: false, note: "1–104; defaults to 52.", example: 1}
+        weeks: {type: "integer", required: false, minimum: 1, maximum: 104, default: 52, example: 1, note: "Number of weeks of history to return (1..104). Defaults to 52."}
     test_request:
       pathParams: {retailer_id: "walmart", product_id: "100000867"}
       queryParams: {weeks: 1}
@@ -175,15 +244,16 @@ endpoints:
     capability: amazon.product.price_history
     platform: amazon
     scope: any_account
+    added: 2026-10-14
     method: GET
     path: /amazon/asins/{asin}/price-history
     name: "Get Amazon price history"
-    summary: "Returns chart-ready weekly Amazon price history by ASIN."
+    summary: "Get Weekly Amazon Price History by ASIN"
     input:
       pathParams:
         asin: {type: string, required: true, example: "B082H4RKQQ"}
       queryParams:
-        weeks: {type: integer, required: false, note: "1–104; defaults to 52.", example: 1}
+        weeks: {type: "integer", required: false, minimum: 1, maximum: 104, default: 52, example: 1, note: "Number of weeks of history to return (1..104). Defaults to 52."}
     test_request:
       pathParams: {asin: "B082H4RKQQ"}
       queryParams: {weeks: 1}

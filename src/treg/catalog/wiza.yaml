@@ -1,0 +1,548 @@
+# Wiza API surface. The account-credit route stays internal for key verification and capacity.
+# Shared platform access is limited to bounded calls whose account-scoped resources are tied to
+# the creating team. BYOK always wins and is never metered by treg.
+provider: wiza
+source:
+  docs: https://docs.wiza.co/
+  openapi: https://wiza.co/api/api-docs/v1/openapi.yaml
+  curated: '2026-09-16'
+limits: 'Starter individual reveals allow 5 concurrent jobs and a queue 200 times that size. List and prospect-list creation share 10 creates/minute. Company enrichment allows 30/minute and 43,200/day. Search limits are not documented.'
+pricing_url: https://help.wiza.co/en/articles/13551713-how-to-purchase-api-credits
+proposed_capabilities:
+  people.enrich.bulk: Start or inspect a batch of person enrichments
+  companies.locations.suggest: Find accepted company and person location filter values
+  companies.technologies.suggest: Find accepted company technology filter values
+endpoints:
+  - id: wiza.people.search
+    capability: people.search
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/prospects/search
+    name: Search prospects
+    summary: Search professional profiles with person, role, company, location, funding and technology filters.
+    input:
+      bodyType: json
+      body:
+        filters:
+          type: object
+          required: false
+          example: {job_company: [{v: Wiza, s: i}]}
+          note: >-
+            Required on the first page. Supported filters include names, titles, role levels,
+            locations, skills, schools, LinkedIn slugs, current and past companies, company size,
+            industry, technologies, department size, revenue, funding, company type, summary and
+            founding-year bounds. Omit filters when using a page token. Use the location and
+            technology helper tools for accepted values.
+        size: {type: integer, required: true, min: 1, enum: [1], example: 1}
+        page_token: {type: string, required: false, note: Send the previous next_page_token with size and omit filters.}
+      note: This bounded direct tool requests one row for both platform and BYOK calls. A returned row costs 0.5 API credit.
+    platform_request:
+      body.size: 1
+    test_request:
+      body: {filters: {job_title: [{v: Founder, s: i}]}, size: 1}
+    cost: &half_credit_hit
+      type: per_success
+      value: 0.5
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.wiza.co/api-reference/prospect/prospect-search
+      checked: '2026-09-16'
+      confidence: verified
+      note: Platform fixes size to one. A non-empty one-row page costs 0.5 credit; an empty page is free.
+    docs_url: https://docs.wiza.co/api-reference/prospect/prospect-search
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/wiza.people.search.json
+
+  - id: wiza.companies.search
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    domain: companies
+    method: POST
+    path: /api/accounts/search
+    name: Search companies
+    summary: Search companies with firmographic, location, growth, funding and technology filters.
+    input:
+      bodyType: json
+      body:
+        filters:
+          type: object
+          required: false
+          example: {company_summary: [{v: software, s: i}]}
+          note: >-
+            Required on the first page. Supported filters include company and LinkedIn IDs,
+            summary, location and radius, industry, NAICS and SIC codes, type, size, technologies,
+            growth, department size, founding year, revenue and funding. Omit filters when using a
+            page token.
+        size: {type: integer, required: true, min: 1, enum: [1], example: 1}
+        page_token: {type: string, required: false, note: Send the previous next_page_token with size and omit filters.}
+      note: This bounded direct tool requests one row for both platform and BYOK calls. A returned row costs 0.5 API credit.
+    platform_request:
+      body.size: 1
+    test_request:
+      body: {filters: {company_industry: [{v: Computer Software, s: i}]}, size: 1}
+    cost:
+      <<: *half_credit_hit
+      source_url: https://docs.wiza.co/api-reference/prospect/company-search
+    docs_url: https://docs.wiza.co/api-reference/prospect/company-search
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/wiza.companies.search.json
+
+  - id: wiza.companies.enrich
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    domain: companies
+    method: POST
+    path: /api/company_enrichments
+    name: Enrich a company
+    summary: Enrich a company with industry, size, revenue, funding, location and social profiles.
+    input:
+      bodyType: json
+      body:
+        company_name: {type: string, required: false, example: Wiza}
+        company_domain: {type: string, required: false, example: wiza.co}
+        company_linkedin_id: {type: string, required: false, example: '67160217'}
+        company_linkedin_slug: {type: string, required: false, example: wiza}
+      note: Provide at least one company identifier. Domain or LinkedIn identity is more precise than name alone.
+    test_request:
+      body: {company_domain: wiza.co}
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.wiza.co/api-reference/company-enrichment/company-enrichment
+      checked: '2026-09-16'
+      confidence: verified
+      note: Two API credits when company data is found. A miss or invalid request is free. The response reports credits.api_credits.total.
+    docs_url: https://docs.wiza.co/api-reference/company-enrichment/company-enrichment
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/wiza.companies.enrich.json
+
+  - id: wiza.meta.locations.search
+    capability: companies.locations.suggest
+    platform: companies
+    scope: any_account
+    domain: companies
+    kind: utility
+    method: GET
+    path: /api/meta/location_autocomplete
+    name: Find accepted locations
+    summary: Find location names and boundary types accepted by Wiza search filters.
+    input:
+      query:
+        query: {type: string, required: true, minLength: 3, example: tor}
+      note: The prefix must contain at least three characters.
+    test_request:
+      query: {query: tor}
+    cost: &free_lookup
+      type: free
+      value: 0
+      currency: USD
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.wiza.co/api-reference/prospects/search-locations
+      checked: '2026-09-16'
+      confidence: verified
+      note: The authenticated helper did not reduce the API credit balance.
+    docs_url: https://docs.wiza.co/api-reference/prospects/search-locations
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/wiza.meta.locations.search.json
+
+  - id: wiza.meta.technologies.search
+    capability: companies.technologies.suggest
+    platform: companies
+    scope: any_account
+    domain: companies
+    kind: utility
+    method: GET
+    path: /api/meta/technology_autocomplete
+    name: Find accepted technologies
+    summary: Find technology names and slugs accepted by Wiza search filters.
+    input:
+      query:
+        query: {type: string, required: true, minLength: 3, example: aws}
+      note: The prefix must contain at least three non-blank characters.
+    test_request:
+      query: {query: aws}
+    cost:
+      <<: *free_lookup
+      source_url: https://docs.wiza.co/api-reference/prospects/search-technologies
+    docs_url: https://docs.wiza.co/api-reference/prospects/search-technologies
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/wiza.meta.technologies.search.json
+
+  - id: wiza.people.email.find
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/individual_reveals
+    name: Find a work email
+    summary: Find a person's work email through a bounded asynchronous Wiza reveal.
+    async: &individual_reveal_async
+      id_from: data.id
+      poll:
+        endpoint: wiza.people.reveal.get
+        param: {in: pathParams, name: id}
+      status:
+        path: data.status
+        progress: [queued, resolving]
+        success: [finished]
+        failure: [failed]
+      result: {path: data}
+      interval: 2
+    input:
+      bodyType: json
+      body:
+        individual_reveal:
+          type: object
+          required: true
+          properties:
+            profile_url: {type: string, required: false}
+            email: {type: string, required: false}
+            full_name: {type: string, required: false}
+            company: {type: string, required: false}
+            domain: {type: string, required: false}
+        enrichment_level: {type: string, required: true, enum: [partial], example: partial}
+        email_options:
+          type: object
+          required: true
+          properties:
+            accept_work: {type: boolean, required: true, enum: [true]}
+            accept_personal: {type: boolean, required: true, enum: [false]}
+            accept_generic: {type: boolean, required: true, enum: [false]}
+    body_allowlist: true
+    platform_request:
+      body.enrichment_level: partial
+      body.email_options.accept_work: true
+      body.email_options.accept_personal: false
+      body.email_options.accept_generic: false
+    test_request:
+      body:
+        individual_reveal: {profile_url: https://www.linkedin.com/in/example}
+        enrichment_level: partial
+        email_options: {accept_work: true, accept_personal: false, accept_generic: false}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.enrichment_level: partial}, value: 3}
+      fallback: {value: 3, note: A matched profile plus a valid work email is at most three Wiza credits.}
+      currency: credit
+      unit: call
+      settle: usage
+      usage: {path: data.credits.api_credits.total, unit: credit}
+      source: observed
+      source_url: https://docs.wiza.co/using-the-api/credit-deduction-behavior
+      checked: '2026-09-16'
+      confidence: verified
+      note: Reserves three credits and settles the exact terminal credit total; a miss is free.
+    docs_url: https://docs.wiza.co/api-reference/individual-reveals/start-individual-reveal
+    verified: '2026-09-16'
+    added: '2026-09-24'
+    example_response: examples/wiza.people.email.find.json
+    terminal_example_response: examples/wiza.people.email.find.terminal.json
+    cache: forbidden
+
+  - id: wiza.people.phone.find
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/individual_reveals
+    name: Find a phone number
+    summary: Find a person's phone number through a bounded asynchronous Wiza reveal.
+    async: *individual_reveal_async
+    input:
+      bodyType: json
+      body:
+        individual_reveal:
+          type: object
+          required: true
+          properties:
+            profile_url: {type: string, required: false}
+            email: {type: string, required: false}
+            full_name: {type: string, required: false}
+            company: {type: string, required: false}
+            domain: {type: string, required: false}
+        enrichment_level: {type: string, required: true, enum: [phone], example: phone}
+    body_allowlist: true
+    platform_request: {body.enrichment_level: phone}
+    test_request:
+      body:
+        individual_reveal: {profile_url: https://www.linkedin.com/in/example}
+        enrichment_level: phone
+    cost:
+      type: per_success
+      table:
+        - {when: {body.enrichment_level: phone}, value: 6}
+      fallback: {value: 6, note: A matched profile plus a phone number is at most six Wiza credits.}
+      currency: credit
+      unit: call
+      settle: usage
+      usage: {path: data.credits.api_credits.total, unit: credit}
+      source: observed
+      source_url: https://docs.wiza.co/using-the-api/credit-deduction-behavior
+      checked: '2026-09-16'
+      confidence: verified
+      note: Reserves six credits and settles the exact terminal credit total; a miss is free.
+    docs_url: https://docs.wiza.co/api-reference/individual-reveals/start-individual-reveal
+    verified: '2026-09-16'
+    added: '2026-09-24'
+    example_response: examples/wiza.people.phone.find.json
+    terminal_example_response: examples/wiza.people.phone.find.terminal.json
+    cache: forbidden
+
+  - id: wiza.people.reveal.start
+    added: '2026-09-16'
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/individual_reveals
+    name: Start an individual reveal
+    summary: Start an asynchronous profile, email, phone or full contact reveal.
+    input:
+      bodyType: json
+      body:
+        individual_reveal:
+          type: object
+          required: true
+          example: {profile_url: https://www.linkedin.com/in/example}
+          note: Provide a LinkedIn profile URL, an email, or a full name plus company name or domain.
+        enrichment_level: {type: string, required: true, enum: [none, partial, phone, full], example: partial}
+        email_options:
+          type: object
+          required: false
+          example: {accept_work: true, accept_personal: false}
+          note: Select work, personal and generic email types. If omitted, Wiza can return all types.
+        callback_url: {type: string, required: false}
+        reveal_options: {type: object, required: false}
+      note: Poll wiza.people.reveal.get with the returned id. Final charges are 1 credit for a matched profile, 2 for a valid email and 5 for a phone; full results can cost 8.
+    async: *individual_reveal_async
+    cost:
+      type: per_success
+      value: 8
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.wiza.co/using-the-api/credit-deduction-behavior
+      checked: '2026-09-16'
+      confidence: verified
+      note: BYOK only. The final result reports the exact charge; the kickoff response does not. Eight credits is the verified full-result maximum.
+    docs_url: https://docs.wiza.co/api-reference/individual-reveals/start-individual-reveal
+    platform_blocked: Generic reveal options remain BYOK-only; use the bounded email or phone find tool for shared-key access.
+    untestable: The kickoff response is not the paid result. Live billing was verified by polling with BYOK evidence only.
+    cache: forbidden
+
+  - id: wiza.people.reveal.get
+    added: '2026-09-16'
+    kind: utility
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: GET
+    path: /api/individual_reveals/{id}
+    name: Get an individual reveal
+    summary: Read the status, result and exact credit deduction for an individual reveal.
+    async: false
+    resource_ownership:
+      requires: {kind: "poll:wiza.people.reveal.get", param: id}
+    input:
+      pathParams:
+        id: {type: integer, required: true, min: 1}
+      note: Poll until data.is_complete is true. A failed match uses zero credits.
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.wiza.co/api-reference/individual-reveals/get-individual-reveal
+      checked: '2026-09-16'
+      confidence: verified
+      note: Polling itself did not reduce the balance. The related kickoff job carries the reveal charge.
+    docs_url: https://docs.wiza.co/api-reference/individual-reveals/get-individual-reveal
+    untestable: Requires an id created by the caller's own Wiza account.
+    cache: forbidden
+
+  - id: wiza.lists.create
+    added: '2026-09-16'
+    capability: people.enrich.bulk
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/lists
+    name: Create an enrichment list
+    summary: Start asynchronous enrichment for up to 2,500 contacts.
+    input:
+      bodyType: json
+      body:
+        list:
+          type: object
+          required: true
+          example: {name: Example list, enrichment_level: partial, email_options: {accept_work: true, accept_personal: false, accept_generic: false}, items: [{full_name: Jane Doe, domain: example.com}]}
+          note: Name the list, select none, partial or full enrichment, set email options, and provide 1 to 2,500 contact identities. Optional fields include callback_url and skip_duplicates.
+    cost:
+      type: per_result
+      value: 7
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://docs.wiza.co/using-the-api/credit-deduction-behavior
+      checked: '2026-09-16'
+      confidence: documented
+      note: BYOK only. Each successful item can use profile, email and phone credits according to the selected enrichment level; misses are free.
+    docs_url: https://docs.wiza.co/api-reference/lists/create-list
+    platform_blocked: Async result ownership and per-item terminal settlement are not safe on a shared Wiza account. Use your own Wiza key.
+    untestable: Creates an account-scoped asynchronous list and can consume up to 2,500 item charges.
+    cache: forbidden
+
+  - id: wiza.lists.get
+    added: '2026-09-16'
+    capability: people.enrich.bulk
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: GET
+    path: /api/lists/{id}
+    name: Get an enrichment list
+    summary: Read status and billing totals for an enrichment list.
+    input:
+      pathParams:
+        id: {type: integer, required: true, min: 1}
+    cost:
+      type: per_call
+      value: null
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.wiza.co/api-reference/lists/get-list
+      checked: '2026-09-16'
+      confidence: unknown
+      note: A missing-list status check did not reduce the API credit balance. Wiza does not publish a separate charge, and a completed-list check was not run.
+    docs_url: https://docs.wiza.co/api-reference/lists/get-list
+    platform_blocked: List ids belong to the connected Wiza account and lack a caller ownership token. Use your own Wiza key.
+    untestable: Requires a list id created by the caller's own Wiza account.
+    cache: forbidden
+
+  - id: wiza.lists.contacts
+    added: '2026-09-16'
+    capability: people.enrich.bulk
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: GET
+    path: /api/lists/{id}/contacts
+    name: Get enrichment list contacts
+    summary: Download all, valid or risky contacts from a completed enrichment list.
+    input:
+      pathParams:
+        id: {type: integer, required: true, min: 1}
+      query:
+        segment: {type: string, required: true, enum: [people, valid, risky], example: people}
+      note: JSON is returned. Wiza also supports a CSV path variant, which is not a separate catalog tool.
+    cost:
+      type: per_call
+      value: null
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://docs.wiza.co/api-reference/lists/get-list-contacts
+      checked: '2026-09-16'
+      confidence: unknown
+      note: Wiza does not publish a separate charge for downloading completed-list contacts. This BYOK-only route was not called because it requires a paid asynchronous list.
+    docs_url: https://docs.wiza.co/api-reference/lists/get-list-contacts
+    platform_blocked: List ids and contacts belong to the connected Wiza account and lack a caller ownership token. Use your own Wiza key.
+    untestable: Requires a completed list id created by the caller's own Wiza account.
+    cache: forbidden
+
+  - id: wiza.prospect-lists.create
+    added: '2026-09-16'
+    capability: people.search
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/prospects/create_prospect_list
+    name: Create a prospect list
+    summary: Start an asynchronous list from prospect-search filters.
+    input:
+      bodyType: json
+      body:
+        filters: {type: object, required: true, example: {job_company: [{v: Wiza, s: i}]}}
+        list:
+          type: object
+          required: true
+          example: {name: Example prospects, max_profiles: 10}
+          note: Set the list name and maximum profiles. The create-list rate limit is shared with wiza.lists.create.
+    cost:
+      type: per_result
+      value: null
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://docs.wiza.co/api-reference/prospect-lists/create-prospect-list
+      checked: '2026-09-16'
+      confidence: unknown
+      note: BYOK only. Wiza does not publish the final per-row charge for this asynchronous route. Search preview pricing is not used as a substitute.
+    docs_url: https://docs.wiza.co/api-reference/prospect-lists/create-prospect-list
+    platform_blocked: Async result ownership and terminal per-row settlement are not safe on a shared Wiza account. Use your own Wiza key.
+    untestable: Creates an account-scoped asynchronous list and can return many paid rows.
+    cache: forbidden
+
+  - id: wiza.prospect-lists.continue
+    added: '2026-09-16'
+    capability: people.search
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/prospects/continue_search
+    name: Continue a prospect search
+    summary: Continue an existing prospect-list search with an optional new result limit.
+    input:
+      bodyType: json
+      body:
+        id: {type: integer, required: true, min: 1}
+        max_profiles: {type: integer, required: false, min: 1, example: 10}
+        callback_url: {type: string, required: false}
+    cost:
+      type: per_result
+      value: null
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://docs.wiza.co/api-reference/prospect-lists/continue-prospect-search
+      checked: '2026-09-16'
+      confidence: unknown
+      note: BYOK only. Wiza does not publish the final per-row charge for this asynchronous continuation route.
+    docs_url: https://docs.wiza.co/api-reference/prospect-lists/continue-prospect-search
+    platform_blocked: The list id belongs to one Wiza account and lacks a caller ownership token. Use your own Wiza key.
+    untestable: Requires a prospect-list id created by the caller's own Wiza account.
+    cache: forbidden

@@ -1,0 +1,28 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "currency": "",
+      "originalPrice": "",
+      "price": "",
+      "productId": "",
+      "rating": 0,
+      "reviewCount": 0,
+      "sellerLocation": "",
+      "sellerName": "",
+      "soldCount": 0,
+      "title": ""
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "bcee905c-811f-43f0-aa26-6806a92eefdd"
+}

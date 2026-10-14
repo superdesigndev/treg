@@ -1,0 +1,12 @@
+{
+  "name": "email-list-hygiene",
+  "summary": "Screen a list of emails before you pay to verify or send: flags invalid syntax, personal inboxes, disposable domains, role accounts and duplicates, and returns the addresses worth verifying.",
+  "inputs": {
+    "emails": {"type": "list", "example": ["jane@stripe.com", "info@acme.io", "bob@gmail.com"], "note": "up to 2,000 addresses"},
+    "allow_personal": {"type": "bool", "default": false, "note": "true keeps gmail.com, outlook.com and the like in `to_verify`"}
+  },
+  "uses": [],
+  "script": "run.js",
+  "output": {"fields": ["checked", "to_verify", "summary", "rows"]},
+  "pricing": {"max_price_usd": 0.002}
+}

@@ -192,6 +192,7 @@ def join(base: str, path: str) -> str:
 BALANCE_ROUTE = {
     "tikhub": ("/api/v1/tikhub/user/get_user_info", "user_data.balance"),
     "dataforseo": ("/v3/appendix/user_data", "tasks.0.result.0.money.balance"),
+    "anyapi": ("/v1/balance", "usd"),
 }
 
 

@@ -1,0 +1,61 @@
+{
+  "output": {
+    "data": {
+      "items": [
+        {
+          "authorName": "Hardik (🔮)",
+          "authorUsername": "_kidrah_24",
+          "authorVerified": true,
+          "bookmarkCount": 0,
+          "conversationId": "2101238870025338887",
+          "createdUtc": 1789811122,
+          "id": "2101246259504021713",
+          "isReply": true,
+          "lang": "en",
+          "likeCount": 0,
+          "media": [],
+          "quoteCount": 0,
+          "replyCount": 0,
+          "retweetCount": 0,
+          "text": "@AroraBhavyam @miramurati @OpenAI Those who are deep into AI trenches only know who she is",
+          "url": "https://x.com/i/web/status/2101246259504021713",
+          "viewCount": 0
+        },
+        {
+          "authorName": "Mike Bradley",
+          "authorUsername": "MikeBradleyAI",
+          "authorVerified": true,
+          "bookmarkCount": 0,
+          "conversationId": "2101246258555793720",
+          "createdUtc": 1789811121,
+          "id": "2101246258555793720",
+          "isReply": false,
+          "lang": "en",
+          "likeCount": 0,
+          "media": [],
+          "quoteCount": 0,
+          "replyCount": 0,
+          "retweetCount": 0,
+          "text": "Attempting to use Astra to harden your own organization or systems the way that OpenAI themselves said that they used it here would get your account banned.  It will be okay again once they have a dedicated product for it that they can sell to you outside of your subscription.",
+          "url": "https://x.com/i/web/status/2101246258555793720",
+          "viewCount": 17
+        },
+        "… 18 more item(s) truncated"
+      ],
+      "nextCursor": "RamvY3F9Mz7m_pX1mGKIBU3WB2gd-e18B2pHf07hoTf6bMRIS14s-8wcCeRdRPkclvScRWBIY1Cus2a5-Xq-2Rlt0z3Tlm5zZ-kYozgkkYEUcFw56Tp_Iufs79wcrmO6liAacFngaDRiqY8CRVTX4cHDEwGw18YF-fH3aw1X08fMatinB9Sz1JBIVsRrJ3MsvzE2M05NB_luGmigeXc9mRzoEe9unS9J4ivy_w4Qce85qV_ykKtdjbD_jnSJfVEHUcC1W_LMKUNrFfaiOtfOEstd2Cz7P4ZM_l4W3i8_9AlY6xWCYDnqSgH95cRouP1Bp3X8js4OU-9X1NgbswCZH78gk7reVhChKR3HDpxsILCXHW0hyv-G2yw_MytJxSXnIEF_OIvdjvbnB0U95wjpA0nFgH2OVRdA-a5VAjGHB2TxperMgAFdEDTxqzv8HEaGuWNFLUJ6-jeHX-HcMepjNBpQQzojiPSQ3fXTfHOe4QDHl4pXPI-O… [1158 chars total]"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00065,
+  "items": 20,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-lynx",
+    "name": "Lynx",
+    "kind": "anonymous",
+    "artworkKey": "lynx"
+  },
+  "hint": "large_result: this response is ~16 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+  "resultId": "d4328779-3125-4ffe-90ff-79fe865ed372"
+}

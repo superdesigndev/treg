@@ -1,0 +1,34 @@
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "results": [
+      {
+        "url": "https://example.com",
+        "status": "success",
+        "resolved_mode": "standard",
+        "title": "Example Domain",
+        "full_content": "# Example Domain\n\nThis domain is for use in documentation examples without needing permission.",
+        "highlights": null,
+        "links": [
+          {
+            "url": "https://iana.org/help/example-domains",
+            "anchor_text": "Learn more",
+            "is_external": true
+          }
+        ]
+      }
+    ]
+  },
+  "meta": {
+    "usage": {
+      "total_urls": 1,
+      "successful_urls": 1,
+      "successful_by_mode": {
+        "standard_urls": 1,
+        "advanced_urls": 0
+      }
+    },
+    "warning": ""
+  }
+}

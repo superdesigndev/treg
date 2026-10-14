@@ -1,0 +1,25 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "avatarUrl": "https://yt3.googleusercontent.com/qu4TmIaYUlS41-dJ9gZ7DUR3nilvmB5_11i6OKSdvNnBNiyOusZP1bMN6ICnuxtjFBb6ioKgRQ=s900-c-k-c0x00ffffff-no-rj",
+      "channelId": "UCBJycsmduvYEL83R_U4JriQ",
+      "description": "MKBHD: Quality Tech Videos | YouTuber | Geek | Consumer Electronics | Tech Head | Internet Personality!\n\nbusiness@MKBHD.com\n\nNYC",
+      "subscribers": 21300000,
+      "title": "Marques Brownlee",
+      "videos": 1800,
+      "views": 0
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0005,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "resultId": "69fc940d-73f2-4fb8-bf8f-2b508c823f61"
+}

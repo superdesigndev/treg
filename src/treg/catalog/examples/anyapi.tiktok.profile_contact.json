@@ -1,0 +1,48 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "avatarUrl": "https://p16-common-sign.tiktokcdn-us.com/tos-maliva-avt-0068/7310612651137040390~tplv-tiktokx-cropcenter:1080:1080.jpeg?dr=9640&refresh_token=655c20b2&x-expires=1789981200&x-signature=5f%2Bg%2Bdol2pZQ… [282 chars]",
+      "bio": "I cook sometimes too.....",
+      "displayName": "Gordon Ramsay",
+      "emails": [
+        {
+          "domain": "",
+          "domainHealth": "healthy",
+          "email": "guestrelations@gordonramsay.com",
+          "sourceType": "linked_page",
+          "sourceUrl": "https://www.gordonramsay.com/"
+        }
+      ],
+      "externalUrl": "https://www.gordonramsay.com/",
+      "followers": 40700000,
+      "following": 572,
+      "handle": "gordonramsayofficial",
+      "likes": 729800000,
+      "private": false,
+      "profileUrl": "https://www.tiktok.com/@gordonramsayofficial",
+      "seller": false,
+      "socialLinks": [
+        {
+          "platform": "x",
+          "url": "https://twitter.com/gordonramsay"
+        },
+        "… 3 more item(s) truncated"
+      ],
+      "userId": "6747935906352907269",
+      "verified": true,
+      "videos": 712
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00116,
+  "items": 1,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "resultId": "168b771e-f22b-455e-9892-01ebeff51efd"
+}

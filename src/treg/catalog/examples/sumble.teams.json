@@ -1,0 +1,41 @@
+{
+  "id": "example-request-id",
+  "credits_used": 6,
+  "credits_remaining": 9000,
+  "teams": [
+    {
+      "team_id": 4077202,
+      "name": "Global Partnerships organization",
+      "sumble_url": "https://sumble.com/l/team/vIekEXH3SU",
+      "attributes": {
+        "breadcrumbs": [
+          {
+            "team_id": 4077202,
+            "name": "Global Partnerships organization",
+            "slug": "global-partnerships-organization",
+            "sumble_url": "https://sumble.com/l/team/vIekEXH3SU"
+          }
+        ],
+        "jobs_count": 375
+      }
+    },
+    {
+      "team_id": 4077136,
+      "name": "Solutions Architecture Team",
+      "sumble_url": "https://sumble.com/l/team/KOXAaCOu1H",
+      "attributes": {
+        "breadcrumbs": [
+          {
+            "team_id": 4077136,
+            "name": "Solutions Architecture Team",
+            "slug": "solutions-architecture-team",
+            "sumble_url": "https://sumble.com/l/team/KOXAaCOu1H"
+          }
+        ],
+        "jobs_count": 366
+      }
+    }
+  ],
+  "total": 2135,
+  "source_data_url": "https://sumble.com/l/org/niZxDzclVbH4I/teams"
+}

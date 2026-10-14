@@ -1,0 +1,45 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": null,
+      "posts": [
+        {
+          "authorName": "Jake Valles",
+          "authorUrl": "https://www.linkedin.com/in/jakevalles",
+          "avatarUrl": "",
+          "commentCount": 2,
+          "createdUtc": 1789483497,
+          "id": "7505637791545020416",
+          "reactionCount": 13,
+          "text": "My best placements this year didn't start with a req.\n\nThey started with a conversation about workforce strategy. What the team needs to look like in 12 months. Which roles are actually load-bearing. What the last hire got wrong and why.\n\nBy the time the role was defined, I had helped define it. That's a different search entirely. I'm not interpreting someone else's job description; I'm working from a role we built together.\n\nThen the placement came down to fundamentals. Clear intake. Honest cal… [732 chars total]",
+          "url": "https://www.linkedin.com/posts/jakevalles_my-best-placements-this-year-didnt-start-activity-7505637791545020416-0J5g"
+        },
+        {
+          "authorName": "Ravi Bagaria",
+          "authorUrl": "https://in.linkedin.com/in/ravibagaria-aria",
+          "avatarUrl": "https://media.licdn.com/dms/image/v2/D5603AQGw0XzY5SzLfw/profile-displayphoto-scale_200_200/B56ZtKC7eZLEAY-/0/1766473841211?e=2147483647&v=beta&t=y8TWLBMc-bbd3gU0OS7V2kFoeuMTLLahgsYp3TuJ6_I",
+          "commentCount": 18,
+          "createdUtc": 1789400901,
+          "id": "7505291359679995904",
+          "reactionCount": 30,
+          "text": "🚨 Hiring RANT alert.\n\nI have personally interviewed every single person who has ever worked with me. Some of them twice.\n\nI've hired through LinkedIn, Naukri, Indeed, AngelList, IIMJobs and agencies. I've made bad hires. I've written roles that weren't fully baked, because we're still growing and I need people who go beyond what's on paper.\n\nSo I'm not writing this as someone who has hiring figured out.\n\nI'm writing it because the platforms have made two things extremely easy — posting a job, an… [2952 chars total]",
+          "url": "https://www.linkedin.com/posts/ravibagaria-aria_hiring-rant-alert-i-have-personally-activity-7505291359679995904-R1XD"
+        },
+        "… 5 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "hint": "large_result: this response is ~12 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+  "resultId": "2bdceb7c-9868-4b01-9bb3-14f0753792f5"
+}

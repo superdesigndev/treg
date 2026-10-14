@@ -1,0 +1,29 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": null,
+      "playlists": [
+        {
+          "id": "PLkahZjV5wKe8w9GC_n2yyhx6Wj-NKzzeE",
+          "playlistUrl": "https://www.youtube.com/playlist?list=PLkahZjV5wKe8w9GC_n2yyhx6Wj-NKzzeE",
+          "thumbnail": "",
+          "title": "Computing",
+          "videoCount": 5
+        },
+        "… 12 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 13,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "21f5a153-f35b-4a61-8cd9-08b65285260e"
+}

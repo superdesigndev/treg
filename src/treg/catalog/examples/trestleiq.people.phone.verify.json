@@ -1,0 +1,14 @@
+{
+  "id": "Phone.544fc1b5-a2cd-4d54-9a8f-628884ab0a2f",
+  "phone_number": "+13005550100",
+  "is_valid": false,
+  "activity_score": null,
+  "country_calling_code": null,
+  "country_code": null,
+  "country_name": null,
+  "line_type": null,
+  "carrier": null,
+  "is_prepaid": null,
+  "error": null,
+  "warnings": ["Invalid Input"]
+}

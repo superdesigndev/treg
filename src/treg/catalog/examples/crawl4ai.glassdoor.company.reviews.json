@@ -1,0 +1,70 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: glassdoor-reviews: Microsoft-Reviews-E1651 page 1 from www.glassdoor.com · 3 reviews on the page of 54850"
+    ]
+  },
+  "recipe": "glassdoor-reviews",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 193,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "advice": null,
+      "cons": "Stack ranking\nlayoffs every year\nlow visibility if you don't get along with manager",
+      "current": false,
+      "date": "2026-10-08T18:04:46.033",
+      "id": "105903150",
+      "job_title": "Incident Management Engineer",
+      "location": null,
+      "pros": "great perks and discounts with other companies \naccess to AI tools (not unlimited tokens thought)\nsomewhat life work balance but gotten worse",
+      "rating": 3.0,
+      "recommends": false,
+      "title": "Great perks but concerns over stack ranking and layoffs",
+      "url": "https://www.glassdoor.com/Reviews/Employee-Review-Microsoft-E1651-RVW105903150.htm"
+    },
+    {
+      "advice": "We are a IT company, not sales company.",
+      "cons": "Too many changes of organisation structure and everyone is actually not too technical except for product engineering.",
+      "current": true,
+      "date": "2026-10-08T17:42:37.043",
+      "id": "105902960",
+      "job_title": "Program Manager",
+      "location": "Singapore",
+      "pros": "Good remuneration and friendly colleagues",
+      "rating": 3.0,
+      "recommends": false,
+      "title": "Friendly workplace but frequent organisational changes",
+      "url": "https://www.glassdoor.com/Reviews/Employee-Review-Microsoft-E1651-RVW105902960.htm"
+    }
+  ]
+}

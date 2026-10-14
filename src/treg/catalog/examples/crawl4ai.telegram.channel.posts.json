@@ -1,0 +1,56 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: telegram-channel: durov (Pavel Durov) · 20 messages on the page"
+    ]
+  },
+  "recipe": "telegram-channel",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 179,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "date": "2026-10-10T14:22:43+00:00",
+      "id": "durov/551",
+      "text": "💸 If your wallet doesn’t look like this, don’t even bother sending me money for my birthday! 🎂",
+      "url": "https://t.me/durov/551",
+      "views": "675K"
+    },
+    {
+      "date": "2026-09-11T16:04:02+00:00",
+      "id": "durov/548",
+      "text": "🤝 Telegram has become the sponsor of Codeforces — the largest competitive programming platform in the world. ⚡ CodeForces organizes over 100 coding contests every year and has 4 million contestants signed up. 🌱 Since 2010, I've supported Codeforces through the companies I started. 🆙 But this year wi…",
+      "url": "https://t.me/durov/548",
+      "views": "2.88M"
+    }
+  ]
+}

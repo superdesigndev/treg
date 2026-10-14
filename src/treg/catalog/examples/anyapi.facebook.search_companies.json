@@ -1,0 +1,35 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "companies": [
+        {
+          "category": "Sportswear Store",
+          "country": "",
+          "entityType": "PERSON_PROFILE",
+          "igFollowers": 291184682,
+          "igUsername": "nike",
+          "imageUrl": "https://scontent-sea5-1.xx.fbcdn.net/v/t39.30808-1/284964043_10159903868513445_7696353984967674128_n.jpg?stp=dst-jpg_s200x200_tt6&_nc_cat=1&ccb=1-7&_nc_sid=418b77&_nc_ohc=4wxMIwc-i9sQ7kNvwF6SoKq&_nc_o… [414 chars]",
+          "likes": 39536282,
+          "name": "Nike",
+          "pageAlias": "nike",
+          "pageId": "15087023444",
+          "verification": "BLUE_VERIFIED"
+        },
+        "… 14 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 15,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "hint": "large_result: this response is ~10 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "5be921fd-c015-4a87-b74a-e8b8b8a86285"
+}

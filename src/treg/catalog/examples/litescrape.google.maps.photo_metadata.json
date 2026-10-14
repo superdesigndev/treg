@@ -1,0 +1,27 @@
+{
+  "search_metadata": {
+    "id": "e3e55abe5c6d79fc65e8acb9",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/google/maps/photo-meta?data_id=CIABIhAAQr6KrxiC_knILBjf2RxL",
+    "created_at": "2026-09-29 13:58:42 UTC",
+    "processed_at": "2026-09-29 13:58:43 UTC",
+    "google_maps_photo_meta_url": "https://www.google.com/maps/photometa/v1?authuser=0&hl=en&gl=us&pb=%211m4%211smaps_sv.tactile%2111m2%212m1%211b1%212m2%211sen%212sus%213m3%211m2%211e10%212sCIAB…",
+    "total_time_taken": 0.423
+  },
+  "search_parameters": {
+    "data_id": "CIABIhAAQr6KrxiC_knILBjf2RxL"
+  },
+  "user": {
+    "name": "Bryan Barber",
+    "link": "https://maps.google.com/maps/contrib/114005753829907698777",
+    "image": "https://lh3.googleusercontent.com/a-/ALV-UjVPLf0Gyu4SEyq8ENXI8cKfcPKUZzGV8mdrVW4SVE6mWGCAsrSW=s48-p-k-no-mo",
+    "user_id": "114005753829907698777"
+  },
+  "location": {
+    "latitude": 40.72944593032069,
+    "longitude": -73.98683525580137,
+    "name": "La Cabra Bakery",
+    "type": "Coffee shop"
+  },
+  "date": "26-3-2026"
+}

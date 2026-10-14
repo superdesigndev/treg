@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 
 from typing import TYPE_CHECKING
 
-from .injectors import _token_from_json  # light: pure JSON/token helpers, no DB
+from .infra.upstream.injectors import _token_from_json  # light: pure JSON/token helpers, no DB
 
 # The DB/crypto/oauth deps are used at runtime ONLY in `render_grant` (the server-side grant path — the
 # CLI client never calls it). Keeping them out of the module's top-level imports lets the CLI install

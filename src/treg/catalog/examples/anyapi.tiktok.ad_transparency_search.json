@@ -1,0 +1,37 @@
+{
+  "output": {
+    "data": {
+      "ads": [
+        {
+          "advertiserName": "NIKE Retail B.V.",
+          "firstShownUtc": 1787184000,
+          "format": "2",
+          "id": "1873957502496114",
+          "image": "https://p16-common-sign.tiktokcdn.com/tos-alisg-p-0051c001-sg/ooz15CwIi8BAOosiskADF1kk78NAmBApEtnxfp~tplv-tiktokx-origin.jpeg?dr=14582&refresh_token=53f0c6a0&x-expires=1789830000&x-signature=DzSJvD14r… [281 chars]",
+          "lastShownUtc": 1788134400,
+          "status": "1",
+          "videoUrl": "https://library.tiktok.com/api/v1/cdn/1789811812/video/aHR0cHM6Ly92NzcudGlrdG9rY2RuLmNvbS84ZDc0MTgzNjUzMThhZDliMTRlOWQ3YzJkOWMxMDEzNy82YWFlYjBjYS92aWRlby90b3MvYWxpc2cvdG9zLWFsaXNnLXZlLTAwNTFjMDAxLXNnL… [593 chars]"
+        },
+        "… 11 more item(s) truncated"
+      ],
+      "hasMore": true,
+      "nextCursor": "zyJBaQjKSIHT3H3-SMpAIjc0AORMTcMOBYAegDlrjYvOKMPK5xU7UcLs1q1o3UV91SDoCG-gMuhNoa5yRlnvubNgEaAir2HvNJ6bgREQhAzr5pdkEAIzqprUirVgVNU9XaKAk3Ro2Yan8qWzdxDmtFcOK5dqFZbyGTdTC6a101SZhnnf6DipW6eb-eLFEGf8KnaSuGjb… [280 chars]",
+      "offset": 0,
+      "region": "DE",
+      "total": 5000
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0005,
+  "items": 12,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "hint": "large_result: this response is ~13 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "c936dc8b-5d5f-48e6-8643-ec08777ff7dc"
+}

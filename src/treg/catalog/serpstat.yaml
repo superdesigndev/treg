@@ -21,8 +21,10 @@ source:
 #
 #  1. JSON-RPC, NOT REST — ONE PATH FOR EVERYTHING. Every call is `POST /` against base_url
 #     (https://api.serpstat.com/v4) with a body of {"id": "1", "method": "<Procedure.method>",
-#     "params": {…}}. So every entry below shares the SAME path and differs only in `body.method`.
-#     The `method` string is the operation; getting it wrong is the only way to call the wrong report.
+#     "params": {…}}. `id` is required by Serpstat's JSON-RPC envelope (any string; echoed back);
+#     omitting it fails the call. Every entry below shares the SAME path and differs only in
+#     `body.method`. The `method` string is the operation; getting it wrong is the only way to
+#     call the wrong report.
 #  2. The token rides as `?token=…` and is INJECTED by treg — never list it as user input.
 #  3. HTTP 200 IS NOT SUCCESS. A bad token, an exhausted limit and a malformed params object all
 #     answer HTTP 200 with an `error` object in the envelope instead of `result`. treg's registry
@@ -56,19 +58,20 @@ pricing_url: https://serpstat.com/pay/
 endpoints:
   # --- Domain analytics -------------------------------------------------------------------------
   - id: serpstat.google.domain.overview
+    added: '2026-07-28'
     capability: google.domain.overview
     platform: google
     scope: any_account
     method: POST
     path: /
-    name: "Get Google domain visibility overview"
+    name: "Google overview for up to 10 domains — visibility, traffic"
     summary: "Google summary for up to 10 domains at once — visibility, keywords, traffic, ad keywords"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, note: "the JSON-RPC operation — this literal string selects the report", example: "SerpstatDomainProcedure.getDomainsInfo"}
         params: {type: object, required: true, note: "see the fields below; they go INSIDE params, not at the top level"}
-        id: {type: string, required: false, note: "JSON-RPC correlation id echoed back in the response; any string", example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.domains": {type: "array[string]", required: true, note: "1 to 10 bare domains", example: ["serpstat.com"]}
         "params.se": {type: string, required: true, note: "search database, e.g. g_us, g_uk, g_de, bing_us", example: "g_us"}
         "params.filters": {type: object, required: false, note: "optional narrowing: traff / traff_from / traff_to (estimated traffic) and visible / visible_from / visible_to (visibility score)"}
@@ -87,19 +90,20 @@ endpoints:
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/
 
   - id: serpstat.google.domain.ranked_keywords
+    added: '2026-07-28'
     capability: google.domain.ranked_keywords
     platform: google
     scope: any_account
     method: POST
     path: /
-    name: "List keywords a domain ranks for"
+    name: "Google keywords a domain ranks for — search volume, CPC"
     summary: "Google keywords a domain ranks for, with position, volume, CPC and difficulty"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, example: "SerpstatDomainProcedure.getDomainKeywords"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.domain": {type: string, required: true, note: "bare domain, no scheme", example: "serpstat.com"}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.withSubdomains": {type: boolean, required: false, note: "include subdomains in the result"}
@@ -126,19 +130,20 @@ endpoints:
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/
 
   - id: serpstat.google.domain.competitors
+    added: '2026-07-28'
     capability: google.domain.competitors
     platform: google
     scope: any_account
     method: POST
     path: /
-    name: "List Google organic competitors"
+    name: "Google organic competitors by domain — keyword overlap"
     summary: "Domains competing with a target in Google organic, ranked by keyword overlap"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, note: "SerpstatDomainProcedure.getCompetitors is the DEPRECATED spelling of this report — use the Page form below", example: "SerpstatDomainProcedure.getOrganicCompetitorsPage"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.domain": {type: string, required: true, note: "bare domain, no scheme", example: "serpstat.com"}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.size": {type: integer, required: false, note: "COST DIAL — competitors to return, 1 to 100, default 20", example: 10}
@@ -159,19 +164,20 @@ endpoints:
 
   # --- Keyword analytics ------------------------------------------------------------------------
   - id: serpstat.google.keywords.volume
+    added: '2026-07-28'
     capability: google.keywords.volume
     platform: google
     scope: any_account
     method: POST
     path: /
-    name: "Get search volume for keywords"
+    name: "Bulk Google search volume, CPC and difficulty by keyword"
     summary: "Google volume, CPC, competition and difficulty for up to 1,000 keywords per call"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, example: "SerpstatKeywordProcedure.getKeywordsInfo"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.keywords": {type: "array[string]", required: true, note: "1 to 1,000 keywords", example: ["seo"]}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.withIntents": {type: boolean, required: false, note: "attach the search intent of each keyword"}
@@ -192,19 +198,20 @@ endpoints:
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/2brcbdgmr6rcx-get-keywords-info
 
   - id: serpstat.google.keywords.ideas
+    added: '2026-07-28'
     capability: google.keywords.ideas
     platform: google
     scope: any_account
     method: POST
     path: /
-    name: "List related keyword ideas"
+    name: "Related keyword ideas by seed keyword — search volume, CPC"
     summary: "Keywords semantically related to a seed, with volume, CPC, difficulty and weight"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, example: "SerpstatKeywordProcedure.getRelatedKeywords"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.keyword": {type: string, required: true, note: "the seed keyword", example: "seo"}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.withIntents": {type: boolean, required: false, note: "default false"}
@@ -230,19 +237,20 @@ endpoints:
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/7yidbv07n5q9u-get-related-keywords
 
   - id: serpstat.google.serp.organic
+    added: '2026-07-28'
     capability: google.serp.organic
     platform: google
     scope: any_account
     method: POST
     path: /
-    name: "List organic search results for a keyword"
+    name: "Google organic results by keyword — ranking URLs, titles"
     summary: "URLs ranking in Google's top results for a keyword, with position, title and snippet"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, example: "SerpstatKeywordProcedure.getKeywordTop"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.keyword": {type: string, required: true, note: "the keyword whose SERP you want", example: "seo"}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.size": {type: integer, required: false, note: "COST DIAL — rows to return, max 1,000", example: 10}
@@ -254,6 +262,7 @@ endpoints:
         `SerpstatKeywordProcedure.getKeywordFullTop` returns the same SERP with the full element set.
         RESPONSE SHAPE: rows are nested one level deeper than elsewhere in this file — they arrive
         at `result.data.top[]`, not `result.data[]`.
+    test_request: {body: {id: "1", method: SerpstatKeywordProcedure.getKeywordTop, params: {keyword: running shoes, se: g_us, size: 3}}}
     cost:
       type: per_result
       value: 1
@@ -271,19 +280,20 @@ endpoints:
   # Every method here takes `query` + `searchType` instead of `domain` + `se`: the backlink index is
   # global, not per-country. `searchType` decides what `query` means and therefore what you get back.
   - id: serpstat.web.backlinks.summary
+    added: '2026-07-28'
     capability: web.backlinks.summary
     platform: web
     scope: any_account
     method: POST
     path: /
-    name: "Get backlink profile summary"
+    name: "Backlinks summary by domain — referring domains, authority"
     summary: "Aggregate backlink profile — external links, referring domains, IPs, domain authority"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, example: "SerpstatBacklinksProcedure.getSummaryV2"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.query": {type: string, required: true, note: "the domain to summarise", example: "serpstat.com"}
         "params.searchType": {type: string, required: false, note: "domain (default) | domain_with_subdomains", example: "domain"}
       note: "the V2 spelling is the current one — `getSummary` (no V2) is DEPRECATED and returns a different shape. Returns link counts, referring domain/IP/subnet counts, the domain authority indicator and link-type breakdown as a single OBJECT under `result.data`, not an array."
@@ -301,19 +311,20 @@ endpoints:
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
 
   - id: serpstat.web.backlinks.list
+    added: '2026-07-28'
     capability: web.backlinks.list
     platform: web
     scope: any_account
     method: POST
     path: /
-    name: "List active backlinks"
+    name: "Active backlinks by domain or URL — anchor texts"
     summary: "Currently active backlinks to a domain or URL, with source page, anchor and link type"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, example: "SerpstatBacklinksProcedure.getNewBacklinks"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.query": {type: string, required: true, note: "the target — a domain or URL, matching searchType", example: "serpstat.com"}
         "params.searchType": {type: string, required: false, note: "url | domain (default) | part_url | domain_with_subdomains", example: "domain"}
         "params.page": {type: integer, required: false, note: "1-based; default 1"}
@@ -340,19 +351,20 @@ endpoints:
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
 
   - id: serpstat.web.linking_domains.list
+    added: '2026-07-28'
     capability: web.linking_domains.list
     platform: web
     scope: any_account
     method: POST
     path: /
-    name: "List referring domains to a target"
+    name: "Referring domains by domain — authority, link counts"
     summary: "Referring domains linking to a target, with each source's link count and authority"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, example: "SerpstatBacklinksProcedure.getRefDomains"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.query": {type: string, required: true, note: "the target domain", example: "serpstat.com"}
         "params.searchType": {type: string, required: false, note: "domain (default) | domain_with_subdomains — narrower than the backlink list, which also accepts url and part_url", example: "domain"}
         "params.page": {type: integer, required: false, note: "1-based; default 1"}
@@ -375,19 +387,20 @@ endpoints:
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
 
   - id: serpstat.web.anchors.list
+    added: '2026-07-28'
     capability: web.anchors.list
     platform: web
     scope: any_account
     method: POST
     path: /
-    name: "List anchor texts linking to a target"
+    name: "Anchor texts in backlinks by domain or URL"
     summary: "Anchor texts pointing at a target, with referring-domain and link counts per phrase"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, example: "SerpstatBacklinksProcedure.getAnchors"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.query": {type: string, required: true, note: "the target", example: "serpstat.com"}
         "params.searchType": {type: string, required: true, note: "url | domain | part_url | domain_with_subdomains — REQUIRED here, unlike the sibling backlink methods where it defaults", example: "domain"}
         "params.anchor": {type: string, required: false, note: "only anchors containing this text"}
@@ -412,19 +425,20 @@ endpoints:
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
 
   - id: serpstat.web.site.top_pages
+    added: '2026-07-28'
     capability: web.site.top_pages
     platform: web
     scope: any_account
     method: POST
     path: /
-    name: "List a site's top linked pages"
+    name: "Most-linked pages by domain — backlinks, referring domains"
     summary: "List a site's most-linked-to pages, ranked by backlinks and referring domains"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, example: "SerpstatBacklinksProcedure.getTopPages"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.query": {type: string, required: true, note: "the target domain", example: "serpstat.com"}
         "params.searchType": {type: string, required: false, note: "domain (default) | domain_with_subdomains", example: "domain"}
         "params.page": {type: integer, required: false, note: "1-based; default 1"}
@@ -448,20 +462,21 @@ endpoints:
 
   # --- Account (free) ---------------------------------------------------------------------------
   - id: serpstat.account.usage
+    added: '2026-07-28'
     kind: account
     capability: account.usage
     platform: account
     scope: own_account
     method: POST
     path: /
-    name: "Get API credit balance"
+    name: "Account usage — credit limits and credits remaining"
     summary: "Check the calling account's API credit limits and how many credits are left"
     input:
       bodyType: json
       body:
         method: {type: string, required: true, example: "SerpstatLimitsProcedure.getStats"}
         params: {type: object, required: true, note: "takes no fields — send an empty object {}"}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
       note: |
         Takes no parameters but `params` must still be present as `{}`. This is the right call to
         make BEFORE any large `size` sweep, since every list method in this file is metered per row.

@@ -1,0 +1,57 @@
+{
+  "success": true,
+  "credits_remaining": 1000000,
+  "credits_charged": 1,
+  "source": {
+    "platform": "twitter",
+    "handle": "adrian_horning_",
+    "url": "https://x.com/adrian_horning_"
+  },
+  "profiles": [
+    {
+      "platform": "twitter",
+      "handle": "adrian_horning_",
+      "url": "https://x.com/adrian_horning_",
+      "confidence": 1,
+      "evidence": [
+        "source_profile",
+        "website_link"
+      ]
+    },
+    {
+      "platform": "twitter",
+      "handle": "julianisdoing",
+      "url": "https://x.com/julianisdoing",
+      "confidence": 0.9,
+      "evidence": [
+        "website_link"
+      ]
+    }
+  ],
+  "link_in_bio_urls": [],
+  "expanded_website_urls": [
+    "https://scrapecreators.com/"
+  ],
+  "partial": false,
+  "failed_link_in_bio_urls": [],
+  "failed_website_urls": [],
+  "source_linked_profile_urls": [],
+  "failed_source_linked_profile_urls": [],
+  "same_handle_candidate_urls": [
+    "https://www.instagram.com/adrian_horning_",
+    "https://www.tiktok.com/@adrian_horning_"
+  ],
+  "same_handle_search_partial": false,
+  "google_search_used": true,
+  "google_search_failed": false,
+  "google_candidate_urls": [
+    "https://www.youtube.com/@the-web-scraping-guy"
+  ],
+  "google_candidate_link_in_bio_urls": [],
+  "failed_google_candidate_link_in_bio_urls": [],
+  "verified_google_candidate_urls": [
+    "https://www.youtube.com/@the-web-scraping-guy"
+  ],
+  "failed_google_candidate_urls": [],
+  "google_verification_partial": false
+}

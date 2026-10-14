@@ -2,10 +2,10 @@
 
 A coding agent reaches treg through the CLI, and the skill tells it which commands to run. An agent
 inside ChatGPT or a Codex plugin has no CLI, and telling it to install one is where the visitor
-leaves. This module is the other door: five tools over MCP, so an agent can search the catalog, read
+leaves. This module is the other door: a small tool set over MCP, so an agent can search the catalog, read
 a price and make the call without anything being installed first.
 
-**Five tools, not 2,600.** The catalog stays *data* — one tool searches it, one reads an entry, one
+**The catalog is data.** One tool searches it, one reads an entry, and one
 calls an endpoint. Exposing every endpoint as its own MCP tool would flood the model's context with
 2,600 schemas and make the catalog unusable, which is the opposite of the point.
 
@@ -30,29 +30,44 @@ instance, and a session-bound transport would need sticky routing to be reliable
 
 Mounting has one trap, and it is silent: `app.mount()` does NOT run the mounted app's lifespan, and
 the session manager initialises its task group there — every request then fails with "Task group is
-not initialized". `api.py` must compose this module's lifespan with its own; see `mcp_lifespan`.
+not initialized". `bootstrap.py` composes this module's lifespan with its own; see `mcp_lifespan`.
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
+import logging
 import os
 from contextlib import asynccontextmanager
-from typing import Any, TypedDict
-from urllib.parse import urlsplit
+from contextvars import ContextVar
+from dataclasses import asdict, dataclass, replace
+from typing import Annotated, Any, TypedDict
+from urllib.parse import parse_qsl, urlsplit
 
 import httpx
 from mcp.server import MCPServer
+from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from mcp.server.mcpserver import Context
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import ToolAnnotations
+from mcp.shared.exceptions import MCPError
+from mcp.types import AudioContent, CallToolResult, METHOD_NOT_FOUND, TextContent, ToolAnnotations
 
-from . import catalog_store
-from .config import get_settings
+from . import analytics, audit, client_ip, hints, jsontext, oauth_providers
+from .application import catalog_find as find_app
+from .application import catalog_search as search_app
+from .application import search_experiment
+from .domain.catalog import store as catalog_store
+from .config import PUBLIC_HOST_ALIASES, get_settings
+from .feedback_contract import FeedbackCategory, FEEDBACK_DESCRIPTION, ReviewUsefulness, REVIEW_DESCRIPTION
+from .domain.catalog.stats import EndpointObservationReader
+from .infra import org_traffic
 
 # Every tool must declare what it can DO, and the review process checks these against real behaviour.
-# Read-only means it changes nothing anywhere; open-world means it can change state visible on the
-# public internet; destructive means an effect that cannot be undone.
+# Read-only means it changes nothing anywhere; open-world means what it sends leaves the caller's own
+# account (an upstream provider, the treg team, a public catalog page); destructive means an effect
+# that cannot be undone.
 _READS = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False,
                          idempotent_hint=True)
 # `call` is the honest exception, and it is honest in the strongest direction: it relays whatever the
@@ -68,22 +83,215 @@ _CALLS = ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world
 # route cheap enough to be the honest choice.
 _INTERNAL_BASE = "http://treg.internal"
 _TIMEOUT = httpx.Timeout(120.0, connect=5.0)
+_endpoint_observation_reader: EndpointObservationReader | None = None
+
+
+def configure_endpoint_observation_reader(reader: EndpointObservationReader) -> None:
+    """Bind the process reader assembled by bootstrap to both MCP catalog surfaces."""
+    global _endpoint_observation_reader
+    _endpoint_observation_reader = reader
+
+
+def clear_endpoint_observation_reader(reader: EndpointObservationReader) -> None:
+    """Unbind only the reader owned by the lifespan that is stopping."""
+    global _endpoint_observation_reader
+    if _endpoint_observation_reader is reader:
+        _endpoint_observation_reader = None
+
+
+@dataclass(frozen=True)
+class _SurfacePolicy:
+    """The small set of values that may differ between the two public MCP surfaces."""
+
+    client_name: str
+    event_source: str
+    next_call: str
+    # Renders the review or feedback invitation `/call/` decided on. Without the tools to answer
+    # it, a surface must not ask: `/call/` still decides and records, this surface does not show it.
+    invites: bool = True
+    # Catalog platforms this surface neither lists, describes nor calls.
+    hidden_platforms: frozenset[str] = frozenset()
+
+    def hides(self, ep: dict | None) -> bool:
+        return bool(ep) and ep.get("platform") in self.hidden_platforms
+
+
+_TEAM_SURFACE = _SurfacePolicy(
+    client_name="mcp",
+    event_source="mcp",
+    next_call="call(...)"
+)
+# The Claude directory listing was submitted as a server that does not use AI models to generate
+# images, video or audio; these platforms are exactly those models. AI judgment (labels and scores
+# over supplied evidence) generates none of them and stays. The team `/mcp/` keeps every platform.
+_DIRECTORY_HIDDEN_PLATFORMS = frozenset({"image-gen", "video-gen", "voice-gen", "music-gen"})
+_DIRECTORY_HIDDEN_NOTE = "this connector does not offer image, video, voice or music generation"
+_DIRECTORY_SURFACE = _SurfacePolicy(
+    client_name="claude-connector",
+    event_source="claude-connector",
+    next_call="catalog_call_read(...) or catalog_call_write(...), based on the documented method",
+    invites=False,
+    hidden_platforms=_DIRECTORY_HIDDEN_PLATFORMS,
+)
+
+
+class _StaticSurfaceCapabilities:
+    """Do not advertise or serve change subscriptions for treg's fixed MCP surface.
+
+    MCP SDK 2.0 currently installs subscriptions/listen unconditionally, then derives every
+    listChanged/resource-subscribe capability from that handler. treg never changes its tool
+    surface at runtime or publishes prompt/resource/tool events; weekly catalog changes are tool DATA, not a
+    tools/list change. Use the SDK's public middleware seam until it exposes a constructor switch —
+    never reach into its private handler registry.
+    """
+
+    async def __call__(
+        self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
+    ) -> HandlerResult:
+        if ctx.method == "subscriptions/listen":
+            raise MCPError(code=METHOD_NOT_FOUND, message="Method not found", data=ctx.method)
+
+        result = await call_next(ctx)
+        if ctx.method != "server/discover" or not isinstance(result, dict):
+            return result
+
+        result = dict(result)
+        capabilities = dict(result.get("capabilities") or {})
+        for name in ("tools", "prompts"):
+            capability = dict(capabilities.get(name) or {})
+            capability["listChanged"] = False
+            capabilities[name] = capability
+        resources = dict(capabilities.get("resources") or {})
+        resources.update({"listChanged": False, "subscribe": False})
+        capabilities["resources"] = resources
+        result["capabilities"] = capabilities
+        return result
+
+
+_HUB_TOOL_NAMES = frozenset({"hub_create", "hub_update", "hub_mine"})
+
+# OpenAI's clients: ChatGPT and its plugin reviewer send `openai-mcp/...`, Codex `codex-mcp-client/...`.
+# Their plugin review reads an agent-initiated `review`, and the review/feedback invitations in call
+# results, as collecting behavioral data for analytics. Those clients get neither; every other client
+# keeps both. `/call/` still decides and records an invitation, this surface just does not show it.
+_OPENAI_UA_PREFIXES = ("openai-mcp/", "codex-mcp-client/")
+
+
+def _is_openai_client(headers: Any) -> bool:
+    headers = headers or {}
+    ua = headers.get("user-agent") or headers.get("User-Agent") or ""
+    return ua.lower().startswith(_OPENAI_UA_PREFIXES)
+
+
+class _OpenAIClientGate:
+    """For OpenAI's clients only: no `review` tool and no review sentence in the instructions."""
+
+    async def __call__(
+        self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
+    ) -> HandlerResult:
+        result = await call_next(ctx)
+        if ctx.method not in ("tools/list", "initialize") or not _is_openai_client(
+                getattr(getattr(ctx, "request", None), "headers", None)):
+            return result
+        if ctx.method == "initialize":
+            if isinstance(result, dict):
+                return {**result, "instructions": _BASE_INSTRUCTIONS}
+            return result.model_copy(update={"instructions": _BASE_INSTRUCTIONS})
+        if isinstance(result, dict) and isinstance(result.get("tools"), list):
+            return {**result, "tools": [t for t in result["tools"]
+                                        if (t.get("name") if isinstance(t, dict) else getattr(t, "name", None))
+                                        != "review"]}
+        tools = getattr(result, "tools", None)
+        if isinstance(tools, list):
+            return result.model_copy(update={"tools": [t for t in tools if getattr(t, "name", None) != "review"]})
+        return result
+
+
+async def _hub_reader(token: str) -> tuple[str | None, str | None]:
+    """(team slug, sign-in email) of an MCP caller, for the hub's lists. (None, None) when unknown:
+    an unknown reader only sees no hub. Remembered for a minute (`hub_gate.remember`): catalog_search
+    and tools/list ask on every request."""
+    from .routers import hub_gate
+    key = hub_gate._reader_key("mcp", token)
+    if (hit := hub_gate.remembered(key)) is not None:
+        return hit
+    try:
+        async with _api(token) as client:
+            _org_id, slug, _problem = await _resolve_org(client)
+            me = await client.get("/auth/me")
+            email = _body(me).get("email") if me.status_code == 200 else None
+        who = (slug, email)
+    except Exception:  # noqa: BLE001
+        who = (None, None)
+    hub_gate.remember(key, who)
+    return who
+
+
+class _HubToolsGate:
+    """List the hub tools only to a caller who may use the hub: none while TREG_HUB_ENABLED is off,
+    and while TREG_HUB_TEAMS limits it, only to a caller acting for a listed team. A call to one
+    by anyone else already answers 404 (the /hub routes check the team); this keeps them out of
+    the list an agent reads."""
+
+    async def __call__(
+        self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
+    ) -> HandlerResult:
+        result = await call_next(ctx)
+        if ctx.method != "tools/list" or await self._visible(ctx):
+            return result
+        if isinstance(result, dict) and isinstance(result.get("tools"), list):
+            return {**result, "tools": [t for t in result["tools"]
+                                        if (t.get("name") if isinstance(t, dict) else getattr(t, "name", None))
+                                        not in _HUB_TOOL_NAMES]}
+        tools = getattr(result, "tools", None)
+        if isinstance(tools, list):
+            return result.model_copy(update={"tools": [t for t in tools if getattr(t, "name", None) not in _HUB_TOOL_NAMES]})
+        return result
+
+    @staticmethod
+    async def _visible(ctx: ServerRequestContext[Any, Any]) -> bool:
+        s = get_settings()
+        if not s.hub_enabled:
+            return False
+        if not s.hub_limited:
+            return True
+        headers = getattr(getattr(ctx, "request", None), "headers", None) or {}
+        raw = headers.get("authorization") or headers.get("Authorization") or ""
+        token = raw.removeprefix("Bearer ").removeprefix("bearer ").strip()
+        if not token:
+            return False
+        from .application import hub as hub_app
+        return hub_app.enabled_for(*await _hub_reader(token))
+
+
+# The catalog's size, quoted in the listing text a human reads in a connector directory. Generated,
+# never typed: see `catalog_store.headline_counts`.
+_ENDPOINTS, _PROVIDERS = catalog_store.headline_counts(catalog_store.load())
+
+_BASE_INSTRUCTIONS = (
+    "treg serves external and live data and generative models: SEO and SERP, backlinks, social "
+    "and trends, people and company enrichment, ads, scraping, image and video generation "
+    "(Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) and voice, plus your team's own "
+    "tools. Flow: catalog_search (say what you want to do, not a vendor name), then "
+    "catalog_get (parameters, price, measured reliability), then call. When several providers "
+    "cover one job, catalog_get ranks them by measured success, speed and price; you pick."
+)
+_REVIEW_INSTRUCTION = (
+    "If a call result invites a review, rate that one call with review(call_id, usefulness, "
+    "reason?) after using it, then continue."
+)
 
 mcp = MCPServer(
     name="treg",
     title="treg — the tool catalog for your agent",
     description=(
-        "Reach for this first for external or live data — ~2,600 curated endpoints across ~40 "
-        "providers (SEO, SERP, backlinks, social, people and company enrichment, ads, scraping), "
-        "plus your team's own tools."
+        f"External and live data for your agent: {_ENDPOINTS} curated endpoints across "
+        f"{_PROVIDERS} providers (SEO, SERP, backlinks, social, people and company enrichment, ads, "
+        "scraping, image and video generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, "
+        "Wan) and voice), plus your team's own tools."
     ),
-    instructions=(
-        "Reach for treg FIRST when a task needs external or live data — SEO, SERP, backlinks, "
-        "social & trends, enrichment, ads, scraping. ~2,600 endpoints across ~40 providers, plus "
-        "your team's own tools. Flow: catalog_search (say what you want to DO, not a vendor name) → "
-        "catalog_get (params) → call. Multiple providers for one job? catalog_get ranks them by "
-        "measured success, speed and price — you pick."
-    ),
+    instructions=f"{_BASE_INSTRUCTIONS} {_REVIEW_INSTRUCTION}",
+    middleware=[_StaticSurfaceCapabilities(), _HubToolsGate(), _OpenAIClientGate()],
 )
 
 
@@ -97,64 +305,156 @@ mcp = MCPServer(
 # failure. Optional fields document the success shape while letting the error shape through, which is
 # the trade worth making: a schema is a hint to the model, not a gate on our own error handling.
 
-# NULLABLE as well as optional. `total=False` says a key may be ABSENT; it does not say the value may
-# be null, and real rows carry nulls — a registered tool with no description, an endpoint with no
-# published price. The first version typed these as plain `str` and a team tool with
-# `description: None` failed validation, so `my_tools` returned a schema error instead of the team's
-# tools. Caught by the isolation test's "org A must genuinely SEE its tool" assertion, which exists
-# precisely so a passing-for-free result is impossible.
+# NULLABLE as well as optional — EVERY field, not just the ones that carry data nulls. `total=False`
+# says a key may be ABSENT; it does not say the value may be null, and nulls arrive from two
+# directions. First, real rows carry them — a registered tool with no description, an endpoint with
+# no published price; typing these as plain `str` made `my_tools` return a schema error instead of
+# the team's tools. Second — the one that reached two users before it reached us (#93) — the SDK
+# serializes the returned dict through a pydantic model built from this TypedDict, and that dump
+# fills every ABSENT key in as `null` in `structuredContent`. So a response that never mentions
+# `next` still ships `"next": null` to the client, and a strict client validating against the
+# advertised schema (`type: string`, no null) refuses the whole answer with -32602. `| None` turns
+# the advertised type into `anyOf [string, null]`, which is the truth of what we send.
 class SearchResult(TypedDict, total=False):
     endpoint_id: str | None
+    kind: str | None             # "hub" for a listed hub tool (docs/hub-listing-decisions.md); absent otherwise
     name: str | None
     provider: str | None
+    routed: str | None           # a routed row: what treg picks among, and where the rest are
+    job: str | None              # a judged answer: the job (capability) this row does
+    more_providers: int | None   # a judged answer, on a job's first row: vendors of it the page left out
     usd_per_call: float | None
     no_key_needed: bool | None
-    score: int | None
+    added: str | None            # the UTC day the tool reached the catalog (YYYY-MM-DD); null on a routed row
+    score: float | None          # the lexical score; null on a judged answer (no probability is shown)
+    works: float | None          # measured success rate, or null when there isn't enough evidence
+    samples: int | None          # how many real calls that rate stands on
+
+
+class SearchJob(TypedDict, total=False):
+    capability: str | None
+    providers: int | None        # vendors doing the job
+    shown: int | None            # rows of it on this page
 
 
 class SearchOut(TypedDict, total=False):
     query: str | None
     count: int | None
     total_matches: int | None
-    results: list[SearchResult]
-    hint: str
-    next: str
-    error: str
-    detail: str
+    results: list[SearchResult] | None
+    verdict: str | None          # judged answers: strong | closest | name | none | keyword (ranked by words alone)
+    reason: str | None           # on none: gap (the catalog has no tool for it)
+    jobs: list[SearchJob] | None  # the jobs on the page, page order
+    ranking_note: str | None     # set when the tie group outran what the evidence sort could weigh
+    sort: str | None             # with added_within_days or sort: best | newest, the order applied
+    added_within_days: int | None  # the window applied, after the cap
+    capped_at_days: int | None   # set when added_within_days asked for more than the maximum
+    near: list[dict] | None      # zero results only: the rows just under the gate + the words they miss
+    hint: str | None
+    next: str | None
+    error: str | None
+    detail: str | None
+
+
+class RequestOut(TypedDict, total=False):
+    id: int | None
+    status: str | None      # "received"
+    note: str | None
+    error: str | None
+    detail: str | None
+
+
+class ReviewOut(TypedDict, total=False):
+    review_id: int | None
+    status: str | None
+    detail: Any
+
+
+class FeedbackOut(TypedDict, total=False):
+    feedback_id: int | None
+    status: str | None
+    error: str | None
+    detail: Any
+
+
+class HubPublishOut(TypedDict, total=False):
+    tool_id: str | None
+    version: int | None
+    status: str | None            # live | failed
+    call: str | None              # how a caller runs it, when live
+    check: Any                    # the check run's verdict: run_id, trace, error
+    error: str | None
+    field: str | None             # on manifest_invalid: the field and the rule to fix
+    rule: str | None
+    detail: Any
+
+
+class HubMineOut(TypedDict, total=False):
+    tools: list[dict[str, Any]] | None
+    error: str | None
+    detail: Any
 
 
 class CatalogGetOut(TypedDict, total=False):
-    endpoint: dict[str, Any]        # the full catalog entry: params, cost, observed reliability
-    provider: dict[str, Any]
-    siblings: list[dict[str, Any]]  # other providers of the same capability, for comparison
-    call_template: str
-    example_response: dict[str, Any]
-    hints: list[str]
-    error: str
-    detail: str
+    endpoint: dict[str, Any] | None        # the full catalog entry: params, cost, observed reliability,
+                                           # and `reviews` (what other teams' agents said after using it)
+    provider: dict[str, Any] | None
+    siblings: list[dict[str, Any]] | None  # other providers of the same capability, for comparison
+    call_template: str | None
+    example_response: Any                  # a dict for most endpoints, an ARRAY for providers whose
+                                           # response is a list of records (brightdata datasets)
+    hints: list[str] | None
+    did_you_mean: list[str] | None         # real ids close to one that missed
+    usd_per_call: float | None             # typical-call quote (display_usd when grouped; else usd)
+    overflow_price_usd: float | None       # what a call bills when treg's own account is out and the
+                                           # overflow relay serves it instead (absent = never relayed)
+    overflow_price_unit: str | None        # "call" | "result": what one unit of that price buys
+    overflow_via: str | None               # the relay aggregator that price belongs to
+    error: str | None
+    detail: str | None
 
 
 class CallOut(TypedDict, total=False):
+    call_id: str | None
     status: int | None              # the UPSTREAM status, relayed
+    retry_after: str | None         # HTTP Retry-After, preserved where MCP cannot send that header
     endpoint_id: str | None
     replayed: bool | None           # answered from an earlier call with the same idempotency_key
     body: Any                       # the provider's response, verbatim
-    cost_usd: float
-    whose_error: str                # "treg" or "provider" — who to blame, and whether to retry
-    hint: str
-    error: str
-    detail: str
+    cost_usd: float | None
+    served_via: str | None          # "overflow:<aggregator>" when a treg-owned relay account served
+                                    # the call at ITS price (X-Treg-Served-Via); absent on a direct call
+    whose_error: str | None         # "treg" or "provider" — who to blame, and whether to retry
+    hint: str | None
+    did_you_mean: list[str] | None  # real ids close to one that missed
+    error: str | None
+    detail: str | None
+
+
+class ResourcesOut(TypedDict, total=False):
+    team: str | None
+    source: str | None
+    count: int | None
+    resources: list[dict[str, Any]] | None
+    error: str | None
+    detail: Any
+
+
+class MediaOut(CallOut, total=False):
+    """Structured metadata paired with native MCP audio content."""
 
 
 class BalanceOut(TypedDict, total=False):
     team: str | None
+    team_name: str | None           # the display name — a slug alone can't be recognised as wrong
+    identity: str | None            # WHOSE grant this is; the answer to "wrong team? whose login?"
     balance_usd: float | None
     balance_micro: int | None
     holds_micro: int | None
-    error: str
-    detail: str
-    teams: list[str]                # when a person is in several and none is active
-    hint: str
+    error: str | None
+    detail: str | None
+    teams: list[str] | None         # when a person is in several and none is active
+    hint: str | None
 
 
 class TeamTool(TypedDict, total=False):
@@ -165,21 +465,32 @@ class TeamTool(TypedDict, total=False):
 
 class MyToolsOut(TypedDict, total=False):
     team: str | None
+    team_name: str | None
+    identity: str | None
     count: int | None
-    tools: list[TeamTool]
-    error: str
-    detail: str
-    teams: list[str]
-    hint: str
+    tools: list[TeamTool] | None
+    error: str | None
+    detail: str | None
+    teams: list[str] | None
+    hint: str | None
+
+
+# The caller's address for the tool call running in this task, resolved from the inbound MCP
+# request by `_bearer` and forwarded by `_api` on every in-process call. Without it each internal
+# request would come from the ASGI transport's loopback peer, and every MCP caller would share one
+# per-IP bucket. Task-scoped, so concurrent tool calls never see each other's address.
+_caller_ip: ContextVar[str] = ContextVar("treg_mcp_caller_ip", default="")
 
 
 def _bearer(ctx: Context) -> str:
-    """The caller's token, straight from the request headers.
+    """The caller's token, straight from the request headers. Every tool starts here, so it also
+    records the caller's address (`_caller_ip`) for the internal calls that follow.
 
     Returns "" when absent — every authenticated tool then fails closed with an instruction rather
     than a stack trace, because a missing token is the single most likely first-run problem.
     """
     headers = ctx.headers or {}
+    _caller_ip.set(client_ip.from_headers(headers, None) if headers else "")
     raw = headers.get("authorization") or headers.get("Authorization") or ""
     return raw.removeprefix("Bearer ").removeprefix("bearer ").strip()
 
@@ -214,6 +525,47 @@ def _without_purchase_pointers(body: Any) -> Any:
     return scrub(body)
 
 
+def _qs_value(v: Any) -> str:
+    """One query-string value, spelled the way the WIRE spells it — not the way Python does.
+
+    `str(True)` is `"True"`, and an upstream that documents a boolean flag rejects that:
+    thecompaniesapi answers `{"rule": "boolean", "message": "The value must be a boolean"}`. The
+    caller did nothing wrong — JSON booleans are what an MCP client sends, and they arrived here as
+    real `bool`s — so the conversion is ours to get right. It bit hardest where it cost money:
+    `simplified=true` is that endpoint's FREE preview mode, so a silently-mangled flag pushed the
+    caller onto the paid path for a query they had asked to see for nothing.
+
+    Nested objects/arrays go as compact JSON rather than Python's `repr` (`{'a': 1}` with single
+    quotes is not JSON and no upstream parses it). `None` never reaches here — an unset parameter is
+    omitted from the query string entirely, which is what "no value" means over HTTP.
+    """
+    return catalog_store.wire_value(v)
+
+
+def _query_values(ep: dict | None, name: str, value: Any) -> list[str]:
+    """Structured value(s) for one query key, using the catalog's declared wire encoding."""
+    return catalog_store.query_values(ep, name, value)
+
+
+async def _observed_stats(endpoint_ids: list[str]) -> dict[str, dict]:
+    """What treg has measured across real calls to these endpoints — `{}` if it can't be read.
+
+    HTTP and both MCP surfaces use the exact same process cache assembled by bootstrap. A cold or
+    unavailable reader is optional telemetry: ranking falls back to deterministic score order.
+    """
+    if not endpoint_ids:
+        return {}
+    reader = _endpoint_observation_reader
+    if reader is None:
+        logging.getLogger("treg.mcp").warning("endpoint observation reader is not configured")
+        return {}
+    try:
+        return await reader.get_many(endpoint_ids)
+    except Exception:  # noqa: BLE001 — telemetry must never take search down
+        logging.getLogger("treg.mcp").warning("endpoint stats unavailable", exc_info=True)
+        return {}
+
+
 def _oauth_claims(token: str) -> dict | None:
     """If this is an OAuth access token we issued FOR THIS SERVER, its claims; otherwise None.
 
@@ -222,16 +574,18 @@ def _oauth_claims(token: str) -> dict | None:
     is a token whose `aud` names a different resource: the user granted that to someone else's MCP
     server, and honouring it here would spend their treg balance on a consent they never gave us.
     """
-    from . import mcp_oauth
+    from .domain.identity import mcp_oauth
 
-    return mcp_oauth.read_access_token(token, expected_audience=mcp_oauth.mcp_resource_url())
+    return (mcp_oauth.read_access_token_any(token, "v1")
+            or mcp_oauth.read_access_token_any(token, "v2"))
 
 
 def _need_token() -> dict:
+    base = get_settings().public_url.rstrip("/")
     return {
         "error": "not authenticated",
         "detail": (
-            "This MCP server needs a treg token. Get one at https://treg.superdesign.dev "
+            f"This MCP server needs a treg token. Get one at {base} "
             "(sign in, then Settings -> copy token) and set it as the TREG_TOKEN environment "
             "variable for this server."
         ),
@@ -260,14 +614,14 @@ async def _internal_auth(token: str) -> dict[str, str]:
         # a bare MCP bearer where no X-Treg-Org header can travel). If it does, surface that as
         # X-Treg-Org so `_resolve_org` takes its "pinned" path instead of asking "which team?" — the
         # exact failure a multi-team user hit pasting their key into an MCP client.
-        from . import session as _session
-        pinned = (_session.read_claims(token) or {}).get("org")
+        from .domain.identity import session as _session
+        pinned = (_session.read_identity_claims(token) or {}).get("org")
         return {"X-Treg-Token": token, "X-Treg-Org": pinned} if pinned else {"X-Treg-Token": token}
 
     from sqlmodel import select
 
-    from . import session
-    from .db import session_maker
+    from .domain.identity import session
+    from .infra.db import session_maker
     from .models import Org, User
 
     async with session_maker() as db:
@@ -279,14 +633,18 @@ async def _internal_auth(token: str) -> dict[str, str]:
         if org is None or org.suspended:
             return {"X-Treg-Token": token}
         slug = org.slug
-    return {"X-Treg-Token": session.make(user.id, ttl=120, token_version=user.token_version),
-            "X-Treg-Org": slug}
+    return {
+        "X-Treg-Token": session.make_identity(
+            user.id, token_version=user.token_version, ttl=120,
+        ),
+        "X-Treg-Org": slug,
+    }
 
 
 @asynccontextmanager
-async def _api(token: str):
+async def _api(token: str, *, client_name: str = "mcp"):
     """An in-process client bound to treg's own ASGI app, carrying the caller's identity."""
-    from .api import app  # deferred: api.py imports THIS module to mount it
+    from .api import app  # deferred: bootstrap imports THIS module while assembling api:app
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
@@ -294,16 +652,21 @@ async def _api(token: str):
         timeout=_TIMEOUT,
         # X-Treg-Client is attribution, not auth: without it every MCP-originated call lands
         # in the audit trail as client="", indistinguishable from unreported CLI traffic.
-        headers={**await _internal_auth(token), "X-Treg-Client": "mcp"},
+        headers={**await _internal_auth(token), "X-Treg-Client": client_name,
+                 **client_ip.forwarding_headers(_caller_ip.get())},
     ) as client:
         yield client
 
 
 def _body(r: httpx.Response) -> Any:
     try:
-        return r.json()
+        body = r.json()
     except ValueError:
         return r.text
+    # A lone surrogate parsed out of an upstream's JSON makes the SDK's pydantic dump raise, and the
+    # agent gets "Error serializing to JSON" with no body, call_id or cost for a call it paid for.
+    # pydantic cannot write the escape, so the surrogate becomes U+FFFD (treg/jsontext.py).
+    return jsontext.scrub_surrogates(body) if jsontext.may_hold_surrogates(r.content) else body
 
 
 async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | None, dict | None]:
@@ -339,7 +702,7 @@ async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | Non
     r = await client.get("/orgs")
     if r.status_code == 401 or me.status_code == 401:
         return None, None, {"error": "not signed in, or this token is invalid or expired",
-                            "hint": "copy a fresh token from https://treg.superdesign.dev"}
+                            "hint": f"copy a fresh token from {get_settings().public_url.rstrip('/')}"}
     if r.status_code != 200:
         return None, None, {"error": "could not read the teams for this token"}
     orgs = _body(r) or []
@@ -357,48 +720,437 @@ async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | Non
     return int(chosen["org_id"]), chosen.get("slug"), None
 
 
+async def _whose_grant(client: httpx.AsyncClient, slug: str | None, *, oauth: bool) -> dict:
+    """`{team, team_name, identity, hint}` — enough for a human to spot the WRONG team.
+
+    A slug on its own can look plausible to an agent and to the person reading over its shoulder,
+    and neither of them can tell it apart from
+    the team they meant; the first signal that anything was wrong was money missing from a balance
+    nobody had opened. The display name and the account the grant belongs to are what make the
+    mismatch legible — most of the time it is the OTHER half that differs, an OAuth consent given by
+    one login while the CLI is signed in as another, which is exactly why `treg org ls` did not list
+    the team the connector was spending from.
+
+    Best-effort by construction: this is a label on an answer that is already correct, so a failure
+    to read the display name must never cost the caller their balance.
+    """
+    out: dict[str, Any] = {"team": slug}
+    try:
+        me = _body(await client.get("/auth/me"))
+        if isinstance(me, dict) and me.get("email"):
+            out["identity"] = me["email"]
+        orgs = _body(await client.get("/orgs"))
+        for o in orgs if isinstance(orgs, list) else []:
+            if o.get("slug") == slug:
+                out["team_name"] = o.get("name")
+                break
+        else:
+            # The grant names a team this identity's own list does not — worth saying out loud
+            # rather than leaving as a silent blank.
+            if slug and isinstance(orgs, list):
+                out["hint"] = (f"this connection spends from {slug!r}, which is not among this "
+                               f"account's teams — check who authorised it")
+    except Exception:  # noqa: BLE001 — a label, never a gate
+        logging.getLogger("treg.mcp").warning("could not label the grant's team", exc_info=True)
+    if oauth:
+        # Only an OAuth grant HAS a team to move. A header token carries its own team already, and
+        # `treg mcp grants` would list nothing for it — sending that caller to a command with no
+        # answer is the "documented a feature that isn't there for you" failure in miniature.
+        out.setdefault("hint", "to spend from a different team, the human who authorised this "
+                               "connection runs `treg mcp grants` then `treg mcp use-team "
+                               "<grant> <team>` — no need to reconnect")
+    return out
+
+
 # --------------------------------------------------------------------------------------------
 # The catalog — read straight from memory. Still credentialed: the transport challenges first.
 # --------------------------------------------------------------------------------------------
 
 @mcp.tool(
     description=(
-        "Search ~2,600 API endpoints by WHAT YOU WANT TO DO, not by vendor. Use plain task words: "
-        "'work email', 'backlinks for a domain', 'tiktok comments', 'keyword search volume'. "
-        "Returns each endpoint's id, provider, price per call, and whether treg can serve it "
-        "without you owning an API key. Call this FIRST when a task needs data or an API you have "
-        "no key for."
+        f"Search {_ENDPOINTS} API endpoints by WHAT YOU WANT TO DO. Use plain task words: "
+        "'work email', 'backlinks for a domain', 'tiktok comments', 'keyword search volume'; a "
+        "provider or platform name lists what it offers. Returns each endpoint's id, provider, price "
+        "per call, and whether treg can serve it without you owning an API key. Read `verdict`: "
+        "strong = these do it; closest = nearest, check catalog_get; none = not in the catalog, file "
+        "catalog_request. Use it when a task needs data or an API you have no key for. "
+        "Recently added tools: added_within_days=N (1-365; 30 is a good default) keeps tools added "
+        "in the last N days, sort='newest' lists newest first; with either, query may be empty."
     ),
     annotations=_READS,
     structured_output=True
 )
-async def catalog_search(query: str, limit: int = 8) -> SearchOut:
+async def catalog_search(query: str, ctx: Context, limit: int = 8, added_within_days: int | None = None,
+                         sort: str | None = None) -> SearchOut:
+    return await _catalog_search_impl(query, limit, ctx=ctx, surface=_TEAM_SURFACE,
+                                      added_within_days=added_within_days, sort=sort)
+
+
+async def _search_identity(ctx: Context | None) -> tuple[str | None, int | None, str | None]:
+    """`(caller_key, org_id, email)` for the discovery experiment — best effort, never a gate.
+
+    The key deals the arm and needs only the token. The team and email are what a later `call`
+    (audit.CallRecord) carries, so they are what the outcome joins on; resolving them costs the
+    same in-process round trips `balance` makes, and only while the experiment is on.
+    """
+    token = _bearer(ctx) if ctx is not None else ""
+    key = search_experiment.caller_key(token)
+    if not token:
+        return key, None, None
+    try:
+        async with _api(token) as client:
+            org_id, _slug, _problem = await _resolve_org(client)
+            me = await client.get("/auth/me")
+            email = _body(me).get("email") if me.status_code == 200 else None
+            return key, org_id, email
+    except Exception:  # noqa: BLE001 — attribution, never a reason to fail a search
+        logging.getLogger("treg.mcp").warning("search experiment: identity unresolved", exc_info=True)
+        return key, None, None
+
+
+async def _catalog_search_impl(
+    query: str, limit: int = 8, *, ctx: Context | None = None, surface: _SurfacePolicy,
+    added_within_days: int | None = None, sort: str | None = None,
+) -> SearchOut:
+    """The use case is `application.catalog_search`: the shipped ranker's page, the discovery
+    experiment's say over it, and the records. This layer resolves who is asking (the hub's lists
+    and the experiment's log both need it) and shapes the rows for an agent. With a recently-added
+    option the page is `search_app.added_page` instead: a date list, no judge, no experiment."""
     cat = catalog_store.load()
-    ranked, total = catalog_store.search(query, cat, max(1, min(limit, 25)))
+    limit = max(1, min(limit, 25))
+    try:
+        opts = catalog_store.added_options(added_within_days, sort)
+    except catalog_store.AddedOptionError as e:
+        return {"error": "invalid_option", "detail": str(e)}
+    # While a list limits the hub, only a caller in it (by team or by email) sees hub rows.
+    hub_slug = hub_email = None
+    if get_settings().hub_enabled and get_settings().hub_limited:
+        token = _bearer(ctx) if ctx is not None else ""
+        if token:
+            hub_slug, hub_email = await _hub_reader(token)
+    from .routers.catalog import _provider_display
+    if opts.active:
+        page = await search_app.added_page(
+            query, cat, limit, opts, caller=search_app.Caller(hub_slug=hub_slug, hub_email=hub_email),
+            observed=_observed_stats)
+    else:
+        page = await search_app.search(
+            query, limit, cat=cat, source=surface.event_source,
+            caller=search_app.Caller(hub_slug=hub_slug, hub_email=hub_email),
+            observed=_observed_stats, identify=lambda: _search_identity(ctx), provider_display=_provider_display)
+    withheld = 0
+    if surface.hidden_platforms:
+        rows = [(ep, score) for ep, score in page.rows if not surface.hides(ep)]
+        withheld = len(page.rows) - len(rows)
+        page = replace(page, rows=rows, total=max(len(rows), page.total - withheld), jobs=[
+            j for j in page.jobs if j.capability.split(".", 1)[0] not in surface.hidden_platforms])
+    ranked, stats, hidden, total, _steering = page.rows, page.stats, page.hidden, page.total, page.steering
+    if page.arm is not None:
+        analytics.capture(page.caller_key or "anonymous", "catalog_search_judged", {
+            "source": surface.event_source, "mode": page.log["mode"], "arm": page.arm,
+            "baseline_total": total, "baseline_empty": page.lexical_empty,
+            "differs": page.log.get("differs"), "judge_ms": page.log.get("judge_ms"),
+            "judge_error": page.log.get("judge_error"), "judge_tokens_in": page.log.get("judge_tokens_in"),
+            "verdict": page.log.get("verdict"), "shown": len(ranked)})
     results = []
     for ep, score in ranked:
-        cost = cat.cost_view(ep.get("cost"), ep.get("provider")) or {}
+        obs = stats.get(ep["id"]) or {}
+        cost = (ep.get("cost") if ep.get("kind") == "hub" else cat.cost_view(ep.get("cost"), ep.get("provider"))) or {}
         results.append({
             "endpoint_id": ep["id"],
+            **({"kind": "hub"} if ep.get("kind") == "hub" else {}),
             "name": ep.get("name") or (ep.get("summary") or "")[:70],
             "provider": ep.get("provider"),
-            "usd_per_call": cost.get("usd"),
+            # a generated routed row: treg picks among N children (own keys first, then cheapest
+            # per hit) and names the one that served — the children follow in this list
+            **({"routed": f"treg picks among {len(ep.get('routed_children') or [])} providers"
+                          + (f" — {hidden[ep['id']]} more than shown here; catalog_get('{ep['id']}') ranks them all"
+                             if ep["id"] in hidden else " below")}
+               if _steering and ep.get("kind") == "routed" else {}),
+            # a judged answer: the job this row does, and (on a job's first row) how many of its
+            # vendors the page left out; no probability is shown
+            **({"job": ep["capability"]} if page.judged and ep.get("capability") else {}),
+            **({"more_providers": hidden[ep["id"]]} if page.judged and ep["id"] in hidden else {}),
+            "usd_per_call": cat.advertised_usd(cost),
             # BOTH halves of tier 4's own truth, not just the price side: `platform_eligible` says
             # the row is priceable, `platform_key_for` says this deploy actually holds an enabled
             # key. Eligible-but-keyless rows used to advertise `no_key_needed: true` here and then
             # refuse at call time — an agent-facing lie the CLI's /access line never told.
-            "no_key_needed": cat.platform_eligible(ep)
-                             and bool(get_settings().platform_key_for(ep.get("provider"))),
-            "score": score,
+            # a routed row is servable when any child is: its children carry the keys
+            "no_key_needed": ep.get("kind") == "hub" or cat.platform_eligible(ep) and (
+                ep.get("kind") == "routed"
+                and any(get_settings().platform_key_for((cat.by_id.get(i) or {}).get("provider"))
+                        for i in ep.get("routed_children") or [])
+                or bool(get_settings().platform_key_for(ep.get("provider")))),
+            "added": ep.get("added") or None,
+            "score": None if page.judged else score,
+            # The measured half of the answer, at the step where the agent is choosing. Without it
+            # the "your agent picks on evidence" story only came true at catalog_get — one endpoint
+            # at a time, after the shortlist had already been cut blind.
+            "works": obs.get("ok_rate"),
+            "samples": obs.get("samples") or 0,
         })
     out = {"query": query, "count": len(results), "total_matches": total, "results": results}
-    if not results:
-        out["hint"] = (
-            f"nothing matches all of {query!r} — drop a word, or try a different way of saying the task"
-        )
+    if opts.active:
+        out["sort"] = "newest" if opts.newest or not query.strip() else "best"
+        if opts.days is not None:
+            out["added_within_days"] = opts.days
+        if opts.capped:
+            out["capped_at_days"] = catalog_store.ADDED_DAYS_MAX
+        within = f" in the last {opts.days} days" if opts.days else ""
+        out["hint"] = ((f"added_within_days is capped at {catalog_store.ADDED_DAYS_MAX}. " if opts.capped else "")
+                       + (f"{total} tools added{within}" + (f" match {query!r}" if query.strip() else "")
+                          if results else f"no tool{' matching ' + repr(query) if query.strip() else ''} "
+                                          f"was added{within or ' yet'}"))
+        if results:
+            out["next"] = ("catalog_get(endpoint_id) for parameters and the exact price, then "
+                           f"{surface.next_call}")
+        return out
+    if page.verdict is not None:
+        out["verdict"] = page.verdict
+        if page.verdict == find_app.NONE:
+            out["reason"] = page.reason
+        out["jobs"] = [asdict(j) for j in page.jobs]
+    if page.tie_truncated and not page.judged:
+        # No silent caps: past this many equally-scoring rows the evidence sort never saw the rest,
+        # so the tail is ordered by nothing in particular and must not read as a ranked answer.
+        out["ranking_note"] = (f"{query!r} matches too broadly to rank on measured reliability past "
+                               f"the first {catalog_store.RERANK_BAND} equally-scoring rows — "
+                               f"add a word to narrow it")
+    if withheld and not results:
+        # Every match was a generation tool this surface hides: say so, not "nothing matches" or
+        # "file a request", either of which sends the agent looking for what is withheld on purpose.
+        for key in ("verdict", "reason", "jobs", "ranking_note"):
+            out.pop(key, None)
+        out["hint"] = _DIRECTORY_HIDDEN_NOTE
+        return out
+    if page.verdict == find_app.NONE:
+        # a catalog gap, read by the judge: the answer that stops an agent re-querying is to say
+        # so and name the way to file it - no near misses, whose advice is the opposite. Where the
+        # judge read which platform the task needs, the gap is that platform's: it is in the
+        # catalog, this job on it is not.
+        label = (cat.platforms.get(page.platform) or {}).get("label", page.platform) if page.platform else None
+        has = f"the catalog has {label} but no tool for" if label else "the catalog has no tool for"
+        out["hint"] = (f"{has} {query!r}; file it with catalog_request(capability=...) — "
+                       "requests steer which provider gets added next")
+    elif not results:
+        # the zero-result answer carries the rows that JUST missed the gate and which words they
+        # missed — the caller is an LLM, and told exactly what to drop it re-queries correctly
+        near = [n for n in catalog_store.near_misses(query, cat)
+                if not surface.hides(cat.by_id.get(n["endpoint_id"]))]
+        if near:
+            out["near"] = near
+            first = near[0]
+            out["hint"] = (
+                f"nothing matches {query!r} closely enough. Nearest: {first['endpoint_id']} "
+                f"matches {', '.join(first['matches'])} but not {', '.join(first['missing'])} — "
+                "drop the unmatched words, or say the task differently. If the catalog genuinely "
+                "lacks it, file it with catalog_request(capability=...)"
+            )
+        else:
+            out["hint"] = (
+                f"nothing matches {query!r} closely enough — try different task words. "
+                "If the catalog genuinely lacks it, file it with catalog_request(capability=...) — "
+                "requests steer which provider gets added next"
+            )
     else:
-        out["next"] = "catalog_get(endpoint_id) for parameters and the exact price, then call(...)"
+        hint = _verdict_hint(page, cat)
+        if hint:
+            out["hint"] = hint
+        out["next"] = ("catalog_get(endpoint_id) for parameters and the exact price, then "
+                       f"{surface.next_call}")
     return out
+
+
+def _verdict_hint(page, cat: catalog_store.Catalog) -> str | None:
+    """What to do next with a v2 answer, in one line; the facts (each job's vendor count, what the
+    page left out) are on `jobs` and the rows. A fitting job: where the rest of its vendors are
+    (`catalog_get` on its routed row where it has one, else on its first row, which lists the
+    others doing the job). Nearest matches: check before relying on one. A name: search by the
+    job. A keyword page: ranked by words alone."""
+    if page.verdict is None:
+        return None
+    if page.verdict == find_app.STRONG and page.jobs:
+        first = page.jobs[0]
+        parent = catalog_store.routed_parent(cat, first.capability)
+        at = parent["id"] if parent is not None else next(
+            ep["id"] for ep, _ in page.rows if ep.get("capability") == first.capability)
+        rest = ", ".join(j.capability for j in page.jobs[1:4])
+        return (f"{first.capability} does this; catalog_get('{at}') ranks every provider of it"
+                + (f". Also on this page: {rest}" if rest else ""))
+    if page.verdict == find_app.CLOSEST:
+        return "no exact fit; read catalog_get before relying on one of these, or say the task differently"
+    if page.verdict == find_app.NAME:
+        return "this names a provider or platform; search by the job to compare providers"
+    if page.verdict == find_app.KEYWORD:
+        return "ranked by keywords only" + (" (the judge did not answer)" if page.reason and page.reason != find_app.NOT_TASK else "")
+    return None
+
+
+@mcp.tool(
+    description=(
+        "The catalog doesn't have what you need? File a tool request — one sentence saying what "
+        "capability or provider is missing. Requests are the demand signal that decides which "
+        "provider gets added next. Use AFTER catalog_search comes up empty, not instead of it."
+    ),
+    # A harmless write (nothing upstream, nothing spent), but the text goes to the treg team: open world.
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                                idempotent_hint=False),
+    structured_output=True
+)
+async def catalog_request(capability: str, ctx: Context, note: str = "") -> RequestOut:
+    return await _catalog_request_impl(
+        capability, ctx, note, surface=_TEAM_SURFACE,
+    )
+
+
+@mcp.tool(
+    description=FEEDBACK_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                                idempotent_hint=False),
+    structured_output=True,
+)
+async def feedback(
+    category: FeedbackCategory, message: str, ctx: Context,
+    call_ids: list[str] | None = None, endpoint_id: str | None = None,
+) -> FeedbackOut:
+    return await _feedback_impl(category, message, ctx, call_ids, endpoint_id, surface=_TEAM_SURFACE)
+
+
+@mcp.tool(
+    description=REVIEW_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                                idempotent_hint=False),
+    structured_output=True,
+)
+async def review(
+    call_id: str, usefulness: ReviewUsefulness, ctx: Context, reason: str | None = None,
+) -> ReviewOut:
+    return await _review_impl(call_id, usefulness, ctx, reason, surface=_TEAM_SURFACE)
+
+
+async def _review_impl(
+    call_id: str, usefulness: ReviewUsefulness, ctx: Context, reason: str | None,
+    *, surface: _SurfacePolicy,
+) -> ReviewOut:
+    token = _bearer(ctx)
+    api_context = (_api(token) if surface is _TEAM_SURFACE
+                   else _api(token, client_name=surface.client_name))
+    async with api_context as client:
+        response = await client.post("/reviews", json={
+            "call_id": call_id, "usefulness": usefulness, "reason": reason,
+        })
+    return _body(response)
+
+
+async def _feedback_impl(
+    category: FeedbackCategory, message: str, ctx: Context,
+    call_ids: list[str] | None, endpoint_id: str | None, *, surface: _SurfacePolicy,
+) -> FeedbackOut:
+    token = _bearer(ctx)
+    api_context = (_api(token) if surface is _TEAM_SURFACE
+                   else _api(token, client_name=surface.client_name))
+    async with api_context as client:
+        response = await client.post("/feedback", json={
+            "category": category, "message": message, "call_ids": call_ids or [],
+            "endpoint_id": endpoint_id,
+        })
+    return _body(response)
+
+
+HUB_CREATE_DESCRIPTION = (
+    "Publish a hub tool: a tool made of other tools, in your team's name. Send the four files as "
+    "fields: `manifest` (recipe.json: name, summary, inputs, uses, pricing, and either steps or "
+    "\"script\": \"run.js\"), `script` (run.js, script recipes only), `check` (check.json: sample "
+    "inputs + the output fields the check must find), `readme` (markdown). treg validates them, runs "
+    "check.json ONCE for real on your balance, and the version goes live on pass. On a 422 the answer "
+    "names the exact field and rule to fix. Before you write the manifest: every tool in `uses` must "
+    "exist - a catalog id (catalog_search) or one of your team's own tools; a credential the team does "
+    "not hold yet is NEVER hard-coded into a script - register it first (treg secret add / tool add), "
+    "then name the tool. `pricing`: a steps recipe declares {\"price_usd\": N}, a fixed price per "
+    "successful run; a script declares {\"max_price_usd\": N} and sets its price in run.js with "
+    "ctx.charge(usd, note) (a fee, per result, a margin on ctx.call's cost_usd), never above N. "
+    "Callers run the result with call(tool_id, params)."
+)
+HUB_UPDATE_DESCRIPTION = (
+    "Publish a NEW VERSION of a hub tool your team owns: the same four files as hub_create. The "
+    "newest live version serves by default; `<tool_id>@N` pins an older one for 30 days."
+)
+HUB_MINE_DESCRIPTION = "Your team's hub tools: every version with its status, price, uses, and the check verdict."
+
+
+@mcp.tool(
+    description=HUB_CREATE_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                                idempotent_hint=False),
+    structured_output=True,
+)
+async def hub_create(
+    manifest: dict[str, Any], check: dict[str, Any], readme: str, ctx: Context,
+    script: str | None = None,
+) -> HubPublishOut:
+    return await _hub_publish_impl(ctx, "POST", "/hub/tools",
+                                   {"manifest": manifest, "script": script, "check": check, "readme": readme})
+
+
+@mcp.tool(
+    description=HUB_UPDATE_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                                idempotent_hint=False),
+    structured_output=True,
+)
+async def hub_update(
+    tool_id: str, manifest: dict[str, Any], check: dict[str, Any], readme: str, ctx: Context,
+    script: str | None = None,
+) -> HubPublishOut:
+    return await _hub_publish_impl(ctx, "PUT", f"/hub/tools/{tool_id}",
+                                   {"manifest": manifest, "script": script, "check": check, "readme": readme})
+
+
+async def _hub_publish_impl(ctx: Context, method: str, path: str, body: dict) -> HubPublishOut:
+    token = _bearer(ctx)
+    async with _api(token) as client:
+        r = await client.request(method, path, json=body, timeout=240.0)
+    payload = _body(r)
+    if r.status_code in (200, 201):
+        return {"tool_id": payload.get("tool_id"), "version": payload.get("version"),
+                "status": payload.get("status"), "call": payload.get("call"), "check": payload.get("check")}
+    detail = payload.get("detail", payload) if isinstance(payload, dict) else payload
+    out: HubPublishOut = {"error": f"http_{r.status_code}", "detail": detail}
+    if isinstance(detail, dict) and detail.get("error") == "manifest_invalid":
+        out.update({"error": "manifest_invalid", "field": detail.get("field"), "rule": detail.get("rule")})
+    return out
+
+
+@mcp.tool(
+    description=HUB_MINE_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False,
+                                idempotent_hint=True),
+    structured_output=True,
+)
+async def hub_mine(ctx: Context) -> HubMineOut:
+    token = _bearer(ctx)
+    async with _api(token) as client:
+        r = await client.get("/hub/tools/mine")
+    payload = _body(r)
+    if r.status_code == 200:
+        return {"tools": payload}
+    return {"error": f"http_{r.status_code}", "detail": payload.get("detail", payload) if isinstance(payload, dict) else payload}
+
+
+
+async def _catalog_request_impl(
+    capability: str, ctx: Context, note: str = "", *, surface: _SurfacePolicy
+) -> RequestOut:
+    """Relays to POST /tool-requests so the rate limiting, field caps and attribution live in one
+    place; the bearer (when the session has one) turns into who-asked on the stored row."""
+    token = _bearer(ctx)
+    api_context = (_api(token) if surface is _TEAM_SURFACE
+                   else _api(token, client_name=surface.client_name))
+    async with api_context as client:
+        r = await client.post("/tool-requests", json={
+            "capability": capability, "note": note, "source": surface.event_source})
+    return _body(r)
 
 
 @mcp.tool(
@@ -412,15 +1164,48 @@ async def catalog_search(query: str, limit: int = 8) -> SearchOut:
     structured_output=True
 )
 async def catalog_get(endpoint_id: str, ctx: Context) -> CatalogGetOut:
+    return await _catalog_get_impl(endpoint_id, ctx, surface=_TEAM_SURFACE)
+
+
+async def _catalog_get_impl(
+    endpoint_id: str, ctx: Context, *, surface: _SurfacePolicy
+) -> CatalogGetOut:
     """Goes through the HTTP route rather than the store: that route attaches the observed
     reliability figures and the capability siblings, and those come from the database."""
+    ep = catalog_store.load().by_id.get(endpoint_id)
+    if surface.hides(ep):
+        return {"error": f"{endpoint_id} is not available here: {_DIRECTORY_HIDDEN_NOTE}"}
+    if ep is not None and catalog_store.paused(ep):
+        # `provider` is a dict in this schema, so the typed code rides in `error`, the words in `detail`.
+        return {"error": "provider_paused", "detail": oauth_providers.paused_message(ep["provider"])}
     token = _bearer(ctx)
-    async with _api(token) as client:
+    api_context = (_api(token) if surface is _TEAM_SURFACE
+                   else _api(token, client_name=surface.client_name))
+    async with api_context as client:
         r = await client.get(f"/catalog/endpoints/{endpoint_id}")
     if r.status_code == 404:
+        cat = catalog_store.load()
         return {"error": f"unknown endpoint {endpoint_id!r}",
-                "hint": "use catalog_search to find the right id"}
-    return _body(r)
+                # Naming the near miss, not just the tool to go back to. An id one segment off is
+                # the common failure — and the loop breaks at its FIRST step, so an agent that only
+                # hears "search again" re-runs the same search and re-derives the same wrong id.
+                "hints": [catalog_store.unknown_id_hint(endpoint_id, cat),
+                          "or use catalog_search to find the right id"],
+                "did_you_mean": catalog_store.near_ids(endpoint_id, cat)}
+    out = _body(r)
+    # Lifted onto the result so the schema advertises it: the direct price is not the only price
+    # a "free" endpoint can bill (found 2026-09-08 - apollo.people.search, catalog cost free, billed
+    # $0.002 through the overflow relay 8,810 times in a day and nothing on this surface said so).
+    ep = (out.get("endpoint") or {}) if isinstance(out, dict) else {}
+    if isinstance(ep, dict):
+        # Same quote catalog_search already leads with, so an agent that inspects by id
+        # does not fall back to the per-record `cost.usd` slice on a grouped credit.
+        out["usd_per_call"] = catalog_store.load().advertised_usd(ep.get("cost") or {})
+        if ep.get("overflow_price_usd") is not None:
+            out["overflow_price_usd"] = ep["overflow_price_usd"]
+            out["overflow_price_unit"] = ep.get("overflow_price_unit")
+            out["overflow_via"] = ep.get("overflow_via")
+    return out
 
 
 # --------------------------------------------------------------------------------------------
@@ -433,7 +1218,9 @@ async def catalog_get(endpoint_id: str, ctx: Context) -> CatalogGetOut:
         "ARRAY of task objects for providers like DataForSEO that expect one) and the query string "
         "for a GET. Either a CATALOG endpoint by its id (from catalog_search), or "
         "one of THIS TEAM'S own tools as '<tool-name>/<path>' (from my_tools) — e.g. "
-        "'render/v1/services'. treg injects the credential server-side and relays the provider's "
+        "'render/v1/services' — or a HUB tool by its id '<team-slug>.<name>' (a maker's tool made of "
+        "tools; `params` are its inputs, see catalog_get for them). treg injects the credential "
+        "server-side and relays the provider's "
         "response unchanged, so you never hold an API key. Catalog calls on treg's key are metered "
         "from the team's prepaid balance; a team's own tool is never metered. Tell the human the "
         "price (from catalog_get) before calling anything that costs more than a cent.\n\n"
@@ -443,14 +1230,50 @@ async def catalog_get(endpoint_id: str, ctx: Context) -> CatalogGetOut:
         "nothing the second time; the result carries `replayed: true`. Use a NEW key (or none) for "
         "genuinely new work, even when the parameters are identical: repeating a search to see "
         "what changed is a new call, not a retry, and reusing the key would hand you the old answer. "
-        "Reusing one key for a DIFFERENT request is refused rather than answered."
+        "Reusing one key for a DIFFERENT request is refused rather than answered.\n\n"
+        "For requests `params` can't express, the explicit slots mirror the CLI's flags: `query` "
+        "is ALWAYS the query string (a list value expands to repeated keys), `body` is ALWAYS the "
+        "request body (object/array → JSON; a STRING is sent raw, with `content_type` naming what "
+        "it is — sniffed as application/json when it parses as JSON), and `headers` adds upstream "
+        "request headers an endpoint needs per-call (e.g. Google Ads' login-customer-id); "
+        "injected credentials always win over them. Use `query` + `body` together for endpoints "
+        "that split a POST across both (Bright Data's ?dataset_id=… + array body). Giving `body` "
+        "implies POST. For multipart requests, put ordinary fields in `form` and files in "
+        "`uploads` as objects with name, filename, content_type and base64 data.\n\n"
+        "Query values are sent the way HTTP spells them: booleans as `true`/`false`, nested "
+        "objects as compact JSON. A null query value is OMITTED from the query string — if an "
+        "upstream distinguishes an absent parameter from an empty one, send the empty string "
+        "explicitly rather than null."
     ),
     annotations=_CALLS,
     structured_output=True
 )
 async def call(endpoint_id: str, params: dict | list | None = None,
                method: str | None = None, idempotency_key: str | None = None,
+               query: dict | None = None, body: dict | list | str | None = None,
+               headers: dict | None = None, content_type: str | None = None,
+               form: dict | None = None, uploads: list[dict] | None = None,
+               authorization_method: str | None = None,
                ctx: Context = None) -> CallOut:  # type: ignore[assignment]
+    return await _call_impl(
+        endpoint_id, params=params, method=method, idempotency_key=idempotency_key,
+        query=query, body=body, headers=headers, content_type=content_type,
+        form=form, uploads=uploads,
+        authorization_method=authorization_method, ctx=ctx,
+        catalog_only=False, surface=_TEAM_SURFACE, allowed_methods=None,
+    )
+
+
+@org_traffic.mcp_adapter("call")
+async def _call_impl(endpoint_id: str, params: dict | list | None = None,
+                     method: str | None = None, idempotency_key: str | None = None,
+                     query: dict | None = None, body: dict | list | str | None = None,
+                     headers: dict | None = None, content_type: str | None = None,
+                     form: dict | None = None, uploads: list[dict] | None = None,
+                     authorization_method: str | None = None,
+                     ctx: Context = None, *, catalog_only: bool,
+                     allowed_methods: frozenset[str] | None,
+                     surface: _SurfacePolicy) -> CallOut:
     token = _bearer(ctx) if ctx else ""
     if not token:
         return _need_token()
@@ -459,19 +1282,126 @@ async def call(endpoint_id: str, params: dict | list | None = None,
     # first and falls back to a catalog id, so an org tool always wins over the catalog. Pre-checking
     # the catalog and refusing anything absent would have made `my_tools` a list of things the agent
     # could see and never call — which is how this gap was found.
-    ep = catalog_store.load().by_id.get(endpoint_id)
-    if ep is None and "/" not in endpoint_id:
+    cat = catalog_store.load()
+    ep = cat.by_id.get(endpoint_id)
+    if surface.hides(ep):
+        return {"error": f"{endpoint_id} is not available here: {_DIRECTORY_HIDDEN_NOTE}",
+                "endpoint_id": endpoint_id}
+    # A hub tool (a maker's tool made of tools, `<team-slug>.<name>[@N]`) is neither a catalog id
+    # nor `<tool>/<path>`; the server resolves it last on /call/. Let it through as a POST with
+    # the inputs as the JSON body - the agent walk of the case study found this verb refusing a
+    # live hub id before the server could answer.
+    from .application import hub as hub_app
+    is_hub = (ep is None and not catalog_only and hub_app.enabled()
+              and hub_app.is_hub_id_shape(endpoint_id))
+    if ep is None and not is_hub and (catalog_only or "/" not in endpoint_id):
+        near = catalog_store.near_ids(endpoint_id, cat)
         return {"error": f"unknown endpoint {endpoint_id!r}",
-                "hint": "use catalog_search for a catalog id, or my_tools then "
-                        "'<tool-name>/<path>' for one of this team's own tools"}
+                "hint": ("did you mean " + ", ".join(near) + "?" if near else
+                         "use catalog_search for a catalog endpoint id" if catalog_only else
+                         "use catalog_search for a catalog id, or my_tools then "
+                         "'<tool-name>/<path>' for one of this team's own tools"),
+                "did_you_mean": near}
 
-    method = (method or (ep.get("method") if ep else None) or "GET").upper()
+    # `body` implies POST — curl's convention, and the CLI's: catalog endpoints reject a method
+    # mismatch, so making `body` just work beats asking the caller to repeat what the catalog knows.
+    method = (method or (ep.get("method") if ep else None)
+              or ("POST" if (body is not None or is_hub) else "GET")).upper()
+    if allowed_methods is not None and method not in allowed_methods:
+        expected = "GET, HEAD or OPTIONS" if "GET" in allowed_methods else "POST, PUT, PATCH or DELETE"
+        return {"error": f"{endpoint_id} is {method}; this tool accepts only {expected} endpoints",
+                "endpoint_id": endpoint_id,
+                "hint": ("use catalog_call_read for safe-method endpoints" if "GET" not in allowed_methods
+                         else "use catalog_call_write for unsafe-method endpoints")}
+    reads_query = method in ("GET", "HEAD", "DELETE")
     # A LIST is a legitimate body, not a mistake. DataForSEO — the largest provider in the catalog at
     # 217 endpoints — takes an ARRAY of task objects on every one of its `live` POST routes, so a
     # dict-only signature made all of them uncallable. Found by trying one rather than by reading the
     # type. Query strings still need key/value pairs, so a list is only meaningful as a body.
     args = params if params is not None else {}
-    async with _api(token) as client:
+
+    # ---- assemble the real request: query string, body, extra headers ------------------------
+    # `params` keeps its method-based role (query on GET, body on POST); the explicit `query` and
+    # `body` slots express the shapes that role can't — a POST that needs BOTH a body and a query
+    # string (Bright Data's ?dataset_id=… + array body), a raw non-JSON body, an extra upstream
+    # header. When an explicit slot is given, `params` must not also claim the same position —
+    # refused loudly rather than silently merged, because a silent merge sends a wrong request.
+    if body is not None and params is not None and not reads_query:
+        return {"error": "give the request body as `body` OR `params`, not both",
+                "endpoint_id": endpoint_id}
+    if query is not None and params is not None and reads_query:
+        return {"error": "give the query string as `query` OR `params`, not both",
+                "endpoint_id": endpoint_id}
+    if reads_query and isinstance(args, list):
+        return {"error": "this endpoint takes query parameters, so `params` must be an "
+                         "object, not a list", "endpoint_id": endpoint_id}
+    if (form is not None or uploads) and (body is not None or (params is not None and not reads_query)):
+        return {"error": "give a multipart request as `form`/`uploads`, not together with body or params",
+                "endpoint_id": endpoint_id}
+
+    # Query pairs as a LIST of tuples so repeated keys (?tag=a&tag=b) survive — a dict keeps only
+    # the last. A list VALUE in `query` expands to repeated keys. And an inline `?a=b` inside a
+    # passthrough URL would be DROPPED by httpx whenever params= is passed — the upstream then
+    # answers with default/wrong data and NO error (the CLI guards the same gotcha) — so it is
+    # pulled out and merged.
+    query_pairs: list[tuple[str, str]] = []
+    if "?" in endpoint_id:
+        endpoint_id, _, inline = endpoint_id.partition("?")
+        query_pairs += parse_qsl(inline, keep_blank_values=True)
+    for src in (args if (reads_query and isinstance(args, dict)) else {}, query or {}):
+        for k, v in src.items():
+            if v is not None:
+                query_pairs += [(k, encoded) for encoded in _query_values(ep, k, v)]
+
+    the_body = body if body is not None else (args if not reads_query else None)
+    # Caller headers relay to the upstream exactly as the CLI's --header does (Google Ads'
+    # login-customer-id is the canonical need) — with treg's own auth/routing headers filtered so
+    # the tool's semantics stay unambiguous: the bearer on the MCP request IS the identity, and
+    # idempotency travels via its own argument. Injected credentials always win server-side.
+    # `x-treg-meta` joins the filtered set: caller tags decide who gets billed and budgeted, so they
+    # must come from the TRANSPORT (the builder's backend, below) and never from a tool argument the
+    # model fills in — a model that omits it mid-chain drops that spend out of its user's invoice.
+    extra_headers = {k: str(v) for k, v in (headers or {}).items()
+                     if k.lower() not in ("x-treg-token", "x-treg-org", "authorization",
+                                          "idempotency-key", "x-treg-meta",
+                                          "x-treg-authorization-method")}
+    if authorization_method:
+        extra_headers["X-Treg-Authorization-Method"] = authorization_method
+    if isinstance(the_body, str):
+        # A raw string body travels as-is. Content-Type: explicit wins, else sniff JSON — the
+        # CLI's rule, because upstreams that require `application/json` reject a JSON body
+        # labelled text/plain.
+        ctype = content_type
+        if ctype is None:
+            try:
+                json.loads(the_body)
+                ctype = "application/json"
+            except ValueError:
+                ctype = "text/plain"
+        extra_headers["content-type"] = ctype
+
+    # Keep the existing team-MCP call shape intact for integrations/tests that wrap `_api(token)`. The V2
+    # connector opts into its own attribution header without changing the established surface.
+    api_context = (_api(token) if surface is _TEAM_SURFACE
+                   else _api(token, client_name=surface.client_name))
+    async with api_context as client:
+        # Resolve the team the same way `balance`/`my_tools` do BEFORE spending anything: a
+        # multi-team identity token otherwise reaches /call and bounces off its raw
+        # "choose an org (send X-Treg-Org)" 400 — a header hint an MCP caller cannot act on.
+        # `_resolve_org` honours the pinned/active team and, when there genuinely is no answer,
+        # NAMES the teams so the agent can ask the human — found live on the first
+        # multi-team dashboard token pasted into an MCP client.
+        _, slug, problem = await _resolve_org(client)
+        if problem:
+            return problem
+        if slug:
+            extra_headers["X-Treg-Org"] = slug
+        # Relay the caller tags off the MCP transport, the same way `_api` forwards the caller's
+        # address. A builder proxying MCP sets this header once per session on their own HTTP
+        # client; the model never sees it, so it cannot be forgotten or invented.
+        inbound_meta = (ctx.headers or {}).get("x-treg-meta") or (ctx.headers or {}).get("X-Treg-Meta")
+        if inbound_meta:
+            extra_headers["X-Treg-Meta"] = str(inbound_meta)
         if idempotency_key:
             # Straight through to the header the API already honours. Deliberately the CALLER's key
             # and never derived from the request: two identical searches an hour apart are new work,
@@ -479,16 +1409,60 @@ async def call(endpoint_id: str, params: dict | list | None = None,
             # cache wearing an idempotency badge.
             client.headers["Idempotency-Key"] = idempotency_key[:200]
         # The SAME route the CLI and the proxy use, so the tool ACL, deny rules, both daily caps,
-        # the balance reserve and the settle all happen exactly once, in one place.
-        if method in ("GET", "HEAD", "DELETE"):
-            if isinstance(args, list):
-                return {"error": "this endpoint takes query parameters, so `params` must be an "
-                                 "object, not a list", "endpoint_id": endpoint_id}
-            r = await client.request(method, f"/call/{endpoint_id}", params=args)
-        else:
-            r = await client.request(method, f"/call/{endpoint_id}", json=args)
+        # the balance reserve and the settle all happen exactly once, in one place. params= is
+        # only passed when there ARE pairs — see the inline-query gotcha above.
+        kw: dict[str, Any] = {}
+        if extra_headers:
+            kw["headers"] = extra_headers
+        if query_pairs:
+            kw["params"] = query_pairs
+        if the_body is not None:
+            if isinstance(the_body, str):
+                kw["content"] = the_body.encode()
+            else:
+                kw["json"] = the_body
+        if form is not None or uploads:
+            parts: list[tuple[str, tuple]] = []
+            for name, value in (form or {}).items():
+                values = value if isinstance(value, list) else [value]
+                for item in values:
+                    if isinstance(item, (dict, list)):
+                        rendered = json.dumps(item, separators=(",", ":"))
+                    elif isinstance(item, bool):
+                        rendered = str(item).lower()
+                    else:
+                        rendered = str(item)
+                    parts.append((str(name), (None, rendered)))
+            total = 0
+            for upload in uploads or []:
+                if not isinstance(upload, dict):
+                    return {"error": "each upload must be an object", "endpoint_id": endpoint_id}
+                name = str(upload.get("name") or "").strip()
+                filename = str(upload.get("filename") or "upload.bin").strip()
+                mime = str(upload.get("content_type") or "application/octet-stream").strip()
+                encoded = upload.get("data_base64")
+                if not name or not isinstance(encoded, str):
+                    return {"error": "each upload needs name and data_base64",
+                            "endpoint_id": endpoint_id}
+                try:
+                    data = base64.b64decode(encoded, validate=True)
+                except (ValueError, binascii.Error):
+                    return {"error": f"upload {name!r} is not valid base64",
+                            "endpoint_id": endpoint_id}
+                total += len(data)
+                if total > 30 * 1024 * 1024:
+                    return {"error": "multipart uploads may total at most 30 MiB",
+                            "endpoint_id": endpoint_id}
+                parts.append((name, (filename, data, mime)))
+            kw["files"] = parts
+        route = "/catalog/call" if catalog_only else "/call"
+        r = await client.request(method, f"{route}/{endpoint_id}", **kw)
 
     out: dict[str, Any] = {"status": r.status_code, "endpoint_id": endpoint_id, "body": _body(r)}
+    if retry_after := r.headers.get("Retry-After"):
+        out["retry_after"] = retry_after
+    if call_id := r.headers.get("X-Treg-Call-Id"):
+        out["call_id"] = call_id
     if r.headers.get("X-Treg-Idempotent-Replay") == "true":
         out["replayed"] = True
         out["hint"] = ("this is the stored answer from the earlier call with the same "
@@ -503,6 +1477,31 @@ async def call(endpoint_id: str, params: dict | list | None = None,
             out["cost_usd"] = round(int(spent) / 1_000_000, 6)
         except ValueError:
             pass
+    # The relay disclosure. `/call/` says it in a header; an MCP client never sees headers, so
+    # until this line an agent reading `cost_usd` on a "free" endpoint had no way to explain the
+    # charge to the human (the header exists precisely so the price can be attributed).
+    served_via = r.headers.get("X-Treg-Served-Via")
+    if served_via:
+        out["served_via"] = served_via
+        if served_via.startswith("overflow:") and not out.get("hint"):
+            provider = endpoint_id.split(".", 1)[0]
+            out["hint"] = (f"served through the overflow relay ({served_via.removeprefix('overflow:')}) "
+                           f"at its real price because treg's {provider} account is out; cost_usd is "
+                           f"what the relay billed, not the catalog's direct price")
+    if (200 <= r.status_code < 300 and not out.get("hint") and not out.get("replayed")
+            and surface.invites and not _is_openai_client(ctx.headers if ctx else None)):
+        # /call/ decides whether to invite (application/call/invite.py) and records that it did;
+        # this surface only renders the header into the single hint slot.
+        kind = r.headers.get("X-Treg-Hint")
+        if kind == "review" and out.get("call_id"):
+            out["hint"] = hints.review_hint(out["call_id"])
+        elif kind == "feedback":
+            out["hint"] = hints.HINT
+    if routed := r.headers.get("X-Treg-Routed-Tool"):
+        out["routed_tool"] = routed
+        out["suggestion"] = (f"{routed} does this job: treg picks the provider, falls back when one "
+                             "fails or misses, and charges only the answer. Prefer it next time unless "
+                             "you need options only this provider has.")
     if r.status_code == 402:
         # States the fact and stops. No link, and `topup_url` is stripped from the relayed body, so
         # nothing on this path points a user at a payment page.
@@ -516,11 +1515,132 @@ async def call(endpoint_id: str, params: dict | list | None = None,
         # Scoped to the MCP path deliberately. `/call/`'s 402 still carries `topup_url` for the CLI
         # and the dashboard, where no such policy applies and the shortcut is genuinely useful.
         out["body"] = _without_purchase_pointers(out.get("body"))
-        out["hint"] = "the team's prepaid balance is not enough for this call"
+        if not out.get("replayed"):
+            out["hint"] = "the team's prepaid balance is not enough for this call"
     elif r.status_code >= 400:
         # Whose fault it was matters to an agent deciding whether to retry elsewhere.
         out["whose_error"] = "treg" if r.headers.get("X-Treg-Error") else "provider"
     return out
+
+
+@org_traffic.mcp_adapter("call_media")
+async def _call_media_impl(
+    endpoint_id: str, *, body: dict | list | str, headers: dict | None,
+    idempotency_key: str | None, ctx: Context, catalog_only: bool,
+    surface: _SurfacePolicy,
+) -> Annotated[CallToolResult, MediaOut]:
+    """Call one media-producing endpoint and preserve its bytes as native MCP audio."""
+    token = _bearer(ctx)
+    if not token:
+        problem = _need_token()
+        return CallToolResult(
+            content=[TextContent(type="text", text=json.dumps(problem))],
+            structuredContent=problem, isError=True,
+        )
+    extra_headers = {k: str(v) for k, v in (headers or {}).items()
+                     if k.lower() not in ("x-treg-token", "x-treg-org", "authorization",
+                                          "idempotency-key", "x-treg-meta")}
+    api_context = (_api(token) if surface is _TEAM_SURFACE
+                   else _api(token, client_name=surface.client_name))
+    async with api_context as client:
+        _, slug, problem = await _resolve_org(client)
+        if problem:
+            return CallToolResult(
+                content=[TextContent(type="text", text=json.dumps(problem))],
+                structuredContent=problem, isError=True,
+            )
+        if slug:
+            extra_headers["X-Treg-Org"] = slug
+        inbound_meta = (ctx.headers or {}).get("x-treg-meta") or (ctx.headers or {}).get("X-Treg-Meta")
+        if inbound_meta:
+            extra_headers["X-Treg-Meta"] = str(inbound_meta)
+        if idempotency_key:
+            client.headers["Idempotency-Key"] = idempotency_key[:200]
+        kw: dict[str, Any] = {"headers": extra_headers} if extra_headers else {}
+        if isinstance(body, str):
+            kw["content"] = body.encode()
+        else:
+            kw["json"] = body
+        route = "/catalog/call" if catalog_only else "/call"
+        response = await client.post(f"{route}/{endpoint_id}", **kw)
+    metadata: dict[str, Any] = {"status": response.status_code, "endpoint_id": endpoint_id}
+    if retry_after := response.headers.get("Retry-After"):
+        metadata["retry_after"] = retry_after
+    if call_id := response.headers.get("X-Treg-Call-Id"):
+        metadata["call_id"] = call_id
+    if response.headers.get("X-Treg-Idempotent-Replay") == "true":
+        metadata["replayed"] = True
+    if spent := response.headers.get("X-Treg-Cost-Micro"):
+        try:
+            metadata["cost_usd"] = round(int(spent) / 1_000_000, 6)
+        except ValueError:
+            pass
+    mime = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if 200 <= response.status_code < 300 and mime.startswith("audio/"):
+        return CallToolResult(
+            content=[AudioContent(type="audio", data=base64.b64encode(response.content).decode(),
+                                  mimeType=mime)],
+            structuredContent=metadata,
+        )
+    metadata["body"] = _body(response)
+    return CallToolResult(
+        content=[TextContent(type="text", text=json.dumps(metadata, ensure_ascii=False, default=str))],
+        structuredContent=metadata, isError=response.status_code >= 400,
+    )
+
+
+@mcp.tool(
+    description=("Call an audio-producing endpoint through the same treg proxy as `call`, returning "
+                 "the successful binary response as native MCP AudioContent. Use this for Fish "
+                 "Audio TTS; use `call` for JSON endpoints."),
+    annotations=_CALLS,
+)
+async def call_media(
+    endpoint_id: str, body: dict | list | str, ctx: Context,
+    headers: dict | None = None, idempotency_key: str | None = None,
+) -> Annotated[CallToolResult, MediaOut]:
+    return await _call_media_impl(
+        endpoint_id, body=body, headers=headers, idempotency_key=idempotency_key,
+        ctx=ctx, catalog_only=False, surface=_TEAM_SURFACE,
+    )
+
+
+async def _resources_list_impl(
+    provider: str, kind: str, ctx: Context, *, surface: _SurfacePolicy,
+) -> ResourcesOut:
+    token = _bearer(ctx)
+    if not token:
+        return _need_token()
+    api_context = (_api(token) if surface is _TEAM_SURFACE
+                   else _api(token, client_name=surface.client_name))
+    async with api_context as client:
+        org_id, slug, problem = await _resolve_org(client)
+        if problem:
+            return problem
+        request_headers = {"X-Treg-Org": slug or ""}
+        response = await client.get(
+            f"/orgs/{org_id}/provider-resources",
+            params={k: v for k, v in {"provider": provider, "kind": kind}.items() if v},
+            headers=request_headers,
+        )
+        source = response.headers.get("X-Treg-Resource-Source", "platform")
+    body = _body(response)
+    if response.status_code != 200:
+        return {"error": "could not list provider resources", "detail": body}
+    resources = body if isinstance(body, list) else []
+    return {"team": slug, "source": source, "count": len(resources), "resources": resources}
+
+
+@mcp.tool(
+    description=("List durable resources created with treg-provided provider credentials for the "
+                 "current team. Filter Fish voices with provider='fishaudio', kind='voice'."),
+    annotations=_READS,
+    structured_output=True,
+)
+async def resources_list(
+    ctx: Context, provider: str = "", kind: str = "",
+) -> ResourcesOut:
+    return await _resources_list_impl(provider, kind, ctx, surface=_TEAM_SURFACE)
 
 
 @mcp.tool(
@@ -532,19 +1652,26 @@ async def call(endpoint_id: str, params: dict | list | None = None,
     structured_output=True
 )
 async def balance(ctx: Context) -> BalanceOut:
+    return await _balance_impl(ctx, surface=_TEAM_SURFACE)
+
+
+async def _balance_impl(ctx: Context, *, surface: _SurfacePolicy) -> BalanceOut:
     token = _bearer(ctx)
     if not token:
         return _need_token()
-    async with _api(token) as client:
+    api_context = (_api(token) if surface is _TEAM_SURFACE
+                   else _api(token, client_name=surface.client_name))
+    async with api_context as client:
         org_id, slug, problem = await _resolve_org(client)
         if problem:
             return problem
         r = await client.get(f"/orgs/{org_id}/balance", headers={"X-Treg-Org": slug or ""})
+        whose = await _whose_grant(client, slug, oauth=_oauth_claims(token) is not None)
     body = _body(r)
     if r.status_code != 200:
         return {"error": "could not read the balance", "detail": body}
     return {
-        "team": slug,
+        **whose,
         "balance_usd": round((body.get("balance_micro") or 0) / 1_000_000, 6),
         "balance_micro": body.get("balance_micro"),
         "holds_micro": body.get("holds_micro"),
@@ -569,16 +1696,198 @@ async def my_tools(ctx: Context) -> MyToolsOut:
         if problem:
             return problem
         r = await client.get("/tools", headers={"X-Treg-Org": slug or ""})
+        whose = await _whose_grant(client, slug, oauth=_oauth_claims(token) is not None)
     body = _body(r)
     if r.status_code != 200:
         return {"error": "could not list the team's tools", "detail": body}
     tools = body if isinstance(body, list) else body.get("tools", [])
     return {
-        "team": slug,
+        **whose,
         "count": len(tools),
         "tools": [{"name": t.get("name"), "base_url": t.get("base_url"),
                    "description": t.get("description")} for t in tools],
     }
+
+
+# --------------------------------------------------------------------------------------------
+# Directory-reviewed catalog surface. Additive: the team `mcp` server above stays byte-for-byte
+# compatible for clients that rely on `call` + `my_tools`; this server deliberately cannot resolve
+# arbitrary team-tool paths.
+# --------------------------------------------------------------------------------------------
+
+_DIRECTORY_SEARCH = ToolAnnotations(
+    title="Search Treg Catalog",
+    read_only_hint=True, destructive_hint=False, open_world_hint=False, idempotent_hint=True,
+)
+_DIRECTORY_GET = ToolAnnotations(
+    title="Get Catalog Endpoint",
+    read_only_hint=True, destructive_hint=False, open_world_hint=False, idempotent_hint=True,
+)
+_DIRECTORY_OPEN_READ = ToolAnnotations(
+    title="Call a Read Endpoint",
+    read_only_hint=True, destructive_hint=False, open_world_hint=True, idempotent_hint=False,
+)
+_DIRECTORY_WRITE = ToolAnnotations(
+    title="Call a Write Endpoint",
+    read_only_hint=False, destructive_hint=True, open_world_hint=True, idempotent_hint=False,
+)
+_DIRECTORY_BALANCE = ToolAnnotations(
+    title="Check Treg Balance",
+    read_only_hint=True, destructive_hint=False, open_world_hint=False, idempotent_hint=True,
+)
+_DIRECTORY_ADDITIVE = ToolAnnotations(
+    title="Request a Catalog Capability",
+    read_only_hint=False, destructive_hint=False, open_world_hint=False, idempotent_hint=False,
+)
+
+directory_mcp = MCPServer(
+    name="treg",
+    title="Treg",
+    description=(
+        "Search and call Treg's curated catalog of external data APIs, with price and reliability "
+        "information available before a call."
+    ),
+    instructions=(
+        "This connector exposes treg's catalog only. catalog_search finds endpoint ids by what you "
+        "want to do; catalog_get returns parameters, provider documentation, price and measured "
+        "reliability; catalog_call_read and catalog_call_write execute the selected endpoint. When "
+        "several providers cover one job, catalog_get ranks them by measured success, speed and "
+        "price; you pick."
+    ),
+    middleware=[_StaticSurfaceCapabilities()],
+)
+
+# `MCPServer(...)` calls `logging.basicConfig(level="INFO")` (the library's default), so the HTTP
+# clients' INFO line, "HTTP Request: GET <full url>", reached the production log for every provider
+# call. A provider that takes its key in the query string (SerpAPI, Datagma, Twelve Data, ...) had
+# that key written there, next to the caller's search values. treg's own lines keep INFO.
+for _name in ("httpx", "httpx2", "httpcore", "httpcore2"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
+
+
+@directory_mcp.tool(
+    name="catalog_search",
+    title="Search Treg Catalog",
+    description=(
+        "Searches Treg's catalog by capability or task words and returns matching endpoint ids, "
+        "providers, prices and measured reliability; `verdict` says whether they do the task "
+        "(strong), are the nearest (closest) or the catalog has no tool for it (none). "
+        "added_within_days (1-365) keeps tools added in the last N days and sort='newest' lists "
+        "newest first; with either, query may be empty."
+    ),
+    annotations=_DIRECTORY_SEARCH,
+    structured_output=True,
+)
+async def directory_catalog_search(query: str, ctx: Context, limit: int = 8,
+                                   added_within_days: int | None = None,
+                                   sort: str | None = None) -> SearchOut:
+    return await _catalog_search_impl(query, limit, ctx=ctx, surface=_DIRECTORY_SURFACE,
+                                      added_within_days=added_within_days, sort=sort)
+
+
+@directory_mcp.tool(
+    name="catalog_get",
+    title="Get Catalog Endpoint",
+    description=(
+        "Returns one catalog endpoint's parameters, provider API documentation, price, example "
+        "response and measured reliability, plus comparable providers for the same capability."
+    ),
+    annotations=_DIRECTORY_GET,
+    structured_output=True,
+)
+async def directory_catalog_get(endpoint_id: str, ctx: Context) -> CatalogGetOut:
+    return await _catalog_get_impl(endpoint_id, ctx, surface=_DIRECTORY_SURFACE)
+
+
+@directory_mcp.tool(
+    name="catalog_call_read",
+    title="Call a Read Endpoint",
+    description=(
+        "Calls a catalog endpoint whose documented HTTP method is GET, HEAD or OPTIONS. The "
+        "endpoint must come from catalog_search; catalog_get supplies its provider API documentation, "
+        "parameters and price. A successful call may deduct that displayed price from the team's "
+        "Treg balance."
+    ),
+    annotations=_DIRECTORY_OPEN_READ,
+    structured_output=True,
+)
+async def directory_catalog_call_read(
+    endpoint_id: str,
+    params: dict | None = None,
+    idempotency_key: str | None = None,
+    query: dict | None = None,
+    headers: dict | None = None,
+    authorization_method: str | None = None,
+    ctx: Context = None,  # type: ignore[assignment]
+) -> CallOut:
+    return await _call_impl(
+        endpoint_id, params=params, idempotency_key=idempotency_key, query=query, headers=headers,
+        authorization_method=authorization_method,
+        ctx=ctx, catalog_only=True, surface=_DIRECTORY_SURFACE,
+        allowed_methods=frozenset({"GET", "HEAD", "OPTIONS"}),
+    )
+
+
+@directory_mcp.tool(
+    name="catalog_call_write",
+    title="Call a Write Endpoint",
+    description=(
+        "Calls a catalog endpoint whose documented HTTP method is POST, PUT, PATCH or DELETE. The "
+        "endpoint must come from catalog_search; catalog_get supplies its provider API documentation, "
+        "parameters and price. The provider may create, change or delete external data, and a "
+        "successful call may deduct the displayed price from the team's Treg balance."
+    ),
+    annotations=_DIRECTORY_WRITE,
+    structured_output=True,
+)
+async def directory_catalog_call_write(
+    endpoint_id: str,
+    params: dict | list | None = None,
+    idempotency_key: str | None = None,
+    query: dict | None = None,
+    body: dict | list | str | None = None,
+    headers: dict | None = None,
+    content_type: str | None = None,
+    form: dict | None = None,
+    uploads: list[dict] | None = None,
+    authorization_method: str | None = None,
+    ctx: Context = None,  # type: ignore[assignment]
+) -> CallOut:
+    return await _call_impl(
+        endpoint_id, params=params, idempotency_key=idempotency_key, query=query, body=body,
+        headers=headers, content_type=content_type, form=form, uploads=uploads,
+        authorization_method=authorization_method,
+        ctx=ctx, catalog_only=True,
+        surface=_DIRECTORY_SURFACE,
+        allowed_methods=frozenset({"POST", "PUT", "PATCH", "DELETE"}),
+    )
+
+
+@directory_mcp.tool(
+    name="balance",
+    title="Check Treg Balance",
+    description="Returns the connected team's Treg balance, in-flight holds, team and identity.",
+    annotations=_DIRECTORY_BALANCE,
+    structured_output=True,
+)
+async def directory_balance(ctx: Context) -> BalanceOut:
+    return await _balance_impl(ctx, surface=_DIRECTORY_SURFACE)
+
+
+@directory_mcp.tool(
+    name="catalog_request",
+    title="Request a Catalog Capability",
+    description=(
+        "Records a request for a provider or capability that is missing from Treg's catalog. "
+        "This creates a request in Treg and does not call an external provider or spend balance."
+    ),
+    annotations=_DIRECTORY_ADDITIVE,
+    structured_output=True,
+)
+async def directory_catalog_request(capability: str, ctx: Context, note: str = "") -> RequestOut:
+    return await _catalog_request_impl(
+        capability, ctx, note, surface=_DIRECTORY_SURFACE,
+    )
 
 
 # --------------------------------------------------------------------------------------------
@@ -603,6 +1912,13 @@ def _allowed_hosts() -> list[str]:
     public = urlsplit(get_settings().public_url).netloc
     if public:
         hosts += [public, public.split(":")[0]]
+    # Every name the hosted service has answered to, symmetrically. A .mcp.json
+    # pointed at either domain keeps working whichever one public_url currently names, which is
+    # what makes an env-var rollback lossless (a treg.to config must survive a revert too).
+    hosts += list(PUBLIC_HOST_ALIASES)
+    # The SDK compares Host values EXACTLY, and `example.com:443` is a valid spelling of the
+    # default-port form some clients send — so every bare https hostname also allows its :443 twin.
+    hosts += [f"{h}:443" for h in hosts if ":" not in h and h not in ("localhost", "127.0.0.1")]
     hosts += ["localhost", "127.0.0.1", "treg.internal"]
     hosts += [h.strip() for h in os.environ.get("TREG_MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]
     # a bare host and host:port are different header values, so allow the common local ports too
@@ -610,7 +1926,7 @@ def _allowed_hosts() -> list[str]:
     return sorted(dict.fromkeys(hosts))
 
 
-def _allowed_origins() -> list[str]:
+def _allowed_origins(resource_version: str = "v1") -> list[str]:
     """Which `Origin` headers the transport will answer to.
 
     `"*"` is NOT a wildcard here — the SDK compares origins literally, and only a `:*` port suffix is
@@ -626,11 +1942,40 @@ def _allowed_origins() -> list[str]:
     public = get_settings().public_url.rstrip("/")
     if public:
         origins.append(public)
+    origins += [f"https://{h}" for h in PUBLIC_HOST_ALIASES]
+    # Exact comparison again: allow the explicit-default-port spelling of every https origin.
+    origins += [f"{o}:443" for o in origins
+                if o.startswith("https://") and ":" not in o.removeprefix("https://")]
     origins += [f"http://localhost:{p}" for p in ("8000", "18790")]
     origins += [f"http://127.0.0.1:{p}" for p in ("8000", "18790")]
     origins += ["http://localhost", "http://127.0.0.1"]
+    if resource_version == "v2":
+        # Claude's hosted custom/directory connector UI. Exact, never a wildcard; the transport
+        # still rejects every other browser origin. This permission belongs to V2 only: adding the
+        # directory connector must not widen the team MCP surface.
+        origins += ["https://claude.ai"]
+    elif resource_version != "v1":
+        raise ValueError(f"unknown MCP resource version {resource_version!r}")
     origins += [o.strip() for o in os.environ.get("TREG_MCP_ALLOWED_ORIGINS", "").split(",") if o.strip()]
     return sorted(dict.fromkeys(origins))
+
+
+class NormalizeDirectoryMCPPath:
+    """Make the directory transport accept its URL with or without the final slash.
+
+    Starlette mounts match ``/mcp/v2/`` but not the exact no-slash path. Hosted Claude removes the
+    slash before its first POST, so the request otherwise falls through to the team ``/mcp``
+    mount, discovers V1 OAuth metadata, obtains a V1 token, and then receives a 404. Rewriting the
+    ASGI path before route matching keeps both spellings on the same V2 transport and audience.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("path") == "/mcp/v2":
+            scope = dict(scope, path="/mcp/v2/", raw_path=b"/mcp/v2/")
+        return await self.app(scope, receive, send)
 
 
 class RequireAuthForProtectedTools:
@@ -653,37 +1998,47 @@ class RequireAuthForProtectedTools:
     everything below.
     """
 
-    def __init__(self, app):
+    def __init__(self, app, *, resource_version: str = "v1"):
         self.app = app
+        self.resource_version = resource_version
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or scope.get("method") != "POST":
             return await self.app(scope, receive, send)
 
-        body, more = b"", True
-        while more:
+        chunks: list[bytes] = []
+        consumed_messages = []
+        body_complete = False
+        while True:
             msg = await receive()
-            body += msg.get("body", b"")
-            more = msg.get("more_body", False)
+            consumed_messages.append(msg)
+            if msg["type"] != "http.request":
+                break
+            chunks.append(msg.get("body", b""))
+            if not msg.get("more_body", False):
+                body_complete = True
+                break
+        body = b"".join(chunks)
 
-        verdict = self._auth_verdict(scope, body)
+        # An incomplete request ended by a real disconnect has nothing useful to authenticate, and
+        # challenging it would try to write to a socket that is already gone. Let the transport see
+        # the exact request/disconnect sequence instead.
+        verdict = self._auth_verdict(scope, body) if body_complete else None
         if verdict is not None:
             return await self._challenge(send, invalid=(verdict == "invalid"))
 
-        # The body was consumed to inspect it, so hand the transport a receive() that replays it.
-        replayed = False
-
+        # The body was consumed to inspect it, so replay the messages we actually received. Once
+        # those are exhausted, delegate to the original receive() — only the ASGI server knows when
+        # the client disconnected. Fabricating http.disconnect here cancels long-lived requests such
+        # as MCP 2026-07-28 subscriptions/listen before they can start their response.
         async def replay():
-            nonlocal replayed
-            if replayed:
-                return {"type": "http.disconnect"}
-            replayed = True
-            return {"type": "http.request", "body": body, "more_body": False}
+            if consumed_messages:
+                return consumed_messages.pop(0)
+            return await receive()
 
         return await self.app(scope, replay, send)
 
-    @staticmethod
-    def _auth_verdict(scope, body: bytes) -> str | None:
+    def _auth_verdict(self, scope, body: bytes) -> str | None:
         """None = pass through. "missing" = no credential. "invalid" = a DEAD access token.
 
         **Eager, not lazy.** Every treg tool needs auth, so there is nothing to browse anonymously —
@@ -722,19 +2077,21 @@ class RequireAuthForProtectedTools:
                 break
         if not token:
             return "missing"
-        from . import mcp_oauth
+        from .domain.identity import mcp_oauth
         if mcp_oauth.looks_like_access_token(token) and \
-                mcp_oauth.read_access_token(token, expected_audience=mcp_oauth.mcp_resource_url()) is None:
+                mcp_oauth.read_access_token_any(token, self.resource_version) is None:
             return "invalid"
         return None             # a live access token, or a per-org token the tool validates itself
 
-    @staticmethod
-    async def _challenge(send, *, invalid: bool = False) -> None:
+    async def _challenge(self, send, *, invalid: bool = False) -> None:
+        from .domain.identity import mcp_oauth
+
         base = get_settings().public_url.rstrip("/")
-        meta = f"{base}/.well-known/oauth-protected-resource"
+        suffix = "/mcp/v2" if self.resource_version == "v2" else ""
+        meta = f"{base}/.well-known/oauth-protected-resource{suffix}"
         # The spec SHOULDs a `scope` in the challenge so a client requests the right scopes up front,
         # least-privilege, without a second round-trip. These match scopes_supported in the metadata.
-        scope = "treg:catalog treg:call treg:read"
+        scope = " ".join(mcp_oauth.scopes_for_resource(self.resource_version))
         if invalid:
             # RFC 6750 §3.1: the expired/invalid-token challenge. `error="invalid_token"` is the
             # machine-readable cue on which an OAuth client runs its refresh grant instead of
@@ -759,7 +2116,47 @@ class RequireAuthForProtectedTools:
         await send({"type": "http.response.body", "body": json.dumps(payload).encode()})
 
 
-def build_mcp_app():
+class NoTransformResponses:
+    """Stamp `Cache-Control: no-store, no-transform` on every MCP response.
+
+    Production sits behind Render's managed edge — not an account of ours, and there is no
+    dashboard to configure — and that edge Brotli-compresses responses on the way out. A compliant
+    client decodes `br` fine, but at least one real MCP client stack (httpx + brotlicffi, issue #93)
+    dies mid-decode on large compressed bodies, and the failure mode is the worst one available: the
+    RPC hangs until the client's own timeout, minutes after the upstream answered in seconds.
+
+    `no-transform` is the standard way for an origin to tell an intermediary "do not re-encode this"
+    (RFC 9111 §5.2.2.6) — and Render's edge IGNORES it (issue #100: `content-encoding: br` arrived
+    right next to this header in production). The header stays because it is correct and costs
+    nothing, but the fix that actually works is compressing at the origin — see `build_mcp_app`:
+    an edge does not re-encode a response that already carries `Content-Encoding`. `no-store` rides
+    along because these responses are per-caller and priced — nothing on this path should ever be
+    served from a cache.
+
+    An ASGI wrapper rather than a header in api.py's middleware so that WHEREVER this app is mounted
+    — production, or a test building its own transport — the header ships. Same lesson as the auth
+    wrapper below: wrapping only one composition path is how the other one silently diverges.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_stamped(message):
+            if message["type"] == "http.response.start":
+                headers = [(k, v) for k, v in message.get("headers", [])
+                           if k.lower() != b"cache-control"]
+                headers.append((b"cache-control", b"no-store, no-transform"))
+                message = dict(message, headers=headers)
+            await send(message)
+
+        return await self.app(scope, receive, send_stamped)
+
+
+def build_mcp_app(*, server: MCPServer | None = None, resource_version: str = "v1"):
     """A fresh ASGI app for the MCP transport.
 
     A factory rather than a bare module-level value because each call builds its own session
@@ -772,21 +2169,42 @@ def build_mcp_app():
     would need sticky routing; `json_response` because these are request/response tools with nothing
     to stream, and skipping SSE framing is most of the speed.
     """
-    transport = mcp.streamable_http_app(
+    server = server or mcp
+    if (server is mcp and resource_version != "v1") or \
+            (server is directory_mcp and resource_version != "v2"):
+        raise ValueError("the MCP server and resource version do not name the same public surface")
+    transport = server.streamable_http_app(
         streamable_http_path="/", stateless_http=True, json_response=True,
         transport_security=TransportSecuritySettings(
             enable_dns_rebinding_protection=True,
             allowed_hosts=_allowed_hosts(),
-            allowed_origins=_allowed_origins(),
+            allowed_origins=_allowed_origins(resource_version),
         ),
     )
     # Wrapped HERE, not around the module-level value, so a caller that builds its own app gets the
     # same thing production runs. The first version wrapped only the module-level app, and the tests
     # — which build a fresh transport per test — silently exercised an unprotected server.
-    return RequireAuthForProtectedTools(transport)
+    #
+    # GZip at the ORIGIN is the fix for edge re-compression (issue #100, the second half of #93).
+    # Render's edge ignored `Cache-Control: no-transform` and kept Brotli-compressing large
+    # responses, which a real client stack (httpx + brotlicffi) fails to decode and then hangs on.
+    # An edge only compresses what arrives UNCOMPRESSED — a response already carrying
+    # `Content-Encoding: gzip` passes through, and gzip is decoded by zlib on every mainstream
+    # client, which sidesteps the brotli decoder entirely. A client that does not accept gzip gets
+    # identity from us (GZipMiddleware respects Accept-Encoding); only a client accepting br-and-
+    # not-gzip — no mainstream stack — would still meet the edge's Brotli.
+    #
+    # NoTransformResponses is outermost so the auth wrapper's own 401 challenges carry the header
+    # too; gzip sits between so challenges and answers alike are origin-encoded.
+    from starlette.middleware.gzip import GZipMiddleware
+
+    return NoTransformResponses(GZipMiddleware(RequireAuthForProtectedTools(
+                                                   transport, resource_version=resource_version),
+                                               minimum_size=1024))
 
 
 mcp_app = build_mcp_app()
+directory_mcp_app = build_mcp_app(server=directory_mcp, resource_version="v2")
 
 
 @asynccontextmanager
@@ -795,6 +2213,16 @@ async def mcp_lifespan(target=None):
     lifespan, and the streamable-HTTP session manager builds its task group there — without this
     every MCP request fails with "Task group is not initialized"."""
     target = target or mcp_app
-    inner = getattr(target, "app", target)   # unwrap RequireAuthForProtectedTools
+    inner = target
+    while not hasattr(inner, "router"):      # unwrap NoTransformResponses / RequireAuthForProtectedTools
+        inner = inner.app
     async with inner.router.lifespan_context(inner):
         yield
+
+
+@asynccontextmanager
+async def all_mcp_lifespans():
+    """Start both mounted transports; Starlette does not run mounted-app lifespans itself."""
+    async with mcp_lifespan(mcp_app):
+        async with mcp_lifespan(directory_mcp_app):
+            yield

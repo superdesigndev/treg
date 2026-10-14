@@ -1,0 +1,14 @@
+{
+  "links": [
+    "https://example.com",
+    "https://example.com/s.js",
+    "https://example.com/cdn-cgi/trace",
+    "https://example.com/#again",
+    "https://example.com/#/p",
+    "https://example.com/#/route-a",
+    "https://example.com/#/path",
+    "https://example.com/#organization",
+    "https://example.com/#probe8",
+    "https://example.com/#/person/eugen-ullrich"
+  ]
+}

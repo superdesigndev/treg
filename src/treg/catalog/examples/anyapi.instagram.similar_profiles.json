@@ -1,0 +1,30 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "profiles": [
+        {
+          "avatarUrl": "https://scontent-arn2-1.cdninstagram.com/v/t51.2885-19/12558345_1659293120975484_1074689227_a.jpg?stp=dst-jpg_e0_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby40MjAuYzIifQ&_nc_ht=scon… [550 chars]",
+          "displayName": "Leonardo DiCaprio",
+          "private": false,
+          "userId": "1506607755",
+          "username": "leonardodicaprio",
+          "verified": true
+        },
+        "… 79 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0024,
+  "items": 80,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-tiger",
+    "name": "Tiger",
+    "kind": "anonymous",
+    "artworkKey": "tiger"
+  },
+  "hint": "large_result: this response is ~58 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "617b3486-092a-452b-9e84-1a343a1c4c36"
+}

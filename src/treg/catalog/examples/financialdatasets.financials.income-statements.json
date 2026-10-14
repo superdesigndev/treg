@@ -1,0 +1,38 @@
+{
+  "income_statements": [
+    {
+      "accession_number": "0000320193-25-000079",
+      "consolidated_income": 112010000000,
+      "cost_of_revenue": 220960000000,
+      "currency": "USD",
+      "dividends_per_common_share": 1.02,
+      "earnings_per_share": 7.49,
+      "earnings_per_share_diluted": 7.46,
+      "ebit": 132729000000,
+      "filing_date": "2025-10-31",
+      "filing_datetime": "2025-10-31T10:01:26-04:00",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/0000320193-25-000079-index.htm",
+      "fiscal_period": "FY2025",
+      "form_type": "10-K",
+      "gross_profit": 195201000000,
+      "income_tax_expense": 20719000000,
+      "interest_expense": null,
+      "net_income": 112010000000,
+      "net_income_common_stock": 112010000000,
+      "net_income_discontinued_operations": null,
+      "net_income_non_controlling_interests": null,
+      "nonoperating_income_expense": -321000000,
+      "operating_expense": 62151000000,
+      "operating_income": 133050000000,
+      "period": "annual",
+      "preferred_dividends_impact": 0,
+      "report_period": "2025-09-27",
+      "research_and_development": 34550000000,
+      "revenue": 416161000000,
+      "selling_general_and_administrative_expenses": 27601000000,
+      "ticker": "AAPL",
+      "weighted_average_shares": 14948500000,
+      "weighted_average_shares_diluted": 15004697000
+    }
+  ]
+}

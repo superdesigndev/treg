@@ -1,0 +1,52 @@
+{
+  "interest_rates": [
+    {
+      "bank": "FED",
+      "date": "2026-01-01",
+      "name": "Federal Reserve",
+      "rate": 3.625
+    },
+    {
+      "bank": "FED",
+      "date": "2026-02-01",
+      "name": "Federal Reserve",
+      "rate": 3.625
+    },
+    {
+      "bank": "FED",
+      "date": "2026-03-01",
+      "name": "Federal Reserve",
+      "rate": 3.625
+    },
+    {
+      "bank": "FED",
+      "date": "2026-04-01",
+      "name": "Federal Reserve",
+      "rate": 3.625
+    },
+    {
+      "bank": "FED",
+      "date": "2026-05-01",
+      "name": "Federal Reserve",
+      "rate": 3.625
+    },
+    {
+      "bank": "FED",
+      "date": "2026-06-01",
+      "name": "Federal Reserve",
+      "rate": 3.625
+    },
+    {
+      "bank": "FED",
+      "date": "2026-07-01",
+      "name": "Federal Reserve",
+      "rate": 3.625
+    },
+    {
+      "bank": "FED",
+      "date": "2026-08-01",
+      "name": "Federal Reserve",
+      "rate": 3.625
+    }
+  ]
+}

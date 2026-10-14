@@ -1,0 +1,25 @@
+{
+  "phone": {
+    "contact_grade": "A",
+    "is_valid": true,
+    "activity_score": 100,
+    "line_type": "Mobile",
+    "name_match": true
+  },
+  "email": {
+    "contact_grade": "A",
+    "is_valid": true,
+    "name_match": true
+  },
+  "address": {
+    "is_valid": true,
+    "name_match": true
+  },
+  "ip_address": {
+    "trust_score": null,
+    "ip_distance_to_address": null
+  },
+  "add_ons": null,
+  "warnings": [],
+  "errors": null
+}

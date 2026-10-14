@@ -1,0 +1,1227 @@
+provider: enrichlayer
+source:
+  docs: https://enrichlayer.com/docs
+  openapi: https://enrichlayer.com/docs/api/v2/openapi.json
+  curated: '2026-10-01'
+pricing_url: https://enrichlayer.com/pricing
+limits: Paid APIs allow 300 requests/minute averaged over 5 minutes; free APIs on a PAYG key allow 2 requests/minute.
+  The provider can also return 429 for capacity.
+endpoints:
+- id: enrichlayer.school.profile
+  capability: linkedin.school.profile
+  platform: linkedin
+  domain: education
+  scope: any_account
+  method: GET
+  path: /api/v2/school
+  name: School profile
+  summary: Get a school profile.
+  strict_query: true
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        example: https://www.linkedin.com/school/mit
+      use_cache:
+        type: string
+        required: false
+      live_fetch:
+        type: string
+        required: false
+  test_request: {queryParams: {"url": "https://www.linkedin.com/school/mit/"}}
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.school.profile.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.company.profile
+  capability: companies.enrich
+  platform: companies
+  domain: companies
+  scope: any_account
+  method: GET
+  path: /api/v2/company
+  name: Company profile
+  summary: Get a company profile.
+  strict_query: true
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+      categories:
+        type: string
+        required: false
+      funding_data:
+        type: string
+        required: false
+      exit_data:
+        type: string
+        required: false
+      acquisitions:
+        type: string
+        required: false
+      extra:
+        type: string
+        required: false
+      use_cache:
+        type: string
+        required: false
+        note: Set if-present on shared-key calls; the upstream default if-recent costs an extra credit.
+      fallback_to_cache:
+        type: string
+        required: false
+      live_fetch:
+        type: string
+        required: false
+    note: Shared-key calls require use_cache=if-present for the documented base price. A team key can use the upstream
+      freshness and enrichment options.
+  test_request: {queryParams: {"url": "https://www.linkedin.com/company/microsoft", "use_cache": "if-present"}}
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.company.profile.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.person.profile
+  capability: people.enrich
+  platform: people
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /api/v2/profile
+  name: Person profile
+  summary: Get a person profile.
+  strict_query: true
+  input:
+    queryParams:
+      profile_url:
+        type: string
+        required: false
+      twitter_profile_url:
+        type: string
+        required: false
+      facebook_profile_url:
+        type: string
+        required: false
+      extra:
+        type: string
+        required: false
+      github_profile_id:
+        type: string
+        required: false
+      facebook_profile_id:
+        type: string
+        required: false
+      twitter_profile_id:
+        type: string
+        required: false
+      personal_contact_number:
+        type: string
+        required: false
+      personal_email:
+        type: string
+        required: false
+      inferred_salary:
+        type: string
+        required: false
+      skills:
+        type: string
+        required: false
+      use_cache:
+        type: string
+        required: false
+        note: Set if-present on shared-key calls; the upstream default if-recent costs an extra credit.
+      fallback_to_cache:
+        type: string
+        required: false
+      live_fetch:
+        type: string
+        required: false
+    note: Shared-key calls require use_cache=if-present for the documented base price. A team key can use the upstream
+      freshness and enrichment options.
+  test_request: {queryParams: {"profile_url": "https://www.linkedin.com/in/satyanadella", "use_cache": "if-present"}}
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.person.profile.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.company.employees.list
+  capability: companies.employees.list
+  platform: companies
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /api/v2/company/employees/
+  name: Company employees
+  summary: List employees of a company with cursor pagination.
+  strict_query: true
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+      coy_name_match:
+        type: string
+        required: false
+      use_cache:
+        type: string
+        required: false
+      country:
+        type: string
+        required: false
+      enrich_profiles:
+        type: string
+        required: false
+      boolean_role_search:
+        type: string
+        required: false
+      role_search:
+        type: string
+        required: false
+      page_size:
+        type: string
+        required: false
+        note: Platform calls require a decimal string from 1 to 10; BYOK calls retain the upstream default.
+      employment_status:
+        type: string
+        required: false
+      sort_by:
+        type: string
+        required: false
+      resolve_numeric_id:
+        type: string
+        required: false
+      after:
+        type: string
+        required: false
+        note: Pass the upstream pagination token unchanged.
+    note: Shared-key calls serve the base listing at 3 credits per returned employee. Supply page_size 1–10 and
+      follow after for more employees; request premium filters through a team key.
+  test_request: {queryParams: {"url": "https://www.linkedin.com/company/microsoft", "page_size": "1"}}
+  cost:
+    type: per_result
+    value: 3
+    currency: credit
+    per: 1
+    unit: employee
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+    enrichlayer:
+      field: employees
+      max_page: 10
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.company.employees.list.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.company.employees.count
+  capability: companies.employees.count
+  platform: companies
+  domain: companies
+  scope: any_account
+  method: GET
+  path: /api/v2/company/employees/count
+  name: Employee count
+  summary: Get employee counts for a company.
+  strict_query: true
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+      coy_name_match:
+        type: string
+        required: false
+      at_date:
+        type: string
+        required: false
+      use_cache:
+        type: string
+        required: false
+      estimated_employee_count:
+        type: string
+        required: false
+      employment_status:
+        type: string
+        required: false
+  test_request: {queryParams: {"url": "https://www.linkedin.com/company/apple/", "coy_name_match": "include", "use_cache": "if-present"}}
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.company.employees.count.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.person.profile-picture
+  capability: linkedin.profile.picture
+  platform: linkedin
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /api/v2/person/profile-picture
+  name: Person profile picture
+  summary: Get a cached person profile picture.
+  strict_query: true
+  input:
+    queryParams:
+      person_profile_url:
+        type: string
+        required: true
+  test_request: {queryParams: {"person_profile_url": "https://www.linkedin.com/in/satyanadella"}}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.person.profile-picture.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.company.profile-picture
+  capability: linkedin.company.picture
+  platform: linkedin
+  domain: companies
+  scope: any_account
+  method: GET
+  path: /api/v2/company/profile-picture
+  name: Company profile picture
+  summary: Get a cached company profile picture.
+  strict_query: true
+  input:
+    queryParams:
+      company_profile_url:
+        type: string
+        required: true
+  test_request: {queryParams: {"company_profile_url": "https://www.linkedin.com/company/microsoft"}}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.company.profile-picture.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.person.lookup
+  capability: people.profile.lookup
+  platform: people
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /api/v2/profile/resolve
+  name: Find person by name and company
+  summary: Resolve a person profile from name and company.
+  strict_query: true
+  input:
+    queryParams:
+      company_domain:
+        type: string
+        required: true
+      first_name:
+        type: string
+        required: true
+      similarity_checks:
+        type: string
+        required: false
+      enrich_profile:
+        type: string
+        required: false
+      location:
+        type: string
+        required: false
+      title:
+        type: string
+        required: false
+      last_name:
+        type: string
+        required: false
+  test_request: {queryParams: {"company_domain": "microsoft.com", "first_name": "Satya", "last_name": "Nadella"}}
+  cost:
+    type: per_success
+    value: 2
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.person.lookup.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.company.role.lookup
+  capability: people.role.lookup
+  platform: people
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /api/v2/find/company/role/
+  name: Find person in company role
+  summary: Find a person in a role at a company.
+  strict_query: true
+  input:
+    queryParams:
+      role:
+        type: string
+        required: true
+      company_name:
+        type: string
+        required: true
+      enrich_profile:
+        type: string
+        required: false
+  test_request: {queryParams: {"role": "CEO", "company_name": "Microsoft"}}
+  cost:
+    type: per_success
+    value: 3
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.company.role.lookup.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.company.lookup
+  capability: companies.enrich
+  platform: companies
+  domain: companies
+  scope: any_account
+  method: GET
+  path: /api/v2/company/resolve
+  name: Company lookup
+  summary: Resolve a company profile from its name or domain.
+  strict_query: true
+  input:
+    queryParams:
+      company_location:
+        type: string
+        required: false
+      company_domain:
+        type: string
+        required: false
+      company_name:
+        type: string
+        required: false
+      enrich_profile:
+        type: string
+        required: false
+  test_request: {queryParams: {"company_domain": "microsoft.com"}}
+  cost:
+    type: per_success
+    value: 2
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.company.lookup.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.company.lookup-id
+  capability: companies.id.resolve
+  platform: companies
+  domain: companies
+  scope: any_account
+  method: GET
+  path: /api/v2/company/resolve-id
+  name: Company ID lookup
+  summary: Resolve a numeric company ID to its public identifier.
+  strict_query: true
+  input:
+    queryParams:
+      id:
+        type: string
+        required: true
+  test_request: {queryParams: {"id": "1441"}}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.company.lookup-id.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.company.employees.search
+  capability: companies.employees.search
+  platform: companies
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /api/v2/company/employee/search/
+  name: Company employee search
+  summary: Search employees of one company by job title or keyword.
+  strict_query: true
+  input:
+    queryParams:
+      company_profile_url:
+        type: string
+        required: true
+      keyword_boolean:
+        type: string
+        required: true
+      keyword_regex:
+        type: string
+        required: false
+      page_size:
+        type: string
+        required: false
+        note: BYOK calls retain Enrichlayer's default page size. Platform calls are unavailable for this tool.
+      country:
+        type: string
+        required: false
+      enrich_profiles:
+        type: string
+        required: false
+      resolve_numeric_id:
+        type: string
+        required: false
+  test_request: {queryParams: {"company_profile_url": "https://www.linkedin.com/company/microsoft", "keyword_boolean": "CEO", "page_size": "1"}}
+  cost:
+    type: per_success
+    value: null
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs/api/v2/company-api/employee-search
+    checked: '2026-10-01'
+    confidence: unknown
+    note: Enrichlayer documents 10 credits per successful request, but a one-result base call spent 16 credits.
+      The full charge rule has not been established.
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.company.employees.search.json
+  docs_url: https://enrichlayer.com/docs/api/v2/company-api/employee-search
+  platform_blocked: A one-result live call used 16 credits versus the documented 10 credits per successful request;
+    the request's total price is not reliably known. Connect your own key for this tool.
+- id: enrichlayer.person.reverse-email
+  capability: linkedin.profile.from_email
+  platform: linkedin
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /api/v2/profile/resolve/email
+  name: Reverse email lookup
+  summary: Find a person profile from an email address.
+  strict_query: true
+  input:
+    queryParams:
+      email:
+        type: string
+        required: true
+      lookup_depth:
+        type: string
+        required: false
+      enrich_profile:
+        type: string
+        required: false
+  test_request: {queryParams: {"email": "satyan@microsoft.com"}}
+  cost:
+    type: per_success
+    value: 3
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.person.reverse-email.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.contacts.reverse-phone
+  capability: people.profile.from_phone
+  platform: people
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /api/v2/resolve/phone
+  name: Reverse phone lookup
+  summary: Find social profiles from a contact phone number.
+  strict_query: true
+  input:
+    queryParams:
+      phone_number:
+        type: string
+        required: true
+  test_request: {queryParams: {"phone_number": "+12025550123"}}
+  cost:
+    type: per_success
+    value: 3
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: documented
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.contacts.reverse-phone.json
+  docs_url: https://enrichlayer.com/docs/api/v2/contact-api/reverse-contact-number-lookup
+- id: enrichlayer.person.work-email
+  capability: people.email.find
+  platform: people
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /api/v2/profile/email
+  name: Work email lookup
+  summary: Request a verified work email for a person profile.
+  strict_query: true
+  input:
+    queryParams:
+      profile_url:
+        type: string
+        required: true
+      callback_url:
+        type: string
+        required: false
+  test_request: {queryParams: {"profile_url": "https://www.linkedin.com/in/satyanadella"}}
+  cost:
+    type: per_success
+    value: 3
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://enrichlayer.com/docs/api/v2/contact-api/work-email-lookup
+    checked: '2026-10-01'
+    confidence: documented
+    note: Enrichlayer documents 3 credits for a successful lookup. A live request returned a queued 202 with no
+      final email or charge observed.
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.person.work-email.json
+  docs_url: https://enrichlayer.com/docs/api/v2/contact-api/work-email-lookup
+  platform_blocked: The live call returned a queued 202 without delivery or final charge evidence; connect your
+    own key for this asynchronous lookup.
+- id: enrichlayer.jobs.profile
+  capability: linkedin.job.profile
+  platform: linkedin
+  domain: jobs
+  scope: any_account
+  method: GET
+  path: /api/v2/job
+  name: Job profile
+  summary: Get a job profile by URL.
+  strict_query: true
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        example: https://www.linkedin.com/jobs/view/4222036951/
+  test_request: {queryParams: {"url": "https://www.linkedin.com/jobs/view/4222036951/"}}
+  cost:
+    type: per_success
+    value: 2
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.jobs.profile.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.jobs.search
+  capability: linkedin.jobs.search
+  platform: linkedin
+  domain: jobs
+  scope: any_account
+  method: GET
+  path: /api/v2/company/job
+  name: Company job search
+  summary: Search job postings using company and role filters.
+  strict_query: true
+  input:
+    queryParams:
+      job_type:
+        type: string
+        required: false
+      experience_level:
+        type: string
+        required: false
+      when:
+        type: string
+        required: false
+      flexibility:
+        type: string
+        required: false
+      geo_id:
+        type: string
+        required: false
+      keyword:
+        type: string
+        required: false
+      search_id:
+        type: string
+        required: false
+      pagination:
+        type: string
+        required: false
+  test_request: {queryParams: {"keyword": "software engineer"}}
+  cost:
+    type: per_success
+    value: 2
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.jobs.search.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.companies.search
+  capability: companies.search
+  platform: companies
+  domain: companies
+  scope: any_account
+  method: GET
+  path: /api/v2/search/company
+  name: Company search
+  summary: Search companies by industry, location, size, funding and other filters.
+  strict_query: true
+  input:
+    queryParams:
+      country:
+        type: string
+        required: false
+      region:
+        type: string
+        required: false
+      city:
+        type: string
+        required: false
+      type:
+        type: string
+        required: false
+      follower_count_min:
+        type: string
+        required: false
+      follower_count_max:
+        type: string
+        required: false
+      name:
+        type: string
+        required: false
+      industry:
+        type: string
+        required: false
+      primary_industry:
+        type: string
+        required: false
+      specialities:
+        type: string
+        required: false
+      employee_count_category:
+        type: string
+        required: false
+      employee_count_max:
+        type: string
+        required: false
+      employee_count_min:
+        type: string
+        required: false
+      description:
+        type: string
+        required: false
+      founded_after_year:
+        type: string
+        required: false
+      founded_before_year:
+        type: string
+        required: false
+      funding_amount_max:
+        type: string
+        required: false
+      funding_amount_min:
+        type: string
+        required: false
+      funding_raised_after:
+        type: string
+        required: false
+      funding_raised_before:
+        type: string
+        required: false
+      public_identifier_in_list:
+        type: string
+        required: false
+      public_identifier_not_in_list:
+        type: string
+        required: false
+      domain_name:
+        type: string
+        required: false
+      page_size:
+        type: string
+        required: false
+        note: Platform calls require a decimal string from 1 to 10; BYOK calls retain the upstream default.
+      enrich_profiles:
+        type: string
+        required: false
+        enum:
+        - skip
+        - enrich
+      use_cache:
+        type: string
+        required: false
+        enum:
+        - if-present
+        - if-recent
+      next_token:
+        type: string
+        required: false
+        note: Pass the upstream pagination token unchanged.
+    note: All documented search filters are available. Shared-key calls require page_size 1–10; continue with
+      next_token for more results. Shared-key rate is 3 credits per result,
+      plus 1 for enrichment and 2 for recent data on this PAYG key.
+  test_request: {queryParams: {"name": "Microsoft", "page_size": "1"}}
+  cost:
+    type: per_result
+    value: 3
+    currency: credit
+    per: 1
+    unit: result
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+    enrichlayer:
+      field: results
+      max_page: 10
+      extra_per_result:
+        enrich_profiles:
+          enrich: 1
+        use_cache:
+          if-recent: 2
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.companies.search.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.people.search
+  capability: people.search
+  platform: people
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /api/v2/search/person
+  name: Person search
+  summary: Search people by skills, location, role, work history and other filters.
+  strict_query: true
+  input:
+    queryParams:
+      country:
+        type: string
+        required: false
+      first_name:
+        type: string
+        required: false
+      last_name:
+        type: string
+        required: false
+      education_field_of_study:
+        type: string
+        required: false
+      education_degree_name:
+        type: string
+        required: false
+      education_school_name:
+        type: string
+        required: false
+      education_school_profile_url:
+        type: string
+        required: false
+      current_role_title:
+        type: string
+        required: false
+      past_role_title:
+        type: string
+        required: false
+      current_role_before:
+        type: string
+        required: false
+      current_role_after:
+        type: string
+        required: false
+      current_company_profile_url:
+        type: string
+        required: false
+      past_company_profile_url:
+        type: string
+        required: false
+      current_job_description:
+        type: string
+        required: false
+      past_job_description:
+        type: string
+        required: false
+      current_company_name:
+        type: string
+        required: false
+      past_company_name:
+        type: string
+        required: false
+      groups:
+        type: string
+        required: false
+      languages:
+        type: string
+        required: false
+      region:
+        type: string
+        required: false
+      city:
+        type: string
+        required: false
+      headline:
+        type: string
+        required: false
+      summary:
+        type: string
+        required: false
+      industries:
+        type: string
+        required: false
+      interests:
+        type: string
+        required: false
+      skills:
+        type: string
+        required: false
+      skills_all_in_list:
+        type: string
+        required: false
+      current_company_country:
+        type: string
+        required: false
+      current_company_region:
+        type: string
+        required: false
+      current_company_city:
+        type: string
+        required: false
+      current_company_type:
+        type: string
+        required: false
+      current_company_follower_count_min:
+        type: string
+        required: false
+      current_company_follower_count_max:
+        type: string
+        required: false
+      current_company_industry:
+        type: string
+        required: false
+      current_company_primary_industry:
+        type: string
+        required: false
+      current_company_specialities:
+        type: string
+        required: false
+      current_company_employee_count_category:
+        type: string
+        required: false
+      current_company_employee_count_min:
+        type: string
+        required: false
+      current_company_employee_count_max:
+        type: string
+        required: false
+      current_company_description:
+        type: string
+        required: false
+      current_company_founded_after_year:
+        type: string
+        required: false
+      current_company_founded_before_year:
+        type: string
+        required: false
+      current_company_funding_amount_min:
+        type: string
+        required: false
+      current_company_funding_amount_max:
+        type: string
+        required: false
+      current_company_funding_raised_after:
+        type: string
+        required: false
+      current_company_funding_raised_before:
+        type: string
+        required: false
+      current_company_domain_name:
+        type: string
+        required: false
+      public_identifier_in_list:
+        type: string
+        required: false
+      public_identifier_not_in_list:
+        type: string
+        required: false
+      page_size:
+        type: string
+        required: false
+        note: Platform calls require a decimal string from 1 to 10; BYOK calls retain the upstream default.
+      follower_count_min:
+        type: string
+        required: false
+      follower_count_max:
+        type: string
+        required: false
+      enrich_profiles:
+        type: string
+        required: false
+        enum:
+        - skip
+        - enrich
+      use_cache:
+        type: string
+        required: false
+        enum:
+        - if-present
+        - if-recent
+      next_token:
+        type: string
+        required: false
+        note: Pass the upstream pagination token unchanged.
+    note: All documented search filters are available. Shared-key calls require page_size 1–10; continue with
+      next_token for more results. Shared-key rate is 3 credits per result,
+      plus 1 for enrichment and 2 for recent data on this PAYG key.
+  test_request: {queryParams: {"first_name": "Satya", "last_name": "Nadella", "page_size": "1"}}
+  cost:
+    type: per_result
+    value: 3
+    currency: credit
+    per: 1
+    unit: result
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+    enrichlayer:
+      field: results
+      max_page: 10
+      extra_per_result:
+        enrich_profiles:
+          enrich: 1
+        use_cache:
+          if-recent: 2
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.people.search.json
+  docs_url: https://enrichlayer.com/docs/api/v2/search-api/person-search
+- id: enrichlayer.email.disposable-check
+  capability: people.email.disposable
+  platform: people
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /api/v2/disposable-email
+  name: Disposable email check
+  summary: Check whether an email domain is disposable.
+  strict_query: true
+  input:
+    queryParams:
+      email:
+        type: string
+        required: true
+  test_request: {queryParams: {"email": "person@mailinator.com"}}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://enrichlayer.com/docs
+    checked: '2026-10-01'
+    confidence: verified
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.email.disposable-check.json
+  docs_url: https://enrichlayer.com/docs
+- id: enrichlayer.contacts.personal-phone
+  capability: people.phone.find.personal
+  platform: people
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /api/v2/contact-api/personal-contact
+  name: Personal phone lookup
+  summary: Find personal phone numbers for a social profile.
+  strict_query: true
+  input:
+    queryParams:
+      profile_url:
+        type: string
+        required: false
+      twitter_profile_url:
+        type: string
+        required: false
+      facebook_profile_url:
+        type: string
+        required: false
+      page_size:
+        type: string
+        required: false
+        note: Platform calls require a decimal string from 1 to 10; BYOK calls retain the upstream default.
+    note: Shared-key calls require page_size 1–10 and can omit numbers beyond that limit; this endpoint provides
+      no cursor to fetch them. Results are not ranked by mobile likelihood. A team key may use the upstream
+      unbounded default.
+  test_request: {queryParams: {"profile_url": "https://www.linkedin.com/in/satyanadella", "page_size": "1"}}
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://enrichlayer.com/docs/api/v2/contact-api/personal-contact-number-lookup
+    checked: '2026-10-01'
+    confidence: documented
+    enrichlayer:
+      field: numbers
+      max_page: 10
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.contacts.personal-phone.json
+  docs_url: https://enrichlayer.com/docs/api/v2/contact-api/personal-contact-number-lookup
+- id: enrichlayer.contacts.personal-email
+  capability: people.email.find.personal
+  platform: people
+  domain: contacts
+  scope: any_account
+  method: GET
+  path: /api/v2/contact-api/personal-email
+  name: Personal email lookup
+  summary: Find personal emails for a social profile.
+  strict_query: true
+  input:
+    queryParams:
+      profile_url:
+        type: string
+        required: false
+      twitter_profile_url:
+        type: string
+        required: false
+      facebook_profile_url:
+        type: string
+        required: false
+      email_validation:
+        type: string
+        required: false
+        enum:
+        - none
+        - fast
+        - precise
+      page_size:
+        type: string
+        required: false
+        note: Platform calls require a decimal string from 1 to 10; BYOK calls retain the upstream default.
+    note: Shared-key calls require page_size 1–10 and can omit emails beyond that limit; this endpoint provides
+      no cursor to fetch them. A team key may use the upstream unbounded default.
+  test_request: {queryParams: {"profile_url": "https://www.linkedin.com/in/satyanadella", "page_size": "1", "email_validation": "precise"}}
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://enrichlayer.com/docs/api/v2/contact-api/personal-email-lookup
+    checked: '2026-10-01'
+    confidence: documented
+    enrichlayer:
+      field: emails
+      max_page: 10
+      extra_per_result:
+        email_validation:
+          precise: 1
+    note: One credit per returned email; precise validation adds one credit per found email. Fast validation adds
+      no charge.
+  verified: '2026-10-01'
+  added: '2026-09-30'
+  example_response: examples/enrichlayer.contacts.personal-email.json
+  docs_url: https://enrichlayer.com/docs/api/v2/contact-api/personal-email-lookup
+proposed_capabilities:
+  linkedin.school.profile: Get a school profile.
+  companies.employees.list: List employees of a company with cursor pagination.
+  companies.employees.count: Get employee counts for a company.
+  linkedin.profile.picture: Get a cached person profile picture.
+  linkedin.company.picture: Get a cached company profile picture.
+  people.profile.lookup: Resolve a person profile from name and company.
+  people.role.lookup: Find a person in a role at a company.
+  companies.id.resolve: Resolve a numeric company ID to its public identifier.
+  companies.employees.search: Search employees of one company by job title or keyword.
+  people.profile.from_phone: Find social profiles from a contact phone number.
+  linkedin.job.profile: Get a job profile by URL.
+  linkedin.jobs.search: Search job postings using company and role filters.
+  people.email.disposable: Check whether an email domain is disposable.
+  people.phone.find.personal: Find personal phone numbers for a social profile.

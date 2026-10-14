@@ -1,0 +1,38 @@
+{
+  "search_metadata": {
+    "id": "f87403d092faf89d3ba0d11c",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/google/ai-mode?q=what+is+photosynthesis&google_domain=google.com&gl=us&hl=en&device=desktop",
+    "created_at": "2026-09-29 14:00:01 UTC",
+    "processed_at": "2026-09-29 14:00:01 UTC",
+    "total_time_taken": 45.228,
+    "google_ai_mode_url": "https://www.google.com/async/folwr?srtst=AF5tSO79_4Pq7Ar-hXc38MRk9DlirubNHg%3A1790690394173&garc=ChswYTZKMTFqRGEycGs5bFVWbWp1aEFvZkk4YTASF1djUzdhb0tIT3I2VHhjOFA…",
+    "transport_time_taken": 45.218
+  },
+  "search_parameters": {
+    "q": "what is photosynthesis",
+    "google_domain": "google.com",
+    "gl": "us",
+    "hl": "en",
+    "device": "desktop"
+  },
+  "text_blocks": [
+    {
+      "type": "heading",
+      "snippet": "Shared"
+    },
+    {
+      "type": "paragraph",
+      "snippet": "Photosynthesis is the essential biological process where plants, algae, and certain microorganisms transform light energy from the sun into usable chemical energy, turning water and carbon dioxide into glucose and oxygen."
+    }
+  ],
+  "references": [
+    {
+      "title": "What is Photosynthesis | Smithsonian Science Education Center",
+      "link": "https://ssec.si.edu/stemvisions-blog/what-photosynthesis",
+      "snippet": "What is Photosynthesis When you get hungry, you grab a snack from your fridge or pantry. But what can plants do when they get hungry? You are probably aware tha…",
+      "source": "Smithsonian Science Education Center |",
+      "index": 0
+    }
+  ]
+}

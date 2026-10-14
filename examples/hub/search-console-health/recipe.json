@@ -1,0 +1,42 @@
+{
+  "name": "search-console-health",
+  "summary": "A Search Console property's health on your own Google account: clicks and impressions now against the 28 days before, top queries and pages, sitemap errors, home page index status, plain findings.",
+  "capability": "search-console.performance",
+  "inputs": {
+    "site": {
+      "type": "string",
+      "example": "sc-domain:example.com",
+      "note": "the property as Search Console names it: sc-domain:example.com, or https://www.example.com/"
+    },
+    "inspect_url": {
+      "type": "string",
+      "default": "",
+      "example": "https://example.com/pricing",
+      "note": "one page to inspect for index status; default: the home page"
+    }
+  },
+  "uses": [
+    "google-search-console.sites",
+    "google-search-console.performance",
+    "google-search-console.sitemaps",
+    "google-search-console.url_inspection"
+  ],
+  "script": "run.js",
+  "output": {
+    "fields": [
+      "site",
+      "permission",
+      "health",
+      "findings",
+      "performance",
+      "sitemaps",
+      "page",
+      "failed",
+      "summary"
+    ]
+  },
+  "limits": {
+    "cost_usd": 0.05
+  },
+  "pricing": { "max_price_usd": 0.01 }
+}

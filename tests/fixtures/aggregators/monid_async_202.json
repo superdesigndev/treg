@@ -1,0 +1,58 @@
+{
+ "status": 202,
+ "body": {
+  "runId": "01M0Y5237TB8GPSAS1JV2QM48F",
+  "caller": "USER#user_3IQuxobiD9hQkC9OzFdE3bEuKiL",
+  "provider": "tikhub",
+  "providerName": "TikHub",
+  "endpoint": "/api/v1/youtube/web_v2/get_video_captions",
+  "status": "COMPLETED",
+  "input": {
+   "body": {},
+   "queryParams": {
+    "video_id": "dQw4w9WgXcQ",
+    "video_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "language_code": "en",
+    "format": "srt"
+   },
+   "pathParams": {}
+  },
+  "providerResponse": {
+   "httpStatus": 200
+  },
+  "price": {
+   "type": "PER_CALL",
+   "amount": {
+    "value": 0.012,
+    "currency": "USD"
+   }
+  },
+  "cost": {
+   "value": 0.012,
+   "currency": "USD"
+  },
+  "resultCount": 1,
+  "billedUnits": 1,
+  "createdAt": "phone:10aaa1ebeaT04:25:40.129Z",
+  "startedAt": "phone:10aaa1ebeaT04:25:40.309Z",
+  "completedAt": "phone:10aaa1ebeaT04:25:42.651Z",
+  "hints": {
+   "retrieve the response later": "curl http://api.monid.ai/v1/runs/01M0Y5237TB8GPSAS1JV2QM48F -H 'Authorization: Bearer <API_KEY>'"
+  },
+  "output": {
+   "video_id": "dQw4w9WgXcQ",
+   "language_code": "en",
+   "language_name": "English",
+   "format": "srt",
+   "content": "1\n00:00:01,360 --> 00:00:03,040\n[\u266a\u266a\u266a]\n\n2\n00:00:18,640 --> 00:00:21,880\n\u266a We're no strangers to love \u266a\n\n3\n00:00:22,640 --> 00:00:26,960\n\u266a You know the rules and so do I \u266a\n\n4\n00:00:27,040 --> 00:00:31,040\n\u266a A full commitment's what I'm thinking of \u266a\n\n5\n00:00:31,120 --> 00:00:35,080\n\u266a You wouldn't get this from any other guy \u266a\n\n6\n00:00:35,160 --> 00:00:39,520\n\u266a I just wanna tell you how I'm feeling \u266a\n\n7\n00:00:40,520 --> 00:00:42,920\n\u266a Gotta make you understand \u266a\n\n8\n00:00:43,000 --> 00:00:45,120\n\u266a Never gonna give you up \u266a\n\n9\n00:00:45,200 --> 00:00:47,080\n\u266a Never gonna let you down \u266a\n\n10\n00:00:47,320 --> 00:00:51,120\n\u266a Never gonna run around and desert you \u266a\n\n11\n00:00:51,480 --> 00:00:53,480\n\u266a Never gonna make you cry \u266a\n\n12\n00:00:53,600 --> 00:00:55,520\n\u266a Never gonna say goodbye \u266a\n\n13\n00:00:55,720 --> 00:00:59,360\n\u266a Never gonna tell a lie and hurt you \u266a\n\n14\n00:01:00,800 --> 00:01:04,800\n\u266a We've known each other for so long \u266a\n\n15\n00:01:04,880 --> 00:01:09,040\n\u266a Your heart's been aching but you're too shy to say it \u266a\n\n16\n00:01:09,120 --> 00:01:12,960\n\u266a Inside we both know what's been going \u266a\n\n17\n00:01:13,360 --> 00:01:17,200\n\u266a We know the game and we're gonna play it \u266a\n\n18\n00:01:17,400 --> 00:01:22,040\n\u266a And if you ask me how I'm feeling \u266a\n\n19\n00:01:22,400 --> 00:01:25,240\n\u266a Don't tell me you're too blind to see \u266a\n\n20\n00:01:25,320 --> 00:01:27,280\n\u266a Never gonna give you up \u266a\n\n21\n00:01:27,360 --> 00:01:29,320\n\u266a Never gonna let you down \u266a\n\n22\n00:01:29,440 --> 00:01:33,720\n\u266a Never gonna run around and desert you \u266a\n\n23\n00:01:33,800 --> 00:01:35,600\n\u266a Never gonna make you cry \u266a\n\n24\n00:01:35,760 --> 00:01:38,000\n\u266a Never gonna say goodbye \u266a\n\n25\n00:01:38,080 --> 00:01:42,040\n\u266a Never gonna tell a lie and hurt you \u266a\n\n26\n00:01:42,200 --> 00:01:44,120\n\u266a Never gonna give you up \u266a\n\n27\n00:01:44,280 --> 00:01:46,360\n\u266a Never gonna let you down \u266a\n\n28\n00:01:46,480 --> 00:01:50,080\n\u266a Never gonna run around and desert you \u266a\n\n29\n00:01:50,760 --> 00:01:52,720\n\u266a Never gonna make you cry \u266a\n\n30\n00:01:52,800 --> 00:01:54,680\n\u266a Never gonna say goodbye \u266a\n\n31\n00:01:54,960 --> 00:01:58,760\n\u266a Never gonna tell a lie and hurt you \u266a\n\n32\n00:01:59,840 --> 00:02:02,960\n\u266a (Ooh, give you up) \u266a\n\n33\n00:02:03,720 --> 00:02:07,360\n\u266a (Ooh, give you up) \u266a\n\n34\n00:02:08,480 --> 00:02:10,120\n\u266a Never gonna give, never gonna give \u266a\n\n35\n00:02:10,240 --> 00:02:11,560\n\u266a (Give you up) \u266a\n\n36\n00:02:12,480 --> 00:02:14,240\n\u266a Never gonna give, never gonna give \u266a\n\n37\n00:02:14,360 --> 00:02:15,920\n\u266a (Give you up) \u266a\n\n38\n00:02:16,760 --> 00:02:21,080\n\u266a We've known each other for so long \u266a\n\n39\n00:02:21,200 --> 00:02:25,200\n\u266a Your heart's been aching but you're too shy to say it \u266a\n\n40\n00:02:25,280 --> 00:02:29,120\n\u266a Inside we both know what's been going \u266a\n\n41\n00:02:29,520 --> 00:02:33,200\n\u266a We know the game and we're gonna play it \u266a\n\n42\n00:02:33,360 --> 00:02:38,040\n\u266a I just wanna tell you how I'm feeling \u266a\n\n43\n00:02:38,640 --> 00:02:41,320\n\u266a Gotta make you understand \u266a\n\n44\n00:02:41,400 --> 00:02:43,360\n\u266a Never gonna give you up \u266a\n\n45\n00:02:43,440 --> 00:02:45,640\n\u266a Never gonna let you down \u266a\n\n46\n00:02:45,720 --> 00:02:49,720\n\u266a Never gonna run around and desert you \u266a\n\n47\n00:02:49,800 --> 00:02:51,640\n\u266a Never gonna make you cry \u266a\n\n48\n00:02:51,800 --> 00:02:53,960\n\u266a Never gonna say goodbye \u266a\n\n49\n00:02:54,040 --> 00:02:57,600\n\u266a Never gonna tell a lie and hurt you \u266a\n\n50\n00:02:58,200 --> 00:03:00,240\n\u266a Never gonna give you up \u266a\n\n51\n00:03:00,320 --> 00:03:02,440\n\u266a Never gonna let you down \u266a\n\n52\n00:03:02,520 --> 00:03:06,640\n\u266a Never gonna run around and desert you \u266a\n\n53\n00:03:06,720 --> 00:03:08,720\n\u266a Never gonna make you cry \u266a\n\n54\n00:03:08,840 --> 00:03:10,720\n\u266a Never gonna say goodbye \u266a\n\n55\n00:03:10,840 --> 00:03:15,200\n\u266a Never gonna tell a lie and hurt you \u266a\n\n56\n00:03:15,280 --> 00:03:17,120\n\u266a Never gonna give you up \u266a\n\n57\n00:03:17,200 --> 00:03:19,240\n\u266a Never gonna let you down \u266a\n\n58\n00:03:19,400 --> 00:03:23,120\n\u266a Never gonna run around and desert you \u266a\n\n59\n00:03:23,360 --> 00:03:25,600\n\u266a Never gonna make you cry \u266a\n\n60\n00:03:25,680 --> 00:03:27,840\n\u266a Never gonna say goodbye \u266a\n\n61\n00:03:27,920 --> 00:03:31,320\n\u266a Never gonna tell a lie and hurt you \u266a"
+  }
+ },
+ "expect": {
+  "upstream_status": 200,
+  "price": {
+   "value": 0.012,
+   "currency": "USD"
+  },
+  "ok": true
+ }
+}

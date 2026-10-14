@@ -1,0 +1,31 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "adId": "7648493525660270600",
+      "adTitle": "New Captain Tsubasa Game Arrives!",
+      "brandName": "",
+      "comments": 0,
+      "cost": 0,
+      "coverUrl": "https://p16-common-sign.tiktokcdn.com/tos-alisg-p-0051c001-sg/os0IwlEEv5Y9Ao1jzintBciakBzlftAPmAAswo~tplv-noop.image?dr=18692&refresh_token=202421d1&x-expires=1789833452&x-signature=wO4olOaA3n3qQ4LIH%… [312 chars]",
+      "ctr": 0.87,
+      "industry": "label_25100000000",
+      "landingPage": "https://captaintsubasa-mg11.com/zh-tw/?utm_source=tiktok&utm_medium=cpc&utm_campaign=ios_pjct_tw",
+      "likes": 1,
+      "objective": "campaign_objective_conversion",
+      "shares": 0,
+      "videoUrl": "https://v16m-default.tiktokcdn.com/6e3f5ce7efe0b8d8514174ddb2eb5755/6aaeb0ec/video/tos/alisg/tos-alisg-ve-0051c001-sg/ow5Ex0wSQ52DQeJBtJWDfBuNiLAFUIOgKoVqIP/?a=0&bti=NTU4QDM1NGA%3D&&bt=857&ft=cApXJCz7… [398 chars]"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-tiger",
+    "name": "Tiger",
+    "kind": "anonymous",
+    "artworkKey": "tiger"
+  },
+  "resultId": "5079951e-0832-4a52-aa6e-4eee32232893"
+}

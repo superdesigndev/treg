@@ -1,0 +1,833 @@
+"""FastAPI composition root and deployment-role manifests."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import re
+import time
+from collections.abc import Sequence
+from contextlib import asynccontextmanager, nullcontext
+from copy import copy
+from pathlib import Path
+from typing import Literal
+
+import httpx
+from fastapi import FastAPI
+from fastapi.routing import APIRoute, request_response
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.routing import BaseRoute, Mount
+
+from . import adsconv, analytics, archive, audit
+from .application.call import route as routed_call
+from .application import arena, find_index
+from .application.onboard import first_run
+from . import bootstrap_handlers, policy
+from .bootstrap_http import (
+    _BodyDecodeMiddleware,
+    _DevTitleMiddleware,
+    _LegacyHostRedirectMiddleware,
+    _SecurityHeadersMiddleware,
+)
+from .config import TREG_USER_AGENT, get_settings
+from .infra import kv, money_timing, org_traffic, turnstile
+from .infra.money_trace_runner import start_money_trace, stop_money_trace
+from .infra.db import background_session_maker, verify_db
+from .infra.catalog_observations import (
+    CachedEndpointObservationReader,
+    PostgresEndpointObservationReader,
+)
+from .routers import call as call_routes
+
+
+AppRole = Literal["all", "dataplane", "control"]
+RouteKey = tuple[str, tuple[str, ...], str]
+
+# Every HTTP route has one workload owner. A new decorator in api.py fails app creation until its
+# key is placed here, so the dataplane cannot silently acquire a management or runner endpoint.
+_CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
+    ('/enrich-arena', ('GET',), 'enrich_arena_page'),
+    ('/web-arena', ('GET',), 'web_arena_page'),
+    ('/web-arena/leaderboard', ('GET',), 'web_arena_old_leaderboard'),
+    ('/web-arena/{asset}', ('GET',), 'web_arena_asset'),
+    ('/web-arena/api/tasks', ('GET',), 'web_arena_tasks'),
+    ('/web-arena/api/leaderboard', ('GET',), 'web_arena_leaderboard'),
+    ('/web-arena/api/quotes', ('POST',), 'web_arena_quote'),
+    ('/web-arena/api/runs/{run_id}/start', ('POST',), 'web_arena_start'),
+    ('/web-arena/api/runs', ('GET',), 'web_arena_history'),
+    ('/web-arena/api/runs/{run_id}', ('GET',), 'web_arena_run'),
+    ('/web-arena/api/runs/{run_id}/cancel', ('POST',), 'web_arena_cancel'),
+    ('/web-arena/api/runs/{run_id}/attempts/{attempt_id}/rating', ('POST',), 'web_arena_rating'),
+    ('/enrich-arena/people-search-bench', ('GET',), 'enrich_arena_page'),
+    ('/enrich-arena/leaderboard', ('GET',), 'enrich_arena_page'),
+    ('/enrich-arena/{asset}', ('GET',), 'enrich_arena_asset'),
+    ('/arena/tasks', ('GET',), 'arena_tasks'),
+    ('/arena/insights', ('GET',), 'arena_insights_data'),
+    ('/arena/plans', ('POST',), 'arena_plan'),
+    ('/arena/runs/{run_id}/start', ('POST',), 'arena_start'),
+    ('/arena/runs', ('GET',), 'arena_history'),
+    ('/arena/runs/{run_id}', ('GET',), 'arena_run'),
+    ('/arena/runs/{run_id}/cancel', ('POST',), 'arena_cancel'),
+    ('/arena/runs/{run_id}/evaluations', ('POST',), 'arena_evaluate'),
+    ('/arena/runs/{run_id}/reveal', ('POST',), 'arena_reveal'),
+    ('/arena/runs/{run_id}/attempts/{attempt_id}/report', ('POST',), 'arena_report'),
+    ('/arena/runs/{run_id}/attempts/{attempt_id}/rating', ('POST',), 'arena_rate'),
+    ('/arena/runs/{run_id}/attempts/{attempt_id}/verification/plan', ('POST',), 'arena_verification_plan'),
+    ('/arena/runs/{run_id}/attempts/{attempt_id}/verification/start', ('POST',), 'arena_verification_start'),
+    ('/arena/runs/{run_id}/attempts/{attempt_id}/plan', ('POST',), 'arena_manual_plan'),
+    ('/arena/runs/{run_id}/attempts/{attempt_id}/start', ('POST',), 'arena_manual_start'),
+    ('/meta', ('GET',), 'meta'),
+    ('/providers.json', ('GET',), 'providers_catalog'),
+    ('/catalog/platforms', ('GET',), 'catalog_platforms'),
+    ('/catalog/platforms/{slug}', ('GET',), 'catalog_platform'),
+    ('/catalog/search', ('GET',), 'catalog_search'),
+    ('/catalog/find', ('GET',), 'catalog_find'),
+    ('/catalog/providers/{service}', ('GET',), 'catalog_provider'),
+    ('/catalog/endpoints/{endpoint_id}', ('GET',), 'catalog_endpoint'),
+    ('/table-columns/{tool_id:path}', ('GET',), 'table_columns'),
+    ('/table-account', ('GET',), 'table_account'),
+    ('/catalog/examples/{endpoint_id}', ('GET',), 'catalog_example'),
+    ('/catalog', ('GET',), 'catalog_index'),
+    ('/catalog/{slug}', ('GET',), 'catalog_page'),
+    ('/catalog/{slug:shelf}/{key}', ('GET',), 'catalog_comparison_page'),
+    ('/search', ('GET',), 'search_page'),
+    ('/agents', ('GET',), 'agents_hub'),
+    ('/agents/{agent}', ('GET',), 'agent_page'),
+    ('/agents/{agent}.md', ('GET',), 'agent_page'),
+    ('/use-cases/{category}/{job}', ('GET',), 'use_case_job_page_nested'),
+    ('/use-cases/{category}/{job}.md', ('GET',), 'use_case_job_page_nested'),
+    ('/use-cases/{job}', ('GET',), 'use_case_job_page'),
+    ('/use-cases/{job}.md', ('GET',), 'use_case_job_page'),
+    ('/use-cases', ('GET',), 'use_cases_hub'),
+    ('/workflows/{slug}.csv', ('GET',), 'workflow_csv'),
+    ('/workflows/{slug}', ('GET',), 'workflow_page'),
+    ('/workflows/{slug}.md', ('GET',), 'workflow_page'),
+    ('/workflows', ('GET',), 'workflows_hub'),
+    ('/catalog.css', ('GET',), 'catalog_css'),
+    ('/tools/{service}', ('GET',), 'tools_provider'),
+    ('/pricing', ('GET',), 'pricing_page'),
+    ('/sitetrack.js', ('GET',), 'sitetrack_js'),
+    ('/docs', ('GET',), 'docs_page'),
+    ('/tool-requests', ('POST',), 'create_tool_request'),
+    ('/feedback', ('POST',), 'submit_feedback'),
+    ('/reviews', ('POST',), 'submit_review'),
+    ('/admin/reviews', ('GET',), 'admin_reviews'),
+    ('/feedback/{feedback_id}', ('GET',), 'get_feedback'),
+    ('/media', ('POST',), 'host_media'),
+    ('/m/{token}', ('GET',), 'serve_media'),
+    ('/admin/feedback', ('GET',), 'admin_feedback'),
+    ('/hub/tools', ('POST',), 'publish_hub_tool'),
+    ('/hub/tools/mine', ('GET',), 'my_hub_tools'),
+    ('/hub/tools/{tool_id}', ('GET',), 'get_hub_tool'),
+    ('/hub/tools/{tool_id}', ('PUT',), 'update_hub_tool'),
+    ('/hub/run', ('POST',), 'run_hub_folder'),
+    ('/hub/tools/{tool_id}/earnings', ('GET',), 'hub_tool_earnings'),
+    ('/hub/tools/{tool_id}', ('DELETE',), 'retire_hub_tool'),
+    ('/hub/tools/{tool_id}', ('PATCH',), 'set_hub_tool_price'),
+    ('/hub/tools/{tool_id}/health', ('GET',), 'hub_tool_health'),
+    ('/hub/runs/{run_id}', ('GET',), 'hub_run'),
+    ('/app/runs/{run_id}', ('GET',), 'dashboard_run_page'),
+    ('/hub/{tool_id}', ('GET',), 'hub_page'),
+    ('/hub/{tool_id}.md', ('GET',), 'hub_page'),
+    ('/auth/github', ('GET',), 'auth_github'),
+    ('/auth/github/callback', ('GET',), 'auth_github_callback'),
+    ('/auth/google', ('GET',), 'auth_google'),
+    ('/auth/google/callback', ('GET',), 'auth_google_callback'),
+    ('/auth/cli/start', ('POST',), 'auth_cli_start'),
+    ('/auth/cli/poll', ('GET',), 'auth_cli_poll'),
+    ('/auth/cli/orgs', ('GET',), 'auth_cli_orgs'),
+    ('/auth/cli/approve', ('POST',), 'auth_cli_approve'),
+    ('/login', ('GET',), 'login_page'),
+    ('/auth/me', ('GET',), 'auth_me'),
+    ('/auth/logout', ('POST',), 'auth_logout'),
+    ('/auth/email/start', ('POST',), 'auth_email_start'),
+    ('/auth/email/verify', ('POST',), 'auth_email_verify'),
+    ('/auth/invite-signin', ('GET',), 'auth_invite_signin'),
+    ('/auth/invite-signin', ('POST',), 'auth_invite_signin_confirm'),
+    ('/', ('GET',), 'landing'),
+    ('/app', ('GET',), 'dashboard'),
+    ('/app/ui/assets/{name}', ('GET',), 'dashboard_asset'),
+    ('/app/marketplace/{service}', ('GET',), 'dashboard_marketplace'),
+    ('/app/skills/{name}', ('GET',), 'dashboard_skill_page'),
+    ('/app/tools/{name}', ('GET',), 'dashboard_tool_page'),
+    ('/llms.txt', ('GET',), 'llms_txt'),
+    ('/robots.txt', ('GET',), 'robots_txt'),
+    ('/sitemap.xml', ('GET',), 'sitemap_xml'),
+    ('/7c2e4a91b5d3f8e6treg2026.txt', ('GET',), 'indexnow_key'),
+    ('/install.sh', ('GET',), 'install_sh'),
+    ('/selfhost.sh', ('GET',), 'selfhost_sh'),
+    ('/quickstart.md', ('GET',), 'quickstart_md'),
+    ('/tutorial.md', ('GET',), 'tutorial_md'),
+    ('/tutorial-import-shell.md', ('GET',), 'tutorial_import_shell_md'),
+    ('/tutorial-access.md', ('GET',), 'tutorial_access_md'),
+    ('/vendor-listing.md', ('GET',), 'vendor_listing_md'),
+    ('/vendor-listing', ('GET',), 'vendor_listing_md'),
+    ('/integrate.md', ('GET',), 'integrate_md'),
+    ('/skill.md', ('GET',), 'skill_md'),
+    ('/skills/ugc/SKILL.md', ('GET',), 'make_ugc_skill_md'),
+    ('/skills/lead-signals/SKILL.md', ('GET',), 'lead_signals_skill_md'),
+    ('/skills/jev-memory/SKILL.md', ('GET',), 'jev_memory_skill_md'),
+    ('/feedback.md', ('GET',), 'feedback_md'),
+    ('/favicon.ico', ('GET',), 'favicon'),
+    ('/favicon.svg', ('GET',), 'favicon'),
+    ('/tutorial.js', ('GET',), 'tutorial_js'),
+    ('/legal.css', ('GET',), 'legal_css'),
+    ('/terms', ('GET',), 'terms_page'),
+    ('/privacy', ('GET',), 'privacy_page'),
+    ('/connectors/claude', ('GET',), 'claude_connector_page'),
+    ('/adtrack.js', ('GET',), 'adtrack_js'),
+    ('/captcha.js', ('GET',), 'captcha_js'),
+    ('/agent-setup.js', ('GET',), 'agent_setup_js'),
+    ('/gtag.js', ('GET',), 'gtag_js'),
+    ('/resources', ('GET',), 'resources_page'),
+    ('/blog', ('GET',), 'blog_index'),
+    ('/blog/people-search-bench', ('GET',), 'blog_people_search_bench'),
+    ('/blog/work-email-finding-bench', ('GET',), 'blog_work_email_finding_bench'),
+    ('/grokbot', ('GET',), 'grokbot_page'),
+    ('/fable', ('GET',), 'fable_page'),
+    ('/astra', ('GET',), 'astra_page'),
+    ('/gpt6', ('GET',), 'gpt6_page'),
+    ('/ugc', ('GET',), 'ugc_page'),
+    ('/showcase', ('GET',), 'showcase_page'),
+    ('/people-search', ('GET',), 'people_search_page'),
+    ('/start', ('GET',), 'start_page'),
+    ('/leads-signals', ('GET',), 'leads_signals_page'),
+    ('/gtm-engineering', ('GET',), 'gtm_engineering_page'),
+    ('/gtm-engineering.md', ('GET',), 'gtm_engineering_md'),
+    ('/jev', ('GET',), 'jev_page'),
+    ('/jev/xboost.json', ('GET',), 'jev_xboost_json'),
+    ('/jev/xboost/judge', ('POST',), 'jev_xboost_judge'),
+    ('/usecase.css', ('GET',), 'usecase_css'),
+    ('/oauth/register', ('POST',), 'oauth_register'),
+    ('/oauth/authorize', ('GET',), 'oauth_authorize'),
+    ('/oauth/authorize', ('POST',), 'oauth_authorize_approve'),
+    ('/oauth/revoke', ('POST',), 'oauth_revoke'),
+    ('/oauth/token', ('POST',), 'oauth_token'),
+    ('/.well-known/oauth-protected-resource', ('GET',), 'oauth_protected_resource'),
+    ('/.well-known/oauth-authorization-server', ('GET',), 'oauth_authorization_server'),
+    ('/.well-known/openai-apps-challenge', ('GET',), 'openai_apps_challenge'),
+    ('/.well-known/skills/index.json', ('GET',), 'well_known_skills_index'),
+    ('/.well-known/skills/treg/SKILL.md', ('GET',), 'well_known_skill_md'),
+    ('/.well-known/skills/make-ugc/SKILL.md', ('GET',), 'well_known_make_ugc_md'),
+    ('/.well-known/skills/lead-signals/SKILL.md', ('GET',), 'well_known_lead_signals_md'),
+    ('/connect-demo', ('GET',), 'connect_demo_page'),
+    ('/connect-demo/callback', ('GET',), 'connect_demo_callback'),
+    ('/help', ('GET',), 'support_page'),
+    ('/contact', ('GET',), 'support_page'),
+    ('/support', ('GET',), 'support_page'),
+    ('/tutorial', ('GET',), 'tutorial_page'),
+    ('/auth/cli-token', ('GET',), 'auth_cli_token'),
+    ('/auth/revoke-tokens', ('POST',), 'auth_revoke_tokens'),
+    ('/users', ('POST',), 'register_user'),
+    ('/orgs', ('POST',), 'create_org'),
+    ('/oauth/grants', ('GET',), 'oauth_grants'),
+    ('/oauth/grants/{family_id}/team', ('POST',), 'oauth_grant_set_team'),
+    ('/orgs', ('GET',), 'list_orgs'),
+    ('/orgs/{org_id}/invites', ('POST',), 'create_invite'),
+    ('/invites/accept', ('POST',), 'accept_invite'),
+    ('/invites/mine', ('GET',), 'my_invites'),
+    ('/onboard/demo', ('POST',), 'onboard_demo'),
+    ('/onboard/skip', ('POST',), 'onboard_skip'),
+    ('/onboard/reset', ('POST',), 'onboard_reset'),
+    ('/onboarding/start', ('POST',), 'onboarding_start'),
+    ('/onboarding', ('GET',), 'onboarding_view'),
+    ('/onboarding/answer', ('POST',), 'onboarding_answer'),
+    ('/onboarding/preview', ('POST',), 'onboarding_preview_start'),
+    ('/onboarding/preview/{preview_id}', ('GET',), 'onboarding_preview_view'),
+    ('/onboarding/preview/{preview_id}/answer', ('POST',), 'onboarding_preview_answer'),
+    ('/onboarding/preview/{preview_id}/call', ('POST',), 'onboarding_preview_call'),
+    ('/demo/sandbox', ('POST',), 'demo_sandbox_mint'),
+    ('/demo/sandbox/live', ('GET',), 'demo_sandbox_live'),
+    ('/stripe/webhook', ('POST',), 'stripe_webhook'),
+    ('/landing/stripe-feed', ('GET',), 'landing_stripe_feed'),
+    ('/demo/sandbox/skill', ('GET',), 'demo_sandbox_skill'),
+    ('/skills/samples', ('GET',), 'skill_samples'),
+    ('/skills/{name}/install.sh', ('GET',), 'skill_install'),
+    ('/onboard/seed-tool', ('POST',), 'onboard_seed_tool'),
+    ('/onboard/accept-teammate', ('POST',), 'onboard_accept_teammate'),
+    ('/invites/{invite_id}/accept', ('POST',), 'accept_my_invite'),
+    ('/orgs/{org_id}/invites', ('GET',), 'list_invites'),
+    ('/orgs/{org_id}/invites/{invite_id}', ('DELETE',), 'revoke_invite'),
+    ('/orgs/{org_id}/members', ('GET',), 'list_members'),
+    ('/orgs/{org_id}/usage', ('GET',), 'org_usage'),
+    ('/orgs/{org_id}/usage/spend', ('GET',), 'usage_spend'),
+    ('/orgs/{org_id}/balance', ('GET',), 'org_balance'),
+    ('/orgs/{org_id}/tag-keys', ('GET',), 'list_tag_keys'),
+    ('/orgs/{org_id}/usage/by-tag', ('GET',), 'usage_by_tag'),
+    ('/orgs/{org_id}/settings', ('GET',), 'get_org_settings'),
+    ('/orgs/{org_id}/settings', ('PATCH',), 'set_org_settings'),
+    ('/orgs/{org_id}/budgets', ('GET',), 'list_tag_budgets'),
+    ('/orgs/{org_id}/budgets/{dim}', ('PUT',), 'set_tag_default'),
+    ('/orgs/{org_id}/budgets/{dim}/{val}', ('PUT',), 'set_tag_budget'),
+    ('/orgs/{org_id}/budgets/{dim}/{val}', ('DELETE',), 'delete_tag_budget'),
+    ('/billing', ('GET',), 'billing_get'),
+    ('/billing/topup', ('POST',), 'billing_topup'),
+    ('/billing/autotopup', ('POST',), 'billing_autotopup'),
+    ('/billing/history', ('GET',), 'billing_history'),
+    ('/billing/portal', ('POST',), 'billing_portal'),
+    ('/referrals', ('GET',), 'my_referrals'),
+    ('/referrals/code', ('POST',), 'mint_referral_code'),
+    ('/billing/stripe/webhook', ('POST',), 'billing_stripe_webhook'),
+    ('/orgs/{org_id}/members/{user_id}/cap', ('PATCH',), 'set_member_cap'),
+    ('/orgs/{org_id}/members/{user_id}/access', ('PATCH',), 'set_member_access'),
+    ('/usage/me', ('GET',), 'my_usage'),
+    ('/orgs/{org_id}/members/{user_id}', ('DELETE',), 'remove_member'),
+    ('/orgs/{org_id}/members/{user_id}', ('PATCH',), 'set_member_role'),
+    ('/orgs/{org_id}/leave', ('POST',), 'leave_org'),
+    ('/orgs/{org_id}', ('DELETE',), 'delete_org'),
+    ('/orgs/{org_id}', ('PATCH',), 'rename_org'),
+    ('/orgs/{org_id}/public-token', ('POST',), 'create_public_token'),
+    ('/orgs/{org_id}/public-token', ('DELETE',), 'delete_public_token'),
+    ('/orgs/{org_id}/agents', ('POST',), 'create_agent'),
+    ('/orgs/{org_id}/agents', ('GET',), 'list_agents'),
+    ('/orgs/{org_id}/agents/{user_id}/connection', ('GET',), 'agent_connection'),
+    ('/agents/checkin', ('POST',), 'agent_checkin'),
+    ('/orgs/{org_id}/agents/observed', ('GET',), 'list_observed_agents'),
+    ('/orgs/{org_id}/agents/{user_id}', ('DELETE',), 'revoke_agent'),
+    ('/orgs/{org_id}/api-keys', ('GET',), 'list_api_keys'),
+    ('/orgs/{org_id}/api-keys/spend', ('GET',), 'api_key_spend'),
+    ('/orgs/{org_id}/api-keys', ('POST',), 'create_api_key'),
+    ('/orgs/{org_id}/api-keys/{key_id}', ('PATCH',), 'rename_api_key'),
+    ('/orgs/{org_id}/api-keys/{key_id}/disable', ('POST',), 'disable_api_key'),
+    ('/orgs/{org_id}/api-keys/{key_id}/enable', ('POST',), 'enable_api_key'),
+    ('/orgs/{org_id}/api-keys/{key_id}/revoke', ('POST',), 'revoke_api_key'),
+    ('/orgs/{org_id}/api-keys/{key_id}/rotate', ('POST',), 'rotate_api_key'),
+    ('/orgs/{org_id}/api-keys/{key_id}/hide', ('POST',), 'hide_api_key'),
+    ('/orgs/{org_id}/api-keys/{key_id}/events', ('GET',), 'list_api_key_events'),
+    ('/orgs/{org_id}/provider-resources', ('GET',), 'list_provider_resources'),
+    ('/orgs/{org_id}/projects', ('POST',), 'create_project'),
+    ('/orgs/{org_id}/projects', ('GET',), 'list_projects'),
+    ('/orgs/{org_id}/projects/{project_id}', ('DELETE',), 'delete_project'),
+    ('/orgs/{org_id}/pins', ('GET',), 'list_capability_pins'),
+    ('/orgs/{org_id}/pins', ('POST',), 'set_capability_pin'),
+    ('/orgs/{org_id}/pins', ('DELETE',), 'clear_capability_pin'),
+    ('/orgs/{org_id}/deny', ('POST',), 'create_deny_rule'),
+    ('/orgs/{org_id}/deny', ('GET',), 'list_deny_rules'),
+    ('/orgs/{org_id}/policy/cli-deny', ('GET',), 'list_cli_deny'),
+    ('/orgs/{org_id}/deny/{rule_id}', ('DELETE',), 'delete_deny_rule'),
+    ('/secrets', ('POST',), 'create_secret'),
+    ('/secrets', ('GET',), 'list_secrets'),
+    ('/secrets/{secret_id}', ('PATCH',), 'update_secret'),
+    ('/secrets/{secret_id}', ('DELETE',), 'delete_secret'),
+    ('/tools', ('POST',), 'create_tool'),
+    ('/tools', ('GET',), 'list_tools'),
+    ('/tools/by-name/{name}', ('GET',), 'get_tool_by_name'),
+    ('/tools/{tool_id}', ('PATCH',), 'update_tool'),
+    ('/tools/{tool_id}', ('DELETE',), 'delete_tool'),
+    ('/tools/{name}/grant', ('POST',), 'grant_local_run'),
+    ('/tools/{name}/run-report', ('POST',), 'report_local_run'),
+    ('/skills', ('POST',), 'register_skill'),
+    ('/skills/analyze', ('POST',), 'analyze_skill_folder'),
+    ('/skills/import', ('POST',), 'import_skill_folder'),
+    ('/bundles', ('GET',), 'list_bundles'),
+    ('/bundles/by-name/{name}', ('GET',), 'get_bundle_by_name'),
+    ('/bundles/{bundle_id}', ('GET',), 'get_bundle'),
+    ('/bundles/{bundle_id}', ('PATCH',), 'update_bundle'),
+    ('/bundles/{bundle_id}', ('DELETE',), 'delete_bundle'),
+    ('/calls', ('GET',), 'list_calls'),
+    ('/calls/{call_id}/result', ('GET',), 'get_call_result'),
+    ('/calls/{call_ref}', ('GET',), 'get_call'),
+    ('/runs', ('GET',), 'list_runs'),
+    ('/activity', ('GET',), 'activity_feed'),
+    ('/oauth/providers', ('GET',), 'oauth_providers_list'),
+    ('/oauth/start', ('POST',), 'oauth_start'),
+    ('/oauth/callback', ('GET',), 'oauth_callback'),
+    ('/connections', ('GET',), 'list_connections'),
+    ('/connections/{secret_id}/resources', ('GET',), 'connection_resources'),
+    ('/connections/{secret_id}/resource', ('POST',), 'set_connection_resource'),
+    ('/connections/token', ('POST',), 'connect_with_token'),
+    ('/connections/{secret_id}/extra-credential', ('POST',), 'set_extra_credential'),
+    ('/connections/{secret_id}', ('DELETE',), 'revoke_connection'),
+    ('/connections/{secret_id}', ('PATCH',), 'rename_connection'),
+    ('/oauth/status/{state}', ('GET',), 'oauth_status'),
+    ('/health/run', ('POST',), 'run_health'),
+    ('/health', ('GET',), 'get_health'),
+    ('/admin/stats', ('GET',), 'admin_stats'),
+    ('/admin/orgs', ('GET',), 'admin_orgs'),
+    ('/admin/orgs/{org_id}', ('GET',), 'admin_org_detail'),
+    ('/admin/users', ('GET',), 'admin_users'),
+    ('/admin/tools', ('GET',), 'admin_tools'),
+    ('/admin/hub/listings', ('GET',), 'admin_hub_listings'),
+    ('/admin/hub/listings/{tool_id}', ('POST',), 'admin_hub_listing_decide'),
+    ('/admin/hub/updates', ('GET',), 'admin_hub_updates'),
+    ('/admin/hub/updates/{tool_id}', ('POST',), 'admin_hub_update_decide'),
+    ('/admin/calls', ('GET',), 'admin_calls'),
+    ('/admin/share', ('GET',), 'admin_share'),
+    ('/admin/errors', ('GET',), 'admin_errors'),
+    ('/admin/health', ('GET',), 'admin_health'),
+    ('/admin/kv', ('GET',), 'admin_kv'),
+    ('/admin/users/{user_id}/superadmin', ('POST',), 'admin_set_superadmin'),
+    ('/admin/users/{user_id}/suspend', ('POST',), 'admin_suspend_user'),
+    ('/admin/users/{user_id}', ('DELETE',), 'admin_delete_user'),
+    ('/admin/orgs/{org_id}/suspend', ('POST',), 'admin_suspend_org'),
+    ('/admin/orgs/{org_id}', ('DELETE',), 'admin_delete_org'),
+    ('/admin/orgs/{org_id}/credit', ('POST',), 'admin_credit_org'),
+    ('/admin/reconcile/drift', ('GET',), 'admin_reconcile_drift'),
+    ('/admin/reconcile/spend', ('GET',), 'admin_reconcile_spend'),
+    ('/admin/reconcile/repeats', ('GET',), 'admin_reconcile_repeats'),
+    ('/admin/reconcile/asynctasks', ('GET',), 'admin_reconcile_asynctasks'),
+    ('/admin/archive', ('GET',), 'admin_archive'),
+    ('/admin/archive/keys', ('GET',), 'admin_archive_keys'),
+    ('/admin/archive/body', ('GET',), 'admin_archive_body'),
+    ('/admin/archive/panel', ('GET',), 'admin_archive_panel'),
+    ('/admin/referrals', ('GET',), 'admin_referrals'),
+    ('/catalog/endpoints/{endpoint_id}/access', ('GET',), 'catalog_endpoint_access'),
+    ('/run', ('POST',), 'run_tool_server'),
+})
+_DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
+    ("/call/{rest:path}", ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"), "call_tool"),
+    ("/catalog/call/{rest:path}",
+     ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"),
+     "call_catalog_endpoint"),
+    ("/table/{rest:path}", ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"), "table_tool"),
+    # MCP is calling traffic, so its mount and its RFC 9728 resource metadata belong to the
+    # dataplane. Token issuance (consent, /oauth/*) stays on control; the dataplane only validates.
+    ('/.well-known/oauth-protected-resource/mcp', ('GET',), 'oauth_protected_resource'),
+    ('/.well-known/oauth-protected-resource/mcp/v2', ('GET',), 'oauth_protected_resource_v2'),
+})
+
+ROLE_BACKGROUND_TASKS: dict[AppRole, tuple[str, ...]] = {
+    # Arena statistics moved out of the web processes: `treg-worker arena insights` (a cron)
+    # walks `callrecord` on its own schedule, so web processes no longer compete for the cursor
+    # row and a deploy no longer multiplies that scan. Only `/arena/insights` (a
+    # snapshot read) stays here.
+    "all": ("treg.adsconv.worker",),
+    "dataplane": (),
+    "control": ("treg.adsconv.worker",),
+}
+ROLE_STARTUP_CHECKS: dict[AppRole, tuple[str, ...]] = {
+    "all": (
+        "treg.infra.db.verify_db",
+        "app.state.http",
+        "treg.mcp.mcp_lifespan",
+    ),
+    "dataplane": (
+        "treg.infra.db.verify_db",
+        "app.state.http",
+        "treg.mcp.mcp_lifespan",
+    ),
+    "control": (
+        "treg.infra.db.verify_db",
+        "app.state.http",
+    ),
+}
+
+_STATIC_ANCHOR = ("/auth/cli-token", ("GET",), "auth_cli_token")
+
+try:
+    from . import mcp as _mcp
+except Exception:  # pragma: no cover - exercised by deploys without the optional dependency
+    _mcp = None
+
+
+class _ImmutableStatic(StaticFiles):
+    """Static files whose version-stamped names can be cached permanently."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
+class _DayStatic(StaticFiles):
+    """Static files kept under stable names (vendor and platform logos): a day's cache, so a page
+    that shows every logo (/search) does not revalidate each one on every visit."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+
+
+class _MediaStatic(StaticFiles):
+    """Page media under stable, unversioned names (`/media/<page>/...`). With no Cache-Control a
+    browser applies a heuristic lifetime and never revalidates, so a page's edited script or
+    stylesheet would keep running old code against new HTML. Code and text therefore revalidate
+    on every use (`no-cache`; the ETag makes that a 304), and images, video and fonts, which a page
+    only ever swaps by renaming, keep a day's cache like the logos."""
+
+    _REVALIDATE = frozenset({".js", ".mjs", ".css", ".html", ".json", ".md", ".txt"})
+
+    def file_response(self, full_path, *args, **kwargs):
+        response = super().file_response(full_path, *args, **kwargs)
+        revalidate = Path(full_path).suffix.lower() in self._REVALIDATE
+        response.headers["Cache-Control"] = "no-cache" if revalidate else "public, max-age=86400"
+        return response
+
+
+def _route_key(route: APIRoute) -> RouteKey:
+    return route.path, tuple(sorted(route.methods)), route.name
+
+
+def _owned_routes(api_module, role: AppRole) -> list[APIRoute]:
+    routes = [route for route in api_module.router.routes if isinstance(route, APIRoute)]
+    keys = [_route_key(route) for route in routes]
+    known = _CONTROL_ROUTE_KEYS | _DATAPLANE_ROUTE_KEYS
+    actual = set(keys)
+    overlap = _CONTROL_ROUTE_KEYS & _DATAPLANE_ROUTE_KEYS
+    missing = actual - known
+    stale = known - actual
+    duplicates = {key for key in keys if keys.count(key) > 1}
+    if overlap or missing or stale or duplicates:
+        raise RuntimeError(
+            "invalid app role route ownership: "
+            f"overlap={sorted(overlap)!r}, missing={sorted(missing)!r}, "
+            f"stale={sorted(stale)!r}, duplicates={sorted(duplicates)!r}"
+        )
+
+    selected = {
+        "all": known,
+        "dataplane": _DATAPLANE_ROUTE_KEYS,
+        "control": _CONTROL_ROUTE_KEYS,
+    }[role]
+    return [route for route in routes if _route_key(route) in selected]
+
+
+def _include_routes(app: FastAPI, routes: Sequence[APIRoute]) -> None:
+    if not routes:
+        return
+    for route in routes:
+        cloned = copy(route)
+        cloned.dependency_overrides_provider = app
+        cloned.app = request_response(cloned.get_route_handler())
+        app.router.routes.append(cloned)
+
+
+def _mount_static(app: FastAPI, api_module) -> None:
+    if api_module._LOGO_DIR.exists():
+        app.mount("/logos", _DayStatic(directory=str(api_module._LOGO_DIR)), name="logos")
+    if api_module._MEDIA_DIR.exists():
+        app.mount("/media", _MediaStatic(directory=str(api_module._MEDIA_DIR)), name="media")
+    if api_module._TOUR_DIR.exists():
+        app.mount(
+            "/dashboard-tour",
+            StaticFiles(directory=str(api_module._TOUR_DIR), html=True),
+            name="dashboard-tour",
+        )
+    if api_module._VENDOR_DIR.exists():
+        app.mount(
+            "/vendor",
+            _ImmutableStatic(directory=str(api_module._VENDOR_DIR)),
+            name="vendor",
+        )
+
+
+def _include_role_routes(app: FastAPI, api_module, role: AppRole) -> None:
+    pending: list[APIRoute] = []
+    for route in _owned_routes(api_module, role):
+        if role != "dataplane" and _route_key(route) == _STATIC_ANCHOR:
+            _include_routes(app, pending)
+            pending = []
+            _mount_static(app, api_module)
+        pending.append(route)
+    _include_routes(app, pending)
+
+
+def _openapi_operation_routes(routes: Sequence[BaseRoute], widened: set[int]) -> list[BaseRoute]:
+    """One schema view per documented operation, leaving the live routes untouched.
+
+    A widened GET route answers HEAD, but advertising it would duplicate every operation. A route
+    declaring several methods (the /call relay) is one FastAPI operation id for all of them, taken
+    from whichever method the set yields first; split it into per-method copies with their own ids.
+    """
+    result: list[BaseRoute] = []
+    for route in routes:
+        if not isinstance(route, APIRoute):
+            result.append(route)
+            continue
+        methods = {"GET"} if id(route) in widened else route.methods
+        if methods == route.methods and len(methods) == 1:
+            result.append(route)
+            continue
+        base_id = re.sub(r"\W", "_", f"{route.name}{route.path_format}")
+        for method in sorted(methods):
+            view = copy(route)
+            view.methods = {method}
+            if len(methods) > 1 and route.operation_id is None:
+                view.unique_id = f"{base_id}_{method.lower()}"
+            result.append(view)
+    return result
+
+
+def _install_head_and_openapi(app: FastAPI) -> None:
+    """Answer HEAD wherever GET works without advertising duplicate OpenAPI operations."""
+    widened: set[int] = set()
+    for route in app.routes:
+        if isinstance(route, APIRoute) and route.methods == {"GET"}:
+            route.methods = {"GET", "HEAD"}
+            widened.add(id(route))
+
+    fastapi_openapi = app.openapi
+
+    def openapi_by_operation():
+        if app.openapi_schema:
+            return app.openapi_schema
+        live = app.router.routes
+        # Synchronous and awaited nowhere, so no request is routed against the schema view.
+        app.router.routes = _openapi_operation_routes(live, widened)
+        try:
+            app.openapi_schema = fastapi_openapi()
+        finally:
+            app.router.routes = live
+        return app.openapi_schema
+
+    app.openapi = openapi_by_operation
+
+
+def _route_manifest(routes: Sequence[BaseRoute]) -> list[str]:
+    result = []
+    for route in routes:
+        if isinstance(route, Mount):
+            result.append(f"MOUNT {route.path}")
+            continue
+        methods = ",".join(sorted(getattr(route, "methods", ()) or ()))
+        result.append(f"{methods} {route.path}")
+    return result
+
+
+_POOL_GAUGE_SAMPLE_S = 1.0
+_POOL_GAUGE_EMIT_S = 60.0
+
+
+def _emit_money_timings() -> None:
+    """One bounded aggregate and at most one slow sample per operation/window, with no DB I/O."""
+    try:
+        for props, slowest in money_timing.snapshot():
+            analytics.capture(analytics.SERVER_DISTINCT_ID, "money_operation_gauge", props)
+            if slowest is not None:
+                logging.getLogger("treg.ledger").warning(
+                    "slow money session sample %s", json.dumps({
+                        "operation": props["operation"],
+                        "process_instance": props["process_instance"], **slowest,
+                    }, separators=(",", ":")))
+    except Exception:  # noqa: BLE001 - diagnostics must not break a gauge or shutdown
+        pass
+    from .infra.money_admission_reporting import emit_snapshot
+    emit_snapshot(role="web")
+
+
+async def pool_gauge(*, sample_s: float = _POOL_GAUGE_SAMPLE_S,
+                     emit_s: float = _POOL_GAUGE_EMIT_S) -> None:
+    """Every minute, one `db_pool_gauge` event: the peak connections each pool had checked out in
+    that minute, next to its capacity. The reading behind `TREG_DB_POOL_OVERRIDES`: a pool whose
+    peak sits at capacity is one whose waiters are timing out (api: `503 treg_saturated`;
+    background: an audit or archive row dropped after `pool_timeout`), and a pool whose peak never
+    nears it is holding connections nothing uses. Sampling is a counter read, no I/O; a bad pass
+    never kills the loop. Telemetry, not a database consumer - so it is not in
+    `ROLE_BACKGROUND_TASKS` and runs in every role."""
+    from .infra.db import fold_pool_peaks, pool_snapshot
+    peaks: dict[str, int] = {}
+    samples = 0
+    opened = time.monotonic()
+    while True:
+        try:
+            fold_pool_peaks(peaks, pool_snapshot())
+            samples += 1
+            if time.monotonic() - opened >= emit_s:
+                snapshot = pool_snapshot()
+                props: dict = {"samples": samples, "window_s": round(time.monotonic() - opened),
+                               "process_instance": money_timing.PROCESS_INSTANCE}
+                for name, row in snapshot.items():
+                    props[f"{name}_peak"] = peaks.get(name, 0)
+                    props[f"{name}_capacity"] = row["capacity"]
+                    props[f"{name}_headroom"] = row["capacity"] - peaks.get(name, 0)
+                if snapshot:
+                    analytics.capture(analytics.SERVER_DISTINCT_ID, "db_pool_gauge", props)
+                _emit_money_timings()
+                peaks, samples, opened = {}, 0, time.monotonic()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - a gauge must never take the service down
+            logging.getLogger("treg").exception("db pool gauge pass failed")
+        await asyncio.sleep(sample_s)
+
+
+def configure_archive_object_store(store) -> None:
+    """Composition seam shared by startup and in-memory tests. Find's card vectors share the store."""
+    from . import archive_bodies
+    from .application import find_index
+    archive_bodies.configure(store)
+    find_index.configure(store)
+
+
+@asynccontextmanager
+async def archive_object_store(injected=None):
+    from . import archive_bodies
+    from .infra.object_store import open_r2
+
+    enabled = archive_bodies.validate_configuration()
+    opener = open_r2(get_settings()) if enabled and injected is None else nullcontext(injected)
+    async with opener as store:
+        configure_archive_object_store(store)
+        try:
+            yield
+        finally:
+            configure_archive_object_store(None)
+
+
+def _lifespan(role: AppRole):
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        async with archive_object_store(getattr(app.state, "archive_object_store", None)):
+            await verify_db()
+            if kv.configured() and not await kv.store().ping():
+                # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it
+                # answers no team receives a review invitation. /admin/kv shows the live state.
+                logging.getLogger("treg").warning("kv configured but unreachable at startup")
+
+            limits = httpx.Limits(max_keepalive_connections=100, max_connections=200)
+            app.state.http = httpx.AsyncClient(
+                limits=limits,
+                timeout=httpx.Timeout(float(get_settings().call_timeout_s)),
+                # what a provider sees when no caller header says otherwise, never python-httpx/x
+                headers={"User-Agent": TREG_USER_AGENT},
+            )
+            ads_task = (
+                asyncio.create_task(adsconv.worker(background_session_maker, app.state.http))
+                if ROLE_BACKGROUND_TASKS[role] and adsconv.enabled()
+                else None
+            )
+            gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
+            # Local transaction diagnostics run even when the analytics transport is disabled.
+            trace_runner = start_money_trace(role=role)
+            # The archive's refresh worker (docs/context/architecture/archive.md): serve mode only,
+            # and a zero daily cap disables it without touching serving. Same discipline as the ads
+            # task — in-process, cancelled on shutdown, a bad pass never kills the loop.
+            archive_task = (
+                asyncio.create_task(archive.refresh_worker(app.state.http))
+                if ROLE_BACKGROUND_TASKS[role] and archive.worker_enabled()
+                else None
+            )
+            # The pruner (profit-shaped shelf clearing — see archive.prune_once): runs wherever the
+            # archive records, bounded per pass; archive_prune_batch=0 disables it.
+            prune_task = (
+                asyncio.create_task(archive.prune_worker())
+                if ROLE_BACKGROUND_TASKS[role] and archive.prune_enabled()
+                else None
+            )
+            # Find's card vectors (docs/context/architecture/find.md): built now, in the background,
+            # instead of by the first find after a deploy; off without an embedding key.
+            find_task = asyncio.create_task(find_index.warm()) if find_index.enabled() else None
+            endpoint_observations = app.state.endpoint_observation_reader
+            routed_call.configure_endpoint_observation_reader(endpoint_observations)
+            mcp_reader_bound = role != "control" and _mcp is not None
+            if mcp_reader_bound:
+                _mcp.configure_endpoint_observation_reader(endpoint_observations)
+            fault_handler = analytics.install_fault_handler()
+            analytics.capture_service_started(role)
+            for problem in turnstile.misconfiguration():
+                logging.getLogger("treg").warning("event=turnstile_misconfigured problem=%s", problem)
+            traffic_reporting = org_traffic.start_reporting() if role != "control" else False
+            try:
+                if role == "control" or _mcp is None:
+                    yield
+                elif get_settings().claude_connector_enabled:
+                    async with _mcp.all_mcp_lifespans():
+                        yield
+                else:
+                    async with _mcp.mcp_lifespan():
+                        yield
+            finally:
+                try:
+                    workers = [task for task in (
+                        gauge_task, ads_task, archive_task, prune_task, find_task,
+                    ) if task is not None]
+                    for task in workers:
+                        task.cancel()
+                    # Wait for session rollback/close before the event loop or shared client closes.
+                    # A second cancellation during asyncio.run() teardown can interrupt that cleanup.
+                    await asyncio.gather(*workers, return_exceptions=True)
+                    if mcp_reader_bound:
+                        _mcp.clear_endpoint_observation_reader(endpoint_observations)
+                    routed_call.clear_endpoint_observation_reader(endpoint_observations)
+                    await arena.shutdown()
+                    await first_run.shutdown()
+                    await endpoint_observations.aclose()
+                    # analytics LAST: it is the sink the other two report their losses into, and a
+                    # drop during their drain is the one most worth hearing about. Draining it first
+                    # left those events queued behind a cancelled flusher.
+                    await audit.drain()
+                    await archive.drain()
+                    if gauge_task is not None:
+                        _emit_money_timings()
+                    await stop_money_trace(trace_runner)
+                    await analytics.drain()
+                    await app.state.http.aclose()
+                    await kv.close()
+                finally:
+                    if traffic_reporting:
+                        org_traffic.stop_reporting()
+                    try:
+                        await stop_money_trace(trace_runner)
+                    finally:
+                        analytics.remove_fault_handler(fault_handler)
+
+    return lifespan
+
+
+def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
+    """Assemble one role from api.py's route definitions through an explicit factory."""
+    if role not in ("all", "dataplane", "control"):
+        raise ValueError(f"unknown app role: {role!r}")
+
+    # Deferred to avoid a cycle: api.py defines the router, then calls this factory for api:app.
+    from . import api as api_module
+    from .application.call import keyslots
+
+    keyslots.check_accounts()  # an unusable TREG_PLATFORM_ACCOUNTS entry refuses to start
+
+    expose_docs = role != "dataplane"
+    app = FastAPI(
+        title="treg",
+        version="0.0.1",
+        lifespan=_lifespan(role),
+        openapi_url="/openapi.json" if expose_docs else None,
+        docs_url="/docs/api" if expose_docs else None,
+        redoc_url=None,
+    )
+    app.state.endpoint_observation_reader = CachedEndpointObservationReader(
+        # Background: `CachedEndpointObservationReader` never awaits the source on the request path
+        # (a miss returns empty and schedules a refresh task), so these aggregates over `callrecord`
+        # are off-request work and belong off the API's pool.
+        PostgresEndpointObservationReader(background_session_maker)
+    )
+
+    # Registration order is part of the compatibility surface. add_middleware prepends entries.
+    app.add_middleware(_LegacyHostRedirectMiddleware)
+    app.add_middleware(_SecurityHeadersMiddleware)
+    app.add_middleware(_BodyDecodeMiddleware)
+    app.add_middleware(org_traffic.RequestLogMiddleware)
+    if get_settings().local_dev:
+        app.add_middleware(_DevTitleMiddleware)
+    app.add_exception_handler(OverflowError, api_module._id_out_of_range)
+    bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
+    app.add_exception_handler(PoolTimeoutError, bootstrap_handlers._pool_saturated)
+    app.add_exception_handler(StarletteHTTPException, bootstrap_handlers._mark_treg_own_errors)
+
+    _include_role_routes(app, api_module, role)
+    _install_head_and_openapi(app)
+
+    if role != "control" and _mcp is not None:
+        if get_settings().claude_connector_enabled:
+            # Claude can remove the final slash. Normalize before the parent V1 mount can match.
+            app.add_middleware(_mcp.NormalizeDirectoryMCPPath)
+            # Register the nested mount first so the /mcp parent does not consume it.
+            app.mount("/mcp/v2", _mcp.directory_mcp_app)
+        app.mount("/mcp", _mcp.mcp_app)
+
+    startup_checks = list(ROLE_STARTUP_CHECKS[role])
+    if _mcp is None and "treg.mcp.mcp_lifespan" in startup_checks:
+        startup_checks.remove("treg.mcp.mcp_lifespan")
+    app.state.role = role
+    app.state.role_manifest = {
+        "routes": _route_manifest(app.routes),
+        "background_tasks": list(ROLE_BACKGROUND_TASKS[role]),
+        "startup_checks": startup_checks,
+    }
+    app.state.archive_object_store = archive_object_store
+    # Last, so an extension's install sees the finished app. A missing required one refuses to start.
+    app.state.extensions = policy.load_extensions(app, get_settings().required_extensions)
+    return app

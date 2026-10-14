@@ -1,0 +1,16 @@
+{
+  "id": "example-request-id",
+  "credits_used": 1,
+  "credits_remaining": 9000,
+  "matched_count": 1,
+  "results": [
+    {
+      "input": "cloud migration",
+      "project": {
+        "id": 1,
+        "slug": "cloud_migration",
+        "name": "Cloud Migration"
+      }
+    }
+  ]
+}

@@ -22,6 +22,7 @@ endpoints:
     method: GET
     path: /api/v1/tiktok/web/fetch_user_profile
     summary: "Public TikTok profile by username (uniqueId) or secUid"
+    name: "TikTok user profile by username or secUid"
     input:
       queryParams:
         uniqueId: {type: string, required: false, note: "username from the profile URL", example: "tiktok"}
@@ -31,23 +32,17 @@ endpoints:
       queryParams: {uniqueId: "tiktok"}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified, note: charged on 2xx only}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.tiktok.user.profile.json
     docs_url: https://docs.tikhub.io/
 
   - id: tikhub.tiktok.user.videos
-    # UNVERIFIED (2026-07-28): succeeded once, then failed 11 consecutive times with
-    #   HTTP 400 {"detail":{"code":400,"message":"Request failed. Please retry. …"}}
-    # across curl and httpx, with and without the optional params, spaced out to rule out the
-    # 10 req/s limit. The single success proves the path and params below are correct, so this is
-    # TikHub's upstream breaking, not a spec error. The app/v3 alternative
-    # (/api/v1/tiktok/app/v3/fetch_user_post_videos) answers HTTP 402 — it is not free-credit
-    # eligible — so there is no working route for this capability on the current account.
     capability: tiktok.user.videos
     platform: tiktok
     scope: any_account
     method: GET
     path: /api/v1/tiktok/web/fetch_user_post
-    name: "List a TikTok user's recent videos"
+    name: "TikTok user's recent videos by secUid"
     summary: "Recent videos posted by a TikTok user (keyed by secUid, not username)"
     input:
       queryParams:
@@ -59,6 +54,9 @@ endpoints:
     test_request:
       queryParams: {secUid: "MS4wLjABAAAAv7iSuuXDJGDvJkmH_vz1qkDZYo1apxgzaxdBSeIuPiM", count: 5}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    verified: 2026-10-04
+    added: '2026-07-28'
+    example_response: examples/tikhub.tiktok.user.videos.json
     docs_url: https://docs.tikhub.io/
 
   - id: tikhub.tiktok.video.detail
@@ -67,7 +65,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/v1/tiktok/web/fetch_post_detail
-    name: "Get TikTok video details"
+    name: "TikTok video details by video id — author, stats"
     summary: "A single TikTok video's metadata, author and stats"
     input:
       queryParams:
@@ -77,6 +75,7 @@ endpoints:
       queryParams: {itemId: "7606449212716305678"}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.tiktok.video.detail.json
     docs_url: https://docs.tikhub.io/
 
@@ -87,6 +86,7 @@ endpoints:
     method: GET
     path: /api/v1/tiktok/web/fetch_post_comment
     summary: "Comments on a TikTok video"
+    name: "TikTok video comments by video id"
     input:
       queryParams:
         aweme_id: {type: string, required: true, note: "numeric video id — same value as itemId elsewhere", example: "7231337071831321903"}
@@ -97,6 +97,7 @@ endpoints:
       queryParams: {aweme_id: "7606449212716305678", count: 5}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.tiktok.video.comments.json
     docs_url: https://docs.tikhub.io/
 
@@ -107,6 +108,7 @@ endpoints:
     method: GET
     path: /api/v1/tiktok/app/v3/fetch_video_search_result
     summary: "Search TikTok videos by keyword"
+    name: "Search TikTok videos by keyword"
     # The documented web-family equivalent (/api/v1/tiktok/web/fetch_search_video) returned HTTP 400
     # on every attempt on 2026-07-28 regardless of parameters; the app/v3 route works and costs the same.
     input:
@@ -121,6 +123,7 @@ endpoints:
       queryParams: {keyword: "coffee", count: 5}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.tiktok.search.videos.json
     docs_url: https://docs.tikhub.io/
 
@@ -130,7 +133,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/v1/tiktok/web/fetch_tag_detail
-    name: "Resolve a TikTok hashtag to its ID"
+    name: "TikTok hashtag details by tag name — challenge id"
     summary: "TikTok hashtag metadata — resolves a tag name to the challengeID needed for hashtag videos"
     input:
       queryParams:
@@ -139,6 +142,7 @@ endpoints:
       queryParams: {tag_name: "coffee"}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.tiktok.hashtag.detail.json
     docs_url: https://docs.tikhub.io/
 
@@ -149,6 +153,7 @@ endpoints:
     method: GET
     path: /api/v1/tiktok/web/fetch_tag_post
     summary: "Videos under a TikTok hashtag (by numeric challengeID)"
+    name: "TikTok hashtag videos by challenge id"
     input:
       queryParams:
         challengeID: {type: string, required: true, note: "numeric hashtag id — resolve a tag name via tiktok.hashtag.detail first", example: "6272"}
@@ -158,6 +163,7 @@ endpoints:
       queryParams: {challengeID: "14104", count: 5}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.tiktok.hashtag.videos.json
     docs_url: https://docs.tikhub.io/
 
@@ -176,6 +182,7 @@ endpoints:
     method: GET
     path: /api/v1/instagram/v1/fetch_user_info_by_username
     summary: "Public Instagram profile by username"
+    name: "Instagram profile by username"
     input:
       queryParams:
         username: {type: string, required: true, note: "handle without the '@'", example: "instagram"}
@@ -183,6 +190,7 @@ endpoints:
       queryParams: {username: "instagram"}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified, note: the v3 equivalent (/instagram/v3/get_user_profile) costs 0.008}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.instagram.user.profile.json
     docs_url: https://docs.tikhub.io/
 
@@ -199,6 +207,7 @@ endpoints:
     method: GET
     path: /api/v1/instagram/v1/fetch_user_posts
     summary: "Recent posts of an Instagram user (keyed by numeric user id)"
+    name: "Instagram user's posts by user id"
     input:
       queryParams:
         user_id: {type: string, required: true, note: "numeric Instagram user id — resolve a username via instagram.user.profile first", example: "25025320"}
@@ -208,17 +217,21 @@ endpoints:
       queryParams: {user_id: "25025320", count: 5}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.instagram.user.posts.json
     docs_url: https://docs.tikhub.io/
 
   # --- YouTube ----------------------------------------------------------------------------------
   - id: tikhub.youtube.video.detail
+    status: retired
+    status_note: "TikHub removed /youtube/web/get_video_info_v2 (absent from its OpenAPI since at least 2026-08-29; live 404 through treg on 2026-09-27); superseded by the web_v2 route."
+    superseded_by: tikhub.x.youtube-web-v2-get-video-info-v2
     capability: youtube.video.detail
     platform: youtube
     scope: any_account
     method: GET
     path: /api/v1/youtube/web/get_video_info_v2
-    name: "Get YouTube video details"
+    name: "YouTube video details by video id"
     summary: "A single YouTube video's metadata and stats"
     # The newer /youtube/web_v2/get_video_info is equivalent and identically priced, but is not
     # free-credit eligible, so this web-family route is the one that could be live-verified.
@@ -229,6 +242,7 @@ endpoints:
       queryParams: {video_id: "dQw4w9WgXcQ"}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.youtube.video.detail.json
     docs_url: https://docs.tikhub.io/
 
@@ -245,6 +259,7 @@ endpoints:
     method: GET
     path: /api/v1/youtube/web_v2/get_video_comments
     summary: "Comments on a YouTube video"
+    name: "YouTube video comments by video id"
     input:
       queryParams:
         video_id: {type: string, required: true, example: "dQw4w9WgXcQ"}
@@ -257,6 +272,7 @@ endpoints:
       queryParams: {video_id: "dQw4w9WgXcQ", language_code: "en-US"}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.youtube.video.comments.json
     docs_url: https://docs.tikhub.io/
 
@@ -272,7 +288,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/v1/youtube/web_v2/get_general_search_v2
-    name: "Search YouTube videos by keyword"
+    name: "Search YouTube videos by keyword and filters"
     summary: "Search YouTube by keyword (filter type=video for videos only)"
     input:
       queryParams:
@@ -287,6 +303,7 @@ endpoints:
       queryParams: {keyword: "coffee", type: "video"}
     cost: {type: per_success, value: 0.002, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.youtube.search.videos.json
     docs_url: https://docs.tikhub.io/
 
@@ -303,6 +320,7 @@ endpoints:
     method: GET
     path: /api/v1/youtube/web_v2/get_channel_videos
     summary: "Videos of a YouTube channel by channel id"
+    name: "YouTube channel videos by channel id"
     input:
       queryParams:
         channel_id: {type: string, required: true, note: "UC… channel id", example: "UCX6OQ3DkcsbYNE6H8uQQuVA"}
@@ -314,6 +332,7 @@ endpoints:
       queryParams: {channel_id: "UCX6OQ3DkcsbYNE6H8uQQuVA", language_code: "en-US"}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.youtube.channel.videos.json
     docs_url: https://docs.tikhub.io/
 
@@ -331,6 +350,7 @@ endpoints:
     method: GET
     path: /api/v1/twitter/web/fetch_user_profile
     summary: "Public X (Twitter) profile by handle or numeric id"
+    name: "X (Twitter) profile by handle or user id"
     input:
       queryParams:
         screen_name: {type: string, required: false, note: "handle from the profile URL", example: "elonmusk"}
@@ -340,6 +360,7 @@ endpoints:
       queryParams: {screen_name: "elonmusk"}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.x.user.profile.json
     docs_url: https://docs.tikhub.io/
 
@@ -356,6 +377,7 @@ endpoints:
     method: GET
     path: /api/v1/twitter/web/fetch_user_post_tweet
     summary: "Recent posts of an X (Twitter) user"
+    name: "X (Twitter) user's posts by handle or user id"
     input:
       queryParams:
         screen_name: {type: string, required: false, example: "elonmusk"}
@@ -366,5 +388,6 @@ endpoints:
       queryParams: {screen_name: "elonmusk"}
     cost: {type: per_success, value: 0.001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/tikhub.x.user.posts.json
     docs_url: https://docs.tikhub.io/

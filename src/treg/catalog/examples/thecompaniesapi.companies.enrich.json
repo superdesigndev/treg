@@ -1,0 +1,251 @@
+{
+  "about": {
+    "businessType": "privately-held",
+    "industries": [
+      "banking",
+      "technology-information-and-internet",
+      "it-services-and-it-consulting",
+      "software-development",
+      "cloud-infrastructure",
+      "… 18 more item(s) truncated"
+    ],
+    "industry": "financial-services",
+    "languages": [
+      "de",
+      "en",
+      "es",
+      "fr",
+      "it",
+      "… 7 more item(s) truncated"
+    ],
+    "name": "Stripe",
+    "nameAlts": [
+      "stripe.com"
+    ],
+    "nameLegal": "Stripe, Inc.",
+    "totalEmployees": "1k-5k",
+    "totalEmployeesExact": 8000,
+    "yearFounded": 2010,
+    "yearFoundedPlace": "San Francisco"
+  },
+  "analytics": {
+    "monthlyVisitors": "100m-500m"
+  },
+  "assets": {
+    "cover": {
+      "height": 1024,
+      "src": "https://thecompaniesapi.s3.fr-par.scw.cloud/companies/covers/stripe.com.jpg",
+      "width": 2048
+    },
+    "logoSquare": {
+      "height": 200,
+      "src": "https://thecompaniesapi.s3.fr-par.scw.cloud/companies/logos/square/stripe.com.jpg",
+      "width": 200
+    }
+  },
+  "descriptions": {
+    "primary": "Stripe is a set of tools for building and running an internet business. We help businesses accept payments from anyone, anywhere, and build new kinds of companies like Lyft or Kickstarter. Internally, we say our goal is to increase the GDP of the internet---we want to bring more businesses online wo",
+    "tagline": "Financial Infrastructure to Increase Your Revenue",
+    "website": "Stripe powers online and in-person payment processing and financial solutions for businesses of all sizes. Accept payments, send payouts, and automate financial processes with a suite of APIs and no-code tools."
+  },
+  "domain": {
+    "domain": "stripe.com",
+    "domainName": "stripe",
+    "registrar": "SafeNames Ltd.",
+    "state": "operating",
+    "status": 200,
+    "tld": "com"
+  },
+  "finances": {
+    "revenue": "over-1b"
+  },
+  "locations": {
+    "headquarters": {
+      "address": {
+        "raw": "510 townsend street"
+      },
+      "city": {
+        "address": "510 townsend street",
+        "code": "san-francisco|california|us",
+        "name": "San Francisco"
+      },
+      "continent": {
+        "code": "na",
+        "name": "North America"
+      },
+      "country": {
+        "code": "us",
+        "name": "United States"
+      },
+      "county": {
+        "code": "san-francisco|us",
+        "name": "San Francisco"
+      },
+      "state": {
+        "code": "california|us",
+        "name": "California"
+      }
+    }
+  },
+  "meta": {
+    "cost": 1,
+    "credits": 49791,
+    "mysqlId": 2307,
+    "score": 74,
+    "similarity": null,
+    "syncedAt": "phone:8bd988f5d8T04:41:02.939Z"
+  },
+  "secondaries": {
+    "emailPatterns": [
+      {
+        "pattern": "[F]",
+        "usagePercentage": 59.1934
+      },
+      {
+        "pattern": "[F1][L]",
+        "usagePercentage": 28.2325
+      },
+      {
+        "pattern": "[F][L]",
+        "usagePercentage": 3.5587
+      },
+      {
+        "pattern": "[F].[L]",
+        "usagePercentage": 2.7284
+      },
+      {
+        "pattern": "[L]",
+        "usagePercentage": 2.4911
+      },
+      "… 3 more item(s) truncated"
+    ]
+  },
+  "socials": {
+    "facebook": {
+      "id": "StripeHQ",
+      "url": "https://facebook.com/StripeHQ"
+    },
+    "github": {
+      "id": "stripe",
+      "url": "https://github.com/stripe"
+    },
+    "instagram": {
+      "id": "stripehq",
+      "url": "https://instagram.com/stripehq"
+    },
+    "linkedin": {
+      "id": "stripe",
+      "idNumeric": "2135371",
+      "salesNavigatorUrl": "https://www.linkedin.com/sales/company/2135371",
+      "url": "https://linkedin.com/company/stripe"
+    },
+    "twitter": {
+      "id": "stripe",
+      "url": "https://twitter.com/stripe"
+    },
+    "wellfound": {
+      "id": "stripe",
+      "url": "http://angel.co/stripe"
+    },
+    "youtube": {
+      "id": "stripe",
+      "url": "https://youtube.com/@stripe"
+    }
+  },
+  "technologies": {
+    "active": [
+      "apple-business-manager",
+      "google-workspace",
+      "nginx",
+      "sentry",
+      "stripe"
+    ],
+    "categories": [
+      "application-development",
+      "application-performance-monitoring",
+      "application-server",
+      "bug-tracking",
+      "business-instant-messaging",
+      "… 49 more item(s) truncated"
+    ],
+    "details": [
+      {
+        "categories": [
+          "cloud-file-storage",
+          "office-suites",
+          "team-collaboration"
+        ],
+        "detectedAt": "phone:8bd988f5d8T03:17:25.446Z",
+        "detectionTypes": [
+          "dns"
+        ],
+        "slug": "apple-business-manager"
+      },
+      {
+        "categories": [
+          "business-instant-messaging",
+          "calendar",
+          "cloud-content-collaboration",
+          "content-management",
+          "document-creation",
+          "… 13 more item(s) truncated"
+        ],
+        "detectedAt": "phone:8bd988f5d8T03:17:25.446Z",
+        "detectionTypes": [
+          "dns"
+        ],
+        "slug": "google-workspace"
+      },
+      {
+        "categories": [
+          "application-server",
+          "container-networking",
+          "containerization",
+          "ddos-protection",
+          "development",
+          "… 9 more item(s) truncated"
+        ],
+        "detectedAt": "phone:8bd988f5d8T03:17:25.446Z",
+        "detectionTypes": [
+          "headers"
+        ],
+        "slug": "nginx"
+      },
+      {
+        "categories": [
+          "application-development",
+          "application-performance-monitoring",
+          "bug-tracking",
+          "development",
+          "devops",
+          "… 13 more item(s) truncated"
+        ],
+        "detectedAt": "phone:8bd988f5d8T03:17:25.446Z",
+        "detectionTypes": [
+          "variables"
+        ],
+        "slug": "sentry"
+      },
+      {
+        "categories": [
+          "commerce",
+          "financial-data-apis",
+          "financial-services",
+          "payment",
+          "payment-gateways",
+          "… 1 more item(s) truncated"
+        ],
+        "detectedAt": "phone:8bd988f5d8T03:17:25.446Z",
+        "detectionTypes": [
+          "dns"
+        ],
+        "slug": "stripe"
+      }
+    ]
+  },
+  "urls": {
+    "registrar": "http://www.safenames.net/"
+  },
+  "_scrubbed": true,
+  "_note": "captured live 2026-08-28 via treg; emails/phones hashed, lists trimmed"
+}

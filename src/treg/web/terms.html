@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Treg Terms of Service</title>
 <meta name="description" content="The terms that govern use of the hosted Treg service."/>
+<link rel="canonical" href="{BASE}/terms"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -48,7 +49,7 @@
   <p>Treg (also called <b>tools-registry</b>) is operated by <b>Superdesign</b> ("we", "us"). These
   Terms of Service (the "Terms") are a binding agreement between us and you — the person or
   organization using the service (<b>"you"</b>).</p>
-  <p>They cover the <b>hosted service</b> we run at <code>treg.superdesign.dev</code>: the web
+  <p>They cover the <b>hosted service</b> we run at <code>treg.to</code>: the web
   dashboard, the API, the call proxy, the <code>treg</code> CLI when pointed at our servers, and
   everything reachable from them (together, the <b>"Service"</b>).</p>
   <div class="note">
@@ -154,19 +155,37 @@
       content;</li>
     <li>use server-side runs to execute code intended to escape the sandbox, or to proxy traffic to
       destinations unrelated to a registered tool;</li>
-    <li>resell or repackage the hosted Service as your own product — see §11.</li>
+    <li>redistribute the open-source software to third parties as a competing hosted service — see §11.
+      (Using the hosted treg.to API inside your own product — with your own billing layer and the
+      pass-through attribution mechanics — is allowed; that is calling our API, not reselling it.)</li>
   </ul>
   <p>We apply per-member daily call caps, egress restrictions, and sandboxing to protect the Service.
   Circumventing them is a breach of these Terms.</p>
 
   <h2 class="sec" id="s8"><span class="n">08</span>Early access, availability, and changes</h2>
-  <p>The Service is in <b>early access</b>. It's free today, it changes often, and features can be
-  added, altered, or withdrawn. We may change or discontinue the Service, and we'll make a reasonable
-  effort to give notice before anything that would cause you to lose data.</p>
+  <p>The Service is in <b>early access</b>. It changes often, and features can be added, altered, or
+  withdrawn. We may change or discontinue the Service, and we'll make a reasonable effort to give
+  notice before anything that would cause you to lose data.</p>
   <p>There is <b>no uptime commitment and no support commitment</b>. We aim to be reliable and we
   answer email, but nothing here is an SLA.</p>
-  <p>If we introduce paid plans, we'll say so clearly in advance and no charge will apply to you
-  without your explicit agreement.</p>
+  <p><b>What costs money.</b> Registering tools, storing credentials, and calling an API on your own
+  key are free. Calls we serve on <b>our</b> provider keys are metered against your team's prepaid
+  balance, at the price shown for that endpoint before you call it — we add no markup. Nothing is ever
+  charged to a card you haven't saved: the balance is prepaid, and automatic top-ups only happen if you
+  turn them on and agree to the amount. New verified accounts may receive a one-time promotional balance for one team.
+  Creating additional teams does not grant more promotional credit.</p>
+  <p>If we introduce subscription plans on top of that, we'll say so clearly in advance and no
+  recurring charge will apply to you without your explicit agreement.</p>
+  <p><b>Referrals.</b> If you invite someone with your referral link, both of you may receive
+  promotional balance once their team adds funds. That balance is a <b>marketing credit, not money</b>:
+  it can only be spent on calls through treg, it is <b>never redeemable for cash and never
+  refundable</b>, and it isn't transferable between teams. Rewards are held for a short period before
+  they land, and we may withhold or reverse one — and close the account behind it — where a referral
+  looks self-dealt or artificial: inviting yourself, signing up more than once, paying with the same
+  card, or the funding payment being reversed. There's a limit on how many referrals one person can
+  be rewarded for; we'll show it to you, and we may change the rewards or end the programme at any
+  time (already-earned balance stays yours). If you'd like to refer at real volume, email us —
+  that's a separate arrangement.</p>
 
   <h2 class="sec" id="s9"><span class="n">09</span>Suspension, termination, and deletion</h2>
   <p>You can leave at any time: delete a team from the dashboard, or email us to delete your account
@@ -190,9 +209,14 @@
   <p>treg's source is public under the
   <a href="https://github.com/superdesigndev/treg/blob/main/LICENSE" target="_blank" rel="noopener">tools-registry License</a>
   (Apache 2.0 plus additional terms). You may run your own registry for your own organization — that's
-  expressly encouraged. You may <b>not</b> offer treg to third parties as a hosted, managed, or
-  embedded service without our prior written authorization. The source licence, not these Terms,
-  governs your use of the code itself.</p>
+  expressly encouraged. You may <b>not</b> redistribute the open-source software to third parties as a
+  competing hosted, managed, or embedded registry service without prior written authorization. The
+  source licence, not these Terms, governs your use of the code itself.</p>
+  <p><b>Using the hosted treg.to API is different.</b> If your product calls treg.to, uses
+  <code>X-Treg-Meta</code> to tag calls by customer, and invoices from <code>usage/by-tag</code>,
+  you are a <b>platform customer</b> of the hosted service — no special agreement is needed. That
+  use case is allowed and encouraged. The restriction above applies to <i>self-hosting the open-source
+  code</i> and offering it to third parties as a competing registry, not to calling the treg.to API.</p>
 
   <h2 class="sec" id="s12"><span class="n">12</span>Limitation of liability</h2>
   <p>To the maximum extent permitted by law, neither party is liable for indirect, incidental,

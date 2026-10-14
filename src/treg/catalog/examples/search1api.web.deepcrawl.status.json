@@ -1,0 +1,6 @@
+{
+  "taskId": "00000000-0000-4000-8000-000000000001",
+  "status": "completed",
+  "message": "Successfully crawled 10 URLs and created ZIP.",
+  "zipUrl": "https://example.invalid/search1api-deepcrawl.zip"
+}

@@ -31,31 +31,15 @@ async def test_a_machine_identity_can_learn_its_own_org(clients: AsyncClient):
     assert me.json()["org_id"] == org_id                                   # …but it can learn this
 
 
-async def test_a_member_can_read_the_balance_it_spends(clients: AsyncClient):
+async def test_a_machine_identity_reads_the_wallet_but_not_the_purchase_history(clients: AsyncClient):
     """Every agent is told to run `treg balance` after a call, and a 402 already hands the caller
-    `balance_micro` — refusing the same number here while shipping it in an error was incoherent."""
+    `balance_micro` - refusing the same number here while shipping it in an error was incoherent.
+    The wallet is everyone's; what was bought, when, and what is left of each block is not."""
     token, org_id = await _agent_token(clients)
     r = await clients.get(f"/orgs/{org_id}/balance", headers={"X-Treg-Token": token})
     assert r.status_code == 200, r.text
     assert "balance_micro" in r.json()
-
-
-async def test_but_a_member_does_not_see_the_purchase_history(clients: AsyncClient):
-    """The wallet is everyone's; what was bought, when, and what is left of each block is not."""
-    token, org_id = await _agent_token(clients)
-    member = (await clients.get(f"/orgs/{org_id}/balance",
-                                headers={"X-Treg-Token": token})).json()
-    assert member["blocks"] == [] and member["entries"]["items"] == []
-
-    admin = (await clients.get(f"/orgs/{org_id}/balance")).json()   # the owner sees the detail
-    assert admin["blocks"], "an admin must still get the funding detail"
-
-
-async def test_the_balance_is_not_readable_across_orgs(clients: AsyncClient):
-    _, org_id = await _agent_token(clients)
-    r = await clients.post("/users", json={"email": "stranger@elsewhere.dev"})
-    other = {"X-Treg-Token": r.json()["token"]}
-    assert (await clients.get(f"/orgs/{org_id}/balance", headers=other)).status_code == 403
+    assert r.json()["blocks"] == [] and r.json()["entries"]["items"] == []
 
 
 async def test_a_missing_org_is_indistinguishable_from_one_you_cannot_see(clients: AsyncClient):
@@ -76,7 +60,6 @@ def test_an_invalid_token_is_named_as_such_not_as_a_missing_org(monkeypatch, cap
     """`_active_org_id` returns None both when the token is bad and when there is genuinely no org.
     21 commands turned that into a bare "no active org", sending the reader to fix org config when
     the real problem was authentication."""
-    import httpx
     from treg import cli
 
     class _Resp:

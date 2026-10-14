@@ -1,0 +1,18 @@
+{
+  "searchParameters": {
+    "query": "site:example.com Example Domain",
+    "max_results": 1,
+    "page": 1,
+    "crawl_results": 0,
+    "image": false,
+    "include_sites": [],
+    "exclude_sites": []
+  },
+  "results": [
+    {
+      "title": "example.com - Wikipedia",
+      "link": "https://en.wikipedia.org/wiki/Example.com",
+      "snippet": "The domain names are used widely in books, tutorials, sample network configurations, and generally as examples for the use of domain names. The Internet Corporation for Assigned Names and Numbers (ICANN) operates websites for these domains with content that reflects their purpose."
+    }
+  ]
+}

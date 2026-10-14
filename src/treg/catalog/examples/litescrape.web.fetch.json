@@ -1,0 +1,18 @@
+{
+  "title": "Example Domain",
+  "description": "",
+  "url": "https://example.com/",
+  "content": "# Example Domain\n\nT h i s d o m a i n i s f o r u s e i n d o c u m e n t a t i o n e x a m p l e s w i t h o u t n e e d i n g p e r m i s s i o n.T h i s i s …",
+  "metadata": {
+    "lang": "en",
+    "viewport": "width=device-width,initial-scale=1"
+  },
+  "external": {
+    "icon": {
+      "data:,": {}
+    }
+  },
+  "usage": {
+    "tokens": 800
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "acquisitions": [
+    {
+      "id": 41181396,
+      "announcedOn": "2018-01-04T00:00:00.000Z",
+      "acquirerName": "Stripe",
+      "acquireeName": "Coinbase",
+      "acquireeCompany": {
+        "id": "3f61W-mP8czVQf-S8SaJE1sOXhWW4rM",
+        "name": "Coinbase",
+        "description": "Coinbase is a secure online platform for buying, selling, transferring, and storing cryptocurrency.",
+        "country": "United States",
+        "region": "Oregon",
+        "locality": "Remote",
+        "URLs": {
+          "golden": "golden.com/wiki/Coinbase-5KR",
+          "contact": "help.coinbase.com/contact-us/",
+          "twitter": "twitter.com/coinbase",
+          "website": "coinbase.com",
+          "facebook": "www.facebook.com/Coinbase",
+          "linkedin": "linkedin.com/company/coinbase",
+          "pitchbook": "pitchbook.com/profiles/company/55815-22",
+          "angelList": "angel.co/coinbase",
+          "signalNFX": "signal.nfx.com/firms/coinbase-ventures",
+          "crunchbase": "crunchbase.com/organization/coinbase"
+        },
+        "industryList": [
+          "Payments & Fintech",
+          "Investment & Asset Management",
+          "… 1 more item(s) truncated"
+        ],
+        "linkedinIndustries": [
+          "Financial Services"
+        ]
+      }
+    }
+  ],
+  "pages": 17,
+  "totalResults": 17
+}

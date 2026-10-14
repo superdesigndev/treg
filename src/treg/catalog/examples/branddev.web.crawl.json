@@ -1,0 +1,37 @@
+{
+  "results": [
+    {
+      "markdown": "# Example Domain\n\nThis domain is for use in documentation examples without needing permission. Avoid use in operations.\n\n[Learn more](https://iana.org/domains/example)",
+      "metadata": {
+        "sourceUrl": "https://example.com/",
+        "finalUrl": "https://example.com/",
+        "title": "Example Domain",
+        "language": "en",
+        "favicon": "data:,",
+        "headings": [
+          {
+            "level": 1,
+            "text": "Example Domain"
+          }
+        ],
+        "additionalMeta": {
+          "viewport": "width=device-width, initial-scale=1"
+        },
+        "url": "https://example.com/",
+        "crawlDepth": 0,
+        "statusCode": 200,
+        "success": true
+      }
+    }
+  ],
+  "metadata": {
+    "numUrls": 1,
+    "maxCrawlDepth": 0,
+    "numSucceeded": 1,
+    "numFailed": 0,
+    "numSkipped": 0
+  },
+  "key_metadata": {
+    "credits_consumed": 1
+  }
+}

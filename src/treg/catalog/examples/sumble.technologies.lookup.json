@@ -1,0 +1,37 @@
+{
+  "id": "example-request-id",
+  "credits_used": 1,
+  "credits_remaining": 9000,
+  "matched_count": 2,
+  "results": [
+    {
+      "input": "kubernetes",
+      "technology": {
+        "id": 18,
+        "slug": "kubernetes",
+        "name": "Kubernetes",
+        "categories": []
+      }
+    },
+    {
+      "input": "python",
+      "technology": {
+        "id": 3,
+        "slug": "python",
+        "name": "Python",
+        "categories": [
+          {
+            "slug": "programming-languages-and-frameworks",
+            "name": "Programming Languages and Frameworks",
+            "name_short": "Languages"
+          },
+          {
+            "slug": "scripting-languages-and-shells",
+            "name": "Scripting Languages and Shells",
+            "name_short": "Scripting"
+          }
+        ]
+      }
+    }
+  ]
+}

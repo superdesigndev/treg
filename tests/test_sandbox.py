@@ -13,11 +13,12 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from conftest import make_upstream
+from conftest import drain_background_writes, make_upstream
 
-from treg import api, sandbox
+from treg import sandbox
+from treg.routers.onboard import SANDBOX_RATE_MAX
 from treg.api import app
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 from treg.models import Secret, Tool, User
 
 
@@ -27,9 +28,12 @@ async def anon():
     reset_db() also clears the DB-backed sandbox throttle (the `ephemeral` table)."""
     await reset_db()
     app.state.http = AsyncClient(transport=ASGITransport(app=make_upstream()), base_url="http://upstream")
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        yield c
-    await app.state.http.aclose()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
+            yield c
+    finally:
+        await drain_background_writes()
+        await app.state.http.aclose()
 
 
 def _h(tok: str) -> dict:
@@ -84,13 +88,18 @@ async def test_caps(anon):
     # secrets: seeded=n_secrets, add up to MAX, then reject
     for i in range(sandbox.MAX_SECRETS - n_secrets):
         assert (await anon.post("/secrets", json={"name": f"S{i}", "value": "v"}, headers=_h(tok))).status_code == 200
-    assert (await anon.post("/secrets", json={"name": "OVER", "value": "v"}, headers=_h(tok))).status_code == 422
+    over_secret = await anon.post(
+        "/secrets", json={"name": "OVER", "value": "v"}, headers=_h(tok))
+    assert over_secret.status_code == 422
+    assert over_secret.json()["detail"] == "the sandbox is limited to 3 secrets — sign up for more"
     # endpoints: seeded=n_tools, add up to MAX, then reject
     for i in range(sandbox.MAX_TOOLS - n_tools):
         assert (await anon.post("/tools", json={"name": f"t{i}", "base_url": f"https://h{i}.io"},
                                 headers=_h(tok))).status_code == 200
-    assert (await anon.post("/tools", json={"name": "over", "base_url": "https://x.io"},
-                            headers=_h(tok))).status_code == 422
+    over_tool = await anon.post(
+        "/tools", json={"name": "over", "base_url": "https://x.io"}, headers=_h(tok))
+    assert over_tool.status_code == 422
+    assert over_tool.json()["detail"] == "the sandbox is limited to 3 endpoints — sign up for more"
 
 
 async def test_call_still_org_scoped(anon):
@@ -111,15 +120,6 @@ async def test_export_skill(anon):
     assert STRIPE["value"] not in exp["treg_json"]
 
 
-async def test_skill_samples(anon):
-    r = await anon.get("/skills/samples")
-    assert r.status_code == 200, r.text
-    names = {s["name"] for s in r.json()}
-    assert "posthog-insights" in names and "stripe-billing" in names
-    ph = next(s for s in r.json() if s["name"] == "posthog-insights")
-    assert ph["key"] == "POSTHOG_KEY" and "SKILL.md" in ph["files"] and "treg.json" in ph["files"]
-
-
 async def test_skill_install_script(anon):
     r = await anon.get("/skills/posthog-insights/install.sh", params={"token": "sbx_tok_123"})
     assert r.status_code == 200, r.text
@@ -136,13 +136,19 @@ async def test_export_skill_rejects_non_sandbox(anon):
 
 
 async def test_rate_limited_per_ip(anon):
-    for _ in range(api.SANDBOX_RATE_MAX):
+    for _ in range(SANDBOX_RATE_MAX):
         assert (await anon.post("/demo/sandbox")).status_code == 200
-    assert (await anon.post("/demo/sandbox")).status_code == 429
+    rejected = await anon.post("/demo/sandbox")
+    assert rejected.status_code == 429
+    assert rejected.json()["detail"] == "too many demo sandboxes from here — try again later"
 
 
 async def test_gc_reaps_expired_sandboxes(anon):
     tok = (await anon.post("/demo/sandbox")).json()["token"]
+    # gc deletes the visitor's org rows. A fire-and-forget audit or archive write still in flight
+    # holds the SQLite write lock, gc skips that visitor rather than raising, and the count comes
+    # back one short. Drain what the requests above scheduled before reaping.
+    await drain_background_writes()
     async with session_maker() as db:
         u = (await db.execute(
             select(User).where(User.email.like(f"visitor-%@{sandbox.SANDBOX_DOMAIN}")))).scalar_one()
@@ -153,3 +159,81 @@ async def test_gc_reaps_expired_sandboxes(anon):
     async with session_maker() as db:
         assert not (await db.execute(select(Tool))).scalars().all()
         assert not (await db.execute(select(Secret))).scalars().all()
+
+
+async def test_gc_reaps_a_sandbox_that_made_an_idempotent_call(anon):
+    """The production failure of 2026-09-02, end to end. A visitor's call carrying an
+    `Idempotency-Key` leaves an `IdempotentCall` row pointing at their membership. The sandbox
+    reaper kept its OWN list of org-scoped tables, which never learned about that table, so Postgres
+    refused to delete the membership and `gc` raised - from inside `mint_sandbox`, so every visitor
+    after the first expired one got a 500 instead of a sandbox.
+
+    SQLite does not enforce foreign keys, so on SQLite this test only sees the orphaned row; on
+    Postgres (CI) it sees the raise itself. Both are the same bug."""
+    from treg.models import IdempotentCall, Membership, Org
+
+    tok = (await anon.post("/demo/sandbox")).json()["token"]
+    r = await anon.get(f"/call/{STRIPE['base']}/{STRIPE['example']['path']}",
+                       headers={**_h(tok), "Idempotency-Key": "retry-1"})
+    assert r.status_code == 200, r.text
+    await drain_background_writes()
+    async with session_maker() as db:
+        assert (await db.execute(select(IdempotentCall))).scalars().all(), (
+            "the call did not leave an IdempotentCall row - this test no longer reproduces the bug")
+        u = (await db.execute(
+            select(User).where(User.email.like(f"visitor-%@{sandbox.SANDBOX_DOMAIN}")))).scalar_one()
+        u.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=sandbox.SANDBOX_TTL_MIN + 5)
+        await db.commit()
+        assert await sandbox.gc(db) == 1
+    async with session_maker() as db:
+        for model in (IdempotentCall, Membership, Org, User):
+            assert not (await db.execute(select(model))).scalars().all(), f"{model.__name__} rows survived gc"
+    # and the front door still opens afterwards
+    assert (await anon.post("/demo/sandbox")).status_code == 200
+
+
+async def test_a_failing_reaper_does_not_close_the_front_door(anon, monkeypatch):
+    """gc runs inside the mint request. Whatever it raises is a bug to log, never a 500 for the
+    visitor - that coupling is what turned one undeletable sandbox into six hours of downtime."""
+    from treg.application.onboard import sandbox as onboard_sandbox
+
+    async def boom(db):
+        raise RuntimeError("reaper bug")
+
+    monkeypatch.setattr(onboard_sandbox, "gc", boom)
+    r = await anon.post("/demo/sandbox")
+    assert r.status_code == 200, r.text
+    assert r.json()["token"]
+
+
+async def test_gc_skips_a_sandbox_it_cannot_delete_and_reaps_the_rest(anon, monkeypatch):
+    """Reaping is per visitor, not all-or-nothing. Before, one undeletable sandbox rolled back every
+    other delete too, and since gc only runs from mint, nothing was ever reaped again."""
+    from treg.application.onboard import sandbox as onboard_sandbox
+    from treg.models import Org
+
+    slugs = [(await anon.post("/demo/sandbox")).json()["org_slug"] for _ in range(2)]
+    poisoned = slugs[0]
+    real_cascade = onboard_sandbox.cascade_delete_org
+
+    async def cascade_unless_poisoned(org, db):
+        if org.slug == poisoned:
+            raise RuntimeError("this one will not delete")
+        await real_cascade(org, db)
+
+    monkeypatch.setattr(onboard_sandbox, "cascade_delete_org", cascade_unless_poisoned)
+    await drain_background_writes()
+    async with session_maker() as db:
+        for u in (await db.execute(
+                select(User).where(User.email.like(f"visitor-%@{sandbox.SANDBOX_DOMAIN}")))).scalars().all():
+            u.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=sandbox.SANDBOX_TTL_MIN + 5)
+        await db.commit()
+        assert await sandbox.gc(db) == 1
+    async with session_maker() as db:
+        assert {o.slug for o in (await db.execute(select(Org))).scalars().all()} == {poisoned}
+    # once the poisoned one is deletable again, the next reap takes it
+    monkeypatch.setattr(onboard_sandbox, "cascade_delete_org", real_cascade)
+    async with session_maker() as db:
+        assert await sandbox.gc(db) == 1
+    async with session_maker() as db:
+        assert not (await db.execute(select(Org))).scalars().all()

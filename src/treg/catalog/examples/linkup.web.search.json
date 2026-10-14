@@ -1,0 +1,11 @@
+{
+  "results": [
+    {
+      "name": "Example Domains",
+      "url": "https://www.iana.org/help/example-domains",
+      "content": "IANA maintains example domains for documentation purposes.",
+      "favicon": "https://favicons.linkup.so?domain=iana.org",
+      "type": "text"
+    }
+  ]
+}

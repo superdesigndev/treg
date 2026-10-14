@@ -1,0 +1,57 @@
+[
+ {
+  "output": {
+   "keywords": [
+    {
+     "keyword_data": {
+      "keyword": "issue tracking software",
+      "keyword_info": {
+       "search_volume": 590,
+       "cpc": 38.51
+      },
+      "keyword_properties": {
+       "keyword_difficulty": 17
+      }
+     }
+    },
+    {
+     "keyword_data": {
+      "keyword": "issue tracker template",
+      "keyword_info": {
+       "search_volume": 320,
+       "cpc": 4.12
+      },
+      "keyword_properties": {
+       "keyword_difficulty": 7
+      }
+     }
+    },
+    {
+     "keyword_data": {
+      "keyword": "issue tracker excel",
+      "keyword_info": {
+       "search_volume": 110,
+       "cpc": 6.97
+      },
+      "keyword_properties": {
+       "keyword_difficulty": 13
+      }
+     }
+    },
+    {
+     "keyword_data": {
+      "keyword": "issue tracking software free",
+      "keyword_info": {
+       "search_volume": 40,
+       "cpc": 17.8
+      },
+      "keyword_properties": {
+       "keyword_difficulty": 21
+      }
+     }
+    }
+   ],
+   "count": 4
+  }
+ }
+]

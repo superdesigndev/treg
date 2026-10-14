@@ -1,0 +1,384 @@
+provider: you
+source:
+  docs: https://you.com/docs/welcome
+  curated: '2026-09-29'
+pricing_url: https://you.com/docs/administration/billing
+limits: "Self-serve Search, Contents, Answer and Research allow 10 requests/s each; Finance Research allows 5 requests/s. Enterprise limits may differ. Successful live responses did not include the documented rate-limit headers."
+proposed_capabilities:
+  stocks.research: "Research a financial question with cited sources"
+
+endpoints:
+  - id: you.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    host: ydc-index.io
+    path: /v1/search
+    body_allowlist: true
+    name: Search the web and news
+    summary: Return ranked web and news results with snippets and metadata.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "site:example.com Example Domain"}
+        count: {type: integer, required: false, default: 10, min: 1, max: 100, example: 1, note: "Maximum per result section; web and news can each return this many."}
+        offset: {type: integer, required: false, min: 0, max: 9}
+        freshness: {type: string, required: false, note: "day | week | month | year, or YYYY-MM-DDtoYYYY-MM-DD"}
+        country: {type: string, required: false, note: "Supported country code."}
+        language: {type: string, required: false, note: "Supported BCP 47 language tag."}
+        safesearch: {type: string, required: false, enum: [off, moderate, strict]}
+        include_domains: {type: "array[string]", required: false, maxItems: 500}
+        exclude_domains: {type: "array[string]", required: false, maxItems: 500}
+        boost_domains: {type: "array[string]", required: false, maxItems: 500}
+        knowledge: {type: string, required: false, enum: [core], note: "Include licensed structured results at no extra charge."}
+      note: "For query-focused passages use you.web.search.highlights. Full-page extraction has separate cache-only and BYOK live catalog tools."
+    test_request: {body: {query: "site:example.com Example Domain", count: 1}}
+    cost: &search_cost
+      type: per_call
+      value: 0.005
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://you.com/docs/administration/billing
+      checked: '2026-09-29'
+      confidence: documented
+      note: "One call costs $0.005 even with no matches; snippets, highlights, news and knowledge carry no add-on."
+    verified: '2026-09-29'
+    added: '2026-09-29'
+    example_response: examples/you.web.search.json
+    docs_url: https://you.com/docs/api-reference/search/v1-search
+
+  - id: you.web.search.highlights
+    added: '2026-09-29'
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    host: ydc-index.io
+    path: /v1/search
+    body_allowlist: true
+    name: Search with page highlights
+    summary: Return query-focused passages alongside ranked web and news results.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "site:example.com Example Domain"}
+        count: {type: integer, required: false, default: 10, min: 1, max: 100}
+        extraction:
+          type: object
+          required: true
+          properties:
+            extraction_mode: {type: string, required: true, enum: [highlights]}
+        freshness: {type: string, required: false}
+        country: {type: string, required: false}
+        language: {type: string, required: false}
+        include_domains: {type: "array[string]", required: false, maxItems: 500}
+        exclude_domains: {type: "array[string]", required: false, maxItems: 500}
+    platform_request: {body.extraction.extraction_mode: highlights}
+    test_request: {body: {query: "site:example.com Example Domain", count: 1, extraction: {extraction_mode: highlights}}}
+    cost: *search_cost
+    docs_url: https://you.com/docs/guides/search/retrieve-page-content
+
+  - id: you.web.search.full_page.cache
+    added: '2026-09-29'
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    host: ydc-index.io
+    path: /v1/search
+    body_allowlist: true
+    name: Search with cached page text
+    summary: Return full-page content from You.com's cache when available.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "site:example.com Example Domain"}
+        count: {type: integer, required: false, default: 10, min: 1, max: 100}
+        extraction:
+          type: object
+          required: true
+          properties:
+            extraction_mode: {type: string, required: true, enum: [full_page]}
+            extraction_source: {type: string, required: true, enum: [cache]}
+            full_page: {type: object, required: false, note: "For example {extraction_formats: [markdown]}."}
+        freshness: {type: string, required: false}
+        country: {type: string, required: false}
+        language: {type: string, required: false}
+        include_domains: {type: "array[string]", required: false, maxItems: 500}
+        exclude_domains: {type: "array[string]", required: false, maxItems: 500}
+      note: "Cache-only extraction has no per-page add-on. Live and blended full-page extraction use a separate BYOK catalog tool."
+    platform_request: {body.extraction.extraction_mode: full_page, body.extraction.extraction_source: cache}
+    test_request: {body: {query: "site:example.com Example Domain", count: 1, extraction: {extraction_mode: full_page, extraction_source: cache, full_page: {extraction_formats: [markdown]}}}}
+    cost: *search_cost
+    docs_url: https://you.com/docs/guides/search/retrieve-page-content
+
+  - id: you.web.search.full_page.live
+    added: '2026-09-29'
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    host: ydc-index.io
+    path: /v1/search
+    body_allowlist: true
+    platform_blocked: "Live page fetches add $0.001 per page, and You.com does not identify which pages were billed in the response. Connect your own key."
+    name: Search with live page text
+    summary: Return full-page content, fetching live pages when requested.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "site:example.com Example Domain"}
+        count: {type: integer, required: false, default: 10, min: 1, max: 100}
+        extraction:
+          type: object
+          required: true
+          properties:
+            extraction_mode: {type: string, required: true, enum: [full_page]}
+            extraction_source: {type: string, required: true, enum: [blend, fetch]}
+            full_page: {type: object, required: false, note: "For example {extraction_formats: [markdown]}."}
+      note: "The $0.005 search price excludes $0.001 for each live page fetched by You.com. Your own key is billed directly by You.com."
+    test_request: {body: {query: "site:example.com Example Domain", count: 1, extraction: {extraction_mode: full_page, extraction_source: blend}}}
+    cost:
+      type: per_call
+      value: 0.005
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://you.com/docs/administration/billing
+      checked: '2026-09-29'
+      confidence: documented
+      note: "$0.005 base search plus $0.001 for each page You.com fetches live. Your own key pays You.com directly."
+    docs_url: https://you.com/docs/guides/search/retrieve-page-content
+
+  - id: you.web.contents
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    host: ydc-index.io
+    path: /v1/contents
+    body_allowlist: true
+    name: Extract page content
+    summary: Retrieve Markdown, HTML or metadata for up to ten public URLs.
+    input:
+      bodyType: json
+      body:
+        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 10, example: ["https://example.com"]}
+        formats: {type: "array[string]", required: false, enum: [html, markdown, metadata], example: [markdown]}
+        crawl_timeout: {type: integer, required: false, default: 10, min: 1, max: 60}
+        max_age: {type: integer, required: false, min: 0, note: "Maximum age of cached content in seconds."}
+    test_request: {body: {urls: ["https://example.com"], formats: [markdown]}}
+    cost:
+      type: per_result
+      value: 0.001
+      currency: USD
+      unit: page
+      source: docs
+      source_url: https://you.com/docs/administration/billing
+      checked: '2026-09-29'
+      confidence: documented
+      note: "$0.001 per page fetched; the hold follows the requested URL count and settles from the returned page count."
+    verified: '2026-09-29'
+    added: '2026-09-29'
+    example_response: examples/you.web.contents.json
+    docs_url: https://you.com/docs/api-reference/contents
+
+  - id: you.web.answer
+    added: '2026-09-29'
+    capability: web.answer
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /v1/answer
+    body_allowlist: true
+    name: Answer a web question
+    summary: Return a cited answer with the web results used to synthesize it.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, maxLength: 400, example: "What is the purpose of example.com?"}
+        freshness: {type: string, required: false}
+        country: {type: string, required: false}
+        language: {type: string, required: false}
+        safesearch: {type: string, required: false, enum: [off, moderate, strict]}
+        include_domains: {type: "array[string]", required: false, maxItems: 500}
+        exclude_domains: {type: "array[string]", required: false, maxItems: 500}
+        boost_domains: {type: "array[string]", required: false, maxItems: 500}
+    test_request: {body: {query: "What is the purpose of example.com?"}}
+    cost:
+      type: per_call
+      value: 0.005
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://you.com/docs/administration/billing
+      checked: '2026-09-29'
+      confidence: documented
+    docs_url: https://you.com/docs/api-reference/answer/v1-answer
+
+  - id: you.web.research
+    added: '2026-09-29'
+    capability: web.answer.research
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /v1/research
+    body_allowlist: true
+    name: Research a web question
+    summary: Synthesize a cited web answer at lite or standard research effort.
+    input:
+      bodyType: json
+      body:
+        input: {type: string, required: true, maxLength: 40000, example: "What is the purpose of example.com?"}
+        research_effort: {type: string, required: true, enum: [lite, standard], example: lite}
+        source_control: {type: object, required: false, note: "Provider-native source and recency controls."}
+        output_schema: {type: object, required: false, note: "Structured output is supported on standard, not lite."}
+    test_request: {body: {input: "What is the purpose of example.com?", research_effort: lite}}
+    cost:
+      type: per_call
+      table:
+        - {when: {body.research_effort: lite}, value: 0.012}
+        - {when: {body.research_effort: standard}, value: 0.05}
+      fallback: {value: 0.05, note: "Maximum synchronous tier in this catalog tool."}
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://you.com/docs/administration/billing
+      checked: '2026-09-29'
+      confidence: documented
+    docs_url: https://you.com/docs/api-reference/research/v1-research
+
+  - id: you.web.research.background
+    added: '2026-09-29'
+    capability: web.answer.research
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /v1/research
+    body_allowlist: true
+    name: Start deep web research
+    summary: Queue deep, exhaustive or frontier research and return a task handle.
+    input:
+      bodyType: json
+      body:
+        input: {type: string, required: true, maxLength: 40000, example: "What is the purpose of example.com?"}
+        research_effort: {type: string, required: true, enum: [deep, exhaustive, frontier], example: deep}
+        background: {type: boolean, required: true, enum: [true], example: true}
+        source_control: {type: object, required: false, note: "Provider-native source and recency controls."}
+        output_schema: {type: object, required: false, note: "Provider-native JSON Schema for structured output."}
+    test_request: {body: {input: "What is the purpose of example.com?", research_effort: deep, background: true}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.research_effort: deep}, value: 0.10}
+        - {when: {body.research_effort: exhaustive}, value: 0.45}
+        - {when: {body.research_effort: frontier}, value: 1.20}
+      fallback: {value: 1.20, note: "Maximum background tier in this catalog tool."}
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://you.com/docs/administration/billing
+      checked: '2026-09-29'
+      confidence: documented
+    docs_url: https://you.com/docs/guides/research/background-requests
+    async:
+      id_from: task_id
+      poll:
+        endpoint: you.web.research.status
+        param: {in: pathParams, name: task_id}
+      status:
+        path: status
+        progress: [queued, running]
+        success: [completed]
+        failure: [failed, cancelled]
+      result: {path: result}
+      interval: 5
+
+  - id: you.web.research.status
+    added: '2026-09-29'
+    kind: utility
+    capability: web.answer.status
+    platform: web
+    domain: answer
+    scope: any_account
+    method: GET
+    path: /v1/research/{task_id}
+    name: Check a research task
+    summary: Read the status and result of a research task started by this team.
+    resource_ownership:
+      requires: {kind: "poll:you.web.research.status", param: task_id}
+    input:
+      pathParams:
+        task_id: {type: string, required: true, example: "00000000-0000-4000-8000-000000000001"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "You.com publishes no separate charge for task polling."}
+    docs_url: https://you.com/docs/api-reference/research/v1-research-task
+
+  - id: you.finance.research
+    added: '2026-09-29'
+    capability: stocks.research
+    platform: stocks
+    domain: stocks
+    scope: any_account
+    method: POST
+    path: /v1/finance_research
+    body_allowlist: true
+    name: Research a financial question
+    summary: Return a cited deep answer from You.com's finance-focused index.
+    input:
+      bodyType: json
+      body:
+        input: {type: string, required: true, maxLength: 40000, example: "What is Apple Inc.?"}
+        research_effort: {type: string, required: true, enum: [deep], example: deep}
+      note: "Finance Research has no background mode."
+    test_request: {body: {input: "What is Apple Inc.?", research_effort: deep}}
+    cost:
+      type: per_call
+      table:
+        - {when: {body.research_effort: deep}, value: 0.11}
+      fallback: {value: 0.11, note: "Only deep effort is accepted on this shared-key tool."}
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://you.com/docs/administration/billing
+      checked: '2026-09-29'
+      confidence: documented
+    docs_url: https://you.com/docs/api-reference/finance-research/v1-finance_research
+
+  - id: you.finance.research.exhaustive
+    added: '2026-09-29'
+    capability: stocks.research
+    platform: stocks
+    domain: stocks
+    scope: any_account
+    method: POST
+    path: /v1/finance_research
+    body_allowlist: true
+    platform_blocked: "Exhaustive Finance has no background mode and may exceed treg's upstream timeout after You.com has charged the shared key. Connect your own key."
+    name: Research a financial question exhaustively
+    summary: Return an exhaustive cited finance answer with your own You.com key.
+    input:
+      bodyType: json
+      body:
+        input: {type: string, required: true, maxLength: 40000, example: "What is Apple Inc.?"}
+        research_effort: {type: string, required: true, enum: [exhaustive], example: exhaustive}
+      note: "Finance Research has no background mode. Long requests may exceed treg's upstream timeout."
+    cost:
+      type: per_call
+      value: 0.50
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://you.com/docs/administration/billing
+      checked: '2026-09-29'
+      confidence: documented
+    docs_url: https://you.com/docs/api-reference/finance-research/v1-finance_research

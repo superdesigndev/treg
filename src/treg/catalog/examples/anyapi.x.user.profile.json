@@ -1,0 +1,27 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "avatarUrl": "https://pbs.twimg.com/profile_images/1321163587679784960/0ZxKlEKB_normal.jpg",
+      "bio": "Making the seemingly impossible, possible. ✨",
+      "displayName": "NASA",
+      "followers": 92370203,
+      "following": 117,
+      "handle": "NASA",
+      "tweets": 74310,
+      "verified": true,
+      "website": "https://www.nasa.gov/"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00022,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "resultId": "01cbc284-c886-4fbb-9802-42647422db59"
+}

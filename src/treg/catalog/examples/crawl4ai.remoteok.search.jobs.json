@@ -1,0 +1,72 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: remoteok-jobs: 99 jobs listed · 25 match tag '' keyword ''"
+    ]
+  },
+  "recipe": "remoteok-jobs",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 187,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "apply_url": "https://remoteOK.com/remote-jobs/remote-junior-sales-development-representative-it-industry-huzzle-1137480",
+      "company": "Huzzle",
+      "date": "2026-10-10T00:00:17+00:00",
+      "description": "About HuzzleAt Huzzle, we connect exceptional talent with top opportunities at leading companies across the UK, US, Canada, Europe, and Australia. Our clients include fast-growing startups, digital agencies, SaaS companies, and tech-enabled businesses across industries such as MarTech, FinTech, EdTe…",
+      "location": "",
+      "salary_max": 0,
+      "salary_min": 0,
+      "tags": [
+        "saas",
+        "technical"
+      ],
+      "title": "Junior Sales Development Representative IT Industry",
+      "url": "https://remoteOK.com/remote-jobs/remote-junior-sales-development-representative-it-industry-huzzle-1137480"
+    },
+    {
+      "apply_url": "https://remoteOK.com/remote-jobs/remote-academic-dean-for-miaprep-online-academy-of-ohio-miaplaza-1137479",
+      "company": "Miaplaza",
+      "date": "2026-10-10T00:00:11+00:00",
+      "description": "Location: 100% remote (Ohio residency required)Classification: Full-time, exemptReports to: School LeaderPay Range: $40.00 - $48.00 per hourWelcome to Miaplaza!Our vision is to elevate online learning by applying the most successful approaches in virtual education to create an accessible and inclusi…",
+      "location": "",
+      "salary_max": 48,
+      "salary_min": 40,
+      "tags": [
+        "design",
+        "infosec"
+      ],
+      "title": "Academic Dean for MiaPrep Online Academy of Ohio",
+      "url": "https://remoteOK.com/remote-jobs/remote-academic-dean-for-miaprep-online-academy-of-ohio-miaplaza-1137479"
+    }
+  ]
+}

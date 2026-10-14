@@ -1,0 +1,25 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "author": "Stripe",
+      "comments": 37,
+      "createdUtc": 1781197246,
+      "likes": 218,
+      "text": "Last week, agent traffic surpassed human traffic on the internet for the first time. Agents browsing webpages account for some of that traffic, but our data points to a more significant reason for thi… [1003 chars]",
+      "title": "Last week, agent traffic surpassed human traffic on the internet for the first time.",
+      "url": "https://www.linkedin.com/posts/stripe_last-week-agent-traffic-surpassed-human-activity-7470882737390940160-2Nxs"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0005,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "resultId": "a4c5f8df-ab25-4952-965a-597778e24088"
+}

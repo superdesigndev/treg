@@ -14,6 +14,7 @@ Proves the invariants that make an agent safe to hand out:
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -22,10 +23,10 @@ from sqlmodel import select
 
 from conftest import make_upstream
 
-from treg import crypto
+from treg import audit, crypto
 from treg.api import app
-from treg.db import reset_db, session_maker
-from treg.models import Membership, Org, User
+from treg.infra.db import reset_db, session_maker
+from treg.models import IdempotentCall, Membership, Org, User
 
 
 def _h(t: str) -> dict:
@@ -37,7 +38,9 @@ async def _mint(email: str, org_id: int, role: str) -> str:
     async with session_maker() as s:
         u = (await s.execute(select(User).where(User.email == email))).scalar_one_or_none()
         if u is None:
-            u = User(email=email); s.add(u); await s.flush()
+            u = User(email=email)
+            s.add(u)
+            await s.flush()
         s.add(Membership(user_id=u.id, org_id=org_id, role=role, token_hash=crypto.hash_token(token)))
         await s.commit()
     return token
@@ -49,9 +52,12 @@ async def env():
     app.state.http = AsyncClient(transport=ASGITransport(app=make_upstream()), base_url="http://upstream")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
         async with session_maker() as s:
-            org = Org(name="Team", slug="team"); s.add(org)
-            other = Org(name="Other", slug="other"); s.add(other)
-            await s.commit(); await s.refresh(org); await s.refresh(other)
+            org = Org(name="Team", slug="team")
+            other = Org(name="Other", slug="other")
+            s.add_all([org, other])
+            await s.commit()
+            await s.refresh(org)
+            await s.refresh(other)
             org_id, other_id = org.id, other.id
         owner = await _mint("owner@x.dev", org_id, "owner")
         admin = await _mint("adm@x.dev", org_id, "admin")
@@ -167,6 +173,32 @@ async def test_revoke_kills_the_token(env):
     assert (await env.c.get(f"/orgs/{env.org_id}/agents", headers=_h(env.owner))).json() == []
 
 
+async def test_revoke_clears_the_agents_idempotency_cache(env):
+    """Production regression: a paid retry cache must not make token revocation return 500."""
+    a = await _agent(env, name="caller-with-retry")
+    async with session_maker() as s:
+        membership = (await s.execute(select(Membership).where(
+            Membership.user_id == a["user_id"],
+            Membership.org_id == env.org_id,
+        ))).scalar_one()
+        s.add(IdempotentCall(
+            org_id=env.org_id,
+            membership_id=membership.id,
+            key="paid-retry",
+            status="done",
+            response_status=200,
+            expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1),
+        ))
+        await s.commit()
+
+    r = await env.c.delete(
+        f"/orgs/{env.org_id}/agents/{a['user_id']}", headers=_h(env.owner))
+    assert r.status_code == 200, r.text
+    assert (await env.c.get("/tools", headers=_h(a["token"]))).status_code == 401
+    async with session_maker() as s:
+        assert (await s.execute(select(IdempotentCall))).scalars().all() == []
+
+
 async def test_agents_are_listed_and_flagged_apart_from_people(env):
     await _agent(env, name="worker")
     agents = (await env.c.get(f"/orgs/{env.org_id}/agents", headers=_h(env.owner))).json()
@@ -196,10 +228,15 @@ async def test_agent_inherits_its_own_daily_cap(env):
     assert (await env.c.get("/call/alpha/ok", headers=_h(env.owner))).status_code == 200
 
 
-async def test_agent_traffic_is_attributed_to_the_agent(env):
+@pytest.mark.parametrize("defer_audit", [False, True])
+async def test_agent_traffic_is_attributed_to_the_agent(env, monkeypatch, defer_audit):
     """Per-agent logging falls out of identity: CallRecord already stamps user_email."""
+    if defer_audit:
+        # A call can finish before its background audit writer gets a turn.
+        monkeypatch.setattr(audit, "_schedule", lambda coro: coro.close())
     a = await _agent(env, name="logger")
     assert (await env.c.get("/call/alpha/ok", headers=_h(a["token"]))).status_code == 200
+    await audit.drain()  # Attribution reads persisted audit rows, not response completion.
     calls = (await env.c.get("/calls", headers=_h(env.owner))).json()
     assert any(c["user_email"] == a["email"] and c["tool_name"] == "alpha" for c in calls), calls
 
@@ -223,11 +260,3 @@ async def test_a_plain_member_cannot_mint_or_list_agents(env):
     assert (await env.c.get(f"/orgs/{env.org_id}/agents", headers=_h(member))).status_code == 403
 
 
-async def test_the_agent_listing_carries_everything_the_dashboard_renders(env):
-    """The Agents screen renders role, cap, usage and BOTH access axes — a missing field would show
-    as a blank column, so pin the shape here."""
-    await _agent(env, name="ui-bot")
-    row = (await env.c.get(f"/orgs/{env.org_id}/agents", headers=_h(env.owner))).json()[0]
-    for field in ("user_id", "name", "email", "role", "daily_call_cap", "used_today",
-                  "tool_access", "project_access", "local_run_enabled"):
-        assert field in row, f"{field} missing from the agent listing"

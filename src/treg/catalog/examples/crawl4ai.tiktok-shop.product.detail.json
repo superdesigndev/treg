@@ -1,0 +1,105 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "tiktok-shop-product",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 177,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "categories": [
+        "Womenswear & Underwear",
+        "Women's Dresses"
+      ],
+      "colors": [
+        "Brown Polka Dot"
+      ],
+      "currency": "USD",
+      "description": "Product images description: Nellie Maxi Dress Brown Polka Dot Petite - https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/5b8d6dd04e264d2c8a451d05b00a8a66~tplv-fhlh96nyum-resize-webp:760:1140.webp?dr=12185&t=555f072d&ps=933b5bde&shp=c940a200&shcp=9b759fb9&idc=useast5&from=33764…",
+      "images": [
+        "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/5b6a3493e6434ed48ce24ffeb54afcca~tplv-fhlh96nyum-crop-webp:800:800.webp?dr=12190&t=555f072d&ps=933b5bde&shp=c940a200&shcp=9b759fb9&idc=useast5&from=3376456192",
+        "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/aff0eb24d60f4eff932d07e5e6ce7431~tplv-fhlh96nyum-crop-webp:800:800.webp?dr=12190&t=555f072d&ps=933b5bde&shp=c940a200&shcp=9b759fb9&idc=useast5&from=3376456192"
+      ],
+      "in_stock": true,
+      "price": 77.0,
+      "price_before": null,
+      "product_id": "1732509604120924773",
+      "rating": 4.3,
+      "review_count": 458,
+      "sizes": [
+        "US 0",
+        "US 2"
+      ],
+      "sold": 1000,
+      "store": {
+        "followers": 1110103,
+        "items": 5636,
+        "name": "Princess Polly",
+        "rating": 4.3,
+        "url": "https://shop.tiktok.com/us/store/princess-polly/7495023845212326501"
+      },
+      "title": "Nellie  Dress Brown Polka Dot Petite (US 4)",
+      "url": "https://shop.tiktok.com/us/pdp/1732509604120924773",
+      "variants": [
+        {
+          "options": [
+            {
+              "name": "Color",
+              "value": "Brown Polka Dot"
+            },
+            {
+              "name": "Size",
+              "value": "US 0"
+            }
+          ],
+          "price": 77.0,
+          "sku": "1732509595048186469"
+        },
+        {
+          "options": [
+            {
+              "name": "Color",
+              "value": "Brown Polka Dot"
+            },
+            {
+              "name": "Size",
+              "value": "US 2"
+            }
+          ],
+          "price": 77.0,
+          "sku": "1732509595048252005"
+        }
+      ]
+    }
+  ]
+}

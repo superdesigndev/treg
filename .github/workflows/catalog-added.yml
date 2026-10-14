@@ -1,0 +1,33 @@
+name: Catalog added dates
+
+# A tool's `added:` date is the day it reached main and never changes afterwards
+# (docs/context/architecture/catalog.md). This compares every tool id with the base branch.
+# A deliberate change (a wrong backfill, a renamed tool given its old date) passes only with the
+# `added-date-change` label; adding or removing the label re-runs this check alone, not CI.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+concurrency:
+  group: catalog-added-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unchanged:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the base branch
+        run: git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+      - name: Existing added dates are unchanged
+        env:
+          ALLOW: ${{ contains(github.event.pull_request.labels.*.name, 'added-date-change') && '--allow-change' || '' }}
+        # The helper needs only PyYAML; no project install.
+        run: uv run --no-project --with pyyaml python scripts/catalog_added.py --base "origin/${{ github.base_ref }}" $ALLOW

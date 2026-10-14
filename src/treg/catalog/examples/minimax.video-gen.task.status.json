@@ -1,0 +1,11 @@
+{
+  "task_id": "example-task-id",
+  "status": "Success",
+  "file_id": "example-file-id",
+  "video_width": 768,
+  "video_height": 512,
+  "base_resp": {
+    "status_code": 0,
+    "status_msg": "success"
+  }
+}

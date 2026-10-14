@@ -1,0 +1,63 @@
+[
+ {
+  "output": {
+   "posts": [
+    {
+     "authorUsername": "user1",
+     "createdUtc": 1790867570,
+     "likeCount": 0,
+     "text": "Example post 1 about Linear"
+    },
+    {
+     "authorUsername": "user2",
+     "createdUtc": 1790801113,
+     "likeCount": 0,
+     "text": "Example post 2 about Linear"
+    },
+    {
+     "authorUsername": "user3",
+     "createdUtc": 1790793953,
+     "likeCount": 0,
+     "text": "Example post 3 about Linear"
+    },
+    {
+     "authorUsername": "user4",
+     "createdUtc": 1790777420,
+     "likeCount": 0,
+     "text": "Example post 4 about Linear"
+    },
+    {
+     "authorUsername": "user5",
+     "createdUtc": 1790771018,
+     "likeCount": 2,
+     "text": "Example post 5 about Linear"
+    }
+   ]
+  }
+ },
+ {
+  "posts": [
+   {
+    "subreddit": "Linear",
+    "title": "Example thread 1 about Linear",
+    "ups": 11,
+    "num_comments": 21,
+    "created_utc": 1783073724
+   },
+   {
+    "subreddit": "ProductManagement",
+    "title": "Example thread 2 about Linear",
+    "ups": 125,
+    "num_comments": 114,
+    "created_utc": 1757669791
+   },
+   {
+    "subreddit": "Linear",
+    "title": "Example thread 3 about Linear",
+    "ups": 26,
+    "num_comments": 28,
+    "created_utc": 1750303290
+   }
+  ]
+ }
+]

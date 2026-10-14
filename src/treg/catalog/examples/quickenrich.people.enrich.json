@@ -1,0 +1,17 @@
+{
+  "success": true,
+  "message": "Employee found",
+  "code": 200,
+  "data": {
+    "first_name": "Example",
+    "last_name": "Person",
+    "title": "Founder",
+    "company_name": "Example Inc",
+    "company_url": "example.com",
+    "employee_linkedin": "https://www.linkedin.com/in/example-person",
+    "city": "Example City"
+  },
+  "meta": {
+    "credits_used": 1
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "search_metadata": {
+    "id": "b2c38ceb61a97f350cf8a49b",
+    "status": "Success",
+    "created_at": "2026-09-29 13:58:28 +00:00",
+    "processed_at": "2026-09-29 13:58:30 +00:00",
+    "total_time_taken": 2.41,
+    "google_url": "https://www.google.com/search?q=what%20is%20photosynthesis&hl=en&gl=us",
+    "google_ai_overview_url": "https://www.google.com/search?q=what%20is%20photosynthesis&hl=en&gl=us",
+    "json_endpoint": "https://api.litescrape.com/api/google/ai-overview?device=desktop&gl=us&google_domain=google.com&hl=en&q=what+is+photosynthesis&start=0"
+  },
+  "search_parameters": {
+    "q": "what is photosynthesis",
+    "device": "desktop",
+    "google_domain": "google.com",
+    "gl": "us",
+    "hl": "en",
+    "start": "0"
+  },
+  "ai_overview": {
+    "text_blocks": [
+      {
+        "type": "paragraph",
+        "snippet": "Photosynthesis is the process where plants, algae, and some bacteria turn sunlight, water, and carbon dioxide into food and oxygen .",
+        "snippet_highlighted_words": [
+          "the process where plants, algae, and some bacteria turn sunlight, water, and carbon dioxide into food and oxygen"
+        ],
+        "reference_indexes": [
+          1,
+          4
+        ]
+      },
+      {
+        "type": "paragraph",
+        "snippet": "The word comes from \"photo,\" meaning light, and \"synthesis,\" meaning putting together. You can learn more about the foundations of this process from the Smithsonian Science Education Center .",
+        "reference_indexes": [
+          4
+        ]
+      }
+    ],
+    "references": [
+      {
+        "title": "What is Photosynthesis | Smithsonian Science Education Center",
+        "link": "https://ssec.si.edu/stemvisions-blog/what-photosynthesis",
+        "snippet": "Process: Autotrophs synthesize glucose using carbon dioxide, water, and sunlight via photosynthesis ($6\\text{CO}_2 + 6\\text{H}_2\\text{O} + \\text{Light} \\rightar…",
+        "source": "Smithsonian Science Education Center |",
+        "index": 1
+      },
+      {
+        "link": "https://www.youtube.com/watch?v=E22APTvfwyE&t=7",
+        "source": "YouTube",
+        "index": 2
+      }
+    ]
+  }
+}

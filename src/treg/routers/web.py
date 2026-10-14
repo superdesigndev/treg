@@ -1,0 +1,4519 @@
+"""Presentation-only web, SEO, tutorial, and public-document routes."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from functools import lru_cache
+import hashlib
+import html as _html
+import html as html_mod
+import json
+from pathlib import Path
+import re
+from urllib.parse import quote, urlsplit
+
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request
+from starlette.convertors import Convertor, register_url_convertor
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTextResponse,
+                               RedirectResponse, Response)
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
+
+from ..timeutil import utcnow_naive as _utcnow_naive
+from .. import adsconv, agent_pages, analytics, oauth_providers
+from ..domain import referrals
+from ..domain.catalog import store as catalog_store
+from ..domain.identity import session as sess
+from ..config import PUBLIC_HOST_ALIASES, get_settings
+from ..infra.db import get_session
+from ..models import User
+from ..domain.catalog import stats as endpoint_stats
+from .catalog import (_endpoint_observation_reader, _observed_or_empty, _platform_rows,
+                      _provider_display, catalog_platform,
+                      _platforms_payload)
+from ..domain.identity.access import _user_from_session
+from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _take_oauth_return
+from .signup_cookies import _remember_referral
+
+
+def _dashboard_index() -> Path:
+    """The compiled Dashboard's index. Local frontend development swaps in Vite's source entry."""
+    settings = get_settings()
+    if settings.frontend_dev:
+        host = urlsplit(settings.public_url).hostname
+        if "sqlite" not in settings.database_url or host not in {"localhost", "127.0.0.1", "::1"}:
+            raise RuntimeError("TREG_FRONTEND_DEV requires local SQLite and a loopback public URL")
+        return Path(__file__).resolve().parents[3] / "frontend" / "index.html"
+    return _WEB_DIR / "dashboard" / "index.html"
+
+
+def _dashboard_document(index: Path) -> str:
+    document = index.read_text(encoding="utf-8")
+    if get_settings().frontend_dev and index.parent.name == "frontend":
+        host = urlsplit(get_settings().public_url).hostname
+        origin = "http://[::1]:5173" if host == "::1" else f"http://{host}:5173"
+        document = document.replace(
+            '<script type="module" src="/src/main.ts"></script>',
+            f'<script type="module" src="{origin}/app/ui/@vite/client"></script>'
+            f'<script type="module" src="{origin}/app/ui/src/main.ts"></script>',
+        )
+    return document
+
+
+LOCAL_USER_EMAIL = "you@local.treg"   # the single-user identity; a real address is never needed
+
+
+async def _local_owner(db: AsyncSession) -> User | None:
+    """The single-user identity, if this deployment is in that mode."""
+    if not get_settings().single_user_ok:
+        return None
+    return (await db.execute(select(User).where(User.email == LOCAL_USER_EMAIL))).scalar_one_or_none()
+
+
+# One level deeper than api.py, so anchor assets to the package root.
+_WEB_DIR = Path(__file__).parent.parent / "web"
+
+
+# The app alias preserves the moved handlers' original @app.get decorator text byte-for-byte.
+catalog_pages_router = APIRouter()
+app = catalog_pages_router
+
+
+# ---- the crawlable catalog: /catalog and /catalog/<slug> -------------------------------------
+#
+# The JSON routes above are what agents and the dashboard read. These two render the SAME data as
+# server-side HTML, because until now none of it had a URL: the dashboard browses platforms through
+# hash routes (/app#platform/<slug>) behind a login, so ~2,600 endpoints across 80 shelves were
+# invisible to every crawler and every AI answer engine. No JavaScript here on purpose — the text IS
+# the product surface, and it has to be readable by something that will not run a script or click.
+#
+# `/catalog/<slug>` is registered after the JSON routes so /catalog/platforms, /catalog/search,
+# /catalog/endpoints/… and /catalog/examples/… keep matching first. Registration order alone is a
+# thin guarantee, so the reserved names are also refused explicitly below, and the comparison page's
+# convertor (`_ShelfSlug`) never matches them. Every `/catalog/<segment>` API prefix belongs here.
+_CATALOG_RESERVED = frozenset({"platforms", "search", "find", "endpoints", "examples", "call", "providers"})
+
+_GH = "https://github.com/superdesigndev/treg"
+
+
+def _usd_short(usd: float) -> str:
+    """A dollar figure a person can read. `%g` flips to scientific notation below 1e-4, and a shelf
+    advertising "from $1.2e-07 per call" reads as a bug rather than as a price — so anything under
+    a hundredth of a cent is labelled as such instead."""
+    if not usd:
+        return "free"
+    return "<$0.0001" if usd < 0.0001 else f"${usd:.3g}"
+
+
+def _price_label(cost: dict | None) -> str:
+    """A price in ONE currency, so rows down a page stay comparable. Mirrors `_cost_usd` in cli.py
+    rather than importing it: pulling treg.cli into the server process costs ~200ms and drags the
+    whole CLI in for one string (see `_treg_version`)."""
+    if not isinstance(cost, dict):
+        return ""
+    if cost.get("display_unit") and cost.get("display_usd") is not None:
+        return (cost.get("display_prefix", "") + _usd_short(cost["display_usd"]) + cost.get("display_suffix", "")
+                + "/" + cost["display_unit"])
+    usd = cost.get("usd")
+    if usd is None:
+        return "own account"     # no rate published — never invent a dollar figure
+    if not usd:
+        return "free"
+    unit = {"per_call": "call", "per_result": "result", "per_success": "success"}.get(
+        cost.get("type"), "call")
+    low = cost.get("usd_min")  # a price table: cheapest row up to the validated ceiling
+    if isinstance(low, (int, float)) and low < usd:
+        return f"{_usd_short(low)}-{_usd_short(usd)}/{unit}"
+    return f"{_usd_short(usd)}/{unit}"
+
+
+def _css_stamp(name: str = "catalog.css") -> str:
+    """The stylesheet's own mtime, stamped onto its URL. Skins are served with a real max-age
+    (they are static and every page pulls them), so without a stamp an edited skin keeps rendering
+    from the browser's copy until the cache expires — the trap `/tutorial.js` already guards."""
+    f = _WEB_DIR / name
+    try:
+        return str(int(f.stat().st_mtime))
+    except OSError:
+        return "0"
+
+
+def _serp_desc(text: str, limit: int = 155) -> str:
+    """A meta description Google will print whole. Past ~155 characters it truncates mid-sentence,
+    so cut at the last sentence that fits, then at the last word."""
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    for sep in (". ", "? ", "! "):
+        i = cut.rfind(sep)
+        if i > limit * 0.5:
+            return cut[:i + 1]
+    return cut[:cut.rfind(" ")].rstrip(",;:") + "."
+
+
+# Google prints about 60 characters of a title; tests/test_agent_pages.py holds every page to 65.
+_TITLE_MAX = 65
+
+
+def _page(title: str, description: str, path: str, body: str, ld: list[dict],
+          *, nav_current: str = "", head_extra: str = "", css: str = "catalog.css") -> HTMLResponse:
+    """The shared shell for every server-rendered page. One place that owns <title>, the meta
+    description, the canonical, the og/twitter card and the JSON-LD, so a new page cannot ship
+    without them — that omission is exactly what left the landing page bare for a year.
+
+    It owns `/adtrack.js` for the same reason. That script was on the hand-written marketing HTML
+    (landing, usecase-*, resources, index) and on nothing rendered here, so every page off this
+    shell was invisible to paid attribution: no `treg_ad` cookie means
+    `signup._ad_attribution_from` returns empty, `org.ad_gclid` stays NULL, and `adsconv.queue()`
+    no-ops by design — a paid click could sign up and make its first call and Google would never
+    hear about it. It fails silently, with nothing in the logs. Keep it here, not per page.
+
+    `/sitetrack.js` is deliberately NOT here. It already shipped more widely (it is on
+    `tutorial.html` too), but it can load PostHog with pageview/session-recording config, which
+    contradicts what `web/privacy.html` promises and lists no such processor. Broadening it to the
+    whole server-rendered surface is a product/legal call, not a side effect of fixing ad
+    attribution. `treg_ad` and `/adtrack.js` are already documented in that policy, so this is not.
+
+    The "Start free" CTA carries `?ref=<page>`: a logged-out visit to bare `/app` is bounced to the
+    marketing landing with nothing open, which loses the page the visitor was reading. With `ref`
+    the app keeps them and opens sign-in in place (see the boot in index.html), and the page that
+    produced the signup is recorded."""
+    base = get_settings().public_url.rstrip("/")
+    ref = quote(path.strip("/").replace("/", "-") or "home", safe="")
+    t, d = _esc_html(title), _esc_html(description)
+    url = _esc_html(base + path)  # `path` reaches attribute context — escape it like title/description
+    # `<` escaped to its \u form inside the JSON: a catalog label containing "</script>" would
+    # otherwise close the block early and put the rest of the payload into the document as markup.
+    # Still valid JSON, so parsers and Google's validator read it unchanged.
+    blocks = "\n".join(
+        '<script type="application/ld+json">'
+        + json.dumps(b, separators=(",", ":")).replace("<", "\\u003c")
+        + "</script>"
+        for b in ld)
+    def navlink(href: str, label: str, extra: str = "") -> str:
+        cur = ' aria-current="page"' if href == nav_current else ""
+        return f'<a href="{href}"{cur}{extra}>{label}</a>'
+    # The job, workflow and agent pages exist on the hosted deployment only (`_hosted`): a
+    # self-hosted registry must not put three 404s in its own footer.
+    hub_links = ('<a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a>'
+                 '<a href="/gtm-engineering">GTM engineering</a><a href="/showcase">Showcase</a>'
+                 '<a href="/agents">Agents</a><a href="/blog">Blog</a>' if _hosted() else "")
+    return HTMLResponse(f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{t}</title>
+<meta name="description" content="{d}"/>
+<link rel="canonical" href="{url}"/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<meta property="og:type" content="website"/>
+<meta property="og:site_name" content="treg"/>
+<meta property="og:url" content="{url}"/>
+<meta property="og:title" content="{t}"/>
+<meta property="og:description" content="{d}"/>
+<meta property="og:image" content="{base}/media/og.png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:image:alt" content="treg.to: one key for the whole tool catalog, priced per call"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="{t}"/>
+<meta name="twitter:description" content="{d}"/>
+<meta name="twitter:image" content="{base}/media/og.png"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&family=Inter:wght@400;450;500;600;650;700&family=DM+Mono:ital,wght@0,400;0,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/{css}?v={_css_stamp(css)}"/>
+{head_extra}
+{blocks}
+</head>
+<body>
+<div class="navwrap"><nav class="nav">
+  <a class="brand" href="/"><span class="glyph">▚</span> treg</a>
+  <div class="links">
+    {navlink("/catalog", "Catalog")}
+    {navlink("/tutorial", "Tutorial")}
+    {navlink("/docs", "API")}
+    <a class="hidem" href="{_GH}" target="_blank" rel="noopener">GitHub ↗</a>
+    <a class="candy" href="/app?ref={ref}">Start free</a>
+  </div>
+</nav></div>
+{body}
+<footer>
+  <div class="foot-in">
+    <div class="foot-brand">
+      <div class="brand"><span class="glyph">▚</span> treg</div>
+      <div class="note">100% open source</div>
+    </div>
+    <nav class="foot-cols" aria-label="Site">
+      <div class="foot-col"><div class="lab">Explore</div>
+        <a href="/catalog">Catalog</a>{hub_links}</div>
+      <div class="foot-col"><div class="lab">Build</div>
+        <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a
+        ><a href="{_GH}" target="_blank" rel="noopener">GitHub ↗</a></div>
+      <div class="foot-col"><div class="lab">Company</div>
+        <a href="/resources">Resources</a><a href="/support">Support</a
+        ><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </nav>
+  </div>
+</footer>
+<script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
+</body>
+</html>""", headers={"Cache-Control": "public, max-age=600"})
+
+
+def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
+                      prerender: str) -> HTMLResponse:
+    """Serve the dashboard SPA at a PUBLIC catalog URL, with the head a crawler needs.
+
+    The public catalog is not a second implementation of the marketplace — it IS the marketplace.
+    `/catalog` and `/catalog/<slug>` hand back `index.html`, and the Vue app renders the same
+    platform views a member sees (its catalog API is unauthenticated, so it works signed out; see
+    `publicCatalog` in index.html). That is the whole point: one UI, so the two can never drift
+    apart visually the way a hand-built copy would.
+
+    Two things have to be added on the way out:
+
+    1. **The head.** The SPA ships one bare `<title>treg</title>`. Every catalog URL needs its own
+       title, description, canonical, og/twitter card and JSON-LD, so they are substituted in here —
+       the same trick `_spa_with_og` uses for shared skill/tool links.
+    2. **A no-JS fallback.** Vue replaces `#app`'s content on mount, so prerendered markup cannot
+       go inside it. `#prerender` is therefore a SIBLING, removed by the app on boot. It carries the
+       TEXT (names, summaries, providers, prices) for readers that run no script (most AI crawlers
+       and agent fetchers), and is visually hidden: shown to people, a plain list that the app then
+       swapped for its own layout read as a second, older page flashing past.
+    3. **The shelves.** The `/catalog/platforms` body rides along as JSON (`#catalog-platforms`), so
+       the app's first render already has every platform instead of fetching them after boot.
+    """
+    index = _dashboard_index()
+    if not index.exists():
+        return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
+    base = get_settings().public_url.rstrip("/")
+    t, d = _esc_html(title), _esc_html(description)
+    # `path` carries the {slug} from the URL. Today an unknown slug 404s in catalog_platform before
+    # it reaches here, so a quote can't get this far — but that is an upstream lookup's side effect,
+    # not a guarantee this function makes. Escape it where it is used, so a future "slug not found →
+    # suggestions" page cannot turn a canonical tag into a reflected XSS.
+    url = _esc_html(base + path)
+    blocks = "\n".join(
+        '<script type="application/ld+json">'
+        + json.dumps(b, separators=(",", ":")).replace("<", "\\u003c") + "</script>"
+        for b in ld)
+    meta = (
+        f"<title>{t}</title>\n"
+        f'<meta name="description" content="{d}"/>\n'
+        f'<link rel="canonical" href="{url}"/>\n'
+        f'<meta name="robots" content="index, follow"/>\n'   # index.html defaults to noindex
+        f'<meta property="og:type" content="website"/>\n'
+        f'<meta property="og:site_name" content="treg"/>\n'
+        f'<meta property="og:url" content="{url}"/>\n'
+        f'<meta property="og:title" content="{t}"/>\n'
+        f'<meta property="og:description" content="{d}"/>\n'
+        f'<meta property="og:image" content="{base}/media/og.png"/>\n'
+        f'<meta property="og:image:width" content="1200"/>\n'
+        f'<meta property="og:image:height" content="630"/>\n'
+        f'<meta name="twitter:card" content="summary_large_image"/>\n'
+        f'<meta name="twitter:title" content="{t}"/>\n'
+        f'<meta name="twitter:description" content="{d}"/>\n'
+        f'<meta name="twitter:image" content="{base}/media/og.png"/>\n'
+        + blocks
+    )
+    html = _dashboard_document(index)
+    # index.html carries `robots: noindex` for the authenticated app; these URLs are public, and the
+    # `index, follow` in `meta` only wins if the noindex is gone. Stripped BEFORE `meta` is spliced
+    # in, so this scan only ever runs over the static bundle — never over a string carrying a
+    # caller-supplied title, which is what made it a ReDoS candidate rather than a fixed-cost pass.
+    html = re.sub(r'<meta name="robots" content="noindex[^>]*>\s*', "", html, count=1)
+    # Match whatever title the page carries, not one exact string — a rename in the dashboard must
+    # not be able to switch every catalog page's head off without a word (the same failure
+    # `_spa_with_og` was written to survive).
+    html, hits = re.subn(r"<title>.*?</title>", lambda _m: meta, html, count=1,
+                         flags=re.IGNORECASE | re.DOTALL)
+    if not hits:
+        html = html.replace("<head>", "<head>\n" + meta, 1)
+    shelves = json.dumps(_platforms_payload(), separators=(",", ":")).replace("<", "\\u003c")
+    marker = '<div id="app"'
+    if marker in html:
+        html = html.replace(marker, f'{_PRERENDER_HIDDEN}<div id="prerender">{prerender}</div>\n'
+                            f'<script id="catalog-platforms" type="application/json">{shelves}</script>\n'
+                            f'{marker}', 1)
+    return HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
+
+
+# Crawler-only: kept in the document for readers that run no script, but never painted. The
+# page's own markup still styles the text (the `h1`/`ul` structure is what a crawler reads).
+_PRERENDER_HIDDEN = ("<style>#prerender{position:absolute;width:1px;height:1px;overflow:hidden;"
+                     "clip-path:inset(50%);white-space:nowrap}</style>")
+
+
+@app.get("/catalog", include_in_schema=False)
+async def catalog_index():
+    """The catalog index — the marketplace's Catalog view, on a public, indexable URL."""
+    base = get_settings().public_url.rstrip("/")
+    rows = _platform_rows()
+    # The WHOLE catalog, not the sum of the tiles: a tile counts only its browse surface, so the
+    # account/utility endpoints (real inventory, listed on each shelf page) would go uncounted and
+    # this page would quietly contradict the number on the landing.
+    cat = catalog_store.load()
+    total_eps = len(cat.endpoints)
+    providers = sorted({e["provider"] for e in cat.endpoints if e["kind"] != "routed"})   # treg is no vendor
+
+    cats: dict[str, list[dict]] = {}
+    for row in rows:
+        cats.setdefault(row["category"], []).append(row)
+    sections = []
+    for name, items in cats.items():
+        lis = []
+        for r in items:
+            price = _price_label(r["price_from"])
+            vendors = ", ".join(_provider_display(p) for p in r["providers"])
+            lis.append(
+                f'<li><b><a href="/catalog/{_esc_html(r["slug"])}">{_esc_html(r["label"])}</a></b>'
+                f'<i>{_esc_html(r["summary"])}</i>'
+                f'<span class="m">{r["endpoints"]} endpoints · {r["capabilities"]} capabilities'
+                + (f" · from {_esc_html(price)}" if price else "")
+                + f" · {_esc_html(vendors)}</span></li>")
+        sections.append(f"<h2>{_esc_html(name)}</h2><ul>{''.join(lis)}</ul>")
+
+    # The provider links live HERE, in the crawlable prerender, rather than on an index page of
+    # their own: /providers earned no searches and made a second "browse everything" URL beside
+    # this one. The /tools pages still get their internal links; there is just one index.
+    prov_rows = _provider_rows()
+    prov_links = " · ".join(
+        f'<a href="/tools/{_esc_html(r["service"])}">{_esc_html(r["display"])}</a>'
+        for r in prov_rows)
+    prerender = ("<h1>The tool catalog</h1>"
+                 + f'<p class="lede">{total_eps:,} endpoints across {len(rows)} platforms and '
+                   f"{len(providers)} providers — every tool your agent can call through one key, "
+                   "priced up front and billed per call, with no provider signup.</p>"
+                 # The two hubs are linked from HERE as well as the nav: this prerender is the page
+                 # Google crawls most, and before this line the job and workflow pages were reachable
+                 # only from the sitemap — "URL is unknown to Google" on every one of them.
+                 + ('<p>Looking for a job rather than a platform? <a href="/use-cases">The use cases</a> '
+                    'compare the providers that do one job, <a href="/workflows">the workflows</a> '
+                    'chain several jobs into one prompt with the price of each step, and '
+                    '<a href="/agents">the agent pages</a> show the whole menu for one '
+                    'agent, and <a href="/blog">the blog</a> carries the measured receipts and '
+                    'launch notes.</p>' if _hosted() else "")
+                 + "".join(sections)
+                 + f"<h2>The providers</h2><p>{len(prov_rows)} vendors serve this catalog, each "
+                   f"with its own page: {prov_links}</p>")
+
+    ld = [
+        {"@context": "https://schema.org", "@type": "ItemList",
+         "name": "treg tool catalog",
+         "description": f"{total_eps} API endpoints across {len(rows)} platforms, callable through one key.",
+         "numberOfItems": len(rows),
+         "itemListElement": [
+             {"@type": "ListItem", "position": i, "name": r["label"],
+              "url": f"{base}/catalog/{r['slug']}"}
+             for i, r in enumerate(rows, 1)]},
+        {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "treg", "item": base + "/"},
+            {"@type": "ListItem", "position": 2, "name": "Catalog", "item": base + "/catalog"}]},
+    ]
+    return _spa_catalog_page(
+        f"Tool catalog — {total_eps:,} API endpoints your agent can call | treg",
+        f"Browse {total_eps:,} endpoints across {len(rows)} platforms and {len(providers)} providers "
+        "— SEO, social, enrichment, ads and scraping data. One key, priced per call, no provider signup.",
+        "/catalog", ld, prerender)
+
+
+@app.get("/search", include_in_schema=False)
+async def search_page():
+    """Find tools by describing the job: the Dashboard's public find view over `/catalog/find`."""
+    rows = _platform_rows()
+    # Until the page's script runs, a visitor sees the page's own ground and nothing else: a
+    # different first screen that swaps out would read as a loading step. The words are for readers
+    # that never run the script, so they are visually hidden rather than drawn.
+    prerender = ('<style>#prerender{position:fixed;inset:0;z-index:100;background:#f4f4f1;'
+                 'width:auto;height:auto;clip-path:none}'
+                 '#prerender>div{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}</style>'
+                 "<div><h1>What does your agent need to do?</h1>"
+                 '<p>Describe the job in plain words and see which tools in the treg catalog can do it, '
+                 f'across {len(rows)} platforms. Prefer to browse? <a href="/catalog">The catalog</a> '
+                 "lists every platform.</p></div>")
+    return _spa_catalog_page(
+        "Find tools for your agent | treg",
+        "Describe the job in plain words and see which tools in the treg catalog can do it, "
+        "priced per call, callable through one key.",
+        "/search", [], prerender)
+
+
+@app.get("/catalog/{slug}", include_in_schema=False)
+async def catalog_page(slug: str):
+    """One platform shelf — the marketplace's platform view, on a public, indexable URL."""
+    if slug in _CATALOG_RESERVED:
+        raise HTTPException(status_code=404, detail=f"unknown platform {slug!r}")
+    # include_hidden=1, exactly as the SPA asks for it (see `loadPlatform`): the account/utility
+    # endpoints are real inventory and the page files them in their own section rather than hiding
+    # them. Asking for a different population than the view that is about to replace this would put
+    # two different endpoint counts on one URL.
+    detail = await catalog_platform(slug, include_hidden=1, observations=None)
+    compared = catalog_store.load().compared()
+    base = get_settings().public_url.rstrip("/")
+    plat = detail["platform"]
+    label, category = plat["label"], plat["category"]
+    row = next((r for r in _platform_rows() if r["slug"] == slug), None)
+    summary = (row or {}).get("summary", "")
+    caps = detail["capabilities"]
+    eps = [e for cap in caps for e in cap["endpoints"]] + detail["extended"]
+    prices = [c["usd"] for e in eps if isinstance(c := e.get("cost"), dict) and c.get("usd")]
+    cheapest = _usd_short(min(prices)) if prices else ""
+
+    blocks = []
+    for cap in caps:
+        lis = []
+        for e in cap["endpoints"]:
+            price = _price_label(e.get("cost"))
+            bits = [_esc_html(e["provider_display"])]
+            if e.get("verified"):
+                bits.append("live-verified")
+            if price:
+                bits.append(_esc_html(price))
+            bits.append(_esc_html(e["id"]))
+            lis.append(f'<li><b>{_esc_html(e["name"])}</b>'
+                       f'<i>{_esc_html(e.get("summary") or "")}</i>'
+                       f'<span class="m">{" · ".join(bits)}</span></li>')
+        blocks.append(f'<h2>{_esc_html(cap["description"] or cap["id"])}</h2><ul>{"".join(lis)}</ul>')
+
+    provs = ", ".join(p["display_name"] for p in detail["providers"].values())
+    prerender = (f'<p class="m"><a href="/catalog">← Catalog</a> · {_esc_html(category)}</p>'
+                 + f"<h1>{_esc_html(label)}</h1>"
+                 + f'<p class="lede">{_esc_html(summary)} {len(eps)} endpoints from '
+                   f"{_esc_html(provs)}"
+                 + (f", from {_esc_html(cheapest)} per call" if cheapest else "")
+                 + ". A job several providers do has its own page comparing them by price, measured "
+                   "success and agents' verdicts; where treg offers a routed tool for it, treg can "
+                   "pick the provider for you.</p>"
+                 + "".join(blocks))
+
+    desc = (f"{len(eps)} {label.lower()} API endpoints from "
+            f"{', '.join(p['display_name'] for p in list(detail['providers'].values())[:3])}"
+            + (f", from {cheapest} per call" if cheapest else "")
+            + ". Call them through one treg key — no provider signup.")
+    ld = [
+        {"@context": "https://schema.org", "@type": "ItemList",
+         "name": f"{label} — API endpoints on treg",
+         "numberOfItems": len(caps),
+         "itemListElement": [
+             {"@type": "ListItem", "position": i, "name": cap["description"] or cap["id"],
+              "url": (f"{base}/catalog/{slug}/{catalog_store.capability_key(slug, cap['id'])}"
+                      if (slug, cap["id"]) in compared else f"{base}/catalog/{slug}#{cap['id']}")}
+             for i, cap in enumerate(caps, 1)]},
+        {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+            {"@type": "ListItem", "position": 2, "name": "Catalog", "item": base + "/catalog"},
+            {"@type": "ListItem", "position": 3, "name": label, "item": f"{base}/catalog/{slug}"}]},
+    ]
+    # "{platform} api pricing" is the non-brand phrasing that reaches the site (GSC), so the shelf
+    # title leads with it; the brand is treg.to and the copy carries no em-dash.
+    return _spa_catalog_page(f"{label} API pricing: {len(eps)} endpoints priced per call | treg.to",
+                             desc[:300], f"/catalog/{slug}", ld, prerender)
+
+
+class _ShelfSlug(Convertor):
+    """A platform slug that is never one of the catalog's own API segments (`_CATALOG_RESERVED`).
+    `/catalog/call/<id>` and friends share the `/catalog/<a>/<b>` shape with the comparison page, and route
+    order across the app roles is not something this page should depend on: the path simply does
+    not match them."""
+    regex = rf"(?!(?:{'|'.join(sorted(_CATALOG_RESERVED))})(?:/|$))[^/]+"
+
+    def convert(self, value: str) -> str:
+        return value
+
+    def to_string(self, value: str) -> str:
+        return value
+
+
+register_url_convertor("shelf", _ShelfSlug())
+
+
+@app.get("/catalog/{slug:shelf}/{key}", include_in_schema=False)
+async def catalog_comparison_page(slug: str, key: str):
+    """One capability on a shelf, compared: the providers that do it, side by side. `key` is the
+    capability id without its platform prefix (`enrich` for `companies.enrich`), or the whole id when
+    it is filed under another prefix. Same SPA as the shelf; the head and the no-JS text name it."""
+    cat = catalog_store.load()
+    cap_id = catalog_store.compared_capability(cat, slug, key)
+    if cap_id is None:
+        raise HTTPException(status_code=404, detail=f"no comparison {key!r} on {slug!r}")
+    base = get_settings().public_url.rstrip("/")
+    label = cat.platforms.get(slug, {}).get("label", slug)
+    does = cat.capabilities.get(cap_id) or cap_id
+    eps = [catalog_store.endpoint_view(e, _provider_display(e["provider"]), cat)
+           for e in cat.for_platform(slug) if e["capability"] == cap_id and catalog_store.browsable(e)]
+    provs = sorted({e["provider_display"] for e in eps})
+    lis = "".join(
+        f'<li><b>{_esc_html(e["provider_display"])}</b> <i>{_esc_html(e.get("summary") or "")}</i>'
+        f'<span class="m">{_esc_html(_price_label(e.get("cost")) or "")} · {_esc_html(e["id"])}</span></li>'
+        for e in eps)
+    path = f"/catalog/{slug}/{key}"
+    prerender = (f'<p class="m"><a href="/catalog">Catalog</a> / <a href="/catalog/{_esc_html(slug)}">'
+                 f"{_esc_html(label)}</a></p><h1>{_esc_html(does)}</h1>"
+                 f'<p class="lede">{len(provs)} providers do this through one treg key: '
+                 f"{_esc_html(', '.join(provs))}.</p><ul>{lis}</ul>")
+    ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Catalog", "item": base + "/catalog"},
+        {"@type": "ListItem", "position": 2, "name": label, "item": f"{base}/catalog/{slug}"},
+        {"@type": "ListItem", "position": 3, "name": does, "item": base + path}]}]
+    return _spa_catalog_page(f"{does}: {len(provs)} APIs compared | treg.to",
+                             f"{does}. Compare {', '.join(provs[:4])} and more by price, measured "
+                             "success and agents' verdicts; call any of them through one treg key."[:300],
+                             path, ld, prerender)
+
+
+# --------------------------------------------------------------------------- /agents/<agent>
+
+def _hosted() -> bool:
+    """True on the hosted service only. The agent pages describe treg.to's own listings (the
+    ChatGPT Connector, the OAuth connector, the free grant), none of which is true of a self-hosted
+    registry, so off these hosts the pages do not exist rather than lie."""
+    host = (urlsplit(get_settings().public_url).hostname or "").lower()
+    return host in PUBLIC_HOST_ALIASES
+
+
+_pub = catalog_store.browsable
+
+
+def _catalog_census() -> tuple[int, int]:
+    """(browse-surface endpoint count, platform count): the two numbers the agent pages state."""
+    cat = catalog_store.load()
+    browse = [e for e in cat.endpoints if _pub(e)]
+    return len(browse), len({e["platform"] for e in browse})
+
+
+def _anchor(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def _logo(domain: str | None, alt: str) -> str:
+    """A 20px brand mark from the favicon service the landing uses, or the treg glyph when the
+    brand is unknown (never a wrong logo)."""
+    if not domain:
+        return '<span class="lg lg-none" aria-hidden="true">▚</span>'
+    return (f'<img class="lg" src="https://www.google.com/s2/favicons?domain={_esc_html(domain)}&amp;sz=64" '
+            f'alt="{_esc_html(alt)}" width="20" height="20" loading="lazy"/>')
+
+
+def _job_category(label: str) -> str:
+    """The category a job belongs to, looked up by label. Category is METADATA, never part of the
+    URL: Composio files every blueprint at a flat /use-case/<slug> and renders the category as a
+    chip, which is why re-cutting their taxonomy costs them nothing. Ours does the same now, after
+    one re-cut taught us the price of putting it in the path."""
+    for category, jobs in agent_pages.USE_CASES:
+        for lbl, _ in jobs:
+            if lbl == label:
+                return category
+    return ""
+
+
+def _use_case_page_for(label: str) -> str | None:
+    """The flat URL for a job, or None when no page has been written for it."""
+    for slug, spec in agent_pages.USE_CASE_PAGES.items():
+        if spec["label"] == label:
+            return f"/use-cases/{slug}"
+    return None
+
+
+def _related_link(label: str, agent_slug: str) -> tuple[str, str]:
+    """(href, owning category) for a `related` job, resolved by LABEL across the whole menu.
+
+    Four categories carry fewer than five jobs, so `related` has to cross categories there. It used
+    to resolve inside the current page's category only, which sent those cards to the wrong anchor
+    under a caption naming the wrong category. The 66 labels are unique (tested), so the label is
+    enough to find the owner.
+    """
+    for category, jobs in agent_pages.USE_CASES:
+        for lbl, _ in jobs:
+            if lbl == label:
+                return (_use_case_page_for(label)
+                        or f"/agents/{agent_slug}#{agent_pages.category_slug(category)}"), category
+    return f"/agents/{agent_slug}", ""
+
+
+def _use_case_caps(label: str) -> tuple[str, ...]:
+    for _category, jobs in agent_pages.USE_CASES:
+        for lbl, caps in jobs:
+            if lbl == label:
+                return caps
+    return ()
+
+
+# ---- the reverse index: which job pages use a provider, which workflows use a job -------------
+#
+# Every job page already links DOWN to the catalog and every workflow step links down to its job
+# page. Nothing linked UP: a provider page did not name the jobs it serves, and a job page did not
+# name the workflows that chain it. The result was measurable — the 38 job pages and both workflow
+# pages had zero impressions and "URL is unknown to Google", while /tools/<provider> (linked from
+# /catalog) was indexed. These two indexes are computed once per process from the same tables the
+# pages render from, so a new job or workflow is cross-linked the moment it is routed.
+
+@lru_cache(maxsize=1)
+def _jobs_by_provider() -> dict[str, list[tuple[str, str]]]:
+    """provider service -> [(job slug, job sentence)], for every job whose capabilities the
+    provider answers. Ordered by the job table so the list reads the way the hub does."""
+    cat = catalog_store.load()
+    out: dict[str, list[tuple[str, str]]] = {}
+    for slug, spec in agent_pages.USE_CASE_PAGES.items():
+        provs = {e["provider"] for cid in _use_case_caps(spec["label"])
+                 for e in cat.for_capability(cid) if _pub(e)}
+        for p in provs:
+            out.setdefault(p, []).append((slug, spec["sentence"]))
+    return out
+
+
+@lru_cache(maxsize=1)
+def _workflows_by_capability() -> dict[str, list[tuple[str, str]]]:
+    """capability id -> [(workflow slug, workflow sentence)] for every workflow with a step on it."""
+    out: dict[str, list[tuple[str, str]]] = {}
+    for slug, spec in agent_pages.WORKFLOWS.items():
+        for _name, cid, *_rest in spec.get("steps", ()):
+            out.setdefault(cid, []).append((slug, spec["sentence"]))
+    return out
+
+
+def _workflows_for_caps(caps: tuple[str, ...]) -> list[tuple[str, str]]:
+    seen: dict[str, str] = {}
+    for cid in caps:
+        for slug, sentence in _workflows_by_capability().get(cid, ()):
+            seen.setdefault(slug, sentence)
+    return list(seen.items())
+
+
+def _menu_rows(cat, category: str, jobs) -> list[dict]:
+    """The use-case menu for one category, priced from the catalog. Shared by the HTML and the
+    Markdown renderings of the agent page so the two can never list different jobs."""
+    rows = []
+    for label, caps in jobs:
+        eps = [e for cid in caps for e in cat.for_capability(cid) if _pub(e)]
+        if not eps:  # the test forbids this, but a page must never render an empty promise
+            continue
+        prices = [c["usd"] for e in eps if (c := cat.cost_view(e.get("cost"), e.get("provider"))) and c["usd"]]
+        plats, seen = [], set()
+        for cid in caps:
+            ceps = [e for e in cat.for_capability(cid) if _pub(e)]
+            if not ceps:
+                continue
+            slug = ceps[0]["platform"]
+            plats.append({"cap": cid, "slug": slug, "dup": slug in seen,
+                          "label": (cat.platforms.get(slug) or {}).get("label") or slug,
+                          "domain": agent_pages.PLATFORM_DOMAINS.get(slug)})
+            seen.add(slug)
+        rows.append({"label": label, "caps": caps, "platforms": plats,
+                     "providers": len({e["provider"] for e in eps}),
+                     "verified": sum(1 for e in eps if e["verified"]),
+                     "from_usd": min(prices) if prices else None,
+                     # no priced endpoint at all = the team's own account does the job, unmetered
+                     "own_account": not prices,
+                     "page": _use_case_page_for(label)})
+    return rows
+
+
+_COPY_JS = """
+<script>
+document.querySelectorAll('button[data-copy]').forEach(function(b){
+  b.addEventListener('click', async function(){
+    try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent='copied'; b.classList.add('done');
+          setTimeout(function(){ b.textContent='copy'; b.classList.remove('done'); }, 1400); } catch(e) {}
+  });
+});
+</script>"""
+
+_MD_ALT = '<link rel="alternate" type="text/markdown" href="{href}"/>'
+
+
+def _guide_md(fragment: str) -> str:
+    """Hand-written page sections (an agent's `guide`, a workflow's `sections`) as Markdown for the
+    `.md` twin. The fragments use a small fixed vocabulary (p, table, pre/code, ul/li, a, b, code), so
+    this maps that and strips the rest; a table becomes a pipe table rather than run-together cells."""
+    def _table(m: re.Match) -> str:  # one Markdown table per <table>, header row then a separator
+        rows = [[re.sub(r"<[^>]+>", "", c).strip()
+                 for c in re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", tr, flags=re.S)]
+                for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", m.group(0), flags=re.S)]
+        rows = [r for r in rows if r]
+        if not rows:
+            return ""
+        out = ["| " + " | ".join(rows[0]) + " |", "|" + "---|" * len(rows[0])]
+        out += ["| " + " | ".join(r) + " |" for r in rows[1:]]
+        return "\n" + "\n".join(out) + "\n\n"
+    s = re.sub(r"<table[^>]*>.*?</table>", _table, fragment, flags=re.S)
+    s = re.sub(r"<pre><code>(.*?)</code></pre>", lambda m: f"\n```\n{m.group(1)}\n```\n", s, flags=re.S)
+    s = re.sub(r'<a href="([^"]+)">(.*?)</a>',
+               lambda m: f"[{m.group(2)}]({get_settings().public_url.rstrip('/')}{m.group(1)})"
+               if m.group(1).startswith("/") else f"[{m.group(2)}]({m.group(1)})", s)
+    s = re.sub(r"</?b>", "**", s)
+    s = re.sub(r"</?code>", "`", s)
+    s = re.sub(r"<li>", "- ", s)
+    s = re.sub(r"</li>|</p>", "\n", s)
+    s = re.sub(r"<[^>]+>", "", s)
+    return html_mod.unescape(re.sub(r"\n{3,}", "\n\n", s)).strip()
+
+
+@app.get("/agents", include_in_schema=False)
+async def agents_hub():
+    """The hub the agent pages hang from. Until this existed the nav's "Agents" link pointed at one
+    client's page (/agents/claude-code) because there was nowhere else to point it, and the bare URL
+    404ed while every agent page's breadcrumb implied it existed."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+    n_eps, n_plats = _catalog_census()
+    n, p = f"{n_eps:,}", str(n_plats)
+    def _blurb(defn: str) -> str:
+        # The card answers "which client, and does it install as a plugin or an MCP server" — the
+        # definition's opening clause. The counts already live on the meta line; printing the whole
+        # definition put them on every card twice and cut it mid-word at the length cap.
+        head = defn.split(" that gives ")[0]
+        if head == defn and len(defn) > 140:  # a future definition without the clause still fits
+            head = defn[:140].rsplit(" ", 1)[0]
+        return head.rstrip(".") + "."
+    def _agent_href(slug: str) -> str:
+        # grok-bot links to the launch page at /grokbot
+        return "/grokbot" if slug == "grok-bot" else f"/agents/{slug}"
+    cards = "".join(
+        f'<a class="pcard" href="{_agent_href(slug)}"><h3>{_esc_html(spec["name"])}</h3>'
+        f'<p>{_esc_html(_blurb(spec["definition"].format(n=n, p=p)))}</p>'
+        f'<div class="meta">{n} tools &middot; {p} platforms</div></a>'
+        for slug, spec in agent_pages.AGENTS.items())
+    body = (
+        '<main class="wrap"><div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/agents">Agents</a></div>'
+        '<h1>The agents that can use treg.to</h1>'
+        '<p class="lede">One page per client: the install steps for that agent, then the menu of '
+        f'jobs it can do once connected. Every client gets the same {n} tools through one treg.to '
+        'key, at the provider&rsquo;s own rate with $0.000 markup.</p>'
+        f'</div><section class="cat"><div class="grid">{cards}</div></section>'
+        '<section class="cat"><h2>Everything else</h2><div class="cap"><p style="margin:0">The jobs '
+        'themselves are written up at <a href="/use-cases">/use-cases</a>, the multi-step versions '
+        'at <a href="/workflows">/workflows</a>, and the whole catalog is at '
+        '<a href="/catalog">/catalog</a>.</p></div></section></main>')
+    names = [s["name"] for s in agent_pages.AGENTS.values()]
+    ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Agents", "item": base + "/agents"}]}]
+    return _page("Install treg.to in ChatGPT, Claude, Cursor or Grok",
+                 f"Install steps for {', '.join(names[:-1])} and {names[-1]}, and the menu of jobs "
+                 "each can do once connected. One treg.to key, no markup.",
+                 "/agents", body, ld)
+
+
+@app.get("/agents/{agent}.md", include_in_schema=False)
+@app.get("/agents/{agent}", include_in_schema=False)
+async def agent_page(request: Request, agent: str):
+    """One client: "I use ChatGPT, what can it do now?" A keyword H1 with a rotating "for <role>"
+    line under it, the install steps for that client, then the use-case menu: plain-words jobs under buyer
+    categories, each priced from the catalog. The menu is `agent_pages.USE_CASES`, the same
+    taxonomy the use-case pages hang from, so the agent page is the map of the whole site.
+    `/agents/<agent>.md` is the same page as Markdown, for agents and answer engines."""
+    as_md = request.url.path.endswith(".md")
+    raw = agent[:-3] if agent.endswith(".md") else agent
+    # grok-bot redirects to the launch page at /grokbot: the launch page is what people expect
+    # when they click "Grok Bot", and the /agents/grok-bot URL was never the primary destination.
+    if raw.lower() == "grok-bot":
+        return RedirectResponse("/grokbot", status_code=301)
+    # Resolve to the dict's OWN key, never the request's bytes: `agent` is interpolated into the
+    # canonical, the rel=alternate href and the JSON-LD breadcrumb below, and a path parameter
+    # must not reach those unescaped (CodeQL py/reflective-xss). The lookup is case-insensitive,
+    # so a differently-cased URL would otherwise serve a 200 whose canonical points at itself: a
+    # duplicate page. Send it to the one spelling instead.
+    agent = next((k for k in agent_pages.AGENTS if k == raw.lower()), None)
+    if agent is None or not _hosted():
+        raise HTTPException(status_code=404, detail="unknown agent")
+    if raw != agent:
+        return RedirectResponse(f"/agents/{agent}" + (".md" if as_md else ""), status_code=301)
+    spec = agent_pages.AGENTS[agent]
+    cat = catalog_store.load()
+    base = get_settings().public_url.rstrip("/")
+    n_eps, n_plats = _catalog_census()
+    n, p = f"{n_eps:,}", str(n_plats)
+    name = spec["name"]
+    title = spec["title"].format(n=n, p=p)
+    desc = _serp_desc(spec["description"].format(n=n, p=p))
+    definition = spec["definition"].format(n=n, p=p)
+    menu = [(category, agent_pages.CATEGORY_PROMPTS.get(category, ""), _menu_rows(cat, category, jobs))
+            for category, jobs in agent_pages.USE_CASES]
+    # An agent with `focus` gets those categories in full, in that order, and the rest as one index
+    # row each that links to the job guides. Reprinting all fourteen tables on every agent page is
+    # what made them 95-98% identical; an agent without `focus` keeps the whole menu.
+    focus = spec.get("focus") or ()
+    rest: list = []
+    if focus:
+        by_cat = {m[0]: m for m in menu}
+        rest = [m for m in menu if m[0] not in focus]
+        menu = [by_cat[c] for c in focus if c in by_cat]
+    guide = spec.get("guide") or []
+    steps_text = [re.sub(r"<[^>]+>", "", st).format(n=n) for st in spec["install_steps"]]
+
+    if as_md:
+        md = [f"# {title}", "", definition, "", f"## Install in {name}", ""]
+        md += [f"{i}. {html_mod.unescape(st)}" for i, st in enumerate(steps_text, 1)]
+        for g in guide:
+            md += ["", f"## {g['h2']}", "", _guide_md(g["html"])]
+        if agent_pages.WORKFLOWS:
+            md += ["", f"## Sequences {name} can run from one prompt", ""]
+            md += [f"- [{wspec['sentence']}]({base}/workflows/{ws}), {len(wspec.get('steps', ()))} steps, "
+                   f"each priced, with the receipt from a real run"
+                   for ws, wspec in agent_pages.WORKFLOWS.items()]
+        md += ["", f"## What {name} can do now", "",
+               "One row per job. Prices are the provider's own rate with $0.000 markup; rows marked FREE run on your own account and are never metered.", ""]
+        for category, prompt, rows in menu:
+            md += [f"### {category}", ""]
+            if prompt:
+                md += [f"Try: \"{prompt}\"", ""]
+            groups = agent_pages.CATEGORY_GROUPS.get(category)
+            order = ([l for _g, labels in groups for l in labels] if groups else None)
+            if order:
+                rows = sorted(rows, key=lambda r: order.index(r["label"]) if r["label"] in order else 999)
+            for r in rows:
+                plats = ", ".join(pl["label"] for pl in r["platforms"] if not pl["dup"])
+                price = "FREE with your own account" if r["own_account"] else f"from {_usd_short(r['from_usd'])}"
+                link = f"{base}{r['page']}" if r["page"] else f"{base}/catalog/{r['platforms'][0]['slug']}"
+                md.append(f"- [{r['label']}]({link}): {plats}. {r['providers']} provider{'s' if r['providers'] != 1 else ''}, {price}.")
+            md.append("")
+        if rest:
+            md += [f"### Everything else {name} can call", ""]
+            for category, _prompt, rows in rest:
+                md.append(f"- [{category}]({base}/use-cases#{agent_pages.category_slug(category)}): "
+                          f"{len(rows)} jobs. {agent_pages.CATEGORY_BLURBS.get(category, '')}")
+            md.append("")
+        md += ["## Questions", ""]
+        for q, a in spec["faq"]:
+            md += [f"**{q}** {a}", ""]
+        md += [f"HTML version: {base}/agents/{agent}", f"Setup line for any agent: {agent_pages.SETUP_LINE.format(base=base)}"]
+        return PlainTextResponse("\n".join(md), media_type="text/markdown; charset=utf-8",
+                                 headers={"Cache-Control": "public, max-age=600"})
+
+    # Only the FIRST role is server-rendered, on the roleline under the H1 — the H1 itself carries
+    # the term and the promise, never a persona. The rest ride in a JSON block for the script.
+    role_list = spec.get("roles") or agent_pages.ROLES  # a focused page names its own readers
+    roles = f'<span class="ri on">{_esc_html(role_list[0])}</span>'
+    more_roles = json.dumps(list(role_list[1:])).replace("<", "\\u003c")
+    steps = "".join(
+        f'<div class="steplabel"><span class="n">{i}</span><b>{st.format(n=n)}</b></div>'
+        for i, st in enumerate(spec["install_steps"], 1))
+    shot = (f'<div class="sample"><div class="sbar">{_esc_html(spec.get("install_image_bar") or name)}</div>'
+            f'<img src="{_esc_html(spec["install_image"])}" alt="{_esc_html(spec["install_image_alt"])}" '
+            f'loading="lazy" style="display:block;width:100%"/>'
+            + (f'<div class="sbar" style="border-top:1px solid var(--line);border-bottom:0">'
+               f'{_esc_html(spec["install_image_caption"])}</div>' if spec.get("install_image_caption") else "")
+            + '</div>' if spec.get("install_image") else "")
+
+    # the platform marks in the hero: the busiest shelves, deduped by brand
+    hero_tiles, seen_brand = [], set()
+    for _cat_name, _prompt, rows in menu:
+        for r in rows:
+            for pl in r["platforms"]:
+                root = ".".join((pl["domain"] or "").split(".")[-2:])
+                if pl["domain"] and root not in seen_brand and len(hero_tiles) < 14:
+                    seen_brand.add(root)
+                    hero_tiles.append(f'<span class="ptile" title="{_esc_html(pl["label"])}">'
+                                      f'{_logo(pl["domain"], pl["label"])}</span>')
+
+    cards, sections = [], []
+    for category, prompt, rows in menu:
+        anchor = _anchor(category)
+        priced = [r["from_usd"] for r in rows if r["from_usd"]]
+        free_all = all(r["own_account"] for r in rows)
+        meta = (f'{len(rows)} jobs &middot; <b style="color:var(--green)">free</b> on your account' if free_all
+                else f'{len(rows)} jobs &middot; from {_esc_html(_usd_short(min(priced)))}' if priced
+                else f"{len(rows)} jobs")
+        blurb = agent_pages.CATEGORY_BLURBS.get(category, "").format(agent=name)
+        cards.append(f'<a class="card" href="#{anchor}"><h4>{_esc_html(category)}</h4>'
+                     f'<p>{_esc_html(blurb)}</p>'
+                     f'<p style="font-family:var(--mono);font-size:11.5px;color:var(--muted2)">{meta}</p></a>')
+        body_rows, by_label = [], {}
+        for r in rows:
+            chips, seen_p = [], set()
+            for pl in r["platforms"]:
+                if pl["slug"] in seen_p:
+                    body_rows.append("")  # keep data-cap discoverable below
+                    continue
+                seen_p.add(pl["slug"])
+                chips.append(f'<a href="/catalog/{_esc_html(pl["slug"])}#{_esc_html(pl["cap"])}" '
+                             f'data-cap="{_esc_html(pl["cap"])}">{_logo(pl["domain"], pl["label"])}{_esc_html(pl["label"])}</a>')
+            hidden = "".join(f'<span data-cap="{_esc_html(pl["cap"])}" hidden></span>'
+                             for pl in r["platforms"] if pl["dup"])
+            price = ('<span style="color:var(--green)">free, your account</span>' if r["own_account"]
+                     else f'{_esc_html(_usd_short(r["from_usd"]))}')
+            name_cell = (f'<a href="{r["page"]}"><b>{_esc_html(r["label"])}</b></a>' if r["page"]
+                         else f'<b>{_esc_html(r["label"])}</b>')
+            row_html = (f'<tr><td>{name_cell}{hidden}</td>'
+                        f'<td style="color:var(--muted)">{" &middot; ".join(chips)}</td>'
+                        f'<td>{r["providers"]}</td><td>{price}</td></tr>')
+            by_label[r["label"]] = row_html
+            body_rows.append(row_html)
+        # A category with sub-headings orders its rows by group and prints a divider row before
+        # each. Enrichment is 25 jobs and the groups are how a buyer reads them; they are NOT
+        # categories, because find / contacts / enrich are stages of one motion and would have
+        # committed four more URL segments to a distinction that only exists in a practitioner's head.
+        groups = agent_pages.CATEGORY_GROUPS.get(category)
+        if groups:
+            body_rows = []
+            for gname, labels in groups:
+                body_rows.append(
+                    f'<tr><td colspan="4" style="padding-top:20px"><span class="seclab" '
+                    f'style="margin:0">{_esc_html(gname)}</span></td></tr>')
+                body_rows += [by_label[l] for l in labels if l in by_label]
+        sections.append(
+            f'<section id="{anchor}"><div class="wrap"><div class="seclab">{_esc_html(category)}</div>'
+            f'<h2>{_esc_html(blurb)}</h2>'
+            + (f'<p>Try: <i>&ldquo;{_esc_html(prompt)}&rdquo;</i></p>' if prompt else "")
+            + '<div class="tablewrap"><table><thead><tr><th>Job</th><th>Where</th><th>Providers</th>'
+              '<th>From</th></tr></thead><tbody>'
+            + "".join(body_rows) + '</tbody></table></div></div></section>')
+
+    if rest:
+        cards.append(f'<a class="card" href="#more"><h4>Everything else</h4>'
+                     f'<p>{len(rest)} more categories, from search and ads to e-commerce.</p>'
+                     f'<p style="font-family:var(--mono);font-size:11.5px;color:var(--muted2)">'
+                     f'{sum(len(r) for _c, _p, r in rest)} jobs</p></a>')
+        rest_rows = []
+        for category, _prompt, rows in rest:
+            priced = [r["from_usd"] for r in rows if r["from_usd"]]
+            frm = (_esc_html(_usd_short(min(priced))) if priced
+                   else '<span style="color:var(--green)">free, your account</span>')
+            # The row keeps the category's own id, so a link to /agents/<agent>#<category> that
+            # worked when the full table was here still lands on that category.
+            rest_rows.append(
+                f'<tr id="{_esc_html(_anchor(category))}"><td><a href="/use-cases#{agent_pages.category_slug(category)}">'
+                f'<b>{_esc_html(category)}</b></a></td>'
+                f'<td style="color:var(--muted)">{_esc_html(agent_pages.CATEGORY_BLURBS.get(category, ""))}</td>'
+                f'<td>{len(rows)}</td><td>{frm}</td></tr>')
+        sections.append(
+            '<section id="more"><div class="wrap"><div class="seclab">Everything else</div>'
+            f'<h2>What else {_esc_html(name)} can call</h2>'
+            '<div class="tablewrap"><table><thead><tr><th>Category</th><th>What</th><th>Jobs</th>'
+            '<th>From</th></tr></thead><tbody>' + "".join(rest_rows) + '</tbody></table></div>'
+            '<p style="margin-top:20px"><a href="/use-cases">Every job, with its guide &rarr;</a></p>'
+            '</div></section>')
+
+    # Hand-written sections only this agent's page carries, between the install steps and the menu.
+    guide_html = "".join(
+        f'<section id="{_esc_html(g["id"])}" class="guide"><div class="wrap"><div class="seclab">{_esc_html(g["seclab"])}</div>'
+        f'<h2>{_esc_html(g["h2"])}</h2>{g["html"]}</div></section>' for g in guide)
+
+    faq_html = "".join(f'<h3>{_esc_html(q)}</h3><p>{_esc_html(a)}</p>' for q, a in spec["faq"])
+    h1 = (spec["h1"].format(n=n, p=p) if spec.get("h1")
+          else f'The {name} {spec.get("h1_noun", "plugin")}: call {n} APIs without keys')
+
+    body = (
+        '<div class="hero"><div class="wrap">'
+        f'<div class="trust" style="margin:0 0 18px"><a href="/">treg.to</a> / '
+        f'<a href="/agents/{_esc_html(agent)}">{_esc_html(name)}</a></div>'
+        f'<div class="kicker">{n} endpoints &middot; {p} platforms &middot; $0.000 markup</div>'
+        # The H1 carries the measured term and the promise, never a persona — a crawler was reading
+        # "The ChatGPT Connector for SEO experts" as if that were the audience. The rotating role
+        # wheel stays, one line down.
+        f'<h1>{_esc_html(h1)}</h1>'
+        f'<div class="roleline">for <span class="roleslot" id="roleslot">'
+        f'<span class="rw" id="rolewheel">{roles}</span></span></div>'
+        f'<script type="application/json" id="roles-more">{more_roles}</script>'
+        f'<div class="lede">{_esc_html(definition)}</div>'
+        '<div class="ctas">'
+        f'<a class="candy" href="/app?ref=agents-{_esc_html(agent)}">Start free</a>'
+        '<a class="ghostbtn" href="#use-cases">See what it can do</a></div>'
+        '<div class="trust">$1.00 of free credit once per new verified account &middot; no provider signup &middot; no card</div>'
+        f'<div class="subline">Your own keys always win and are never metered. '
+        f'{_esc_html(name)} sees the price before it spends.</div>'
+        + (f'<div class="provstrip"><div class="pl">a few of the {p} platforms</div>'
+           f'<div class="ptiles">{"".join(hero_tiles)}</div></div>' if hero_tiles else "")
+        + '</div></div>'
+
+        f'<section id="install"><div class="wrap"><div class="seclab">Get started</div>'
+        f'<h2>Install in {_esc_html(name)}</h2>{steps}{shot}</div></section>'
+
+        + guide_html
+
+        + '<section id="use-cases"><div class="wrap"><div class="seclab">The menu</div>'
+        f'<h2>What {_esc_html(name)} can do now</h2>'
+        '<p>By job, not by endpoint. The price is the lowest provider&rsquo;s own rate with $0.000 added by '
+        'treg.to; <b>free</b> means the job runs on an account you already own and is never metered. Where '
+        f'several providers do one job, {_esc_html(name)} sees them side by side and choosing is yours.</p>'
+        f'<div class="cards">{"".join(cards)}</div>'
+        f'<p style="margin-top:20px"><a href="/catalog">Browse all {n} endpoints &rarr;</a> &middot; '
+        f'<a href="/use-cases">read the job guides &rarr;</a></p></div></section>'
+
+        # The workflows: several jobs from the menu chained into one prompt, each with a receipt from
+        # a real run. Linked from every agent page so the page that describes what an agent can do
+        # also names the sequences it can run; before this the workflow pages were reachable from
+        # the hub alone.
+        + (f'<section id="workflows"><div class="wrap"><div class="seclab">Workflows</div>'
+           f'<h2>Sequences {_esc_html(name)} can run from one prompt</h2>'
+           '<p>Several jobs from the menu, chained. Each step is priced from the catalog and the page '
+           'prints the receipt from a real run, not a rate card.</p><div class="cards">'
+           + "".join(f'<a class="card" href="/workflows/{_esc_html(ws)}"><h3>{_esc_html(wspec["sentence"])}</h3>'
+                     f'<p>{len(wspec.get("steps", ()))} steps, each a metered call, with the price shown before '
+                     f'{_esc_html(name)} spends it.</p></a>'
+                     for ws, wspec in agent_pages.WORKFLOWS.items())
+           + f'</div><p style="margin-top:20px"><a href="/workflows">All workflows &rarr;</a></p></div></section>'
+           if agent_pages.WORKFLOWS else "")
+
+        + "".join(sections)
+
+        + f'<section id="faq"><div class="wrap"><div class="seclab">Questions</div>'
+          f'<h2>Before you install</h2>{faq_html}</div></section>'
+
+        + '<div class="final"><div class="wrap">'
+          f'<h2>Give {_esc_html(name)} the tools</h2>'
+          f'<a class="candy" href="/app?ref=agents-{_esc_html(agent)}-final">Start free</a>'
+          '<div class="trust">$1.00 of calls free per new team &middot; '
+          '<a href="/catalog">browse the catalog</a></div></div></div>'
+
+        + """
+<style>
+.hero h1{line-height:1.16}
+.roleline{font-size:21px;font-weight:600;letter-spacing:-.01em;margin:8px 0 2px}
+.roleslot{display:inline-block;height:1.16em;overflow:hidden;vertical-align:bottom;position:relative}
+.roleslot .rw{display:flex;flex-direction:column;align-items:flex-start;transition:transform .62s cubic-bezier(.2,.7,.2,1)}
+.roleslot .ri{height:1.16em;line-height:1.16;flex:none;white-space:nowrap;transition:opacity .4s}
+.roleslot .ri:not(.on){opacity:.25}
+@media (prefers-reduced-motion:reduce){.roleslot .rw{transition:none}}
+</style>
+<script>
+(function(){
+  var w=document.getElementById('rolewheel'); if(!w) return;
+  try { JSON.parse((document.getElementById('roles-more')||{}).textContent||'[]').forEach(function(r){
+    var s=document.createElement('span'); s.className='ri'; s.textContent=r; w.appendChild(s); }); } catch(e) {}
+  var items=w.children, i=0, slot=document.getElementById('roleslot');
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  function fit(){ slot.style.width=items[i].getBoundingClientRect().width+'px'; }
+  fit(); addEventListener('resize', fit);
+  setInterval(function(){
+    if(scrollY>innerHeight*.8) return;
+    i=(i+1)%items.length; w.style.transform='translateY(-'+(i*1.16)+'em)';
+    for(var k=0;k<items.length;k++) items[k].classList.toggle('on',k===i);
+    fit();
+  },3000);
+})();
+</script>""")
+
+    ld = [
+        {"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "treg.to",
+         "applicationCategory": "DeveloperApplication", "operatingSystem": "Web",
+         "url": base + "/", "description": desc,
+         "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD",
+                    "description": "Free to install. Calls are metered per call from a prepaid balance at the "
+                                   "provider's own rate with no markup; your first team starts with $1.00 free."}},
+        {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+            {"@type": "ListItem", "position": 2, "name": "Agents", "item": base + "/agents"},
+            {"@type": "ListItem", "position": 3, "name": name, "item": f"{base}/agents/{agent}"}]},
+        {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
+            {"@type": "Question", "name": q,
+             "acceptedAnswer": {"@type": "Answer", "text": a}} for q, a in spec["faq"]]},
+    ]
+    return _page(title, desc[:300], f"/agents/{agent}", body, ld,
+                 head_extra=_MD_ALT.format(href=f"{base}/agents/{agent}.md"), css="usecase.css")
+
+
+def _uc_agent() -> tuple[str, str]:
+    """(slug, display name) of the client the use-case pages use as the example."""
+    slug = agent_pages.DEFAULT_AGENT
+    return slug, agent_pages.AGENTS[slug]["name"]
+
+
+_UNIT_WORDS = {"per_success": "found", "per_call": "call", "per_result": "result"}
+
+
+def _uc_providers(cat, eps: list[dict], obs: dict) -> list[dict]:
+    """One row per provider for this job: cheapest priced endpoint, best-sampled observed stats,
+    the union of its accepted inputs, and the platform it serves."""
+    # Routed endpoints (kind:routed) are the first-party meta-rows that delegate to children; they
+    # appear as provider "treg" and must not show as a row in comparison tables. Filter them here
+    # rather than at each call site, since every use-case comparison needs the same exclusion.
+    eps = [e for e in eps if e.get("kind") != "routed"]
+
+    def usd(e):
+        cv = cat.cost_view(e.get("cost"), e.get("provider"))
+        return cv["usd"] if cv and cv["usd"] else None
+
+    # Keyed by (provider, platform), not provider alone: one provider often serves several
+    # platforms for the same job (ScrapeCreators does Instagram AND YouTube), and collapsing those
+    # into one row silently drops a whole platform from a multi-platform page.
+    out = []
+    for prov, plat in sorted({(e["provider"], e["platform"]) for e in eps}):
+        peps = [e for e in eps if e["provider"] == prov and e["platform"] == plat]
+        priced = sorted([(usd(e), e) for e in peps if usd(e)], key=lambda t: t[0])
+        cheapest_e = priced[0][1] if priced else None
+        stats = [(obs.get(e["id"]) or {}) for e in peps]
+        best = max((st for st in stats if st.get("samples")), key=lambda st: st["samples"], default=None)
+        ins = []
+        for e in peps:
+            inp = e.get("input") or {}
+            for section in ("queryParams", "pathParams", "body", "headers"):
+                for k, v in (inp.get(section) or {}).items():
+                    if isinstance(v, dict) and k not in ins:
+                        ins.append(k)
+        slug = plat
+        # "no dollar price" and "free" are different facts and were rendering as one. Semrush
+        # prices this job in pre-bought API units, so its cost_view has no USD, and the price cell
+        # read "free, your own account" for the dearest option on the page.
+        free = any((e.get("cost") or {}).get("type") == "free" for e in peps)
+        # A $0 trial row is a third fact again: served on treg.to's own free-tier key with a daily
+        # allowance per team (catalog.trial_pools), so neither "free, your own account" nor a price
+        # is true of it. Carry the allowance so the cell can state it.
+        # `default=0`: a row with no cost at all (TikHub's LinkedIn comments v2 carries none)
+        # has no cost_view, and an empty max() took the whole page down with a 500.
+        trial = max(((cv.get("trial_calls_per_team_day") or 0) for e in peps
+                     if (cv := cat.cost_view(e.get("cost"), e.get("provider")))), default=0)
+        out.append({
+            "id": prov, "name": _provider_display(prov), "eps": peps, "free": free, "trial": trial,
+            "domain": agent_pages.PROVIDER_DOMAINS.get(prov),
+            "platform": slug, "platform_label": (cat.platforms.get(slug) or {}).get("label") or slug,
+            "usd": priced[0][0] if priced else None,
+            "unit": _UNIT_WORDS.get((cheapest_e.get("cost") or {}).get("type"), "call") if cheapest_e else "",
+            "cheapest_ep": cheapest_e, "inputs": ins[:6],
+            "verified": max((e.get("verified") or "" for e in peps), default=""),
+            "ok_rate": best.get("ok_rate") if best else None,
+            "p50": best.get("p50_ms") if best else None,
+            "samples": best.get("samples") if best else 0,
+        })
+    return out
+
+
+def _uc_call(e: dict) -> str:
+    tr = e.get("test_request") or {}
+    q = " ".join(f"--query {k}={v}" for k, v in (tr.get("queryParams") or {}).items())
+    parts = [f"treg call {e['id']}"]
+    if q:
+        parts.append(q)
+    if tr.get("body"):
+        parts.append("--data '" + json.dumps(tr["body"], separators=(",", ":")) + "'")
+    return " ".join(parts)
+
+
+@app.get("/use-cases/{category}/{job}.md", include_in_schema=False)
+@app.get("/use-cases/{category}/{job}", include_in_schema=False)
+async def use_case_job_page_nested(category: str, job: str):
+    """The URLs the first pages shipped under, when the category was a path segment. They are live
+    and indexed, so they 301 to the flat form rather than 404. Keep this forever: a moved URL that
+    answers is free, and a moved URL that does not is the whole cost of a taxonomy change."""
+    md = job.endswith(".md")
+    slug = job[:-3] if md else job
+    # A renamed slug must keep redirecting from its nested shape too — this handler used to
+    # reject it before consulting the map, which turned the promised 301 into a 404.
+    slug = agent_pages.USE_CASE_REDIRECTS.get(slug.lower(), slug)
+    if slug not in agent_pages.USE_CASE_PAGES:
+        raise HTTPException(status_code=404, detail="unknown use case")
+    return RedirectResponse(f"/use-cases/{slug}{'.md' if md else ''}", status_code=301)
+
+
+@app.get("/use-cases/{job}.md", include_in_schema=False)
+@app.get("/use-cases/{job}", include_in_schema=False)
+async def use_case_job_page(request: Request, job: str,
+                            observations: endpoint_stats.EndpointObservationReader = Depends(
+                                _endpoint_observation_reader)):
+    """One job. The reader does one thing, the prompt; everything else is what the agent sees
+    before it calls. The page takes one of three FORMS, chosen from the data rather than by hand:
+
+      short      one provider, so there is nothing to compare (all of "connect your own accounts")
+      platforms  the job spans several platforms, which are not alternatives to one another
+      compare    several providers doing one job on one platform: the full comparison
+
+    Everything job-specific comes from `agent_pages.USE_CASE_PAGES`; the example client comes from
+    `DEFAULT_AGENT`, so writing page two is data entry. `.md` serves the same page as Markdown.
+    """
+    as_md = request.url.path.endswith(".md")
+    raw = job[:-3] if job.endswith(".md") else job
+    # The five ad landing pages are static HTML on this same path shape. One handler owns the path,
+    # so serve them before anything else; `_USE_CASES` stays the one source for which they are.
+    legacy = _USE_CASES.get(raw.strip("/").lower())
+    if legacy and not as_md:
+        return _static_page(legacy, request)
+    # Possessive slugs that shipped before GSC indexing: redirect to the clean slug with 301 so
+    # the canonical stays clean and search engines update before indexing the old URL.
+    redirect_to = agent_pages.USE_CASE_REDIRECTS.get(raw.lower())
+    if redirect_to:
+        return RedirectResponse(f"/use-cases/{redirect_to}" + (".md" if as_md else ""), status_code=301)
+    # Same rule as `agent_page`: the slug reaches the canonical and the JSON-LD, so it comes from
+    # the table's own key, and a differently-cased URL is redirected rather than duplicated.
+    key = next((k for k in agent_pages.USE_CASE_PAGES if k == raw.lower()), None)
+    if key is None or not _hosted():
+        raise HTTPException(status_code=404, detail="unknown use case")
+    if raw != key:
+        return RedirectResponse(f"/use-cases/{key}" + (".md" if as_md else ""), status_code=301)
+    # Fresh name on purpose: rebinding the parameter itself does not read as a taint kill to
+    # CodeQL, and the request's spelling must not be what the page prints.
+    job_slug = key
+    spec = agent_pages.USE_CASE_PAGES[key]
+    cat = catalog_store.load()
+    base = get_settings().public_url.rstrip("/")
+    agent_slug, agent_name = _uc_agent()
+    cat_label = _job_category(spec["label"])
+    caps = _use_case_caps(spec["label"])
+    eps = [e for cid in caps for e in cat.for_capability(cid) if _pub(e)]
+    if not eps:
+        raise HTTPException(status_code=404, detail="no endpoints for this job")
+    job_workflows = _workflows_for_caps(caps)
+    obs = await _observed_or_empty(observations, [e["id"] for e in eps])
+    provs = _uc_providers(cat, eps, obs)
+
+    def usd_of(e):
+        cv = cat.cost_view(e.get("cost"), e.get("provider"))
+        return cv["usd"] if cv and cv["usd"] else None
+
+    platforms = sorted({p["platform_label"] for p in provs})
+    form = "short" if len(provs) == 1 else ("platforms" if len(platforms) > 1 else "compare")
+    # data-provider must stay unique in the DOM when one provider appears under two platforms
+    for pr in provs:
+        pr["row_id"] = pr["id"] if form != "platforms" else f'{pr["id"]}-{pr["platform"]}'
+    noun = spec.get("result_noun", "result")
+
+    # Cheapest is claimed PER BILLING UNIT. A per-call endpoint that returns a thousand rows is not
+    # dearer than a per-result one, and ranking them together names the wrong winner: 38 of the 66
+    # jobs on the menu mix units.
+    cheapest_by_unit: dict[str, dict] = {}
+    for pr in provs:
+        u = pr["unit"]
+        if pr["usd"] and (u not in cheapest_by_unit or pr["usd"] < cheapest_by_unit[u]["usd"]):
+            cheapest_by_unit[u] = pr
+    units = list(cheapest_by_unit)
+    headline = cheapest_by_unit[units[0]] if units else None
+    reliable = sorted([p for p in provs if p["samples"] and p["ok_rate"] is not None],
+                      key=lambda p: (-p["ok_rate"], p["p50"] or 9e9, -p["samples"]))
+    # No priced row is two different facts: own-account rows are free on the reader's key; trial
+    # rows are free on treg.to's key up to a daily allowance. Say whichever is true.
+    trial_max = max((p["trial"] for p in provs), default=0)
+    free_words = (f"free, up to {trial_max} calls a day on treg.to's key" if trial_max
+                  else "free on your own account")
+    n = str(len({p["id"] for p in provs}))
+    n_ver = sum(1 for e in eps if e.get("verified"))
+    latest_verified = max((e.get("verified") or "" for e in eps), default="")
+    setup = agent_pages.SETUP_LINE.format(base=base)
+
+    def money(x):
+        return _usd_short(x)
+
+    def pct(x):
+        return f"{round(x * 100)}%" if x is not None else ""
+
+    def ms(x):
+        return (f"{x/1000:.1f}s" if x >= 1000 else f"{int(x)}ms") if x else ""
+
+    def unit_plural(u: str) -> str:
+        return {"found": f"{noun}s found", "result": "results"}.get(u, "calls")
+
+    title = spec.get("title", "{sentence}: {n} providers | treg.to").format(
+        sentence=spec["sentence"], n=n, agent=agent_name,
+        cheapest=money(headline["usd"]) if headline else free_words)
+    # The number goes in the title. Search Console shows the pricing phrasing is what reaches this
+    # site, and a title that already names the cheapest price is the one fact a vendor's own page
+    # cannot carry. Only the compare form has a price to name; a hand-written title that already
+    # carries one is left alone.
+    if form == "compare" and headline and "$" not in title and title.endswith(" | treg.to"):
+        head = title[: -len(" | treg.to")]
+        if head.endswith(" compared"):  # "5 verifiers compared" -> "5 verifiers, from $0.0019"
+            head = head[: -len(" compared")]
+        priced = f"{head}, from {money(headline['usd'])} | treg.to"
+        if len(priced) <= _TITLE_MAX:
+            title = priced
+    lede = spec["lede"].format(n=n, agent=agent_name,
+                               cheapest=money(headline["usd"]) if headline else free_words)
+    bits_desc = [spec["sentence"] + "."]
+    # A single provider is one of three facts, not two: an own-account connection (free), a metered
+    # row on treg.to's key, or a trial pool (no USD, a daily allowance on treg.to's free-tier key,
+    # then the reader's own key). The trial case fell into `metered_single` and claimed a bill.
+    trial_single = form == "short" and not provs[0]["free"] and bool(provs[0]["trial"])
+    metered_single = form == "short" and not provs[0]["free"] and not trial_single
+    if trial_single:
+        bits_desc.append(f"One provider, free for {provs[0]['trial']} calls a day on treg.to's key, then your own key.")
+    elif metered_single:
+        bits_desc.append(f"One provider, {money(headline['usd'])} per {headline['unit']} on treg.to's key, no signup."
+                         if headline else "One provider, served on treg.to's key.")
+    elif form == "short":
+        bits_desc.append("Runs on the account you already own, so treg.to never meters it.")
+    elif headline:
+        bits_desc.append(f"{n} providers compared, cheapest {money(headline['usd'])} per {headline['unit']}.")
+    bits_desc.append(f"The prompt that works in {agent_name}, with the price shown before the call.")
+    desc = _serp_desc(" ".join(bits_desc))
+
+    if as_md:
+        md = [f"# {spec['sentence']}", "", lede, "",
+              f"## What's the best way to ask {agent_name}?", "",
+              f"Setup line (paste into any agent): `{setup}`", "",
+              f'Then ask: "{spec["prompt"]}"', ""]
+        md += [f"- **{t}** {d}" for t, d in spec["prompt_why"]]
+        # Any page with a free own-account row (GA4, Search Console short pages, and the YouTube
+        # comparisons where the official Data API is a $0.00 row) drops the metering cards: "9
+        # accounts" and "Hunter" are false wherever the reader's own account does the job.
+        own_key_free = any(p["free"] for p in provs)
+        why_treg = agent_pages.WHY_TREG_OWN_KEY if own_key_free else agent_pages.WHY_TREG
+        md += ["", "## Why go through treg.to", ""] + [f"- **{t}** {d}" for t, d in why_treg]
+        if trial_single:
+            e0 = provs[0]["eps"][0]
+            md += ["", "## How it works", "",
+                   f"One provider does this job: {provs[0]['name']} (`{e0['id']}`), free for {provs[0]['trial']} "
+                   "calls a day per team on treg.to's own free-tier key. Past the allowance the call is refused "
+                   "with a hint to connect your own key, and on your own key it is never metered.",
+                   "", f"    {_uc_call(e0)}", ""]
+        elif metered_single:
+            e0 = provs[0]["cheapest_ep"] or provs[0]["eps"][0]
+            md += ["", "## How it works", "",
+                   f"One provider does this job: {provs[0]['name']} (`{e0['id']}`), served on treg.to's own key at "
+                   + (f"{money(provs[0]['usd'])} per {provs[0]['unit']}, " if provs[0]["usd"] else "")
+                   + "the provider's own rate with $0.000 markup, metered from your team's balance. "
+                   "No account with the provider, and no key of your own, unless you would rather bring one.",
+                   "", f"    {_uc_call(e0)}", ""]
+        elif form == "short":
+            e0 = provs[0]["eps"][0]
+            md += ["", "## How it works", "",
+                   f"One provider does this job: {provs[0]['name']} (`{e0['id']}`), on the account you already own. "
+                   "You connect it once, treg.to keeps the token server side, and the call is never metered.",
+                   "", f"    {_uc_call(e0)}", ""]
+        else:
+            md += ["", f"## Behind the scenes: what {agent_name} sees before it calls", "",
+                   f"treg.to does not choose for you. It hands {agent_name} this comparison and it picks, "
+                   "or you tell it how.", ""]
+            if units:
+                md += [f"### {spec.get('q_cheapest', 'Which is cheapest?')}", ""]
+                for u in units:
+                    pu = cheapest_by_unit[u]
+                    md.append(f"- Cheapest per {u}: {pu['name']} at {money(pu['usd'])} (`{pu['cheapest_ep']['id']}`)")
+                if len(units) > 1:
+                    md += ["", "Those units are not interchangeable: one call can return many results, "
+                               "so compare on the unit you will actually be billed in."]
+            if reliable:
+                md += ["", f"### {spec.get('q_reliable', 'Which is the most reliable?')}", ""]
+                md += [f"- {p['name']}: {pct(p['ok_rate'])} over {p['samples']} calls, {ms(p['p50'])} median"
+                       for p in reliable[:6]]
+                md += ["", "Measured on treg.to traffic; not a controlled benchmark."]
+            md += ["", f"### {spec.get('q_compare', 'How do they compare?')}", ""]
+            for plat in (platforms if form == "platforms" else [None]):
+                rows_ = [p for p in provs if plat is None or p["platform_label"] == plat]
+                if plat:
+                    md += [f"#### {plat}", ""]
+                md += ["| Provider | Price | Accepts | Verified |", "|---|---|---|---|"]
+                for p in sorted(rows_, key=lambda p: (p["usd"] is None, p["usd"] or 0)):
+                    price = (f"{money(p['usd'])} per {p['unit']}" if p["usd"]
+                             else (f"free, {p['trial']} calls a day on treg.to's key, then your own key" if p["trial"]
+                                   else ("own account, free" if p["free"] else "no dollar rate published")))
+                    md.append(f"| {p['name']} | {price} | {', '.join(p['inputs'])} | {p['verified'] or 'unverified'} |")
+                md.append("")
+        md += ["Endpoints:", ""] + [f"- `{e['id']}`: {_uc_call(e)}" for e in eps]
+        if spec.get("voices"):
+            md += ["", "## What people actually struggle with", "", spec["voices_intro"], ""]
+            for head, quote, who, url, answer in spec["voices"]:
+                md += [f"**{head}**", "", f'> "{quote}" ({who}: {url})', "",
+                       f"What this page can do about it: {answer}", ""]
+        md += ["", "## What actually differs", ""] + [f"- {x}" for x in spec["notes"]]
+        md += ["", f"## {spec.get('what_is_heading', 'What is this?')}", "", spec["what_is"]]
+        if spec.get("failure_modes"):
+            md += ["", "## Where it goes wrong", ""]
+            for h, p in spec["failure_modes"]:
+                md += [f"**{h}** {p}", ""]
+        md += ["", "## Questions", ""]
+        for q, a in spec["faq"]:
+            md += [f"**{q}** {a}", ""]
+        md += [f"HTML version: {base}/use-cases/{job_slug}"]
+        return PlainTextResponse("\n".join(md), media_type="text/markdown; charset=utf-8",
+                                 headers={"Cache-Control": "public, max-age=600"})
+
+    # ---------------------------------------------------------------- html (landing-page skin)
+    ptiles = "".join(
+        f'<span class="ptile" title="{_esc_html(p["name"])}">{_logo(p["domain"], p["name"])}</span>'
+        for p in provs[:12] if p["domain"])
+    provstrip = (f'<div class="provstrip"><div class="pl">compared on this page</div>'
+                 f'<div class="ptiles">{ptiles}</div></div>' if ptiles else "")
+    agent_icons = "".join(
+        f'<span class="ptile" title="{_esc_html(label)}">'
+        f'<img src="https://unpkg.com/@lobehub/icons-static-png@latest/light/{icon}.png" alt="{_esc_html(label)}" loading="lazy"/></span>'
+        for aid, label, icon in agent_pages.AGENT_ICONS[:6])
+    hero_price = (f"from {_esc_html(money(headline['usd']))} per {headline['unit']}"
+                  if headline else _esc_html(free_words if trial_max else "free on the account you already own"))
+
+    def promptbox(label: str, text: str) -> str:
+        return ('<div class="promptbox"><div class="ph">'
+                f'<span>{_esc_html(label)}</span>'
+                f'<button class="copybtn" data-copy="{_esc_html(text)}">copy</button></div>'
+                f'<pre>{_esc_html(text)}</pre></div>')
+
+    why_cards = "".join(f'<div class="card"><h4>{_esc_html(t)}</h4><p>{_esc_html(d)}</p></div>'
+                        for t, d in spec["prompt_why"])
+    # Any page with a free own-account row (GA4, Search Console short pages, and the YouTube
+    # comparisons where the official Data API is a $0.00 row) drops the metering cards: "9
+    # accounts" and "Hunter" are false wherever the reader's own account does the job.
+    own_key_free = any(p["free"] for p in provs)
+    why_treg = agent_pages.WHY_TREG_OWN_KEY if own_key_free else agent_pages.WHY_TREG
+    treg_cards = "".join(f'<div class="card"><h4>{_esc_html(t)}</h4><p>{_esc_html(d)}</p></div>'
+                         for t, d in why_treg)
+
+    def price_cell(p: dict) -> str:
+        if p["usd"]:
+            return f'{_esc_html(money(p["usd"]))} <span style="color:var(--muted2)">per {p["unit"]}</span>'
+        if p["trial"]:
+            return (f'<span style="color:var(--green)">free, {p["trial"]} calls a day</span> '
+                    '<span style="color:var(--muted2)">on treg.to\'s key, then your own key</span>')
+        if p["free"]:
+            return '<span style="color:var(--green)">free, your own account</span>'
+        return '<span style="color:var(--muted2)">no dollar rate published</span>'
+
+    def rel_cell(p: dict) -> str:
+        return (f'{pct(p["ok_rate"])} <span style="color:var(--muted2)">({p["samples"]} calls)</span>'
+                if p["samples"] else '<span style="color:var(--muted2)">not yet measured</span>')
+
+    def prov_table(rows_: list[dict]) -> str:
+        body_rows = "".join(
+            f'<tr data-provider="{_esc_html(p["id"])}">'
+            f'<td><b>{_logo(p["domain"], p["name"])}{_esc_html(p["name"])}</b></td>'
+            f'<td>{price_cell(p)}</td>'
+            f'<td style="color:var(--muted)">{_esc_html(", ".join(p["inputs"]) or "see endpoints")}</td>'
+            f'<td>{rel_cell(p)}</td>'
+            f'<td style="color:var(--muted2)">{_esc_html(p["verified"] or "unverified")}</td>'
+            '</tr>' for p in rows_)
+        return ('<div class="tablewrap"><table><thead><tr>'
+                '<th>Provider</th><th>Price</th><th>Accepts</th><th>Success rate</th><th>Verified</th>'
+                f'</tr></thead><tbody>{body_rows}</tbody></table></div>')
+
+    sections = []
+    if trial_single:
+        p0, e0 = provs[0], provs[0]["eps"][0]
+        sections.append(
+            '<section id="how"><div class="wrap"><div class="seclab">How it works</div>'
+            f'<h2>One provider, free for {p0["trial"]} calls a day on treg.to\'s key</h2>'
+            f'<p>{_logo(p0["domain"], p0["name"])}<b>{_esc_html(p0["name"])}</b> answers this job, served on treg.to\'s '
+            f'own free-tier key with an allowance of {p0["trial"]} calls a day per team. Past the allowance the call is '
+            'refused with a hint to connect your own key, and on your own key it is never metered.</p>'
+            f'<div class="sample"><div class="sbar">the call</div><pre>{_esc_html(_uc_call(e0))}</pre></div>'
+            f'<p style="font-size:12.5px;color:var(--muted)">Every endpoint on this shelf is listed on the '
+            f'<a href="/catalog/{_esc_html(e0["platform"])}">{_esc_html((cat.platforms.get(e0["platform"]) or {}).get("label") or e0["platform"])} shelf</a>.</p>'
+            + '</div></section>')
+    elif metered_single:
+        p0 = provs[0]
+        e0 = p0["cheapest_ep"] or p0["eps"][0]
+        rate = f'{_esc_html(money(p0["usd"]))} per {p0["unit"]}, ' if p0["usd"] else ""
+        sections.append(
+            '<section id="how"><div class="wrap"><div class="seclab">How it works</div>'
+            f'<h2>One provider, served on treg.to\'s key</h2>'
+            f'<p>{_logo(p0["domain"], p0["name"])}<b>{_esc_html(p0["name"])}</b> answers this job, at {rate}'
+            'the provider\'s own rate with $0.000 markup, metered from your team\'s balance. No account with the '
+            'provider and no key of your own, unless you would rather bring one.</p>'
+            f'<div class="sample"><div class="sbar">the call</div><pre>{_esc_html(_uc_call(e0))}</pre></div>'
+            f'<p style="font-size:12.5px;color:var(--muted)">Every endpoint on this shelf is listed on the '
+            f'<a href="/catalog/{_esc_html(e0["platform"])}">{_esc_html((cat.platforms.get(e0["platform"]) or {}).get("label") or e0["platform"])} shelf</a>.</p>'
+            + '</div></section>')
+    elif form == "short":
+        p0, e0 = provs[0], provs[0]["eps"][0]
+        sections.append(
+            '<section id="how"><div class="wrap"><div class="seclab">How it works</div>'
+            f'<h2>One provider, on the account you already own</h2>'
+            f'<p>{_logo(p0["domain"], p0["name"])}<b>{_esc_html(p0["name"])}</b> answers this job. You connect it once, '
+            'treg.to keeps the token server side, and the call is never metered.</p>'
+            f'<div class="sample"><div class="sbar">the call</div><pre>{_esc_html(_uc_call(e0))}</pre></div>'
+            f'<p style="font-size:12.5px;color:var(--muted)">Every endpoint on this connection is listed on the '
+            f'<a href="/catalog/{_esc_html(e0["platform"])}">{_esc_html((cat.platforms.get(e0["platform"]) or {}).get("label") or e0["platform"])} shelf</a>.</p>'
+            + '</div></section>')
+    else:
+        inner = [f'<p>treg.to does not choose for you. It hands {_esc_html(agent_name)} this comparison, with the '
+                 f'price shown before any call, and {_esc_html(agent_name)} picks. Or you <b>tell it how</b>: '
+                 '"cheapest", "most reliable", "the one that takes what I have", or a provider by name.</p>']
+        if headline:
+            cheap_cards = "".join(
+                f'<div class="card"><h4>Cheapest per {_esc_html(u)}</h4>'
+                f'<p>{_logo(cheapest_by_unit[u]["domain"], cheapest_by_unit[u]["name"])}'
+                f'<b>{_esc_html(cheapest_by_unit[u]["name"])}</b> at {_esc_html(money(cheapest_by_unit[u]["usd"]))}'
+                + (f' &middot; {_esc_html(cheapest_by_unit[u]["platform_label"])}' if form == "platforms" else "")
+                + '</p></div>' for u in units)
+            inner.append(f'<h3 id="cheapest">{_esc_html(spec.get("q_cheapest", "Which is cheapest?"))}</h3>'
+                         f'<div class="cards">{cheap_cards}</div>')
+            if len(units) > 1:
+                inner.append('<blockquote>Those units are not interchangeable: one call can return many results, '
+                             'so compare on the unit you will actually be billed in.</blockquote>')
+        if reliable:
+            rel_rows = "".join(
+                f'<tr><td><b>{_logo(p["domain"], p["name"])}{_esc_html(p["name"])}</b></td>'
+                f'<td>{pct(p["ok_rate"])}</td><td>{ms(p["p50"])}</td><td style="color:var(--muted2)">{p["samples"]} calls</td></tr>'
+                for p in reliable[:6])
+            inner.append(f'<h3 id="reliable">{_esc_html(spec.get("q_reliable", "Which is the most reliable?"))}</h3>'
+                         '<div class="tablewrap"><table><thead><tr><th>Provider</th><th>Success</th><th>Median</th>'
+                         f'<th>Sample</th></tr></thead><tbody>{rel_rows}</tbody></table></div>'
+                         '<blockquote>Measured on treg.to traffic: real calls, real inputs, and sample sizes differ '
+                         'by provider. Live reliability, not a controlled benchmark.</blockquote>')
+        inner.append(f'<h3 id="compare">{_esc_html(spec.get("q_compare", "How do they compare?"))}</h3>')
+        if form == "platforms":
+            for plat in platforms:
+                rows_ = sorted([p for p in provs if p["platform_label"] == plat],
+                               key=lambda p: (p["usd"] is None, p["usd"] or 0))
+                inner.append(f'<h4 data-platform-group="{_esc_html(plat)}">{_esc_html(plat)}</h4>' + prov_table(rows_))
+        else:
+            inner.append(prov_table(sorted(provs, key=lambda p: (p["usd"] is None, p["usd"] or 0))))
+        if headline and headline["cheapest_ep"]:
+            shelves = ", ".join(
+                f'<a href="/catalog/{_esc_html(sl)}">{_esc_html((cat.platforms.get(sl) or {}).get("label") or sl)}</a>'
+                for sl in sorted({p["platform"] for p in provs}))
+            inner.append(
+                '<h3>Run one</h3>'
+                f'<div class="sample"><div class="sbar">the cheapest verified call</div>'
+                f'<pre>{_esc_html(_uc_call(headline["cheapest_ep"]))}</pre></div>'
+                f'<p style="font-size:12.5px;color:var(--muted)">Swap the id for any provider above. '
+                f'All {len(eps)} endpoints behind this job, with their parameters and captured responses, '
+                f'are on the {shelves} shelf.</p>')
+        inner.append(
+            '<h3>How these numbers are made</h3>'
+            '<div class="who">'
+            '<div><b>Prices</b>Each provider&rsquo;s own published rate, converted to US dollars for one chargeable '
+            'event of the unit they bill in. treg.to adds $0.000. Where a provider bills in credits, the conversion '
+            'uses the rate on their public pricing page'
+            + (f', last checked {_esc_html(latest_verified)}.' if latest_verified else '.') + '</div>'
+            '<div><b>Success rate</b>treg.to&rsquo;s own served calls over the last 30 days: 2xx counts as a success, '
+            '5xx and timeouts as a failure. A 4xx is excluded, because it usually means the caller sent bad '
+            'parameters and one bad query should not make a healthy endpoint look broken.</div>'
+            '<div><b>What this is not</b>A controlled benchmark. These are real calls with real inputs, so sample '
+            'sizes and the difficulty of what was asked differ by provider. Treat the rates as live reliability, '
+            'not a like-for-like test.</div>'
+            '<div><b>Verified</b>The date treg.to last called the endpoint end to end and confirmed the shape of '
+            'its response and the price it charged.</div>'
+            '</div>')
+        sections.append(f'<section id="bts"><div class="wrap"><div class="seclab">Behind the scenes</div>'
+                        f'<h2>What {_esc_html(agent_name)} sees before it calls</h2>'
+                        + "".join(inner) + '</div></section>')
+
+    voices_html = "".join(
+        f'<h3>{_esc_html(head)}</h3>'
+        f'<blockquote>&ldquo;{_esc_html(quote)}&rdquo; '
+        f'<a href="{_esc_html(url)}" rel="nofollow noopener" target="_blank">{_esc_html(who)}</a></blockquote>'
+        f'<p><b>What this page can do about it:</b> {_esc_html(answer)}</p>'
+        for head, quote, who, url, answer in spec.get("voices", []))
+    voices_section = ('<section id="voices"><div class="wrap"><div class="seclab">From the field</div>'
+                      '<h2>What people actually struggle with</h2>'
+                      f'<p>{_esc_html(spec.get("voices_intro", ""))}</p>{voices_html}</div></section>'
+                      if spec.get("voices") else "")
+    notes = "".join(f'<h4>{_esc_html(x.split(".")[0])}.</h4><p>{_esc_html(x.split(".", 1)[1].strip())}</p>'
+                    if "." in x else f"<p>{_esc_html(x)}</p>" for x in spec["notes"])
+    def _related_card(lbl: str) -> str:
+        href, owner = _related_link(lbl, agent_slug)
+        return (f'<a class="card" href="{href}"><h4>{_esc_html(lbl)}</h4>'
+                f'<p>Another job in {_esc_html((owner or cat_label).lower())}.</p></a>')
+
+    def _extra_link_card(lbl: str, href: str, desc: str) -> str:
+        return (f'<a class="card" href="{_esc_html(href)}"><h4>{_esc_html(lbl)}</h4>'
+                f'<p>{_esc_html(desc)}</p></a>')
+
+    related = "".join(_related_card(lbl) for lbl in spec.get("related", ()))
+    related += "".join(_extra_link_card(lbl, href, desc)
+                       for lbl, href, desc in spec.get("extra_links", ()))
+    faq_html = "".join(f'<h3>{_esc_html(q)}</h3><p>{_esc_html(a)}</p>' for q, a in spec["faq"])
+    # Optional on a use-case page (a workflow page always has one): the same "Where it goes wrong"
+    # block, between the background and the FAQ.
+    failures = "".join(f'<h3>{_esc_html(h)}</h3><p>{_esc_html(p)}</p>'
+                       for h, p in spec.get("failure_modes", ()))
+
+    # The "instead of" anchor: what the same job costs on subscriptions from the providers on this
+    # page whose plan prices are recorded in marketing/landing/_facts.md, against a real run here.
+    # Only sourced figures are named; with none, the anchor is the catalog's own spread.
+    plans = [(p["name"], agent_pages.PLAN_PRICES[p["id"]]) for p in provs
+             if p["id"] in agent_pages.PLAN_PRICES]
+    pricewall = ""
+    if headline:
+        run_n = 100
+        run_cost = headline["usd"] * run_n
+        if plans:
+            plans = sorted(plans, key=lambda t: -t[1])[:2]
+            old_total = sum(v for _, v in plans)
+            old_note = " + ".join(f"{k} ${v}/mo" for k, v in plans) + ", at list"
+            old_v, old_k = f"${old_total}/mo", "instead of"
+        else:
+            dearest = max((p for p in provs if p["usd"]), key=lambda p: p["usd"])
+            old_total = dearest["usd"] * run_n
+            old_note = f"{dearest['name']}, the dearest here, for the same {run_n}"
+            old_v, old_k = f"${old_total:,.2f}", "the wide end"
+        pricewall = (
+            '<section id="cost"><div class="wrap"><div class="seclab">The economics</div>'
+            f'<h2>What {run_n} of these actually costs</h2>'
+            '<div class="pricewall">'
+            f'<div class="pw old"><div class="k">{old_k}</div><div class="v">{old_v}</div>'
+            f'<div class="s">{_esc_html(old_note)}</div></div>'
+            '<div class="arrow">&rarr;</div>'
+            f'<div class="pw new"><div class="k">you pay</div><div class="v">${run_cost:,.2f}</div>'
+            f'<div class="s">{run_n} &times; {_esc_html(money(headline["usd"]))} at {_esc_html(headline["name"])}, '
+            'metered per call</div></div></div>'
+            '<p style="font-size:12.5px;color:var(--muted)">Subscription figures are provider list prices recorded in '
+            'treg.to&rsquo;s own catalog grid; per-call prices are what treg.to charges today, with $0.000 added.</p>'
+            '</div></section>')
+
+    body = (
+        '<div class="hero"><div class="wrap">'
+        f'<div class="trust" style="margin:0 0 18px"><a href="/">treg.to</a> / <a href="/use-cases">Use cases</a> / '
+        f'<a href="/use-cases#{agent_pages.category_slug(cat_label)}">{_esc_html(cat_label)}</a></div>'
+        f'<div class="kicker">{n} providers &middot; {hero_price} &middot; $0.000 markup</div>'
+        f'<h1>{_esc_html(spec["sentence"])}</h1>'
+        f'<div class="lede">{_esc_html(lede)}</div>'
+        '<div class="ctas">'
+        f'<a class="candy" href="/app?ref=uc-{_esc_html(job_slug)}">Start free</a>'
+        '<a class="ghostbtn" href="#bts">See the comparison</a></div>'
+        f'<div class="trust">$1.00 of free credit once per new verified account &middot; no provider signup &middot; no card</div>'
+        f'<div class="subline">{n_ver} of {len(eps)} endpoints on this page are live-verified against the provider.</div>'
+        f'{provstrip}</div></div>'
+
+        + pricewall +
+        '<section id="ask"><div class="wrap"><div class="seclab">Try it</div>'
+        f'<h2>What&rsquo;s the best way to ask {_esc_html(agent_name)}?</h2>'
+        f'<div class="steplabel"><span class="n">1</span><b>Set your agent up, once</b></div>'
+        + promptbox("in your agent's chat", setup)
+        + f'<div class="steplabel"><span class="n">2</span><b>Ask for the job</b></div>'
+        + promptbox("the prompt", spec["prompt"])
+        + f'<div class="provstrip"><div class="pl">works in</div><div class="ptiles">{agent_icons}</div></div>'
+        + f'<h3>Why this prompt works</h3><div class="cards">{why_cards}</div>'
+        + (f'<div class="sample"><div class="sbar">{_esc_html(agent_name)}</div>'
+           f'<img src="{_esc_html(spec["result_image"])}" alt="{_esc_html(agent_name)} answering" '
+           'style="display:block;width:100%"/></div>' if spec.get("result_image") else "")
+        + '</div></section>'
+
+        '<section id="why"><div class="wrap"><div class="seclab">Why treg.to</div>'
+        '<h2>Why go through treg.to</h2>'
+        f'<div class="cards">{treg_cards}</div></div></section>'
+
+        + "".join(sections) + voices_section
+
+        + '<section id="notes"><div class="wrap"><div class="seclab">The detail</div>'
+          f'<h2>What actually differs</h2>{notes}</div></section>'
+
+        + f'<section id="what"><div class="wrap"><div class="seclab">Background</div>'
+          f'<h2>{_esc_html(spec.get("what_is_heading", "What is this?"))}</h2>'
+          f'<p>{_esc_html(spec["what_is"])}</p></div></section>'
+
+        + (f'<section id="failures"><div class="wrap"><div class="seclab">The detail</div>'
+           f'<h2>Where it goes wrong</h2>{failures}</div></section>' if failures else "")
+
+        + f'<section id="faq"><div class="wrap"><div class="seclab">Questions</div>'
+          f'<h2>Before you start</h2>{faq_html}</div></section>'
+
+        + (f'<section id="related"><div class="wrap"><div class="seclab">Related</div>'
+           f'<h2>Other jobs your agent can do</h2><div class="cards">{related}</div></div></section>' if related else "")
+        + (f'<section id="workflows"><div class="wrap"><div class="seclab">Run the full sequence</div>'
+           f'<h2>Workflows that use this job</h2><div class="cards">'
+           + "".join(f'<a class="card" href="/workflows/{_esc_html(ws)}"><h3>{_esc_html(wsent)}</h3>'
+                     f'<p>One prompt, every step priced, with the receipt from a real run.</p></a>'
+                     for ws, wsent in job_workflows)
+           + '</div></div></section>' if job_workflows else "")
+        + _COPY_JS)
+    ld = [
+        {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+            {"@type": "ListItem", "position": 2, "name": "Use cases", "item": base + "/use-cases"},
+            {"@type": "ListItem", "position": 3, "name": cat_label,
+             "item": f"{base}/use-cases#{agent_pages.category_slug(cat_label)}"},
+            {"@type": "ListItem", "position": 4, "name": spec["sentence"],
+             "item": f"{base}/use-cases/{job_slug}"}]},
+        {"@context": "https://schema.org", "@type": "ItemList", "name": title, "numberOfItems": len(provs),
+         "itemListElement": [{"@type": "ListItem", "position": i, "name": p["name"],
+                              "url": f"{base}/use-cases/{job_slug}#compare"}
+                             for i, p in enumerate(provs, 1)]},
+        {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
+            {"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}}
+            for q, a in spec["faq"]]},
+    ]
+    return _page(title, desc[:300], f"/use-cases/{job_slug}", body, ld,
+                 head_extra=_MD_ALT.format(href=f"{base}/use-cases/{job_slug}.md"),
+                 css="usecase.css")
+
+
+@app.get("/use-cases", include_in_schema=False)
+async def use_cases_hub():
+    """The hub the spokes hang from. A sitemap is not a crawl path: before this existed, the only
+    link into a use-case page was one row on one agent page's menu."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    cat = catalog_store.load()
+    base = get_settings().public_url.rstrip("/")
+    _, agent_name = _uc_agent()
+    by_cat: dict[str, list[str]] = {}
+    for j, spec in agent_pages.USE_CASE_PAGES.items():
+        label = _job_category(spec["label"])
+        caps = _use_case_caps(spec["label"])
+        eps = [e for cid in caps for e in cat.for_capability(cid) if _pub(e)]
+        nprov = len({e["provider"] for e in eps})
+        prices = [cv["usd"] for e in eps if (cv := cat.cost_view(e.get("cost"), e.get("provider"))) and cv["usd"]]
+        meta = (f"{nprov} provider{'s' if nprov != 1 else ''} &middot; from {_esc_html(_usd_short(min(prices)))}"
+                if prices else "free on your own account")
+        blurb = spec["lede"].format(n=nprov, agent=agent_name,
+                                    cheapest=_usd_short(min(prices)) if prices else "free")
+        by_cat.setdefault(label, []).append(
+            f'<a class="pcard" href="/use-cases/{j}"><h3>{_esc_html(spec["sentence"])}</h3>'
+            f'<p>{_esc_html(blurb[:140])}</p><div class="meta">{meta}</div></a>')
+    blocks = "".join(f'<section class="cat"><h2 id="{_anchor(c)}">{_esc_html(c)}</h2>'
+                     f'<div class="grid">{"".join(v)}</div></section>' for c, v in by_cat.items())
+    body = (
+        '<main class="wrap"><div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/use-cases">Use cases</a></div>'
+        '<h1>What you can have your agent do</h1>'
+        '<p class="lede">One page per job: the prompt that works, what the call costs, and every provider '
+        'that does it. All of it through one treg.to key, at the provider&rsquo;s own rate with $0.000 markup.</p>'
+        '</div>' + blocks
+        + '<section class="cat"><h2>Everything else</h2><div class="cap"><p style="margin:0">These are the jobs '
+          'written up so far. The full menu is on the agent pages, and the whole catalog is at '
+          '<a href="/catalog">/catalog</a>. The multi-step versions are at <a href="/workflows">/workflows</a>, '
+          'and the whole sequence, chapter by chapter, is the <a href="/gtm-engineering">GTM engineering playbook</a>.'
+          '</p></div></section></main>')
+    ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Use cases", "item": base + "/use-cases"}]}]
+    return _page("What you can have your agent do | treg.to",
+                 "One page per job: the prompt that works in ChatGPT or Claude, what the call costs, and "
+                 "every provider that does it, compared. One treg.to key, no markup.",
+                 "/use-cases", body, ld)
+
+
+# ------------------------------------------------------------------ /workflows/<slug>
+
+def _wf_use_case_link(cap: str, agent_slug: str) -> str:
+    """Where a workflow step links: the use-case page for the menu row that carries this
+    capability, or the row's category anchor on the agent page when no page is written."""
+    for category, jobs in agent_pages.USE_CASES:
+        for lbl, caps in jobs:
+            if cap in caps:
+                return (_use_case_page_for(lbl)
+                        or f"/agents/{agent_slug}#{agent_pages.category_slug(category)}")
+    return f"/agents/{agent_slug}"
+
+
+async def _wf_steps(cat, observations: endpoint_stats.EndpointObservationReader,
+                    spec: dict, agent_slug: str) -> list[dict]:
+    """One dict per step, priced live from the catalog: the endpoint the worked run used, its
+    price per billing unit, how many providers do the step, and the observed stats when any."""
+    out = []
+    for name, cap, asks, ep_id, why in spec["steps"]:
+        if cap == "decision":
+            # A judgement on rows already fetched (jev), priced from DECISION_STEPS, not the catalog.
+            dec = agent_pages.DECISION_STEPS[ep_id]
+            out.append({
+                "name": name, "cap": cap, "asks": asks, "why": why, "ep": None, "ep_id": ep_id,
+                "provider": dec["provider"], "provider_name": dec["provider_name"],
+                "domain": dec["domain"], "usd": dec["usd"], "unit": dec["unit"], "providers": 1,
+                "ok_rate": None, "p50": None, "samples": 0, "link": dec["link"], "decision": True,
+            })
+            continue
+        eps = [e for e in cat.for_capability(cap) if _pub(e)]
+        used = next((e for e in eps if e["id"] == ep_id), None)
+        cv = cat.cost_view(used.get("cost"), used.get("provider")) if used else None
+        usd = cv["usd"] if cv and cv["usd"] else None
+        unit = _UNIT_WORDS.get(((used or {}).get("cost") or {}).get("type"), "call")
+        st = (await _observed_or_empty(observations, [ep_id])).get(ep_id) or {} if used else {}
+        prov = used["provider"] if used else ep_id.split(".")[0]
+        out.append({
+            "name": name, "cap": cap, "asks": asks, "why": why, "ep": used, "ep_id": ep_id,
+            "provider": prov, "provider_name": _provider_display(prov),
+            "domain": agent_pages.PROVIDER_DOMAINS.get(prov),
+            "usd": usd, "unit": unit, "providers": len({e["provider"] for e in eps}),
+            "ok_rate": st.get("ok_rate") if st.get("samples") else None,
+            "p50": st.get("p50_ms") if st.get("samples") else None,
+            "samples": st.get("samples") or 0,
+            "link": _wf_use_case_link(cap, agent_slug), "decision": False,
+        })
+    return out
+
+
+_WF_CSS = """
+<style>
+.wftable td,.wftable th{vertical-align:top}
+.wftable td.n{font-family:var(--mono);color:var(--muted2);white-space:nowrap}
+.wftable .why{display:block;font-size:12.5px;color:var(--muted);margin-top:4px}
+.wftable .asks{color:var(--muted)}
+.wftotal{margin:14px 0 0;padding:12px 14px;border:1px solid var(--line,rgba(0,0,0,.12));border-radius:10px;font-size:14px}
+.wftotal b{font-family:var(--mono)}
+.receipt{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;margin:12px 0 18px;font-size:14.5px}
+.receipt dt{color:var(--muted)}
+.receipt dd{margin:0;font-family:var(--mono)}
+</style>"""
+
+
+@app.get("/workflows/{slug}.csv", include_in_schema=False)
+async def workflow_csv(slug: str):
+    """The CSV of the run the page reports, hand-recorded from that run. 404 when no file."""
+    key = next((k for k in agent_pages.WORKFLOWS if k == slug.lower()), None)
+    if key is None or not _hosted():
+        raise HTTPException(status_code=404, detail="unknown workflow")
+    f = Path(agent_pages.__file__).parent / "workflow_runs" / f"{key}.csv"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="no run recorded")
+    return FileResponse(f, media_type="text/csv", filename=f"{key}.csv",
+                        headers={"Cache-Control": "public, max-age=600"})
+
+
+@app.get("/workflows/{slug}.md", include_in_schema=False)
+@app.get("/workflows/{slug}", include_in_schema=False)
+async def workflow_page(request: Request, slug: str,
+                        observations: endpoint_stats.EndpointObservationReader = Depends(
+                            _endpoint_observation_reader)):
+    """One workflow: the sequence a person runs, as ONE prompt. A use-case page answers one job;
+    this chains several, with a per-step price pulled live from the catalog, a receipt and CSV from
+    a real run (hand-recorded in `agent_pages.WORKFLOWS`, dated), and the failure modes. `.md`
+    serves the same page as Markdown. Hosted-only, like the use-case pages."""
+    as_md = request.url.path.endswith(".md")
+    raw = slug[:-3] if slug.endswith(".md") else slug
+    key = next((k for k in agent_pages.WORKFLOWS if k == raw.lower()), None)
+    if key is None or not _hosted():
+        raise HTTPException(status_code=404, detail="unknown workflow")
+    if raw != key:
+        return RedirectResponse(f"/workflows/{key}" + (".md" if as_md else ""), status_code=301)
+    wf_slug = key
+    spec = agent_pages.WORKFLOWS[key]
+    cat = catalog_store.load()
+    base = get_settings().public_url.rstrip("/")
+    agent_slug, agent_name = _uc_agent()
+    if spec.get("agent") in agent_pages.AGENTS:  # a workflow may name its own example agent
+        agent_slug, agent_name = spec["agent"], agent_pages.AGENTS[spec["agent"]]["name"]
+    steps = await _wf_steps(cat, observations, spec, agent_slug)
+    run = spec["run"]
+    n_steps = len(steps)
+    n_prov = len({s["provider"] for s in steps})
+    rows_in = int(run.get("rows_in") or 0)
+    once = set(spec.get("once") or ())
+    for s in steps:  # how many times the step's endpoint is called on a full-hit run
+        s["calls"] = 1 if s["ep_id"] in once else rows_in
+    worst = sum((s["usd"] or 0) * s["calls"] for s in steps)
+    setup = agent_pages.SETUP_LINE.format(base=base)
+
+    def money(x):
+        return _usd_short(x)
+
+    def pct(x):
+        return f"{round(x * 100)}%" if x is not None else ""
+
+    def ms(x):
+        return (f"{x/1000:.1f}s" if x >= 1000 else f"{int(x)}ms") if x else ""
+
+    title = spec["title"].format(n=n_steps, steps=n_steps)
+    lede = spec["lede"].format(n=n_steps, steps=n_steps)
+    desc = _serp_desc(spec.get("description") or
+                      f"{spec['sentence']}. {n_steps} steps through one treg.to key, priced before "
+                      f"each call, with a real run's receipt.")
+    sections = spec.get("sections") or []
+
+    if as_md:
+        md = [f"# {spec['sentence']}", "", lede, "",
+              "## Try it", "",
+              f"Setup line (paste into any agent): `{setup}`", "",
+              f'Then ask: "{spec["prompt"]}"', ""]
+        md += [f"- **{t}** {d}" for t, d in spec["prompt_why"]]
+        md += ["", "## The steps", "",
+               "| # | Step | What the agent asks | Provider used | Price | Success rate |", "|---|---|---|---|---|---|"]
+        for i, s in enumerate(steps, 1):
+            price = f"{money(s['usd'])} per {s['unit']}" if s["usd"] else "no dollar rate published"
+            rel = (f"{pct(s['ok_rate'])} over {s['samples']} calls, {ms(s['p50'])} median" if s["samples"]
+                   else "a verdict on rows already fetched" if s["decision"] else "not yet measured")
+            md.append(f"| {i} | {s['name']} | {s['asks']} | {s['provider_name']} (`{s['ep_id']}`, {s['providers']} providers, "
+                      f"{base}{s['link']}) | {price} | {rel} |")
+        md += [""] + [f"- {s['name']}: {s['why']}" for s in steps]
+        md += ["", f"At the rates above, {rows_in} rows where every call hits comes to ${worst:,.2f}. The receipt below is what it actually cost, and why it differs.", ""]
+        md += [f"## What it actually cost", "", f"Run on {run['date']}.", ""]
+        md += [f"- {k}: {v}" for k, v in run["receipt"]]
+        md += [""] + list(run["narrative"])
+        md += ["", f"Download the CSV of this run: {base}{run['csv']}", ""]
+        for sec in sections:
+            md += [f"## {sec['h2']}", "", _guide_md(sec["html"]), ""]
+        md += ["## Why go through treg.to", ""] + [f"- **{t}** {d}" for t, d in agent_pages.WHY_TREG]
+        md += ["", "## Where it goes wrong", ""]
+        for h, p in spec["failure_modes"]:
+            md += [f"**{h}** {p}", ""]
+        md += ["## Before you start", ""]
+        for q, a in spec["faq"]:
+            md += [f"**{q}** {a}", ""]
+        md += ["## Related", ""]
+        for lbl in spec["related"]:
+            href, _owner = _related_link(lbl, agent_slug)
+            md.append(f"- {lbl}: {base}{href}")
+        md += ["", f"HTML version: {base}/workflows/{wf_slug}"]
+        return PlainTextResponse("\n".join(md), media_type="text/markdown; charset=utf-8",
+                                 headers={"Cache-Control": "public, max-age=600"})
+
+    # ---------------------------------------------------------------- html (use-case skin)
+    seen, ptiles = set(), []
+    for s in steps:
+        if s["domain"] and s["provider"] not in seen:
+            seen.add(s["provider"])
+            ptiles.append(f'<span class="ptile" title="{_esc_html(s["provider_name"])}">{_logo(s["domain"], s["provider_name"])}</span>')
+    provstrip = (f'<div class="provstrip"><div class="pl">used in this run</div>'
+                 f'<div class="ptiles">{"".join(ptiles)}</div></div>' if ptiles else "")
+    agent_icons = "".join(
+        f'<span class="ptile" title="{_esc_html(label)}">'
+        f'<img src="https://unpkg.com/@lobehub/icons-static-png@latest/light/{icon}.png" alt="{_esc_html(label)}" loading="lazy"/></span>'
+        for aid, label, icon in agent_pages.AGENT_ICONS[:6])
+
+    def promptbox(label: str, text: str) -> str:
+        return ('<div class="promptbox"><div class="ph">'
+                f'<span>{_esc_html(label)}</span>'
+                f'<button class="copybtn" data-copy="{_esc_html(text)}">copy</button></div>'
+                f'<pre>{_esc_html(text)}</pre></div>')
+
+    why_cards = "".join(f'<div class="card"><h4>{_esc_html(t)}</h4><p>{_esc_html(d)}</p></div>'
+                        for t, d in spec["prompt_why"])
+    treg_cards = "".join(f'<div class="card"><h4>{_esc_html(t)}</h4><p>{_esc_html(d)}</p></div>'
+                         for t, d in agent_pages.WHY_TREG)
+
+    def price_cell(s: dict) -> str:
+        if s["usd"]:
+            return f'{_esc_html(money(s["usd"]))} <span style="color:var(--muted2)">per {s["unit"]}</span>'
+        return '<span style="color:var(--muted2)">no dollar rate published</span>'
+
+    def rel_cell(s: dict) -> str:
+        if s["decision"]:
+            return '<span style="color:var(--muted2)">a verdict on rows already fetched</span>'
+        if not s["samples"]:
+            return '<span style="color:var(--muted2)">not yet measured</span>'
+        return (f'{pct(s["ok_rate"])} <span style="color:var(--muted2)">({s["samples"]} calls'
+                + (f', {ms(s["p50"])} median' if s["p50"] else "") + ')</span>')
+
+    step_rows = "".join(
+        f'<tr data-step="{i}">'
+        f'<td class="n">{i}</td>'
+        f'<td><b>{_esc_html(s["name"])}</b><span class="why">{_esc_html(s["why"])}</span></td>'
+        f'<td class="asks">{_esc_html(s["asks"])}</td>'
+        f'<td><a href="{_esc_html(s["link"])}">{_logo(s["domain"], s["provider_name"])}{_esc_html(s["provider_name"])}</a>'
+        f'<span class="why">{s["providers"]} provider{"s" if s["providers"] != 1 else ""} do this step</span></td>'
+        f'<td>{price_cell(s)}</td>'
+        f'<td>{rel_cell(s)}</td>'
+        '</tr>' for i, s in enumerate(steps, 1))
+    steps_table = ('<div class="tablewrap"><table class="wftable"><thead><tr>'
+                   '<th>#</th><th>Step</th><th>What the agent asks</th><th>Provider used</th><th>Price</th><th>Success rate</th>'
+                   f'</tr></thead><tbody>{step_rows}</tbody></table></div>'
+                   f'<div class="wftotal">At the rates above, {rows_in} rows where every call hits comes to <b>${worst:,.2f}</b>'
+                   f'<span style="color:var(--muted)"> ({" + ".join(f"{s["calls"]} &times; {_esc_html(money(s["usd"]))}" for s in steps if s["usd"])}). '
+                   'The receipt below is what it actually cost.</span></div>')
+
+    receipt = "".join(f'<dt>{_esc_html(k)}</dt><dd>{_esc_html(v)}</dd>' for k, v in run["receipt"])
+    narrative = "".join(f'<p>{_esc_html(p)}</p>' for p in run["narrative"])
+    failures = "".join(f'<h3>{_esc_html(h)}</h3><p>{_esc_html(p)}</p>' for h, p in spec["failure_modes"])
+    faq_html = "".join(f'<h3>{_esc_html(q)}</h3><p>{_esc_html(a)}</p>' for q, a in spec["faq"])
+
+    def _related_card(lbl: str) -> str:
+        href, owner = _related_link(lbl, agent_slug)
+        return (f'<a class="card" href="{href}"><h4>{_esc_html(lbl)}</h4>'
+                f'<p>One step of this workflow, on its own{(", in " + _esc_html(owner.lower())) if owner else ""}.</p></a>')
+
+    def _extra_link_card(lbl: str, href: str, desc: str) -> str:
+        return (f'<a class="card" href="{_esc_html(href)}"><h4>{_esc_html(lbl)}</h4>'
+                f'<p>{_esc_html(desc)}</p></a>')
+
+    related = "".join(_related_card(lbl) for lbl in spec.get("related", ()))
+    related += "".join(_extra_link_card(lbl, href, desc)
+                       for lbl, href, desc in spec.get("extra_links", ()))
+
+    body = (
+        '<div class="hero"><div class="wrap">'
+        f'<div class="trust" style="margin:0 0 18px"><a href="/">treg.to</a> / <a href="/workflows">Workflows</a> / '
+        f'{_esc_html(spec["sentence"])}</div>'
+        f'<div class="kicker">{n_steps} steps &middot; {n_prov} providers &middot; $0.000 markup</div>'
+        f'<h1>{_esc_html(spec["sentence"])}</h1>'
+        f'<div class="lede">{_esc_html(lede)}</div>'
+        '<div class="ctas">'
+        f'<a class="candy" href="/app?ref=wf-{_esc_html(wf_slug)}">Start free</a>'
+        '<a class="ghostbtn" href="#run">See the receipt</a></div>'
+        '<div class="trust">$1.00 of free credit once per new verified account &middot; no provider signup &middot; no card</div>'
+        f'{provstrip}</div></div>'
+
+        '<section id="ask"><div class="wrap"><div class="seclab">Try it</div>'
+        f'<h2>One prompt runs the whole thing</h2>'
+        f'<div class="steplabel"><span class="n">1</span><b>Set your agent up, once</b></div>'
+        + promptbox("in your agent's chat", setup)
+        + f'<div class="steplabel"><span class="n">2</span><b>Ask for the list</b></div>'
+        + promptbox("the prompt", spec["prompt"])
+        + f'<div class="provstrip"><div class="pl">works in</div><div class="ptiles">{agent_icons}</div></div>'
+        + f'<h3>Why this prompt works</h3><div class="cards">{why_cards}</div>'
+        + '</div></section>'
+
+        + '<section id="steps"><div class="wrap"><div class="seclab">The steps</div>'
+          f'<h2>What {_esc_html(agent_name)} calls, and what each call costs</h2>'
+          '<p>Prices are the provider&rsquo;s own rate, read from the catalog when this page loads, with $0.000 '
+          'added by treg.to. Success rates are treg.to&rsquo;s own served calls over the last 30 days.</p>'
+          + steps_table + '</div></section>'
+
+        + '<section id="run"><div class="wrap"><div class="seclab">The receipt</div>'
+          '<h2>What it actually cost</h2>'
+          f'<p style="color:var(--muted)">Run on {_esc_html(run["date"])}, {rows_in} {_esc_html(run.get("rows_noun", "companies"))} in.</p>'
+          f'<dl class="receipt">{receipt}</dl>{narrative}'
+          f'<p><a class="ghostbtn" href="{_esc_html(run["csv"])}">Download the CSV of this run</a></p>'
+          '</div></section>'
+
+        # Hand-written sections from the spec (trusted static HTML), after the receipt they quote.
+        + "".join(f'<section id="{_esc_html(sec["id"])}" class="guide"><div class="wrap">'
+                  f'<div class="seclab">{_esc_html(sec["seclab"])}</div><h2>{_esc_html(sec["h2"])}</h2>'
+                  f'{sec["html"]}</div></section>' for sec in sections)
+
+        + '<section id="why"><div class="wrap"><div class="seclab">Why treg.to</div>'
+          '<h2>Why go through treg.to</h2>'
+          f'<div class="cards">{treg_cards}</div></div></section>'
+
+        + '<section id="failures"><div class="wrap"><div class="seclab">The detail</div>'
+          f'<h2>Where it goes wrong</h2>{failures}</div></section>'
+
+        + '<section id="faq"><div class="wrap"><div class="seclab">Questions</div>'
+          f'<h2>Before you start</h2>{faq_html}</div></section>'
+
+        + (f'<section id="related"><div class="wrap"><div class="seclab">Related</div>'
+           f'<h2>Each step on its own</h2><div class="cards">{related}</div></div></section>' if related else "")
+        + _COPY_JS)
+    ld = [
+        {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+            {"@type": "ListItem", "position": 2, "name": "Workflows", "item": base + "/workflows"},
+            {"@type": "ListItem", "position": 3, "name": spec["sentence"],
+             "item": f"{base}/workflows/{wf_slug}"}]},
+        {"@context": "https://schema.org", "@type": "HowTo", "name": spec["sentence"],
+         "description": desc,
+         "step": [{"@type": "HowToStep", "position": i, "name": s["name"], "text": s["asks"],
+                   "url": f"{base}/workflows/{wf_slug}#steps"} for i, s in enumerate(steps, 1)]},
+        {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
+            {"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}}
+            for q, a in spec["faq"]]},
+    ]
+    return _page(title, desc[:300], f"/workflows/{wf_slug}", body, ld,
+                 head_extra=_MD_ALT.format(href=f"{base}/workflows/{wf_slug}.md") + _WF_CSS,
+                 css="usecase.css")
+
+
+@app.get("/workflows", include_in_schema=False)
+async def workflows_hub(observations: endpoint_stats.EndpointObservationReader = Depends(
+        _endpoint_observation_reader)):
+    """The hub the workflow pages hang from: one card per workflow, priced per row from the catalog."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    cat = catalog_store.load()
+    base = get_settings().public_url.rstrip("/")
+    agent_slug, _agent_name = _uc_agent()
+    cards = []
+    for slug, spec in agent_pages.WORKFLOWS.items():
+        steps = await _wf_steps(cat, observations, spec, agent_slug)
+        # Per row: a once-per-run step (the list page) is spread over the run's rows.
+        rows_in = int(spec["run"].get("rows_in") or 0) or 1
+        once = set(spec.get("once") or ())
+        per_row = sum(((s["usd"] or 0) / rows_in) if s["ep_id"] in once else (s["usd"] or 0) for s in steps)
+        n = len(steps)
+        meta = f"{n} steps &middot; from {_esc_html(_usd_short(per_row))} per row" if per_row else f"{n} steps"
+        blurb = spec["lede"].format(n=n, steps=n)
+        cards.append(f'<a class="pcard" href="/workflows/{slug}"><h3>{_esc_html(spec["sentence"])}</h3>'
+                     f'<p>{_esc_html(blurb[:140])}</p><div class="meta">{meta}</div></a>')
+    body = (
+        '<main class="wrap"><div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/workflows">Workflows</a></div>'
+        '<h1>Workflows your agent can run from one prompt</h1>'
+        '<p class="lede">A use-case page answers one job. A workflow is the sequence a person actually runs: '
+        'one prompt, a price per step read live from the catalog, and the receipt and CSV of a real run. '
+        'All of it through one treg.to key, at the provider&rsquo;s own rate with $0.000 markup.</p>'
+        f'</div><section class="cat"><div class="grid">{"".join(cards)}</div></section>'
+        '<section class="cat"><h2>Everything else</h2><div class="cap"><p style="margin:0">The single-job '
+        'versions are at <a href="/use-cases">/use-cases</a>, and the whole catalog is at '
+        '<a href="/catalog">/catalog</a>. How the workflows fit together is the '
+        '<a href="/gtm-engineering">GTM engineering playbook</a>.</p></div></section></main>')
+    ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Workflows", "item": base + "/workflows"}]}]
+    return _page("Workflows your agent can run from one prompt | treg.to",
+                 "Multi-step jobs as one prompt: a price per step read live from the catalog, and the "
+                 "receipt and CSV of a real run. One treg.to key, no markup.",
+                 "/workflows", body, ld)
+
+
+@app.get("/catalog.css", include_in_schema=False)
+async def catalog_css():
+    """The shared skin for /catalog, /catalog/<slug> and /docs — the landing's tokens, one copy."""
+    f = _WEB_DIR / "catalog.css"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="catalog.css not bundled")
+    return FileResponse(f, media_type="text/css", headers={"Cache-Control": "public, max-age=600"})
+
+
+def _provider_rows() -> list[dict]:
+    """One row per provider, busiest first. Census rules match _platform_rows (browse surface
+    only), so the provider grid and the platform grid can never disagree about inventory."""
+    cat = catalog_store.load()
+    rows = []
+    for service in sorted({e["provider"] for e in cat.endpoints}):
+        eps = [e for e in cat.for_provider(service) if _pub(e)]
+        if not eps:
+            continue
+        rows.append({
+            "service": service,
+            "display": _provider_display(service),
+            "endpoints": len(eps),
+            "verified": len([e for e in eps if e["verified"]]),
+            "capabilities": len({e["capability"] for e in eps if e["capability"]}),
+            "platforms": sorted({e["platform"] for e in eps}),
+            "price_from": min(
+                (c for e in eps if (c := cat.cost_view(e.get("cost"), e.get("provider"))) and c["usd"]),
+                key=lambda c: c["usd"],
+                default=None,
+            ),
+        })
+    rows.sort(key=lambda r: (-r["endpoints"], r["service"]))
+    return rows
+
+
+_AGENTS = [("ChatGPT", "openai.png"), ("Claude", "claude-color.png"),
+           ("Claude Code", "claudecode-color.png"), ("Codex", "codex-color.png"),
+           ("Cursor", "cursor.png"), ("Grok", "grok.png"), ("Gemini CLI", "gemini-color.png")]
+
+
+_AGENT_CDN = "https://unpkg.com/@lobehub/icons-static-png@latest/light/"
+
+# Own-account providers where GSC shows strong "{provider} mcp" or "{provider} connector" impressions
+# with near-zero clicks. Their titles/H1s lead with MCP intent instead of the generic "connect your
+# own account" pattern.
+_MCP_INTENT_PROVIDERS = {
+    "google-search-console", "google-analytics", "semrush",  # SEO and analytics
+    "snapchat-ads", "pinterest-ads", "meta-ads", "tiktok-ads", "facebook",  # ads and social
+}
+
+
+def _agent_ptiles() -> str:
+    return "".join(
+        f'<span class="ptile" title="{n}"><img src="{_AGENT_CDN}{f}" alt="{n}" loading="lazy" '
+        'onerror="this.parentNode.style.display=\'none\'"/></span>'
+        for n, f in _AGENTS)
+
+
+_TOOLS_CSS = """<style>
+.fx{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:12px;align-items:stretch;margin-top:22px}
+@media(max-width:900px){.fx{grid-template-columns:1fr}.fx .ar{transform:rotate(90deg);justify-self:center}}
+.fx .ar{color:var(--muted2);align-self:center;font-size:16px}
+.fp{background:var(--surface);border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 6px 18px rgba(0,0,0,.04);padding:14px 16px}
+.fp .tag{font:600 10px var(--mono);letter-spacing:.14em;color:var(--muted2);margin-bottom:9px}
+.fp .agrow{display:flex;gap:6px;margin-bottom:9px}
+.fp .agrow .ptile{width:28px;height:28px;border-radius:8px}
+.fp .agrow .ptile img{width:16px;height:16px}
+.fp .t{display:flex;justify-content:space-between;gap:10px;font:12px var(--mono);color:var(--ink);padding:3.5px 0}
+.fp .t i{color:var(--green);font-style:normal}
+.fp.dk{background:var(--inverse);color:#e8e8e2}
+.fp.dk .b{display:flex;gap:8px;align-items:center;font:600 13.5px var(--mono);margin-bottom:10px}
+.fp.dk .c{background:rgba(255,255,255,.08);border-radius:8px;padding:9px 11px;font:12px var(--mono);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fp.dk .c em{color:#7ec8ec;font-style:normal}.fp.dk .c i{color:#6fd39a;font-style:normal}
+.fp.dk .c{margin-top:7px}
+.fp.dk .cr{font:11px var(--mono);color:#9a9a92;padding:4px 2px 0 11px}
+.fp.dk .cr i{color:#6fd39a;font-style:normal}
+.fp .ph2{display:flex;align-items:center;gap:9px;padding-bottom:9px;border-bottom:1px solid var(--panel2);margin-bottom:9px}
+.fp .ph2 img{width:26px;height:26px;border-radius:7px}
+.fp .ph2 b{font-size:15px}
+.fp .bdg{margin-left:auto;font:600 10px var(--mono);letter-spacing:.1em;color:var(--teal);
+  background:var(--panel);border-radius:6px;padding:3px 7px}
+.fp .sm{color:var(--muted);font-size:12.5px}
+.fp .ct{margin-top:8px;font:11.5px var(--mono);color:var(--muted2)}
+details.tl{background:var(--surface);border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.05),0 6px 18px rgba(0,0,0,.04);margin:12px 0;padding:2px 18px}
+details.tl summary{cursor:pointer;font-weight:600;padding:13px 0;font-size:14.5px}
+details.tl[open] summary{border-bottom:1px solid var(--panel2)}
+details.tl ul{margin:12px 0;padding-left:20px}
+details.tl li{margin:9px 0;font-size:13.5px}
+details.tl li small{color:var(--muted)}
+details.tl li.more{font-style:italic;margin-top:14px}
+details.tl li.more a{color:var(--link);text-decoration:none}
+</style>"""
+
+
+# ---------------------------------------------------------------------------------------------
+# The hub's public share page (docs/HUB-DECISIONS.md round 4 q4, round 5 q7)
+
+# Scoped to the hub page: the public stylesheet styles cards and pre blocks by their own class
+# names, so a hub page defines its few shapes here on the SAME variables (light-only, like every
+# public page). Every wide thing scrolls inside its own box; the body never scrolls sideways.
+_HUB_PAGE_CSS = """
+.hubpage h1{font-size:clamp(28px,4vw,44px);margin:6px 0 10px}
+.hubpage h2{font-family:var(--sans);font-weight:600;font-size:17px;margin:30px 0 10px}
+.hubpage h2 .muted{font-weight:400}
+.hubpage p{line-height:1.55}
+.hubpage code{font-family:var(--mono);font-size:.92em;background:var(--panel2);padding:1px 5px;border-radius:5px}
+.hubpage pre{margin:10px 0;background:var(--panel);border:1px solid var(--line);border-radius:var(--rb);padding:12px 14px;
+  font-family:var(--mono);font-size:12.5px;line-height:1.55;color:var(--ink);overflow-x:auto;white-space:pre}
+.hubpage pre code{background:none;padding:0;font-size:inherit}
+.hubpage .pricecard{display:inline-block;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 18px;margin:10px 0 6px;box-shadow:var(--shadow-sm);min-width:280px}
+.hubpage .pricecard .big{font-size:17px;font-weight:600}
+.hubpage .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;letter-spacing:.04em;
+  border:1px solid var(--teal);color:var(--teal);vertical-align:middle}
+.hubpage .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--rb);background:var(--surface)}
+.hubpage table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.hubpage th{font-family:var(--sans);font-weight:500;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.hubpage td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.hubpage tr:last-child td{border-bottom:0}
+.hubpage .readme h2,.hubpage .readme h3,.hubpage .readme h4{font-size:15px;margin:16px 0 6px}
+.hubpage .readme ul{padding-left:20px}
+.hubpage ul.facts{padding-left:18px;line-height:1.7}
+.hubpage .bars{display:flex;align-items:flex-end;gap:3px;height:52px;padding-top:6px;border-bottom:1px solid var(--line)}
+.hubpage .bars i{flex:1;display:block;min-width:3px;background:var(--accent, #b9552c);opacity:.55;border-radius:2px 2px 0 0}
+.hubpage .bars i:last-child{opacity:1}
+.hubpage .axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin:4px 0 10px;font-variant-numeric:tabular-nums}
+.hubpage td.num,.hubpage th.num{text-align:right}
+.hubpage .ok{color:var(--ok, #3f7a4a);font-weight:500}.hubpage .bad{color:var(--bad, #b8322a);font-weight:500}
+.hubpage .hidden{border:1px dashed var(--line2);padding:10px 14px;border-radius:var(--rb);max-width:62ch;font-size:12.5px;color:var(--muted);margin-top:22px}
+"""
+
+
+_MD_CODE = re.compile(r"`([^`]+)`")
+_MD_BOLD = re.compile(r"\*\*([^*]+)\*\*")
+
+
+def _md_lite(text: str) -> str:
+    """A maker's README as HTML: paragraphs, `#` headings, `-` lists, `code`, **bold**. Everything
+    is escaped first; no raw HTML, no images, no scripts survive. Deliberately small: the readme is
+    at most 4,000 characters of plain markdown, not a document engine."""
+    out: list[str] = []
+    para: list[str] = []
+    in_list = False
+
+    def inline(s: str) -> str:
+        s = _esc_html(s)
+        s = _MD_CODE.sub(r"<code>\1</code>", s)
+        return _MD_BOLD.sub(r"<b>\1</b>", s)
+
+    def flush() -> None:
+        nonlocal para
+        if para:
+            out.append("<p>" + inline(" ".join(para)) + "</p>")
+            para = []
+
+    for line in text.splitlines():
+        s = line.rstrip()
+        if s.startswith("#"):
+            flush()
+            if in_list:
+                out.append("</ul>"); in_list = False
+            level = min(len(s) - len(s.lstrip("#")), 3)
+            out.append(f"<h{level + 1}>{inline(s.lstrip('#').strip())}</h{level + 1}>")
+        elif s.lstrip().startswith("- "):
+            flush()
+            if not in_list:
+                out.append("<ul>"); in_list = True
+            out.append("<li>" + inline(s.lstrip()[2:]) + "</li>")
+        elif not s.strip():
+            flush()
+            if in_list:
+                out.append("</ul>"); in_list = False
+        else:
+            if in_list:
+                out.append("</ul>"); in_list = False
+            para.append(s.strip())
+    flush()
+    if in_list:
+        out.append("</ul>")
+    return "\n".join(out)
+
+
+async def _hub_recent_runs(db: AsyncSession, tool_id: str, maker_org_id: int, *, last: int = 20) -> dict:
+    """The public run log (docs/hub-listing-decisions.md, decision 3): the last `last` runs by
+    OTHERS and runs per day for 30 days. Per run: when, outcome, duration, steps, units (a
+    per_unit tool's count), the price paid. Never who called, never the inputs, never the output;
+    `units` is the one integer read out of the stored output, nothing else leaves it."""
+    from datetime import timedelta
+    from sqlalchemy import func, select as _select
+    from ..models import HubRun
+    now = _utcnow_naive()
+    since = now - timedelta(days=30)
+    where = (HubRun.tool_id == tool_id, HubRun.caller_org_id != maker_org_id,
+             HubRun.version > 0, HubRun.started_at >= since)
+    rows = (await db.execute(
+        _select(HubRun.started_at, HubRun.status, HubRun.duration_ms, HubRun.steps, HubRun.price_micro, HubRun.output)
+        .where(*where).order_by(HubRun.started_at.desc()).limit(last))).all()
+    day = func.date(HubRun.started_at)
+    per_day = {str(d): int(n) for d, n in (await db.execute(
+        _select(day, func.count(HubRun.id)).where(*where).group_by(day))).all()}
+    totals = {str(s): int(n) for s, n in (await db.execute(
+        _select(HubRun.status, func.count(HubRun.id)).where(*where).group_by(HubRun.status))).all()}
+    days = [(since + timedelta(days=i + 1)).date().isoformat() for i in range(30)]
+    counts = [per_day.get(d, 0) for d in days]
+    runs = []
+    for started, status, ms, steps, price, output in rows:
+        units = output.get("units") if isinstance(output, dict) else None
+        runs.append({"when": started.strftime("%Y-%m-%d %H:%M"), "ok": status == "ok",
+                     "ms": int(ms or 0), "steps": int(steps or 0),
+                     "units": units if isinstance(units, int) and not isinstance(units, bool) else None,
+                     "price_micro": int(price or 0)})
+    n = sum(counts)
+    return {"runs": runs, "per_day": counts, "days": days, "total": n,
+            "ok": totals.get("ok", 0), "failed": n - totals.get("ok", 0)}
+
+
+async def _hub_reliability(db: AsyncSession, tool_id: str, maker_org_id: int) -> dict:
+    """Runs by OTHERS, 30 days: count, success share, median duration. Counts only; never who."""
+    from datetime import timedelta
+    from sqlalchemy import func, select as _select
+    from ..models import HubRun
+    since = _utcnow_naive() - timedelta(days=30)
+    rows = (await db.execute(
+        _select(HubRun.status, HubRun.duration_ms)
+        .where(HubRun.tool_id == tool_id, HubRun.caller_org_id != maker_org_id,
+               HubRun.version > 0, HubRun.started_at >= since))).all()
+    n = len(rows)
+    ok = sum(1 for s, _ in rows if s == "ok")
+    durs = sorted(d for _, d in rows if d)
+    median = durs[len(durs) // 2] if durs else 0
+    return {"runs": n, "ok": ok, "ok_pct": round(100 * ok / n) if n else None, "median_ms": median}
+
+
+@app.get("/hub/{tool_id}.md", include_in_schema=False)
+@app.get("/hub/{tool_id}", include_in_schema=False)
+async def hub_page(request: Request, tool_id: str, db: AsyncSession = Depends(get_session)):
+    """One hub tool, for a person or an agent that was handed the id: summary, readme, inputs,
+    output, the price line, health, version, the exact call line, the check trace. Never the
+    script, the maker's tools, or a key. `.md` serves the same page as Markdown. Readable without
+    sign-in; calling needs a token and balance. Not in the sitemap and `noindex`: a hub tool is
+    shared by its id, not found by search (round 1 q7)."""
+    from ..application import hub as hub_app
+    from ..models import Org
+    as_md = request.url.path.endswith(".md")
+    raw = tool_id[:-3] if tool_id.endswith(".md") else tool_id
+    from .hub_gate import hub_visible
+    visible, reader = await hub_visible(request, db)
+    if not visible:
+        raise HTTPException(status_code=404, detail="Not Found")
+    row = await hub_app.tool_for(db, raw, caller_slug=reader[0], caller_email=reader[1])
+    if row is None:
+        if await hub_app.is_rejected(db, hub_app.split_id(raw)[0]):
+            raise HTTPException(status_code=410, detail=(
+                "treg's review rejected this hub tool: it cannot be called by other teams"))
+        raise HTTPException(status_code=404, detail="no such hub tool")
+    org = await db.get(Org, row.org_id)
+    maker = org.slug if org else ""
+    base = get_settings().public_url.rstrip("/")
+    m = row.manifest
+    inputs = m.get("inputs", {})
+    out = m.get("output", {})
+    fields = out.get("fields") if isinstance(out, dict) and "fields" in out else list(out)
+    example = {k: v.get("example", v.get("default")) for k, v in inputs.items() if "example" in v or "default" in v}
+    example = {k: v for k, v in example.items() if v not in ("", None, 0)}
+    example_json = json.dumps(example)
+    from ..domain.hub import PAY_NOTE as HUB_PAY_NOTE, fees_label as hub_fees_label, price_label as hub_price_label, stored_pricing
+    pricing = stored_pricing({"price_usd": row.price_micro / 1_000_000, **m})
+    hosts = await hub_app.own_hosts(db, row)
+    raw_rng = (await hub_app.price_ranges(db, {row.tool_id: m})).get(row.tool_id)
+    price_usd = hub_app.worst_usd(m, row.price_micro, raw_rng) or 0.0             # the most a run has cost, for the Offer
+    label = hub_price_label(m)
+    fees = any("." in u for u in m.get("uses", []))
+    if pricing["mode"] == "charge":
+        price_line = f"seller {label}" + hub_fees_label(m, raw_rng)
+        per_k = "the script sets each run's price, never above the cap"
+    else:
+        p_usd = pricing["price_usd"]
+        price_line = (f"seller ${p_usd:.6g}" if p_usd else "free") + hub_fees_label(m, raw_rng)
+        per_k = f"${p_usd * 1000:,.2f} per 1,000 runs" if p_usd else "no seller price"
+    rng = hub_app.with_range(m, raw_rng)
+    price_range = rng["price_range"]
+    range_note = (f"what {rng['price_samples']} recent run{'s' if rng['price_samples'] != 1 else ''} cost, provider fees and the seller's price together"
+                  if rng["price_samples"] else ("no run yet: the seller's price, plus the provider fees" if fees else "no run yet"))
+    chk = row.check_result or {}
+    checked_at = str(chk.get("checked_at") or "")[:16].replace("T", " ")
+    rel = await _hub_reliability(db, row.tool_id, row.org_id)
+    runlog = await _hub_recent_runs(db, row.tool_id, row.org_id) if getattr(row, "public_log", True) else None
+    caps = m.get("limits", {})
+    kind = "script, sandboxed" if row.kind == "script" else f"{len(m.get('steps', []))} steps"
+    older = await _hub_older_versions(db, row)
+    title = f"{row.name} · a hub tool by {maker}"
+    desc = _serp_desc(row.summary)
+
+    from ..application.hub.health import health_of
+    hstate = (await health_of(db, row.tool_id, row.version, row.check_result)).state
+    health_word = ("failing (the last 3 runs failed)" if hstate == "failing"
+                   else "healthy" if chk.get("status") == "passed" and row.status == "live" else row.status)
+    if as_md:
+        md = [f"# {row.name}", "", f"`{row.tool_id}` · a hub tool by **{maker}** · v{row.version} · {row.status}", "",
+              row.summary, "", f"**Price:** {price_range} — {range_note}. {price_line} ({per_k}); {HUB_PAY_NOTE}.", "",
+              "## Call it", "", "```", f"treg call {row.tool_id} --data '{example_json}'", "",
+              f"POST {base}/call/{row.tool_id}    X-Treg-Token · Content-Type: application/json · body {example_json}", "```", "",
+              f"Your agent: `catalog_get(\"{row.tool_id}\")` then `call`. Needs a treg token and balance.", "",
+              "## Inputs", "", "| name | type | default | example | note |", "|---|---|---|---|---|"]
+        for k, v in inputs.items():
+            dflt = json.dumps(v["default"]) if "default" in v else "required"
+            md.append(f"| {k} | {v.get('type', '')}{(' ≤ ' + str(v['max'])) if 'max' in v else ''} | {dflt} | {v.get('example', '')} | {v.get('note', '')} |")
+        md += ["", "## Output", "", ", ".join(f"`{f}`" for f in fields), "",
+               "## About", "", row.readme, "",
+               "## Health", "", f"{health_word} · check {chk.get('status') or '-'}{(' at ' + checked_at) if checked_at else ''} · "
+               f"{rel['runs']} runs by others in 30 days" + (f", {rel['ok_pct']}% ok, {rel['median_ms']} ms median" if rel["runs"] else ""), "",
+               "## Made of", "", f"made of {len(m.get('uses', []))} tool(s) (catalog tools and the maker's own; names and keys hidden) · {kind} · "
+               + (f"sends your inputs to the maker's own server at {', '.join(hosts)} · " if hosts else "")
+               + f"{caps.get('wall_s', 120)} s · {caps.get('steps', 20)} calls max", ""]
+        if runlog is not None:
+            md += [f"## Recent runs (30 days: {runlog['total']} runs, {runlog['ok']} ok, {runlog['failed']} failed)", "",
+                   "| when | outcome | ms | steps | units | price_usd |", "|---|---|---|---|---|---|"]
+            md += [f"| {r['when']} | {'ok' if r['ok'] else 'failed'} | {r['ms']} | {r['steps']} | "
+                   f"{r['units'] if r['units'] is not None else '-'} | {r['price_micro'] / 1e6:.6g} |" for r in runlog["runs"]]
+            md += ["", "Never shown: who called, the inputs, the output.", ""]
+        if older:
+            md += ["## Versions", ""] + [f"- v{v['version']} callable as `{row.tool_id}@{v['version']}` until {v['until']}" for v in older] + [""]
+        md += ["This page never shows the script, the maker's tools, or any key. A caller sees the trace of their own run only.", ""]
+        return PlainTextResponse("\n".join(md), media_type="text/markdown; charset=utf-8",
+                                 headers={"X-Robots-Tag": "noindex"})
+
+    e = _esc_html
+    rows_html = "".join(
+        f"<tr><td><code>{e(k)}</code></td><td>{e(v.get('type', ''))}{(' ≤ ' + e(str(v['max']))) if 'max' in v else ''}</td>"
+        f"<td>{e(json.dumps(v['default'])) if 'default' in v else '<span class=\"muted\">required</span>'}</td>"
+        f"<td>{e(str(v.get('example', '')))}</td><td>{e(str(v.get('note', '')))}</td></tr>"
+        for k, v in inputs.items())
+    # The check trace shows the SHAPE of the run (waves, steps, outcome, cost, time), never what
+    # each step called: a catalog id or an own-tool name is the maker's recipe (round 5 q7).
+    def _what(call: str) -> str:
+        return "a catalog tool" if "." in call.split("/", 1)[0] else "the maker's own tool"
+    trace_html = "".join(
+        f"<tr><td>{e(str(s.get('wave', '')))}</td><td>{e(str(s.get('name', '')))}</td><td>{e(_what(str(s.get('call', ''))))}</td>"
+        f"<td>{e(str(s.get('outcome', '')))} {e(str(s.get('status') or ''))}</td><td>{e(str(s.get('cost_micro', 0)))} µ$</td><td>{e(str(s.get('ms', '')))} ms</td></tr>"
+        for s in (chk.get("trace") or []))
+    older_html = "".join(f"<li>v{v['version']} callable as <code>{e(row.tool_id)}@{v['version']}</code> until {v['until']}</li>" for v in older)
+    body = f"""
+<main class="hubpage" style="max-width:900px;margin:0 auto;padding:24px 22px 60px">
+  <p class="muted" style="font-size:13px"><code>{e(row.tool_id)}</code> · <span class="pill">HUB</span> · by <b>{e(maker)}</b> · v{row.version}</p>
+  <h1 style="margin:4px 0 8px">{e(row.name)}</h1>
+  <p style="max-width:66ch">{e(row.summary)}</p>
+  <div class="pricecard">
+    <div class="big">{e(price_range)}</div>
+    <div class="muted" style="font-size:12px">{e(range_note)}</div>
+    <div class="muted" style="font-size:12px">{e(price_line)} · {e(per_k)} · {e(HUB_PAY_NOTE)}</div>
+    <div style="margin-top:8px;font-size:13px">{e(health_word)}{(' · checked ' + e(checked_at)) if checked_at else ''}</div>
+  </div>
+
+  <h2>Call it</h2>
+  <pre><code>treg call {e(row.tool_id)} --data '{e(example_json)}'
+
+curl -X POST {e(base)}/call/{e(row.tool_id)} \\
+  -H "X-Treg-Token: $TREG_TOKEN" -H "Content-Type: application/json" \\
+  -d '{e(example_json)}'</code></pre>
+  <p class="muted" style="font-size:13px">Needs a treg token and balance. Your agent: <code>catalog_get("{e(row.tool_id)}")</code> then <code>call</code>. This page as text: <a href="/hub/{e(row.tool_id)}.md">/hub/{e(row.tool_id)}.md</a>.</p>
+
+  <h2>Inputs</h2>
+  <div class="scroll"><table><tr><th>Name</th><th>Type</th><th>Default</th><th>Example</th><th>Note</th></tr>{rows_html}</table></div>
+
+  <h2>Output</h2>
+  <p>{", ".join(f"<code>{e(f)}</code>" for f in fields)}</p>
+
+  <h2>About</h2>
+  <div class="readme" style="max-width:66ch">{_md_lite(row.readme)}</div>
+
+  <h2>The check <span class="muted" style="font-size:12px">(run at publish, for real)</span></h2>
+  {('<div class="scroll"><table><tr><th>Wave</th><th>Step</th><th>Called</th><th>Result</th><th>Cost</th><th>ms</th></tr>' + trace_html + '</table></div>') if trace_html else '<p class="muted">no trace recorded</p>'}
+  <p class="muted" style="font-size:12px">{e(chk.get('status') or '-')}{(' at ' + e(checked_at)) if checked_at else ''}</p>
+
+  {_hub_runlog_html(runlog)}
+  <h2>Made of</h2>
+  <ul class="facts">
+    <li>made of {len(m.get('uses', []))} tool(s) <span class="muted">(catalog tools and the maker's own; names and keys hidden)</span></li>
+    {f'<li>sends your inputs to the maker&#39;s own server at <b>{e(", ".join(hosts))}</b>; what answers there can change without a new version</li>' if hosts else ''}
+    <li>{e(kind)} · {caps.get('wall_s', 120)} s · {caps.get('steps', 20)} calls max</li>
+    {('<li>data uploaded with the tool: ' + str(max(0, row.data.count(chr(10)) + (0 if row.data.endswith(chr(10)) else 1) - 1)) + ' rows</li>') if getattr(row, 'data', None) else ''}
+    <li>Reliability, 30 days: {rel['runs']} runs by others{(' · ' + str(rel['ok_pct']) + '% ok · ' + str(rel['median_ms']) + ' ms median') if rel['runs'] else ''}</li>
+    {('<li>Older versions: <ul>' + older_html + '</ul></li>') if older_html else ''}
+  </ul>
+  <p class="hidden">This page never shows the script, the maker's tools, or any key. A caller sees the trace of their own run only.</p>
+</main>"""
+    ld = [{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": row.name,
+           "description": row.summary, "applicationCategory": "DeveloperApplication",
+           "offers": {"@type": "Offer", "price": f"{price_usd:.6g}", "priceCurrency": "USD"}}]
+    return _page(title, desc, f"/hub/{row.tool_id}", body, ld, nav_current="",
+                 head_extra='<meta name="robots" content="noindex"/>\n<style>' + _HUB_PAGE_CSS + '</style>')
+
+
+def _hub_runlog_html(runlog: dict | None) -> str:
+    """The recent-runs section of the public page; empty when the maker switched the log off."""
+    if runlog is None:
+        return ""
+    e = _esc_html
+    peak = max(runlog["per_day"] or [0]) or 1
+    bars = "".join(f'<i style="height:{max(4, round(100 * c / peak)) if c else 0}%"></i>' for c in runlog["per_day"])
+    rows = "".join(
+        f"<tr><td>{e(r['when'])}</td><td>{'<span class=\"ok\">ok</span>' if r['ok'] else '<span class=\"bad\">failed</span>'}</td>"
+        f"<td class=\"num\">{r['ms']:,}</td><td class=\"num\">{r['steps']}</td>"
+        f"<td class=\"num\">{r['units'] if r['units'] is not None else '—'}</td>"
+        f"<td class=\"num\">${r['price_micro'] / 1e6:.6g}</td></tr>" for r in runlog["runs"])
+    table = (f'<div class="scroll"><table><tr><th>When (UTC)</th><th>Outcome</th><th class="num">ms</th>'
+             f'<th class="num">Steps</th><th class="num">Units</th><th class="num">Price paid</th></tr>{rows}</table></div>'
+             if rows else '<p class="muted">no runs by others in the last 30 days</p>')
+    return (f'<h2>Recent runs <span class="muted" style="font-size:12px">(30 days: {runlog["total"]} runs, '
+            f'{runlog["ok"]} ok, {runlog["failed"]} failed)</span></h2>'
+            f'<div class="bars">{bars}</div><div class="axis"><span>{e(runlog["days"][0])}</span><span>runs per day</span><span>today</span></div>'
+            f'{table}'
+            f'<p class="muted" style="font-size:12.5px">Never shown: who called, the inputs, the output. A failed run pays the seller nothing.</p>')
+
+
+async def _hub_older_versions(db: AsyncSession, row) -> list[dict]:
+    from datetime import timedelta
+    from sqlalchemy import select as _select
+    from ..application import hub as hub_app
+    from ..models import HubTool
+    olds = (await db.execute(_select(HubTool).where(HubTool.tool_id == row.tool_id, HubTool.status == "live",
+                                                    HubTool.version < row.version).order_by(HubTool.version.desc()))).scalars().all()
+    return [{"version": o.version, "until": (row.created_at + timedelta(days=hub_app.OLD_VERSION_DAYS)).date().isoformat()}
+            for o in olds]
+
+
+@app.get("/tools/{service}", include_in_schema=False)
+async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
+                         observations: endpoint_stats.EndpointObservationReader = Depends(
+                             _endpoint_observation_reader)):
+    """One provider's public page, in the use-case pages' skin (usecase.css): hero on the two
+    measured terms — "{provider} api pricing" (what Search Console shows people typing) and
+    "{provider} mcp" — the agent->treg->provider flow, setup (agent one-liner first), a prompt
+    to try, why-treg cards, EVERY tool grouped by platform, alternatives and an FAQ that also
+    feeds the FAQPage JSON-LD. The signed-in twin stays at /app/marketplace/<service>."""
+    cat = catalog_store.load()
+    all_eps = cat.for_provider(service)
+    if not all_eps:
+        raise HTTPException(status_code=404, detail=f"unknown provider {service!r}")
+    # Full provider inventory includes helpers and account management; the browse census
+    # deliberately excludes them. Access labels below distinguish platform offers from BYOK.
+    # Fresh name on purpose: from here on the page prints the CATALOG's spelling of the provider,
+    # never the request's. (Same idiom as the use-case pages; it is also what reads as a taint
+    # kill to CodeQL, which cannot see _esc_html as a sanitizer.)
+    svc = all_eps[0]["provider"]
+    eps = [e for e in all_eps if e.get("kind") != "routed" and not e.get("status")]
+    if not eps:
+        # The first-party "treg" pseudo-provider is nothing but routed meta-rows. Without this a
+        # self-referential /tools/treg page rendered (and reached the sitemap) — the fallback above
+        # resurrects hidden kinds for providers whose real rows are all utility, never routed ones.
+        raise HTTPException(status_code=404, detail=f"unknown provider {service!r}")
+    display = _provider_display(svc)
+    esc_d = _esc_html(display)
+    base = get_settings().public_url.rstrip("/")
+    reg = oauth_providers.get(svc)
+    category = (getattr(reg, "category", "") or "") if reg else ""
+    blurb = (getattr(reg, "summary", "") or "") if reg else ""
+    base_api = (getattr(reg, "base_url", "") or "") if reg else ""
+    docs_url = (getattr(reg, "docs_url", "") or "") if reg else ""
+    platform_eps = [e for e in eps if cat.platform_eligible(e)]
+    byok_only = len(eps) - len(platform_eps)
+    key_auth = bool(reg and reg.auth_kind == "key")
+    oauth_metered = bool(reg and reg.platform_billed and svc in get_settings().oauth_billed_set)
+    mixed = bool(platform_eps and byok_only and key_auth)
+    prices = [c for e in platform_eps if (c := cat.cost_view(e.get("cost"), e.get("provider"))) and c["usd"]]
+    # Published prices do not remove the OAuth account-connection requirement.
+    is_oauth = bool(reg and reg.auth_kind == "oauth") or not platform_eps
+    cheapest = _price_label(min(prices, key=lambda c: c["usd"])) if prices else ""
+    verified = len([e for e in eps if e["verified"]])
+    plat_label = {sl: pl["label"] for sl, pl in cat.platforms.items()}
+    groups: dict[str, list[dict]] = {}
+    for e in eps:
+        groups.setdefault(e["platform"], []).append(e)
+
+    # Task lines are the provider's top capabilities, verbatim from the catalog's own descriptions.
+    cap_counts: dict[str, int] = {}
+    for e in eps:
+        if e["capability"]:
+            cap_counts[e["capability"]] = cap_counts.get(e["capability"], 0) + 1
+    seen_desc: set[str] = set()
+    task_lines: list[str] = []
+    for c in sorted(cap_counts, key=lambda k: -cap_counts[k]):
+        d = (cat.capabilities.get(c) or c).strip()
+        if not d or d in seen_desc:
+            continue
+        seen_desc.add(d)
+        task_lines.append(d[0].lower() + d[1:])
+        if len(task_lines) == 3:
+            break
+    sample_eps = sorted([e for e in (platform_eps or eps) if e["verified"]], key=lambda e: len(e["id"])) or platform_eps or eps
+    sample_id = sample_eps[0]["id"]
+    badge = "PLATFORM + BYOK" if mixed else ("YOUR ACCOUNT" if is_oauth else "NO SIGNUP")
+    # The measured line: what treg.to has actually observed calling this provider. It is the one
+    # thing a vendor's own pricing page cannot print, and it goes above the fold for that reason.
+    obs = await _observed_or_empty(observations, [e["id"] for e in eps])
+    o_samples = sum(int(o.get("samples") or 0) for o in obs.values())
+    # The provider-wide rate weights each endpoint's published rate by the calls that DECIDED it
+    # (2xx + 5xx). `samples` still counts callers' 4xx, so weighting by it would let one team's
+    # malformed requests drag a healthy provider down. Latency is the median of the endpoint
+    # medians that cleared the successful-sample floor; `p50_ms` is the key endpoint_stats emits.
+    o_ok = [o for o in obs.values() if o.get("ok_rate") is not None and (o.get("decided") or 0) > 0]
+    o_ok_rate = (sum(o["ok_rate"] * o["decided"] for o in o_ok) / sum(o["decided"] for o in o_ok)) if o_ok else None
+    o_p50s = sorted(o["p50_ms"] for o in obs.values() if o.get("p50_ms"))
+    o_p50 = o_p50s[len(o_p50s) // 2] if o_p50s else None
+    measured = ""
+    if o_samples:
+        measured = f"{o_samples:,} calls measured"
+        if o_ok_rate is not None:
+            measured += f" · {round(o_ok_rate * 100)}% ok"
+        if o_p50:
+            measured += f" · {(f'{o_p50/1000:.1f}s' if o_p50 >= 1000 else f'{int(o_p50)}ms')} median"
+    used_in = _jobs_by_provider().get(svc, [])
+    demo_eps = []
+    _seen_caps: set[str] = set()
+    for e in sample_eps:
+        if e["capability"] in _seen_caps:
+            continue
+        _seen_caps.add(e["capability"])
+        demo_eps.append(e)
+        if len(demo_eps) == 3:
+            break
+
+    kicker = (f"{len(eps)} tools · your own account · never metered" if is_oauth
+              else f"{len(eps)} tools · from {_esc_html(cheapest)} · $0.000 markup")
+    if measured:
+        kicker += f" · {_esc_html(measured)}"
+    mcp_intent = svc in _MCP_INTENT_PROVIDERS
+    lede = (f"{_esc_html(blurb)} One MCP server for the whole catalog. Connect your own {esc_d} "
+            "account once and your agent uses it from then on. Calls on your own connection are never metered."
+            if is_oauth and mcp_intent else
+            f"{_esc_html(blurb)} Connect your own {esc_d} account once and your agent uses it "
+            "from then on, through one treg.to token. Calls on your own connection are never metered."
+            if is_oauth else
+            f"{_esc_html(blurb)} {len(eps)} tools for your agent through one treg.to key, priced "
+            f"at the provider's own rate{' from ' + _esc_html(cheapest) if cheapest else ''}, with no {esc_d} signup.")
+    h1_text = (f"{esc_d} MCP: connect your own account" if is_oauth and mcp_intent
+               else f"{esc_d}: connect your own account" if is_oauth
+               else (f"{esc_d}: {len(eps)} tools from {_esc_html(cheapest)}" if cheapest
+                     else f"{esc_d}: {len(eps)} tools"))
+    if mixed:
+        kicker = f"{len(eps)} tools · {len(platform_eps)} platform + BYOK · {byok_only} BYOK only"
+        h1_text = f"{esc_d}: {len(eps)} tools, platform or your own key"
+        lede = (f"{_esc_html(blurb)} {len(platform_eps)} tools support treg's platform key. "
+                f"All {len(eps)} support your own {esc_d} key; {byok_only} require it. "
+                "Your own key always wins and treg does not meter those calls.")
+    if oauth_metered:
+        kicker = f"{len(eps)} tools · OAuth connection · metered"
+        # The H1 above still says "MCP" for an MCP-intent provider, so the lede must too.
+        lede = (f"{_esc_html(blurb)} {'One MCP server for the whole catalog. ' if mcp_intent else ''}"
+                f"Connect your own {esc_d} account. "
+                "Calls through treg's OAuth app are metered under this server's billing policy.")
+    hero = (
+        '<div class="hero"><div class="wrap">'
+        '<div class="trust" style="margin:0 0 18px"><a href="/">treg.to</a> / '
+        '<a href="/catalog">Catalog</a> / ' + esc_d + "</div>"
+        f'<div class="kicker">{kicker}</div>'
+        f"<h1>{h1_text}</h1>"
+        f'<div class="lede">{lede}</div>'
+        f'<div class="ctas"><a class="candy" href="/app?ref=tool-{_esc_html(svc)}">Start free</a>'
+        f'<a class="ghostbtn" href="#tools">See all {len(eps)} tools</a>'
+        + (f'<a class="ghostbtn" href="{_esc_html(docs_url)}" target="_blank" rel="noopener">API docs ↗</a>'
+           if docs_url else "") + "</div>"
+        '<div class="trust">$1.00 of free credit once per new verified account · no card · platform tools need no provider signup</div>'
+        + (f'<div class="subline">{verified} of {len(eps)} tools on this page are live-verified '
+           "against the provider.</div>" if verified else "")
+        + f'<div class="provstrip"><div class="pl">works in</div><div class="ptiles">{_agent_ptiles()}</div></div>'
+        "</div></div>")
+
+    flow = (
+        '<section id="flow"><div class="wrap"><div class="seclab">What your agent can now do</div>'
+        f"<h2>{esc_d}, one prompt away</h2>"
+        '<div class="fx">'
+        '<div class="fp"><div class="tag">AGENT</div>'
+        f'<div class="agrow">{_agent_ptiles()}</div>'
+        + "".join(f'<div class="t"><span>{_esc_html(t)}</span><i>✓</i></div>' for t in task_lines)
+        + "</div>"
+        '<div class="ar">→</div>'
+        '<div class="fp dk"><div class="b"><span>▚</span> treg</div>'
+        + "".join(
+            f'<div class="c">$ treg call <em>{_esc_html(e["id"])}</em></div>'
+            f'<div class="cr"><i>✓ 200</i>'
+            + (f" · {_esc_html(pl)}"
+               if (pl := _price_label(cat.cost_view(e.get("cost"), e.get("provider")))) else "")
+            + "</div>"
+            for e in demo_eps)
+        + '<div class="c" style="opacity:.55">$ _</div></div>'
+        '<div class="ar">→</div>'
+        '<div class="fp"><div class="ph2">'
+        f'<img src="/logos/{_esc_html(svc)}.svg" alt="" aria-hidden="true" '
+        'onerror="this.style.display=\'none\'"/>'
+        f'<b>{esc_d}</b><span class="bdg">{badge}</span></div>'
+        f'<div class="sm">{_esc_html(blurb) or esc_d + " through one treg.to token."}</div>'
+        f'<div class="ct">⚒ {len(eps)} TOOLS'
+        + (" · platform + BYOK" if mixed else ("" if is_oauth else " · metered per call")) + "</div></div>"
+        "</div>"
+        + (f'<p style="font-size:12.5px;color:var(--muted);margin-top:12px">{_esc_html(category)}'
+           f"{' · ' if category and base_api else ''}<code>{_esc_html(base_api)}</code></p>"
+           if category or base_api else "")
+        + "</div></section>")
+
+    setup = (
+        '<section id="setup"><div class="wrap"><div class="seclab">Set up</div>'
+        f"<h2>Set up {esc_d} in Claude Code, Codex or any agent</h2>"
+        '<div class="steplabel"><span class="n">1</span><b>Give this to your agent</b></div>'
+        '<div class="promptbox"><div class="ph"><span>in your agent&#x27;s chat</span>'
+        f'<button class="copybtn" data-copy="set up treg — {_esc_html(base)}/llms.txt">copy</button></div>'
+        f"<pre>set up treg — {_esc_html(base)}/llms.txt</pre></div>"
+        '<div class="steplabel"><span class="n">2</span><b>Or add the MCP server yourself</b></div>'
+        '<div class="promptbox"><div class="ph"><span>claude code</span>'
+        f'<button class="copybtn" data-copy="claude mcp add --transport http treg {_esc_html(base)}/mcp">copy</button></div>'
+        f"<pre>claude mcp add --transport http treg {_esc_html(base)}/mcp</pre></div>"
+        '<div class="cards">'
+        f'<div class="card"><h4>ChatGPT</h4><p>Settings → Connectors → add <code>{_esc_html(base)}/mcp</code> '
+        "as a custom connector.</p></div>"
+        f'<div class="card"><h4>Grok bot</h4><p>Add <code>{_esc_html(base)}/mcp</code> as a remote MCP '
+        "connector in its tool settings.</p></div>"
+        f'<div class="card"><h4>Claude Desktop</h4><p>Settings → Connectors → Add custom connector → '
+        f"<code>{_esc_html(base)}/mcp</code>.</p></div>"
+        f'<div class="card"><h4>Cursor, Codex, any MCP client</h4><p>Point it at '
+        f"<code>{_esc_html(base)}/mcp</code> (HTTP transport).</p></div>"
+        f'<div class="card"><h4>CLI</h4><p><code>curl -fsSL {_esc_html(base)}/install.sh | sh</code></p></div>'
+        '<div class="card"><h4>Plain HTTP</h4><p>LangChain, CrewAI or any code: '
+        "<code>/call/&lt;tool-id&gt;</code> + <code>X-Treg-Token: &lt;token&gt;</code>. No SDK.</p></div>"
+        "</div></div></section>")
+
+    prompt = (f"Using treg, {task_lines[0]}. Show me the price first." if task_lines
+              else f"Using treg, call {display}. Show me the price first.")
+    tryit = (
+        '<section id="ask"><div class="wrap"><div class="seclab">Try it</div>'
+        "<h2>What&#x27;s the best way to ask?</h2>"
+        '<div class="promptbox"><div class="ph"><span>the prompt</span>'
+        f'<button class="copybtn" data-copy="{_esc_html(prompt)}">copy</button></div>'
+        f"<pre>{_esc_html(prompt)}</pre></div>"
+        '<h3>Run one directly</h3>'
+        '<div class="sample"><div class="sbar">'
+        + ("a live-verified call" if sample_eps[0]["verified"] else "a call") + "</div>"
+        f"<pre>{_esc_html(catalog_store.call_template(sample_eps[0]).replace('https://treg.to', base))}</pre></div>"
+        "</div></section>")
+
+    alt_names = sorted({e["provider"] for e in cat.endpoints
+                        if _pub(e) and e["capability"] in cap_counts and e["provider"] != svc})
+    why = (
+        '<section id="why"><div class="wrap"><div class="seclab">Why treg.to</div>'
+        f"<h2>Why call {esc_d} through treg.to</h2>"
+        '<div class="cards">'
+        + ("<div class=\"card\"><h4>Your account, held safely</h4><p>Connect once; treg.to keeps the "
+           "credential server-side and injects it per call. No key on any machine.</p></div>"
+           if is_oauth else
+           f"<div class=\"card\"><h4>No {esc_d} signup</h4><p>Eligible tools run on treg.to's key, "
+           "metered per call from a prepaid balance.</p></div>")
+        + '<div class="card"><h4>Price before the call</h4><p>The provider&#x27;s own rate, $0.000 '
+        'markup. <a href="/pricing">How billing works</a>.</p></div>'
+        + ('<div class="card"><h4>Account billing</h4><p>'
+           + ("Calls through treg's OAuth app are metered under this server's billing policy."
+              if oauth_metered else "Calls through your own connection are not metered by treg.")
+           + '</p></div>' if is_oauth else
+           '<div class="card"><h4>No subscription, no seats</h4><p>Platform calls are charged per call. '
+           '$1.00 free per new team, no card to start.</p></div>')
+        + (f'<div class="card"><h4>Your own {esc_d} key is free</h4><p>Register it and those calls are '
+           "never metered. Your key always wins.</p></div>" if key_auth else
+           '<div class="card"><h4>Your account connection</h4><p>'
+           + ("Calls through treg's OAuth app are metered under this server's billing policy."
+              if oauth_metered else "Connect your account with the provider's supported authentication method.")
+           + '</p></div>')
+        + '<div class="card"><h4>Switch by changing a word</h4><p>Another provider is a different '
+        "word in the prompt, not a new integration.</p></div>"
+        '<div class="card"><h4>One key, the whole catalog</h4><p>The same token calls '
+        + (_esc_html(", ".join(_provider_display(a) for a in alt_names[:3])) if alt_names
+           else "every provider in the catalog")
+        + f" and {_catalog_census()[0] - sum(_pub(e) for e in eps):,} other tools.</p></div>"
+        "</div></div></section>")
+
+    tool_blocks = []
+    max_shown = len(eps) if len(eps) <= 50 else 8
+    for i, (slug, items) in enumerate(sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))):
+        lis = []
+        shown = sorted(items, key=lambda e: (not e.get("verified"), e["id"]))[:max_shown]
+        for e in shown:
+            price = _price_label(cat.cost_view(e.get("cost"), e.get("provider")))
+            eligible = cat.platform_eligible(e)
+            if reg and reg.auth_kind == "oauth":
+                access = "OAuth connection · metered" if oauth_metered else "OAuth connection"
+            elif key_auth:
+                access = "Platform + BYOK" if eligible else "BYOK only"
+                if not eligible:
+                    price = "No treg charge; upstream " + price
+            else:
+                access = "Platform access" if eligible else "Own connection required"
+            kind = "account management" if e.get("kind") == "account" else ("helper" if e.get("kind") == "utility" else "")
+            bits = [b for b in (access, kind, "live-verified" if e.get("verified") else "", _esc_html(price)) if b]
+            lis.append(f"<li><b>{_esc_html(e['name'])}</b>"
+                       + (f" · <small>{' · '.join(bits)}</small>" if bits else "")
+                       + f"<br/><small>{_esc_html(e.get('summary') or '')} "
+                         f"<code>{_esc_html(e['id'])}</code></small>"
+                       + (f"<br/><small>{_esc_html(e['cost']['note'])}</small>"
+                          if (e.get("cost") or {}).get("note") else "") + "</li>")
+        if len(items) > max_shown:
+            lis.append(f'<li class="more"><a href="/catalog/{_esc_html(slug)}">See all {len(items)} '
+                       f'{_esc_html(plat_label.get(slug, slug))} tools on the catalog →</a></li>')
+        tool_blocks.append(
+            f'<details class="tl"{" open" if i == 0 else ""}>'
+            f'<summary><a href="/catalog/{_esc_html(slug)}">{_esc_html(plat_label.get(slug, slug))}</a>'
+            f" · {len(items)} tools</summary><ul>{''.join(lis)}</ul></details>")
+    tools_sec = (
+        '<section id="tools"><div class="wrap"><div class="seclab">The shelf</div>'
+        f"<h2>All {len(eps)} {esc_d} tools</h2>{''.join(tool_blocks)}"
+        '<p style="font-size:12.5px;color:var(--muted)">Reliability badges come from live traffic '
+        "through treg.to. Live-verified means a successful provider check; it does not verify every request variant.</p></div></section>")
+
+    alt_sec = ""
+    if alt_names:
+        tiles = "".join(
+            f'<a class="ptile" title="{_esc_html(_provider_display(a))}" href="/tools/{_esc_html(a)}">'
+            f'<img src="/logos/{_esc_html(a)}.svg" alt="{_esc_html(_provider_display(a))}" '
+            'onerror="this.parentNode.style.display=\'none\'"/></a>'
+            for a in alt_names[:12])
+        alt_sec = (
+            '<section id="alts"><div class="wrap"><div class="seclab">Related</div>'
+            "<h2>Same jobs, other providers</h2>"
+            f"<p>These providers answer some of the same capabilities as {esc_d}. The platform "
+            "pages show them on one row with rate and coverage; choosing is yours, treg.to does "
+            "not route between providers automatically.</p>"
+            f'<div class="provstrip"><div class="pl">also on the catalog</div>'
+            f'<div class="ptiles">{tiles}</div></div></div></section>')
+
+    if is_oauth:
+        faq_items = [
+            (f"Do I need a {display} account?",
+             f"Yes. This is an own-account connection: you sign in to {display} once and your "
+             "agent uses that connection through your treg.to token. Calls on it are never metered."),
+        ]
+    else:
+        faq_items = [
+            (f"Do I need a {display} account?",
+             f"No. Eligible tools run on treg.to's key and the call is metered from your team's "
+             f"prepaid balance, priced up front. If your team registers its own {display} key, "
+             "that key always wins and those calls are never metered."),
+            ("What does a call cost?",
+             f"Each tool on this page shows its rate{'; the cheapest is ' + cheapest if cheapest else ''}. "
+             "The rate is the provider's own and treg.to adds no markup; it is billed per call "
+             f"from a prepaid balance. It is not {display}'s subscription pricing, which is on "
+             "their own site. New teams start with $1.00 of free credit."),
+        ]
+    if oauth_metered:
+        faq_items[0] = (f"Do I need a {display} account?",
+                        f"Yes. Connect your {display} account through OAuth. Calls through treg's "
+                        "OAuth app are metered under this server's billing policy.")
+    if mixed:
+        faq_items[0] = (f"Do I need a {display} account?",
+                        f"For {len(platform_eps)} platform tools, no. The other {byok_only} require your own "
+                        f"{display} key. All {len(eps)} accept your own key, and treg never meters BYOK calls.")
+    faq_items += [
+        (f"How do I add {display} to Claude Code?",
+         f"Run: claude mcp add --transport http treg {base}/mcp. One MCP server carries "
+         f"{display} and the rest of the catalog."),
+        ("Which frameworks does it work with?",
+         "Anything that speaks MCP (Claude Code, Claude Desktop, ChatGPT, Codex, Cursor, Grok) "
+         "and anything that can make an HTTP request (LangChain, CrewAI, LlamaIndex, plain code)."),
+        (f"Is this the official {display} MCP server?",
+         f"No. treg.to serves {display}'s real API through its own metered proxy: the request "
+         f"is the provider's own, the credential is injected server-side, and the answer is "
+         f"relayed verbatim. The official {display} channels are linked above."),
+    ]
+    faq = ('<section id="faq"><div class="wrap"><div class="seclab">Questions</div>'
+           "<h2>Before you start</h2>"
+           + "".join(f"<h3>{_esc_html(q)}</h3><p>{_esc_html(a)}</p>" for q, a in faq_items)
+           + "</div></section>")
+
+    copy_js = ("<script>document.querySelectorAll('.copybtn').forEach(function(b){"
+               "b.addEventListener('click',async function(){try{await navigator.clipboard.writeText("
+               "b.dataset.copy);b.textContent='copied';setTimeout(function(){b.textContent='copy'},1400)"
+               "}catch(e){}})});</script>")
+
+    # "Used in": the job pages this provider answers. Contextual, intent-matched links from a page
+    # Google already indexes into the ones it had never fetched (see `_jobs_by_provider`).
+    used_sec = ""
+    if used_in:
+        used_sec = ('<section id="used-in"><div class="wrap"><div class="seclab">Used in</div>'
+                    f"<h2>Jobs {esc_d} does, compared with the other providers</h2>"
+                    '<div class="cards">'
+                    + "".join(f'<a class="card" href="/use-cases/{_esc_html(js)}"><h3>{_esc_html(jsent)}</h3>'
+                              f"<p>Every provider that does this job, side by side: price per billing unit, "
+                              f"measured success rate and speed.</p></a>" for js, jsent in used_in)
+                    + "</div></div></section>")
+
+    body = _TOOLS_CSS + hero + flow + setup + tryit + why + tools_sec + used_sec + alt_sec + faq + copy_js
+
+    if is_oauth:
+        if mcp_intent:
+            title = f"{display} MCP: connect your own account | treg.to"
+            desc = (f"{display} MCP server: connect your own account and call {len(eps)} tools "
+                    "through treg.to, one MCP for the whole catalog. Never metered on your connection.")
+        else:
+            title = f"{display}: connect your own account | treg.to"
+            desc = (f"Use {display} from Claude Code, ChatGPT or any MCP agent: {len(eps)} tools "
+                    "through one treg.to token. Calls on your own connection are never metered.")
+    else:
+        # Title matches H1: `{Provider}: {n} tools from {price}`.
+        # `cheapest` carries its own billing unit ("$0.00245/result", "$0.0089/call"), so the copy
+        # never says "per call" next to it: a per-result or per-success rate is not a per-call one.
+        title = (f"{display}: {len(eps)} tools from {cheapest} | treg.to" if cheapest
+                 else f"{display}: {len(eps)} tools | treg.to")
+        if len(title) > _TITLE_MAX:
+            # Both branches must be shorter than the primary; the H1 still starts with `display`.
+            title = (f"{display}: from {cheapest} | treg.to" if cheapest
+                     else f"{display} | treg.to")
+        desc = (f"{display} API pricing at the provider's own rate, with no {display} signup: {len(eps)} tools "
+                f"{'from ' + cheapest + ' ' if cheapest else ''}through one treg.to key or MCP server"
+                f"{', ' + measured if measured else ''}. Use it from Claude Code, ChatGPT or any agent.")
+
+    if mixed:
+        # Title matches H1: `{Provider}: {n} tools, platform or your own key`.
+        title = f"{display}: {len(eps)} tools, platform or your own key | treg.to"
+        if len(title) > _TITLE_MAX:
+            title = f"{display}: {len(eps)} tools, platform + BYOK | treg.to"
+        if len(title) > _TITLE_MAX:
+            title = f"{display}: platform + BYOK | treg.to"
+        desc = (f"{display} on treg: {len(platform_eps)} tools with platform or your own key, "
+                f"{byok_only} BYOK only. Compare access, billing units and live verification for every tool.")
+    if oauth_metered:
+        # Same shape as the H1/title: an MCP-intent provider keeps "MCP" in its description.
+        desc = (f"{display} MCP server: connect your own account and call {len(eps)} tools through "
+                "treg.to. Calls through treg's OAuth app are metered under this server's billing policy."
+                if mcp_intent else
+                f"Use {display} through your OAuth connection. Calls through treg's OAuth app "
+                "are metered under this server's billing policy.")
+    ld = [
+        {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+            {"@type": "ListItem", "position": 2, "name": "Catalog", "item": base + "/catalog"},
+            {"@type": "ListItem", "position": 3, "name": display,
+             "item": f"{base}/tools/{svc}"}]},
+        {"@context": "https://schema.org", "@type": "ItemList",
+         "name": f"{display} tools on treg.to", "numberOfItems": len(groups),
+         "itemListElement": [
+             {"@type": "ListItem", "position": i, "name": plat_label.get(sl, sl),
+              "url": f"{base}/catalog/{sl}"}
+             for i, sl in enumerate(sorted(groups), 1)]},
+        {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
+            {"@type": "Question", "name": q,
+             "acceptedAnswer": {"@type": "Answer", "text": a}}
+            for q, a in faq_items]},
+        {"@context": "https://schema.org", "@type": "HowTo",
+         "name": f"Set up {display} for an AI agent via treg.to",
+         # The steps mirror the VISIBLE setup section in order — schema that describes a
+         # different flow than the page shows is the mismatch Google treats as a violation.
+         "step": [
+             {"@type": "HowToStep", "position": 1, "name": "Give your agent the setup line",
+              "text": f"set up treg — {base}/llms.txt"},
+             {"@type": "HowToStep", "position": 2, "name": "Or add the MCP server yourself",
+              "text": f"claude mcp add --transport http treg {base}/mcp"},
+             {"@type": "HowToStep", "position": 3, "name": f"Call {display}",
+              "text": f"Ask your agent, or call {base}/call/{sample_id} over HTTP."}]},
+    ]
+    return _page(title, _serp_desc(desc), f"/tools/{svc}", body, ld,
+                 nav_current="/catalog", css="usecase.css")
+
+
+_PV_CSS = """<style>
+.pv-sub{color:var(--muted,#6b6b66);font-size:16px;max-width:48ch;margin:12px 0 18px}
+.pv-ctas{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.pv-btn{border-radius:10px;padding:10px 18px;font-weight:600;font-size:14px;text-decoration:none;display:inline-block}
+.pv-btn.p{background:#191917;color:#fff}
+.pv-btn.g{border:1px solid var(--line,#e6e6df);background:#fff;color:inherit;font-family:var(--mono,ui-monospace);font-weight:500;font-size:12.5px}
+.pv-why{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:14px 0}
+.pv-why div{background:#fff;border:1px solid var(--line,#e6e6df);border-radius:12px;padding:14px 16px;font-size:13.5px;color:#4a4a46}
+.pv-why b{display:block;margin-bottom:5px;color:#191917;font-size:14px}
+.pv-receipts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:18px 0}
+.pv-receipt{background:#fff;border:1px solid var(--line,#e6e6df);border-radius:12px;padding:16px 18px}
+.pv-receipt h4{margin:0 0 8px;font-size:14px;color:#191917}
+.pv-receipt .date{font-size:12px;color:var(--muted,#6b6b66);margin-bottom:10px}
+.pv-receipt ul{margin:0;padding:0 0 0 16px;font-size:13px;color:#4a4a46;line-height:1.6}
+.pv-receipt .total{margin-top:10px;font-weight:600;color:#191917;font-size:13.5px}
+.pv-receipt a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+</style>"""
+
+
+@app.get("/pricing", include_in_schema=False)
+async def pricing_page():
+    """The one canonical answer to "what does treg.to charge" - the page every rate table links,
+    so a provider's per-call rate can never be mistaken for treg.to's fees (or for the provider's
+    own subscription pricing). Everything here restates commitments that are already public:
+    no markup is terms §08, and every number renders from the catalog."""
+    base = get_settings().public_url.rstrip("/")
+    rows = _platform_rows()
+    priced = [r for r in rows if r["price_from"]][:8]
+    lis = "".join(
+        f'<li><b><a href="/catalog/{_esc_html(r["slug"])}">{_esc_html(r["label"])}</a></b>'
+        f' · {r["endpoints"]} tools · from <code>{_esc_html(_price_label(r["price_from"]))}</code></li>'
+        for r in priced)
+    faq_items = [
+        ("Is there a subscription?",
+         "No. You top up a prepaid balance and each catalog call is metered against it, priced "
+         "before you call. No seats, no monthly minimum. New teams start with $1.00 of free credit."),
+        ("Does treg.to add a markup?",
+         "No. A metered call is billed at the provider's own rate; adding no markup is a public "
+         "commitment in the terms. treg.to is not the provider's pricing page either: providers "
+         "sell their own subscriptions on their own sites, and those are linked, not restated."),
+        ("What is never metered?",
+         "Anything that is yours: calls on your team's own provider keys (your key always wins), "
+         "your team's own registered tools and skills, and your own connected accounts (Google "
+         "Analytics, Search Console, Google Ads, Business Profile and the rest)."),
+        ("What is the difference between call cost and usable-result cost?",
+         "A raw API call is one charge at the provider's rate. A usable result (like a verified "
+         "deliverable lead) often takes multiple calls and filters out misses, so the per-result "
+         "cost is higher. The receipts above show both: the total metered and the per-usable-row cost."),
+        ("Are own-key calls billed?",
+         "No. Register your team's provider key and treg.to uses it instead of the shared key. "
+         "Those calls are never metered. The receipts still show the shared-key rate for comparison, "
+         "as in the Meta Ad Library example where the team's own Apify key made the Meta calls free."),
+        ("What happens when the balance runs out?",
+         "Metered calls stop with a clear error until you top up. Calls on your own keys and your "
+         "own tools are unaffected."),
+        ("How do I see a rate before calling?",
+         "Every tool page on this site shows its rate next to the tool, and the catalog API "
+         "returns it with the tool's parameters. Rates are stamped with their source and when "
+         "they were last checked."),
+    ]
+    faq = ("<h2>Frequently asked questions</h2>"
+           + "".join(f"<h3>{_esc_html(q)}</h3><p>{_esc_html(a)}</p>" for q, a in faq_items))
+    body = (f'<main class="wrap">{_PV_CSS}<div class="phead">'
+            '<div class="crumbs"><a href="/">treg</a> / pricing</div>'
+            "<h1>Pricing</h1>"
+            '<p class="pv-sub">A prepaid balance, metered per call at the provider\'s own rate, '
+            "with no markup. The first $1.00 is free. Anything that is yours - your keys, your "
+            "tools, your connected accounts - is never metered.</p>"
+            '<div class="pv-ctas"><a class="pv-btn p" href="/app">Start free — $1.00 credit</a>'
+            '<a class="pv-btn g" href="/catalog">Browse the catalog</a></div>'
+            '<div class="facts"><span><b>$1.00</b> free to start</span><span><b>0%</b> markup</span>'
+            "<span>no seats</span><span>billed per call</span></div></div>"
+            '<section class="cat"><div class="prose">'
+            "<h2>How a call is billed</h2>"
+            '<div class="pv-why">'
+            "<div><b>Catalog calls, metered</b>Eligible tools run on treg.to's key and the call is "
+            "metered from your prepaid balance at the provider's own rate, shown before you call. "
+            "No markup; that promise is in the terms.</div>"
+            "<div><b>Your own key always wins</b>Register your team's key for a provider and "
+            "treg.to uses it instead. Those calls are never metered.</div>"
+            "<div><b>Your own tools and accounts</b>Tools a teammate registered and your own "
+            "connected accounts are yours; calls on them are never metered.</div>"
+            "<div><b>Runs dry, fails loud</b>When the balance is empty, metered calls stop with a "
+            "clear error until you top up. Your own-key calls keep working.</div></div>"
+            "<h2>Understanding costs</h2>"
+            "<p>Every workflow receipt on this site comes from a real run, not a rate card. "
+            "Four patterns that show what genuinely costs.</p>"
+            '<div class="pv-why">'
+            "<div><b>Billing unit</b>Metered per catalog call (or per success where the provider "
+            "bills that way) at the provider's own rate, no markup. Prepaid balance, $1.00 free to start.</div>"
+            "<div><b>Call cost vs usable-result cost</b>A raw API call is one charge; a deliverable "
+            "row can cost more when multi-step work filters out misses. The receipts below show both.</div>"
+            "<div><b>Misses</b>Invalid, empty, or catch-all outcomes. On per-success tools, a miss "
+            "settles at $0.00. On per-call tools, every call costs regardless of what comes back.</div>"
+            "<div><b>BYOK (bring your own key)</b>Register your team's provider key and treg.to uses "
+            "it instead. Calls on your own key are never metered. Receipts still show the shared-key "
+            "rate for comparison.</div></div>"
+            "<h2>Receipts from real runs</h2>"
+            "<p>These figures are what the ledger settled, not rate-card estimates.</p>"
+            '<div class="pv-receipts">'
+            '<div class="pv-receipt"><h4>Enrichment: verified lead list</h4>'
+            '<div class="date">2026-09-23 · <a href="/workflows/find-and-verify-a-lead-list">workflow</a></div>'
+            "<ul><li>50 companies in, 27 kept by a jev gate before any paid step, 20 verified deliverable leads out</li>"
+            "<li>$2.33 total metered ($0.12 per deliverable lead); the first run of the same filter without the gate was $3.62 for 27</li>"
+            "<li>Miss handling: Hunter, Kitt and LeadMagic settled every miss at $0.00 "
+            "(per-success, no hit); Findymail billed all 27 calls at list rate, 7 misses included</li></ul>"
+            '<div class="total">Multi-step cost: $0.05 per row, $0.12 per usable lead</div></div>'
+            '<div class="pv-receipt"><h4>SEO: keyword demand</h4>'
+            '<div class="date">2026-09-14 · <a href="/workflows/keyword-demand-to-ad-budget">workflow</a></div>'
+            "<ul><li>50 keywords expanded, volume and trend priced</li>"
+            "<li>$0.11 total: $0.018 ideas, $0.09 volume (batch), $0.0012 trend</li>"
+            "<li>Volume call billed per request, not per keyword (50 keywords cost one fee)</li></ul>"
+            '<div class="total">Three calls, $0.11</div></div>'
+            '<div class="pv-receipt"><h4>Ad library: Meta and Google ads</h4>'
+            '<div class="date">2026-09-14 · <a href="/workflows/mine-competitor-meta-ads-as-creative-pack">workflow</a></div>'
+            "<ul><li>20 Meta ads and 17 Google ads pulled for Notion</li>"
+            "<li>Meta calls ran on team's own Apify key (not metered)</li>"
+            "<li>Google call metered: $0.015 on treg.to's shared key</li>"
+            "<li>Shared-key rate for Meta if needed: $0.105 for probe and 20 ads</li></ul>"
+            '<div class="total">BYOK in action: own key $0, shared key $0.12</div></div>'
+            '<div class="pv-receipt"><h4>Creator discovery: Instagram</h4>'
+            '<div class="date">2026-09-14 · <a href="/workflows/discover-creators-in-a-niche">workflow</a></div>'
+            "<ul><li>25 fitness creators discovered, profiles and posts pulled</li>"
+            "<li>$0.20 total: $0.15 discovery, $0.025 profiles, $0.024 posts</li>"
+            "<li>Discovery billed per creator returned; a zero-match page costs nothing</li></ul>"
+            '<div class="total">Per-creator cost: $0.008</div></div>'
+            "</div>"
+            "<h2>Example rates, by platform</h2>"
+            "<p>Rendered from the live catalog; every tool page carries its own rate.</p>"
+            f"<ul>{lis}</ul>"
+            "<p><small>Rates are each provider's own, metered per call through treg.to. A "
+            "provider's subscription pricing lives on its own site.</small></p>"
+            f"{faq}</div></section></main>")
+    ld = [
+        {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "treg", "item": base + "/"},
+            {"@type": "ListItem", "position": 2, "name": "Pricing", "item": base + "/pricing"}]},
+        {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
+            {"@type": "Question", "name": q,
+             "acceptedAnswer": {"@type": "Answer", "text": a}}
+            for q, a in faq_items]},
+    ]
+    return _page("Pricing — pay per call, no markup, first $1.00 free | treg.to",
+                 "How treg.to charges: a prepaid balance metered per call at the provider's own "
+                 "rate with no markup. Your own keys, tools and accounts are never metered.",
+                 "/pricing", body, ld)
+
+
+# ---- the API reference ------------------------------------------------------------------------
+# Prose first, because the schema cannot say the load-bearing part: what /call/ actually does. Kept
+# short and factual — the tutorial teaches, this page is the reference a reader lands on from search.
+_DOCS_INTRO = """
+<h2>How a call works</h2>
+<p>You make the <b>real upstream request</b> — the provider's own path, its own parameters, its own
+response. treg injects the credential server-side and relays the answer verbatim. Nothing here
+models a provider's API, which is why an upstream change does not break us and why the caller never
+holds a secret.</p>
+<pre class="call">curl -X POST -H "X-Treg-Token: $TREG_TOKEN" -H "content-type: application/json" \\
+  -d '{"targets":["moz.com"]}' "{BASE}/call/moz.web.url.metrics"</pre>
+<p>Prefix any catalogued endpoint id with <code>/call/</code>. If your team has its own key for that
+provider, treg uses it and the call is <b>not metered</b>; otherwise eligible endpoints are served on
+treg's key and metered against your prepaid balance at the provider's own rate.</p>
+
+<h2>Finding an endpoint</h2>
+<p>Search by what you want to <i>do</i>, not by vendor: <code>GET /catalog/search?q=backlinks</code>.
+When several providers can do the same job, <code>/catalog/platforms/{slug}</code> lists them side by
+side with measured success rate, speed and price. <b>Choosing is yours</b> — treg compares, but it
+does not route between providers automatically and does not fail over.</p>
+<p>The whole catalog is also browsable as pages: <a href="/catalog">/catalog</a>.</p>
+
+<h2>Other ways in</h2>
+<p><a href="/llms.txt">/llms.txt</a> is the file to point a coding agent at — it teaches the whole
+protocol in one fetch. <code>curl -fsSL {BASE}/install.sh | sh</code> installs the CLI. The MCP
+endpoint is at <code>{BASE}/mcp</code>. An interactive console for everything below lives at
+<a href="/docs/api">/docs/api</a>.</p>
+
+<h2>Endpoints</h2>
+<p>Authenticated requests carry <code>X-Treg-Token: &lt;token&gt;</code>. <code>Authorization: Bearer</code>
+authenticates only the MCP endpoint; REST ignores it (<code>401 not authenticated</code>), and
+<code>/call/</code> relays it to the provider like any other header, so never put your treg token there.
+The catalog routes need no token.</p>
+"""
+
+
+@app.get("/docs", include_in_schema=False)
+async def docs_page():
+    """The API reference, rendered server-side from the OpenAPI schema.
+
+    Replaces the stock Swagger UI at this path (now /docs/api), which was a script shell — the
+    landing page linked "api" here and a crawler that followed it found an empty document.
+    """
+    base = get_settings().public_url.rstrip("/")
+    schema = app.openapi()
+
+    def rank(path: str) -> tuple:
+        """The proxy first, then the catalog, then the rest alphabetically. Sorting purely by path
+        opened the reference on /admin/* — super-admin plumbing, and the worst possible first
+        impression of the API on a page built to be someone's search result."""
+        return (0 if path.startswith("/call/") else 1 if path.startswith("/catalog") else 2, path)
+
+    # Auth travels the same way on every route; naming it on all 135 rows is noise, and the page
+    # says it once above. `/admin/*` is super-admin only — still in openapi.json, not advertised here.
+    _PLUMBING = {"x-treg-token", "treg_session", "authorization"}
+    ops = []
+    for path in sorted(schema.get("paths", {}), key=rank):
+        if path.startswith("/admin"):
+            continue
+        for method, op in sorted(schema["paths"][path].items()):
+            if method.lower() == "head":     # implied by GET; see `_install_head_and_openapi`
+                continue
+            params = ", ".join(p["name"] for p in op.get("parameters", []) or []
+                               if p["name"].lower() not in _PLUMBING)
+            summary = op.get("summary") or ""
+            # FastAPI takes the description from the docstring; only the first paragraph belongs on
+            # a reference index, and the rest is written for maintainers rather than callers.
+            desc = (op.get("description") or "").strip().split("\n\n")[0].replace("\n", " ")
+            ops.append(
+                f'<div class="op"><div class="sig"><span class="verb">{_esc_html(method.upper())}</span>'
+                f'<code>{_esc_html(path)}</code></div>'
+                + (f"<p>{_esc_html(summary or desc)}</p>" if (summary or desc) else "")
+                + (f'<div class="params">{_esc_html(params)}</div>' if params else "")
+                + "</div>")
+
+    n_endpoints, _ = catalog_store.headline_counts(catalog_store.load())
+    body = f"""<main class="wrap">
+<div class="phead">
+  <div class="crumbs"><a href="/">treg</a> / api</div>
+  <h1>API reference</h1>
+  <p class="lede">One base URL, one token. Call any of {len(ops)} documented operations, or proxy a
+  real request to any of {n_endpoints} catalogued provider endpoints through <code>/call/</code>.</p>
+  <div class="facts">
+    <span>base <b>{_esc_html(base)}</b></span>
+    <span><b>X-Treg-Token</b> header auth</span>
+    <span><a href="/openapi.json">openapi.json</a></span>
+    <span><a href="/docs/api">interactive console</a></span>
+  </div>
+</div>
+<section class="cat">
+  <div class="prose">{_DOCS_INTRO.replace("{BASE}", _esc_html(base))}</div>
+  {"".join(ops)}
+</section>
+</main>"""
+    ld = [{"@context": "https://schema.org", "@type": "TechArticle",
+           "headline": "treg API reference",
+           "description": f"How to call {n_endpoints} provider API endpoints through one treg.to token.",
+           "url": f"{base}/docs"}]
+    return _page("API reference — call any tool through one endpoint | treg",
+                 f"The treg.to HTTP API: proxy a real request to any of {n_endpoints} catalogued provider "
+                 "endpoints through /call/, with the credential injected server-side. Plus the "
+                 "catalog, org, billing and tool-management routes.",
+                 "/docs", body, ld, nav_current="/docs")
+
+
+site_router = APIRouter()
+app = site_router
+
+
+def _esc_html(s: str) -> str:
+    """The stdlib escaper, not a hand-rolled replace() chain.
+
+    Same four substitutions as before plus `'` -> `&#x27;`, so every call site is at least as safe.
+    The reason to delegate is not correctness but legibility to tooling: static analysis models
+    `html.escape` as an XSS sanitizer and cannot know that a private chain of `.replace()` calls is
+    one, so every escaped value stayed 'tainted' and the real sinks were buried in false positives.
+    """
+    return _html.escape(str(s), quote=True)
+
+
+def _resume_parked_authorization(request: Request) -> RedirectResponse | None:
+    """Send a signed-in browser back to its parked `/oauth/authorize` request, consuming the cookie."""
+    if (parked := _take_oauth_return(request)) is None:
+        return None
+    resume = RedirectResponse(parked, status_code=302)
+    resume.delete_cookie(OAUTH_RETURN_COOKIE)
+    return resume
+
+
+@app.get("/", include_in_schema=False)
+async def landing(request: Request, treg_session: str = Cookie(default=""),
+                  db: AsyncSession = Depends(get_session)):
+    """Serve the homepage with session-aware entry points.
+
+    Query links go to the SPA, except a referral code (plus any utm_* tags) retained for signup.
+    """
+    page = _WEB_DIR / "landing.html"
+    ref = referrals.normalize_code(request.query_params.get("ref", ""))
+    # An influencer's short link appends utm_* to the ref; those must not push it to the SPA, which
+    # never parks the code.
+    ref_only = all(k == "ref" or k.startswith("utm_") for k in request.query_params.keys())
+    if page.exists() and (not request.query_params or (ref and ref_only)):
+        signed_in = bool(treg_session and await _user_from_session(treg_session, db))
+        # The email-code door signs in on the page that opened it and reloads there, and the
+        # OAuth sign-in modal opens on `/`, so a parked authorization must resume here as well.
+        if signed_in and (resume := _resume_parked_authorization(request)) is not None:
+            return resume
+        # Canonical and social URLs use the serving origin.
+        html = _fill_headline(page.read_text(encoding="utf-8")).replace(
+            "{BASE}", get_settings().public_url.rstrip("/"))
+        html = html.replace("{SIGNED_IN}", "true" if signed_in else "false")
+        html = html.replace("{START_LABEL}", "Open dashboard" if signed_in else "Start free")
+        if signed_in:
+            html = re.sub(r"<!--signed-out-->.*?<!--/signed-out-->", "", html, flags=re.S)
+        # The footer's hub links point at hosted-only pages; a self-hosted landing drops them.
+        if not _hosted():
+            html = re.sub(r"<!--hosted-->.*?<!--/hosted-->", "", html, flags=re.S)
+        resp = HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
+        if ref:
+            _remember_referral(resp, request, ref)
+        return resp
+    return await dashboard(request, treg_session, db)
+
+
+def _dashboard_asset(directory: Path, name: str) -> FileResponse:
+    # Select a file discovered inside the build directory; never construct a path from a URL.
+    root = directory.resolve()
+    assets = {p.relative_to(root).as_posix(): p for p in root.rglob("*")
+              if p.is_file() and p.resolve().is_relative_to(root)}
+    asset = assets.get(name)
+    if asset is None:
+        raise HTTPException(404)
+    return FileResponse(asset, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+@app.get("/app/ui/assets/{name}", include_in_schema=False)
+async def dashboard_asset(name: str):
+    return _dashboard_asset(_WEB_DIR / "dashboard" / "assets", name)
+
+
+@app.get("/app", include_in_schema=False)
+async def dashboard(
+    request: Request, treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_session),
+):
+    """Serve the compiled dashboard (same-origin, so it calls this API directly).
+
+    Also the place a parked OAuth authorization resumes. Every browser sign-in door — GitHub, Google,
+    the email code — ends here, so honouring the cookie at this ONE point covers all of them, rather
+    than threading a return value through five handlers that each finish differently (two redirect,
+    one answers JSON).
+
+    In frictionless local mode the dashboard opens ALREADY SIGNED IN: with no valid session we
+    attach one for the machine's single user, so `curl … | sh` reaches a working dashboard without
+    an account. Only reachable when `single_user_ok` holds (local sqlite + loopback URL), so this
+    can never hand a session to a stranger on a real deploy.
+    """
+    signed_in = await _user_from_session(treg_session, db)
+    # A parked authorization resumes here, but ONLY once the user is actually signed in — otherwise
+    # this would bounce them back to /oauth/authorize, which would bounce them here again.
+    if signed_in and (resume := _resume_parked_authorization(request)) is not None:
+        return resume
+    owner = await _local_owner(db) if not signed_in else None
+    index = _dashboard_index()
+    if not index.exists():
+        raise HTTPException(503, "Dashboard not bundled")
+    resp = HTMLResponse(_dashboard_document(index), headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
+    if owner is not None:
+        resp.set_cookie(sess.COOKIE, sess.make_session(owner.id, token_version=owner.token_version),
+                        httponly=True, samesite="lax",
+                        secure=_is_https(request),
+                        max_age=sess.TTL_SECONDS)
+    return resp
+
+
+def _spa_with_og(kind: str, name: str):
+    """Serve the SPA at a shareable detail path (/app/skills/x, /app/tools/x) with per-resource
+    og/twitter meta so link unfurls show what was shared. The meta echoes only the URL's own
+    name segment and never exposes resource contents."""
+    index = _dashboard_index()
+    if not index.exists():
+        return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
+    label = {"skills": "skill", "runs": "run"}.get(kind, "tool")
+    safe = _esc_html(name)
+    meta = (
+        f"<title>{safe} · Treg</title>\n"
+        f'<meta property="og:title" content="{safe} — shared {label}"/>\n'
+        f'<meta property="og:description" content="A {label} shared via Treg. '
+        f'Sign in to preview it and get the one-command install."/>\n'
+        f'<meta name="twitter:card" content="summary"/>'
+    )
+    # Match WHATEVER title the page carries, not one exact string. It was pinned to
+    # `<title>tools-registry</title>`, the page says `<title>treg</title>`, so the replacement
+    # silently did nothing and every shared link unfurled blank — a rename in the dashboard must
+    # not be able to switch this off without a word.
+    html, hits = re.subn(r"<title>.*?</title>", lambda _m: meta, _dashboard_document(index),
+                         count=1, flags=re.IGNORECASE | re.DOTALL)
+    if not hits:  # no title at all: still emit the meta rather than serve a bare page
+        html = html.replace("<head>", "<head>\n" + meta, 1)
+    return HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
+
+
+@app.get("/app/marketplace/{service}", include_in_schema=False)
+async def dashboard_marketplace(
+    service: str, request: Request, treg_session: str = Cookie(default=""),  # noqa: ARG001 — the SPA reads the path itself
+    db: AsyncSession = Depends(get_session),
+):
+    """One integration's page. Served as the plain SPA: unlike /app/skills/<x> there is no og meta
+    to add, because this view is only meaningful to a signed-in member of the org. A signed-out
+    visitor is sent to the provider's PUBLIC page instead — /tools/<service> is the same subject
+    with the member actions replaced by sign-in CTAs (and it is the URL crawlers get)."""
+    if not treg_session:
+        # Redirect on the CATALOG's spelling of the provider, never the request's: an unknown
+        # service 404s here rather than bouncing into a 404, and the redirect target is a value
+        # we own (which is also what keeps this off CodeQL's url-redirection list).
+        known = next((r["service"] for r in _provider_rows() if r["service"] == service), None)
+        if known is None:
+            raise HTTPException(status_code=404, detail=f"unknown provider {service!r}")
+        return RedirectResponse(f"/tools/{known}", status_code=302)
+    return await dashboard(request, treg_session, db)
+
+
+@app.get("/app/skills/{name}", include_in_schema=False)
+async def dashboard_skill_page(name: str):
+    return _spa_with_og("skills", name)
+
+
+@app.get("/app/tools/{name}", include_in_schema=False)
+async def dashboard_tool_page(name: str):
+    return _spa_with_og("tools", name)
+
+
+@app.get("/app/runs/{run_id}", include_in_schema=False)
+async def dashboard_run_page(run_id: str):
+    """The caller's (or maker's) run page: the app opens `/hub/runs/<id>` on load."""
+    return _spa_with_og("runs", run_id)
+
+
+@app.get("/llms.txt", include_in_schema=False)
+async def llms_txt(request: Request, db: AsyncSession = Depends(get_session)):
+    """Agent-readable overview (llms.txt convention) — an AI agent that fetches this learns the
+    whole registry: the call protocol, discovery, auth, CLI, skills, and links to the tutorial/docs.
+    The serving domain is templated in so links stay correct across deploys."""
+    f = _WEB_DIR / "llms.txt"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="llms.txt not bundled")
+    from .hub_gate import hub_visible
+    hub_on = (await hub_visible(request, db))[0]
+    base = get_settings().public_url.rstrip("/")
+    return PlainTextResponse(_strip_hosted(_fill_headline(_strip_routed(f.read_text(encoding="utf-8"), hub_on))).replace("{BASE}", base),
+                             media_type="text/plain; charset=utf-8")
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    """Crawler policy. `{BASE}`-templated like llms.txt, so a self-hosted registry advertises its own
+    sitemap rather than treg.to's."""
+    f = _WEB_DIR / "robots.txt"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="robots.txt not bundled")
+    base = get_settings().public_url.rstrip("/")
+    return PlainTextResponse(f.read_text(encoding="utf-8").replace("{BASE}", base),
+                             media_type="text/plain; charset=utf-8",
+                             headers={"Cache-Control": "max-age=3600"})
+
+
+# The outcome landing pages: one per vertical, the destinations for search ads and the organic
+# `/use-cases/` cluster. Their COPY is generated from marketing/landing/*.md — never hand-edit
+# the HTML in web/, it is overwritten by that build. The slug is the public URL and is quoted in
+# live ad campaigns, so treat this map as an API: add freely, never rename or remove without a
+# redirect.
+_USE_CASES = {
+    "seo-data-for-ai-agents": "usecase-seo.html",
+    "lead-enrichment-for-ai-agents": "usecase-enrichment.html",
+    "social-trend-research-for-ai-agents": "usecase-social.html",
+    "competitor-ad-research-for-ai-agents": "usecase-ads.html",
+    "company-research-for-ai-agents": "usecase-company.html",
+}
+
+
+# The pages a crawler should know about. Everything here must answer 200 to a GET — a sitemap that
+# lists a redirect or a 404 is worse than no sitemap, so `tests/test_seo.py` walks every entry.
+# Deliberately absent: /contact and /help (alias URLs for the one support.html), /vendor-listing.md
+# (the text/plain twin of /vendor-listing), /login (302s to /app), /app* (authenticated SPA),
+# /connect-demo (noindex by design), and the shell installers.
+_SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
+    # (path, source file for lastmod — "" means use the catalog's, priority)
+    ("/", "landing.html", "1.0"),
+    ("/catalog", "", "0.9"),
+    ("/pricing", "", "0.8"),
+    ("/tutorial", "tutorial.html", "0.8"),
+    ("/docs", "", "0.7"),
+    ("/resources", "resources.html", "0.8"),
+    ("/blog", "", "0.7"),
+    ("/blog/work-email-finding-bench", "", "0.6"),
+    ("/blog/people-search-bench", "", "0.6"),
+    ("/vendor-listing", "vendor-listing.md", "0.5"),
+    ("/support", "support.html", "0.4"),
+    ("/connectors/claude", "claude-connector.html", "0.6"),
+    ("/people-search", "people-search.html", "0.8"),
+    ("/leads-signals", "leads-signals.html", "0.8"),
+    ("/grokbot", "grokbot.html", "0.8"),
+    ("/fable", "fable-gtm.html", "0.8"),
+    ("/gpt6", "astra.html", "0.8"),
+    ("/ugc", "ugc.html", "0.8"),
+    ("/jev", "jev.html", "0.8"),
+    ("/terms", "terms.html", "0.2"),
+    ("/privacy", "privacy.html", "0.2"),
+    # The outcome pages. Listed WITHOUT a trailing slash on purpose: `/use-cases/<slug>/` 307s to
+    # this form, and a sitemap that lists a redirect is worse than no sitemap. Their canonical tags
+    # match these exactly. `_USE_CASES` is the one source for the set, so a new page is listed the
+    # moment it is routed, and `tests/test_seo.py` will fail if one stops answering 200.
+    *(
+        (f"/use-cases/{slug}", name, "0.8")
+        for slug, name in _USE_CASES.items()
+    ),
+)
+
+
+@lru_cache(maxsize=1)
+def _catalog_mtime() -> str:
+    """The newest mtime under the catalog directory, as a sitemap `lastmod` date. The catalog is
+    read-only and changes only on deploy, so one scan per process is enough."""
+    newest = 0.0
+    for f in (Path(catalog_store.__file__).parent / "catalog").rglob("*.yaml"):
+        try:
+            newest = max(newest, f.stat().st_mtime)
+        except OSError:  # noqa: PERF203 -- a file vanishing mid-scan is not worth failing the sitemap
+            continue
+    return _iso_day(newest)
+
+
+def _iso_day(ts: float) -> str:
+    return datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat() if ts else ""
+
+
+def _comparison_paths() -> list[tuple[str, str]]:
+    """Every public comparison page (`Catalog.compared`), keyed the way its URL is."""
+    return sorted((plat, catalog_store.capability_key(plat, cap)) for plat, cap in catalog_store.load().compared())
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap_xml():
+    """Generated, not bundled: 80 of its URLs are the catalog's platform shelves, which move with the
+    catalog rather than with a checked-in file. Every URL is absolute on `public_url` so a self-host
+    publishes its own pages, and so the copy served on a legacy host still names the canonical one."""
+    base = get_settings().public_url.rstrip("/")
+    cat_day = _catalog_mtime()
+    out = ['<?xml version="1.0" encoding="UTF-8"?>',
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+
+    def add(path: str, lastmod: str, priority: str) -> None:
+        out.append("<url>")
+        out.append(f"<loc>{_esc_html(base + path)}</loc>")
+        if lastmod:
+            out.append(f"<lastmod>{lastmod}</lastmod>")
+        out.append(f"<priority>{priority}</priority>")
+        out.append("</url>")
+
+    for path, src, priority in _SITEMAP_PAGES:
+        day = cat_day
+        if src:
+            f = _WEB_DIR / src
+            day = _iso_day(f.stat().st_mtime) if f.exists() else ""
+        add(path, day, priority)
+    for row in _platform_rows():
+        add(f"/catalog/{row['slug']}", cat_day, "0.6")
+    for slug, key in _comparison_paths():
+        add(f"/catalog/{slug}/{key}", cat_day, "0.6")
+    for prow in _provider_rows():
+        add(f"/tools/{prow['service']}", cat_day, "0.5")
+    # The agent pages exist only on the hosted deployment (see `_hosted`); their lastmod follows the
+    # hand-written copy, which is what changes between deploys.
+    if _hosted():
+        copy_day = _iso_day(Path(agent_pages.__file__).stat().st_mtime)
+        add("/agents", copy_day, "0.8")
+        for slug in agent_pages.AGENTS:
+            if slug == "grok-bot":
+                continue  # redirects to /grokbot; list only the canonical
+            add(f"/agents/{slug}", copy_day, "0.8")
+        add("/use-cases", copy_day, "0.8")
+        for j in agent_pages.USE_CASE_PAGES:
+            add(f"/use-cases/{j}", copy_day, "0.7")
+        add("/workflows", copy_day, "0.8")
+        for w in agent_pages.WORKFLOWS:
+            add(f"/workflows/{w}", copy_day, "0.7")
+        hub = _WEB_DIR / "gtm-engineering.html"
+        add("/gtm-engineering", _iso_day(hub.stat().st_mtime) if hub.exists() else "", "0.8")
+        add("/showcase", _iso_day((_WEB_DIR / "showcase.html").stat().st_mtime), "0.8")
+    out.append("</urlset>")
+    return Response("\n".join(out), media_type="application/xml; charset=utf-8",
+                    headers={"Cache-Control": "max-age=3600"})
+
+
+# IndexNow (Bing, Yandex, Seznam, Naver share the feed): the key file the protocol needs on this
+# host. Not a secret — the protocol only checks that the key named in a submission is served from
+# the same host, so a submission cannot claim someone else's URLs. `scripts/indexnow_submit.py`
+# pushes every sitemap URL through it after a deploy.
+INDEXNOW_KEY = "7c2e4a91b5d3f8e6treg2026"
+
+
+@app.get(f"/{INDEXNOW_KEY}.txt", include_in_schema=False)
+async def indexnow_key():
+    return Response(INDEXNOW_KEY, media_type="text/plain; charset=utf-8",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/install.sh", include_in_schema=False)
+async def install_sh():
+    """`curl -fsSL {BASE}/install.sh | sh` — installs the treg CLI and points it at this server.
+    The serving domain is templated in so it targets whichever host is live (dev box or the real
+    domain after deploy)."""
+    f = _WEB_DIR / "install.sh"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="install.sh not bundled")
+    base = get_settings().public_url.rstrip("/")
+    return PlainTextResponse(f.read_text(encoding="utf-8").replace("{BASE}", base), media_type="text/x-shellscript; charset=utf-8")
+
+
+@app.get("/selfhost.sh", include_in_schema=False)
+async def selfhost_sh():
+    """`curl -fsSL {BASE}/selfhost.sh | sh` — run your OWN registry locally, with no account.
+
+    Different from install.sh, which only installs the CLI and points it at THIS server. This one
+    brings up a server on the caller's machine in single-user mode, so they land on a dashboard that
+    is already signed in. Value first, account later."""
+    f = _WEB_DIR / "selfhost.sh"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="selfhost.sh not bundled")
+    base = get_settings().public_url.rstrip("/")
+    return PlainTextResponse(f.read_text(encoding="utf-8").replace("{BASE}", base),
+                             media_type="text/x-shellscript; charset=utf-8")
+
+
+def routed_discovery_on() -> bool:
+    """`TREG_ROUTED_DISCOVERY` — the one switch, read in catalog_store (see group_routed)."""
+    return catalog_store.routed_discovery_on()
+
+
+def _hub_app_visible(slug: str | None) -> bool:
+    from ..application import hub as hub_app
+    return hub_app.visible_to(slug)
+
+
+def _strip_routed(text: str, hub_on: bool | None = None) -> str:
+    """Remove the `<!--routed-->…<!--/routed-->` blocks (and, when kept, just the markers), and the
+    `<!--hub-->…<!--/hub-->` blocks the same way behind `hub_enabled`: an agent-facing file must
+    never describe what this deployment has not switched on (AGENTS.md: do not document what is
+    not built)."""
+    if routed_discovery_on():
+        text = text.replace("<!--routed-->\n", "").replace("\n<!--/routed-->", "")
+    else:
+        text = re.sub(r"<!--routed-->.*?<!--/routed-->\n?", "", text, flags=re.S)
+    # The hub sections follow the reader: while TREG_HUB_TEAMS limits the hub, only a reader acting
+    # for a listed team gets them (`hub_on`, from the route); with no reader, the public answer.
+    if hub_on if hub_on is not None else _hub_app_visible(None):
+        return text.replace("<!--hub-->\n", "").replace("\n<!--/hub-->", "")
+    return re.sub(r"<!--hub-->.*?<!--/hub-->\n?", "", text, flags=re.S)
+
+
+def _fill_headline(text: str) -> str:
+    """`{ENDPOINTS}` and `{PROVIDERS}` in a served document come from the loaded catalog, like
+    `{BASE}` comes from settings: the front-door files quote the catalog's size and a typed number
+    was always stale (see `catalog_store.headline_counts`)."""
+    endpoints, providers = catalog_store.headline_counts(catalog_store.load())
+    return text.replace("{ENDPOINTS}", endpoints).replace("{PROVIDERS}", str(providers))
+
+
+def _strip_hosted(text: str) -> str:
+    """`<!--hosted-->…<!--/hosted-->` marks links to pages that exist only on the hosted deployment
+    (`_hosted`). Hosted, the markers go and the content stays; self-hosted, the whole block goes, so a
+    bundled page or agent-facing file never sends a reader to a 404 on the registry serving it."""
+    if _hosted():
+        return re.sub(r"<!--/?hosted-->\n?", "", text)
+    return re.sub(r"<!--hosted-->.*?<!--/hosted-->\n?", "", text, flags=re.S)
+
+
+def _serve_md(name: str, hub_on: bool | None = None) -> PlainTextResponse:
+    """Serve a bundled markdown file as inline text (so "open in new tab" shows it, not a download),
+    with the serving domain templated in. Backs the 'copy markdown' buttons on the docs pages."""
+    f = _WEB_DIR / name
+    if not f.exists():
+        raise HTTPException(status_code=404, detail=f"{name} not bundled")
+    base = get_settings().public_url.rstrip("/")
+    return PlainTextResponse(_fill_headline(_strip_routed(f.read_text(encoding="utf-8"), hub_on)).replace("{BASE}", base),
+                             media_type="text/plain; charset=utf-8")
+
+
+@app.get("/quickstart.md", include_in_schema=False)
+async def quickstart_md():
+    """The quick-start as raw markdown — copy it or open it in a tab and use it anywhere."""
+    return _serve_md("quickstart.md")
+
+
+@app.get("/tutorial.md", include_in_schema=False)
+async def tutorial_md():
+    """The full tutorial as raw markdown (mirrors the interactive /tutorial)."""
+    return _serve_md("tutorial.md")
+
+
+@app.get("/tutorial-import-shell.md", include_in_schema=False)
+async def tutorial_import_shell_md():
+    """Focused tutorial: CLI auto-import (`treg upload clis`) + shell mode (`treg shell`) + the
+    local-run security sandbox. Linked from the main tutorial."""
+    return _serve_md("tutorial-import-shell.md")
+
+
+@app.get("/tutorial-access.md", include_in_schema=False)
+async def tutorial_access_md():
+    """Focused tutorial: per-member team access control (which tools a member may use + the local-run
+    toggle). Linked from the main tutorial."""
+    return _serve_md("tutorial-access.md")
+
+
+@app.get("/vendor-listing", include_in_schema=False)
+@app.get("/vendor-listing.md", include_in_schema=False)
+async def vendor_listing_md(request: Request):
+    """Vendor listing instructions — what a vendor's coding agent reads before raising a PR that
+    adds their API to the catalog. Linked from the dashboard's "List your API" modal."""
+    resp = _serve_md("vendor-listing.md")
+    # Two URLs, one document. `text/plain` cannot carry a <link rel=canonical>, so the duplicate is
+    # suppressed with the header equivalent: /vendor-listing is the indexed one (it is what the
+    # sitemap lists), /vendor-listing.md keeps serving agents and stays out of the index.
+    if request.url.path.endswith(".md"):
+        resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+@app.get("/integrate.md", include_in_schema=False)
+async def integrate_md():
+    """The BUILDER skill: how to put treg inside your own product and bill your own customers for it.
+
+    Distinct from `skill.md`, which teaches an agent to USE treg. This one is pasted into a builder's
+    repo and pointed at their coding agent, so it leads with the per-customer billing model — the
+    part that changes how the plumbing is written, and therefore has to be read before any of it is.
+    """
+    return _serve_md("integrate.md")
+
+
+@app.get("/skill.md", include_in_schema=False)
+async def skill_md(request: Request, db: AsyncSession = Depends(get_session)):
+    """The OFFICIAL treg Claude skill (3 personas), {BASE}-templated to this server.
+    install.sh drops it into ~/.claude/skills/treg/ so agents learn treg at CLI install."""
+    from .hub_gate import hub_visible
+    return _serve_md("skill.md", (await hub_visible(request, db))[0])
+
+
+@app.get("/skills/ugc/SKILL.md", include_in_schema=False)
+async def make_ugc_skill_md():
+    """The make-ugc orchestrator skill: the /ugc workflow as a file an agent can follow. Served from
+    the bundled copy (`.agents/skills/make-ugc` is a symlink to it) so the two never drift."""
+    return _serve_md("skills/make-ugc/SKILL.md")
+
+
+@app.get("/skills/lead-signals/SKILL.md", include_in_schema=False)
+async def lead_signals_skill_md():
+    """The lead-signals skill: the /leads-signals workflow (detect, qualify, contact, keep watching)
+    as a file an agent can follow. Bundled like make-ugc; `.agents/skills/lead-signals` links to it."""
+    return _serve_md("skills/lead-signals/SKILL.md")
+
+
+@app.get("/skills/jev-memory/SKILL.md", include_in_schema=False)
+async def jev_memory_skill_md():
+    """The jev-memory skill: install (or build) the Claude Code mod in
+    `examples/claude-code-mods/jev-memory`, where Jev judges each prompt after the turn and the
+    lasting preferences are remembered. Opt-in: kept out of the well-known index, so
+    `treg skill bootstrap` (install.sh) never installs it unasked."""
+    return _serve_md("skills/jev-memory/SKILL.md")
+
+
+@app.get("/feedback.md", include_in_schema=False)
+async def feedback_md():
+    return _serve_md("feedback.md")
+
+
+@app.get("/favicon.svg", include_in_schema=False)
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """The ▚ brand mark. Served at both paths so browsers that auto-request /favicon.ico stop 404ing."""
+    ico = _WEB_DIR / "favicon.svg"
+    if not ico.exists():
+        raise HTTPException(status_code=404, detail="favicon not bundled")
+    return FileResponse(ico, media_type="image/svg+xml", headers={"Cache-Control": "max-age=86400"})
+
+
+@app.get("/tutorial.js", include_in_schema=False)
+async def tutorial_js():
+    """The shared interactive-tutorial data + highlighter (window.TREG_TUTORIAL / tregHL).
+    Loaded by both the dashboard Help view and the standalone tutorial page, so they never drift."""
+    js = _WEB_DIR / "tutorial.js"
+    if not js.exists():
+        raise HTTPException(status_code=404, detail="tutorial.js not bundled")
+    # no-cache, like index.html and the landing: the page includes this as a bare `<script
+    # src="/tutorial.js">` with no version query, so without the header a browser keeps serving the
+    # tutorial from before the last deploy until someone hard-refreshes.
+    return FileResponse(js, media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/legal.css", include_in_schema=False)
+async def legal_css():
+    """The shared skin for /terms and /privacy (landing-page tokens, one copy)."""
+    f = _WEB_DIR / "legal.css"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="legal.css not bundled")
+    return FileResponse(f, media_type="text/css", headers={"Cache-Control": "no-cache"})
+
+
+def _static_page(name: str, request: Request) -> Response:
+    """A bundled HTML page with its placeholders filled: `{BASE}` so each page's canonical and
+    og:url name the host actually serving it (a hardcoded treg.to would tell a self-hosted
+    registry's crawler that the real page lives on someone else's domain), and `{ENDPOINTS}` /
+    `{PROVIDERS}` so the catalog's size is read from the catalog, never typed.
+
+    no-cache: a page must not be served stale after we publish an update. The ETag keeps the
+    revalidation a 304, as it was when these pages were plain FileResponses."""
+    page = _WEB_DIR / name
+    if not page.exists():
+        raise HTTPException(status_code=404, detail=f"{name} not bundled")
+    base = get_settings().public_url.rstrip("/")
+    html = _strip_hosted(_fill_headline(page.read_text(encoding="utf-8"))).replace("{BASE}", base)
+    etag = '"' + hashlib.sha256(html.encode("utf-8")).hexdigest()[:32] + '"'
+    headers = {"Cache-Control": "no-cache", "ETag": etag}
+    # An edge that compresses the body weakens the tag (W/"..."), so compare the opaque part.
+    sent = {tag.strip().removeprefix("W/") for tag in request.headers.get("if-none-match", "").split(",")}
+    if etag in sent:
+        return Response(status_code=304, headers=headers)
+    return HTMLResponse(html, headers=headers)
+
+
+@app.get("/terms", include_in_schema=False)
+async def terms_page(request: Request):
+    """Terms of Service for the HOSTED registry (self-hosted instances are governed by LICENSE)."""
+    return _static_page("terms.html", request)
+
+
+@app.get("/privacy", include_in_schema=False)
+async def privacy_page(request: Request):
+    """Privacy policy. Also the URL given to OAuth providers at app-registration/verification time
+    (Google requires a reachable privacy policy carrying the Limited Use disclosure), so this path
+    is effectively public API — don't rename it without updating the provider consoles."""
+    return _static_page("privacy.html", request)
+
+
+@app.get("/connectors/claude", include_in_schema=False)
+async def claude_connector_page(request: Request):
+    """Setup, scope, billing, privacy, and removal instructions for the Claude connector."""
+    return _static_page("claude-connector.html", request)
+
+
+@app.get("/agent-setup.js", include_in_schema=False)
+async def agent_setup_js():
+    """The onboarding widgets for the standalone Enrich Arena page. The Dashboard imports their
+    source (`frontend/src/agent-setup/`) directly; the frontend build compiles the same source into
+    this classic script, which exposes `window.TregAgentSetup` on the page's global Vue build."""
+    f = _WEB_DIR / "dashboard" / "agent-setup.js"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="agent-setup.js not built")
+    return FileResponse(f, media_type="application/javascript", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/adtrack.js", include_in_schema=False)
+async def adtrack_js():
+    """First-party ad-click capture (see the file itself): sets the `treg_ad` cookie that
+    `_ad_attribution_from` reads at signup. No Google script, no third-party request."""
+    headers = {"Cache-Control": "no-cache"}
+    if not adsconv.enabled():
+        # The page keeps one static script include, but an unconfigured/self-hosted deployment must
+        # not collect an advertising cookie at all. A stale cookie is also ignored at signup below.
+        return Response(content="", media_type="application/javascript", headers=headers)
+    f = _WEB_DIR / "adtrack.js"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="adtrack.js not bundled")
+    # no-cache, same reasoning as tutorial.js: served as a bare `<script src="/adtrack.js">` with no
+    # version query, so without this header a browser would keep an ad-window-stale copy after a fix.
+    return FileResponse(f, media_type="application/javascript", headers=headers)
+
+
+@app.get("/captcha.js", include_in_schema=False)
+async def captcha_js(request: Request):
+    """`window.tregCaptcha` for every email sign-in form, with this deployment's public Turnstile
+    site key filled in. Without both Turnstile keys the key is empty and every token is ''."""
+    f = _WEB_DIR / "captcha.js"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="captcha.js not bundled")
+    s = get_settings()
+    key = s.turnstile_site_key if s.turnstile_secret else ""
+    body = f.read_text().replace('"__TREG_TURNSTILE_SITE_KEY__"', json.dumps(key), 1)
+    # no-cache: a bare include with no version query, and the key changes with configuration; the
+    # ETag turns every page view's revalidation into a 304.
+    etag = '"' + hashlib.sha256(body.encode()).hexdigest()[:16] + '"'
+    headers = {"Cache-Control": "no-cache", "ETag": etag}
+    # The compression middleware weakens the ETag (W/"..."), and browsers send that form back.
+    if etag in [t.strip().removeprefix("W/") for t in request.headers.get("if-none-match", "").split(",")]:
+        return Response(status_code=304, headers=headers)
+    return Response(content=body, media_type="application/javascript", headers=headers)
+
+
+@app.get("/gtag.js", include_in_schema=False)
+async def gtag_js():
+    """Google Ads conversion tracking via gtag.js. Loads the base tag (AW-18392771132) on every
+    page; the signup conversion (AW-18392771132/0usqCIeQrO0cELzUrcJE) fires from the dashboard
+    on first team creation for a new user. Like adtrack.js, returns empty for unconfigured or
+    self-hosted deployments that don't want external Google requests."""
+    headers = {"Cache-Control": "no-cache"}
+    if not adsconv.enabled():
+        return Response(content="", media_type="application/javascript", headers=headers)
+    f = _WEB_DIR / "gtag.js"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="gtag.js not bundled")
+    return FileResponse(f, media_type="application/javascript", headers=headers)
+
+
+@app.get("/sitetrack.js", include_in_schema=False)
+async def sitetrack_js():
+    """First-touch traffic-source capture (`treg_utm` cookie, always on — first-party, no PII) plus
+    the PostHog bootstrap, with the public project key templated in. Loaded by every public page
+    so the visitor's FIRST hop — the one carrying `utm_*` and the referrer — is the one analytics
+    sees; before this the landing page loaded nothing and every signup looked `$direct`. With no
+    `TREG_POSTHOG_KEY` the analytics half is inert (empty key) and only the cookie half runs."""
+    f = _WEB_DIR / "sitetrack.js"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="sitetrack.js not bundled")
+    s = get_settings()
+    js = (f.read_text(encoding="utf-8")
+          .replace("{POSTHOG_KEY}", s.posthog_key if s.posthog_key else "")
+          .replace("{POSTHOG_HOST}", s.posthog_host.rstrip("/") if s.posthog_key else ""))
+    # no-cache, same reasoning as adtrack.js: a bare `<script src>` with no version query.
+    return Response(content=js, media_type="application/javascript",
+                    headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/grokbot", include_in_schema=False)
+async def grokbot_page(request: Request):
+    """Landing page for the treg plugin inside Grok Bot ("Grok Bot for Outreach") — a scroll
+    animatic of the Bot working a lead list through treg. Indexed like /people-search: canonical,
+    OG meta, listed in the sitemap."""
+    return _static_page("grokbot.html", request)
+
+
+@app.get("/fable", include_in_schema=False)
+async def fable_page(request: Request):
+    """Landing page for the Claude Fable 5.1 + treg launch ("Run your GTM from the terminal"):
+    one prompt, the market read, four agents, four results, then the catalog and the bill.
+    Indexed like /grokbot: canonical, in the sitemap, no-cache so edits land on refresh."""
+    return _static_page("fable-gtm.html", request)
+
+
+@app.get("/astra", include_in_schema=False)
+async def astra_page(request: Request):
+    """Keep launch links and their campaign attribution when moving to /gpt6."""
+    query = request.url.query
+    return RedirectResponse("/gpt6" + (f"?{query}" if query else ""), status_code=301)
+
+
+@app.get("/gpt6", include_in_schema=False)
+async def gpt6_page(request: Request):
+    """GPT-6 launch destination, with the Codex demo and direct plugin listing."""
+    return _static_page("astra.html", request)
+
+
+@app.get("/ugc", include_in_schema=False)
+async def ugc_page(request: Request):
+    """Landing page for the AI-generated UGC workflow article: the five steps (trend pull,
+    JSON-prompt character, Seedance 2.5 talking head, phone demo + cloned voice, hooks at scale)
+    with the generated clips and the bill. Indexed like /people-search: canonical, OG meta,
+    in the sitemap, no-cache so edits land on refresh. Asset paths are relative (media/ugc/…)."""
+    return _static_page("ugc.html", request)
+
+
+@app.get("/showcase", include_in_schema=False)
+async def showcase_page(request: Request):
+    """The gallery of products built on treg: each app, its maker and the maker's launch post,
+    then a one-off snapshot of posts about treg on X (media/showcase/wall.json). Relative asset
+    paths (media/showcase/…). Hosted only, like /gtm-engineering: the apps run on treg.to itself."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    return _static_page("showcase.html", request)
+
+
+@app.get("/people-search", include_in_schema=False)
+async def people_search_page(request: Request):
+    """Landing page for the people-search launch ("Claude for people search") — the destination the
+    launch film points viewers at. A first-class page: canonical, in the sitemap, indexed. Its asset
+    paths are RELATIVE (media/…, logos/…) so the same file previews from file:// — which only works
+    while this route stays slashless; a /people-search/ variant would re-root them."""
+    return _static_page("people-search.html", request)
+
+
+@app.get("/start", include_in_schema=False)
+async def start_page(request: Request):
+    """The paid-traffic landing page. It only sells: use data in your agent, drop the monthly
+    subscriptions, one action (Start free → sign in → /app). `?job=` comes from the ad group so the
+    headline, the real run and the bill arrive matched to the search. Hosted-only (it quotes treg.to's
+    free credit and vendor plans), `noindex` and out of the sitemap: an ad destination, not a search page."""
+    if not _hosted():
+        raise HTTPException(status_code=404)
+    resp = _static_page("start.html", request)
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+@app.get("/leads-signals", include_in_schema=False)
+async def leads_signals_page(request: Request):
+    """Landing page for the buyer-signals launch ("Claude for Monitor Leads Signal"). Built from the
+    /people-search page and served the same way: canonical, in the sitemap, relative asset paths."""
+    return _static_page("leads-signals.html", request)
+
+
+@app.get("/gtm-engineering", include_in_schema=False)
+async def gtm_engineering_page(request: Request):
+    """The GTM-engineering hub: the seven jobs a GTM engineer runs, each linked to its existing
+    page, the workflows as playbooks with their receipts, and the GitHub skills people install
+    next to the catalog job that covers their data step. Hand-written like the launch pages, so it
+    loads sitetrack.js and its reading is measurable; the facts on it are dated in the copy.
+    Hosted only, like the workflows it links to: its runs and credit describe treg.to itself."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    return _static_page("gtm-engineering.html", request)
+
+
+@app.get("/gtm-engineering.md", include_in_schema=False)
+async def gtm_engineering_md():
+    """The playbook as Markdown, for agents and answer engines that read text rather than render
+    pages. Hand-kept beside the HTML; `tests/test_gtm_engineering_page.py` fails if a chapter
+    heading on one is missing from the other. `noindex`: the HTML page is the indexed copy and
+    names this one with `rel=alternate`."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    resp = _serve_md("gtm-engineering.md")
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+@app.get("/jev", include_in_schema=False)
+async def jev_page(request: Request):
+    """Landing page for jev + treg ("jev for GTM engineers"): three agent recipes, each with a prompt
+    to copy and a demo under it. The X launch-radar demo is live (`/jev/xboost.json`, judged daily by
+    `treg-worker jev xboost`, plus visitor-submitted posts); the signup-triage and signal-leads demos
+    replay bundled, anonymised runs. Indexed like /ugc: canonical, OG meta, in the sitemap, no-cache."""
+    return _static_page("jev.html", request)
+
+
+_JEV_JUDGE_NS = "jev_judge"
+
+
+@app.get("/jev/xboost.json", include_in_schema=False)
+async def jev_xboost_json(db: AsyncSession = Depends(get_session)):
+    """The latest launch-radar run: the worker's stored document, else the bundled snapshot so the
+    page renders on a fresh or unconfigured server."""
+    from .. import ratestore
+    from ..application import jev_xboost
+
+    run = await _xboost_run(db)
+    run["live"] = jev_xboost.configured()
+    return JSONResponse(run, headers={"Cache-Control": "no-cache"})
+
+
+async def _xboost_run(db: AsyncSession) -> dict:
+    """The worker's stored run, else the bundled snapshot marked `snapshot: true`."""
+    from .. import ratestore
+    from ..application import jev_xboost
+
+    run = await ratestore.kv_get(db, jev_xboost.KV_NS, jev_xboost.KV_KEY)
+    if run is None:
+        seed = _MEDIA_DIR / "jev" / "xboost-seed.json"
+        run = json.loads(seed.read_text(encoding="utf-8")) if seed.exists() else {"posts": [], "manual": []}
+        run["snapshot"] = True
+    return run
+
+
+@app.post("/jev/xboost/judge", include_in_schema=False)
+async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_session)):
+    """A visitor pastes a post link; the same forensics + jev run on it and the verdict joins the
+    board. Unauthenticated, so per-IP and global sliding-window limits (ratestore) bound the spend:
+    every judge is a few treg calls on the demo team's token plus one jev call."""
+    from .. import ratestore
+    from ..application import jev_xboost
+    from .auth import _client_ip
+
+    if not jev_xboost.configured():
+        raise HTTPException(status_code=503, detail="the live demo is not configured on this server")
+    try:
+        body = await request.json()
+    except ValueError:
+        body = {}
+    url = (body or {}).get("url") if isinstance(body, dict) else None
+    try:
+        jev_xboost.parse_post_url(url or "")
+    except jev_xboost.XboostError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    # A post already on the board (daily run or an earlier visitor) answers from the store: no
+    # second fetch, no second bill, no duplicate card.
+    _, post_id = jev_xboost.parse_post_url(url)
+    run = await _xboost_run(db)
+    for known in [*(run.get("manual") or []), *(run.get("posts") or [])]:
+        if str(known.get("id")) == post_id:
+            return {**known, "cached": True}
+    ok = await ratestore.rate_check(db, _JEV_JUDGE_NS, [(f"ip:{_client_ip(request)}", 5), ("all", 60)], window_s=3600)
+    await db.commit()
+    if not ok:
+        raise HTTPException(status_code=429, detail="that is enough for this hour; the daily run continues")
+    try:
+        judged = await jev_xboost.judge_url(request.app.state.http, url)
+    except jev_xboost.XboostError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    # A visitor may judge before the first daily run: keep the snapshot's board under their card.
+    run = await _xboost_run(db)
+    await ratestore.kv_put(db, jev_xboost.KV_NS, jev_xboost.KV_KEY, jev_xboost.with_manual(run, judged),
+                           ttl_s=jev_xboost.KV_TTL_S)
+    await db.commit()
+    return judged
+
+
+# The launch pages grouped into a thin index. Routes stay where they are; this is a directory, not
+# a move. The list is hand-maintained because each launch has its own framing and the order is
+# chronological (newest first), not alphabetical.
+_BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
+    # (slug, title, date, one-line blurb)
+    ("/showcase", "Built with treg", "2026-10-12",
+     "Apps whose agents reach the outside world through treg, the people who made them, and their launch posts."),
+    ("/gtm-engineering", "The GTM Engineering Playbook", "2026-09-30",
+     "16 chapters from ICP to rollout: a prompt and a rule in each, and the data steps tested on recorded runs."),
+    ("/leads-signals", "Claude for Monitor Leads Signal", "2026-09-28",
+     "Your agent checks hiring, funding, job changes and social chatter on a schedule, and reports what's new."),
+    ("/jev", "How to use Jev", "2026-09-20",
+     "What Jev is and how to use it: live examples, use cases, code, and GTM automation recipes."),
+    ("/ugc", "AI UGC Videos for $0.67 a Clip", "2026-09-15",
+     "The five-step workflow: trending hooks, a JSON-prompt character, Seedance 2.5, a cloned voice."),
+    ("/gpt6", "GPT-6 and treg.to", "2026-09-08",
+     "Codex demo: one prompt, the market read, and the catalog of tools it called."),
+    ("/fable", "Claude Fable 5.1 + treg.to", "2026-09-02",
+     "Run your GTM from the terminal: one prompt, four agents, four results."),
+    ("/grokbot", "Grok Bot for Outreach", "2026-09-01",
+     "A scroll animatic of Grok Bot working a lead list through treg.to."),
+    ("/people-search", "People Search Launch", "2026-09-01",
+     "Give your agent 1B+ contacts. The destination the launch film points at."),
+]
+
+# Identity/receipt posts: thin announcements that live under /blog/. These are not launches (which
+# have their own top-level routes), but they sit prominently on the /blog index above launches.
+_BLOG_POSTS: list[tuple[str, str, str, str]] = [
+    # (slug under /blog/, title, date, one-line blurb)
+    ("work-email-finding-bench", "Work Email Finding: a 292 Person Receipt", "2026-09-16",
+     "Quality tie across vendors. Cost is the gap: $0.0056 vs $0.0395 per correct."),
+    ("people-search-bench", "#1 on People Search Bench", "2026-09-14",
+     "treg.to scores 80.0% on recruiting, 78.2% on B2B prospecting. 119 real tasks, same agent."),
+]
+
+
+def _blog_posting_ld(slug: str, base: str) -> dict:
+    """BlogPosting schema for one entry of `_BLOG_POSTS`: a dated, bylined article. The posts are
+    first-party measurements, and a named author with a visible date is what earns the validation
+    click and the AI citation; breadcrumbs alone describe a page, not a piece of writing."""
+    _, title, date, blurb = next(p for p in _BLOG_POSTS if p[0] == slug)
+    return {"@context": "https://schema.org", "@type": "BlogPosting", "headline": title,
+            "description": blurb, "datePublished": date, "dateModified": date,
+            "mainEntityOfPage": f"{base}/blog/{slug}", "url": f"{base}/blog/{slug}",
+            "author": {"@type": "Person", "name": "Jason Zhou", "url": "https://github.com/JayZeeDesign"},
+            "publisher": {"@type": "Organization", "name": "treg.to", "url": base + "/"}}
+
+
+@app.get("/blog", include_in_schema=False)
+async def blog_index():
+    """Thin index of launch pages and notes. The launches stay at their existing routes; this page
+    links to them without moving files or creating /blog/grokbot clones. Indexed, canonical, in
+    the sitemap. Blog posts (identity/receipt announcements) sit above launches."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+
+    # Blog posts (identity/receipt announcements) come first, prominently
+    post_cards = "".join(
+        f'<a class="pcard" href="/blog/{_esc_html(slug)}">'
+        f'<h3>{_esc_html(title)}</h3>'
+        f'<p>{_esc_html(blurb)}</p>'
+        f'<div class="meta">{_esc_html(date)}</div></a>'
+        for slug, title, date, blurb in _BLOG_POSTS
+    )
+
+    launch_cards = "".join(
+        f'<a class="pcard" href="{_esc_html(slug)}">'
+        f'<h3>{_esc_html(title)}</h3>'
+        f'<p>{_esc_html(blurb)}</p>'
+        f'<div class="meta">{_esc_html(date)}</div></a>'
+        for slug, title, date, blurb in _BLOG_LAUNCHES
+    )
+
+    body = (
+        '<main class="wrap"><div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/blog">Blog</a></div>'
+        '<h1>Launches and Notes</h1>'
+        '<p class="lede">Product launches, partner posts and notes from the treg.to team. '
+        'Each launch page shows a real run with the catalog and the bill.</p>'
+        '</div>'
+        + (f'<section class="cat"><h2>Posts</h2><div class="grid">{post_cards}</div></section>'
+           if _BLOG_POSTS else '')
+        + '<section class="cat"><h2>Launches</h2>'
+        f'<div class="grid">{launch_cards}</div></section>'
+        '</main>'
+    )
+
+    ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"}]}]
+
+    return _page("Launches and Notes | treg.to",
+                 "Product launches, partner posts and notes from the treg.to team. "
+                 "Each launch page shows a real run with the catalog and the bill.",
+                 "/blog", body, ld)
+
+
+@app.get("/blog/people-search-bench", include_in_schema=False)
+async def blog_people_search_bench():
+    """Identity/receipt post: treg.to is #1 on People Search Bench by LessieAI. Links to /grokbot#bench
+    for the interactive chart. Numbers from the benchmark: 119 real tasks, % answered correctly."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+
+    # The benchmark numbers (from /grokbot#bench and the LessieAI chart)
+    scores = [
+        ("Recruiting", "80.0%"),
+        ("B2B prospecting", "78.2%"),
+        ("Deterministic", "76.3%"),
+        ("Influencer", "62.9%"),
+    ]
+    score_rows = "".join(
+        f'<tr><td>{_esc_html(cat)}</td><td style="text-align:right;font-weight:600">{_esc_html(pct)}</td></tr>'
+        for cat, pct in scores
+    )
+
+    body = (
+        '<main class="wrap" style="max-width:680px">'
+        '<div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/blog">Blog</a> / '
+        '<a href="/blog/people-search-bench">#1 on People Search Bench</a></div>'
+        '<h1>#1 on People Search Bench</h1>'
+        '<p class="lede">treg.to scores highest on People Search Bench by LessieAI: '
+        '119 real tasks, same agent, with and without the plugin.</p>'
+        '</div>'
+        '<section class="cat">'
+        '<p>People Search Bench tests whether an agent can answer real recruiting, B2B prospecting, '
+        'deterministic lookup and influencer discovery questions. The benchmark runs the same agent '
+        'with and without the treg.to plugin, measuring % answered correctly across 119 tasks.</p>'
+        '<table style="width:100%;margin:24px 0;border-collapse:collapse">'
+        '<thead><tr style="border-bottom:1px solid var(--border)">'
+        '<th style="text-align:left;padding:8px 0">Category</th>'
+        '<th style="text-align:right;padding:8px 0">treg.to score</th>'
+        '</tr></thead>'
+        f'<tbody style="font-size:1.1em">{score_rows}</tbody>'
+        '</table>'
+        '<p style="color:var(--muted);font-size:0.9em">Source: People Search Bench by LessieAI, 119 real tasks, '
+        '% answered correctly. Same agent, with and without the plugin.</p>'
+        '<p style="margin-top:24px"><a href="/grokbot#bench" style="font-weight:600">'
+        'See the interactive chart on the Grok Bot launch page &rarr;</a></p>'
+        '</section>'
+        '</main>'
+    )
+
+    ld = [_blog_posting_ld("people-search-bench", base),
+          {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
+        {"@type": "ListItem", "position": 3, "name": "#1 on People Search Bench",
+         "item": base + "/blog/people-search-bench"}]}]
+
+    return _page("#1 on People Search Bench | treg.to",
+                 "treg.to scores 80.0% on recruiting, 78.2% on B2B prospecting on People Search Bench "
+                 "by LessieAI. 119 real tasks, same agent with and without the plugin.",
+                 "/blog/people-search-bench", body, ld)
+
+
+@app.get("/blog/work-email-finding-bench", include_in_schema=False)
+async def blog_work_email_finding_bench():
+    """Receipt post: work-email finding across vendors on a 292-person list with published answers.
+    Measured 2026-09-16. Quality is a tie; cost is the gap."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+
+    body = (
+        '<main class="wrap" style="max-width:780px">'
+        '<div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/blog">Blog</a> / '
+        '<a href="/blog/work-email-finding-bench">Work Email Finding</a></div>'
+        '<h1>Work Email Finding: a 292 Person Receipt</h1>'
+        '<p class="lede">Measured 2026-09-16. Quality is a tie across vendors. Cost is the gap.</p>'
+        '</div>'
+        '<section class="cat">'
+        '<p>We ran a 292-person list (88 orgs, 16 industries, name + domain only) through five '
+        'aggregators and compared the returned emails against each org&#x27;s published team-page address. '
+        'Every person had a public team-page email, so find rates are inflated vs. a cold list; '
+        'cost per row and exact-match rate are the clean comparisons.</p>'
+        '<h2 style="margin-top:32px;font-size:1.1em">The run</h2>'
+        '<p><code>treg.people.email.find</code> routed across catalog providers that answered '
+        '(QuickEnrich ~61%, Kitt ~36%, plus Tomba, DropLeads, Hunter, Findymail). The other columns '
+        'represent alternative aggregators, not the underlying providers.</p>'
+        '<div style="overflow-x:auto">'
+        '<table style="width:100%;margin:24px 0;border-collapse:collapse;font-size:0.95em">'
+        '<thead><tr style="border-bottom:1px solid var(--border)">'
+        '<th style="text-align:left;padding:8px 0"></th>'
+        '<th style="text-align:right;padding:8px 12px">treg.to</th>'
+        '<th style="text-align:right;padding:8px 12px">Clay</th>'
+        '<th style="text-align:right;padding:8px 12px">Freckle</th>'
+        '<th style="text-align:right;padding:8px 12px">Deepline</th>'
+        '</tr></thead>'
+        '<tbody>'
+        '<tr><td style="padding:6px 0">Found</td>'
+        '<td style="text-align:right;padding:6px 12px">289</td>'
+        '<td style="text-align:right;padding:6px 12px">280</td>'
+        '<td style="text-align:right;padding:6px 12px">281</td>'
+        '<td style="text-align:right;padding:6px 12px">266</td></tr>'
+        '<tr><td style="padding:6px 0">Exact match</td>'
+        '<td style="text-align:right;padding:6px 12px">264</td>'
+        '<td style="text-align:right;padding:6px 12px">262</td>'
+        '<td style="text-align:right;padding:6px 12px">263</td>'
+        '<td style="text-align:right;padding:6px 12px">253</td></tr>'
+        '<tr><td style="padding:6px 0">Success (exact/292)</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">90.4%</td>'
+        '<td style="text-align:right;padding:6px 12px">89.7%</td>'
+        '<td style="text-align:right;padding:6px 12px">90.1%</td>'
+        '<td style="text-align:right;padding:6px 12px">86.6%</td></tr>'
+        '<tr><td style="padding:6px 0">Precision (exact/found)</td>'
+        '<td style="text-align:right;padding:6px 12px">91.3%</td>'
+        '<td style="text-align:right;padding:6px 12px">93.6%</td>'
+        '<td style="text-align:right;padding:6px 12px">93.6%</td>'
+        '<td style="text-align:right;padding:6px 12px">95.1%</td></tr>'
+        '<tr><td style="padding:6px 0">Off-domain</td>'
+        '<td style="text-align:right;padding:6px 12px">5</td>'
+        '<td style="text-align:right;padding:6px 12px">4</td>'
+        '<td style="text-align:right;padding:6px 12px">4</td>'
+        '<td style="text-align:right;padding:6px 12px">0</td></tr>'
+        '<tr style="border-top:1px solid var(--border)"><td style="padding:6px 0">Cost (finding only)</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">$1.49</td>'
+        '<td style="text-align:right;padding:6px 12px">$10.34</td>'
+        '<td style="text-align:right;padding:6px 12px">$11.22</td>'
+        '<td style="text-align:right;padding:6px 12px">$23.38</td></tr>'
+        '<tr><td style="padding:6px 0">Per row</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">$0.0051</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0354</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0384</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0801</td></tr>'
+        '<tr><td style="padding:6px 0">Per correct</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">$0.0056</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0395</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0427</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0924</td></tr>'
+        '<tr><td style="padding:6px 0">Hit latency (median)</td>'
+        '<td style="text-align:right;padding:6px 12px">0.44s</td>'
+        '<td style="text-align:right;padding:6px 12px">11.2s</td>'
+        '<td style="text-align:right;padding:6px 12px">65s</td>'
+        '<td style="text-align:right;padding:6px 12px;color:var(--muted)">batch</td></tr>'
+        '</tbody>'
+        '</table>'
+        '</div>'
+        '<p style="color:var(--muted);font-size:0.85em;margin-top:8px">'
+        'Freckle = LeadMagic&rarr;Findymail. Deepline = ZeroBounce-first play. '
+        'Clay dollars are at Clay&#x27;s Launch data-credit list price ($0.05/credit on 2026-09-16).</p>'
+        '<h2 style="margin-top:32px;font-size:1.1em">What the numbers say</h2>'
+        '<ul style="margin:16px 0;padding-left:24px">'
+        '<li style="margin:8px 0"><strong>Quality is a tie.</strong> treg.to, Clay and Freckle land at '
+        '264, 262 and 263 exact matches; the difference is noise.</li>'
+        '<li style="margin:8px 0"><strong>Different-from-published is mostly not invalid.</strong> '
+        'Many returned addresses are valid aliases. Exact-match is a floor, not a ceiling.</li>'
+        '<li style="margin:8px 0"><strong>Cost is structural.</strong> Credit-based waterfalls run '
+        '7x to 16x treg.to per correct row. Deepline is an outlier because ZeroBounce fires on every '
+        'pattern guess.</li>'
+        '<li style="margin:8px 0"><strong>Latency only matters for per-call paths.</strong> '
+        'treg.to (0.44s) is per-call; do not rank batch tools on speed.</li>'
+        '<li style="margin:8px 0"><strong>Aggregator columns are routes, not products.</strong> '
+        'Each column represents how that aggregator dispatched the query to its underlying providers.</li>'
+        '</ul>'
+        '<h2 style="margin-top:32px;font-size:1.1em">When to choose Clay</h2>'
+        '<p>Choose Clay when you want a visual table, the broader Clay ecosystem for GTM orchestration, '
+        'or a seat that already includes enrichment inside a bigger workflow. Spreadsheet-native teams '
+        'may prefer the Clay UI over API calls.</p>'
+        '<p>Choose treg.to when you want a metered catalog call with a known provider price and a dated '
+        'receipt. See <a href="/pricing">how billing works</a>.</p>'
+        '<h2 style="margin-top:32px;font-size:1.1em">Disclosures</h2>'
+        '<ul style="margin:16px 0;padding-left:24px;color:var(--muted);font-size:0.9em">'
+        '<li style="margin:6px 0"><strong>List bias:</strong> every person had a published team-page '
+        'email, so find rates are inflated vs. a cold list.</li>'
+        '<li style="margin:6px 0"><strong>MillionVerifier re-verify:</strong> we re-verified addresses '
+        'with MillionVerifier after Kitt ran out of credits. MV served 0 cache hits. Kitt is also in '
+        'the treg.to catalog, so its hits are not independent for the treg.to column.</li>'
+        '<li style="margin:6px 0"><strong>treg.to bug:</strong> 3 rows returned HTTP 502 (route_failed) '
+        'and were scored as misses. $0 charged for those rows.</li>'
+        '</ul>'
+        '<p style="margin-top:24px">Related: '
+        '<a href="/people-search">People Search</a>, '
+        '<a href="/workflows/find-and-verify-a-lead-list">Build a Verified Lead List</a>, '
+        '<a href="/use-cases/lead-enrichment-for-ai-agents">Waterfall Enrichment</a>.</p>'
+        '</section>'
+        '</main>'
+    )
+
+    ld = [_blog_posting_ld("work-email-finding-bench", base),
+          {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
+        {"@type": "ListItem", "position": 3, "name": "Work Email Finding",
+         "item": base + "/blog/work-email-finding-bench"}]}]
+
+    return _page("Work Email Finding: 292 Person Bench | treg.to",
+                 "Quality tie across vendors, cost is the gap. Measured 2026-09-16: "
+                 "treg.to $0.0056/correct vs Clay $0.0395/correct on 292 people.",
+                 "/blog/work-email-finding-bench", body, ld)
+
+
+@app.get("/resources", include_in_schema=False)
+async def resources_page(request: Request):
+    """The hub for the outcome pages. It exists for two reasons beyond navigation: without it the
+    `/use-cases/*` pages are orphans that no crawler reaches, and it gives the footer one durable
+    link instead of five that grow every time a page is added."""
+    return _static_page("resources.html", request)
+
+
+@app.get("/usecase.css", include_in_schema=False)
+async def usecase_css():
+    """The shared skin for /use-cases/* (landing-page tokens, one copy — same deal as legal.css)."""
+    f = _WEB_DIR / "usecase.css"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="usecase.css not bundled")
+    return FileResponse(f, media_type="text/css", headers={"Cache-Control": "no-cache"})
+
+
+
+
+public_docs_router = APIRouter()
+app = public_docs_router
+
+
+def _skill_frontmatter(name: str = "skill.md") -> dict[str, str]:
+    """The bundled skill's frontmatter, read at request time rather than duplicated in code — the
+    description is what drives discovery in every registry, and a second copy of it would drift."""
+    f = _WEB_DIR / name
+    if not f.exists():
+        raise HTTPException(status_code=404, detail=f"{name} not bundled")
+    text = _fill_headline(f.read_text(encoding="utf-8"))
+    if not text.startswith("---"):
+        raise HTTPException(status_code=404, detail=f"{name} has no frontmatter")
+    out: dict[str, str] = {}
+    for line in text.split("---", 2)[1].strip().splitlines():
+        key, _, value = line.partition(":")
+        out[key.strip()] = value.strip()
+    return out
+
+
+@app.get("/.well-known/skills/index.json", include_in_schema=False)
+async def well_known_skills_index():
+    """Advertise treg's own skill under the agentskills.io well-known convention.
+
+    This makes THIS host a first-class skill source: an agent that supports the standard can install
+    treg from treg.to directly, with no directory, no review queue and no third party in the middle
+    — the same skill the plugins ship and `install.sh` drops, reached by whoever asks the domain.
+    """
+    fm = _skill_frontmatter()
+    ugc = _skill_frontmatter("skills/make-ugc/SKILL.md")
+    sig = _skill_frontmatter("skills/lead-signals/SKILL.md")
+    return JSONResponse({"skills": [
+        {"name": fm.get("name", "treg"), "description": fm.get("description", ""), "files": ["SKILL.md"]},
+        {"name": ugc.get("name", "make-ugc"), "description": ugc.get("description", ""), "files": ["SKILL.md"]},
+        {"name": sig.get("name", "lead-signals"), "description": sig.get("description", ""), "files": ["SKILL.md"]},
+    ]})
+
+
+@app.get("/.well-known/skills/treg/SKILL.md", include_in_schema=False)
+async def well_known_skill_md(request: Request, db: AsyncSession = Depends(get_session)):
+    """The skill itself, at the path `index.json` promises. Deliberately the same `_serve_md` the
+    canonical `/skill.md` uses, so `{BASE}` is templated to the serving host here too — a self-hosted
+    registry advertises ITSELF, not treg.to."""
+    from .hub_gate import hub_visible
+    return _serve_md("skill.md", (await hub_visible(request, db))[0])
+
+
+@app.get("/.well-known/skills/make-ugc/SKILL.md", include_in_schema=False)
+async def well_known_make_ugc_md():
+    """The second entry `index.json` promises; the same file as /skills/ugc/SKILL.md."""
+    return _serve_md("skills/make-ugc/SKILL.md")
+
+
+@app.get("/.well-known/skills/lead-signals/SKILL.md", include_in_schema=False)
+async def well_known_lead_signals_md():
+    """The third entry `index.json` promises; the same file as /skills/lead-signals/SKILL.md."""
+    return _serve_md("skills/lead-signals/SKILL.md")
+
+
+@app.get("/connect-demo", include_in_schema=False)
+async def connect_demo_page(request: Request):
+    """A page that PRETENDS to be someone else's app, so the OAuth flow can be seen end to end.
+
+    It uses only public endpoints — register, authorize, token, revoke, and /mcp/ — with nothing
+    privileged about being served from treg's own domain. The point is to watch the whole dance in a
+    browser before trusting it inside ChatGPT, where a failure surfaces as a shrug rather than an
+    error message.
+    """
+    if not get_settings().connect_demo_enabled:
+        raise HTTPException(status_code=404, detail="connect demo is not enabled")
+    return _static_page("connect-demo.html", request)
+
+
+@app.get("/connect-demo/callback", include_in_schema=False)
+async def connect_demo_callback(request: Request):
+    """Where treg sends the browser back. Hands the code to the opener and closes."""
+    if not get_settings().connect_demo_enabled:
+        raise HTTPException(status_code=404, detail="connect demo is not enabled")
+    return _static_page("connect-demo-callback.html", request)
+
+
+@app.get("/support", include_in_schema=False)
+@app.get("/contact", include_in_schema=False)
+@app.get("/help", include_in_schema=False)
+async def support_page(request: Request):
+    """How to get help. Three paths for one page because people guess differently, and because a
+    plugin-directory listing must give a Support URL that resolves — a 404 there reads as an
+    abandoned product. Like `/privacy`, this path is effectively public API once it is filed with a
+    directory or an OAuth console: don't rename it without updating them."""
+    return _static_page("support.html", request)
+
+
+@app.get("/tutorial", include_in_schema=False)
+async def tutorial_page():
+    """Standalone shareable interactive tutorial (same STEPS[] as the dashboard Help view)."""
+    page = _WEB_DIR / "tutorial.html"
+    if not page.exists():
+        return HTMLResponse("<h3>Tutorial not bundled.</h3>")
+    # Stamp the tutorial.js URL with the bundle version. `no-cache` alone is not enough: a browser
+    # that cached the file BEFORE that header existed applies a heuristic lifetime and never
+    # revalidates, so an edited tutorial silently keeps serving the old steps (cost an hour to find).
+    js = _WEB_DIR / "tutorial.js"
+    stamp = int(js.stat().st_mtime) if js.exists() else 0   # tutorial.js's OWN mtime: _app_version()
+    html = page.read_text(encoding="utf-8").replace(       # hashes index.html and would not move
+        'src="/tutorial.js"', f'src="/tutorial.js?v={stamp}"')
+    html = html.replace("{BASE}", get_settings().public_url.rstrip("/"))  # canonical + og:url
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
+# Provider logos, resolved by convention: /logos/<service>.svg, matching `service` in
+# oauth_providers.py. Keyed off the name the registry already has, so adding a provider needs no
+# second registration step — drop the file in and it appears. Public and unauthenticated: they are
+# brand marks, not data, and the dashboard renders them before the caller is known.
+_LOGO_DIR = _WEB_DIR / "logos"
+
+
+# Demo recordings — the plugin-directory submission requires a publicly reachable video URL, and
+# hosting it ourselves means no third-party account decides whether reviewers can watch it.
+_MEDIA_DIR = _WEB_DIR / "media"
+
+
+# The interactive dashboard tour (matted screenshots) — served + its WebP images, at /dashboard-tour/.
+_TOUR_DIR = _WEB_DIR / "tour"
+
+
+# Third-party front-end libraries, vendored rather than pulled from a CDN at page load. The
+# dashboard is a single hand-written Vue file with no bundler, so Vue arrives as a plain <script>
+# — and while that script came from unpkg.com, any network that cannot reach unpkg rendered the
+# signed-in dashboard as a blank page (issue #137: a mainland-China visitor, ERR_CONNECTION_CLOSED,
+# then `Vue is not defined`). Serving it ourselves means the dashboard depends on exactly one
+# origin: whoever served the page can serve its runtime. It also closes the supply-chain hole in
+# the old floating `vue@3` tag, which let whatever npm published next run in an authed session.
+# Filenames carry their version, so a bump is a visible one-line change and caches never collide.
+_VENDOR_DIR = _WEB_DIR / "vendor"

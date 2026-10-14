@@ -1,0 +1,295 @@
+# Prospeo's account-information route is internal: connection verification and capacity only.
+# The three single-person tools intentionally share /enrich-person but fix different modes on the
+# platform path so a one-credit email hold cannot become a ten-credit mobile request. Mobile uses a
+# fixed ten-credit platform price because the response does not report its variable incremental
+# 9/10-credit upstream charge.
+provider: prospeo
+source:
+  docs: https://prospeo.io/api-docs
+  openapi: null
+  curated: '2026-09-16'
+limits: 'Starter: enrich routes 5/second, 300/minute, 2,000/day; search routes 1/second, 30/minute, 1,000/day. Search suggestions: 15/second on every plan.'
+pricing_url: https://prospeo.io/pricing
+proposed_capabilities:
+  people.search.suggestions: Resolve canonical Prospeo search-filter values
+endpoints:
+  - id: prospeo.people.email.find
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /enrich-person
+    name: Find a verified work email
+    summary: Find a verified work email and the matching person and company profile.
+    input:
+      bodyType: json
+      body:
+        only_verified_email: {type: boolean, required: true, enum: [true]}
+        enrich_mobile: {type: boolean, required: true, enum: [false]}
+        only_verified_mobile: {type: boolean, required: true, enum: [false]}
+        data: &person_identity
+          type: object
+          required: true
+          example: {full_name: Eoghan Mccabe, company_website: intercom.com}
+          note: >-
+            Identify the person with first_name + last_name plus company_name, company_website or
+            company_linkedin_url; full_name plus one company field; linkedin_url; email; or a
+            Prospeo person_id returned by search.
+      note: This catalog tool fixes the verified-email mode. Use prospeo.people.enrich for a profile match that does not require a verified email.
+    platform_request:
+      body.only_verified_email: true
+      body.enrich_mobile: false
+      body.only_verified_mobile: false
+    test_request:
+      body: {only_verified_email: true, enrich_mobile: false, only_verified_mobile: false, data: {linkedin_url: https://www.linkedin.com/in/eoghanmccabe}}
+    cost: &one_credit_success
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://prospeo.io/api-docs/enrich-person
+      checked: '2026-09-16'
+      confidence: verified
+      note: One credit when a verified email is returned; a miss or free_enrichment=true is free.
+    miss:
+      status: 400
+      when: "error_code == 'NO_MATCH'"
+      means: "no verified work email for this person — a normal outcome (and free), not an API failure (400 with error_code NO_MATCH; other 400 bodies are real request errors)"
+    docs_url: https://prospeo.io/api-docs/enrich-person
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/prospeo.people.email.find.json
+
+  - id: prospeo.people.phone.find
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /enrich-person
+    name: Find a verified mobile number
+    summary: Reveal a verified mobile number and the matching person and company profile.
+    input:
+      bodyType: json
+      body:
+        only_verified_email: {type: boolean, required: true, enum: [false]}
+        enrich_mobile: {type: boolean, required: true, enum: [true]}
+        only_verified_mobile: {type: boolean, required: true, enum: [true]}
+        data: *person_identity
+      note: This catalog tool fixes the verified-mobile mode. Platform calls use a fixed ten-credit success price because Prospeo does not report the exact incremental charge.
+    platform_request:
+      body.only_verified_email: false
+      body.enrich_mobile: true
+      body.only_verified_mobile: true
+    test_request:
+      body: {only_verified_email: false, enrich_mobile: true, only_verified_mobile: true, data: {linkedin_url: https://www.linkedin.com/in/eoghanmccabe}}
+    cost:
+      type: per_success
+      value: 10
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://prospeo.io/api-docs/enrich-person
+      checked: '2026-09-16'
+      confidence: documented
+      note: Fixed ten-credit platform price for a non-free mobile reveal; email is included. Prospeo may internally charge nine incremental credits after a prior email reveal, but its response exposes no numeric charge, so platform settlement deliberately uses the documented ten-credit maximum.
+    miss:
+      status: 400
+      when: "error_code == 'NO_MATCH'"
+      means: "no mobile number for this person — a normal outcome (and free), not an API failure (400 with error_code NO_MATCH; other 400 bodies are real request errors)"
+    docs_url: https://prospeo.io/api-docs/enrich-person
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/prospeo.people.phone.find.json
+
+  - id: prospeo.people.enrich
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /enrich-person
+    name: Enrich a person
+    summary: Enrich a person with profile, company and available verified work-email data.
+    input:
+      bodyType: json
+      body:
+        only_verified_email: {type: boolean, required: true, enum: [false]}
+        enrich_mobile: {type: boolean, required: true, enum: [false]}
+        only_verified_mobile: {type: boolean, required: true, enum: [false]}
+        data: *person_identity
+      note: This profile mode never reveals a mobile. A matched profile without a revealed email can be free.
+    platform_request:
+      body.only_verified_email: false
+      body.enrich_mobile: false
+      body.only_verified_mobile: false
+    test_request:
+      body: {only_verified_email: false, enrich_mobile: false, only_verified_mobile: false, data: {linkedin_url: https://www.linkedin.com/in/eoghanmccabe}}
+    cost:
+      <<: *one_credit_success
+      note: One credit for a matched person when free_enrichment=false; a miss or free_enrichment=true is free.
+    miss:
+      status: 400
+      when: "error_code == 'NO_MATCH'"
+      means: "nobody matched the identity — a normal outcome (and free), not an API failure (400 with error_code NO_MATCH; other 400 bodies are real request errors)"
+    docs_url: https://prospeo.io/api-docs/enrich-person
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/prospeo.people.enrich.json
+  - id: prospeo.companies.enrich
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    domain: companies
+    method: POST
+    path: /enrich-company
+    name: Company lookup and enrichment
+    summary: Enrich a company with firmographic, funding, technology and hiring data.
+    input:
+      bodyType: json
+      body:
+        data:
+          type: object
+          required: true
+          example: {company_website: intercom.com}
+          note: Identify a company with company_website, company_linkedin_url, company_name or a Prospeo company_id. Prefer website or LinkedIn URL over name alone.
+    test_request:
+      body: {data: {company_website: intercom.com}}
+    cost:
+      <<: *one_credit_success
+      note: One credit per matched company; a miss or free_enrichment=true is free.
+    docs_url: https://prospeo.io/api-docs/enrich-company
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/prospeo.companies.enrich.json
+  - id: prospeo.people.search
+    capability: people.search
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /search-person
+    name: Search people
+    summary: Search Prospeo's people database with person, role, company, location and contact-availability filters.
+    input:
+      bodyType: json
+      body:
+        filters:
+          type: object
+          required: true
+          example: {company: {websites: {include: [intercom.com]}}, person_job_title: {include: [CEO], match_mode: CONTAINS}}
+          note: >-
+            Native Prospeo filter object. Results are fixed at 25 per page. Some advanced filters
+            require Growth or Pro; unsupported plan filters return PLAN_REQUIRED. Use
+            prospeo.search.suggestions for canonical location, title, industry and technology values.
+        page: {type: integer, required: false, default: 1, min: 1, max: 1000}
+    test_request:
+      body: {page: 1, filters: {company: {websites: {include: [intercom.com]}}, person_job_title: {include: [CEO], match_mode: CONTAINS}}}
+    cost: &search_cost
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://prospeo.io/api-docs/search-person
+      checked: '2026-09-16'
+      confidence: verified
+      note: One credit for a non-empty 25-result page; free=true deduplicated pages and no-result responses are free.
+    miss:
+      status: 400
+      when: "error_code == 'NO_RESULTS'"
+      means: "no people matched the search filters — a normal outcome (and free), not an API failure (400 with error_code NO_RESULTS; other 400 bodies are real request errors)"
+    docs_url: https://prospeo.io/api-docs/search-person
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/prospeo.people.search.json
+
+  - id: prospeo.companies.search
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    domain: companies
+    method: POST
+    path: /search-company
+    name: Company lookup and search
+    summary: Search Prospeo's company database with firmographic, funding, technology and growth filters.
+    input:
+      bodyType: json
+      body:
+        filters:
+          type: object
+          required: true
+          example: {company: {websites: {include: [intercom.com]}}}
+          note: >-
+            Native Prospeo company-filter object. Results are fixed at 25 per page. Some advanced
+            filters require Growth or Pro; unsupported plan filters return PLAN_REQUIRED. Use
+            prospeo.search.suggestions for canonical location, industry and technology values.
+        page: {type: integer, required: false, default: 1, min: 1, max: 1000}
+    test_request:
+      body: {page: 1, filters: {company: {websites: {include: [intercom.com]}}}}
+    cost:
+      <<: *search_cost
+      source_url: https://prospeo.io/api-docs/search-company
+    miss:
+      status: 400
+      when: "error_code == 'NO_RESULTS'"
+      means: "no companies matched the search filters — a normal outcome (and free), not an API failure (400 with error_code NO_RESULTS; other 400 bodies are real request errors)"
+    docs_url: https://prospeo.io/api-docs/search-company
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/prospeo.companies.search.json
+
+  - id: prospeo.search.suggestions
+    capability: people.search.suggestions
+    platform: people
+    scope: any_account
+    domain: contacts
+    kind: utility
+    method: POST
+    path: /search-suggestions
+    name: Resolve search-filter values
+    summary: Look up canonical Prospeo locations, job titles, technologies, industries, codes and advanced company-filter values.
+    input:
+      bodyType: json
+      body:
+        location_search: {type: string, required: false, example: san francisco}
+        job_title_search: {type: string, required: false, example: software engineer}
+        technology_search: {type: string, required: false, example: snow}
+        industry_search: {type: string, required: false, example: software}
+        naics_search: {type: string, required: false, example: '5132'}
+        sic_search: {type: string, required: false, example: '7371'}
+        company_operating_languages_search: {type: string, required: false}
+        company_google_discovery_search: {type: string, required: false}
+        company_key_customers_search: {type: string, required: false}
+        company_integrations_search: {type: string, required: false}
+        company_products_services_products_search: {type: string, required: false}
+        company_products_services_services_search: {type: string, required: false}
+        company_icp_titles_search: {type: string, required: false}
+        company_icp_industries_search: {type: string, required: false}
+        company_icp_geographic_markets_search: {type: string, required: false}
+        company_icp_other_departments_search: {type: string, required: false}
+        company_awards_search: {type: string, required: false}
+        company_awards_compliance_search: {type: string, required: false}
+        company_headcount_by_location_search: {type: string, required: false}
+        company_funding_investors_search: {type: string, required: false}
+        company_funding_accelerator_search: {type: string, required: false}
+        company_website_traffic_countries_search: {type: string, required: false}
+      note: Provide exactly one field. Every search string must contain at least two characters.
+    test_request:
+      body: {location_search: san francisco}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      per: 1
+      unit: call
+      note: Free authenticated utility; 15 requests/second on every plan.
+    docs_url: https://prospeo.io/api-docs/search-suggestions
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/prospeo.search.suggestions.json

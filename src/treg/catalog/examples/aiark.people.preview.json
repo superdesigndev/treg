@@ -1,0 +1,19 @@
+{
+  "content": [
+    {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "profile": {"first_name": "Jane", "last_name": "Ex***e", "title": "Founder"},
+      "company": {"id": "00000000-0000-0000-0000-000000000002", "name": "Example", "domain": "example.com"},
+      "has_mobile": true,
+      "has_skills": true
+    }
+  ],
+  "totalElements": 1,
+  "totalPages": 1,
+  "number": 0,
+  "size": 1,
+  "numberOfElements": 1,
+  "first": true,
+  "last": true,
+  "empty": false
+}

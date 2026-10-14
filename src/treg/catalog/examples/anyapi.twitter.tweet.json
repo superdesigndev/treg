@@ -1,0 +1,36 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "authorId": "34743251",
+      "bookmarks": 1876,
+      "createdUtc": 1701972573,
+      "id": "1732824684683784516",
+      "likes": 33899,
+      "media": [
+        {
+          "height": 1080,
+          "type": "video",
+          "url": "https://pbs.twimg.com/ext_tw_video_thumb/1732820284301058052/pu/img/A-6jgWgxmMJ43_YO.jpg",
+          "width": 1920
+        }
+      ],
+      "quotes": 1318,
+      "replies": 2432,
+      "retweets": 6579,
+      "text": "At dawn from the gateway to Mars, the launch of Starship’s second flight test https://t.co/ffKnsVKwG4",
+      "views": 5071112
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00022,
+  "items": 1,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "resultId": "e33cf113-982f-4106-ad09-6b0d252f8e65"
+}

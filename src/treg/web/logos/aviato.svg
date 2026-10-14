@@ -1,0 +1,13 @@
+<svg width="65" height="65" viewBox="0 0 65 65" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="aviato">
+  <g clip-path="url(#clip0_3233_12468)">
+    <rect x="0.75" y="0.988281" width="64" height="64" rx="12.8" fill="#C9F223"/>
+    <rect x="0.75" y="0.988281" width="64" height="64" fill="white"/>
+    <path d="M32.7491 34.9883L17.1936 22.9883L46.4006 32.3763C47.5352 32.741 48.3046 33.7965 48.3047 34.9883H47.252C44.675 34.9883 42.2735 36.2936 40.8719 38.456C39.1601 41.0971 35.8317 42.1773 32.8952 41.0446L32.7491 40.9883L17.1936 34.9883H32.7491Z" fill="#033E34"/>
+  </g>
+  <rect x="1.25" y="1.48828" width="63" height="63" rx="12.3" stroke="#ECECEC"/>
+  <defs>
+    <clipPath id="clip0_3233_12468">
+      <rect x="0.75" y="0.988281" width="64" height="64" rx="12.8" fill="white"/>
+    </clipPath>
+  </defs>
+</svg>

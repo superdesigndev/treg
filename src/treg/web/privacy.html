@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Treg Privacy Policy</title>
 <meta name="description" content="What Treg stores, why, who it's shared with, and how to get it deleted."/>
+<link rel="canonical" href="{BASE}/privacy"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -28,7 +29,7 @@
   <div class="eyebrow">Legal</div>
   <h1>Treg Privacy Policy</h1>
   <div class="stamp">
-    <span>Last updated: 22 July 2026</span>
+    <span>Last updated: 9 October 2026</span>
     <span>Effective: 22 July 2026</span>
   </div>
 
@@ -38,14 +39,14 @@
       <li><b>We collect almost nothing about you.</b> An email address to sign in, the teams you're in, and a log of which tools were called. That's the account.</li>
       <li><b>Your credentials are encrypted and never returned.</b> No stored secret value is ever sent back to a client, shown in the dashboard, or read by us.</li>
       <li><b>We don't store what flows through the proxy.</b> A call's request and response bodies pass through and are gone. We keep the method, path, status code, and timestamp — not the content.</li>
-      <li><b>No trackers.</b> No analytics scripts, no advertising pixels, no third-party cookies. One session cookie, and that's it.</li>
+      <li><b>Minimal tracking.</b> Two first-party cookies, both ours: one keeps you signed in, one (only if you arrived from a Google Ads click) tells us the ad worked. Every page loads Google's gtag.js with all consent signals denied: it sets no advertising cookie and reads none; it sends Google cookieless pings (page views on marketing pages, and one signup event when you create your first team) that Google uses only to estimate whether its ads lead to signups. When you sign up, make your first call, or make your first payment, we also send Google Ads a SHA-256 hash of your email address (Enhanced Conversions) so Google can match that event to an ad you saw or clicked, on any device; Google matches the hash only against its own signed-in accounts and never for personalised advertising. There is no analytics on the dashboard itself.</li>
       <li><b>No training, no selling.</b> Your credentials, skills, and connected-account data are never sold and never used to train models.</li>
     </ul>
   </div>
 
   <h2 class="sec" id="s1"><span class="n">01</span>Who this covers</h2>
   <p>This policy explains how <b>Superdesign</b> ("we", "us") handles personal data in the hosted
-  Treg (also called "treg" or "tools-registry") service at <code>treg.superdesign.dev</code>. For that service, we are the
+  Treg (also called "treg" or "tools-registry") service at <code>treg.to</code>. For that service, we are the
   data controller.</p>
   <div class="note">
     <p><b>Self-hosted instances are not covered.</b> If you or your employer run treg on your own
@@ -117,8 +118,11 @@
     <li>We never <b>sell</b> personal data, credentials, or anything reached through them.</li>
     <li>We never use your credentials, connected-account data, or skill content to <b>train machine
       learning models</b> — ours or anyone else's.</li>
-    <li>We never run <b>advertising, analytics, or tracking scripts</b> on our pages. There is no
-      Google Analytics, no pixel, no session-replay, no third-party cookie.</li>
+    <li>We do not run <b>analytics or session-replay scripts</b> on the signed-in dashboard. Pages load
+      Google's gtag.js for ad-conversion measurement only, with every consent signal denied (no
+      advertising cookies; the dashboard sends Google's cookieless consent ping on load and one signup
+      event when you create your first team) — there is no Google
+      Analytics property, no pixel, and no session replay anywhere.</li>
     <li>We never use your stored credentials for anything other than the call you or a permitted
       teammate initiated, plus automated health checks and token refreshes.</li>
   </ul>
@@ -177,7 +181,17 @@
     <tr><td>Resend</td><td>Your email address and the message body</td><td>Sends sign-in codes and invitations</td><td>USA</td></tr>
     <tr><td>Google Fonts</td><td>Your IP address, when you load a treg web page</td><td>Serves the site's typefaces</td><td>USA</td></tr>
     <tr><td>Upstream APIs you connect</td><td>Whatever your call sends them</td><td>The call you asked us to make</td><td>Varies by provider</td></tr>
+    <tr><td>Google Ads</td><td>A conversion event (signup, first call, or first payment) with your click id if you arrived via a Google Ads click, and a SHA-256 hash of your email address (Enhanced Conversions for Leads); never the address itself</td><td>Measures whether the ad that brought you converted</td><td>USA</td></tr>
   </table></div>
+  <p><b>Referrals.</b> If you sign up through someone's referral link, <b>your email address is
+  shown to the person who referred you</b>, along with the date you signed up and whether your team
+  has added funds — that's how they see which of their invitations worked. Nothing else about you or
+  your usage is shared with them. If you'd rather not be visible that way, sign up without using the
+  link.</p>
+  <p>In the other direction we show you less: if you were referred, we tell you who invited you as a
+  <b>partial</b> address (<code>j&bull;&bull;&bull;@theirdomain.com</code>) and never in full. Referral
+  links are often shared publicly, and the full address of whoever posted one is not ours to hand to
+  everyone who clicks it.</p>
   <p>We'll also disclose data where legally required, or where necessary to protect the Service or
   its users from a live security threat. If we're ever compelled to hand over data about you, we'll
   tell you unless we're legally barred from doing so.</p>
@@ -186,10 +200,31 @@
   protective.</p>
 
   <h2 class="sec" id="s7"><span class="n">07</span>Cookies</h2>
-  <p>One cookie: <code>treg_session</code>. It's HTTP-only, SameSite=Lax, and secure over HTTPS. It
-  holds a signed session reference and nothing else. It's strictly necessary to keep you signed in,
-  so there's no consent banner and nothing to opt out of short of signing out.</p>
-  <p>There are no analytics, advertising, or third-party tracking cookies anywhere on the Service.</p>
+  <p><code>treg_session</code>: HTTP-only, SameSite=Lax, secure over HTTPS. It holds a signed session
+  reference and nothing else. It's strictly necessary to keep you signed in, so there's no consent
+  banner and nothing to opt out of short of signing out.</p>
+  <p><code>treg_oauth_return</code> and <code>treg_ref</code>: both HTTP-only with the same flags, and
+  both exist only when you've done the thing that sets them. The first holds the page to return you to
+  after a sign-in detour (a few minutes). The second holds a referral code if you arrived through
+  someone's invite link, so we can credit them when you create a team (30 days). Neither identifies
+  you, and neither is used for advertising.</p>
+  <p><code>treg_utm</code>: set by our own <code>/sitetrack.js</code> on your first page — if the link
+  you arrived by carried campaign tags (<code>utm_*</code>) or a referring site, it remembers that source
+  so we can tell which links bring people to treg, retained for <b>90 days</b>. It holds no identifier
+  and is never sent to a third party.</p>
+  <p><code>treg_ad</code>: set by our own <code>/adtrack.js</code>, not a Google script — if you arrive
+  from a Google Ads click, it records which ad click led to your visit (the click id and the landing
+  page), retained for <b>90 days</b>. It exists to tell us whether an ad turned into a signup, an active
+  agent, or a paying team, so we can tell which ads to keep running. It is <b>first-party</b> (set by
+  <code>treg.to</code>, readable only by us, never by Google or any other third party) and it is
+  <b>not shared with third parties</b> beyond the conversion event itself — a signup, a first call, or
+  a first payment — uploaded to Google Ads so it can measure the campaign. Each event carries the
+  click id when there is one and a SHA-256 hash of your email address (Google's Enhanced Conversions
+  for Leads), which lets Google match the event to an ad you saw or clicked on another device; the
+  address itself is never sent, and we tell Google the hash may not be used for personalised
+  advertising. Google's own tag runs with every consent signal denied, so it sets no advertising
+  cookie; it only sends cookieless pings Google uses to estimate conversions. There is no advertising
+  pixel, no third-party cookie, and no cross-site tracking script anywhere on the Service.</p>
 
   <h2 class="sec" id="s8"><span class="n">08</span>How we protect it</h2>
   <ul>
@@ -212,6 +247,7 @@
     <tr><td>Credentials and OAuth tokens</td><td>Until you delete them, disconnect the provider, or delete the team</td></tr>
     <tr><td>Skills and tool definitions</td><td>Until deleted by you or a team admin</td></tr>
     <tr><td>Call and run audit records</td><td>While the owning team exists; deleted with it</td></tr>
+    <tr><td>Answers stored for your team so a repeat question can be served without a new call</td><td>While the owning team exists; deleted with it, or earlier on request. A team admin can stop the storing at any time in the team's settings</td></tr>
     <tr><td>Sign-in codes, rate-limit counters</td><td>Minutes — expired rows are swept automatically</td></tr>
     <tr><td>Invitations</td><td>Until accepted, revoked, or expired</td></tr>
     <tr><td>Hosting server logs</td><td>Our provider's default window (short)</td></tr>
@@ -226,7 +262,7 @@
   of these are formal legal rights; we honour all of them for everyone regardless.</p>
   <ul>
     <li><b>Self-serve:</b> the dashboard lets you delete credentials, tools, skills, and whole teams,
-      and revoke all your tokens.</li>
+      revoke all your tokens, and stop answers being stored for a team.</li>
     <li><b>Everything else:</b> email <a href="mailto:jason@superdesign.dev">jason@superdesign.dev</a>.
       We'll respond within 30 days and won't charge you or treat you differently for asking.</li>
   </ul>

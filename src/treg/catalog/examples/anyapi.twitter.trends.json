@@ -1,0 +1,29 @@
+{
+  "output": {
+    "data": {
+      "asOfUtc": 1789811813,
+      "items": [
+        {
+          "name": "Greenland",
+          "query": "Greenland",
+          "rank": 1
+        },
+        "… 9 more item(s) truncated"
+      ],
+      "location": "United States",
+      "locationId": "23424977"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0001,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "resultId": "66f7db7b-a159-4525-9307-b32e8125772b"
+}

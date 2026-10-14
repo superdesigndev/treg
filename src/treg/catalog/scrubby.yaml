@@ -1,0 +1,41 @@
+# Scrubby documents five POST endpoints. The catalog exposes only synchronous single verification;
+# quick and deep bulk submit/fetch pairs are omitted because they have no documented batch maximum
+# and require an owned asynchronous workflow. Single verification settles from `credits_used`.
+provider: scrubby
+source:
+  docs: https://docs.scrubby.io/
+  openapi: https://docs.scrubby.io/scrubby-openapi.json
+  curated: '2026-09-16'
+pricing_url: https://scrubby.io/pricing/
+limits: 25 requests/second (1,500/minute) per API key. Quick bulk normally completes in 30-60 seconds; deep verification returns first results in 24 hours and final results in 72 hours.
+endpoints:
+  - id: scrubby.people.email.verify
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: POST
+    path: /validate_email
+    name: Verify an email address
+    summary: Verify one email address synchronously.
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, format: email, example: info@scrubby.io}
+      note: A fresh verification can take about two minutes. Retrying the exact address within 24 hours returns the cached result without another credit. Scrubby support confirmed that client-side timeouts do not auto-refund.
+    test_request: {body: {email: info@scrubby.io}}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://scrubby.io/pricing/
+      checked: '2026-09-16'
+      confidence: verified
+      note: One credit for a fresh verification. The response's credits_used is authoritative, including zero for a cached retry within 24 hours.
+    verified: '2026-09-16'
+    added: '2026-09-16'
+    example_response: examples/scrubby.people.email.verify.json
+    docs_url: https://docs.scrubby.io/

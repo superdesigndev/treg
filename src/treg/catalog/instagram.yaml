@@ -1,22 +1,13 @@
-# Live-verified 2026-07-28 through the treg /call proxy (connection: instagram). Every READ
-# endpoint passes; the publishing routes below are marked separately and were not called.
-#
-# Instagram Graph API, served from the Meta host (graph.facebook.com/v25.0) with the connected
-# person's user token. It reaches only a PROFESSIONAL (Business or Creator) Instagram account that
-# is linked to a Facebook Page the member administers — a personal Instagram account is invisible
-# to this API entirely.
+# The Facebook-backed routes were live-verified 2026-07-28 through treg. The 2026-09-01 audit adds
+# official Instagram Login routing on graph.instagram.com for professional accounts that do not
+# need a linked Page. Publishing and messaging writes still require deliberate manual verification.
 #
 # instagram.user.profile and instagram.user.posts are the same jobs tikhub.yaml scrapes
 # any_account; the difference is that these return the account's own private metrics (reach,
 # saves, profile views) that no scraper can see.
 #
-# Scopes granted: instagram_basic, instagram_manage_insights, pages_show_list,
-# pages_read_engagement (+ instagram_content_publish on `post`). Absent for that reason: replying
-# to or deleting comments (instagram_manage_comments) and DMs (instagram_manage_messages).
-#
-# The IG user id is NOT the @handle and not the Page id: read it from
-# /me/accounts?fields=instagram_business_account{id,username} — the same call treg's connection
-# picker uses.
+# The default direct grant uses instagram_business_* scopes and an Instagram User token. The
+# optional page-tools grant maps those capabilities to Facebook scopes and a selected Page token.
 provider: instagram
 source:
   docs: https://developers.facebook.com/docs/instagram-platform/instagram-graph-api
@@ -27,12 +18,17 @@ limits: "Graph API business-use-case limits"
 pricing_url: https://developers.facebook.com/docs/instagram-api/
 endpoints:
   - id: instagram.instagram.user.profile
+    authorization_method: instagram-login
+    authorization_methods: [instagram-login, facebook-page]
+    required_scopes: [instagram_business_basic]
+    required_resource: instagram_professional_account
+    token_type: instagram_user
     capability: instagram.user.profile
     platform: instagram
     scope: own_account
     method: GET
     path: /{ig_user_id}
-    name: "Get your account profile and followers"
+    name: "Your Instagram profile and follower counts"
     summary: "Get your Instagram professional account's profile and follower counts"
     input:
       pathParams:
@@ -45,16 +41,22 @@ endpoints:
       pathParams: {ig_user_id: "17841439917904520"}
       queryParams: {fields: "id,username,name,biography,website,profile_picture_url,followers_count,follows_count,media_count"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/instagram.instagram.user.profile.json
     docs_url: https://developers.facebook.com/docs/instagram-platform/reference/instagram-user
 
   - id: instagram.instagram.user.posts
+    authorization_method: instagram-login
+    authorization_methods: [instagram-login, facebook-page]
+    required_scopes: [instagram_business_basic]
+    required_resource: instagram_professional_account
+    token_type: instagram_user
     capability: instagram.user.posts
     platform: instagram
     scope: own_account
     method: GET
     path: /{ig_user_id}/media
-    name: "List your posts"
+    name: "Your Instagram posts — captions, likes, comments"
     summary: "List your Instagram posts with captions, permalinks and like/comment counts"
     input:
       pathParams:
@@ -70,16 +72,22 @@ endpoints:
       pathParams: {ig_user_id: "17841439917904520"}
       queryParams: {fields: "id,caption,media_type,permalink,timestamp,like_count,comments_count", limit: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/instagram.instagram.user.posts.json
     docs_url: https://developers.facebook.com/docs/instagram-platform/reference/instagram-user/media
 
   - id: instagram.instagram.post.comments
+    authorization_method: instagram-login
+    authorization_methods: [instagram-login, facebook-page]
+    required_scopes: [instagram_business_basic, instagram_business_manage_comments]
+    required_resource: instagram_professional_account
+    token_type: instagram_user
     capability: instagram.post.comments
     platform: instagram
     scope: own_account
     method: GET
     path: /{ig_media_id}/comments
-    name: "List post comments"
+    name: "Comments on one of your Instagram posts"
     summary: "List the comments on one of your Instagram posts"
     input:
       pathParams:
@@ -93,16 +101,22 @@ endpoints:
       pathParams: {ig_media_id: "17953960824194864"}
       queryParams: {fields: "id,text,username,timestamp,like_count", limit: 5}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/instagram.instagram.post.comments.json
     docs_url: https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/comments
 
   - id: instagram.instagram.account.insights
+    authorization_method: instagram-login
+    authorization_methods: [instagram-login, facebook-page]
+    required_scopes: [instagram_business_basic, instagram_business_manage_insights]
+    required_resource: instagram_professional_account
+    token_type: instagram_user
     capability: instagram.account.insights
     platform: instagram
     scope: own_account
     method: GET
     path: /{ig_user_id}/insights
-    name: "Get account reach and audience metrics"
+    name: "Your Instagram account reach and audience metrics"
     summary: "Get reach, profile views and audience metrics for your Instagram account"
     input:
       pathParams:
@@ -119,16 +133,22 @@ endpoints:
       pathParams: {ig_user_id: "17841439917904520"}
       queryParams: {metric: "reach,accounts_engaged,total_interactions", period: "day", metric_type: "total_value"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/instagram.instagram.account.insights.json
     docs_url: https://developers.facebook.com/docs/instagram-platform/insights
 
   - id: instagram.instagram.media.insights
+    authorization_method: instagram-login
+    authorization_methods: [instagram-login, facebook-page]
+    required_scopes: [instagram_business_basic, instagram_business_manage_insights]
+    required_resource: instagram_professional_account
+    token_type: instagram_user
     capability: instagram.media.insights
     platform: instagram
     scope: own_account
     method: GET
     path: /{ig_media_id}/insights
-    name: "Get engagement metrics for a post"
+    name: "Reach, saves and engagement for one Instagram post"
     summary: "Get reach, saves and engagement for a single one of your Instagram posts"
     input:
       pathParams:
@@ -141,8 +161,71 @@ endpoints:
       pathParams: {ig_media_id: "17953960824194864"}
       queryParams: {metric: "reach,saved,likes,comments,shares"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/instagram.instagram.media.insights.json
     docs_url: https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/insights
+
+  # --- direct messages (the `manage` capability, scope instagram_manage_messages) -------------
+  - id: instagram.x.user-messages
+    added: '2026-07-28'
+    authorization_method: instagram-login
+    authorization_methods: [instagram-login, facebook-page]
+    required_scopes: [instagram_business_basic, instagram_business_manage_messages]
+    required_resource: instagram_professional_account
+    token_type: instagram_user
+    authorization_paths:
+      instagram-login: /{ig_user_id}/conversations
+      facebook-page: /{page_id}/conversations
+    capability: instagram.messages.list
+    platform: instagram
+    scope: own_account
+    method: GET
+    path: /{ig_user_id}/conversations
+    name: "Your Instagram Direct message threads"
+    summary: "List Instagram Direct conversations that customers started with your account"
+    input:
+      pathParams:
+        ig_user_id: {type: string, required: true, authorization_methods: [instagram-login], note: "required with Instagram Login: numeric Instagram Professional account id", example: "17841400000000000"}
+        page_id: {type: string, required: true, authorization_methods: [facebook-page], note: "required with Facebook Page authorization: linked Facebook Page id", example: "123456789012345"}
+      queryParams:
+        platform: {type: string, required: true, authorization_methods: [facebook-page], note: "required with Facebook Page authorization; selects Instagram rather than Messenger conversations", example: instagram}
+        fields: {type: string, required: false, note: "request participants and messages together when preparing a reply", example: "id,updated_time,participants,messages{id,from,to,message,created_time}"}
+        limit: {type: integer, required: false, example: 25}
+      note: "Direct Instagram Login uses the Instagram Professional account id and an Instagram User token. Existing Facebook-backed connections use the linked Page id, add platform=instagram, and keep the same public endpoint id. Conversation ids are Graph API ids; an instagram.com/direct/t/... browser thread id is not interchangeable."
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with the connected account / platform rate limits apply}
+    unverified: "requires an account with a real customer-initiated Instagram conversation; verify deliberately in the App Review demo"
+    docs_url: https://developers.facebook.com/docs/messenger-platform/instagram/features/conversation
+
+  - id: instagram.instagram.message.send
+    added: '2026-09-01'
+    authorization_method: instagram-login
+    authorization_methods: [instagram-login, facebook-page]
+    required_scopes: [instagram_business_basic, instagram_business_manage_messages]
+    required_resource: instagram_professional_account
+    token_type: instagram_user
+    authorization_paths:
+      instagram-login: /{ig_user_id}/messages
+      facebook-page: /{page_id}/messages
+    kind: action
+    capability: instagram.message.send
+    platform: instagram
+    scope: own_account
+    method: POST
+    path: /{ig_user_id}/messages
+    name: "Reply in an Instagram Direct conversation"
+    summary: "Send an Instagram Direct reply to a customer who has messaged your account"
+    input:
+      pathParams:
+        ig_user_id: {type: string, required: true, authorization_methods: [instagram-login], note: "required with Instagram Login: numeric Instagram Professional account id", example: "17841400000000000"}
+        page_id: {type: string, required: true, authorization_methods: [facebook-page], note: "required with Facebook Page authorization: linked Facebook Page id", example: "123456789012345"}
+      body:
+        recipient: {type: object, required: true, note: "the recipient's Instagram-scoped id (IGSID) obtained from a conversation participant or webhook — not a username, browser thread id, or your own account id", example: {id: "987654321012345"}}
+        message: {type: object, required: true, note: "message payload; this text form is the simplest App Review demonstration", example: {text: "Thanks for your message — this reply was sent through treg."}}
+      bodyType: json
+      note: "Direct Instagram Login uses the Instagram Professional account id and an Instagram User token. Existing Facebook-backed connections keep the Page route and Page token. This is a reply surface, not cold outreach: the recipient must have initiated contact and Meta's messaging-window and policy rules apply."
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with the connected account / platform rate limits apply}
+    unverified: "write action — sends a real DM; requires a deliberate manual App Review test, never an automated verify run"
+    docs_url: https://developers.facebook.com/docs/messenger-platform/instagram/features/send-message
 
   # --- publishing (the `post` capability, scope instagram_content_publish) --------------------
   #
@@ -158,16 +241,23 @@ endpoints:
   # that Meta downloads server-side — so anything behind auth, on localhost, or on a signed URL
   # that expires within minutes fails at container creation with an unhelpful error.
   #
-  # Meta caps an account at 50 published posts per rolling 24 hours; the remaining allowance is
-  # readable at GET /{ig_user_id}/content_publishing_limit. Containers expire 24h after creation.
+  # Meta caps an account at 100 API-published posts per 24-hour moving period (carousels count
+  # as one); the remaining allowance is readable at GET /{ig_user_id}/content_publishing_limit
+  # before a batch. Containers expire 24h after creation.
   - id: instagram.instagram.media.container.create
+    added: '2026-07-28'
+    authorization_method: instagram-login
+    authorization_methods: [instagram-login, facebook-page]
+    required_scopes: [instagram_business_basic, instagram_business_content_publish]
+    required_resource: instagram_professional_account
+    token_type: instagram_user
     kind: action
     capability: instagram.media.container.create
     platform: instagram
     scope: own_account
     method: POST
     path: /{ig_user_id}/media
-    name: "Create a post media container"
+    name: "Stage an Instagram post — create its media container"
     summary: "Stage an Instagram post by creating the media container it will be published from"
     input:
       pathParams:
@@ -183,18 +273,24 @@ endpoints:
         collaborators: {type: string, required: false, note: "JSON array of @handles invited as collaborators; not allowed on stories"}
         location_id: {type: string, required: false, note: "a Facebook Page id that has a location"}
       note: "step 1 of the publish flow. Needs instagram_content_publish (treg's `post` capability — a `read` connection 403s here) and returns {id: <container id>}. A VIDEO container is not ready when this returns: poll instagram.media.container.status until status_code is FINISHED before publishing, or the publish call fails. Stories have no carousel — publish each story as its own container"
-    cost: {type: free, value: 0, currency: USD, unit: call, note: included with the connected account; Meta caps publishing at 50 posts per rolling 24h per account rather than charging per call}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with the connected account; Meta caps publishing at 100 API-published posts per 24-hour moving period (carousels count as one) rather than charging per call}
     unverified: "write action — part of publishing to a real account; requires a deliberate manual test, never an automated verify run"
     docs_url: https://developers.facebook.com/docs/instagram-platform/content-publishing
 
   - id: instagram.instagram.media.container.status
+    added: '2026-07-28'
+    authorization_method: instagram-login
+    authorization_methods: [instagram-login, facebook-page]
+    required_scopes: [instagram_business_basic, instagram_business_content_publish]
+    required_resource: instagram_professional_account
+    token_type: instagram_user
     kind: utility
     capability: instagram.media.container.status
     platform: instagram
     scope: own_account
     method: GET
     path: /{ig_container_id}
-    name: "Check media container processing status"
+    name: "Check Instagram media container status"
     summary: "Check whether a staged Instagram container has finished processing"
     input:
       pathParams:
@@ -207,21 +303,26 @@ endpoints:
     docs_url: https://developers.facebook.com/docs/instagram-platform/reference/instagram-media
 
   - id: instagram.instagram.post.publish
+    added: '2026-07-28'
+    authorization_method: instagram-login
+    authorization_methods: [instagram-login, facebook-page]
+    required_scopes: [instagram_business_basic, instagram_business_content_publish]
+    required_resource: instagram_professional_account
+    token_type: instagram_user
     kind: action
     capability: instagram.post.create
     platform: instagram
     scope: own_account
     method: POST
     path: /{ig_user_id}/media_publish
-    name: "Publish a post"
+    name: "Publish a staged post to your Instagram account"
     summary: "Publish a post to your own Instagram business account"
     input:
       pathParams:
         ig_user_id: {type: string, required: true, example: "17841400000000000"}
       queryParams:
         creation_id: {type: string, required: true, note: "the container id from instagram.media.container.create — for a carousel this is the PARENT container, never a child", example: "17890000000000000"}
-      note: "step 3, and the point of no return. Returns {id: <media id>}; the shareable link needs a second call, GET /{media_id}?fields=permalink. A container that was already published, has expired (24h) or errored answers with an error rather than republishing. Meta's 50-posts-per-24h limit is enforced here — read the remaining allowance at GET /{ig_user_id}/content_publishing_limit before a batch"
-    cost: {type: free, value: 0, currency: USD, unit: call, note: included with the connected account; counts against the 50-per-24h publishing quota rather than a per-call price}
+      note: "step 3, and the point of no return. Returns {id: <media id>}; the shareable link needs a second call, GET /{media_id}?fields=permalink. A container that was already published, has expired (24h) or errored answers with an error rather than republishing. Meta's limit of 100 API-published posts per 24-hour moving period (carousels count as one) is enforced here — read the remaining allowance at GET /{ig_user_id}/content_publishing_limit before a batch"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with the connected account; counts against the 100 API-published posts per 24-hour moving period (carousels count as one) rather than a per-call price}
     unverified: "write action — this publishes to a real account; requires a deliberate manual test, never an automated verify run"
     docs_url: https://developers.facebook.com/docs/instagram-platform/content-publishing
-

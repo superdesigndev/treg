@@ -4,7 +4,10 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Treg - Tutorial</title>
+<meta name="description" content="Learn treg in ten minutes: find a tool by what it does, call it through the proxy without holding a key, and bring your own keys and skills."/>
+<link rel="canonical" href="{BASE}/tutorial"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<script src="/sitetrack.js"></script>
 <script src="/tutorial.js"></script>
 <style>
   /* Same tokens as the dashboard — see index.html and
@@ -79,7 +82,7 @@
   .hl-comment{color:var(--sx-cmt);font-style:italic} .hl-string,.hl-str{color:var(--sx-str)}
   .hl-var,.hl-key{color:var(--sx-var)} .hl-flag,.hl-num{color:var(--sx-flag)}
   .hl-env,.hl-punct{color:var(--sx-punct)} .hl-cmd,.hl-kw{color:var(--sx-cmd);font-weight:600}
-  @media(max-width:800px){.wrap{grid-template-columns:1fr}nav.side{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--line)}}
+  @media(max-width:800px){.top{flex-wrap:wrap;row-gap:8px;padding:10px 16px}.top .sub{flex:1 1 calc(100% - 80px)}.top .spacer{display:none}.wrap{grid-template-columns:1fr}nav.side{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--line)}}
   /* rows.gg treatments, matching the dashboard: prose in sans, mono for commands,
      borderless card surfaces, ink emphasis instead of an accent colour. */
   body{font-family:var(--sans)}
@@ -215,5 +218,6 @@
   go(0);
 })();
 </script>
+<script src="/gtag.js"></script>
 </body>
 </html>

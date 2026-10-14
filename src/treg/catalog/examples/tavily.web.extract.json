@@ -1,0 +1,14 @@
+{
+  "results": [
+    {
+      "url": "https://example.com",
+      "title": "Example Domain",
+      "raw_content": "# Example Domain\n\nThis domain is for use in documentation examples without needing permission. Avoid use in operations.\n\n[Learn more](https://iana.org/domains/example)",
+      "images": []
+    }
+  ],
+  "failed_results": [],
+  "response_time": 0.01,
+  "usage": {"credits": 0},
+  "request_id": "redacted-live-request-id"
+}

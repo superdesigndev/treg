@@ -1,0 +1,170 @@
+{
+  "fundingRounds": [
+    {
+      "id": 88306,
+      "announcedOn": "2019-09-19T00:00:00.000Z",
+      "moneyRaised": 250000000,
+      "name": "Series G - Stripe",
+      "stage": "Series G",
+      "valuation": {
+        "exact": 35000000000
+      },
+      "leadPersonInvestorList": [
+        {
+          "id": "person-id-redacted",
+          "fullName": "Example Investor",
+          "firstName": "Example",
+          "lastName": "Investor",
+          "entityType": "person",
+          "location": "Redacted",
+          "URLs": {
+            "golden": "golden.com/wiki/example-investor",
+            "twitter": "twitter.com/example_investor",
+            "website": "example.com",
+            "facebook": "facebook.com/example.investor",
+            "linkedin": "linkedin.com/in/example-investor",
+            "angelList": "angel.co/u/example-investor",
+            "signalNFX": "signal.nfx.com/investors/example-investor",
+            "crunchbase": "crunchbase.com/person/example-investor"
+          }
+        }
+      ],
+      "personInvestorList": [
+        {
+          "id": "person-id-redacted-1",
+          "fullName": "Example Investor One",
+          "firstName": "Example",
+          "lastName": "Investor One",
+          "entityType": "person",
+          "location": "Redacted",
+          "URLs": {
+            "golden": "golden.com/wiki/example-investor-one",
+            "twitter": "x.com/example_investor_one",
+            "website": "example.com",
+            "linkedin": "linkedin.com/in/example-investor-one",
+            "crunchbase": "crunchbase.com/person/example-investor-one"
+          }
+        },
+        {
+          "id": "person-id-redacted-2",
+          "fullName": "Example Investor Two",
+          "firstName": "Example",
+          "lastName": "Investor Two",
+          "entityType": "person",
+          "location": "Redacted",
+          "URLs": {
+            "golden": "golden.com/wiki/example-investor-two",
+            "twitter": "twitter.com/example_investor_two",
+            "website": "example.com",
+            "facebook": "facebook.com/example.investor.two",
+            "linkedin": "linkedin.com/in/example-investor-two",
+            "angelList": "angel.co/u/example-investor-two",
+            "signalNFX": "signal.nfx.com/investors/example-investor-two",
+            "crunchbase": "crunchbase.com/person/example-investor-two"
+          }
+        }
+      ],
+      "leadCompanyInvestorList": [
+        {
+          "id": "ZIpuW5-6IRJMRCWr1dJmFwfDI0Uut8Y",
+          "name": "Heavybit",
+          "description": "Since 2013, Heavybit has continuously launched and scaled startups across multiple innovation cycles, from DevSecOps, feature flagging, AI and beyond.",
+          "country": "United States",
+          "region": "California",
+          "locality": "San Francisco",
+          "URLs": {
+            "golden": "golden.com/wiki/Heavybit-BWKNKPD",
+            "twitter": "twitter.com/heavybit",
+            "website": "heavybit.com",
+            "facebook": "www.facebook.com/heavybitindustries",
+            "linkedin": "linkedin.com/company/heavybit",
+            "angelList": "angel.co/heavybit-industries",
+            "signalNFX": "signal.nfx.com/firms/heavybit",
+            "crunchbase": "crunchbase.com/organization/heavybit-industries"
+          },
+          "industryList": [
+            "Investment & Asset Management",
+            "Software & SaaS"
+          ],
+          "linkedinIndustries": [
+            "Venture Capital and Private Equity Principals"
+          ]
+        },
+        {
+          "id": "vmxuy__o604sYebunDvGOtkj71rqUrs",
+          "name": "General Catalyst",
+          "description": "General Catalyst is a venture capital firm that provides early-stage and growth equity investments. They provide ongoing momentum that accelerates ideas, careers, and companies toward standout success. They create the ideal conditions for growth, surround clients with the right people, and offer mentorship based on deep experience.  To date,General Catalyst has managed eight venture capital funds totaling approximately $3.75 billion in capital commitments.",
+          "country": "United States",
+          "region": "California",
+          "locality": "San Francisco",
+          "URLs": {
+            "golden": "golden.com/wiki/General_Catalyst-WGBGJV",
+            "contact": "www.generalcatalyst.com/contact",
+            "twitter": "twitter.com/gcvp",
+            "website": "generalcatalyst.com",
+            "facebook": "www.facebook.com/generalcatalyst",
+            "linkedin": "linkedin.com/company/general-catalyst",
+            "angelList": "angel.co/company/general-catalyst",
+            "signalNFX": "signal.nfx.com/firms/general-catalyst",
+            "crunchbase": "crunchbase.com/organization/general-catalyst-partners"
+          },
+          "industryList": [
+            "Investment & Asset Management"
+          ],
+          "linkedinIndustries": [
+            "Venture Capital and Private Equity Principals"
+          ]
+        },
+        "… 1 more item(s) truncated"
+      ],
+      "companyInvestorList": [
+        {
+          "id": "vmxuy__o604sYebunDvGOtkj71rqUrs",
+          "name": "General Catalyst",
+          "description": "General Catalyst is a venture capital firm that provides early-stage and growth equity investments. They provide ongoing momentum that accelerates ideas, careers, and companies toward standout success. They create the ideal conditions for growth, surround clients with the right people, and offer mentorship based on deep experience.  To date,General Catalyst has managed eight venture capital funds totaling approximately $3.75 billion in capital commitments.",
+          "country": "United States",
+          "region": "California",
+          "locality": "San Francisco",
+          "URLs": {
+            "golden": "golden.com/wiki/General_Catalyst-WGBGJV",
+            "contact": "www.generalcatalyst.com/contact",
+            "twitter": "twitter.com/gcvp",
+            "website": "generalcatalyst.com",
+            "facebook": "www.facebook.com/generalcatalyst",
+            "linkedin": "linkedin.com/company/general-catalyst",
+            "angelList": "angel.co/company/general-catalyst",
+            "signalNFX": "signal.nfx.com/firms/general-catalyst",
+            "crunchbase": "crunchbase.com/organization/general-catalyst-partners"
+          },
+          "industryList": [
+            "Investment & Asset Management"
+          ],
+          "linkedinIndustries": [
+            "Venture Capital and Private Equity Principals"
+          ]
+        },
+        {
+          "id": "K9tLpIEl-F8ouWMwyABh_oOkzEcZ-tc",
+          "name": "Seek Ventures",
+          "description": "We're a global investment firm focused on public and private investments within real estate, climate and crypto with over 15 years experience.",
+          "country": "United Kingdom",
+          "region": "Greater London",
+          "URLs": {
+            "golden": "golden.com/wiki/Seek_Ventures-BW9BRYE",
+            "website": "seekventures.com",
+            "linkedin": "linkedin.com/company/seekventures",
+            "crunchbase": "crunchbase.com/organization/seek-ventures"
+          },
+          "industryList": [],
+          "linkedinIndustries": [
+            "Venture Capital and Private Equity Principals"
+          ]
+        },
+        "… 3 more item(s) truncated"
+      ],
+      "companyID": "OYClaZ4jscaMd-JHzdbItcb2o3wRHoY"
+    }
+  ],
+  "pages": 21,
+  "totalResults": 21
+}

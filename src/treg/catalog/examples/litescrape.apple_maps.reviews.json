@@ -1,0 +1,55 @@
+{
+  "search_metadata": {
+    "id": "1898e2f57da2b55067a085d3",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/apple/maps/reviews?muid=4560078147072908047&locale=en-US",
+    "created_at": "2026-09-29 13:58:46 UTC",
+    "processed_at": "2026-09-29 13:58:47 UTC",
+    "total_time_taken": 0.315,
+    "apple_maps_url": "https://maps.apple.com/place?place-id=I3F48A6EA184D5B0F&lang=en-US"
+  },
+  "search_parameters": {
+    "muid": "4560078147072908047",
+    "locale": "en-US"
+  },
+  "search_information": {
+    "review_source": "Apple Maps",
+    "apple_rating_available": true,
+    "apple_written_reviews_returned": 0
+  },
+  "place_info": {
+    "place_id": "I3F48A6EA184D5B0F",
+    "muid": "4560078147072908047",
+    "provider_id": "9902",
+    "title": "Dishoom Covent Garden",
+    "link": "https://maps.apple.com/place?auid=4560078147072908047&_provider=9902"
+  },
+  "reviews": [],
+  "rating_summary": {
+    "rating": 89,
+    "max_rating": 100,
+    "ratings": 289
+  },
+  "ratings": {
+    "attribution": {
+      "vendor_id": "com.apple",
+      "name": "Apple",
+      "external_item_id": "136426617"
+    },
+    "values": [
+      {
+        "type": "APPLE_RATING",
+        "rating": 89,
+        "max_rating": 100,
+        "reviews": 289
+      },
+      {
+        "type": "APPLE_RATING",
+        "rating": 94,
+        "max_rating": 100,
+        "reviews": 239,
+        "category": "Atmosphere"
+      }
+    ]
+  }
+}

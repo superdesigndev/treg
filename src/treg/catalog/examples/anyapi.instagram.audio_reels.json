@@ -1,0 +1,31 @@
+{
+  "output": {
+    "data": {
+      "hasMore": true,
+      "nextCursor": "4TncffDQ20URiGzwbyfd3RPgE5dVpCpfhSO6NM7BZlL7xoU33Y-2lg1nyuvYA81iEhokuxVLzCadJse8WjIigCXk9sTJm1EdyxYL09jVIHHSCR0hERSSrcThDCiIfMpO3EDwN6WLVAG9zdjfLjgi6GIkFbDlxx2eIFhUgs1xunFDBw2RaKBvvJ60lLfMHmLxdaRVQmjw… [412 chars]",
+      "reels": [
+        {
+          "code": "Dcrddr5y8_e",
+          "comments": 122,
+          "handle": "dillydogthorton",
+          "id": "3975400679438798814_66961741452",
+          "likes": 4073,
+          "plays": 99756
+        },
+        "… 11 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 12,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "2a7f0d30-c6a9-4eb6-a2cb-a8fbde68fccf"
+}

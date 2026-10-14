@@ -1,0 +1,33 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "hIcpqK49Fpm6LV2Tc5XGpPBwEs2Nk1E1tPqW0cOwmz4ot5CW-AMl-Rlrt_e4LPdklZ0AdtjWfoZcbEj3l9DKa1BfN1e4VdRDweXS5mmSMcTWcJd65lskaP_4FNqJcWoh2n4OuOR5_O4mn9Ty2xCXJv1YjfNTbX0Z3jMq",
+      "videos": [
+        {
+          "author": "plantyou",
+          "caption": "marry me chickpeas #Recipe #budgetrecipe #plantbased ",
+          "comments": 2621,
+          "createdUtc": 1745271708,
+          "id": "7495884873522040069",
+          "likes": 633630,
+          "shares": 77195,
+          "views": 12828625
+        },
+        "… 19 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 20,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "hint": "large_result: this response is ~15 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "56c1ea9c-f6f3-4853-a59d-92baeeb121ea"
+}

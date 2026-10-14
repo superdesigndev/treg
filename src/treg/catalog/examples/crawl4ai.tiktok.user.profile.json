@@ -1,0 +1,56 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: tiktok-profile: @nasa · NASA · 2044584 followers · 56 videos"
+    ]
+  },
+  "recipe": "tiktok-profile",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 175,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "avatar": "https://p16-common-sign.tiktokcdn-eu.com/tos-maliva-avt-0068/e5143212a59c09a008bf50f487d54d1f~tplv-tiktokx-cropcenter:1080:1080.jpeg?dr=10399&refresh_token=4c90a362&x-expires=1791867600&x-signature=kDvn7Q%2BHs2SsvN%2FEJ%2F%2FZGGMutJ4%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=81f88b70&idc=no1a",
+      "bio": "Making the seemingly impossible, possible.✨",
+      "followers": 2044584,
+      "following": 23,
+      "likes": 10827818,
+      "nickname": "NASA",
+      "sec_uid": "MS4wLjABAAAAU9BRVzC8oCaegVnia8IbqWhPb_-dbU7s00Y3wS1_Nx8g5RUaYvyXrpejgjdxTwd6",
+      "url": "https://www.tiktok.com/@nasa",
+      "user_id": "7664638705177150477",
+      "username": "nasa",
+      "verified": true,
+      "videos": 56
+    }
+  ]
+}

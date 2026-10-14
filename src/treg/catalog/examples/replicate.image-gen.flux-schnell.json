@@ -1,0 +1,20 @@
+{
+  "id": "example-prediction-id",
+  "model": "black-forest-labs/flux-schnell",
+  "version": "hidden",
+  "input": {
+    "prompt": "A minimal editorial illustration of a red paper boat on a pale blue background.",
+    "num_outputs": 1,
+    "aspect_ratio": "1:1",
+    "output_format": "webp"
+  },
+  "logs": "",
+  "output": null,
+  "error": null,
+  "status": "processing",
+  "created_at": "2026-09-01T07:27:00Z",
+  "urls": {
+    "get": "https://api.replicate.com/v1/predictions/example-prediction-id",
+    "cancel": "https://api.replicate.com/v1/predictions/example-prediction-id/cancel"
+  }
+}

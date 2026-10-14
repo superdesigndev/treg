@@ -1,0 +1,44 @@
+{
+  "cache": "miss",
+  "chunks_total": 1,
+  "chunks_used": 1,
+  "content_hash": "a6f41d0d78d5e81955f5e445576ba5d9f4852a719653bd9a7e390aee13ae3b95",
+  "data": [
+    {
+      "points": 50,
+      "title": "Pixel 11 doesn't yet meet the GrapheneOS security standards and may be skipped"
+    },
+    {
+      "points": 180,
+      "title": "Europe's new robotics unicorn: Germany's RobCo hits $1B valuation"
+    },
+    {
+      "points": 126,
+      "title": "Web Search API"
+    }
+  ],
+  "engine": "http",
+  "errors": 0,
+  "mode": "one_shot",
+  "model": "gemini-3.1-flash-lite",
+  "ms": 1964,
+  "ok": true,
+  "provider": "gemini",
+  "url": "https://news.ycombinator.com",
+  "usage": {
+    "boxes": [
+      "crawl",
+      "extract"
+    ],
+    "llm_completion_tokens": 110,
+    "llm_model": "gemini-3.1-flash-lite",
+    "llm_prompt_tokens": 2243,
+    "llm_tokens": 2353,
+    "remaining_before": {
+      "concurrent": 9,
+      "requests": 29,
+      "search": 120
+    },
+    "units": 1
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "emails": [
+    {
+      "email": "person@example.com",
+      "type": "work"
+    }
+  ]
+}

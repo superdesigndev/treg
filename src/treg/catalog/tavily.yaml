@@ -1,0 +1,233 @@
+provider: tavily
+source:
+  docs: https://docs.tavily.com/documentation/api-reference
+  openapi: https://docs.tavily.com/documentation/api-reference/openapi.json
+  curated: '2026-09-21'
+pricing_url: https://docs.tavily.com/documentation/api-credits
+limits: "Development keys allow 100 requests/minute and production keys 1,000 requests/minute; Crawl is limited to 100 requests/minute on both. A 429 may include Retry-After. Platform Search requires include_usage: true for per-request settlement. Platform Map and Crawl require an explicit limit of 1-20 so the hold is bounded; BYOK retains Tavily's upstream range."
+
+endpoints:
+  - id: tavily.web.search.news
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search
+    name: Search recent news
+    summary: Search news articles with Tavily's news topic.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true}
+        topic: {type: string, required: true, enum: [news]}
+        max_results: {type: integer, required: false, min: 1, max: 20}
+        search_depth: {type: string, required: false, enum: [basic]}
+        include_usage: {type: boolean, required: false, enum: [true]}
+    platform_request: {body.include_usage: true}
+    test_request: {body: {query: "AI policy", topic: news, max_results: 10, search_depth: basic, include_usage: true}}
+    verified: '2026-10-05'
+    added: '2026-10-05'
+    cost: {type: per_call, value: 1, currency: credit, unit: call,
+           tavily_rates: {basic: 1, fast: 1, ultra_fast: 1, advanced: 2},
+           source: docs, source_url: "https://docs.tavily.com/documentation/api-credits",
+           checked: '2026-10-05', confidence: verified,
+           note: "News with explicit basic depth costs one credit; include_usage reports settlement usage."}
+    docs_url: https://docs.tavily.com/documentation/api-reference/endpoint/search
+    example_response: examples/tavily.web.search.news.json
+  - id: tavily.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search
+    name: Search the open web
+    summary: Search the web with semantic ranking, optional answers, domain and date filters, images, and page content.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "recent changes to the EU AI Act guidance"}
+        search_depth: {type: string, required: false, default: basic, enum: [basic, advanced, fast, ultra-fast], example: basic, note: "Basic, fast and ultra-fast cost 1 credit; advanced costs 2. auto_parameters can raise a basic request to the advanced price."}
+        chunks_per_source: {type: integer, required: false, default: 3, min: 1, max: 3}
+        max_results: {type: integer, required: false, default: 10, min: 0, max: 20, example: 5}
+        topic: {type: string, required: false, default: general, enum: [general, news, finance]}
+        time_range: {type: string, required: false, enum: [day, week, month, year, d, w, m, y]}
+        start_date: {type: string, required: false, note: "YYYY-MM-DD; must precede end_date."}
+        end_date: {type: string, required: false, note: "YYYY-MM-DD; must follow start_date."}
+        include_published_date: {type: boolean, required: false, default: false}
+        filter_by_published_date: {type: boolean, required: false, default: false}
+        include_answer: {type: "boolean|string", required: false, default: false, note: "false, true, basic, or advanced"}
+        include_raw_content: {type: "boolean|string", required: false, default: false, note: "false, true, markdown, or text"}
+        include_images: {type: boolean, required: false, default: false}
+        include_image_descriptions: {type: boolean, required: false, default: false}
+        include_favicon: {type: boolean, required: false, default: false}
+        include_domains: {type: "array[string]", required: false, maxItems: 300}
+        exclude_domains: {type: "array[string]", required: false, maxItems: 150}
+        include_domains_mode: {type: string, required: false, enum: [restrict, prefer]}
+        country: {type: string, required: false, note: "Country name accepted by Tavily; available for general search."}
+        language: {type: string, required: false, default: en}
+        filter_by_language: {type: boolean, required: false, default: false}
+        auto_parameters: {type: boolean, required: false, default: false}
+        exact_match: {type: boolean, required: false, default: false}
+        include_usage: {type: boolean, required: false, enum: [true], example: true, note: "Optional with your own key; platform Search requires true so treg can settle from this request's reported usage."}
+        safe_search: {type: boolean, required: false, default: false}
+      note: "Results are ranked web pages with title, URL, content, score and optional raw content, publication date, favicon and images. HTTP 432 is the plan cap; 433 is the PAYGO cap."
+    platform_request: {body.include_usage: true}
+    test_request:
+      body: {query: "recent changes to the EU AI Act guidance", search_depth: basic, max_results: 3, include_usage: true}
+    verified: '2026-09-21'
+    added: '2026-09-21'
+    cost:
+      type: per_call
+      table:
+        - {when: {body.auto_parameters: true}, value: 2}
+        - {when: {body.search_depth: advanced}, value: 2}
+        - {when: {body.search_depth: basic}, value: 1}
+        - {when: {body.search_depth: fast}, value: 1}
+        - {when: {body.search_depth: ultra-fast}, value: 1}
+      fallback: {value: 2, note: "The documented maximum is the two-credit advanced search selected explicitly or by auto_parameters."}
+      currency: credit
+      unit: call
+      tavily_rates: {basic: 1, fast: 1, ultra_fast: 1, advanced: 2}
+      source: docs
+      source_url: https://docs.tavily.com/documentation/api-credits
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Basic, fast and ultra-fast cost one credit per request; advanced costs two. auto_parameters may select advanced, while an explicit basic depth overrides that selection. Platform Search settles from this request's usage.credits; BYOK is unmetered."
+    docs_url: https://docs.tavily.com/documentation/api-reference/endpoint/search
+    example_response: examples/tavily.web.search.json
+
+  - id: tavily.web.extract
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /extract
+    name: Extract web pages
+    summary: Extract clean content from one to twenty URLs, with optional query-focused chunks and images.
+    input:
+      bodyType: json
+      body:
+        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 20, example: ["https://example.com"]}
+        query: {type: string, required: false, note: "Rerank extracted chunks for this query."}
+        chunks_per_source: {type: integer, required: false, default: 3, min: 1, max: 5}
+        extract_depth: {type: string, required: false, default: basic, enum: [basic, advanced], example: basic}
+        include_images: {type: boolean, required: false, default: false}
+        include_favicon: {type: boolean, required: false, default: false}
+        format: {type: string, required: false, default: markdown, enum: [markdown, text]}
+        timeout: {type: number, required: false, min: 1, max: 60}
+      note: "Failed URLs appear in failed_results and are not charged. Every successful Basic extraction is allocated 0.2 credit; Advanced is 0.4 credit. Platform settlement counts this call's results and ignores grouped usage.credits."
+    test_request:
+      body: {urls: ["https://example.com"], extract_depth: basic}
+    verified: '2026-09-21'
+    added: '2026-09-21'
+    cost:
+      type: per_success
+      value: 0.4
+      table_min: 0.2
+      currency: credit
+      per: 1
+      unit: result
+      tavily_rates: {basic: 0.2, advanced: 0.4}
+      source: docs
+      source_url: https://docs.tavily.com/documentation/api-credits
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Basic is 0.2 credit per successful extraction; Advanced is 0.4. Platform reserve uses requested URLs, selected depth, and the 20-URL maximum, then settlement counts valid results only. failed_results and grouped usage.credits do not charge the caller; BYOK is unmetered."
+    docs_url: https://docs.tavily.com/documentation/api-reference/endpoint/extract
+    example_response: examples/tavily.web.extract.json
+
+  - id: tavily.web.map
+    capability: web.map
+    platform: web
+    domain: map
+    scope: any_account
+    method: POST
+    path: /map
+    name: Map a website
+    summary: Discover URLs from a website with depth, breadth, path and domain controls.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        instructions: {type: string, required: false, note: "Natural-language discovery instructions; doubles the mapping credit rate."}
+        max_depth: {type: integer, required: false, default: 1, min: 1, max: 5}
+        max_breadth: {type: integer, required: false, default: 20, min: 1, max: 500}
+        limit: {type: integer, required: false, min: 1, example: 10, note: "Shared-key calls require an explicit value of 1-20. Tavily publishes no upstream maximum; BYOK can use its accepted range."}
+        select_paths: {type: "array[string]", required: false}
+        select_domains: {type: "array[string]", required: false}
+        exclude_paths: {type: "array[string]", required: false}
+        exclude_domains: {type: "array[string]", required: false}
+        allow_external: {type: boolean, required: false, default: true}
+        timeout: {type: number, required: false, default: 150, min: 10, max: 150}
+      note: "A failed map is free. Each successful returned page is allocated 0.1 credit, or 0.2 when the caller supplies nonempty instructions. Platform settlement ignores grouped usage.credits."
+    test_request:
+      body: {url: "https://example.com", limit: 10}
+    verified: '2026-09-21'
+    added: '2026-09-21'
+    cost:
+      type: per_success
+      value: 0.2
+      table_min: 0.1
+      currency: credit
+      per: 1
+      unit: page
+      tavily_rates: {regular: 0.1, instructions: 0.2}
+      source: docs
+      source_url: https://docs.tavily.com/documentation/api-credits
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Regular Map is 0.1 credit per successful returned page; caller-supplied nonempty instructions make it 0.2. Platform calls require limit 1-20, reserve that bounded maximum, and settle valid results only. Grouped usage.credits is ignored; BYOK is unmetered and keeps Tavily's upstream range."
+    docs_url: https://docs.tavily.com/documentation/api-reference/endpoint/map
+    example_response: examples/tavily.web.map.json
+
+  - id: tavily.web.crawl
+    capability: web.crawl
+    platform: web
+    domain: crawl
+    scope: any_account
+    method: POST
+    path: /crawl
+    name: Crawl a website
+    summary: Map a website and extract clean content from the discovered pages in one request.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        instructions: {type: string, required: false, note: "Natural-language crawl instructions; doubles the mapping portion of the charge."}
+        chunks_per_source: {type: integer, required: false, default: 3, min: 1, max: 5}
+        max_depth: {type: integer, required: false, default: 1, min: 1, max: 5}
+        max_breadth: {type: integer, required: false, default: 20, min: 1, max: 500}
+        limit: {type: integer, required: false, min: 1, example: 10, note: "Shared-key calls require an explicit value of 1-20. Tavily publishes no upstream maximum; BYOK can use its accepted range."}
+        select_paths: {type: "array[string]", required: false}
+        select_domains: {type: "array[string]", required: false}
+        exclude_paths: {type: "array[string]", required: false}
+        exclude_domains: {type: "array[string]", required: false}
+        allow_external: {type: boolean, required: false, default: true}
+        include_images: {type: boolean, required: false, default: false}
+        extract_depth: {type: string, required: false, default: basic, enum: [basic, advanced], example: basic}
+        format: {type: string, required: false, default: markdown, enum: [markdown, text]}
+        include_favicon: {type: boolean, required: false, default: false}
+        timeout: {type: number, required: false, default: 150, min: 10, max: 150}
+      note: "Crawl combines mapping and extraction. Platform settlement conservatively allocates 0.3-0.6 credit per valid returned extraction by depth and caller-supplied instructions, ignoring grouped usage.credits."
+    test_request:
+      body: {url: "https://example.com", limit: 10, extract_depth: basic}
+    verified: '2026-09-21'
+    added: '2026-09-21'
+    cost:
+      type: per_success
+      value: 0.6
+      table_min: 0.3
+      currency: credit
+      per: 1
+      unit: result
+      tavily_rates: {basic: 0.3, basic_instructions: 0.4, advanced: 0.5, advanced_instructions: 0.6}
+      source: docs
+      source_url: https://docs.tavily.com/documentation/api-credits
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Conservative allocation per valid returned extraction: Basic 0.3 credit, Basic with instructions 0.4, Advanced 0.5, Advanced with instructions 0.6. Platform calls require limit 1-20. Tavily does not expose every successfully mapped page, so treg absorbs any bounded hidden mapping difference. BYOK is unmetered."
+    docs_url: https://docs.tavily.com/documentation/api-reference/endpoint/crawl
+    example_response: examples/tavily.web.crawl.json

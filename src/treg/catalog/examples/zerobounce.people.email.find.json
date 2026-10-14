@@ -1,0 +1,8 @@
+{
+  "email": "ada.lovelace@example.com",
+  "email_confidence": "high",
+  "domain": "example.com",
+  "company_name": "Example Company",
+  "did_you_mean": "",
+  "failure_reason": ""
+}

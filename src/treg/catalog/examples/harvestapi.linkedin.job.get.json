@@ -1,0 +1,107 @@
+{
+  "element": {
+    "id": "1234567890",
+    "title": "Synthetic example",
+    "linkedinUrl": "https://example.com/synthetic-record",
+    "jobState": "Synthetic example",
+    "postedDate": "2026-09-09T19:44:58.000Z",
+    "headerCaptionText": "Synthetic example",
+    "descriptionText": "Synthetic example",
+    "descriptionHtml": "Synthetic example",
+    "location": {
+      "linkedinText": "Synthetic example",
+      "postalAddress": null,
+      "countryCode": "us",
+      "geoId": "1234567890",
+      "parsed": {
+        "text": "Synthetic example",
+        "countryCode": "US",
+        "regionCode": null,
+        "country": "United States",
+        "countryFull": "Synthetic example"
+      }
+    },
+    "employmentType": "Synthetic example",
+    "workplaceType": "Synthetic example",
+    "workRemoteAllowed": true,
+    "easyApplyUrl": null,
+    "applyMethod": {
+      "companyApplyUrl": "https://example.com/synthetic-record",
+      "applyStartersPreferenceVoid": true,
+      "inPageOffsiteApply": false,
+      "type": "OffsiteApply"
+    },
+    "applicants": 25,
+    "hiringTeam": [],
+    "company": {
+      "id": "1234567890",
+      "universalName": "alex-example",
+      "linkedinUrl": "https://example.com/synthetic-record",
+      "name": "Synthetic example",
+      "website": "https://example.com/synthetic-record",
+      "logo": "https://example.com/synthetic-record",
+      "employeeCount": 4,
+      "employeeCountRange": {
+        "start": 2,
+        "end": 10
+      },
+      "followerCount": 13417,
+      "description": null,
+      "locations": [],
+      "specialities": [],
+      "industries": [
+        {
+          "id": null,
+          "name": "Synthetic example",
+          "title": "Synthetic example",
+          "hierarchy": null
+        }
+      ],
+      "logos": [
+        {
+          "url": "https://example.com/synthetic-record",
+          "width": 400,
+          "height": 400
+        }
+      ],
+      "backgroundCover": "https://example.com/synthetic-record",
+      "backgroundCovers": [
+        {
+          "url": "https://example.com/synthetic-record",
+          "width": 1128,
+          "height": 191
+        }
+      ],
+      "callToActionUrl": null,
+      "similarOrganizations": [],
+      "affiliatedPages": []
+    },
+    "salary": {
+      "text": null,
+      "min": null,
+      "max": null
+    },
+    "jobFunctions": [
+      "Synthetic example"
+    ],
+    "industries": [
+      "Synthetic example"
+    ],
+    "experienceLevel": "Synthetic example",
+    "benefits": [],
+    "benefitsDataSource": null,
+    "views": 0,
+    "expireAt": "2026-10-09T19:44:58.000Z",
+    "new": true,
+    "closedAt": null,
+    "contentSource": "Synthetic example",
+    "jobApplicationLimitReached": false,
+    "applicantTrackingSystem": null
+  },
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinJob"
+  ],
+  "cost": 0.001
+}

@@ -55,12 +55,13 @@ pricing_url: https://www.semrush.com/api-documentation/  # API units are bought 
 endpoints:
   # --- Domain & keyword reports (host root) -----------------------------------------------------
   - id: semrush.google.domain.ranked_keywords
+    added: '2026-07-28'
     capability: google.domain.ranked_keywords
     platform: google
     scope: any_account
     method: GET
     path: /
-    name: "List Google keywords a domain ranks for"
+    name: "Google keywords a domain ranks for — search volume, traffic"
     summary: "Google keywords a domain ranks for in the top 100, with position, volume and traffic"
     input:
       queryParams:
@@ -91,12 +92,13 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/domain-reports/#domain-organic-search-keywords
 
   - id: semrush.google.domain.paid_keywords
+    added: '2026-07-28'
     capability: google.domain.paid_keywords
     platform: google
     scope: any_account
     method: GET
     path: /
-    name: "List Google Ads keywords a domain bids on"
+    name: "Google Ads keywords a domain bids on — CPC, ad copy"
     summary: "List the Google Ads keywords a domain bids on, with ad position, CPC and the live ad copy"
     input:
       queryParams:
@@ -126,12 +128,13 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/domain-reports/#domain-paid-search-keywords
 
   - id: semrush.google.domain.competitors
+    added: '2026-07-28'
     capability: google.domain.competitors
     platform: google
     scope: any_account
     method: GET
     path: /
-    name: "List Google organic competitors for a domain"
+    name: "Google organic competitors by domain — shared keywords"
     summary: "Domains competing with a target in Google organic, ranked by shared keywords"
     input:
       queryParams:
@@ -157,12 +160,13 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/domain-reports/#competitors-in-organic-search
 
   - id: semrush.google.keywords.volume
+    added: '2026-07-28'
     capability: google.keywords.volume
     platform: google
     scope: any_account
     method: GET
     path: /
-    name: "Get search volume for a keyword"
+    name: "Google search volume, CPC and competition by keyword"
     summary: "Get Google search volume, CPC, competition and result count for a single keyword"
     input:
       queryParams:
@@ -190,12 +194,13 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/keyword-reports/#keyword-overview-one-database
 
   - id: semrush.google.keywords.ideas
+    added: '2026-07-28'
     capability: google.keywords.ideas
     platform: google
     scope: any_account
     method: GET
     path: /
-    name: "List related keyword ideas"
+    name: "Related keyword ideas by seed keyword — search volume, CPC"
     summary: "Get keywords semantically related to a seed keyword, each with volume, CPC and competition"
     input:
       queryParams:
@@ -226,12 +231,13 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/keyword-reports/#related-keywords
 
   - id: semrush.google.serp.organic
+    added: '2026-07-28'
     capability: google.serp.organic
     platform: google
     scope: any_account
     method: GET
     path: /
-    name: "List Google organic search results for a keyword"
+    name: "Google organic results by keyword — top 100 domains, URLs"
     summary: "List the domains and URLs ranking in Google's top 100 organic results for a keyword"
     input:
       queryParams:
@@ -266,12 +272,13 @@ endpoints:
   # Everything below lives on a DIFFERENT PATH from the reports above. Same host, same `key`,
   # same CSV, but `target` + `target_type` replace `domain` + `database`.
   - id: semrush.web.backlinks.summary
+    added: '2026-07-28'
     capability: web.backlinks.summary
     platform: web
     scope: any_account
     method: GET
     path: /analytics/v1/
-    name: "Get backlink profile summary"
+    name: "Backlinks summary by domain or URL — Authority Score"
     summary: "Aggregate backlink profile — Authority Score, links, referring domains, follow split"
     input:
       queryParams:
@@ -295,12 +302,13 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/backlinks/#backlinks-overview
 
   - id: semrush.web.backlinks.list
+    added: '2026-07-28'
     capability: web.backlinks.list
     platform: web
     scope: any_account
     method: GET
     path: /analytics/v1/
-    name: "List backlinks to a domain or URL"
+    name: "Backlinks by domain or URL — source page, anchor texts"
     summary: "Individual backlinks to a domain or URL, with source page, anchor and follow status"
     input:
       queryParams:
@@ -328,12 +336,13 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/backlinks/#backlinks
 
   - id: semrush.web.linking_domains.list
+    added: '2026-07-28'
     capability: web.linking_domains.list
     platform: web
     scope: any_account
     method: GET
     path: /analytics/v1/
-    name: "List referring domains linking to a target"
+    name: "Referring domains by domain or URL — Authority Score"
     summary: "Referring domains linking to a target, with Authority Score, country and link count"
     input:
       queryParams:
@@ -361,12 +370,13 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/backlinks/#referring-domains
 
   - id: semrush.web.anchors.list
+    added: '2026-07-28'
     capability: web.anchors.list
     platform: web
     scope: any_account
     method: GET
     path: /analytics/v1/
-    name: "List anchor texts in a backlink profile"
+    name: "Anchor texts in backlinks by domain or URL"
     summary: "Anchor texts across a target's backlink profile, with domain and link counts"
     input:
       queryParams:
@@ -394,12 +404,13 @@ endpoints:
     docs_url: https://developer.semrush.com/api/v3/analytics/backlinks/#anchors
 
   - id: semrush.web.backlinks.competitors
+    added: '2026-07-28'
     capability: web.backlinks.competitors
     platform: web
     scope: any_account
     method: GET
     path: /analytics/v1/
-    name: "List backlink competitors for a domain"
+    name: "Backlink competitors by domain — shared referring domains"
     summary: "Domains whose backlink profile overlaps a target's, by shared referring domains"
     input:
       queryParams:

@@ -1,0 +1,34 @@
+[
+  {
+    "matched_on": "stripe.com",
+    "match_type": "domain",
+    "matches": [
+      {
+        "confidence_score": 1.0,
+        "company_data": {
+          "crustdata_company_id": 631394,
+          "basic_info": {
+            "name": "Stripe",
+            "primary_domain": "stripe.com",
+            "all_domains": [
+              "stripe.com"
+            ],
+            "website": "https://stripe.com",
+            "logo_permalink": "https://crustdata-media.s3.us-east-2.amazonaws.com/company/ee39c97950644ddb2803c035ff2da67c3a69690714df97927039ddd3e31217ce.jpg",
+            "description": "Stripe builds programmable financial services. Millions of companies—from the world’s largest enterprises to the most ambitious startups—use Stripe to accept payments, grow their revenue, and accelerate new business opportunities. Headquartered in San Francisco and Dublin, the company aims to increase the GDP of the internet.",
+            "company_type": "Privately Held",
+            "year_founded": 2010,
+            "employee_count_range": "5001-10000",
+            "markets": [
+              "PRIVATE"
+            ],
+            "crustdata_company_id": 631394,
+            "professional_network_id": "2135371",
+            "professional_network_url": "https://www.linkedin.com/company/stripe",
+            "profile_name": "Stripe"
+          }
+        }
+      }
+    ]
+  }
+]

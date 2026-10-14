@@ -9,6 +9,12 @@ source:
 # Response convention: HTTP 200 always; the business result is `code` (0 = success, and only a
 # code-0 response is billed). Hence every endpoint expects code == 0.
 pricing_url: https://www.justoneapi.com/
+# Provider-wide success rule. Just One API answers HTTP 200 for everything and puts the
+# business result in `code` (0 = success); only a code-0 response is billed, so a body
+# with any other code is a vendor-side failure that must not settle. Endpoints may still
+# override it; this is the default for those that do not state one.
+expect: {json_path: code, equals: 0}
+
 endpoints:
   - id: justoneapi.tiktok.user.profile
     capability: tiktok.user.profile
@@ -16,7 +22,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/tiktok/get-user-detail/v1
-    name: "Get TikTok User Profile"
+    name: "TikTok user profile by username or user id"
     summary: "Public TikTok profile by username (uniqueId) or secUid"
     input:
       queryParams:
@@ -28,6 +34,7 @@ endpoints:
     cost: {type: per_success, value: 0.1, currency: CNY, per: 1, unit: call, source: rate_card_api, source_url: 'https://www.justoneapi.com/', checked: '2026-07-28', confidence: documented, note: billed only on success (code 0); errors free — dashboard price export 2026-07-28}
     expect: {json_path: code, equals: 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/justoneapi.tiktok.user.profile.json
     docs_url: https://docs.justoneapi.com/en/api/tiktok/user-profile-v1
 
@@ -37,7 +44,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/tiktok/get-user-post/v1
-    name: "List posts from a TikTok user"
+    name: "TikTok user posts by user id"
     summary: "Posts published by a TikTok user, by secUid, cursor-paginated"
     input:
       queryParams:
@@ -49,6 +56,7 @@ endpoints:
     cost: {type: per_success, value: 0.1, currency: CNY, per: 1, unit: call, source: rate_card_api, source_url: 'https://www.justoneapi.com/', checked: '2026-07-28', confidence: documented, note: billed only on success (code 0); errors free — dashboard price export 2026-07-28}
     expect: {json_path: code, equals: 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/justoneapi.tiktok.user.videos.json
     docs_url: https://docs.justoneapi.com/en/api/tiktok/user-published-posts-v1
 
@@ -58,7 +66,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/tiktok/get-post-detail/v1
-    name: "Get TikTok post details"
+    name: "TikTok post details by post id — metadata, stats"
     summary: "A single TikTok post's metadata and stats by post id"
     input:
       queryParams:
@@ -68,6 +76,7 @@ endpoints:
     cost: {type: per_success, value: 0.1, currency: CNY, per: 1, unit: call, source: rate_card_api, source_url: 'https://www.justoneapi.com/', checked: '2026-07-28', confidence: documented, note: billed only on success (code 0); errors free — dashboard price export 2026-07-28}
     expect: {json_path: code, equals: 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/justoneapi.tiktok.video.detail.json
     docs_url: https://docs.justoneapi.com/en/api/tiktok/post-details-v1
 
@@ -77,7 +86,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/tiktok/get-post-comment/v1
-    name: "List TikTok Post Comments"
+    name: "TikTok post comments by post id"
     summary: "Comments on a TikTok post, cursor-paginated"
     input:
       queryParams:
@@ -89,6 +98,7 @@ endpoints:
     cost: {type: per_success, value: 0.1, currency: CNY, per: 1, unit: call, source: rate_card_api, source_url: 'https://www.justoneapi.com/', checked: '2026-07-28', confidence: documented, note: billed only on success (code 0); errors free — dashboard price export 2026-07-28}
     expect: {json_path: code, equals: 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/justoneapi.tiktok.video.comments.json
     docs_url: https://docs.justoneapi.com/en/api/tiktok/post-comments-v1
 
@@ -112,6 +122,7 @@ endpoints:
     cost: {type: per_success, value: 0.1, currency: CNY, per: 1, unit: call, source: rate_card_api, source_url: 'https://www.justoneapi.com/', checked: '2026-07-28', confidence: documented, note: billed only on success (code 0); errors free — dashboard price export 2026-07-28}
     expect: {json_path: code, equals: 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/justoneapi.tiktok.search.videos.json
     docs_url: https://docs.justoneapi.com/en/api/tiktok/post-search-v1
 
@@ -137,6 +148,7 @@ endpoints:
     cost: {type: per_success, value: 0.2, currency: CNY, per: 1, unit: call, source: rate_card_api, source_url: 'https://www.justoneapi.com/', checked: '2026-07-28', confidence: documented, note: billed only on success (code 0); errors free — dashboard price export 2026-07-28}
     expect: {json_path: code, equals: 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/justoneapi.xiaohongshu.search.notes.json
     docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/note-search-v4
 
@@ -146,7 +158,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/xiaohongshu/get-note-detail/v1
-    name: "Get Xiaohongshu note details"
+    name: "Xiaohongshu note details by note id or URL"
     summary: "A single Xiaohongshu (RedNote) note by note id or explore URL"
     input:
       queryParams:
@@ -157,6 +169,7 @@ endpoints:
     cost: {type: per_success, value: 0.15, currency: CNY, per: 1, unit: call, source: rate_card_api, source_url: 'https://www.justoneapi.com/', checked: '2026-07-28', confidence: documented, note: billed only on success (code 0); errors free — dashboard price export 2026-07-28}
     expect: {json_path: code, equals: 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/justoneapi.xiaohongshu.note.detail.json
     docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/note-details-v1
 
@@ -166,7 +179,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/xiaohongshu/get-user-note-list/v4
-    name: "List notes from a Xiaohongshu user"
+    name: "Xiaohongshu user notes by user id"
     summary: "Notes published by a Xiaohongshu (RedNote) user, cursor-paginated"
     input:
       queryParams:
@@ -177,6 +190,7 @@ endpoints:
     cost: {type: per_success, value: 0.15, currency: CNY, per: 1, unit: call, source: rate_card_api, source_url: 'https://www.justoneapi.com/', checked: '2026-07-28', confidence: documented, note: billed only on success (code 0); errors free — dashboard price export 2026-07-28}
     expect: {json_path: code, equals: 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/justoneapi.xiaohongshu.user.notes.json
     docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/user-published-notes-v4
 
@@ -186,7 +200,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/instagram/get-user-detail/v2
-    name: "Get Instagram User Profile"
+    name: "Instagram user profile by username"
     summary: "Public Instagram profile by username"
     input:
       queryParams:
@@ -196,6 +210,7 @@ endpoints:
     cost: {type: per_success, value: 0.1, currency: CNY, per: 1, unit: call, source: rate_card_api, source_url: 'https://www.justoneapi.com/', checked: '2026-07-28', confidence: documented, note: billed only on success (code 0); errors free — dashboard price export 2026-07-28}
     expect: {json_path: code, equals: 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/justoneapi.instagram.user.profile.json
     docs_url: https://docs.justoneapi.com/en/api/instagram/user-profile-v2
 
@@ -205,7 +220,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/instagram/get-user-posts/v1
-    name: "List Instagram User Posts"
+    name: "Instagram user posts by username"
     summary: "Recent posts of an Instagram user, token-paginated"
     input:
       queryParams:
@@ -216,6 +231,7 @@ endpoints:
     cost: {type: per_success, value: 0.1, currency: CNY, per: 1, unit: call, source: rate_card_api, source_url: 'https://www.justoneapi.com/', checked: '2026-07-28', confidence: documented, note: billed only on success (code 0); errors free — dashboard price export 2026-07-28}
     expect: {json_path: code, equals: 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/justoneapi.instagram.user.posts.json
     docs_url: https://docs.justoneapi.com/en/api/instagram/user-published-posts-v1
 
@@ -225,7 +241,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/youtube/get-video-detail/v1
-    name: "Get YouTube Video Detail"
+    name: "YouTube video metadata and stats by video id"
     summary: "Public metadata and stats for a YouTube video by video id"
     input:
       queryParams:
@@ -235,6 +251,7 @@ endpoints:
     cost: {type: per_success, value: 0.1, currency: CNY, per: 1, unit: call, source: rate_card_api, source_url: 'https://www.justoneapi.com/', checked: '2026-07-28', confidence: documented, note: billed only on success (code 0); errors free — dashboard price export 2026-07-28}
     expect: {json_path: code, equals: 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/justoneapi.youtube.video.detail.json
     docs_url: https://docs.justoneapi.com/en/api/youtube/video-details-v1
 
@@ -244,7 +261,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /api/weibo/get-user-detail/v3
-    name: "Get Weibo User Profile"
+    name: "Weibo user profile by user id"
     summary: "Public Weibo profile by numeric UID"
     input:
       queryParams:
@@ -254,5 +271,6 @@ endpoints:
     cost: {type: per_success, value: 0.1, currency: CNY, per: 1, unit: call, source: rate_card_api, source_url: 'https://www.justoneapi.com/', checked: '2026-07-28', confidence: documented, note: billed only on success (code 0); errors free — dashboard price export 2026-07-28}
     expect: {json_path: code, equals: 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/justoneapi.weibo.user.profile.json
     docs_url: https://docs.justoneapi.com/en/api/weibo/user-profile-v3

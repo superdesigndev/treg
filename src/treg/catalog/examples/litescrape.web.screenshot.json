@@ -1,0 +1,7 @@
+{
+  "url": "https://example.com/",
+  "title": "Example Domain",
+  "description": "",
+  "full_page": false,
+  "screenshot_url": "https://api.litescrape.com/api/artifacts/web/screenshot?id=<id>&bucket=<yyyymmdd>"
+}

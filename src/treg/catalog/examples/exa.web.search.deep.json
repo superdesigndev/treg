@@ -1,0 +1,21 @@
+{
+  "requestId": "f09b9cd09341dd73f73e2f293029c0a8",
+  "resolvedSearchType": "",
+  "results": [
+    {
+      "id": "https://github.com/qdrant/qdrant",
+      "title": "qdrant/qdrant",
+      "url": "https://github.com/qdrant/qdrant"
+    },
+    {
+      "id": "https://qdrant.tech/",
+      "title": "Qdrant - Vector Search Engine",
+      "url": "https://qdrant.tech/"
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "searchTime": 5566.6,
+  "costDollars": {
+    "total": 0.012
+  }
+}

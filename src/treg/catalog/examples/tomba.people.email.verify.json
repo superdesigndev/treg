@@ -1,0 +1,12 @@
+{
+  "data": {
+    "email": {
+      "status": "valid",
+      "result": "deliverable",
+      "score": 99,
+      "smtp_check": true,
+      "mx_check": true,
+      "accept_all": false
+    }
+  }
+}

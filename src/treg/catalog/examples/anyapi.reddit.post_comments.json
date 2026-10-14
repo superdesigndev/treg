@@ -1,0 +1,32 @@
+{
+  "output": {
+    "data": {
+      "comments": [
+        {
+          "author": "Biinaryy",
+          "body": "Here is a collection of all the questions and answers:\n\nQuestion: [Link](http://www.reddit.com/r/IAmA/comments/z1c9z/i_am_barack_obama_president_of_the_united_states/c60mnkw)\n>I am recent law school g… [8805 chars]",
+          "createdUtc": 1346276659,
+          "id": "c60o0iw",
+          "score": 5399,
+          "url": "https://www.reddit.com/r/IAmA/comments/z1c9z/i_am_barack_obama_president_of_the_united_states/c60o0iw/"
+        },
+        "… 199 more item(s) truncated"
+      ],
+      "media": [],
+      "nextCursor": "801isjbVjl-LgcxAzl_VYQDBRllJHMKfWNhVqTIeKV9xZKh7tLRnFdaWKmbYU4-mti2NKAeitXwgPaOZapCUbtj_E2tkLSZobJY8HMBX3tYfV1YFj19lbHnUYJ1GlzHfs-T8aD-KKKz2QNY2qoY6OdG0rUvB570RuCq0SBxrYueoFM5SD1pROW_8KgjGi0YwW5M6jRMN… [475 chars]"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0006,
+  "items": 200,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-bison-9321fc54",
+    "name": "Bison",
+    "kind": "anonymous",
+    "artworkKey": "bison"
+  },
+  "hint": "large_result: this response is ~76 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "eb6bd501-f2f7-4217-bf43-a63a1073d3f2"
+}

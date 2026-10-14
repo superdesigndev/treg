@@ -1,0 +1,1259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GTM Engineering Playbook (2026) with Claude Code | treg.to</title>
+<meta name="description" content="A practical GTM engineering playbook: 16 chapters from ICP to rollout, each with a prompt for Claude Code or Codex and the rule to keep; the data steps were tested on recorded runs, with the bill.">
+<link rel="canonical" href="{BASE}/gtm-engineering"/>
+<link rel="alternate" type="text/markdown" href="{BASE}/gtm-engineering.md"/>
+<meta property="og:type" content="article"/>
+<meta property="og:site_name" content="treg"/>
+<meta property="og:url" content="{BASE}/gtm-engineering"/>
+<meta property="og:title" content="The GTM Engineering Playbook (2026), with Claude Code and AI agents"/>
+<meta property="og:description" content="16 chapters from ICP to rollout. Every chapter has a prompt and the rule to keep; the data steps come with a recorded run and its bill."/>
+<meta property="og:image" content="{BASE}/media/og.png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="The GTM Engineering Playbook (2026), with Claude Code and AI agents"/>
+<meta name="twitter:image" content="{BASE}/media/og.png"/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"treg.to","item":"{BASE}/"},{"@type":"ListItem","position":2,"name":"GTM Engineering Playbook","item":"{BASE}/gtm-engineering"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"The GTM Engineering Playbook (2026), with Claude Code and AI agents","description":"A practical GTM engineering playbook in 16 chapters, from ICP to rollout, each with a prompt to run and the rule to keep; the data steps were tested on recorded runs, with the bill.","datePublished":"2026-09-29","dateModified":"2026-10-08","mainEntityOfPage":"{BASE}/gtm-engineering","author":{"@type":"Person","name":"Jason Zhou","url":"https://github.com/JayZeeDesign"},"publisher":{"@type":"Organization","name":"treg.to","url":"{BASE}/"},"about":["GTM engineering","Claude Code","lead enrichment","buying signals","ICP"]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is a GTM engineer?","acceptedAnswer":{"@type":"Answer","text":"A GTM engineer turns a company's sales and marketing playbook into systems that run every week: the ICP written as filters, lists built and enriched, signals that say who to contact now, research for every first line and routing for inbound, with a person approving what goes out. GTM engineering is the practice; the GTM engineer owns it. The job sits between RevOps, sales and engineering, and in 2026 more of it runs from an agent such as Claude Code or Codex."}},{"@type":"Question","name":"What is the difference between a GTM engineer and RevOps?","acceptedAnswer":{"@type":"Answer","text":"RevOps coordinates revenue processes, systems, planning and reporting across teams. A GTM engineer builds and runs specific workflows, such as enrichment, scoring, signals and routing, and often sits inside RevOps. Titles vary and the work overlaps; in practice RevOps decides how the revenue system should work, and a GTM engineer builds the automated parts of it."}},{"@type":"Question","name":"How do GTM engineers use Claude Code to build and enrich lead lists?","acceptedAnswer":{"@type":"Answer","text":"They describe the list in a prompt, have the agent count the market for free, qualify companies on the fields they already have before any expensive lookup, search the buyer's role at each account, then find and verify emails on the rows that passed. In one recorded run that produced 20 verified leads from 50 companies for $2.33."}},{"@type":"Question","name":"What tools and data providers does a GTM engineer need in 2026?","acceptedAnswer":{"@type":"Answer","text":"An agent (Claude Code, Codex, Cursor or similar), a data layer for company and people search, enrichment, email finding and verification and signals, skills that hold the method, a sending tool, and a CRM. treg.to is a data layer: one key for many providers, priced per call."}},{"@type":"Question","name":"What is the cheapest way to run waterfall email enrichment from an AI agent?","acceptedAnswer":{"@type":"Answer","text":"Qualify first so you only enrich rows that fit, then call a routed finder that tries providers cheapest first and does not bill misses on per-success providers, then verify. On a 292-person test the cost per correct email through treg.to was $0.0056, against $0.0395 in Clay, with match quality close to a tie."}},{"@type":"Question","name":"How do I set up signal-based outbound with an AI agent?","acceptedAnswer":{"@type":"Answer","text":"Keep only signals you can open and date (hiring, funding, job changes, posts about the problem), write one line of why now per signal, score fit and timing together, and have a person approve every first line. In a recorded run, 16 of 27 accounts had open sales or marketing roles posted or first seen in the last 60 days, while the funding provider returned no round from the last 12 months for any of them."}},{"@type":"Question","name":"How accurate is contact data after someone changes jobs?","acceptedAnswer":{"@type":"Answer","text":"Not very, in the first month. In our 7 Oct 2026 study of 148 people who had announced a new job 1 to 29 days earlier, 68% of contact database records on average did not show the new employer, and when two databases both had a person, both missed it 64% of the time. A live profile read was current for 47 of the 49 people it found, but it found only a third of them. For job-change plays, confirm the new company live before you write."}},{"@type":"Question","name":"Do hiring or news signals predict that a startup is about to raise?","acceptedAnswer":{"@type":"Answer","text":"Hiring did not, in our test. Across 57 US startups that announced a seed to Series B round in August to October 2026 and 54 similar startups with no round found, the share that opened GTM roles, any job or senior roles in the weeks before was within a few points, and recorded news was more common in the comparison group with no round found (54% against 26%). Act on the funding announcement itself, and test any timing signal on your own wins and losses before you weight it."}},{"@type":"Question","name":"What are the best Clay alternatives for GTM engineers who work in Claude Code or Codex?","acceptedAnswer":{"@type":"Answer","text":"If you work in prompts, pair the agent with a per-call data layer such as treg.to and keep the method in skills. Keep Clay if your team needs a shared visual table. On a 292-person work-email test the cost per correct email was $0.0056 through treg.to, $0.0395 in Clay, $0.0427 in Freckle and $0.0924 in Deepline."}},{"@type":"Question","name":"Does treg.to choose the data provider for me?","acceptedAnswer":{"@type":"Answer","text":"The catalog lists every provider of a job with measured success rates and prices, and your agent picks. Some jobs also have a routed endpoint (treg.<capability>) that tries providers cheapest first when you call it; the result names the provider that answered."}}]}</script>
+<style>
+  :root {
+    --bg: #FDFCFB; --card: #F5F4F1; --ink: #101010; --ink2: #33312E; --muted: #8A8885; --line: #E9E7E2;
+    --green: #118453; --green-soft: rgba(17,132,83,.12); --red: #C0362F; --amber: #B26A00;
+    --display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+    --text: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  [id] { scroll-margin-top: 80px; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--text); font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  ::selection { background: rgba(17,132,83,.22); }
+  a { color: inherit; }
+  a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+  code { font-family: var(--mono); font-size: .9em; background: var(--card); padding: 1px 5px; border-radius: 5px; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); text-decoration: none; cursor: pointer; }
+  .pill:hover { background: var(--card); }
+  .pill.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .pill.dark:hover { background: #2b2b2a; }
+
+  /* nav */
+  .nav { position: fixed; inset: 0 0 auto 0; z-index: 90; display: flex; align-items: center; justify-content: space-between; padding: 14px 28px; background: rgba(253,252,251,.88); backdrop-filter: blur(12px); border-bottom: 1px solid transparent; transition: border-color .3s; }
+  .nav.scrolled { border-color: var(--line); }
+  .wordmark { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 15px; }
+  .wordmark img, .wordmark svg { width: 22px; height: 22px; border-radius: 6px; }
+  .wm-agents { display: inline-flex; gap: 5px; }
+  .nav-links { display: flex; gap: 22px; align-items: center; margin-right: 10px; }
+  .nav-links a { font-size: 14px; font-weight: 500; color: #43413E; text-decoration: none; }
+  .nav-links a:hover { color: var(--ink); }
+  @media (max-width: 1020px) { .nav-links { display: none; } }
+
+  /* hero */
+  .hero { padding: 140px 24px 26px; text-align: center; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: var(--green); background: var(--green-soft); border: 1px solid rgba(17,132,83,.3); padding: 6px 14px; border-radius: 999px; margin-bottom: 26px; }
+  .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .hero h1 { font-family: var(--display); font-weight: 500; letter-spacing: -.03em; font-size: clamp(38px, 6.2vw, 70px); line-height: 1.05; margin: 0 auto 22px; max-width: 17ch; text-wrap: balance; }
+  .hero h1 .hl { color: var(--green); font-weight: 600; }
+  .hero p.sub { max-width: 60ch; margin: 0 auto 28px; color: var(--muted); font-size: 18px; text-wrap: balance; }
+  .hero p.sub strong { color: var(--ink); font-weight: 500; }
+  .stats { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin: 0 auto 30px; }
+  .stat { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 10px 16px; min-width: 132px; text-align: left; }
+  .stat b { display: block; font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: -.02em; }
+  .stat span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .ctas { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .ag { display: inline-flex; align-items: center; gap: .18em; vertical-align: -.08em; transition: opacity .28s ease, transform .3s cubic-bezier(.3,.7,.3,1); }
+  .ag img { width: .82em; height: .82em; border-radius: .18em; }
+  .ag.out { opacity: 0; transform: translateY(-.22em); transition-timing-function: ease, cubic-bezier(.6,0,.8,.4); }
+  .ag.pre { opacity: 0; transform: translateY(.22em); transition: none; }
+  .hw { display: inline-block; opacity: 0; transform: translateY(14px); }
+  .hw.in { opacity: 1; transform: none; transition: opacity .4s ease, transform .45s cubic-bezier(.3,.7,.3,1); }
+
+  /* the self-playing demo */
+  .demo-wrap { padding: 20px 24px 0; }
+  .demo { max-width: 900px; margin: 0 auto; background: #fff; border: 1px solid var(--line); border-radius: 20px; overflow: hidden; box-shadow: 0 30px 90px -38px rgba(20,18,12,.28); text-align: left; }
+  .strip { background: #1B1B1A; color: #E8E8E8; padding: 15px 20px; display: flex; gap: 12px; align-items: center; font-family: var(--mono); font-size: 15px; min-height: 52px; }
+  .strip img { width: 24px; height: 24px; border-radius: 7px; flex: none; }
+  .strip .pr { color: #6FCDF0; flex: none; }
+  .strip .typed, .strip .reply { white-space: nowrap; overflow: hidden; }
+  .strip .reply { color: #45E39E; }
+  .strip .reply s { color: #9A9A9A; text-decoration: none; }
+  .strip .cur { display: inline-block; width: 9px; height: 19px; background: #6FCDF0; vertical-align: -3px; animation: blink 1s steps(1) infinite; flex: none; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .strip [hidden] { display: none !important; }
+  .demo-body { display: flex; align-items: stretch; }
+  table.sheet { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 14px; flex: 1; min-width: 0; }
+  .sheet th { background: #F8F7F5; color: #8A8885; font-weight: 500; font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+  .sheet th:first-child, .sheet td:first-child { width: 40px; text-align: center; padding-left: 0; padding-right: 0; }
+  .sheet th.fitc, .sheet td.fitc { width: 92px; }
+  .sheet td { border-bottom: 1px solid #F0EFEB; padding: 9px 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 44px; }
+  .sheet td.c-mail { text-overflow: clip; }
+  .sheet td.num { font-family: var(--mono); font-size: 11.5px; color: #B4B2AD; background: #FBFAF8; }
+  .sheet .fade { opacity: 0; transform: translateY(6px); transition: opacity .3s, transform .3s; }
+  .sheet .fade.in { opacity: 1; transform: none; }
+  .sheet .co { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+  .sheet .co img { width: 24px; height: 24px; border-radius: 7px; flex: none; object-fit: contain; background: #FBFAF7; border: 1px solid rgba(0,0,0,.06); }
+  .sheet .who { display: flex; align-items: center; gap: 9px; }
+  .sheet .who img { width: 22px; height: 22px; border-radius: 50%; flex: none; object-fit: cover; }
+  .sheet .em { font-family: var(--mono); font-size: 12.5px; color: var(--green); }
+  .sheet .em.unk { color: var(--amber); }
+  .sheet .fit { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .sheet .fit i { display: block; width: 34px; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; position: relative; }
+  .sheet .fit i::after { content: ""; position: absolute; inset: 0; width: var(--w); background: var(--green); border-radius: 3px; }
+  .sheet tr.drop td:not(.num) { background: repeating-linear-gradient(45deg, transparent 0 6px, #F7E9E7 6px 8px); }
+  .sheet tr.drop .co { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(192,54,47,.6); }
+  .sheet tr.drop .fit i::after { background: var(--red); }
+  .board { width: 250px; flex: none; border-left: 1px solid var(--line); background: #FBFAF8; padding: 12px; opacity: 0; transform: translateX(10px); transition: opacity .35s, transform .35s; }
+  .board.in { opacity: 1; transform: none; }
+  .bd-head { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; font-weight: 500; white-space: nowrap; }
+  .bd-head svg { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+  .bd-sub { font-family: var(--mono); font-size: 9.5px; color: var(--muted); margin: 3px 0 10px; }
+  .bd-row { display: flex; align-items: center; gap: 7px; background: #fff; border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; font-size: 11.5px; margin-bottom: 6px; opacity: 0; transform: translateY(6px); transition: opacity .3s, transform .3s, box-shadow .3s, border-color .3s; }
+  .bd-row.in { opacity: 1; transform: none; }
+  .bd-row.picked { border-color: rgba(17,132,83,.65); box-shadow: 0 0 0 2px rgba(17,132,83,.28); }
+  .bd-row img { width: 18px; height: 18px; border-radius: 5px; flex: none; object-fit: contain; }
+  .bd-row b { font-weight: 600; white-space: nowrap; }
+  .bd-row .st { margin-left: auto; font-family: var(--mono); font-size: 9.5px; color: var(--muted); white-space: nowrap; }
+  .bd-row .st.hit { color: var(--green); font-weight: 600; }
+  .bd-row .st.miss { color: var(--red); }
+  .bd-badge { margin-top: 8px; text-align: center; font-family: var(--mono); font-size: 9.5px; color: var(--green); background: var(--green-soft); border: 1px solid rgba(17,132,83,.3); border-radius: 999px; padding: 3px 8px; opacity: 0; transition: opacity .3s; }
+  .bd-badge.in { opacity: 1; }
+  @media (max-width: 860px) { .board { display: none; } .sheet th.fitc, .sheet td.fitc { width: 70px; } }
+  @media (max-width: 600px) { .sheet .c-mail { display: none; } }
+  .demo-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; font-family: var(--mono); font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); background: #FBFAF8; }
+  .demo-foot .meter { color: var(--green); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .demo-cap { text-align: center; color: var(--muted); font-size: 13px; margin: 16px auto 0; font-family: var(--mono); max-width: 72ch; }
+
+  /* sections */
+  .section { padding: 96px 24px; }
+  .section h2, .cta-final h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; line-height: 1.12; font-size: clamp(30px, 4.6vw, 46px); text-align: center; margin: 0 0 14px; text-wrap: balance; }
+  .section .lede { text-align: center; color: var(--muted); max-width: 62ch; margin: 0 auto 40px; font-size: 17px; text-wrap: balance; }
+  .hl2 { color: var(--green); font-weight: 600; }
+  .fineprint { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 26px; }
+
+  /* diagnostic: the practitioner problems, reframed as symptoms */
+  .diag { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+  .sym { display: grid; grid-template-columns: 28px 1fr auto; gap: 14px; align-items: start; background: #fff; border-radius: 16px; padding: 16px 18px; box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 4px 14px -6px rgba(20,18,12,.08); cursor: pointer; transition: box-shadow .2s, border-color .2s; border: 1px solid transparent; }
+  .sym:hover { box-shadow: 0 2px 4px rgba(20,18,12,.06), 0 14px 30px -10px rgba(20,18,12,.16); }
+  .sym input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--green); cursor: pointer; }
+  .sym .t b { display: block; font-family: var(--display); font-weight: 600; font-size: 17.5px; letter-spacing: -.01em; }
+  .sym .t q { display: block; color: var(--muted); font-size: 14px; margin-top: 4px; quotes: "“" "”"; }
+  .sym .t q cite { font-style: normal; font-family: var(--mono); font-size: 11px; }
+  .sym .go { font-family: var(--mono); font-size: 12px; color: var(--green); white-space: nowrap; padding-top: 3px; }
+  .sym.on { border-color: rgba(17,132,83,.55); }
+  .diag-out { max-width: 860px; margin: 18px auto 0; background: var(--ink); color: #F4F3EF; border-radius: 16px; padding: 18px 22px; font-size: 15.5px; display: none; }
+  .diag-out.on { display: block; }
+  .diag-out b { color: #7FDCAE; font-weight: 600; }
+  .diag-out a { color: #fff; }
+  @media (max-width: 600px) { .sym { grid-template-columns: 24px 1fr; } .sym .go { grid-column: 2; padding-top: 0; } }
+
+  /* the playbook: sticky table of contents + a readable column */
+  .book { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 56px; max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  .toc { position: sticky; top: 84px; align-self: start; max-height: calc(100vh - 100px); overflow-y: auto; padding: 8px 0 24px; font-size: 13.5px; scrollbar-width: thin; }
+  .toc .tl { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 18px 0 6px; }
+  .toc .tl:first-child { margin-top: 0; }
+  .toc a { display: flex; gap: 9px; padding: 5px 8px; margin: 0 -8px; border-radius: 8px; text-decoration: none; color: var(--ink2); line-height: 1.35; }
+  .toc a span { font-family: var(--mono); font-size: 11px; color: var(--muted); flex: none; width: 18px; padding-top: 1px; }
+  .toc a:hover { background: var(--card); }
+  .toc a.cur { background: var(--green-soft); color: var(--green); }
+  .toc a.cur span { color: var(--green); }
+  .toc a.hit { box-shadow: inset 2px 0 0 var(--green); }
+  .toc-m { display: none; }
+  @media (max-width: 960px) {
+    .book { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0; }
+    .toc { display: none; }
+    .toc-m { display: block; position: sticky; top: 61px; z-index: 50; background: rgba(253,252,251,.96); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+    .toc-m summary { list-style: none; cursor: pointer; padding: 11px 18px; font-family: var(--mono); font-size: 12px; display: flex; justify-content: space-between; }
+    .toc-m summary::-webkit-details-marker { display: none; }
+    .toc-m summary::after { content: "▾"; color: var(--muted); }
+    .toc-m nav { max-height: 60vh; overflow-y: auto; padding: 0 18px 12px; font-size: 14px; }
+    .toc-m nav a { display: block; padding: 6px 0; text-decoration: none; border-bottom: 1px solid var(--line); }
+    .toc-m nav a.hit { color: var(--green); font-weight: 600; }
+    .toc-m nav .tl { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-top: 12px; }
+  }
+  .part { padding: 70px 0 10px; }
+  .part .pk { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--green); }
+  .part h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; font-size: clamp(30px, 4vw, 42px); line-height: 1.1; margin: 8px 0 10px; }
+  .part p { color: var(--muted); font-size: 17px; max-width: 60ch; margin: 0; }
+  .chapter { padding: 56px 0 30px; border-top: 1px solid var(--line); margin-top: 40px; max-width: 740px; }
+  .part + .chapter { margin-top: 30px; }
+  .ch-k { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-family: var(--mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+  .badge { font-family: var(--mono); font-size: 10.5px; letter-spacing: .04em; text-transform: none; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--ink2); }
+  .badge.run { color: var(--green); background: var(--green-soft); border-color: rgba(17,132,83,.3); }
+  .chapter h3.ct { font-family: var(--display); font-weight: 500; letter-spacing: -.022em; line-height: 1.15; font-size: clamp(26px, 3.6vw, 34px); margin: 0 0 18px; text-wrap: balance; }
+  .chapter p { font-size: 17px; color: var(--ink2); margin: 0 0 14px; }
+  .chapter h4 { font-family: var(--display); font-weight: 600; font-size: 16.5px; margin: 26px 0 10px; letter-spacing: -.01em; }
+  .symptom { display: flex; gap: 12px; align-items: flex-start; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin: 0 0 18px; }
+  .symptom .ic { flex: none; font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--red); padding-top: 3px; width: 64px; }
+  .symptom .bd { font-size: 15.5px; color: var(--ink2); }
+  .symptom q { display: block; margin-top: 6px; color: var(--muted); font-size: 14px; quotes: "“" "”"; }
+  .symptom cite { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  ol.play { margin: 0 0 8px; padding: 0; list-style: none; counter-reset: s; }
+  ol.play li { position: relative; padding: 0 0 12px 36px; font-size: 16.5px; color: var(--ink2); counter-increment: s; }
+  ol.play li::before { content: counter(s); position: absolute; left: 0; top: 1px; width: 24px; height: 24px; border-radius: 50%; background: var(--ink); color: #fff; font-family: var(--mono); font-size: 12px; display: grid; place-items: center; }
+  ul.ticks { margin: 0 0 8px; padding: 0; list-style: none; }
+  ul.ticks li { position: relative; padding: 0 0 10px 26px; font-size: 16.5px; color: var(--ink2); }
+  ul.ticks li::before { content: ""; position: absolute; left: 4px; top: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  .rule { margin: 22px 0; background: var(--green-soft); border: 1px solid rgba(17,132,83,.28); border-radius: 14px; padding: 15px 20px; font-size: 16.5px; }
+  .rule b { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--green); margin-bottom: 4px; font-weight: 500; }
+  .fit-line { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+  .fit-line div { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 14.5px; color: var(--ink2); }
+  .fit-line div b { display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; margin-bottom: 4px; }
+  .fit-line div.yes b { color: var(--green); }
+  @media (max-width: 640px) { .fit-line { grid-template-columns: 1fr; } }
+  /* run it: the prompt card */
+  .runit { margin: 20px 0 6px; background: #1B1B1A; border-radius: 14px; overflow: hidden; }
+  .runit .rh { display: flex; justify-content: space-between; align-items: center; padding: 9px 14px; border-bottom: 1px solid #2E2E2B; font-family: var(--mono); font-size: 11px; color: #9A9A96; letter-spacing: .04em; }
+  .runit .rh img { width: 16px; height: 16px; border-radius: 4px; vertical-align: -3px; margin-right: 6px; }
+  .runit pre { margin: 0; padding: 14px 16px; color: #F2F1ED; font-family: var(--mono); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+  .runit button, .ws button { border: 1px solid #3A3A38; background: #262624; color: #D8D8D6; font-family: var(--mono); font-size: 11.5px; border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+  .runit button:hover { background: #313130; }
+  /* worksheet */
+  .ws { margin: 20px 0 6px; background: #fff; border: 1px dashed #CFCBC2; border-radius: 14px; overflow: hidden; }
+  .ws .rh { display: flex; justify-content: space-between; align-items: center; padding: 9px 14px; border-bottom: 1px dashed #DDD9D0; font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: .04em; }
+  .ws pre { margin: 0; padding: 14px 16px; font-family: var(--mono); font-size: 12.5px; line-height: 1.65; white-space: pre-wrap; color: var(--ink2); }
+  .ws button { background: var(--card); color: var(--ink2); border-color: var(--line); }
+  .deeper { margin: 22px 0 0; padding-top: 14px; border-top: 1px dashed var(--line); font-size: 14px; color: var(--muted); }
+  .deeper b { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--green); font-weight: 500; margin-right: 8px; }
+  .deeper a { display: inline-block; color: var(--ink2); text-underline-offset: 3px; margin-right: 14px; white-space: nowrap; }
+  /* chapter visuals */
+  .viz { margin: 20px 0 6px; background: #fff; border-radius: 16px; padding: 18px 20px; box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 4px 14px -6px rgba(20,18,12,.08); }
+  .viz .vh { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: .04em; margin-bottom: 12px; text-transform: uppercase; }
+  .viz .vcap { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 12px; line-height: 1.55; }
+  .viz .vcap a { color: var(--muted); }
+  .funnel { display: flex; flex-direction: column; gap: 9px; }
+  .frow { display: grid; grid-template-columns: 190px 1fr 64px; gap: 12px; align-items: center; font-size: 14px; }
+  .frow .bar { height: 12px; border-radius: 6px; background: var(--card); overflow: hidden; }
+  .frow .bar i { display: block; height: 100%; width: var(--w); background: var(--green); border-radius: 6px; transform: scaleX(0); transform-origin: left center; transition: transform .7s cubic-bezier(.3,.7,.3,1); }
+  .frow.red .bar i { background: var(--red); }
+  .frow.grey .bar i { background: #CFCDC7; }
+  .frow .n { font-family: var(--mono); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+  .seen .frow .bar i { transform: scaleX(1); }
+  .seen .frow:nth-child(2) .bar i { transition-delay: .12s; } .seen .frow:nth-child(3) .bar i { transition-delay: .24s; }
+  .seen .frow:nth-child(4) .bar i { transition-delay: .36s; } .seen .frow:nth-child(5) .bar i { transition-delay: .48s; }
+  .seen .frow:nth-child(6) .bar i { transition-delay: .6s; } .seen .frow:nth-child(7) .bar i { transition-delay: .72s; } .seen .frow:nth-child(8) .bar i { transition-delay: .84s; }
+  @media (max-width: 560px) { .frow { grid-template-columns: 120px 1fr 54px; font-size: 13px; } }
+  .bill2 { display: flex; align-items: flex-end; gap: 28px; flex-wrap: wrap; margin-top: 16px; }
+  .bill2 .was { font-family: var(--mono); font-size: 22px; color: var(--muted); position: relative; }
+  .bill2 .was::after { content: ""; position: absolute; left: -4px; right: -4px; top: 50%; height: 3px; background: var(--red); border-radius: 2px; transform: scaleX(0); transform-origin: left; transition: transform .4s cubic-bezier(.3,.7,.3,1) .8s; }
+  .seen .bill2 .was::after { transform: scaleX(1); }
+  .bill2 .now { font-family: var(--display); font-weight: 600; font-size: 42px; line-height: 1; color: var(--green); letter-spacing: -.03em; }
+  .bill2 small { display: block; font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .cbars { display: flex; flex-direction: column; gap: 10px; }
+  .cbar { display: grid; grid-template-columns: 110px 1fr 74px; gap: 12px; align-items: center; font-size: 14px; }
+  .cbar .t { height: 22px; border-radius: 6px; background: var(--card); overflow: hidden; }
+  .cbar .t i { display: block; height: 100%; width: var(--w); background: #CFCDC7; border-radius: 6px; transform: scaleX(0); transform-origin: left; transition: transform .8s cubic-bezier(.3,.7,.3,1); }
+  .cbar.win .t i { background: var(--green); }
+  .cbar .v { font-family: var(--mono); font-size: 13px; text-align: right; }
+  .cbar.win .v { color: var(--green); font-weight: 500; }
+  .seen .cbar .t i { transform: scaleX(1); }
+  @media (max-width: 560px) { .cbar { grid-template-columns: 84px 1fr 64px; font-size: 13px; } }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
+  .chip.ok { color: var(--green); background: var(--green-soft); border-color: rgba(17,132,83,.3); }
+  .chip.warn { color: var(--amber); background: rgba(178,106,0,.1); border-color: rgba(178,106,0,.3); }
+  .chip.bad { color: var(--red); background: rgba(192,54,47,.07); border-color: rgba(192,54,47,.3); }
+  .dots { display: grid; grid-template-columns: repeat(19, 1fr); gap: 6px; max-width: 520px; }
+  .dots.d71 { grid-template-columns: repeat(24, 1fr); gap: 5px; }
+  .dots i { aspect-ratio: 1; border-radius: 50%; background: #E3E1DB; transform: scale(.4); opacity: 0; transition: transform .35s cubic-bezier(.3,.7,.3,1), opacity .35s; }
+  .dots i.good { background: var(--green); }
+  .seen .dots i { transform: none; opacity: 1; }
+  .kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .kv div { background: var(--card); border-radius: 12px; padding: 12px 14px; }
+  .kv b { display: block; font-family: var(--display); font-weight: 600; font-size: 26px; letter-spacing: -.02em; }
+  .kv b.g { color: var(--green); } .kv b.r { color: var(--red); }
+  .kv span { font-size: 12.5px; color: var(--muted); line-height: 1.4; display: block; }
+  @media (max-width: 560px) { .kv { grid-template-columns: 1fr 1fr; } }
+  .sigrow { font-family: var(--mono); font-size: 12.5px; background: #1B1B1A; color: #E8E8E8; border-radius: 12px; padding: 14px 16px; overflow-x: auto; white-space: pre; line-height: 1.7; }
+  @media (max-width: 560px) { .sigrow { white-space: pre-wrap; } }
+  .sigrow .k { color: #6FCDF0; } .sigrow .g { color: #45E39E; } .sigrow .m { color: #8A8885; }
+  .stack { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .layer { display: grid; grid-template-columns: 150px 1fr; gap: 14px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 14.5px; }
+  .layer b { font-family: var(--display); font-weight: 600; }
+  .layer.tr { border-color: rgba(17,132,83,.5); box-shadow: 0 0 0 2px rgba(17,132,83,.14); }
+  @media (max-width: 560px) { .layer { grid-template-columns: 1fr; gap: 2px; } }
+
+  /* tables */
+  .tw { overflow-x: auto; background: #fff; border-radius: 14px; box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 4px 14px -6px rgba(20,18,12,.08); margin: 18px 0 6px; }
+  table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .data th { background: #F8F7F5; font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 500; text-align: left; padding: 10px 14px; }
+  .data td { padding: 11px 14px; border-top: 1px solid #F0EFEB; vertical-align: top; }
+  .data td a { color: var(--ink); text-underline-offset: 3px; }
+  .data td.m { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+  .data tr.win td { background: #F4FAF7; }
+  @media (max-width: 700px) {
+    .data thead { display: none; }
+    .data tr { display: block; border-top: 1px solid var(--line); padding: 8px 0; }
+    .data td { display: block; border: 0; padding: 4px 14px; }
+    .data td[data-label]::before { content: attr(data-label); display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  }
+
+  /* faq */
+  .faq { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+  .faq details { background: #fff; border-radius: 14px; box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 4px 14px -6px rgba(20,18,12,.08); }
+  .faq summary { cursor: pointer; padding: 15px 20px; font-weight: 600; font-size: 15.5px; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; color: var(--muted); font-weight: 400; }
+  .faq details[open] summary::after { content: "−"; }
+  .faq .body { padding: 0 20px 16px; color: var(--ink2); font-size: 15px; }
+  .faq .body p { margin: 0; }
+
+  /* final CTA */
+  .cta-final { text-align: center; padding: 110px 24px 40px; }
+  .cmd { max-width: 620px; margin: 0 auto 14px; display: flex; align-items: center; gap: 14px; background: #1B1B1A; border-radius: 12px; padding: 18px 22px; text-align: left; }
+  .cmd .ps { color: #7FDCAE; font-family: var(--mono); font-size: 16px; flex: none; }
+  .cmd .cline { color: #F8F8F7; font-family: var(--mono); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+  .cmd button { flex: none; border: 1px solid #3A3A38; background: #262624; color: #D8D8D6; font-family: var(--mono); font-size: 12px; border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+
+  /* footer */
+  .bigfoot { border-top: 1px solid var(--line); margin-top: 80px; padding: 46px 24px 40px; background: #FBFAF8; text-align: left; }
+  .bigfoot-in { max-width: 1020px; margin: 0 auto; display: flex; gap: 44px; justify-content: space-between; flex-wrap: wrap; }
+  .bf-brand .bfb { display: inline-flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 16px; }
+  .bf-brand svg { width: 20px; height: 20px; border-radius: 6px; }
+  .bf-brand .note { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+  .bf-cols { display: flex; gap: 56px; flex-wrap: wrap; }
+  .bf-col { display: flex; flex-direction: column; gap: 7px; min-width: 108px; }
+  .bf-col .lab { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .bf-col a { text-decoration: none; font-size: 13.5px; }
+  .bf-col a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .bf-tag { max-width: 1020px; margin: 36px auto 0; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+
+  @media (max-width: 640px) {
+    .nav { padding: 12px 14px; }
+    .wm-agents, .wm-x { display: none; }
+    .section { padding: 70px 18px; }
+    .chapter, .part { padding-left: 18px; padding-right: 18px; }
+    .hero { padding-top: 110px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .strip .cur { animation: none; }
+    .hw { opacity: 1; transform: none; }
+    .frow .bar i, .cbar .t i { transform: none; transition: none; }
+    .dots i { opacity: 1; transform: none; transition: none; }
+    .bill2 .was::after { transform: scaleX(1); transition: none; }
+  }
+</style>
+</head>
+<body data-page="gtm">
+
+<nav class="nav" id="nav">
+  <span class="wordmark"><span class="wm-agents"><img src="/media/people-search/claude-code.png" alt="Claude Code"><img src="/media/people-search/codex.png" alt="Codex"><img src="/media/people-search/openclaw.png" alt="OpenClaw"><img src="/media/people-search/hermes.png" alt="Hermes"></span> <span class="wm-x" style="color:var(--muted);font-weight:400">×</span> <a href="/" style="display:inline-flex;align-items:center;gap:10px;text-decoration:none" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</a> <span style="color:var(--muted);font-weight:400">/</span> <span style="font-weight:500">GTM engineering playbook</span></span>
+  <span style="display:flex;gap:8px;align-items:center">
+    <span class="nav-links"><a href="#diagnostic">Where to start</a><a href="#book">Chapters</a><a href="#skills">Skills</a><a href="#clay-alternatives">vs Clay</a></span>
+    <a class="pill dark" href="/app?ref=gtm" data-ev="gtm_cta_nav">Set up treg</a>
+  </span>
+</nav>
+
+<header class="hero">
+  <div class="eyebrow"><span class="dot"></span>Data steps tested on recorded runs · 3 new studies, 8 Oct 2026</div>
+  <h1><span class="hw">The GTM engineering playbook</span><br><span class="hw hl">with <span class="ag" id="agWrap"><img id="agLogo" src="/media/people-search/claude-code.png" alt=""><span id="agName">Claude Code</span></span></span></h1>
+  <p class="sub">Sixteen chapters, from defining your ICP to rolling automation out safely. Each one starts from a problem GTM engineers actually post about, then gives <strong>the play, a prompt to run in your agent, and the rule to keep</strong>, and for every data step, what happened when we ran it. We ran the data steps on one ICP so the numbers connect; the process chapters are marked <em>Method</em>. New on 8 Oct: three studies of our own, on <a href="#job-changes">contact data after a job change</a>, <a href="#test-your-signals">whether hiring predicts a raise</a> and <a href="#found-vs-deliverable">found against deliverable emails</a>.</p>
+  <div class="stats">
+    <div class="stat"><b>16</b><span>chapters + 4 appendices</span></div>
+    <div class="stat"><b>6</b><span>recorded runs on one ICP</span></div>
+    <div class="stat"><b>$5.03</b><span>total metered, all runs</span></div>
+    <div class="stat"><b>502</b><span>logged calls behind it</span></div>
+  </div>
+  <div class="ctas">
+    <a class="pill dark" href="#diagnostic" data-ev="gtm_cta_start">Find where to start</a>
+    <a class="pill" href="#book" data-ev="gtm_cta_read">Read the chapters</a>
+  </div>
+</header>
+
+<div class="demo-wrap" id="proof">
+  <div class="demo" aria-label="Demo: an agent building a qualified lead list through treg">
+    <div class="strip">
+      <img src="/media/people-search/claude-code.png" alt="">
+      <span class="pr">›</span>
+      <span class="typed" id="dTyped"></span><span class="cur" id="dCur"></span>
+      <span class="reply" id="dReply" hidden></span>
+    </div>
+    <div class="demo-body">
+      <table class="sheet" aria-hidden="true">
+        <thead><tr><th>#</th><th>Company</th><th class="fitc">ICP fit</th><th>Marketing lead</th><th class="c-mail">Work email</th></tr></thead>
+        <tbody id="dRows"></tbody>
+      </table>
+      <aside class="board" id="dBoard" aria-hidden="true">
+        <div class="bd-head"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg · <span id="bdName">companies.search</span></div>
+        <div class="bd-sub" id="bdSub"></div>
+        <div id="bdRows"></div>
+        <div class="bd-badge" id="bdBadge"></div>
+      </aside>
+    </div>
+    <div class="demo-foot"><span id="dStatus">agent idle</span><span class="meter" id="dMeter">$0.00</span></div>
+  </div>
+  <div class="demo-cap">An abbreviated replay of the recorded 23 Sep 2026 lead-list run (chapters 5, 8 and 11). Rows are illustrative; the counts are the run&rsquo;s. The $2.33 total also covers two steps not shown: a news lookup ($0.84) and opener scoring.</div>
+</div>
+
+<section class="section" id="diagnostic">
+  <h2>Start here:<br><span class="hl2">which of these sounds like your week?</span></h2>
+  <p class="lede">We read 460 Reddit threads and 1,456 LinkedIn posts about GTM engineering. The problems cluster into the symptoms below. Tick the ones you recognise and the playbook tells you where to start.</p>
+  <div class="diag" id="diag">
+    <label class="sym" data-ch="ch5,ch2"><input type="checkbox"><span class="t"><b>The enrichment bill keeps surprising you.</b><q>Every enrichment step burns Actions regardless. <cite>r/gtmengineering</cite></q></span><span class="go">→ ch. 5, 2</span></label>
+    <label class="sym" data-ch="ch7,ch1"><input type="checkbox"><span class="t"><b>Lists come back thin for your market.</b><q>I only got on average 0.5 contacts per company. <cite>r/RevOps</cite></q></span><span class="go">→ ch. 7, 1</span></label>
+    <label class="sym" data-ch="ch8"><input type="checkbox"><span class="t"><b>Too many emails bounce, or &ldquo;valid&rdquo; turns out to mean catch-all.</b><q>Half our &ldquo;valid&rdquo; contacts were catch-alls. <cite>r/gtmengineering</cite></q></span><span class="go">→ ch. 8</span></label>
+    <label class="sym" data-ch="ch9,ch10"><input type="checkbox"><span class="t"><b>Reps ignore the intent or signal feed.</b><q>Intent data is basically astrology for sales reps. <cite>r/sales</cite></q></span><span class="go">→ ch. 9, 10</span></label>
+    <label class="sym" data-ch="ch11"><input type="checkbox"><span class="t"><b>Outreach reads like a template, and replies are rare.</b><q>Before we celebrate 10,000 emails, can we read ten of them out loud? <cite>LinkedIn</cite></q></span><span class="go">→ ch. 11</span></label>
+    <label class="sym" data-ch="ch6"><input type="checkbox"><span class="t"><b>You reach one person per account, and they are not the buyer.</b></span><span class="go">→ ch. 6</span></label>
+    <label class="sym" data-ch="ch3,ch16"><input type="checkbox"><span class="t"><b>Nobody can say what the agent is allowed to do on its own.</b><q>Just ask who&rsquo;s on the hook if it does something dumb. <cite>r/ClaudeCode</cite></q></span><span class="go">→ ch. 3, 16</span></label>
+    <label class="sym" data-ch="ch14,ch15"><input type="checkbox"><span class="t"><b>You cannot say which list, signal or provider produced pipeline.</b><q>CRO is asking for ROI per vendor. <cite>r/RevOps</cite></q></span><span class="go">→ ch. 14, 15</span></label>
+    <label class="sym" data-ch="ch16"><input type="checkbox"><span class="t"><b>Automations stop and you find out days later.</b><q>We usually find out days later. <cite>r/RevOps</cite></q></span><span class="go">→ ch. 16</span></label>
+  </div>
+  <div class="diag-out" id="diagOut" aria-live="polite"></div>
+</section>
+
+<details class="toc-m" id="tocM"><summary><span>Chapters</span><span id="tocMCur">Contents</span></summary><nav aria-label="Chapters (mobile)"></nav></details>
+
+<div class="book" id="book">
+  <nav class="toc" id="toc" aria-label="Chapters">
+    <div class="tl">Start</div>
+    <a href="#ch0"><span>0</span>What a GTM engineer builds</a>
+    <div class="tl">I · Define</div>
+    <a href="#ch1"><span>1</span>Your ICP, as filters</a>
+    <a href="#ch2"><span>2</span>Count the market first</a>
+    <a href="#ch3"><span>3</span>Write the rules down</a>
+    <div class="tl">II · Build the list</div>
+    <a href="#ch4"><span>4</span>Lookalikes of your best accounts</a>
+    <a href="#ch5"><span>5</span>Qualify before you pay</a>
+    <a href="#ch6"><span>6</span>Reach the buying committee</a>
+    <a href="#ch7"><span>7</span>Test providers on your rows</a>
+    <a href="#ch8"><span>8</span>Find and verify emails</a>
+    <div class="tl">III · Timing</div>
+    <a href="#ch9"><span>9</span>Signals you can see</a>
+    <a href="#ch10"><span>10</span>Score fit × timing</a>
+    <div class="tl">IV · Reach out</div>
+    <a href="#ch11"><span>11</span>Research, then a human first line</a>
+    <a href="#ch12"><span>12</span>Sending and replies</a>
+    <div class="tl">V · Inbound</div>
+    <a href="#ch13"><span>13</span>Enrich and route in seconds</a>
+    <div class="tl">VI · Operate</div>
+    <a href="#ch14"><span>14</span>Tag every row</a>
+    <a href="#ch15"><span>15</span>The metric stack</a>
+    <a href="#ch16"><span>16</span>Roll out like software</a>
+    <div class="tl">Appendix</div>
+    <a href="#skills"><span>A</span>Best Claude Code skills for GTM</a>
+    <a href="#clay-alternatives"><span>B</span>Clay alternatives</a>
+    <a href="#runs"><span>C</span>All recorded runs</a>
+    <a href="#glossary"><span>D</span>Glossary and FAQ</a>
+  </nav>
+
+  <main>
+  <!-- ============================== START ============================== -->
+  <section class="chapter" id="ch0" data-ch="0" style="border-top:0;margin-top:0;padding-top:20px">
+    <div class="ch-k">Chapter 0 · Start <span class="badge">Method</span></div>
+    <h3 class="ct">What is a GTM engineer, and what tools and data providers do they need in 2026?</h3>
+    <p id="what-is-a-gtm-engineer"><b>A GTM engineer turns a company&rsquo;s sales and marketing playbook into systems that run every week:</b> the ICP written as filters, lists built and enriched, signals that say who to contact now, research for every first line, and routing for inbound, with a person approving what goes out. GTM engineering is the practice; the GTM engineer is the person who owns it. The job sits between RevOps, sales and engineering. What changed in 2026 is where it runs: more of it now runs from an agent such as Claude Code or Codex, where you describe the job in a prompt and the agent makes the calls.</p>
+    <h4 style="font-family:var(--display);font-size:19px;font-weight:600;margin:26px 0 6px">What a GTM engineer does in a week</h4>
+    <ol class="play">
+      <li><b>Write the ICP down</b> from the deals the team actually won and kept, as fields a provider can filter on (<a href="#ch1">chapter 1</a>).</li>
+      <li><b>Build and enrich lists</b> cheaply: qualify on the fields you already have, then pay for people, emails and verification only on the rows that pass (<a href="#ch4">chapters 4 to 8</a>).</li>
+      <li><b>Watch for timing</b>: hiring, funding, job changes and posts, each with a link and a date, scored against fit (<a href="#ch9">chapters 9 and 10</a>).</li>
+      <li><b>Hand reps the reason to write</b>, with its source, and keep a person on the send button (<a href="#ch11">chapter 11</a>).</li>
+      <li><b>Keep the data honest</b>: verify before sending, re-check people who just moved, and test a signal before it gets a weight. Our <a href="#job-changes">job-change study</a> shows why.</li>
+      <li><b>Measure and roll out</b>: tag every row so pipeline traces back to a list, a signal and a provider, and automate one step at a time (<a href="#ch14">chapters 14 to 16</a>).</li>
+    </ol>
+    <h4 style="font-family:var(--display);font-size:19px;font-weight:600;margin:26px 0 6px">GTM engineer, RevOps or sales ops?</h4>
+    <p>Titles vary and the work overlaps, and in many teams GTM engineers sit inside RevOps. For the pipeline work in this playbook, this is a useful way to divide it:</p>
+    <div class="tw"><table class="data">
+      <thead><tr><th>Role</th><th>Typical focus</th><th>Example measures</th></tr></thead>
+      <tbody>
+        <tr><td><b>GTM engineer</b></td><td data-label="Typical focus">Automated workflows: lists, enrichment, scoring, signals, routing, research for outreach</td><td data-label="Example measures">Qualified pipeline per hour and per dollar of data</td></tr>
+        <tr><td><b>RevOps</b></td><td data-label="Typical focus">Revenue processes, systems, planning, data governance and reporting across teams</td><td data-label="Example measures">Data quality, forecast reliability, revenue efficiency</td></tr>
+        <tr><td><b>Sales or marketing ops</b></td><td data-label="Typical focus">Tool admin, sequences, campaigns and lead handoff</td><td data-label="Example measures">Tools that run and leads that reach the right rep</td></tr>
+        <tr><td><b>SDR</b></td><td data-label="Typical focus">Conversations: first touches, follow-ups, booked meetings</td><td data-label="Example measures">Meetings held</td></tr>
+      </tbody>
+    </table></div>
+    <p>In small teams one person holds several of these. Roughly: RevOps decides how the revenue system should work, and a GTM engineer builds the automated parts of it.</p>
+    <h4 style="font-family:var(--display);font-size:19px;font-weight:600;margin:26px 0 6px">When GTM engineering helps, and what the work takes</h4>
+    <p>The workflows in this playbook pay off once the ICP can be written down and someone is doing the same research by hand every week. A small workflow can be owned by someone already on the team; a dedicated role makes sense when the volume and value justify it. Either way, the skills are less about code than about precision:</p>
+    <ul class="ticks">
+      <li><b>Writing rules a machine can follow</b>: what qualifies, what disqualifies, what the agent may do alone.</li>
+      <li><b>Data judgement</b>: cost per correct result rather than price per row, and knowing which fields go stale (<a href="#found-vs-deliverable">found is not deliverable</a>).</li>
+      <li><b>Testing before trusting</b>: a timing signal earns a weight only after it separates your own wins from losses (<a href="#test-your-signals">our test</a>).</li>
+      <li><b>Enough sales sense</b> to know a weak reason to write when the agent produces one.</li>
+      <li><b>Comfort with an agent</b>, a CLI and a spreadsheet. Little code is needed when the agent makes the calls.</li>
+    </ul>
+    <p>The stack has five layers. Only one of them is treg.</p>
+    <div class="viz seen-target"><div class="stack">
+      <div class="layer"><b>Agent</b><span>Claude Code, Codex, Cursor, Hermes or another agent that runs tools. It plans the steps and makes the calls.</span></div>
+      <div class="layer tr"><b>Data layer · treg</b><span>Company and people search, enrichment, email finding and verification, hiring, funding and news, social posts, SEO and ad data. One key, priced per call, your own provider keys first.</span></div>
+      <div class="layer"><b>Skills</b><span>The method, written down: how to qualify, how to write the first line, how to score. Open source ones are in <a href="#skills">appendix A</a>.</span></div>
+      <div class="layer"><b>Sending</b><span>Your inboxes and sequencer. Not treg (<a href="#ch12">chapter 12</a>).</span></div>
+      <div class="layer"><b>CRM</b><span>Where outcomes live, so you can learn from them (<a href="#ch14">chapter 14</a>).</span></div>
+    </div></div>
+    <div class="runit"><div class="rh"><span><img src="/media/people-search/claude-code.png" alt="">set up once, in your agent</span><button data-copy="#p0" data-ev="gtm_copy_prompt" data-q="0">copy</button></div><pre id="p0">set up treg &mdash; https://treg.to/llms.txt</pre></div>
+      <p class="deeper"><b>Go deeper</b><a href="/catalog">The catalog</a><a href="/agents/claude-code">Set up in Claude Code</a><a href="/tutorial">Tutorial</a></p>
+  </section>
+
+  <!-- ============================== PART I ============================== -->
+  <div class="part" id="part1"><div class="pk">Part I</div><h2>Define before you build</h2><p>Three decisions every later chapter inherits. Skip them and the agent will be fast and wrong.</p></div>
+
+  <section class="chapter" id="ch1" data-ch="1">
+    <div class="ch-k">Chapter 1 · ICP <span class="badge run">Run 30 Sep</span></div>
+    <h3 class="ct">Write your ICP as fields a provider can filter on</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">Your ICP is a sentence in a deck (&ldquo;mid-market B2B companies that value data&rdquo;), so every list is built from a different reading of it.</span></div>
+    <p>An agent cannot search for &ldquo;values data&rdquo;. It can search for country, headcount band, category, funding and technology. Anything you cannot turn into one of those becomes a <em>check</em> the agent runs on the rows afterwards (<a href="#ch5">chapter 5</a>), not a filter.</p>
+    <ol class="play">
+      <li>Split the ICP into <b>filters</b> (fields providers index) and <b>checks</b> (judgement on each row).</li>
+      <li>Write the buyer as a function (&ldquo;marketing or growth&rdquo;), not a title, so <a href="#ch6">chapter 6</a> can search for it.</li>
+      <li>Keep the exclusions explicit: agencies, consumer apps, companies that were acquired.</li>
+    </ol>
+    <div class="ws"><div class="rh"><span>worksheet · icp.md</span><button data-copy="#w1" data-ev="gtm_copy_worksheet" data-q="icp">copy</button></div><pre id="w1">ICP: the one we ran this playbook on
+filters   country = US · employees = 51-200 · category = B2B and SaaS
+checks    sells to sales, marketing, revenue or growth teams, or runs outbound itself
+          would buy lead data, enrichment or prospecting APIs
+buyer     function = marketing or growth (Head of Marketing, Head of Growth)
+exclude   agencies, services firms, consumer apps, hardware, acquired companies</pre></div>
+    <div class="runit"><div class="rh"><span><img src="/media/people-search/claude-code.png" alt="">prompt</span><button data-copy="#p1" data-ev="gtm_copy_prompt" data-q="1">copy</button></div><pre id="p1">Using treg, turn the ICP in icp.md into filters for two company-search providers.
+Use their free count endpoints only. For each provider show the exact filter
+object and the count it returns. Do not return any rows yet.</pre></div>
+    <div class="rule"><b>The rule</b>If a part of the ICP cannot be a filter, it is a check, and it runs before any expensive step.</div>
+      <p class="deeper"><b>Go deeper</b><a href="/use-cases/company-research-for-ai-agents">Company research for agents</a><a href="/catalog/companies">Company data providers</a></p>
+  </section>
+
+  <section class="chapter" id="ch2" data-ch="2">
+    <div class="ch-k">Chapter 2 · Market size <span class="badge run">Run 30 Sep · free counts</span></div>
+    <h3 class="ct">Count the market for free before you pay for a single row</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">You buy a list, and only later learn the filter meant something different to the provider.</span></div>
+    <p>Several providers will count matches for free. Use that before anything else, and use two of them: the same ICP, expressed in each provider&rsquo;s vocabulary, returns very different markets.</p>
+    <div class="viz seen-target">
+      <div class="vh">One ICP, eight counts · US, 51–200 staff</div>
+      <div class="funnel">
+        <div class="frow"><span>CompanyEnrich: B2B + SaaS</span><span class="bar"><i style="--w:66%"></i></span><span class="n">10,403</span></div>
+        <div class="frow"><span>CompanyEnrich: B2B + SaaS, funded 2024+</span><span class="bar"><i style="--w:8.5%"></i></span><span class="n">1,357</span></div>
+        <div class="frow red"><span>CompanyEnrich: B2B + SaaS, round = series_a</span><span class="bar"><i style="--w:0.2%"></i></span><span class="n">25</span></div>
+        <div class="frow grey"><span>Dropleads: &ldquo;IT &amp; Services&rdquo;</span><span class="bar"><i style="--w:100%"></i></span><span class="n">15,873</span></div>
+        <div class="frow grey"><span>Dropleads: keyword &ldquo;saas&rdquo;</span><span class="bar"><i style="--w:34%"></i></span><span class="n">5,395</span></div>
+        <div class="frow red"><span>Dropleads: &ldquo;Computer Software&rdquo;</span><span class="bar"><i style="--w:0.15%"></i></span><span class="n">21</span></div>
+        <div class="frow grey"><span>Apollo: Series A filter (paid page, 23 Sep)</span><span class="bar"><i style="--w:6%"></i></span><span class="n">958</span></div>
+      </div>
+      <div class="vcap">Recorded 30 Sep 2026. All eight provider counts were free (six here, two neighbouring bands below); Apollo&rsquo;s number came with its paid first list page ($0.026) on 23 Sep. Each CompanyEnrich row adds one filter to the first row, not to each other. Neighbouring size bands on CompanyEnrich: 42,981 at 11–50 staff, 2,621 at 201–500. A tag like <code>series_a</code> or an industry label can quietly shrink a market by a factor of 400.</div>
+    </div>
+    <ol class="play">
+      <li>Count on two providers. A gap of 2× is normal; 100× means one filter is not doing what you think.</li>
+      <li>Pull 10 sample rows from each (cheap) and read them before you trust either number.</li>
+      <li>Size the adjacent bands too. Your real market is often the band next door.</li>
+    </ol>
+    <div class="runit"><div class="rh"><span><img src="/media/people-search/claude-code.png" alt="">prompt</span><button data-copy="#p2" data-ev="gtm_copy_prompt" data-q="2">copy</button></div><pre id="p2">Using treg's free company-count endpoints, count my ICP on two providers and in the
+headcount bands either side of it. Show every filter you used. If two counts differ by
+more than 3x, tell me which filter is likely wrong before we pay for anything.</pre></div>
+    <div class="rule"><b>The rule</b>No list is bought until two free counts roughly agree and ten sample rows look right.</div>
+    <div class="fit-line"><div class="yes"><b>treg does</b>Free count endpoints on several providers behind one key.</div><div><b>You decide</b>Which vocabulary matches your market, after reading the sample.</div></div>
+      <p class="deeper"><b>Go deeper</b><a href="/catalog/companies">Company data providers</a><a href="/tools/companyenrich">CompanyEnrich</a><a href="/tools/dropleads">Dropleads</a></p>
+  </section>
+
+  <section class="chapter" id="ch3" data-ch="3">
+    <div class="ch-k">Chapter 3 · Rules <span class="badge run">From the 23 Sep run</span></div>
+    <h3 class="ct">Write down the rules the agent follows, and who can stop it</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">The agent did something at volume that nobody would have approved one by one.<q>What makes a lead good enough? What evidence moves it forward? When can Claude act? <cite>LinkedIn</cite></q></span></div>
+    <p>An agent acts at volume on whatever its instructions leave open. A written rule is still an instruction, not a guarantee, so it needs a number, a log and an owner.</p>
+    <div class="viz seen-target">
+      <div class="vh">The threshold is a business decision</div>
+      <div class="funnel">
+        <div class="frow"><span>Pass at 50%</span><span class="bar"><i style="--w:56%"></i></span><span class="n">27</span></div>
+        <div class="frow"><span>Would pass at 60%</span><span class="bar"><i style="--w:29%"></i></span><span class="n">14</span></div>
+      </div>
+      <div class="vcap">Out of 48 companies in the 23 Sep run. Ten points on the threshold roughly halves the list.</div>
+    </div>
+    <div class="ws"><div class="rh"><span>worksheet · rules.md</span><button data-copy="#w3" data-ev="gtm_copy_worksheet" data-q="rules">copy</button></div><pre id="w3">icp_check      pass if fit >= 0.5, judged on the fields the row already has (one cheap enrichment first if it has too few)
+people, email and news steps   only on rows that passed icp_check
+drops          log every dropped row with its reason
+email          send only to verifier = deliverable; unknown and catch-all go to a separate list
+first_line     a person approves every first line before a sequence starts
+spend_cap      stop and ask if a run will cost more than $5
+owner          &lt;name&gt; can pause every sequence with one command</pre></div>
+    <div class="rule"><b>The rule</b>Every threshold is a number in the prompt, every drop has a reason, and one person owns the stop.</div>
+      <p class="deeper"><b>Go deeper</b><a href="/workflows/find-and-verify-a-lead-list">The run the thresholds came from</a></p>
+  </section>
+
+  <!-- ============================== PART II ============================== -->
+  <div class="part" id="part2"><div class="pk">Part II</div><h2>Build the list</h2><p>How GTM engineers use Claude Code to build and enrich lead lists: candidates first, a check on the fields you already have, then expensive lookups only where they can pay back.</p></div>
+
+  <section class="chapter" id="ch4" data-ch="4">
+    <div class="ch-k">Chapter 4 · Lookalikes <span class="badge run">Run 30 Sep · $0.20</span></div>
+    <h3 class="ct">Lookalikes of your best accounts are candidates, not leads</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">A lookalike list feels on-target because the seeds were your best customers, so it skips the qualification step.</span></div>
+    <p>We took the three best-fit accounts from the 23 Sep run as seeds, asked for 25 lookalikes each in the same country, enriched every one and ran the same ICP check as <a href="#ch5">chapter 5</a>.</p>
+    <div class="viz seen-target">
+      <div class="dots d71" role="img" aria-label="71 lookalikes, 8 pass the ICP check"><i class="good"></i><i class="good"></i><i class="good"></i><i class="good"></i><i class="good"></i><i class="good"></i><i class="good"></i><i class="good"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="kv" style="margin-top:14px"><div><b>71</b><span>unique lookalikes from 3 seeds, $0.006</span></div><div><b class="r">13</b><span>in the 51–200 band; 53 had 50 staff or fewer</span></div><div><b class="g">8</b><span>passed the model check (11%); only 5 of them in the 51–200 band</span></div></div>
+      <div class="vcap">Recorded 30 Sep 2026. Lookalikes from Findymail; enrichment through <code>treg.companies.enrich</code> ($0.20 for 71, served by four providers cheapest-first). Lookalike rows arrive with too few fields to judge, so this one cheap enrichment came before the check. The check was jev on the team&rsquo;s own key, judging fit at 50%; it does not enforce size, and 3 of the 8 passes were outside 51–200 staff.</div>
+    </div>
+    <ol class="play">
+      <li>Seed with 3 to 5 accounts that actually closed, not the logos you wish you had.</li>
+      <li>Constrain the lookalike by country and size if the provider allows it; we only constrained country, and most results were smaller companies.</li>
+      <li>Enrich once, cheaply, so there are fields to judge; then enforce your size filter and run the same check as any other list.</li>
+    </ol>
+    <div class="runit"><div class="rh"><span><img src="/media/people-search/claude-code.png" alt="">prompt</span><button data-copy="#p4" data-ev="gtm_copy_prompt" data-q="4">copy</button></div><pre id="p4">Using treg, find 25 lookalikes for each of these customer domains, same country and
+same size band. Enrich each lookalike, then run my ICP check from rules.md on it.
+Return only the ones that pass, with the reason each failed one was dropped.</pre></div>
+    <div class="rule"><b>The rule</b>A lookalike goes through the same size filter and ICP check as any other row.</div>
+      <p class="deeper"><b>Go deeper</b><a href="/use-cases/enrich-a-company">Company enrichment compared</a><a href="/tools/findymail">Findymail</a></p>
+  </section>
+
+  <section class="chapter" id="ch5" data-ch="5">
+    <div class="ch-k">Chapter 5 · Cost <span class="badge run">Run 23 Sep · $2.33</span></div>
+    <h3 class="ct">Qualify on the fields you already have before any expensive lookup</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">Credits burn faster than planned, because every finder, verifier and news call runs on every row.<q>I rarely enrich everything. <cite><a href="https://www.reddit.com/comments/1q592xw">r/gtmengineering</a></cite></q></span></div>
+    <div class="viz seen-target">
+      <div class="funnel">
+        <div class="frow"><span>Companies listed</span><span class="bar"><i style="--w:100%"></i></span><span class="n">50</span></div>
+        <div class="frow"><span>Usable domain</span><span class="bar"><i style="--w:96%"></i></span><span class="n">48</span></div>
+        <div class="frow"><span>Passed the ICP check</span><span class="bar"><i style="--w:54%"></i></span><span class="n">27</span></div>
+        <div class="frow red"><span>Dropped before paying</span><span class="bar"><i style="--w:42%"></i></span><span class="n">21</span></div>
+        <div class="frow"><span>Verified deliverable</span><span class="bar"><i style="--w:40%"></i></span><span class="n">20</span></div>
+      </div>
+      <div class="bill2"><div><span class="was">≈ $4.12</span><small>estimate if all 48 were enriched</small></div><div><span class="now">$2.33</span><small>metered · $0.12 per deliverable lead</small></div></div>
+      <div class="vcap">The 23 Sep 2026 run. The check was jev on the free list fields at a 50% threshold, on the team&rsquo;s own key. The $4.12 adds the run&rsquo;s own estimate for the 21 dropped rows ($1.79); those rows were never enriched. <a href="/workflows/find-and-verify-a-lead-list">Prompt, steps and CSV</a>.</div>
+    </div>
+    <ol class="play">
+      <li>Judge every row on the fields the list already carries: description, industry, size, funding.</li>
+      <li>Drop the rows that fail and keep the reason next to them.</li>
+      <li>Run finders, verifiers and news only on what passed; use your own provider keys where you already pay.</li>
+    </ol>
+    <div class="runit"><div class="rh"><span><img src="/media/people-search/claude-code.png" alt="">prompt</span><button data-copy="#p5" data-ev="gtm_copy_prompt" data-q="5">copy</button></div><pre id="p5">Using treg, list 50 US software companies with 51 to 200 staff that raised a Series A.
+Before you find anyone, judge each company against my ICP from the list fields alone,
+drop anything below 50%, and show me the price of every paid step before you run it.</pre></div>
+    <div class="rule"><b>The rule</b>No expensive lookup (people, emails, news) runs on a row that has not passed the check. If a row lacks the fields to judge, one cheap enrichment comes first.</div>
+    <div class="fit-line"><div class="yes"><b>treg does</b>Prices every step before it runs, meters per call, and puts your own keys first, unmetered.</div><div><b>You decide</b>What the check is. The agent applies it; it cannot invent your ICP.</div></div>
+      <p class="deeper"><b>Go deeper</b><a href="/workflows/find-and-verify-a-lead-list">The full lead-list run</a><a href="/use-cases/lead-enrichment-for-ai-agents">Lead enrichment</a><a href="/tools/apollo">Apollo</a></p>
+  </section>
+
+  <section class="chapter" id="ch6" data-ch="6">
+    <div class="ch-k">Chapter 6 · Buying committee <span class="badge run">Run 30 Sep · $0.00</span></div>
+    <h3 class="ct">Which people search APIs work inside an AI agent? Search by role, not &ldquo;decision makers&rdquo;</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">You email one senior person per account, and they are rarely the one who buys what you sell.</span></div>
+    <p>On 8 accounts that passed chapter 5, we asked a &ldquo;decision makers&rdquo; endpoint for the committee, then asked a routed people search for the buyer&rsquo;s function directly.</p>
+    <div class="viz seen-target">
+      <div class="vh">&ldquo;Decision makers&rdquo; returned 45 senior people at 5 accounts</div>
+      <div class="funnel">
+        <div class="frow grey"><span>Sales, revenue, partnerships</span><span class="bar"><i style="--w:100%"></i></span><span class="n">10</span></div>
+        <div class="frow grey"><span>Ops, strategy, chief of staff</span><span class="bar"><i style="--w:70%"></i></span><span class="n">7</span></div>
+        <div class="frow grey"><span>Product, engineering, design</span><span class="bar"><i style="--w:60%"></i></span><span class="n">6</span></div>
+        <div class="frow grey"><span>Customer success, support</span><span class="bar"><i style="--w:50%"></i></span><span class="n">5</span></div>
+        <div class="frow grey"><span>People and HR</span><span class="bar"><i style="--w:50%"></i></span><span class="n">5</span></div>
+        <div class="frow grey"><span>Finance</span><span class="bar"><i style="--w:40%"></i></span><span class="n">4</span></div>
+        <div class="frow grey"><span>Founders and assistants</span><span class="bar"><i style="--w:40%"></i></span><span class="n">4</span></div>
+        <div class="frow"><span>Growth (no &ldquo;marketing&rdquo;)</span><span class="bar"><i style="--w:10%"></i></span><span class="n">1</span></div>
+      </div>
+      <div class="kv" style="margin-top:14px"><div><b class="r">3 of 8</b><span>accounts rate-limited (429) on the decision-maker endpoint</span></div><div><b class="g">8 of 8</b><span>accounts returned marketing people when searched by role</span></div><div><b>20</b><span>people, names and titles, $0.00 metered</span></div></div>
+      <div class="vcap">Recorded 30 Sep 2026, titles mapped to functions by hand; 3 were too vague to place, and no title contained &ldquo;marketing&rdquo;. A buying-group endpoint (Lusha) was out of capacity on treg&rsquo;s key that day and charged nothing. The role search was <code>treg.people.search</code> with <code>title: marketing</code>, capped at 3 rows and $0.20 a call; it was served by QuickEnrich on 7 accounts and Dropleads on 1. Contact details are a separate, paid step (<a href="#ch8">chapter 8</a>).</div>
+    </div>
+    <ol class="play">
+      <li>Map the committee yourself: who pays, who champions, who uses it. Write each as a function.</li>
+      <li>Search each account for those functions, cheapest rows first, then pick the most senior per function.</li>
+      <li>Reveal contact details only for the people you will actually write to.</li>
+    </ol>
+    <div class="runit"><div class="rh"><span><img src="/media/people-search/claude-code.png" alt="">prompt</span><button data-copy="#p6" data-ev="gtm_copy_prompt" data-q="6">copy</button></div><pre id="p6">Using treg, for each passed account search people by company domain with title
+"marketing" and then "growth", at most 3 rows each and $0.20 per call. Return name,
+title and a seniority guess. Do not reveal emails yet.</pre></div>
+    <div class="rule"><b>The rule</b>Search for the buyer&rsquo;s function. A &ldquo;decision makers&rdquo; list is a map of the company, not your committee.</div>
+    <div class="fit-line"><div class="yes"><b>treg does</b>Routed people search that tries providers cheapest first and names the one that answered.</div><div><b>You decide</b>Who is on your buying committee. No endpoint knows what you sell.</div></div>
+      <p class="deeper"><b>Go deeper</b><a href="/use-cases/people-search">People search APIs compared</a><a href="/people-search">Claude for people search</a><a href="/blog/people-search-bench">People Search Bench</a><a href="/tools/quickenrich">QuickEnrich</a></p>
+  </section>
+
+  <section class="chapter" id="ch7" data-ch="7">
+    <div class="ch-k">Chapter 7 · Coverage and cost <span class="badge run">Bench 16 Sep</span></div>
+    <h3 class="ct">The cheapest way to run waterfall email enrichment from an AI agent</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">A vendor that works for someone else misses half of your market, and its per-row price hides it.<q>Half the emails bounce now. <cite><a href="https://www.reddit.com/comments/1wjqc2o">r/gtmengineering</a></cite></q></span></div>
+    <p>Coverage depends on the segment, so the only honest test is your own rows. And the number that matters is <b>cost per correct result</b>, because a cheap provider that misses is expensive.</p>
+    <div class="viz seen-target">
+      <div class="vh">Cost per correct work email · same 292 people</div>
+      <div class="cbars">
+        <div class="cbar win"><span>treg.to</span><span class="t"><i style="--w:6%"></i></span><span class="v">$0.0056</span></div>
+        <div class="cbar"><span>Clay</span><span class="t"><i style="--w:43%"></i></span><span class="v">$0.0395</span></div>
+        <div class="cbar"><span>Freckle</span><span class="t"><i style="--w:46%"></i></span><span class="v">$0.0427</span></div>
+        <div class="cbar"><span>Deepline</span><span class="t"><i style="--w:100%"></i></span><span class="v">$0.0924</span></div>
+      </div>
+      <div class="vcap">16 Sep 2026, 88 companies, name and domain only. Exact-match rates were close: 90.4% treg.to, 90.1% Freckle, 89.7% Clay and 86.6% Deepline. Everyone had a public team-page email, so find rates run higher than on a cold list. <a href="/blog/work-email-finding-bench">Method and table</a>.</div>
+    </div>
+    <ol class="play">
+      <li>Take 20 to 50 rows of your real list and run them through a routed finder, which tries providers cheapest first; misses on per-success providers are not billed.</li>
+      <li>Record which provider found each email, and compare cost per correct, not price per row.</li>
+      <li>Widen adjacent titles before switching vendors; thin results are often a title filter.</li>
+    </ol>
+    <div class="runit"><div class="rh"><span><img src="/media/people-search/claude-code.png" alt="">prompt</span><button data-copy="#p7" data-ev="gtm_copy_prompt" data-q="7">copy</button></div><pre id="p7">Using treg, find work emails for these 30 people with the routed email finder, then
+verify each one. Report found, verified and cost per verified email, and which
+provider found each address.</pre></div>
+    <div class="rule"><b>The rule</b>Pick providers per segment from a test on your own rows, and re-test when the segment changes.</div>
+    <div class="fit-line"><div class="yes"><b>treg does</b>Every provider of a job behind one key, and a routed endpoint that tries them cheapest first and names the one that answered.</div><div><b>You decide</b>Which provider wins for your segment; the catalog compares, your agent chooses.</div></div>
+      <p class="deeper"><b>Go deeper</b><a href="/use-cases/find-professional-emails">Email finders compared</a><a href="/blog/work-email-finding-bench">The 292-person bench</a><a href="/tools/hunter">Hunter</a></p>
+  </section>
+
+  <section class="chapter" id="ch8" data-ch="8">
+    <div class="ch-k">Chapter 8 · Deliverability <span class="badge run">Run 23 Sep</span> <span class="badge run">Study 7 Oct</span></div>
+    <h3 class="ct">Find, then verify, and keep the unknowns apart</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">&ldquo;Valid&rdquo; from a finder turns out to mean the domain accepts everything, and the bounces land on your sending domain.<q>Half our &ldquo;valid&rdquo; contacts were catch-alls. <cite><a href="https://www.reddit.com/comments/1sjuklr">r/gtmengineering</a></cite></q></span></div>
+    <div class="viz seen-target">
+      <div class="chips"><span class="chip ok">20 deliverable</span><span class="chip warn">1 unknown, kept separate</span><span class="chip">0 invalid</span><span class="chip">6 not found by either finder</span></div>
+      <div class="vcap" style="margin-top:12px">27 named people: 21 emails found (18 by Hunter, 3 more by Kitt on Hunter&rsquo;s misses), then verified. A third finder, Tomba, was out of capacity that day. The verifier returned no catch-all flag on any row. <a href="/people-search#receipt">The receipt</a>.</div>
+    </div>
+    <p id="found-vs-deliverable">Those companies had passed a fit check first. In a separate sample built from title searches alone, the gap between found and deliverable was much wider. We asked the routed finder for each person&rsquo;s email and verified every address it returned.</p>
+    <div class="viz seen-target">
+      <div class="vh">Study · 60 people from a title search: every email &ldquo;found&rdquo;, about half deliverable</div>
+      <div class="chips"><span class="chip ok">32 deliverable</span><span class="chip warn">16 risky</span><span class="chip warn">4 unknown</span><span class="chip">8 invalid</span></div>
+      <div class="kv" style="margin-top:14px"><div><b class="g">60 of 60</b><span>people came back with an address from the finder</span></div><div><b class="r">53%</b><span>of those addresses verified deliverable</span></div><div><b>$0.65</b><span>metered for the whole study, live checks included</span></div></div>
+      <div class="vcap">Study run 7 Oct 2026. Method: 60 people from six US title searches covering sales, marketing, growth, revenue operations and GTM engineering, up to ten per search, with no industry filter. The routed email finder ran on every row, then the routed verifier on every address. &ldquo;Deliverable&rdquo; is the verifier&rsquo;s verdict, not a measured inbox delivery. Of the 24 people with a usable live profile, 22 were at the listed company; we could not check the other 36. Results vary by segment, so run it on your own rows.</div>
+    </div>
+    <ol class="play">
+      <li>Verify as its own step and store the verdict next to the address. &ldquo;Found&rdquo; only means a finder returned an address; in the title-search sample above, 53% of found addresses verified deliverable.</li>
+      <li>Send only to deliverable. Unknown and catch-all go to a smaller, slower list, or nowhere. A blank catch-all field means unknown, not safe.</li>
+      <li>Watch bounces and complaints per sending domain.</li>
+    </ol>
+    <div class="rule"><b>The rule</b>Only a verified-deliverable address goes into the main sequence.</div>
+    <div class="fit-line"><div class="yes"><b>treg does</b>Finding and verification as separate calls, with the verifier&rsquo;s verdict and a catch-all flag where the verifier returns one.</div><div><b>Not treg</b>Inboxes, warm-up and sending limits.</div></div>
+      <p class="deeper"><b>Go deeper</b><a href="/use-cases/verify-an-email">Email verifiers compared</a><a href="/tools/trykitt">Kitt</a><a href="/tools/tomba">Tomba</a></p>
+  </section>
+
+  <!-- ============================== PART III ============================== -->
+  <div class="part" id="part3"><div class="pk">Part III</div><h2>Know when to reach out</h2><p>How to set up signal-based outbound with an AI agent: signals you can check, and a score that combines them with fit.</p></div>
+
+  <section class="chapter" id="ch9" data-ch="9">
+    <div class="ch-k">Chapter 9 · Signals <span class="badge run">Run 30 Sep</span> <span class="badge run">Study 7 Oct</span></div>
+    <h3 class="ct">How to set up signal-based outbound: use signals you can open and date</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">The team has a signal feed and nobody acts on it.<q>Another alert feed everyone ignores? <cite><a href="https://www.reddit.com/comments/1r1k2ly">r/sales</a></cite></q></span></div>
+    <p>An intent score cannot be checked, so reps discount it. A job post, a hire, a funding announcement or a post about the problem can be opened, dated and quoted in the first line.</p>
+    <div class="viz seen-target">
+      <div class="kv"><div><b class="g">16 of 27</b><span>accounts had open sales, marketing or growth roles posted or first seen in the last 60 days</span></div><div><b class="r">355 of 675</b><span>job postings returned were already closed</span></div><div><b class="r">0 of 27</b><span>funding rounds from the last 12 months returned by the funding provider</span></div></div>
+      <div class="vcap">Recorded 30 Sep 2026 on the 27 accounts that passed chapter 5. Jobs through <code>treg.companies.jobs.search</code> (served by PredictLeads, $0.04 a call, up to 25 postings each); funding from Aviato ($0.01 a call; 26 of 27 had rounds on record, the latest returned from May 2025). $1.35 for both checks. Open hiring was the live signal; funding data was stale for this list.</div>
+    </div>
+    <div class="sigrow"><span class="m"># the shape of one row from the lead-signals skill</span>
+<span class="k">person</span>    Head of Growth, &lt;company&gt;
+<span class="k">signal</span>    posted 3 SDR roles in the last 30 days
+<span class="k">why_now</span>   <span class="g">building outbound now; the list will need data</span>
+<span class="k">source</span>    https://…/careers/sdr
+<span class="k">email</span>     found and verified, or blank</div>
+    <h4 id="job-changes" style="font-family:var(--display);font-size:19px;font-weight:600;margin:28px 0 6px">Job changes: most contact records do not show the new job yet</h4>
+    <p>A champion who moves to a new company is one of the best reasons to write. The trap is the data: in the first weeks after a move, most of the stored records we checked did not show the new company, so the email can go to an inbox they no longer read and the first line names the wrong company.</p>
+    <div class="viz seen-target">
+      <div class="vh">Study · 148 people who announced a new job 1 to 29 days earlier</div>
+      <div class="cbars">
+        <div class="cbar"><span>One database</span><span class="t"><i style="--w:68%"></i></span><span class="v">68%</span></div>
+        <div class="cbar"><span>Both of two</span><span class="t"><i style="--w:64%"></i></span><span class="v">64%</span></div>
+        <div class="cbar win"><span>Live read</span><span class="t"><i style="--w:4%"></i></span><span class="v">4%</span></div>
+      </div>
+      <div class="vcap" style="margin-top:8px">Share of records found that did not show the new employer. &ldquo;Both of two&rdquo; counts people two databases both had, where neither did.</div>
+      <div class="kv" style="margin-top:14px"><div><b class="r">72%</b><span>still not showing it three to four weeks after the move (61% in the first week)</span></div><div><b class="r">84 of 139</b><span>people a database had: none of the databases that had them showed the new job</span></div><div><b>1 in 3</b><span>people the live profile read could find at all</span></div></div>
+      <div class="vcap">Study run 7 Oct 2026. Method: we took people who had posted that they were starting a new role 1 to 29 days earlier (median about 13), and used each post as the answer. We looked each person up once by LinkedIn URL in five contact databases and with one live profile read, and compared the company each returned with the announced one by name. 68% is the average of the five databases&rsquo; rates; 64% compares two databases on the people both had, where one alone missed 69%. A hand check of 40 non-matching records found every one named a different organisation, not a spelling of the new one; a few may be side roles held alongside the new job. The week groups are different people seen once, not records followed over time. The live read comes from the same profile the person updates, so its agreement is partly expected, and it found 49 of the 148. Everyone here announced their move publicly, so results may differ for people who do not. Databases are not named, and results will differ by database and segment.</div>
+    </div>
+    <ol class="play">
+      <li>Keep only signals with a source link and a date, and drop closed job postings: more than half of those returned were closed.</li>
+      <li>Write one line of &ldquo;why now&rdquo; per signal. If you cannot, it is noise.</li>
+      <li>For a job change, confirm the new company with a live profile read before anything else. A second database helps little: when two both had the person, both missed the new job 64% of the time.</li>
+      <li>Give the feed an owner who triages it on a fixed day.</li>
+    </ol>
+    <div class="runit"><div class="rh"><span><img src="/media/people-search/claude-code.png" alt="">install the signals skill</span><button data-copy="#p9" data-ev="gtm_copy_prompt" data-q="9">copy</button></div><pre id="p9">npx skills add superdesigndev/treg --skill lead-signals</pre></div>
+    <div class="runit"><div class="rh"><span><img src="/media/people-search/claude-code.png" alt="">prompt: check job changes live</span><button data-copy="#p9b" data-ev="gtm_copy_prompt" data-q="9b">copy</button></div><pre id="p9b">Using treg, for each person in job-changes.csv read their live LinkedIn profile and
+return current company, title and start date. Compare with the company in our CRM and
+flag every mismatch. For mismatches only, find and verify an email at the new company.
+Show the cost before you start.</pre></div>
+    <div class="rule"><b>The rule</b>No source link, no signal. No &ldquo;why now&rdquo;, no outreach.</div>
+      <p class="deeper"><b>Go deeper</b><a href="/leads-signals">Claude for lead signals</a><a href="/skills/lead-signals/SKILL.md">The skill</a><a href="/tools/predictleads">PredictLeads</a><a href="/people-search">Live profile reads</a></p>
+  </section>
+
+  <section class="chapter" id="ch10" data-ch="10">
+    <div class="ch-k">Chapter 10 · Priority <span class="badge run">Run 30 Sep</span> <span class="badge run">Study 6 Oct</span></div>
+    <h3 class="ct">Score fit and timing together, then work the top tier first</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">Every account on the list gets the same sequence on the same day, whether or not anything is happening there.</span></div>
+    <div class="viz seen-target">
+      <div class="vh">27 accounts, one tier each</div>
+      <div class="funnel">
+        <div class="frow"><span>A · fit ≥ 60% and 2+ open GTM roles</span><span class="bar"><i style="--w:30%"></i></span><span class="n">8</span></div>
+        <div class="frow"><span>B · at least 1 open GTM role</span><span class="bar"><i style="--w:30%"></i></span><span class="n">8</span></div>
+        <div class="frow grey"><span>C · nothing open now</span><span class="bar"><i style="--w:41%"></i></span><span class="n">11</span></div>
+      </div>
+      <div class="vcap">Recorded 30 Sep 2026. Fit is the chapter 5 ICP score (50% to 67% on these accounts); timing is open GTM roles posted or first seen in the last 60 days. Tier A gets a person and a first line this week; tier C waits for a signal.</div>
+    </div>
+    <p id="test-your-signals">Timing signals deserve suspicion before they get a weight. We tested a popular one: can you see a startup&rsquo;s next round coming in its hiring or its news? Hiring could not tell them apart, and news ran the wrong way.</p>
+    <div class="viz seen-target">
+      <div class="vh">Study · what showed up before the reference date, for startups that raised and startups with no round found</div>
+      <div class="tw"><table class="data">
+        <thead><tr><th>Signal</th><th>Raised next</th><th>No round found</th></tr></thead>
+        <tbody>
+          <tr><td>Opened a GTM role</td><td class="m" data-label="Raised next">30%</td><td class="m" data-label="No round found">24%</td></tr>
+          <tr><td>Opened two or more GTM roles</td><td class="m" data-label="Raised next">19%</td><td class="m" data-label="No round found">15%</td></tr>
+          <tr><td>Opened any job</td><td class="m" data-label="Raised next">47%</td><td class="m" data-label="No round found">48%</td></tr>
+          <tr><td>Opened a senior role</td><td class="m" data-label="Raised next">18%</td><td class="m" data-label="No round found">19%</td></tr>
+          <tr><td>Hiring sped up</td><td class="m" data-label="Raised next">25%</td><td class="m" data-label="No round found">22%</td></tr>
+          <tr><td>Was in the news</td><td class="m" data-label="Raised next">26%</td><td class="m" data-label="No round found">54%</td></tr>
+        </tbody>
+      </table></div>
+      <div class="vcap">Study run 6 Oct 2026. Method: 57 US startups that announced a seed to Series B round between mid-August and early October 2026 (reference date: the announcement), against similar startups whose last round was in 2025 and for which our source showed no 2026 round (reference date: the median announcement date). 54 of those 61 had any job or news data. Job postings by first-seen date (posted date if missing) and news by found date, from 90 to 7 days before the reference date; the final week is left out so the round itself does not count. GTM roles cover sales, marketing, growth, revenue operations, business development, partnerships and customer success. &ldquo;Hiring sped up&rdquo; means two or more postings and more than in the 90 days before that. One source, with incomplete coverage, and an unmatched comparison: gaps of a few points are noise, and differences in company age and coverage could explain the news gap; we did not establish the cause. This is no evidence of a hiring signal, not proof that none exists.</div>
+    </div>
+    <ol class="play">
+      <li>Keep fit and timing as two numbers. Multiply them only to sort, never to decide.</li>
+      <li>Define tiers with numbers, and write them in rules.md.</li>
+      <li>Re-score weekly; timing decays, fit barely moves.</li>
+      <li>Before a timing signal gets a weight, check it on your own past deals: the share of wins that showed it against the share of losses. If it does not separate them, use it as a reason to write, not as a score. For funding, act on the announcement itself.</li>
+    </ol>
+    <div class="runit"><div class="rh"><span><img src="/media/people-search/claude-code.png" alt="">prompt</span><button data-copy="#p10" data-ev="gtm_copy_prompt" data-q="10">copy</button></div><pre id="p10">Using treg, for each passed account pull open jobs and funding rounds. Count sales,
+marketing and growth roles that are still open and were posted or first seen in the last
+60 days. Tier A if fit >= 0.6 and 2+
+such roles, B if 1+, else C. Show the tier, the roles and their links.</pre></div>
+    <div class="runit"><div class="rh"><span><img src="/media/people-search/claude-code.png" alt="">prompt: test a signal on your own deals</span><button data-copy="#p10b" data-ev="gtm_copy_prompt" data-q="10b">copy</button></div><pre id="p10b">Using treg, take wins.csv and losses.csv (domain and close date). For each account pull
+job postings and news from the 90 days before its close date. For each signal, report
+the share of wins and the share of losses that showed it, and tell me which signals
+separate them by more than 15 points. Show the cost before you start.</pre></div>
+    <div class="rule"><b>The rule</b>Work tier A this week. Tier C gets nothing until a signal moves it.</div>
+      <p class="deeper"><b>Go deeper</b><a href="/leads-signals">Lead signals</a><a href="/tools/aviato">Aviato</a></p>
+  </section>
+
+  <!-- ============================== PART IV ============================== -->
+  <div class="part" id="part4"><div class="pk">Part IV</div><h2>Reach out</h2><p>The agent finds the reason to write. A person decides whether it is good enough to send.</p></div>
+
+  <section class="chapter" id="ch11" data-ch="11">
+    <div class="ch-k">Chapter 11 · First line <span class="badge run">Run 23 Sep</span></div>
+    <h3 class="ct">Let the agent research. Let a person write, or at least approve.</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">Thousands of emails go out and the replies do not come.<q>Cold outreaches always come off super robotic. <cite><a href="https://www.reddit.com/comments/1pqngk8">r/sales</a></cite></q></span></div>
+    <div class="viz seen-target">
+      <div class="dots" role="img" aria-label="19 openers scored, 4 decent or better"><i class="good"></i><i class="good"></i><i class="good"></i><i class="good"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="vcap">In the 23 Sep run, 19 companies had a news event from the last year. jev scored each as a first line on a 0 to 3 scale: 4 of 19 were decent or better, mean 1.79. Most available &ldquo;personalisation&rdquo; was not worth sending.</div>
+    </div>
+    <ol class="play">
+      <li>The agent gathers the reason to write, with its source.</li>
+      <li>Score the reason before anyone writes. Drop weak reasons; do not polish them.</li>
+      <li>A person writes or approves the first line. Read ten out loud before a sequence goes live.</li>
+    </ol>
+    <div class="rule"><b>The rule</b>Nothing is sent that a person has not read.</div>
+    <div class="fit-line"><div class="yes"><b>treg does</b>The research: news, hiring, posts, company data, each with a source.</div><div><b>Not treg</b>Writing and sending. For the method, see the cold-email skill in <a href="#skills">appendix A</a>.</div></div>
+      <p class="deeper"><b>Go deeper</b><a href="/jev">How the opener scoring works</a><a href="/use-cases/company-research-for-ai-agents">Company research</a></p>
+  </section>
+
+  <section class="chapter" id="ch12" data-ch="12">
+    <div class="ch-k">Chapter 12 · Sending and replies <span class="badge">Method · not treg</span></div>
+    <h3 class="ct">Sending infrastructure and replies: what practitioners recommend</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">More time goes into inboxes and reply triage than into selling.<q>I was spending more time on infrastructure than on selling. <cite><a href="https://www.reddit.com/comments/1scbsy1">r/b2bmarketing</a></cite></q></span></div>
+    <h4>Sending</h4>
+    <p>Inboxes, domains and warm-up belong to your sending tool. The advice that held up across threads: conservative volume, and watching bounces and complaints per domain. Absolute rules (&ldquo;never use links&rdquo;) did not.</p>
+    <h4>Replies</h4>
+    <p>Classify every reply as interested, objection, referral or out-of-office; route it to the rep with the context the agent gathered; let a person approve the answer; and write the outcome back to the row (<a href="#ch14">chapter 14</a>).</p>
+    <div class="rule"><b>The rule</b>Replies are routed within a working day, and every outcome is written back to the row.</div>
+  </section>
+
+  <!-- ============================== PART V ============================== -->
+  <div class="part" id="part5"><div class="pk">Part V</div><h2>Inbound</h2><p>The leads that come to you deserve the fastest answer, and most of the routing needs one lookup.</p></div>
+
+  <section class="chapter" id="ch13" data-ch="13">
+    <div class="ch-k">Chapter 13 · Inbound routing <span class="badge run">Run 30 Sep · $0.053</span></div>
+    <h3 class="ct">Enrich an inbound lead from its email domain and route it in seconds</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">A demo request sits in a queue while someone looks the company up by hand.</span></div>
+    <p>A work email gives you a domain, and a domain gives you most of what routing needs. We enriched 20 company domains the way a form handler would.</p>
+    <div class="viz seen-target">
+      <div class="kv"><div><b class="g">2.2 s</b><span>median to enrich a new domain (p90 4.5 s)</span></div><div><b>$0.053</b><span>for 20 new domains, $0.0026 each</span></div><div><b>~⅕</b><span>of the price, and about half the time, for a repeat lookup of the same domain</span></div></div>
+      <div class="funnel" style="margin-top:16px">
+        <div class="frow"><span>Employee count</span><span class="bar"><i style="--w:100%"></i></span><span class="n">20/20</span></div>
+        <div class="frow"><span>Location</span><span class="bar"><i style="--w:100%"></i></span><span class="n">20/20</span></div>
+        <div class="frow"><span>Industry</span><span class="bar"><i style="--w:80%"></i></span><span class="n">16/20</span></div>
+        <div class="frow"><span>Description</span><span class="bar"><i style="--w:65%"></i></span><span class="n">13/20</span></div>
+      </div>
+      <div class="vcap">Recorded 30 Sep 2026 with <code>treg.companies.enrich</code> on 20 domains not looked up before; served by TheCompaniesAPI 13, Hunter 5, Dropleads 2; slowest answer 4.8 s. A second set of 20 domains that had already been enriched came back in a median 1.15 s for $0.011 in total. This measures the lookup, not a full routing flow.</div>
+    </div>
+    <ol class="play">
+      <li>On submit, enrich the company from the email domain, and store the result so a repeat never pays full price.</li>
+      <li>Route on two or three fields you trust: headcount band, country, industry. Send gaps to a person, not to nurture.</li>
+      <li>Answer tier-A inbound within the hour; it already told you the timing.</li>
+    </ol>
+    <div class="runit"><div class="rh"><span>from a form handler or your agent</span><button data-copy="#p13" data-ev="gtm_copy_prompt" data-q="13">copy</button></div><pre id="p13">treg call treg.companies.enrich --method POST --data '{"domain":"acme.com"}'</pre></div>
+    <div class="rule"><b>The rule</b>Every inbound lead is enriched and routed before a person opens it.</div>
+      <p class="deeper"><b>Go deeper</b><a href="/use-cases/enrich-a-company">Company enrichment compared</a><a href="/use-cases/enrich-a-person">Person enrichment</a><a href="/tools/thecompaniesapi">TheCompaniesAPI</a></p>
+  </section>
+
+  <!-- ============================== PART VI ============================== -->
+  <div class="part" id="part6"><div class="pk">Part VI</div><h2>Operate and improve</h2><p>A playbook that is not measured decays. These three chapters keep it honest.</p></div>
+
+  <section class="chapter" id="ch14" data-ch="14">
+    <div class="ch-k">Chapter 14 · Attribution <span class="badge run">Run 23 Sep</span></div>
+    <h3 class="ct">Tag every row, so you can tell which list, signal and provider paid off</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">Nobody can say which source produced last quarter&rsquo;s pipeline.<q>Which positive replies became opportunities? Which meetings went nowhere, and why? <cite>LinkedIn</cite></q></span></div>
+    <div class="viz seen-target">
+      <div class="chips"><span class="chip">company</span><span class="chip">domain</span><span class="chip">person</span><span class="chip">title</span><span class="chip">email</span><span class="chip ok">which provider found it</span><span class="chip ok">verifier&rsquo;s verdict</span><span class="chip">catch-all flag</span><span class="chip ok">the event to lead with</span><span class="chip ok">opener score</span></div>
+      <div class="vcap">The columns of the 23 Sep run&rsquo;s CSV. The green ones make a later join to outcomes possible. <a href="/workflows/find-and-verify-a-lead-list">Download it</a>.</div>
+    </div>
+    <ol class="play">
+      <li>Store per row: source list, signal, the provider that found the email, the verifier&rsquo;s verdict.</li>
+      <li>Monthly, join rows to replies, meetings and closed-won in the CRM.</li>
+      <li>Cut the sources and providers that never appear on the winning side of that join.</li>
+    </ol>
+    <div class="rule"><b>The rule</b>A row without its source and provider does not go into a sequence.</div>
+    <div class="fit-line"><div class="yes"><b>treg does</b>Names the provider that answered each call and what it cost, so your agent can write both onto the row.</div><div><b>Not treg</b>The durable record and the CRM join. Keep provider and outcome on your own rows.</div></div>
+      <p class="deeper"><b>Go deeper</b><a href="/workflows/find-and-verify-a-lead-list">Download the tagged CSV</a></p>
+  </section>
+
+  <section class="chapter" id="ch15" data-ch="15">
+    <div class="ch-k">Chapter 15 · Metrics <span class="badge">Method, with our numbers</span></div>
+    <h3 class="ct">The metric stack: system health, performance, efficiency</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">The only number anyone tracks is &ldquo;emails sent&rdquo;.</span></div>
+    <div class="tw"><table class="data">
+      <thead><tr><th>Layer</th><th>Metric</th><th>Ours, from the runs</th></tr></thead>
+      <tbody>
+        <tr><td><b>System health</b></td><td data-label="Metric">Two market counts agree; enrichment fill rate on routing fields; share of verified-deliverable</td><td data-label="Ours">One filter changed a count by over 400× (ch. 2); 16 to 20 of 20 routing fields filled (ch. 13); 20 of 21 deliverable (ch. 8)</td></tr>
+        <tr><td><b>Performance</b></td><td data-label="Metric">Reply rate, meetings, opportunities, by source, signal and tier</td><td data-label="Ours">Yours to measure: needs the chapter 14 tags</td></tr>
+        <tr><td><b>Efficiency</b></td><td data-label="Metric">Cost per usable result; share of rows dropped before paying; time to first touch on inbound</td><td data-label="Ours">$0.12 per deliverable lead; 21 of 48 dropped before paying (ch. 5); 2.2 s median to enrich a new domain (ch. 13)</td></tr>
+      </tbody>
+    </table></div>
+    <div class="rule"><b>The rule</b>Review the three layers weekly, and change one rule at a time.</div>
+      <p class="deeper"><b>Go deeper</b><a href="/workflows">All workflows with receipts</a></p>
+  </section>
+
+  <section class="chapter" id="ch16" data-ch="16">
+    <div class="ch-k">Chapter 16 · Rollout <span class="badge run">Lessons from our runs</span></div>
+    <h3 class="ct">Roll automation out like software: shadow, small segment, human gate, then autonomy</h3>
+    <div class="symptom"><span class="ic">Symptom</span><span class="bd">An automation quietly stops, or quietly does the wrong thing, and nobody notices for days.<q>We usually find out days later. <cite><a href="https://www.reddit.com/comments/1srvohy">r/RevOps</a></cite></q></span></div>
+    <ol class="play">
+      <li><b>Shadow.</b> Run the play next to the manual process for a week and compare outputs row by row.</li>
+      <li><b>Small segment.</b> Turn it on for one segment or one rep.</li>
+      <li><b>Human gate.</b> A person approves each send until the error rate is known.</li>
+      <li><b>Autonomy</b> only for the steps that passed; keep the gate on first lines.</li>
+    </ol>
+    <h4>What broke in our own runs</h4>
+    <div class="viz seen-target"><div class="chips"><span class="chip bad">Tomba out of capacity (23 Sep)</span><span class="chip bad">Lusha out of capacity (30 Sep)</span><span class="chip bad">3 accounts rate-limited (429)</span><span class="chip bad">our parser read the wrong field: $1.08 re-run</span></div>
+    <div class="vcap">None of these threw an error that stopped the run. Each would have produced a quietly thinner list. The routed endpoints fell back to the next provider; the $1.08 was our own bug, caught because we stored the raw responses and compared counts.</div></div>
+    <ol class="play" style="margin-top:14px">
+      <li>Alert on expected counts per stage per run, not on errors.</li>
+      <li>Store raw provider responses for a week, so a bad parse can be fixed without paying twice.</li>
+      <li>Set a spend cap per run and have the agent stop and ask above it.</li>
+    </ol>
+    <div class="rule"><b>The rule</b>Nothing goes autonomous until it has run in shadow, and every stage reports its row count.</div>
+      <p class="deeper"><b>Go deeper</b><a href="/workflows">All workflows with receipts</a><a href="/catalog">Provider success rates in the catalog</a></p>
+  </section>
+
+  <!-- ============================== APPENDICES ============================== -->
+  <section class="chapter" id="skills" data-ch="A">
+    <div class="ch-k">Appendix A</div>
+    <h3 class="ct">The best Claude Code skills for GTM engineering, and the data step each leaves to you</h3>
+    <p>A skill is the method. Most either ask for a vendor API key or leave live data to the agent. The last column is the catalog job that covers that step. We have not yet run these with treg end to end.</p>
+    <div class="tw"><table class="data">
+      <thead><tr><th>Skill</th><th>Stars</th><th>GTM job</th><th>The data step</th><th>Covered by</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://github.com/coreyhaines31/marketingskills" rel="noopener">coreyhaines31/marketingskills</a></td><td class="m" data-label="Stars">51.8k</td><td data-label="GTM job">Cold email, competitor profiling</td><td data-label="The data step">Signals you supply; keyword and backlink data via DataForSEO</td><td data-label="Covered by">Buying signals; ranked keywords, backlinks</td></tr>
+        <tr><td><a href="https://github.com/mvanhorn/last30days-skill" rel="noopener">mvanhorn/last30days-skill</a></td><td class="m" data-label="Stars">63.1k</td><td data-label="GTM job">Research what people say about a topic</td><td data-label="The data step">Social posts; optional ScrapeCreators or Apify keys</td><td data-label="Covered by">X, Reddit, TikTok, YouTube search and comments</td></tr>
+        <tr><td><a href="https://github.com/AgriciDaniel/claude-seo" rel="noopener">AgriciDaniel/claude-seo</a></td><td class="m" data-label="Stars">17.9k</td><td data-label="GTM job">SEO audits and research</td><td data-label="The data step">DataForSEO; Google OAuth for Search Console</td><td data-label="Covered by">SERP, keyword volume, backlinks; your own Search Console</td></tr>
+        <tr><td><a href="https://github.com/zubair-trabzada/geo-seo-claude" rel="noopener">zubair-trabzada/geo-seo-claude</a></td><td class="m" data-label="Stars">10.9k</td><td data-label="GTM job">AI visibility and brand mentions</td><td data-label="The data step">Page fetches and heuristic scoring</td><td data-label="Covered by">ChatGPT, Perplexity and AI Mode answers with citations</td></tr>
+        <tr><td><a href="https://github.com/phuryn/pm-skills" rel="noopener">phuryn/pm-skills</a></td><td class="m" data-label="Stars">26.6k</td><td data-label="GTM job">Competitive battlecards</td><td data-label="The data step">Web search plus your win/loss notes</td><td data-label="Covered by">Company enrichment, news, pricing pages, ads</td></tr>
+        <tr><td><a href="https://github.com/swan-gtm/gtm-skills" rel="noopener">swan-gtm/gtm-skills</a></td><td class="m" data-label="Stars">161</td><td data-label="GTM job">Account research briefs</td><td data-label="The data step">Tool-agnostic company, people and search evidence</td><td data-label="Covered by">Firmographics, decision makers, hiring</td></tr>
+        <tr><td><a href="https://github.com/superdesigndev/treg/tree/main/skills" rel="noopener">superdesigndev/treg</a></td><td class="m" data-label="Stars">ours</td><td data-label="GTM job">Buyer signals, UGC videos</td><td data-label="The data step">Runs on treg directly</td><td data-label="Covered by">All of the above</td></tr>
+      </tbody>
+    </table></div>
+    <p style="font-size:13px;color:var(--muted)">Stars read from GitHub on 29 Sep 2026. The six third-party repositories are MIT-licensed.</p>
+  </section>
+
+  <section class="chapter" id="clay-alternatives" data-ch="B">
+    <div class="ch-k">Appendix B</div>
+    <h3 class="ct">Clay alternatives for GTM engineers who work in Claude Code or Codex</h3>
+    <p>If you already think in prompts, the question is not which table to use but where the data comes from and what it costs per correct result. Measured on the same 292 people:</p>
+    <div class="tw"><table class="data">
+      <thead><tr><th>Option</th><th>How you work</th><th>Exact match</th><th>Per correct email</th></tr></thead>
+      <tbody>
+        <tr class="win"><td><b>Claude Code or Codex + treg.to</b></td><td data-label="How you work">Prompts; per-call data layer; your own keys first</td><td class="m" data-label="Exact match">90.4%</td><td class="m" data-label="Per correct">$0.0056</td></tr>
+        <tr><td>Clay</td><td data-label="How you work">Visual table, shared workspace, credits</td><td class="m" data-label="Exact match">89.7%</td><td class="m" data-label="Per correct">$0.0395</td></tr>
+        <tr><td>Freckle</td><td data-label="How you work">Table-based enrichment</td><td class="m" data-label="Exact match">90.1%</td><td class="m" data-label="Per correct">$0.0427</td></tr>
+        <tr><td>Deepline</td><td data-label="How you work">Batch enrichment</td><td class="m" data-label="Exact match">86.6%</td><td class="m" data-label="Per correct">$0.0924</td></tr>
+      </tbody>
+    </table></div>
+    <p>Keep Clay if your team needs a shared visual table and already pays for it. Move the work into your agent when you want the whole playbook in prompts, paid per call. <a href="/blog/work-email-finding-bench">The full bench</a>.</p>
+  </section>
+
+  <section class="chapter" id="runs" data-ch="C">
+    <div class="ch-k">Appendix C</div>
+    <h3 class="ct">Every recorded run behind this playbook</h3>
+    <div class="tw"><table class="data">
+      <thead><tr><th>Run</th><th>Date</th><th>What came back</th><th>Metered</th></tr></thead>
+      <tbody>
+        <tr><td>Playbook runs: counts, lookalikes, committee, timing, inbound (ch. 2, 4, 6, 9, 10, 13)</td><td class="m" data-label="Date">30 Sep</td><td data-label="What came back">294 calls on one ICP; figures in each chapter</td><td class="m" data-label="Metered">$2.70</td></tr>
+        <tr><td><a href="#job-changes">Study: job changes against five databases</a> (ch. 9)</td><td class="m" data-label="Date">7 Oct</td><td data-label="What came back">148 people; 68% of records did not show the new job</td><td class="m" data-label="Metered">$11.10</td></tr>
+        <tr><td><a href="#test-your-signals">Study: hiring and news before a raise</a> (ch. 10)</td><td class="m" data-label="Date">6 Oct</td><td data-label="What came back">57 raised against 54 with no round found; hiring did not separate them</td><td class="m" data-label="Metered">$13.65</td></tr>
+        <tr><td><a href="#found-vs-deliverable">Study: found against deliverable</a> (ch. 8)</td><td class="m" data-label="Date">7 Oct</td><td data-label="What came back">60 found, 32 deliverable</td><td class="m" data-label="Metered">$0.65</td></tr>
+        <tr><td><a href="/workflows/find-and-verify-a-lead-list">Build a verified lead list</a> (ch. 3, 5, 8, 11, 14)</td><td class="m" data-label="Date">23 Sep</td><td data-label="What came back">20 deliverable leads from 50 companies</td><td class="m" data-label="Metered">$2.33</td></tr>
+        <tr><td><a href="/blog/work-email-finding-bench">Work email bench</a> (ch. 7)</td><td class="m" data-label="Date">16 Sep</td><td data-label="What came back">292 people across five aggregators</td><td class="m" data-label="Metered">$1.49 on treg</td></tr>
+        <tr><td><a href="/workflows/discover-creators-in-a-niche">Find creators in a niche</a></td><td class="m" data-label="Date">14 Sep</td><td data-label="What came back">25 creators from 153 matches</td><td class="m" data-label="Metered">$0.20</td></tr>
+        <tr><td><a href="/workflows/screen-instagram-creators-before-outreach">Screen creators before outreach</a></td><td class="m" data-label="Date">14 Sep</td><td data-label="What came back">18 of 20 profiles, median engagement 5.3%</td><td class="m" data-label="Metered">$0.036</td></tr>
+        <tr><td><a href="/workflows/keyword-demand-to-ad-budget">Price keyword demand</a></td><td class="m" data-label="Date">14 Sep</td><td data-label="What came back">50 keywords, 742,970 monthly searches</td><td class="m" data-label="Metered">$0.11</td></tr>
+        <tr><td><a href="/workflows/mine-competitor-meta-ads-as-creative-pack">Mine a competitor&rsquo;s ads</a></td><td class="m" data-label="Date">14 Sep</td><td data-label="What came back">20 Meta ads and 17 Google creatives</td><td class="m" data-label="Metered">$0.015*</td></tr>
+      </tbody>
+    </table></div>
+    <p style="font-size:13px;color:var(--muted)">The three studies are separate tests, each on its own sample, and are not part of the one-ICP runs; the hiring study&rsquo;s figure includes building its two samples. The $5.03 in the header is the 30 Sep and 23 Sep runs, which follow one ICP; it includes $1.08 we spent re-running a step after our own parsing bug (ch. 16). * Two of that run&rsquo;s calls used the team&rsquo;s own Apify key, which treg never meters.</p>
+  </section>
+
+  <section class="chapter" id="glossary" data-ch="D">
+    <div class="ch-k">Appendix D</div>
+    <h3 class="ct">Glossary and questions</h3>
+    <div class="tw"><table class="data">
+      <tbody>
+        <tr><td><b>ICP</b></td><td>Ideal customer profile, written as filters plus checks (ch. 1).</td></tr>
+        <tr><td><b>TAM</b></td><td>The count of companies that match your filters (ch. 2).</td></tr>
+        <tr><td><b>Check</b></td><td>A judgement on each row that no filter can express, run before paid steps (ch. 5).</td></tr>
+        <tr><td><b>Waterfall</b></td><td>Trying providers in order until one answers. treg&rsquo;s routed endpoints try them cheapest first.</td></tr>
+        <tr><td><b>Catch-all</b></td><td>A domain that accepts any address, so a verifier cannot confirm a specific inbox (ch. 8).</td></tr>
+        <tr><td><b>Signal</b></td><td>A dated, linkable event that makes a message timely (ch. 9).</td></tr>
+        <tr><td><b>Live read</b></td><td>Fetching a person&rsquo;s public profile at the moment you need it, instead of a stored database record (ch. 9).</td></tr>
+        <tr><td><b>Tier</b></td><td>A priority bucket from fit and timing (ch. 10).</td></tr>
+        <tr><td><b>Shadow mode</b></td><td>Running a play alongside the manual process to compare before switching (ch. 16).</td></tr>
+      </tbody>
+    </table></div>
+    <div class="faq">
+      <details data-ev="gtm_faq" data-q="revops"><summary>What is the difference between a GTM engineer and RevOps?</summary><div class="body"><p>RevOps coordinates revenue processes, systems, planning and reporting across teams. A GTM engineer builds and runs specific workflows, such as enrichment, scoring, signals and routing, and often sits inside RevOps. Titles vary and the work overlaps; in practice RevOps decides how the revenue system should work, and a GTM engineer builds the automated parts of it.</p></div></details>
+      <details data-ev="gtm_faq" data-q="job-changes"><summary>How accurate is contact data after someone changes jobs?</summary><div class="body"><p>Not very, in the first month. In our 7 Oct 2026 study of 148 people who had announced a new job 1 to 29 days earlier, 68% of contact database records on average did not show the new employer, and when two databases both had a person, both missed it 64% of the time. A live profile read was current for 47 of the 49 people it found, but it found only a third of them. For job-change plays, confirm the new company live before you write.</p></div></details>
+      <details data-ev="gtm_faq" data-q="raise-signals"><summary>Do hiring or news signals predict that a startup is about to raise?</summary><div class="body"><p>Hiring did not, in our test. Across 57 US startups that announced a seed to Series B round in August to October 2026 and 54 similar startups with no round found, the share that opened GTM roles, any job or senior roles in the weeks before was within a few points, and recorded news was more common in the comparison group with no round found (54% against 26%). Act on the funding announcement itself, and test any timing signal on your own wins and losses before you weight it.</p></div></details>
+      <details data-ev="gtm_faq" data-q="code"><summary>Do I need to write code?</summary><div class="body"><p>No. You describe the job in a prompt, the agent chooses the calls, and it shows the price before it spends. Writing the rules in chapter 3 is the part that needs you.</p></div></details>
+      <details data-ev="gtm_faq" data-q="routing"><summary>Does treg.to choose the data provider for me?</summary><div class="body"><p>The catalog lists every provider of a job with measured success rates and prices, and your agent picks. Some jobs also have a routed endpoint (<code>treg.&lt;capability&gt;</code>) that tries providers cheapest first when you call it; the result names the provider that answered.</p></div></details>
+      <details data-ev="gtm_faq" data-q="misses"><summary>What does a miss cost?</summary><div class="body"><p>It depends on the provider: some bill per successful result, some per call. Each catalog entry says which, routed endpoints do not bill misses on per-success providers, and every receipt shows what was actually charged.</p></div></details>
+      <details data-ev="gtm_faq" data-q="own-keys"><summary>Can I use the provider keys my team already pays for?</summary><div class="body"><p>Yes. Register the key once and calls to that provider go through it. A team&rsquo;s own key always wins over treg.to&rsquo;s, and those calls are never metered.</p></div></details>
+      <details data-ev="gtm_faq" data-q="agents"><summary>Which agents does this work with?</summary><div class="body"><p>The setup line works in Claude Code, Codex and Cursor; anything that can run a shell command can use the treg CLI. The prompts in each chapter are plain language and do not depend on one agent.</p></div></details>
+    </div>
+  </section>
+  </main>
+</div>
+
+<section class="cta-final">
+  <h2>Run chapter 1<br><span class="hl2">in your agent today.</span></h2>
+  <p style="text-align:center;color:var(--muted);max-width:56ch;margin:0 auto 30px;font-size:17px;text-wrap:balance">One key for {ENDPOINTS} tools across {PROVIDERS} providers. $1.00 of free credit once per new verified account, and the counts in chapter 2 are free.</p>
+  <div class="cmd"><span class="ps">›</span><span class="cline" id="setup">set up treg &mdash; https://treg.to/llms.txt</span><button data-copy="#setup" data-ev="gtm_copy_setup">copy</button></div>
+  <div class="cmd"><span class="ps">$</span><span class="cline" id="skills-cmd">npx skills add superdesigndev/treg</span><button data-copy="#skills-cmd" data-ev="gtm_copy_skills">copy</button></div>
+  <div class="ctas" style="margin-top:22px"><a class="pill dark" href="/app?ref=gtm" data-ev="gtm_cta_primary">Set up treg</a><a class="pill" href="/gtm-engineering.md" data-ev="gtm_cta_md">Read as Markdown</a></div>
+</section>
+
+<footer class="bigfoot">
+  <div class="bigfoot-in">
+    <div class="bf-brand">
+      <span class="bfb"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+      <div class="note">100% open source</div>
+    </div>
+    <nav class="bf-cols" aria-label="Site">
+      <div class="bf-col"><div class="lab">Explore</div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><a href="/showcase">Showcase</a><a href="/agents/claude-code">Agents</a><a href="/blog">Blog</a></div>
+      <div class="bf-col"><div class="lab">GTM</div>
+        <a href="/people-search">People search</a><a href="/leads-signals">Buyer signals</a><a href="/use-cases/lead-enrichment-for-ai-agents">Lead enrichment</a><a href="/use-cases/company-research-for-ai-agents">Company research</a></div>
+      <div class="bf-col"><div class="lab">Build</div>
+        <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
+      <div class="bf-col"><div class="lab">Company</div>
+        <a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </nav>
+  </div>
+  <div class="bf-tag">© 2026 treg · OpenRouter for agent tools</div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---- value events: queued until sitetrack.js has initialised PostHog, then flushed ---- */
+  window.tregEvents = window.tregEvents || [];
+  var pending = [];
+  function flush() {
+    if (!(window.posthog && window.posthog.capture)) return false;
+    while (pending.length) { var e = pending.shift(); window.posthog.capture(e[0], e[1]); }
+    return true;
+  }
+  var tries = 0, ftimer = setInterval(function () { if (flush() || ++tries > 30) clearInterval(ftimer); }, 1000);
+  function ev(name, props) {
+    var p = Object.assign({ page: document.body.dataset.page }, props || {});
+    window.tregEvents.push([name, p, Date.now()]); pending.push([name, p]); flush();
+  }
+
+  var nav = document.getElementById('nav');
+  addEventListener('scroll', function () { nav.classList.toggle('scrolled', scrollY > 8); }, { passive: true });
+
+  /* ---- hero: word entrance, then the agent rotates. The served H1 says "Claude Code". ---- */
+  document.querySelectorAll('.hero .hw').forEach(function (w, i) {
+    if (reduced) w.classList.add('in'); else setTimeout(function () { w.classList.add('in'); }, 200 + i * 320);
+  });
+  var AGENTS = [['/media/people-search/claude-code.png', 'Claude Code'], ['/media/people-search/codex.png', 'Codex'],
+                ['/media/people-search/openclaw.png', 'OpenClaw'], ['/media/people-search/hermes.png', 'Hermes']];
+  AGENTS.forEach(function (a) { (new Image()).src = a[0]; });
+  if (!reduced) {
+    var agWrap = document.getElementById('agWrap'), agLogo = document.getElementById('agLogo'), agName = document.getElementById('agName'), ai = 0;
+    setInterval(function () {
+      if (document.hidden || scrollY > innerHeight * .7) return;
+      agWrap.classList.add('out');
+      setTimeout(function () {
+        ai = (ai + 1) % AGENTS.length; agLogo.src = AGENTS[ai][0]; agName.textContent = AGENTS[ai][1];
+        agWrap.classList.remove('out'); agWrap.classList.add('pre'); void agWrap.offsetWidth; agWrap.classList.remove('pre');
+      }, 300);
+    }, 2600);
+  }
+
+  /* ---- the self-playing demo (abbreviated replay of the 23 Sep run; rows illustrative) ---- */
+  var ROWS = [
+    ['Modal', 'modal', 82, 'Lena Ito', 'av-lena', 'l.ito@modal.com', 'ok'], ['Baseten', 'baseten', 34, 0, 0, 0, 'drop'],
+    ['Fireworks', 'fireworks', 76, 'Nora Ali', 'av-nora', 'nali@fireworks.ai', 'ok'], ['Together', 'together', 71, 'Sam Park', 'av-sam', 'spark@together.ai', 'ok'],
+    ['Modular', 'modular', 22, 0, 0, 0, 'drop'], ['Anyscale', 'anyscale', 64, 'Tom Weber', 'av-tom', 'tweber@anyscale.com', 'unk'],
+    ['Replicate', 'replicate', 41, 0, 0, 0, 'drop'], ['Lambda', 'lambda', 88, 'Omar Diaz', 'av-omar', 'odiaz@lambda.ai', 'ok']
+  ];
+  var host = document.getElementById('dRows');
+  ROWS.forEach(function (r, i) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td class="num">' + (i + 1) + '</td>' +
+      '<td><span class="co fade"><img src="/media/people-search/' + r[1] + '.png" alt="">' + r[0] + '</span></td>' +
+      '<td class="fitc"><span class="fit fade"><i style="--w:' + r[2] + '%"></i>' + r[2] + '%</span></td>' +
+      '<td>' + (r[3] ? '<span class="who fade"><img src="/media/people-search/' + r[4] + '.png" alt="">' + r[3] + '</span>' : '') + '</td>' +
+      '<td class="c-mail">' + (r[5] ? '<span class="em fade' + (r[6] === 'unk' ? ' unk' : '') + '">' + r[5] + (r[6] === 'unk' ? ' ?' : ' ✓') + '</span>' : '') + '</td>';
+    host.appendChild(tr);
+  });
+  var trs = Array.prototype.slice.call(host.children);
+  var dTyped = document.getElementById('dTyped'), dCur = document.getElementById('dCur'), dReply = document.getElementById('dReply'),
+      dStatus = document.getElementById('dStatus'), dMeter = document.getElementById('dMeter'),
+      board = document.getElementById('dBoard'), bdName = document.getElementById('bdName'), bdSub = document.getElementById('bdSub'),
+      bdRows = document.getElementById('bdRows'), bdBadge = document.getElementById('bdBadge');
+  var BOARDS = {
+    list: { name: 'companies.search', sub: 'priced before it runs', badge: '958 matched · first page of 50 · $0.026', rows: [['apollo', 'Apollo', '$0.026 / page', 'hit']] },
+    gate: { name: 'typesafe.jev', sub: 'ICP check on the free list fields', badge: '21 dropped · own key, not metered', rows: [['/logos/jev.png', 'jev · 50% bar', '27 of 48 kept', 'hit']] },
+    find: { name: 'find → verify', sub: 'kept rows only', badge: '20 deliverable · 1 unknown · 0 invalid',
+      rows: [['/logos/findymail.svg', 'Findymail', '20 leads named', 'hit'], ['/logos/leadmagic.svg', 'LeadMagic', '7 leads named', 'hit'], ['hunter', 'Hunter', '18 emails', 'hit'], ['/logos/trykitt.svg', 'Kitt', '3 on Hunter misses', 'hit'], ['tomba', 'Tomba', 'out of capacity', 'miss']] }
+  };
+  function paintBoard(k) {
+    var b = BOARDS[k];
+    bdName.textContent = b.name; bdSub.textContent = b.sub; bdBadge.textContent = b.badge; bdBadge.classList.remove('in');
+    bdRows.innerHTML = b.rows.map(function (r) {
+      var src = r[0].charAt(0) === '/' ? r[0] : '/media/people-search/' + r[0] + '.png';
+      return '<div class="bd-row"><img src="' + src + '" alt=""><b>' + r[1] + '</b><span class="st ' + r[3] + '">' + r[2] + '</span></div>';
+    }).join('');
+  }
+  var timers = [];
+  function at(ms, fn) { timers.push(setTimeout(fn, ms)); }
+  function typeInto(text, start) { for (var i = 0; i <= text.length; i++) (function (i) { at(start + i * 30, function () { dTyped.textContent = text.slice(0, i); }); })(i); }
+  function meterTo(from, to, start, dur) { for (var i = 0; i <= 20; i++) (function (i) { at(start + dur / 20 * i, function () { dMeter.textContent = '$' + (from + (to - from) * i / 20).toFixed(2); }); })(i); }
+  function play() {
+    timers.forEach(clearTimeout); timers = [];
+    trs.forEach(function (tr) { tr.classList.remove('drop'); tr.querySelectorAll('.fade').forEach(function (el) { el.classList.remove('in'); }); });
+    dTyped.textContent = ''; dReply.hidden = true; dCur.hidden = false; dStatus.textContent = 'agent idle'; dMeter.textContent = '$0.00';
+    board.classList.remove('in');
+    if (reduced) {
+      trs.forEach(function (tr, i) { tr.querySelectorAll('.fade').forEach(function (el) { el.classList.add('in'); }); if (ROWS[i][6] === 'drop') tr.classList.add('drop'); });
+      paintBoard('find'); board.classList.add('in'); bdRows.querySelectorAll('.bd-row').forEach(function (r) { r.classList.add('in'); }); bdBadge.classList.add('in');
+      dCur.hidden = true; dTyped.textContent = 'find and verify the marketing lead at each kept company';
+      dStatus.textContent = '20 deliverable leads · 21 companies dropped before any paid lookup'; dMeter.textContent = '$2.33';
+      return;
+    }
+    typeInto('list 50 Series-A US SaaS companies, 51 to 200 staff', 400);
+    at(2000, function () { paintBoard('list'); board.classList.add('in'); dStatus.textContent = 'companies.search · priced before it runs'; });
+    at(2150, function () { bdRows.querySelectorAll('.bd-row').forEach(function (r) { r.classList.add('in', 'picked'); }); bdBadge.classList.add('in'); });
+    trs.forEach(function (tr, i) { at(2500 + i * 110, function () { tr.querySelector('.co').classList.add('in'); }); });
+    meterTo(0, 0.03, 2500, 700);
+    at(3900, function () { dTyped.textContent = ''; dCur.hidden = true; dReply.hidden = false; dReply.innerHTML = '↩ 50 companies <s>· 958 matched · $0.026</s>'; });
+    at(5400, function () { dReply.hidden = true; dCur.hidden = false; board.classList.remove('in'); });
+    typeInto('drop anything off-ICP before you pay for a lookup', 5500);
+    at(7200, function () { paintBoard('gate'); board.classList.add('in'); dStatus.textContent = 'jev · checking fit on the free fields'; });
+    at(7350, function () { bdRows.querySelectorAll('.bd-row').forEach(function (r) { r.classList.add('in', 'picked'); }); });
+    trs.forEach(function (tr, i) { at(7500 + i * 150, function () { tr.querySelector('.fit').classList.add('in'); }); });
+    trs.forEach(function (tr, i) { if (ROWS[i][6] === 'drop') at(8900 + i * 60, function () { tr.classList.add('drop'); }); });
+    at(9300, function () { bdBadge.classList.add('in'); dStatus.textContent = '27 kept · 21 dropped before any paid lookup'; });
+    at(9700, function () { dTyped.textContent = ''; dCur.hidden = true; dReply.hidden = false; dReply.innerHTML = '↩ 27 fit <s>· 21 dropped · nothing spent on them</s>'; });
+    at(11200, function () { dReply.hidden = true; dCur.hidden = false; board.classList.remove('in'); });
+    typeInto('find and verify the marketing lead at each kept company', 11300);
+    at(13100, function () { paintBoard('find'); board.classList.add('in'); dStatus.textContent = 'find → verify, kept rows only'; });
+    at(13250, function () { bdRows.querySelectorAll('.bd-row').forEach(function (r, i) { setTimeout(function () { r.classList.add('in'); if (i < 4) r.classList.add('picked'); }, i * 160); }); });
+    var k = 0;
+    trs.forEach(function (tr, i) {
+      if (ROWS[i][6] === 'drop') return;
+      at(13700 + k * 380, function () { tr.querySelector('.who').classList.add('in'); });
+      at(13900 + k * 380, function () { tr.querySelector('.em').classList.add('in'); });
+      k++;
+    });
+    meterTo(0.03, 2.33, 13700, 2200);
+    at(16000, function () { bdBadge.classList.add('in'); });
+    at(16300, function () {
+      dTyped.textContent = ''; dCur.hidden = true; dReply.hidden = false;
+      dReply.innerHTML = '↩ 20 deliverable leads <s>· $2.33 · $0.12 each</s>';
+      dStatus.textContent = '20 deliverable · 1 unknown kept apart · 21 dropped before the paid lookups';
+    });
+    at(21500, play);
+  }
+  var started = false;
+  new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting && !started) { started = true; play(); ev('gtm_scroll_proof'); } });
+  }, { threshold: 0.35 }).observe(document.querySelector('.demo'));
+
+  /* ---- diagnostic: the symptoms point at chapters ---- */
+  var TITLES = {};
+  function tocTitle(a) { var n = a.querySelector('span'); return a.textContent.slice(n ? n.textContent.length : 0).trim(); }
+  document.querySelectorAll('#toc a').forEach(function (a) { TITLES[a.getAttribute('href').slice(1)] = tocTitle(a); });
+  var out = document.getElementById('diagOut');
+  function renderDiag() {
+    var picked = {}, order = [];
+    document.querySelectorAll('.sym').forEach(function (s) {
+      var on = s.querySelector('input').checked; s.classList.toggle('on', on);
+      if (on) s.dataset.ch.split(',').forEach(function (c) { if (!picked[c]) { picked[c] = 1; order.push(c); } });
+    });
+    document.querySelectorAll('#toc a, #tocM nav a').forEach(function (a) { a.classList.toggle('hit', !!picked[a.getAttribute('href').slice(1)]); });
+    out.textContent = '';
+    /* Built from nodes, never an HTML string: the chapter ids come from data-ch and are checked
+       against a fixed shape, and titles are set as text. */
+    order = order.filter(function (c) { return /^ch\d{1,2}$/.test(c); });
+    if (!order.length) { out.classList.remove('on'); return; }
+    order.sort(function (a, b) { return parseInt(a.slice(2), 10) - parseInt(b.slice(2), 10); });
+    var lead = document.createElement('b'); lead.textContent = 'Start with: '; out.appendChild(lead);
+    order.forEach(function (c, i) {
+      if (i) out.appendChild(document.createTextNode(' \u00a0·\u00a0 '));
+      var a = document.createElement('a'); a.href = '#' + c;
+      a.textContent = 'ch. ' + c.slice(2) + ' · ' + (TITLES[c] || '');
+      out.appendChild(a);
+    });
+    out.appendChild(document.createElement('br'));
+    var note = document.createElement('span'); note.style.color = '#B8B8B4'; note.style.fontSize = '13px';
+    note.textContent = 'They are marked in the chapter list too.'; out.appendChild(note);
+    out.classList.add('on');
+  }
+  document.querySelectorAll('.sym input').forEach(function (i) {
+    i.addEventListener('change', function () { renderDiag(); if (i.checked) ev('gtm_diag_tick', { chs: i.closest('.sym').dataset.ch }); });
+  });
+
+  /* ---- table of contents: current chapter; mobile copy ---- */
+  var tocM = document.querySelector('#tocM nav');
+  Array.prototype.forEach.call(document.getElementById('toc').children, function (n) { tocM.appendChild(n.cloneNode(true)); });
+  tocM.addEventListener('click', function (e) { if (e.target.closest('a')) document.getElementById('tocM').open = false; });
+  var links = {};
+  document.querySelectorAll('#toc a').forEach(function (a) { links[a.getAttribute('href').slice(1)] = a; });
+  var curEl = document.getElementById('tocMCur');
+  var chIO = new IntersectionObserver(function (es) {
+    es.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      var id = e.target.id;
+      Object.keys(links).forEach(function (k) { links[k].classList.toggle('cur', k === id); });
+      if (links[id]) curEl.textContent = links[id].querySelector('span').textContent + ' · ' + tocTitle(links[id]);
+      if (!e.target.dataset.seenEv) { e.target.dataset.seenEv = '1'; ev('gtm_chapter_view', { ch: e.target.dataset.ch }); }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px' });
+  document.querySelectorAll('.chapter').forEach(function (c) { chIO.observe(c); });
+
+  /* ---- reveal on scroll for chapter visuals ---- */
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('seen'); io.unobserve(e.target); } });
+  }, { threshold: 0.3 });
+  document.querySelectorAll('.seen-target').forEach(function (el) { if (reduced) el.classList.add('seen'); else io.observe(el); });
+
+  /* ---- copy buttons: only a write that succeeded says "copied" and counts ---- */
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-copy]');
+    if (b) {
+      var src = document.querySelector(b.dataset.copy); if (!src) return;
+      var old = b.textContent;
+      (navigator.clipboard ? navigator.clipboard.writeText(src.textContent.trim()) : Promise.reject())
+        .then(function () { b.textContent = 'copied'; ev(b.dataset.ev || 'gtm_copy', { what: b.dataset.copy, ch: b.dataset.q }); },
+              function () { b.textContent = 'select and copy'; ev('gtm_copy_failed', { what: b.dataset.copy }); })
+        .then(function () { setTimeout(function () { b.textContent = old; }, 1800); });
+      return;
+    }
+    var a = e.target.closest('a[data-ev]');
+    if (a) ev(a.dataset.ev);
+  });
+  document.querySelectorAll('details[data-ev]').forEach(function (d) {
+    var initial = d.open;
+    d.addEventListener('toggle', function () { if (d.open && !initial) ev('gtm_faq_open', { q: d.dataset.q }); initial = false; });
+  });
+})();
+</script>
+<script src="/sitetrack.js"></script>
+<script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
+</body>
+</html>

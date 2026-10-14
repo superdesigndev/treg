@@ -1,0 +1,263 @@
+{
+  "organization": {
+    "id": "5d0a0fbff6512580bf33a120",
+    "name": "Stripe",
+    "website_url": "http://www.stripe.com",
+    "angellist_url": "http://angel.co/stripe",
+    "linkedin_url": "http://www.linkedin.com/company/stripe",
+    "twitter_url": "http://twitter.com/stripe",
+    "facebook_url": "https://www.facebook.com/StripeHQ",
+    "languages": [
+      "English",
+      "Spanish",
+      "French",
+      "Japanese"
+    ],
+    "alexa_ranking": 200,
+    "phone": "phone:4bfe7b83d2",
+    "linkedin_uid": "2135371",
+    "founded_year": 2010,
+    "publicly_traded_symbol": null,
+    "publicly_traded_exchange": null,
+    "logo_url": "https://zenprospect-production.s3.amazonaws.com/uploads/pictures/69a4886fcf5bc40001d6a14c/picture",
+    "crunchbase_url": null,
+    "primary_domain": "stripe.com",
+    "sic_codes": [
+      "7375",
+      "7374",
+      "7389"
+    ],
+    "naics_codes": [
+      "54151",
+      "522320",
+      "518210"
+    ],
+    "primary_phone": {
+      "number": "phone:4bfe7b83d2",
+      "sanitized_number": "phone:4b56a69098"
+    },
+    "sanitized_phone": "phone:4b56a69098",
+    "industry": "information technology & services",
+    "estimated_num_employees": 8000,
+    "keywords": [
+      "payments",
+      "developer tools",
+      "cloud infrastructure",
+      "credit cards",
+      "consumer internet",
+      "… 143 more item(s) truncated"
+    ],
+    "organization_revenue_printed": "6.9B",
+    "organization_revenue": 6935000000.0,
+    "industries": [
+      "information technology & services",
+      "financial services",
+      "computer software",
+      "internet"
+    ],
+    "secondary_industries": [
+      "financial services",
+      "computer software",
+      "internet"
+    ],
+    "snippets_loaded": true,
+    "industry_tag_id": "5567cdphone:dfdb76e720b10b0000",
+    "industry_tag_hash": {
+      "information technology & services": "5567cdphone:dfdb76e720b10b0000",
+      "financial services": "5567cdd67369643e64020000",
+      "computer software": "5567cd4e7369643b70010000",
+      "internet": "5567cd4dphone:11b367f776e020000"
+    },
+    "retail_location_count": 0,
+    "raw_address": "354 Oyster Point Blvd, South San Francisco, California 94080, US",
+    "street_address": "354 Oyster Point Blvd",
+    "city": "South San Francisco",
+    "state": "California",
+    "postal_code": "phone:c4d75ffcd7",
+    "country": "United States",
+    "owned_by_organization_id": null,
+    "num_languages": 4,
+    "num_retail_locations": 0,
+    "short_description": "Stripe, Inc. is a global financial technology company that provides economic infrastructure for the internet. Founded in 2010 by Patrick and John Collison, Stripe has grown into a comprehensive financial platform serving millions of businesses worldwide. With headquarters in South San Francisco, Cal",
+    "suborganizations": [
+      {
+        "id": "55921e1cphone:5236c01c14ee21200",
+        "name": "Touchtech Payments (acquired by Stripe)",
+        "website_url": "http://www.touchtechpayments.com",
+        "industries": [
+          "information technology & services"
+        ],
+        "estimated_num_employees": 1,
+        "country": "Ireland"
+      },
+      {
+        "id": "5a9d33fda6da98d97e743773",
+        "name": "Paystack",
+        "website_url": "http://www.paystack.com",
+        "industries": [
+          "information technology & services",
+          "financial services",
+          "internet"
+        ],
+        "estimated_num_employees": 320,
+        "country": "United States"
+      },
+      {
+        "id": "5a9f2bd4a6da98d99780e5b0",
+        "name": "Indie Hackers",
+        "website_url": "http://www.indiehackers.com",
+        "industries": [
+          "online media"
+        ],
+        "estimated_num_employees": 14,
+        "country": "United States"
+      },
+      {
+        "id": "5d135a941b8b76095acb6e22",
+        "name": "Recko | A Stripe company",
+        "website_url": "http://www.recko.io",
+        "industries": [
+          "information technology & services",
+          "computer software"
+        ],
+        "estimated_num_employees": 14,
+        "country": "United States"
+      },
+      {
+        "id": "5a9d764ca6da98d94d8c80d4",
+        "name": "OpenChannel",
+        "website_url": "http://www.openchannel.io",
+        "industries": [
+          "information technology & services",
+          "computer software"
+        ],
+        "estimated_num_employees": 1,
+        "country": "Canada"
+      },
+      "… 17 more item(s) truncated"
+    ],
+    "num_suborganizations": 22,
+    "annual_revenue_printed": "6.9B",
+    "annual_revenue": 6935000000.0,
+    "total_funding": 9443867423,
+    "total_funding_printed": "9.4B",
+    "latest_funding_round_date": "phone:9e3616bea9T00:00:00.000+00:00",
+    "latest_funding_stage": "Venture (Round not Specified)",
+    "funding_events": [
+      {
+        "id": "6aphone:0666749af0a21000119ce70",
+        "date": "phone:9e3616bea9T00:00:00.000+00:00",
+        "news_url": null,
+        "type": "Venture (Round not Specified)",
+        "investors": "",
+        "amount": "14.6M",
+        "currency": "$"
+      },
+      {
+        "id": "6965fc56f8c3e8000102cb6f",
+        "date": "phone:7267ff634aT00:00:00.000+00:00",
+        "news_url": "https://www.ft.com/content/ba8c698b-3d47-405e-ae21-7a1f2bd796a1",
+        "type": "Venture (Round not Specified)",
+        "investors": "",
+        "currency": "$"
+      },
+      {
+        "id": "669742ecf0b51c0001290e27",
+        "date": "phone:b6d75d49d1T00:00:00.000+00:00",
+        "news_url": null,
+        "type": "Other",
+        "investors": "Sequoia Capital, Brookfield Asset Management, Foresite Capital Management, LLC, Paradigm, Founders Circle Capital",
+        "amount": "694.2M",
+        "currency": "$"
+      },
+      {
+        "id": "6430aa5922d3bphone:0610760530f",
+        "date": "phone:7849c34baeT00:00:00.000+00:00",
+        "news_url": "https://stripe.com/en-in/newsroom/news/stripe-series-i-employee-liquidity",
+        "type": "Venture (Round not Specified)",
+        "investors": "Founders Fund, Temasek, Goldman Sachs Asset Management, GIC, Thrive Capital, MSD Partners, General Catalyst, Baillie Gifford, Andreessen Horowitz",
+        "amount": "6.5B",
+        "currency": "$"
+      },
+      {
+        "id": "6a74e67a0917ad00018bbf3a",
+        "date": "phone:a1683320d4T00:00:00.000+00:00",
+        "news_url": null,
+        "type": "Other",
+        "investors": "Shopify",
+        "amount": "350M",
+        "currency": "$"
+      },
+      "… 12 more item(s) truncated"
+    ],
+    "technology_names": [
+      ".NET",
+      "1Password",
+      "3M 360 Encompass - Health Analytics Suite",
+      "AI",
+      "ANGEL LMS",
+      "… 416 more item(s) truncated"
+    ],
+    "current_technologies": [
+      {
+        "uid": "net",
+        "name": ".NET",
+        "category": "Frameworks and Programming Languages"
+      },
+      {
+        "uid": "1password",
+        "name": "1Password",
+        "category": "Security"
+      },
+      {
+        "uid": "3m_360_encompass_health_analytics_suite",
+        "name": "3M 360 Encompass - Health Analytics Suite",
+        "category": "Analytics and Tracking"
+      },
+      {
+        "uid": "ai",
+        "name": "AI",
+        "category": "Other"
+      },
+      {
+        "uid": "angel_lms",
+        "name": "ANGEL LMS",
+        "category": "Education Management Software"
+      },
+      "… 416 more item(s) truncated"
+    ],
+    "org_chart_root_people_ids": [
+      "674aphone:932c7c9e06bdc579"
+    ],
+    "org_chart_sector": "OrgChart::SectorHierarchy::Rules::IT",
+    "org_chart_removed": false,
+    "org_chart_show_department_filter": true,
+    "is_placeholder_organization": null,
+    "departmental_head_count": {
+      "engineering": 4113,
+      "sales": 1126,
+      "operations": 1234,
+      "finance": 858,
+      "product_management": 184,
+      "marketing": 355,
+      "information_technology": 67,
+      "entrepreneurship": 8,
+      "business_development": 261,
+      "data_science": 358,
+      "arts_and_design": 244,
+      "human_resources": 618,
+      "legal": 214,
+      "consulting": 102,
+      "support": 330,
+      "media_and_commmunication": 47,
+      "accounting": 85,
+      "administrative": 61,
+      "education": 12
+    },
+    "organization_headcount_six_month_growth": 0.07199458832624661,
+    "organization_headcount_twelve_month_growth": 0.1879417434140073,
+    "organization_headcount_twenty_four_month_growth": 0.4369170984455958
+  },
+  "_scrubbed": true,
+  "_note": "captured live 2026-08-28 via treg; emails/phones hashed, lists trimmed"
+}

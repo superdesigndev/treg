@@ -1,0 +1,27 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "coverUrl": "https://p16-common-sign.tiktokcdn-us.com/tos-useast5-avt-0068-tx/b169e9223700dc8d20d327510eb47f94~tplv-tiktokx-cropcenter:720:720.webp?dr=9640&refresh_token=cd047551&x-expires=1789981200&x-signature=C… [291 chars]",
+      "displayName": "JustAlex",
+      "enterCount": 1,
+      "handle": "thejustalex",
+      "roomId": "7644628722120805150",
+      "startTime": 1779903940,
+      "status": 4,
+      "title": "NOT ENDING UNTIL I WIN",
+      "viewers": 1
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "a683bb2b-299e-47e5-a866-9a7761abadd6"
+}

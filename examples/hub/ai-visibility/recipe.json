@@ -1,0 +1,60 @@
+{
+  "name": "ai-visibility",
+  "summary": "Ask ChatGPT, Gemini, Copilot and Google AI Mode one question. Per engine: did it mention your brand, cite your site, name a competitor. A judgment model decides, not a text search.",
+  "capability": "ai-search.mentions.summary",
+  "inputs": {
+    "prompt": {
+      "type": "string",
+      "example": "what is the best email verification tool",
+      "note": "the question a customer would ask an AI engine"
+    },
+    "brand": {
+      "type": "string",
+      "example": "Hunter",
+      "note": "your company or product name"
+    },
+    "brand_domain": {
+      "type": "string",
+      "default": "",
+      "example": "hunter.io",
+      "note": "your website; when given, the tool also reports whether each engine cited it"
+    },
+    "competitors": {
+      "type": "string",
+      "default": "",
+      "example": "ZeroBounce, NeverBounce",
+      "note": "up to 8 names, comma-separated"
+    },
+    "country": {
+      "type": "string",
+      "default": "US",
+      "example": "US",
+      "note": "ISO country code the engines answer from; an engine that does not serve it is skipped, not failed"
+    }
+  },
+  "uses": [
+    "cloro.ai-search.chatgpt.scrape",
+    "cloro.ai-search.gemini.scrape",
+    "cloro.ai-search.copilot.scrape",
+    "cloro.google.serp.ai_mode",
+    "openrouter.ai-judge.decide"
+  ],
+  "script": "run.js",
+  "output": {
+    "fields": [
+      "brand",
+      "prompt",
+      "country",
+      "engines",
+      "answered",
+      "brand_mentioned_by",
+      "brand_cited_by",
+      "competitors_mentioned_by",
+      "summary"
+    ]
+  },
+  "limits": {
+    "cost_usd": 0.5
+  },
+  "pricing": { "max_price_usd": 0.02 }
+}

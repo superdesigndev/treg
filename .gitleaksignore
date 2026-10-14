@@ -1,0 +1,5 @@
+# Fingerprints gitleaks skips. One per line: <commit>:<file>:<rule>:<line>.
+# A ChatGPT `resume_conversation_token` (a browser-session JWT for the cloro-run ChatGPT tab, which
+# expires within minutes and authorises nothing of treg's) rode into the captured example in this
+# commit; the file was scrubbed in the next commit, the value stays only in history.
+bff917ce05ca9c77169205c73da9f02f734a7e33:src/treg/catalog/examples/cloro.ai-search.chatgpt.scrape.json:jwt:56

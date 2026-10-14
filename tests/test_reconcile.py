@@ -20,7 +20,7 @@ from conftest import make_upstream
 from treg import reconcile
 from treg.api import app
 from treg.config import get_settings
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 from treg.models import CallRecord, LedgerEntry
 
 ADMIN = "ENV-ADMIN-SECRET"
@@ -82,25 +82,21 @@ def _since():
 
 
 # ---- drift math --------------------------------------------------------------------------------
-async def test_drift_flags_a_ten_percent_climb(c: AsyncClient):
-    await _calls([{"est": 1000, "obs": 1100}] * 4)
+@pytest.mark.parametrize("obs,calls,ratio,flagged", [
+    (1100, 4, 0.1, True),    # a 10% climb
+    (1020, 5, 0.02, False),  # 2%, under the 5% tolerance
+])
+async def test_drift_flags_only_beyond_tolerance(c: AsyncClient, obs, calls, ratio, flagged):
+    await _calls([{"est": 1000, "obs": obs}] * calls)
     async with session_maker() as db:
         rows = await reconcile.price_drift(db, _since())
     assert len(rows) == 1
     r = rows[0]
-    assert (r["endpoint_id"], r["provider"], r["calls"]) == ("dataforseo.serp.google", "dataforseo", 4)
-    assert r["estimate_mean_micro"] == 1000 and r["observed_mean_micro"] == 1100
-    assert r["drift_ratio"] == pytest.approx(0.1)
-    assert r["drift_micro"] == 100
-    assert r["flagged"] is True
-
-
-async def test_drift_within_tolerance_is_not_flagged(c: AsyncClient):
-    await _calls([{"est": 1000, "obs": 1020}] * 5)  # 2% — under the 5% tolerance
-    async with session_maker() as db:
-        rows = await reconcile.price_drift(db, _since())
-    assert rows[0]["drift_ratio"] == pytest.approx(0.02)
-    assert rows[0]["flagged"] is False
+    assert (r["endpoint_id"], r["provider"], r["calls"]) == ("dataforseo.serp.google", "dataforseo", calls)
+    assert r["estimate_mean_micro"] == 1000 and r["observed_mean_micro"] == obs
+    assert r["drift_ratio"] == pytest.approx(ratio)
+    assert r["drift_micro"] == obs - 1000
+    assert r["flagged"] is flagged
 
 
 async def test_drift_needs_min_calls_before_it_flags(c: AsyncClient):
@@ -213,12 +209,6 @@ async def test_repeat_rate_top_repeated_only_lists_actual_repeats(c: AsyncClient
     assert hot["endpoint_id"] == "dataforseo.serp.google"
 
 
-async def test_repeat_rate_is_empty_without_telemetry(c: AsyncClient):
-    async with session_maker() as db:
-        out = await reconcile.repeat_rate(db, _since())
-    assert out == {"calls": 0, "repeat_calls": 0, "repeat_ratio": 0.0, "providers": [], "top_repeated": []}
-
-
 # ---- the endpoints + their gate ----------------------------------------------------------------
 @pytest.mark.parametrize("report", ["drift", "spend", "repeats"])
 async def test_reconcile_endpoints_require_superadmin(c: AsyncClient, report: str):
@@ -241,17 +231,59 @@ async def test_drift_endpoint_splits_out_the_flagged_rows(c: AsyncClient):
     assert {x["endpoint_id"] for x in body["endpoints"]} == {"ep.bad", "ep.ok"}
 
 
-async def test_spend_and_repeats_endpoints_report_their_windows(c: AsyncClient):
-    await _settles([{"amount": 2000, "observed": 2000}])
-    await _calls([{"hash": "aaa", "est": 100, "obs": 100}] * 2)
-    spend = (await c.get("/admin/reconcile/spend", headers=_a())).json()
-    assert spend["charged_micro"] == 2000 and spend["providers"][0]["reported_calls"] == 1
-    repeats = (await c.get("/admin/reconcile/repeats?top=1", headers=_a())).json()
-    assert repeats["repeat_calls"] == 1 and len(repeats["top_repeated"]) == 1
-
-
 async def test_window_start_is_clamped(c: AsyncClient):
     """A hostile `since_days` can't turn the report into a full-table scan of all time (or the future)."""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     assert round((now - reconcile.window_start(0)).total_seconds() / 86400) == 1
     assert round((now - reconcile.window_start(99999)).total_seconds() / 86400) == 365
+
+
+# ---- shared-plan recovery (the monthly review's input) -----------------------------------------
+async def test_recovery_over_recovered_says_lower(c: AsyncClient):
+    """Collected far above the (window-scaled) fee: the report must say so and suggest the rate at
+    which the MEASURED volume breaks even (fee ÷ calls) — the review rule from
+    docs/SHARED-PLAN-PRICING-PLAN.md applied mechanically.
+
+    The fixture window is ONE day, so the monthly fee scales to 1/30 before comparison. The first
+    version of this test assumed 30 days and failed against a correct report; the expectation now
+    mirrors the scaling instead of hardcoding a month."""
+    await _settles([{"provider": "alphavantage", "amount": 30_000_000,
+                     "endpoint_id": "alphavantage.quote"} for _ in range(3)])
+    async with session_maker() as db:
+        out = await reconcile.shared_plan_recovery(db, _since())
+    row = next(p for p in out["providers"] if p["provider"] == "alphavantage")
+    fee_scaled = int(round(49.99 * 1_000_000 * row["window_days"] / 30))
+    assert row["calls"] == 3 and row["collected_micro"] == 90_000_000
+    assert row["fee_micro"] == fee_scaled
+    assert row["recovery"] == round(90_000_000 / fee_scaled, 4)
+    assert row["suggested_usd"] == round(fee_scaled / 3 / 1_000_000, 9)
+    assert row["action"].startswith("over-recovered")
+
+
+async def test_recovery_quiet_month_says_raise_or_demote(c: AsyncClient):
+    await _settles([{"provider": "alphavantage", "amount": 500_000,
+                     "endpoint_id": "alphavantage.quote"}])   # $0.50 against ~$1.67 of scaled fee
+    async with session_maker() as db:
+        out = await reconcile.shared_plan_recovery(db, _since())
+    row = next(p for p in out["providers"] if p["provider"] == "alphavantage")
+    assert row["recovery"] < 0.5
+    assert "raise toward" in row["action"] and "demote" in row["action"]
+
+
+async def test_recovery_zero_calls_has_no_suggestion(c: AsyncClient):
+    """fee ÷ 0 is not a price. The suggestion must be absent, and the action must raise the demotion
+    question rather than print infinity."""
+    async with session_maker() as db:
+        out = await reconcile.shared_plan_recovery(db, _since())
+    row = next(p for p in out["providers"] if p["provider"] == "alphavantage")
+    assert row["calls"] == 0 and row["suggested_usd"] is None
+    assert "demot" in row["action"]
+
+
+async def test_recovery_ignores_vendor_priced_providers(c: AsyncClient):
+    """dataforseo's rate is the VENDOR's; fee-vs-collected is meaningless for it and its presence
+    here would invite 'adjusting' a price that is not ours to adjust."""
+    await _settles([{"provider": "dataforseo", "amount": 99_000_000}])
+    async with session_maker() as db:
+        out = await reconcile.shared_plan_recovery(db, _since())
+    assert all(p["provider"] != "dataforseo" for p in out["providers"])

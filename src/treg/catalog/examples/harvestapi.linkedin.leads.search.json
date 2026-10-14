@@ -1,0 +1,52 @@
+{
+  "pagination": {
+    "totalElements": 157709,
+    "totalPages": 100,
+    "pageNumber": 1,
+    "previousElements": 0,
+    "pageSize": 25
+  },
+  "elements": [
+    {
+      "id": "1234567890",
+      "linkedinUrl": "https://example.com/synthetic-record",
+      "firstName": "Alex",
+      "lastName": "Example",
+      "summary": "Synthetic example",
+      "openProfile": false,
+      "premium": true,
+      "currentPositions": [
+        {
+          "tenureAtPosition": {
+            "numYears": 8,
+            "numMonths": 9
+          },
+          "companyName": "Synthetic example",
+          "description": "Synthetic example",
+          "title": "Synthetic example",
+          "current": true,
+          "tenureAtCompany": {
+            "numYears": 8,
+            "numMonths": 9
+          },
+          "startedOn": {
+            "month": 1,
+            "year": 2018
+          },
+          "companyId": "1234567890",
+          "companyLinkedinUrl": "https://example.com/synthetic-record"
+        }
+      ],
+      "pictureUrl": "https://example.com/synthetic-record",
+      "location": {
+        "linkedinText": "Synthetic example"
+      }
+    }
+  ],
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinLeadSearch"
+  ],
+  "cost": 0.1
+}

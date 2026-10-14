@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "message": "Employee found",
+  "code": 200,
+  "data": {
+    "first_name": "Example",
+    "last_name": "Person",
+    "email": "person@example.com"
+  },
+  "meta": {
+    "credits_used": 1
+  }
+}

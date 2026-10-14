@@ -1,0 +1,1425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude for people search: lead enrichment for agents | treg.to</title>
+<meta name="description" content="People search and lead enrichment for agents: find contacts and verified work emails from $0.0089 a call. Real run: 27 people, 20 verified emails, $0.58.">
+<link rel="canonical" href="https://treg.to/people-search"/>
+<meta property="og:title" content="Claude for people search: lead enrichment for agents | treg.to"/>
+<meta property="og:description" content="People search and lead enrichment for agents: find contacts and verified work emails from $0.0089 a call. Real run: 27 people, 20 verified emails, $0.58."/>
+<meta property="og:url" content="https://treg.to/people-search"/>
+<meta property="og:type" content="website"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta property="og:image" content="{BASE}/media/og.png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta name="twitter:image" content="{BASE}/media/og.png"/>
+<link rel="icon" href="favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #FDFCFB;
+    --card: #F5F4F1;
+    --ink: #101010;
+    --muted: #8A8885;
+    --line: #E9E7E2;
+    --green: #118453;
+    --green-soft: rgba(17,132,83,.12);
+    --red: #C0362F;
+    --display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+    --text: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  #bench, #pricing, #tools, #usecases, #receipt { scroll-margin-top: 70px; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--text); font-size: 16px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: rgba(17,132,83,.22); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px;
+    padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); text-decoration: none; cursor: pointer;
+  }
+  .pill:hover { background: var(--card); }
+  .pill.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .pill.dark:hover { background: #2b2b2a; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+  /* ---------- nav ---------- */
+  .nav {
+    position: fixed; inset: 0 0 auto 0; z-index: 90; display: flex; align-items: center;
+    justify-content: space-between; padding: 14px 28px;
+    background: rgba(253,252,251,.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid transparent; transition: border-color .3s;
+  }
+  .nav.scrolled { border-color: var(--line); }
+  .wordmark { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 15px; }
+  .wordmark img, .wordmark svg { width: 22px; height: 22px; border-radius: 6px; }
+  .wm-agents { display: inline-flex; gap: 5px; }
+  .nav-links { display: flex; gap: 22px; align-items: center; margin-right: 10px; }
+  .nav-links a { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 500; color: #43413E; text-decoration: none; }
+  .nav-links a:hover { color: var(--ink); }
+  @media (max-width: 1020px) { .nav-links { display: none; } }
+
+
+  /* ---------- hero ---------- */
+  .hero { padding: 140px 24px 30px; text-align: center; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500;
+    color: var(--green); background: var(--green-soft); border: 1px solid rgba(17,132,83,.3);
+    padding: 6px 14px; border-radius: 999px; margin-bottom: 26px;
+  }
+  .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .hero h1 {
+    font-family: var(--display); font-weight: 500; letter-spacing: -.03em;
+    font-size: clamp(42px, 7vw, 78px); line-height: 1.04; margin: 0 auto 22px; max-width: 16ch; text-wrap: balance;
+  }
+  .hero h1 .hl { color: var(--green); font-weight: 600; }
+  .hero p.sub { max-width: 54ch; margin: 0 auto 34px; color: var(--muted); font-size: 18px; text-wrap: balance; }
+  .hero p.sub strong { color: var(--ink); font-weight: 500; }
+  .ctas { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+  /* hero B: the agent-logo cluster in "Run GTM from your … terminal." */
+  .hero-agents { display: inline-flex; align-items: center; gap: .14em; vertical-align: -.08em; }
+  .hero-agents img { width: .78em; height: .78em; border-radius: .18em; }
+
+  /* the rotating agent in the headline */
+  .ag { display: inline-flex; align-items: center; gap: .18em; vertical-align: -.08em;
+    transition: opacity .28s ease, transform .3s cubic-bezier(.3,.7,.3,1); }
+  .ag img { width: .82em; height: .82em; border-radius: .18em; }
+  .ag.out { opacity: 0; transform: translateY(-.22em); transition-timing-function: ease, cubic-bezier(.6,0,.8,.4); }
+  .ag.pre { opacity: 0; transform: translateY(.22em); transition: none; }
+
+  /* word-by-word entrance, like the film */
+  .hw { display: inline-block; opacity: 0; transform: translateY(14px); }
+  .hw.in { opacity: 1; transform: none; transition: opacity .4s ease, transform .45s cubic-bezier(.3,.7,.3,1); }
+
+  /* ---------- the live demo card (the film, self-playing) ---------- */
+  .demo-wrap { padding: 30px 24px 0; }
+  .demo {
+    max-width: 880px; margin: 0 auto; background: #fff; border: 1px solid var(--line);
+    border-radius: 20px; overflow: hidden; box-shadow: 0 30px 90px -38px rgba(20,18,12,.28);
+    text-align: left; position: relative;
+  }
+  .strip {
+    background: #1B1B1A; color: #E8E8E8; padding: 15px 20px; display: flex; gap: 12px; align-items: center;
+    font-family: var(--mono); font-size: 15px; min-height: 52px;
+  }
+  .strip img { width: 24px; height: 24px; border-radius: 7px; flex: none; }
+  .strip .pr { color: #6FCDF0; flex: none; }
+  .strip .typed { white-space: nowrap; overflow: hidden; }
+  .strip .reply { color: #45E39E; white-space: nowrap; overflow: hidden; }
+  .strip .reply s { color: #9A9A9A; text-decoration: none; }
+  .strip .cur { display: inline-block; width: 9px; height: 19px; background: #6FCDF0; vertical-align: -3px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  table.sheet { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 14px; }
+  .sheet th {
+    background: #F8F7F5; color: #8A8885; font-weight: 500; font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: .07em; text-transform: uppercase; text-align: left; padding: 8px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sheet th:first-child, .sheet td:first-child { width: 44px; text-align: center; padding-left: 0; padding-right: 0; }
+  .sheet td { border-bottom: 1px solid #F0EFEB; padding: 9px 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 44px; }
+  .sheet td.num { font-family: var(--mono); font-size: 11.5px; color: #B4B2AD; background: #FBFAF8; }
+  .sheet .co { display: flex; align-items: center; gap: 10px; font-weight: 500; opacity: 0; transform: translateY(6px); transition: opacity .3s, transform .3s; }
+  .sheet .co img { width: 24px; height: 24px; border-radius: 7px; flex: none; object-fit: contain; background: #FBFAF7; border: 1px solid rgba(0,0,0,.06); }
+  .sheet .who { display: flex; align-items: center; gap: 9px; color: var(--ink); opacity: 0; transform: translateY(6px); transition: opacity .3s, transform .3s; }
+  .sheet .who img { width: 22px; height: 22px; border-radius: 50%; flex: none; object-fit: cover; }
+  .sheet .em { font-family: var(--mono); font-size: 12.5px; color: var(--green); opacity: 0; transform: translateY(6px); transition: opacity .3s, transform .3s; }
+  .sheet .hatch { color: transparent; background: repeating-linear-gradient(45deg, transparent 0 5px, #F3F1EC 5px 7px); }
+  .demo-foot {
+    display: flex; justify-content: space-between; align-items: center; padding: 10px 16px;
+    font-family: var(--mono); font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); background: #FBFAF8;
+  }
+  .demo-foot .meter { color: var(--green); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .demo-cap { text-align: center; color: var(--muted); font-size: 13px; margin: 16px auto 0; font-family: var(--mono); }
+
+  /* ---- the provider board rail (acts 1 and 2 of the film) ---- */
+  .demo-body { display: flex; align-items: stretch; }
+  .demo-body table.sheet { flex: 1; min-width: 0; }
+  .board {
+    width: 256px; flex: none; border-left: 1px solid var(--line); background: #FBFAF8;
+    padding: 12px; position: relative; opacity: 0; transform: translateX(10px);
+    transition: opacity .35s, transform .35s;
+  }
+  .board.in { opacity: 1; transform: none; }
+  .bd-head { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+  .bd-head svg { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+  .bd-sub { font-family: var(--mono); font-size: 9.5px; color: var(--muted); margin: 3px 0 10px; white-space: nowrap; }
+  .bd-row {
+    position: relative; display: flex; align-items: center; gap: 7px; background: #fff;
+    border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; font-size: 11.5px;
+    margin-bottom: 6px; opacity: 0; transform: translateY(6px);
+    transition: opacity .3s, transform .3s, box-shadow .3s, border-color .3s;
+  }
+  .bd-row.in { opacity: 1; transform: none; }
+  .bd-row.dim.in { opacity: .45; }
+  .bd-row img { width: 18px; height: 18px; border-radius: 5px; flex: none; object-fit: contain; }
+  .bd-row b { font-weight: 600; font-size: 11.5px; white-space: nowrap; }
+  .bd-row .pr2, .bd-row .st { margin-left: auto; font-family: var(--mono); font-size: 9.5px; color: var(--muted); white-space: nowrap; }
+  .bd-row .st.miss { color: var(--red); }
+  .bd-row .st.hit { color: var(--green); font-weight: 600; }
+  .bd-row.picked { border-color: rgba(17,132,83,.65); box-shadow: 0 0 0 2px rgba(17,132,83,.28); }
+  .bd-scan {
+    position: absolute; left: 12px; right: 12px; height: 32px; border-radius: 9px; opacity: 0;
+    background: rgba(17,132,83,.10); border: 1px solid rgba(17,132,83,.35); pointer-events: none;
+    transition: top .12s linear;
+  }
+  .bd-more { text-align: center; font-family: var(--mono); font-size: 9.5px; color: var(--muted); padding-top: 2px; }
+  .bd-badge {
+    margin-top: 8px; text-align: center; font-family: var(--mono); font-size: 9.5px; color: var(--green);
+    background: var(--green-soft); border: 1px solid rgba(17,132,83,.3); border-radius: 999px;
+    padding: 3px 8px; opacity: 0; transition: opacity .3s;
+  }
+  .bd-badge.in { opacity: 1; }
+  @media (max-width: 860px) { .board { display: none; } }
+
+  /* ---- use-case grid: nine mini films ---- */
+  .uc-grid { max-width: 1060px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .uc {
+    background: #fff; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 4px 14px -6px rgba(20,18,12,.08);
+    transition: box-shadow .24s ease; text-decoration: none; color: inherit;
+  }
+  .uc:hover { box-shadow: 0 2px 4px rgba(20,18,12,.06), 0 14px 30px -10px rgba(20,18,12,.16); }
+  .uc-strip {
+    background: #1B1B1A; color: #E8E8E8; font-family: var(--mono); font-size: 12px;
+    padding: 10px 14px; display: flex; gap: 8px; align-items: center; white-space: nowrap; overflow: hidden;
+  }
+  .uc-strip .pr { color: #6FCDF0; flex: none; }
+  .uc-strip .c { width: 7px; height: 14px; background: #6FCDF0; flex: none; animation: blink 1s steps(1) infinite; }
+  .uc-stage { position: relative; height: 168px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+  .uc-foot {
+    margin-top: auto; border-top: 1px solid var(--line); padding: 9px 14px;
+    font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .uc-foot b { color: var(--green); font-weight: 500; }
+  .uc-row {
+    display: flex; align-items: center; gap: 7px; background: #FBFAF8; border: 1px solid var(--line);
+    border-radius: 8px; padding: 5px 9px; font-size: 11.5px; line-height: 1.35;
+    opacity: 0; transform: translateY(6px);
+    transition: opacity .3s, transform .3s, box-shadow .3s, border-color .3s;
+  }
+  .uc-row.in { opacity: 1; transform: none; }
+  .uc-row.dim.in { opacity: .45; }
+  .uc-row.picked { border-color: rgba(17,132,83,.6); box-shadow: 0 0 0 2px rgba(17,132,83,.25); background: #fff; }
+  .uc-row img { width: 16px; height: 16px; border-radius: 4px; flex: none; object-fit: contain; }
+  .uc-row img.av { width: 19px; height: 19px; border-radius: 50%; object-fit: cover; }
+  .uc-row b { font-weight: 600; font-size: 11.5px; }
+  .uc-row .st { margin-left: auto; font-family: var(--mono); font-size: 9.5px; color: var(--muted); white-space: nowrap; }
+  .uc-row .st.miss { color: var(--red); }
+  .uc-row .st.hit { color: var(--green); font-weight: 600; }
+  .uc-row .uc-bar { margin-left: auto; width: 54px; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; flex: none; }
+  .uc-row .uc-bar i { display: block; height: 100%; width: var(--w); background: var(--green); border-radius: 3px; transform: scaleX(0); transform-origin: left center; transition: transform .5s cubic-bezier(.3,.7,.3,1); }
+  .uc-row.in .uc-bar i { transform: scaleX(1); }
+  .uc-in { font-family: var(--mono); font-size: 12px; color: var(--ink); opacity: 0; transition: opacity .3s; }
+  .uc-in.in { opacity: 1; }
+  .uc-em { font-family: var(--mono); font-size: 12px; color: var(--green); opacity: 0; transform: translateY(5px); transition: opacity .3s, transform .3s; }
+  .uc-em.in { opacity: 1; transform: none; }
+  .uc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .uc-chip {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 500;
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px;
+    opacity: 0; transform: scale(.7); transition: opacity .28s, transform .32s cubic-bezier(.3,.7,.3,1);
+  }
+  .uc-chip.in { opacity: 1; transform: none; }
+  .uc-chip.ok { color: var(--green); background: var(--green-soft); border-color: rgba(17,132,83,.3); }
+  .uc-mask { font-family: var(--mono); font-size: 17px; letter-spacing: .04em; color: var(--ink); margin: 6px 0 4px; font-variant-numeric: tabular-nums; }
+  /* the catalog ticker card */
+  .uc.uc-more { background: #1B1B1A; color: #F8F8F7; }
+  .uc-more .uc-stage { justify-content: flex-start; }
+  .uc-more h3 { margin: 2px 0 8px; font-family: var(--display); font-weight: 500; font-size: 21px; letter-spacing: -.01em; }
+  .uc-more h3 b { color: #7FDCAE; font-weight: 600; }
+  .uc-tickwrap {
+    position: relative; overflow: hidden; flex: 1; min-height: 0;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 18%, #000 78%, transparent 100%);
+    mask-image: linear-gradient(180deg, transparent 0, #000 18%, #000 78%, transparent 100%);
+  }
+  .uc-tick { margin: 0; padding: 0; list-style: none; font-family: var(--mono); font-size: 11px; color: #B8B8B4; animation: uc-scroll 14s linear infinite; }
+  .uc-tick li { padding: 3.5px 0; white-space: nowrap; }
+  .uc-tick li s { color: #6E6E6A; text-decoration: none; }
+  @keyframes uc-scroll { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+  .uc-more .uc-foot { border-top-color: #33332F; color: #B8B8B4; }
+  .uc-more .uc-foot b { color: #7FDCAE; }
+  @media (max-width: 960px) { .uc-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 640px) { .uc-grid { grid-template-columns: 1fr; } }
+  /* ---- sign-in modal (the home page's door, in this page's skin) ---- */
+  .scrim { position: fixed; inset: 0; background: rgba(26,26,26,.55); display: none; place-items: center; z-index: 200; padding: 20px; backdrop-filter: blur(6px); }
+  .scrim.open { display: grid; }
+  .smodal { width: min(400px, 94vw); background: #fff; border-radius: 20px; padding: 30px 28px; text-align: center; position: relative; box-shadow: 0 30px 90px -38px rgba(20,18,12,.4); }
+  .smodal .cls { position: absolute; top: 12px; right: 15px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+  .smodal .cls:hover { color: var(--ink); }
+  .smodal h3 { font-family: var(--display); font-weight: 600; font-size: 22px; margin: 4px 0 6px; letter-spacing: -.015em; }
+  .smodal p { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 0 0 18px; }
+  .smodal .pill { width: 100%; justify-content: center; margin-top: 9px; }
+  .smodal .div { display: flex; align-items: center; gap: 10px; margin: 16px 0 6px; color: var(--muted); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
+  .smodal .div::before, .smodal .div::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .smodal input { width: 100%; margin-top: 9px; background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 11px 13px; font-family: var(--mono); font-size: 13px; outline: none; box-sizing: border-box; }
+  .smodal input:focus { border-color: var(--ink); }
+  .smodal .err { color: var(--red); font-size: 11.5px; margin-top: 10px; min-height: 14px; }
+
+  /* ---------- sections ---------- */
+  .section { padding: 110px 24px; }
+  .section h2, .bench-stage h2, .cta-final h2 {
+    font-family: var(--display); font-weight: 500; letter-spacing: -.025em; line-height: 1.12;
+    font-size: clamp(30px, 4.6vw, 46px); text-align: center; margin: 0 0 14px; text-wrap: balance;
+  }
+  .section .lede, .bench-stage .lede { text-align: center; color: var(--muted); max-width: 56ch; margin: 0 auto 48px; font-size: 17px; text-wrap: balance; }
+  .hl2 { color: var(--green); font-weight: 600; }
+  .fineprint { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 34px; }
+  .fineprint a { color: inherit; }
+
+  /* ---- the bill ---- */
+  .bill { max-width: 900px; margin: 0 auto; display: flex; gap: 44px; align-items: center; justify-content: center; }
+  .bill-left { display: flex; flex-direction: column; gap: 7px; min-width: 330px; }
+  .b-row { display: flex; align-items: center; gap: 12px; font-size: 15px; }
+  .b-row img { width: 30px; height: 30px; border-radius: 8px; object-fit: contain; flex: none; background: #FBFAF7; border: 1px solid rgba(0,0,0,.06); }
+  .b-row b { font-weight: 600; }
+  .b-row s { margin-left: auto; text-decoration: none; color: var(--muted); position: relative; font-variant-numeric: tabular-nums; }
+  .b-row .strike {
+    position: absolute; left: -5px; right: -5px; top: 50%; margin-top: -2px; height: 4px;
+    background: var(--red); border-radius: 2px; transform: scaleX(0); transform-origin: left center;
+    transition: transform .35s cubic-bezier(.3,.7,.3,1);
+  }
+  .seen .b-row .strike { transform: scaleX(1); }
+  .seen .b-row:nth-child(1) .strike { transition-delay: .15s; } .seen .b-row:nth-child(2) .strike { transition-delay: .27s; }
+  .seen .b-row:nth-child(3) .strike { transition-delay: .39s; } .seen .b-row:nth-child(4) .strike { transition-delay: .51s; }
+  .seen .b-row:nth-child(5) .strike { transition-delay: .63s; } .seen .b-row:nth-child(6) .strike { transition-delay: .75s; }
+  .seen .b-row:nth-child(7) .strike { transition-delay: .87s; } .seen .b-row:nth-child(8) .strike { transition-delay: .99s; }
+  .seen .b-row:nth-child(9) .strike { transition-delay: 1.11s; }
+  .bill-divider { width: 1px; align-self: stretch; background: var(--line); }
+  .bill-right { display: flex; flex-direction: column; gap: 12px; }
+  .bill-right .bk { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 15px; color: var(--muted); }
+  .bill-right .bk svg { width: 22px; height: 22px; border-radius: 6px; }
+  .bill-right .bb {
+    font-family: var(--display); font-weight: 600; font-size: clamp(52px, 7vw, 84px); line-height: 1.02;
+    letter-spacing: -.03em; color: var(--green); opacity: 0; transform: translateY(12px);
+    transition: opacity .6s ease 1.25s, transform .65s cubic-bezier(.3,.7,.3,1) 1.25s;
+    font-variant-numeric: tabular-nums;
+  }
+  .seen .bill-right .bb { opacity: 1; transform: none; }
+  .bill-right .bb small { display: block; font-family: var(--text); font-weight: 500; font-size: 16px; letter-spacing: 0; color: var(--ink); margin-top: 8px; }
+  .bill-right .bnote { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+
+  /* ---- the benchmark: sticky stage, scroll-scrubbed duel → magic move → chart ---- */
+  .bench-track { position: relative; height: 260vh; }
+  .bench-stage {
+    position: sticky; top: 0; min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 70px 24px 24px;
+  }
+  .bench-stage .lede { margin-bottom: 30px; }
+  .bench-stage .fineprint { margin-top: 8px; }
+  .d-bar, .bbar { transition: transform .1s linear; }
+  .d-val, .d-lab, .d-cat, .bgroups, .bcol em { transition: opacity .1s linear; }
+  .bstage-wrap { position: relative; width: 100%; max-width: 1080px; height: 470px; margin: 0 auto; }
+  .duel {
+    position: absolute; inset: 0; display: flex; justify-content: center; gap: 110px; align-items: flex-end;
+    padding-bottom: 120px;
+  }
+  .d-col { position: relative; width: 200px; display: flex; flex-direction: column; align-items: center; }
+  .d-bar {
+    width: 120px; height: calc(var(--h) * 2.4px); border-radius: 12px 12px 5px 5px; background: #D6D6D1;
+    transform: scaleY(0); transform-origin: 50% 100%; will-change: transform;
+  }
+  .d-bar.win { background: var(--green); }
+  .d-val {
+    position: absolute; top: -44px; left: 0; right: 0; text-align: center;
+    font-family: var(--mono); font-size: 30px; color: var(--muted); opacity: 0;
+  }
+  .d-val.win { color: var(--green); font-weight: 500; }
+  .d-lab { margin-top: 14px; display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; white-space: nowrap; opacity: 0; }
+  .d-lab img, .d-lab svg { width: 26px; height: 26px; border-radius: 7px; }
+  .d-lab i { font-style: normal; color: var(--muted); font-weight: 500; }
+  .d-cat { position: absolute; left: 0; right: 0; bottom: 34px; text-align: center; font-family: var(--mono); font-size: 13px; color: var(--muted); opacity: 0; }
+  .bgroups {
+    position: absolute; inset: 0; display: grid; grid-template-columns: repeat(4, max-content);
+    justify-content: center; align-content: center; gap: 44px; opacity: 0;
+  }
+  .bgroup { display: flex; flex-direction: column; align-items: center; }
+  .bcols { display: flex; gap: 10px; align-items: flex-end; height: 245px; }
+  .bcol { position: relative; width: 40px; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+  .bbar {
+    display: block; width: 100%; height: calc(var(--h) * 2.9px); border-radius: 8px 8px 3px 3px; background: #D6D6D1;
+    transform: scaleY(0); transform-origin: 50% 100%; will-change: transform;
+  }
+  .bbar.win { background: var(--green); }
+  .bcol em {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--h) * 2.9px + 6px);
+    font-style: normal; font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: nowrap;
+    opacity: 0;
+  }
+  .bcol em.win { color: var(--green); font-weight: 500; }
+  .bico { position: absolute; left: 50%; transform: translateX(-50%); bottom: -34px; width: 26px; height: 26px; border-radius: 7px; object-fit: contain; background: #FBFAF7; border: 1px solid rgba(0,0,0,.07); }
+  .bglab { margin-top: 46px; font-weight: 600; font-size: 15px; }
+  /* below one-row width the chart is an explicit 2×2 — never 3+1 */
+  @media (max-width: 1120px) {
+    .bgroups { grid-template-columns: repeat(2, max-content); gap: 44px 48px; }
+    .bstage-wrap { height: 780px; }
+  }
+  /* compact bench: smaller bars, tighter 2×2 — nothing may escape the sticky stage */
+  @media (max-width: 960px) {
+    .bench-stage { padding: 56px 14px 14px; }
+    .bstage-wrap { height: 600px; }
+    .bgroups { gap: 26px 22px; }
+    .bcols { height: 150px; gap: 7px; }
+    .bcol { width: 30px; }
+    .bbar { height: calc(var(--h) * 1.8px); border-radius: 6px 6px 2px 2px; }
+    .bcol em { bottom: calc(var(--h) * 1.8px + 4px); font-size: 9.5px; }
+    .bico { width: 20px; height: 20px; bottom: -26px; border-radius: 6px; }
+    .bglab { margin-top: 34px; font-size: 12.5px; }
+    .duel { gap: 44px; padding-bottom: 150px; }
+    .d-col { width: 150px; }
+    .d-bar { width: 92px; }
+    .d-val { font-size: 22px; top: -34px; }
+    .d-lab { font-size: 12.5px; gap: 6px; }
+    .d-lab img, .d-lab svg { width: 20px; height: 20px; }
+    .d-cat { font-size: 11px; bottom: 66px; }
+  }
+  @media (max-width: 880px) {
+    .bill { flex-direction: column; gap: 30px; }
+    .bill-divider { display: none; }
+    .bill-left { min-width: 0; width: 100%; max-width: 360px; }
+    .bill-right { align-items: center; text-align: center; }
+  }
+  @media (max-width: 640px) {
+    .nav { padding: 12px 14px; }
+    .wm-agents, .wm-x { display: none; }
+    .section { padding: 70px 18px; }
+  }
+
+  /* ---- catalog grid ---- */
+  .catwrap { max-width: 1000px; margin: 0 auto; }
+  .pgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .pcard {
+    border-radius: 14px; padding: 13px 14px; background: #fff;
+    box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 4px 14px -6px rgba(20,18,12,.08);
+    display: flex; align-items: center; gap: 12px; transition: box-shadow .24s ease;
+  }
+  .pcard:hover { box-shadow: 0 2px 4px rgba(20,18,12,.06), 0 14px 30px -10px rgba(20,18,12,.16); }
+  .pcard .ph {
+    display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 11px;
+    background: #FBFAF7; border: 1px solid rgba(0,0,0,.07);
+  }
+  .pcard .ph img { width: 23px; height: 23px; border-radius: 5px; object-fit: contain; }
+  .pcard .pt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .pcard .pt b { font-weight: 600; font-size: 13.5px; line-height: 1.25; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pcard .pt s { font-family: var(--mono); font-size: 10.5px; color: var(--muted); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pcard .pt s.was { text-decoration: line-through; text-decoration-color: rgba(192,54,47,.55); text-decoration-thickness: 1.5px; }
+  .morewrap {
+    margin-top: 10px; pointer-events: none;
+    -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.55) 0%, transparent 92%);
+    mask-image: linear-gradient(180deg, rgba(0,0,0,.55) 0%, transparent 92%);
+  }
+  .moreline { text-align: center; margin-top: -8px; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  @media (max-width: 880px) { .pgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  /* ---- final CTA + command card ---- */
+  .cta-final { text-align: center; padding: 120px 24px 50px; }
+  .cmd {
+    max-width: 620px; margin: 0 auto 26px; display: flex; align-items: center; gap: 14px;
+    background: #1B1B1A; border-radius: 12px; padding: 18px 22px; text-align: left;
+  }
+  .cmd .ps { color: #7FDCAE; font-family: var(--mono); font-size: 16px; flex: none; }
+  .cmd .cline { color: #F8F8F7; font-family: var(--mono); font-size: 16px; white-space: nowrap; overflow: hidden; flex: 1; }
+  .cmd .cline a { color: #8FD4F2; text-decoration: none; }
+  .cmd button {
+    flex: none; border: 1px solid #3A3A38; background: #262624; color: #D8D8D6; font-family: var(--mono);
+    font-size: 12px; border-radius: 8px; padding: 7px 12px; cursor: pointer;
+  }
+  .cmd button:hover { background: #313130; }
+  /* ---- the site footer, mirrored from the home page ---- */
+  .bigfoot { border-top: 1px solid var(--line); margin-top: 100px; padding: 46px 24px 40px; background: #FBFAF8; text-align: left; }
+  .bigfoot-in { max-width: 1020px; margin: 0 auto; display: flex; gap: 44px; justify-content: space-between; flex-wrap: wrap; }
+  .bf-brand .bfb { display: inline-flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 16px; color: var(--ink); }
+  .bf-brand svg { width: 20px; height: 20px; border-radius: 6px; }
+  .bf-brand .note { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+  .bf-cols { display: flex; gap: 56px; flex-wrap: wrap; }
+  .bf-col { display: flex; flex-direction: column; gap: 7px; min-width: 108px; }
+  .bf-col .lab { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .bf-col a { color: var(--ink); text-decoration: none; font-size: 13.5px; }
+  .bf-col a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .bf-tag { max-width: 1020px; margin: 36px auto 0; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+
+
+  @media (prefers-reduced-motion: reduce) {
+    .strip .cur, .uc-strip .c, .uc-tick { animation: none; }
+    .hw { opacity: 1; transform: none; }
+  }
+</style>
+<script src="/captcha.js" defer></script>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <span class="wordmark"><span class="wm-agents"><img src="media/people-search/claude-code.png" alt="Claude Code"><img src="media/people-search/codex.png" alt="Codex"><img src="media/people-search/openclaw.png" alt="OpenClaw"><img src="media/people-search/hermes.png" alt="Hermes"></span> <span class="wm-x" style="color:var(--muted);font-weight:400">×</span> <a href="/" style="display:inline-flex;align-items:center;gap:10px;color:inherit;text-decoration:none" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</a> <span style="color:var(--muted);font-weight:400">/</span> <span style="font-weight:500">People search</span></span>
+  <span style="display:flex;gap:8px">
+    <span class="nav-links"><a href="#bench">#1 in benchmark</a><a href="#pricing">Pricing</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a><a href="https://x.com/treg_ai" target="_blank" rel="noopener" aria-label="treg on X"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a><a href="https://discord.gg/6mQYYfFMAn" target="_blank" rel="noopener" aria-label="treg on Discord"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z"/></svg></a></span>
+    <a class="pill dark" href="/app?ref=people-search" id="ctaNav">Set up treg</a>
+  </span>
+</nav>
+
+<header class="hero">
+  <h1 id="heroA"><span class="hw ag-line"><span class="ag" id="agWrap"><img id="agLogo" src="media/people-search/claude-code.png" alt=""><span id="agName">Claude</span></span> for</span><br><span class="hw hl">people search.</span></h1>
+  <h1 id="heroB" hidden><span class="hw">Run GTM</span> <span class="hw">from your</span><br><span class="hw"><span class="hero-agents"><img src="media/people-search/claude-code.png" alt="Claude Code"><img src="media/people-search/codex.png" alt="Codex"><img src="media/people-search/openclaw.png" alt="OpenClaw"><img src="media/people-search/hermes.png" alt="Hermes"></span></span> <span class="hw hl">terminal.</span></h1>
+  <p class="sub">One skill gives your agent <strong>1B+ contacts</strong> across Apollo, Hunter, Tomba, People&nbsp;Data&nbsp;Labs — {PROVIDERS} providers behind one token. It finds the companies, the people, and their <strong>verified work emails</strong>. You pay per answer, misses are free. <a href="#receipt" style="color:var(--green);text-decoration:underline;text-underline-offset:3px">27-person receipt: 20 verified emails for $0.58</a></p>
+  <div class="ctas">
+    <a class="pill dark" href="/app?ref=people-search" id="ctaHero">Setup treg</a>
+    <a class="pill" href="#pricing">Pricing: pay per lead</a>
+  </div>
+</header>
+
+<div class="demo-wrap">
+  <div class="demo" aria-label="Demo: an agent filling a lead sheet through treg">
+    <div class="strip">
+      <img src="media/people-search/claude-code.png" alt="">
+      <span class="pr">›</span>
+      <span class="typed" id="dTyped"></span><span class="cur" id="dCur"></span>
+      <span class="reply" id="dReply" hidden></span>
+    </div>
+    <div class="demo-body">
+    <table class="sheet" aria-hidden="true">
+      <thead><tr><th>#</th><th>Company</th><th>Name</th><th>Work email</th></tr></thead>
+      <tbody id="dRows"></tbody>
+    </table>
+    <aside class="board" id="dBoard" aria-hidden="true">
+      <div class="bd-head"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg · <span id="bdName">companies.search</span></div>
+      <div class="bd-sub" id="bdSub">ranked by cost per useful result</div>
+      <div id="bdA">
+        <div class="bd-row"><img src="media/people-search/apollo.png" alt=""><b>Apollo</b><span class="pr2">$0.026 · 98%</span></div>
+        <div class="bd-row"><img src="media/people-search/thecompaniesapi.png" alt=""><b>TheCompaniesAPI</b><span class="pr2">$0.004 · 91%</span></div>
+        <div class="bd-row"><img src="media/people-search/crustdata.png" alt=""><b>Crustdata</b><span class="pr2">$0.010 · 96%</span></div>
+        <div class="bd-row"><img src="media/people-search/coresignal.png" alt=""><b>Coresignal</b><span class="pr2">$0.020 · 94%</span></div>
+        <div class="bd-more bd-row" style="border:0;background:none">+7 more ranked</div>
+        <div class="bd-scan" id="bdScan"></div>
+      </div>
+      <div id="bdB" hidden>
+        <div class="bd-row"><img src="media/people-search/tomba.png" alt=""><b>Tomba</b><span class="st">···</span></div>
+        <div class="bd-row"><img src="media/people-search/leadmagic.png" alt=""><b>LeadMagic</b><span class="st">···</span></div>
+        <div class="bd-row"><img src="media/people-search/hunter.png" alt=""><b>Hunter</b><span class="st">···</span></div>
+        <div class="bd-badge" id="bdBadge">waterfall · misses cost $0.00</div>
+      </div>
+    </aside>
+    </div>
+    <div class="demo-foot">
+      <span id="dStatus">agent idle</span>
+      <span class="meter" id="dMeter">$0.0000</span>
+    </div>
+  </div>
+  <div class="demo-cap">the launch film, live — every call metered, misses free</div>
+</div>
+
+
+<section class="section" id="receipt" style="padding-top:70px;padding-bottom:70px">
+  <h2>Real run receipt.<br><span class="hl2">27 people, 20 verified emails, $0.58.</span></h2>
+  <p class="lede">From the workflow run of 2026-09-23: list 50 Series-A software companies, let jev keep the 27 that fit the ICP, name the marketing lead at each, find a work email and verify it. Every miss at Hunter and Kitt settled at $0.00. Tomba, the cheapest finder, was out of capacity on treg.to&#x27;s key that day and billed nothing.</p>
+  <div style="max-width:800px;margin:0 auto">
+    <table class="receipt-table" style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08)">
+      <thead>
+        <tr style="background:#F8F7F5;font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#8A8885">
+          <th style="text-align:left;padding:12px 16px;font-weight:500">Metric</th>
+          <th style="text-align:right;padding:12px 16px;font-weight:500">Count</th>
+          <th style="text-align:right;padding:12px 16px;font-weight:500">Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #F0EFEB">
+          <td style="padding:12px 16px;font-weight:500">People with a name</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono)">27</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono);color:var(--muted)">-</td>
+        </tr>
+        <tr style="border-bottom:1px solid #F0EFEB">
+          <td style="padding:12px 16px">Work email found <span style="color:var(--muted)">(18 Hunter, 3 Kitt on Hunter&#x27;s misses)</span></td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono)">21</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono)">$0.456</td>
+        </tr>
+        <tr style="border-bottom:1px solid #F0EFEB">
+          <td style="padding:12px 16px;font-weight:500;color:var(--green)">Usable results <span style="font-weight:400;color:var(--muted)">(verified deliverable)</span></td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono);color:var(--green);font-weight:500">20</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono)">$0.125 to verify</td>
+        </tr>
+        <tr style="border-bottom:1px solid #F0EFEB">
+          <td style="padding:12px 16px">Unknown verdict <span style="color:var(--muted)">(not billed; 0 invalid)</span></td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono)">1</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono);color:var(--muted)">$0.00</td>
+        </tr>
+        <tr style="border-bottom:1px solid #F0EFEB">
+          <td style="padding:12px 16px">Misses <span style="color:var(--muted)">(no email at either finder; Hunter&#x27;s 9 and Kitt&#x27;s 6 free)</span></td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono)">6</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono);color:var(--muted)">$0.00</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 16px;font-weight:600">Cost per usable result</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono)">-</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono);font-weight:600;color:var(--green)">$0.029</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="margin-top:16px;display:flex;gap:20px;flex-wrap:wrap;justify-content:center">
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)">
+        <img src="media/people-search/hunter.png" alt="Hunter" style="width:20px;height:20px;border-radius:5px">
+        <span><b style="color:var(--ink)">Hunter</b> 27 calls @ $0.0245, 9 misses at $0.00</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)">
+        <img src="logos/trykitt.svg" alt="Kitt" style="width:20px;height:20px;border-radius:5px">
+        <span><b style="color:var(--ink)">Kitt</b> 9 calls @ $0.005, 6 misses at $0.00</span>
+      </div>
+    </div>
+  </div>
+  <p class="fineprint">Source: <a href="/workflows/find-and-verify-a-lead-list">find-and-verify-a-lead-list</a> workflow run, 23 Sep 2026. Prices from <a href="/catalog">catalog</a> at run time. <a href="https://github.com/superdesigndev/treg/blob/main/src/treg/workflow_runs/find-and-verify-a-lead-list.csv">CSV on GitHub</a>.</p>
+</section>
+
+<section class="section" id="usecases">
+  <h2>One skill.<br><span class="hl2">Every enrichment job.</span></h2>
+  <p class="lede">Say it in plain words — the agent picks the provider, you pay per answer.</p>
+  <div class="uc-grid">
+
+    <div class="uc" data-uc="email">
+      <div class="uc-strip"><span class="pr">›</span>get a verified work email<span class="c"></span></div>
+      <div class="uc-stage">
+        <div class="uc-row"><img src="media/people-search/tomba.png" alt=""><b>Tomba</b><span class="st">···</span></div>
+        <div class="uc-row"><img src="media/people-search/leadmagic.png" alt=""><b>LeadMagic</b><span class="st">···</span></div>
+        <div class="uc-row"><img src="media/people-search/hunter.png" alt=""><b>Hunter</b><span class="st">···</span></div>
+        <div class="uc-em">jdoe@outerbounds.com <b>✓ verified</b></div>
+      </div>
+      <div class="uc-foot">people.email.find · <b>routed</b> · from $0.0089</div>
+    </div>
+
+    <div class="uc" data-uc="phone">
+      <div class="uc-strip"><span class="pr">›</span>find their mobile number<span class="c"></span></div>
+      <div class="uc-stage">
+        <div class="uc-in">Jane Doe · VP Platform, Outerbounds</div>
+        <div class="uc-mask">+1 (•••) •••-••••</div>
+        <div class="uc-chips"><span class="uc-chip ok">✓ verified · mobile</span><span class="uc-chip">direct dial</span></div>
+      </div>
+      <div class="uc-foot">people.phone.find · 3 providers, ranked</div>
+    </div>
+
+    <div class="uc" data-uc="person">
+      <div class="uc-strip"><span class="pr">›</span>enrich this email<span class="c"></span></div>
+      <div class="uc-stage">
+        <div class="uc-in">jdoe@outerbounds.com</div>
+        <div class="uc-row"><img class="av" src="media/people-search/av-jane.png" alt=""><b>Jane Doe</b><span class="st">match 98%</span></div>
+        <div class="uc-chips">
+          <span class="uc-chip">VP Platform</span><span class="uc-chip">Outerbounds · ML infra</span>
+          <span class="uc-chip">San Francisco</span><span class="uc-chip">in · x · github</span>
+        </div>
+      </div>
+      <div class="uc-foot">people.enrich · from $0.028</div>
+    </div>
+
+    <div class="uc" data-uc="company">
+      <div class="uc-strip"><span class="pr">›</span>enrich this domain<span class="c"></span></div>
+      <div class="uc-stage">
+        <div class="uc-in">modal.com</div>
+        <div class="uc-row"><img src="media/people-search/modal.png" alt=""><b>Modal</b><span class="st">found</span></div>
+        <div class="uc-chips">
+          <span class="uc-chip">AI infrastructure</span><span class="uc-chip ok">Series B · $80M</span>
+          <span class="uc-chip">New York</span><span class="uc-chip">51–200 employees</span>
+        </div>
+      </div>
+      <div class="uc-foot">companies.enrich · from $0.010</div>
+    </div>
+
+    <div class="uc" data-uc="lookalike">
+      <div class="uc-strip"><span class="pr">›</span>find lookalike companies<span class="c"></span></div>
+      <div class="uc-stage">
+        <div class="uc-row picked-seed"><img src="media/people-search/modal.png" alt=""><b>Modal</b><span class="st">seed</span></div>
+        <div class="uc-row"><img src="media/people-search/baseten.png" alt=""><b>Baseten</b><span class="uc-bar" style="--w:92%"><i></i></span></div>
+        <div class="uc-row"><img src="media/people-search/beam.png" alt=""><b>Beam</b><span class="uc-bar" style="--w:88%"><i></i></span></div>
+        <div class="uc-row"><img src="media/people-search/cerebrium.png" alt=""><b>Cerebrium</b><span class="uc-bar" style="--w:84%"><i></i></span></div>
+      </div>
+      <div class="uc-foot">companies.similar · from $0.049</div>
+    </div>
+
+    <div class="uc" data-uc="verify">
+      <div class="uc-strip"><span class="pr">›</span>verify this email list<span class="c"></span></div>
+      <div class="uc-stage">
+        <div class="uc-row"><span style="font-family:var(--mono);font-size:11px">jdoe@outerbounds.com</span><span class="st">···</span></div>
+        <div class="uc-row"><span style="font-family:var(--mono);font-size:11px">sam@initech.io</span><span class="st">···</span></div>
+        <div class="uc-row"><span style="font-family:var(--mono);font-size:11px">old@gone.dev</span><span class="st">···</span></div>
+        <div class="uc-row"><span style="font-family:var(--mono);font-size:11px">maya@globex.co</span><span class="st">···</span></div>
+        <div class="uc-chips"><span class="uc-chip ok">3/4 deliverable</span></div>
+      </div>
+      <div class="uc-foot">email.verify · $0.003 / check</div>
+    </div>
+
+    <div class="uc" data-uc="role">
+      <div class="uc-strip"><span class="pr">›</span>who runs platform at modal?<span class="c"></span></div>
+      <div class="uc-stage">
+        <div class="uc-row"><img src="media/people-search/modal.png" alt=""><b>Modal</b><span class="st">42 people found</span></div>
+        <div class="uc-row"><img class="av" src="media/people-search/av-tom.png" alt=""><b>Tom Weber</b><span class="st">CTO</span></div>
+        <div class="uc-row"><img class="av" src="media/people-search/av-jane.png" alt=""><b>Jane Doe</b><span class="st hit">Head of Platform ✓</span></div>
+        <div class="uc-row"><img class="av" src="media/people-search/av-nora.png" alt=""><b>Nora Ali</b><span class="st">VP Eng</span></div>
+      </div>
+      <div class="uc-foot">people.search · <b>routed</b> · 16 providers</div>
+    </div>
+
+    <div class="uc" data-uc="signals">
+      <div class="uc-strip"><span class="pr">›</span>watch for buying signals<span class="c"></span></div>
+      <div class="uc-stage">
+        <div class="uc-row"><img src="media/people-search/modal.png" alt=""><b>Modal raised Series B</b><span class="st">$80M</span></div>
+        <div class="uc-row"><span class="st" style="margin:0">📈</span><b>Hiring across platform</b><span class="st">14 roles</span></div>
+        <div class="uc-row"><span class="st" style="margin:0">🌍</span><b>Shipped enterprise tier</b><span class="st">new</span></div>
+        <div class="uc-chips"><span class="uc-chip ok">reach out now</span></div>
+      </div>
+      <div class="uc-foot">funding &amp; hiring · Crunchbase · Coresignal</div>
+    </div>
+
+    <a class="uc uc-more" href="#tools">
+      <div class="uc-strip"><span class="pr">›</span>and whatever comes next<span class="c"></span></div>
+      <div class="uc-stage">
+        <h3><b>{ENDPOINTS}</b> tools</h3>
+        <div class="uc-tickwrap"><ul class="uc-tick">
+          <li>serp.google <s>· live results</s></li>
+          <li>keywords.volume <s>· $0.006</s></li>
+          <li>backlinks.list <s>· $0.012</s></li>
+          <li>tiktok.trends <s>· sounds &amp; tags</s></li>
+          <li>x.posts <s>· search &amp; profiles</s></li>
+          <li>reviews.google <s>· any place</s></li>
+          <li>ads.library <s>· Meta · Google</s></li>
+          <li>scrape.page <s>· any URL</s></li>
+          <li>serp.google <s>· live results</s></li>
+          <li>keywords.volume <s>· $0.006</s></li>
+          <li>backlinks.list <s>· $0.012</s></li>
+          <li>tiktok.trends <s>· sounds &amp; tags</s></li>
+          <li>x.posts <s>· search &amp; profiles</s></li>
+          <li>reviews.google <s>· any place</s></li>
+          <li>ads.library <s>· Meta · Google</s></li>
+          <li>scrape.page <s>· any URL</s></li>
+        </ul></div>
+      </div>
+      <div class="uc-foot">{PROVIDERS} providers · one token · <b>browse the catalog →</b></div>
+    </a>
+
+  </div>
+</section>
+
+<section class="wf-sec" id="bench">
+ <div class="bench-track" id="benchTrack">
+  <div class="bench-stage">
+  <h2>The most accurate<br><span class="hl2">people finder</span> for agents.</h2>
+  <p class="lede">People Search Bench by LessieAI — 119 real tasks, % answered correctly. Same agent, with and without treg.</p>
+
+  <div class="bstage-wrap">
+  <div class="duel" id="duelBox">
+    <div class="d-col">
+      <div class="d-bar" style="--h:43"></div>
+      <div class="d-val">43%</div>
+      <div class="d-lab"><img src="media/people-search/claude-code.png" alt="">Claude Code alone</div>
+    </div>
+    <div class="d-col">
+      <div class="d-bar win" style="--h:78.2"></div>
+      <div class="d-val win">78.2%</div>
+      <div class="d-lab"><img src="media/people-search/claude-code.png" alt="">Claude Code <i>+</i> <svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</div>
+    </div>
+  <div class="d-cat">B2B prospecting · % of tasks answered correctly</div>
+  </div>
+
+  <div class="bgroups" id="groupsBox">
+    <div class="bgroup">
+      <div class="bcols">
+        <span class="bcol" style="--h:80"><i class="bbar win"></i><em class="win">80.0</em><svg class="bico" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg></span>
+        <span class="bcol" style="--h:68.2"><i class="bbar"></i><em>68.2</em><img src="media/people-search/lessie.png" alt="" class="bico"></span>
+        <span class="bcol" style="--h:64.7"><i class="bbar"></i><em>64.7</em><img src="media/people-search/exa.png" alt="" class="bico"></span>
+        <span class="bcol" style="--h:50.5"><i class="bbar"></i><em>50.5</em><img src="media/people-search/claude-code.png" alt="" class="bico"></span>
+      </div>
+      <div class="bglab">Recruiting</div>
+    </div>
+    <div class="bgroup">
+      <div class="bcols">
+        <span class="bcol" style="--h:78.2"><i class="bbar win"></i><em class="win">78.2</em><svg class="bico" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg></span>
+        <span class="bcol" style="--h:60.6"><i class="bbar"></i><em>60.6</em><img src="media/people-search/lessie.png" alt="" class="bico"></span>
+        <span class="bcol" style="--h:55.2"><i class="bbar"></i><em>55.2</em><img src="media/people-search/exa.png" alt="" class="bico"></span>
+        <span class="bcol" style="--h:43"><i class="bbar"></i><em>43.0</em><img src="media/people-search/claude-code.png" alt="" class="bico"></span>
+      </div>
+      <div class="bglab">B2B prospecting</div>
+    </div>
+    <div class="bgroup">
+      <div class="bcols">
+        <span class="bcol" style="--h:76.3"><i class="bbar win"></i><em class="win">76.3</em><svg class="bico" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg></span>
+        <span class="bcol" style="--h:70.4"><i class="bbar"></i><em>70.4</em><img src="media/people-search/lessie.png" alt="" class="bico"></span>
+        <span class="bcol" style="--h:61.2"><i class="bbar"></i><em>61.2</em><img src="media/people-search/exa.png" alt="" class="bico"></span>
+        <span class="bcol" style="--h:57"><i class="bbar"></i><em>57.0</em><img src="media/people-search/claude-code.png" alt="" class="bico"></span>
+      </div>
+      <div class="bglab">Deterministic</div>
+    </div>
+    <div class="bgroup">
+      <div class="bcols">
+        <span class="bcol" style="--h:62.9"><i class="bbar win"></i><em class="win">62.9</em><svg class="bico" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg></span>
+        <span class="bcol" style="--h:62.3"><i class="bbar"></i><em>62.3</em><img src="media/people-search/lessie.png" alt="" class="bico"></span>
+        <span class="bcol" style="--h:41.6"><i class="bbar"></i><em>41.6</em><img src="media/people-search/exa.png" alt="" class="bico"></span>
+        <span class="bcol" style="--h:43.2"><i class="bbar"></i><em>43.2</em><img src="media/people-search/claude-code.png" alt="" class="bico"></span>
+      </div>
+      <div class="bglab">Influencer</div>
+    </div>
+  </div>
+  </div>
+  <p class="fineprint">treg · Lessie · Exa · Claude Code alone — <a href="https://github.com/LessieAI/people-search-bench">github.com/LessieAI/people-search-bench</a></p>
+  </div>
+ </div>
+</section>
+
+<section class="section bill-sec" id="pricing" style="padding-top:40px">
+  <h2>No subscription. No contract.<br><span class="hl2">Pays for results only.</span></h2>
+  <p class="lede">Every call is metered at the provider's own rate from a prepaid balance — 0% markup.</p>
+  <div class="bill">
+    <div class="bill-left">
+      <div class="b-row"><img src="media/people-search/apollo.png" alt=""><b>Apollo</b><s>$59/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="media/people-search/hunter.png" alt=""><b>Hunter</b><s>$34/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="media/people-search/lusha.png" alt=""><b>Lusha</b><s>$49/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="media/people-search/companyenrich.png" alt=""><b>CompanyEnrich</b><s>$49/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="media/people-search/crunchbase.png" alt=""><b>Crunchbase</b><s>$99/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="media/people-search/pdl.png" alt=""><b>People Data Labs</b><s>$98/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="media/people-search/clay.png" alt=""><b>Clay</b><s>$149/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="media/people-search/tomba.png" alt=""><b>Tomba</b><s>$89/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="media/people-search/findymail.png" alt=""><b>Findymail</b><s>$99/mo<i class="strike"></i></s></div>
+    </div>
+    <div class="bill-divider" aria-hidden="true"></div>
+    <div class="bill-right">
+      <div class="bk">with <svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</div>
+      <div class="bb">$0.0089<small>per verified email</small></div>
+      <div class="bnote">cheapest email-find on the catalog today · the film's run: 100 leads, $1.76</div>
+    </div>
+  </div>
+  <p class="fineprint">Current catalog rates. New teams start with $1.00 free.</p>
+</section>
+
+
+<section class="section tools-sec" id="tools">
+  <h2>One token. {ENDPOINTS} data &amp; tools.</h2>
+  <p class="lede">People search is one aisle. The same token reaches social, SEO, ads, scraping — and your own keys always win over treg's.</p>
+  <div class="catwrap">
+    <div class="pgrid">
+      <div class="pcard"><span class="ph"><img src="media/people-search/exa.png" alt=""></span><span class="pt"><b>Find person by role</b><s>Exa · $0.010 / query</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/apollo.png" alt=""></span><span class="pt"><b>Match + work email</b><s>Apollo · $0.026 / contact</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/tomba.png" alt=""></span><span class="pt"><b>Email finder</b><s>Tomba · $0.0089 / find</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/hunter.png" alt=""></span><span class="pt"><b>Email verify</b><s>Hunter · $0.003 / check</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/pdl.png" alt=""></span><span class="pt"><b>Person enrich</b><s>People Data Labs · $0.028</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/crustdata.png" alt=""></span><span class="pt"><b>Company &amp; headcount</b><s>Crustdata · $0.010 / co</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/icypeas.svg" alt=""></span><span class="pt"><b>Email from LinkedIn</b><s>Icypeas · $0.019</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/leadmagic.png" alt=""></span><span class="pt"><b>People at a company</b><s>LeadMagic · $0.025</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/linkedin.svg" alt=""></span><span class="pt"><b>LinkedIn profiles</b><s>no official API</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/crunchbase.png" alt=""></span><span class="pt"><b>Funding rounds</b><s class="was">Crunchbase · $99/mo</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/x.svg" alt=""></span><span class="pt"><b>X posts &amp; profiles</b><s class="was">X API · $200/mo</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/people-search/coresignal.png" alt=""></span><span class="pt"><b>Job postings</b><s>Coresignal · $0.020</s></span></div>
+    </div>
+    <div class="morewrap" aria-hidden="true">
+      <div class="pgrid">
+        <div class="pcard"><span class="ph"><img src="logos/tiktok.svg" alt=""></span><span class="pt"><b>TikTok trends</b><s>API: invite-only</s></span></div>
+        <div class="pcard"><span class="ph"><img src="logos/instagram.svg" alt=""></span><span class="pt"><b>Instagram reels</b><s>API: app review</s></span></div>
+        <div class="pcard"><span class="ph"><img src="media/people-search/dataforseo.png" alt=""></span><span class="pt"><b>Keyword volume</b><s>DataForSEO</s></span></div>
+        <div class="pcard"><span class="ph"><img src="media/people-search/majestic.png" alt=""></span><span class="pt"><b>Backlinks</b><s class="was">Majestic · $50/mo</s></span></div>
+        <div class="pcard"><span class="ph"><img src="media/people-search/apify.png" alt=""></span><span class="pt"><b>Web scraping</b><s>Apify actors</s></span></div>
+        <div class="pcard"><span class="ph"><img src="media/people-search/brightdata.png" alt=""></span><span class="pt"><b>Proxy scraping</b><s>Bright Data</s></span></div>
+        <div class="pcard"><span class="ph"><img src="logos/youtube.svg" alt=""></span><span class="pt"><b>YouTube stats</b><s>quota-capped</s></span></div>
+        <div class="pcard"><span class="ph"><img src="media/people-search/serpstat.png" alt=""></span><span class="pt"><b>Rank tracking</b><s>Serpstat</s></span></div>
+      </div>
+    </div>
+    <div class="moreline">+ many more across {PROVIDERS} providers</div>
+    <div class="ctas" style="display:flex;justify-content:center;margin-top:20px">
+      <a class="pill dark" href="/catalog">Browse the catalog →</a>
+    </div>
+  </div>
+</section>
+
+<section class="cta-final">
+  <h2>Give your agent<br>1B+ contacts.</h2>
+  <div class="cmd">
+    <span class="ps">$</span>
+    <span class="cline" id="cmdLine">set up treg — <a href="https://treg.to/llms.txt">treg.to/llms.txt</a></span>
+    <button id="copyBtn" type="button">copy</button>
+  </div>
+  <div class="ctas">
+    <a class="pill dark" href="/app?ref=people-search" id="ctaFinal">Get started</a>
+  </div>
+</section>
+
+<section class="section" id="related" style="padding-top:60px;padding-bottom:80px">
+  <h2 style="margin-bottom:28px">Related</h2>
+  <div style="max-width:900px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
+    <!--hosted--><a href="/gtm-engineering" style="display:block;padding:18px 20px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08);text-decoration:none;color:inherit;transition:box-shadow .24s">
+      <b style="display:block;font-size:15px;margin-bottom:4px">GTM engineering playbook</b>
+      <span style="font-size:13px;color:var(--muted)">16 chapters from ICP to rollout, the data steps tested on real runs</span>
+    </a><!--/hosted-->
+    <a href="/use-cases/people-search" style="display:block;padding:18px 20px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08);text-decoration:none;color:inherit;transition:box-shadow .24s">
+      <b style="display:block;font-size:15px;margin-bottom:4px">Compare providers</b>
+      <span style="font-size:13px;color:var(--muted)">Priced comparison of people search APIs</span>
+    </a>
+    <a href="/workflows/find-and-verify-a-lead-list" style="display:block;padding:18px 20px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08);text-decoration:none;color:inherit;transition:box-shadow .24s">
+      <b style="display:block;font-size:15px;margin-bottom:4px">Multi-step verified lead list</b>
+      <span style="font-size:13px;color:var(--muted)">Build a list with the receipt from a real run</span>
+    </a>
+    <a href="/use-cases/lead-enrichment-for-ai-agents" style="display:block;padding:18px 20px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08);text-decoration:none;color:inherit;transition:box-shadow .24s">
+      <b style="display:block;font-size:15px;margin-bottom:4px">Waterfall enrichment</b>
+      <span style="font-size:13px;color:var(--muted)">Find, enrich and verify in one agent run</span>
+    </a>
+    <a href="/use-cases/find-professional-emails" style="display:block;padding:18px 20px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08);text-decoration:none;color:inherit;transition:box-shadow .24s">
+      <b style="display:block;font-size:15px;margin-bottom:4px">Find professional emails</b>
+      <span style="font-size:13px;color:var(--muted)">Work email from a name or LinkedIn URL</span>
+    </a>
+    <a href="/use-cases/enrich-a-person" style="display:block;padding:18px 20px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08);text-decoration:none;color:inherit;transition:box-shadow .24s">
+      <b style="display:block;font-size:15px;margin-bottom:4px">Enrich a person</b>
+      <span style="font-size:13px;color:var(--muted)">Full profile from an email or LinkedIn URL</span>
+    </a>
+    <a href="/use-cases/find-phone-numbers" style="display:block;padding:18px 20px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08);text-decoration:none;color:inherit;transition:box-shadow .24s">
+      <b style="display:block;font-size:15px;margin-bottom:4px">Find phone numbers</b>
+      <span style="font-size:13px;color:var(--muted)">Direct mobile from a LinkedIn URL</span>
+    </a>
+    <a href="/use-cases/verify-an-email" style="display:block;padding:18px 20px;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08);text-decoration:none;color:inherit;transition:box-shadow .24s">
+      <b style="display:block;font-size:15px;margin-bottom:4px">Verify an email</b>
+      <span style="font-size:13px;color:var(--muted)">Check deliverability before you send</span>
+    </a>
+  </div>
+</section>
+
+<footer class="bigfoot">
+  <div class="bigfoot-in">
+    <div class="bf-brand">
+      <span class="bfb"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+      <div class="note">100% open source</div>
+    </div>
+    <nav class="bf-cols" aria-label="Site">
+      <div class="bf-col"><div class="lab">Explore</div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><!--hosted--><a href="/gtm-engineering">GTM engineering</a><!--/hosted--><a href="/agents/claude-code">Agents</a><a href="/blog">Blog</a></div>
+      <div class="bf-col"><div class="lab">Build</div>
+        <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
+      <div class="bf-col"><div class="lab">Company</div>
+        <a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </nav>
+  </div>
+  <div class="bf-tag">© 2026 treg — OpenRouter for agent tools</div>
+</footer>
+
+<!-- sign-in modal: shown when a Setup CTA is clicked while signed out -->
+<div class="scrim" id="signin-scrim">
+  <div class="smodal" role="dialog" aria-label="Sign in">
+    <button class="cls" id="signinClose" aria-label="Close">✕</button>
+    <h3>Sign in to treg</h3>
+    <p>first sign-in creates your account</p>
+    <a class="pill dark" href="/auth/github" style="text-decoration:none">Continue with GitHub</a>
+    <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
+    <div class="div">or email a code</div>
+    <div id="em-step1">
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
+      <button class="pill" id="em-btn1">Email me a sign-in code</button>
+    </div>
+    <div id="em-step2" style="display:none">
+      <input id="em-code" inputmode="numeric" placeholder="6-digit code"/>
+      <button class="pill dark" id="em-btn2">Sign in</button>
+    </div>
+    <div class="err" id="em-err"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function arr(nodes) { return Array.prototype.slice.call(nodes); }
+
+  /* nav hairline */
+  var nav = document.getElementById('nav');
+  addEventListener('scroll', function () { nav.classList.toggle('scrolled', scrollY > 8); }, { passive: true });
+
+  /* hero A/B — the `people-search-hero` PostHog experiment picks the variant (control | gtm);
+     ?hero=gtm|control forces one for previews. The chosen variant is cached so repeat views
+     don't flash control while the flags load. */
+  var AGENTS = [
+    ['media/people-search/claude-code.png', 'Claude'],
+    ['media/people-search/codex.png', 'Codex'],
+    ['media/people-search/openclaw.png', 'OpenClaw'],
+    ['media/people-search/hermes.png', 'Hermes']
+  ];
+  AGENTS.forEach(function (a) { (new Image()).src = a[0]; });
+  var agRotTimer = null;
+  function startRotation() {
+    if (reduced || agRotTimer) return;
+    var wrap = document.getElementById('agWrap'), logo = document.getElementById('agLogo'),
+        name = document.getElementById('agName'), i = 0;
+    agRotTimer = setInterval(function () {
+      wrap.classList.add('out');
+      setTimeout(function () {
+        i = (i + 1) % AGENTS.length;
+        logo.src = AGENTS[i][0]; name.textContent = AGENTS[i][1];
+        wrap.classList.remove('out'); wrap.classList.add('pre');
+        void wrap.offsetWidth;
+        wrap.classList.remove('pre');
+      }, 300);
+    }, 2600);
+  }
+  function popWords(h1) {
+    h1.querySelectorAll('.hw').forEach(function (w, i) {
+      w.classList.remove('in'); void w.offsetWidth;
+      setTimeout(function () { w.classList.add('in'); }, 250 + i * 320);
+    });
+  }
+  window.__heroVariant = '';
+  function applyHero(v) {
+    v = v === 'gtm' ? 'gtm' : 'control';
+    if (v === window.__heroVariant) return;
+    window.__heroVariant = v;
+    var A = document.getElementById('heroA'), B = document.getElementById('heroB');
+    A.hidden = v === 'gtm'; B.hidden = v !== 'gtm';
+    popWords(v === 'gtm' ? B : A);
+    if (v === 'gtm') { if (agRotTimer) { clearInterval(agRotTimer); agRotTimer = null; } }
+    else startRotation();
+  }
+  window.__applyHero = applyHero;
+  window.__heroForced = (/[?&]hero=(gtm|control)/.exec(location.search) || [])[1] || '';
+  var heroCached = '';
+  try { heroCached = localStorage.getItem('ps_hero_variant') || ''; } catch (e) {}
+  applyHero(window.__heroForced || heroCached || 'control');
+
+  /* ---------- Setup CTAs: signed in → the app; signed out → the sign-in modal ---------- */
+  var scrim = document.getElementById('signin-scrim');
+  function openSignin() { scrim.classList.add('open'); document.getElementById('em-input').focus(); }
+  function closeSignin() { scrim.classList.remove('open'); }
+  document.getElementById('signinClose').addEventListener('click', closeSignin);
+  scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSignin(); });
+  addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSignin(); });
+  ['ctaNav', 'ctaHero', 'ctaFinal'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; /* let new-tab clicks be */
+      e.preventDefault();
+      fetch('/auth/me', { credentials: 'same-origin' }).then(function (r) {
+        if (r.ok) location.href = '/app'; else openSignin();
+      }).catch(openSignin);
+    });
+  });
+  document.getElementById('em-btn1').addEventListener('click', emailStart);
+  document.getElementById('em-input').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailStart(); });
+  document.getElementById('em-btn2').addEventListener('click', emailVerify);
+  document.getElementById('em-code').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailVerify(); });
+  function emailStart() {
+    var em = document.getElementById('em-input').value.trim();
+    var err = document.getElementById('em-err');
+    if (!em) { err.textContent = 'Enter your email address.'; return; }
+    if (document.getElementById('em-btn1').disabled) return; document.getElementById('em-btn1').disabled = true; document.getElementById('em-btn1').textContent = 'Sending…'; err.textContent = '';
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (d) {
+          if (!r.ok) throw new Error(d.detail || 'could not send the code');
+          return d;
+        });
+      })
+      .then(function (d) {
+        document.getElementById('em-step1').style.display = 'none';
+        document.getElementById('em-step2').style.display = 'block';
+        if (d.dev_code) { document.getElementById('em-code').value = d.dev_code; err.style.color = 'var(--green)'; err.textContent = 'dev mode — your code: ' + d.dev_code; }
+        else { err.style.color = ''; }
+        document.getElementById('em-code').focus();
+      })
+      .catch(function (e2) { err.textContent = e2.message; document.getElementById('em-btn1').disabled = false; document.getElementById('em-btn1').textContent = 'Email me a sign-in code'; });
+  }
+  function emailVerify() {
+    var em = document.getElementById('em-input').value.trim();
+    var code = document.getElementById('em-code').value.trim();
+    var err = document.getElementById('em-err');
+    if (!code) return;
+    document.getElementById('em-btn2').textContent = 'Verifying…'; err.textContent = '';
+    fetch('/auth/email/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, code: code }) })
+      .then(function (r) { if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.detail || "that code didn't work"); }); location.href = '/app'; })
+      .catch(function (e2) { err.textContent = e2.message; document.getElementById('em-btn2').textContent = 'Sign in'; });
+  }
+
+  /* ---------- the self-playing demo ---------- */
+  var COS = [
+    ['Modal', 'modal'], ['Baseten', 'baseten'], ['Fireworks', 'fireworks'], ['Together', 'together'],
+    ['Modular', 'modular'], ['Anyscale', 'anyscale'], ['Replicate', 'replicate'], ['Lambda', 'lambda']
+  ];
+  var PEOPLE = [
+    ['Lena Ito', 'l.ito@modal.com', 'av-lena'], ['Raj Gupta', 'rgupta@baseten.co', 'av-raj'],
+    ['Nora Ali', 'nali@fireworks.ai', 'av-nora'], ['Sam Park', 'spark@together.ai', 'av-sam'],
+    ['Maya Rao', 'mrao@modular.com', 'av-maya'], ['Tom Weber', 'tweber@anyscale.com', 'av-tom'],
+    ['Ivy Lund', 'ivy@replicate.com', 'av-ivy'], ['Omar Diaz', 'odiaz@lambda.ai', 'av-omar']
+  ];
+  var rowsHost = document.getElementById('dRows');
+  COS.forEach(function (c, i) {
+    var p = PEOPLE[i];
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td class="num">' + (i + 1) + '</td>' +
+      '<td class="h1"><span class="co"><img src="media/people-search/' + c[1] + '.png" alt="">' + c[0] + '</span></td>' +
+      '<td class="h2 hatch"><span class="who"><img src="media/people-search/' + p[2] + '.png" alt="">' + p[0] + '</span></td>' +
+      '<td class="h3 hatch"><span class="em">' + p[1] + ' <b style="color:var(--green)">✓</b></span></td>';
+    rowsHost.appendChild(tr);
+  });
+  var trs = arr(rowsHost.children);
+
+  var dTyped = document.getElementById('dTyped'), dCur = document.getElementById('dCur'),
+      dReply = document.getElementById('dReply'), dStatus = document.getElementById('dStatus'),
+      dMeter = document.getElementById('dMeter');
+  var P1 = 'find post series-A AI-infra companies';
+  var P2 = 'get verified email for head of platform';
+  var timers = [];
+  function at(ms, fn) { timers.push(setTimeout(fn, ms)); }
+  function typeInto(text, start, cps, done) {
+    for (var i = 0; i <= text.length; i++) (function (i) {
+      at(start + i * cps, function () { dTyped.textContent = text.slice(0, i); });
+    })(i);
+    if (done) at(start + text.length * cps, done);
+  }
+  function meterTo(from, to, start, dur, decimals) {
+    var steps = 24;
+    for (var i = 0; i <= steps; i++) (function (i) {
+      at(start + (dur / steps) * i, function () {
+        var v = from + (to - from) * (i / steps);
+        dMeter.textContent = '$' + v.toFixed(decimals);
+      });
+    })(i);
+  }
+  var board = document.getElementById('dBoard'), bdA = document.getElementById('bdA'),
+      bdB = document.getElementById('bdB'), bdName = document.getElementById('bdName'),
+      bdSub = document.getElementById('bdSub'), bdScan = document.getElementById('bdScan'),
+      bdBadge = document.getElementById('bdBadge');
+  var aRows = arr(bdA.querySelectorAll('.bd-row'));
+  var bRows = arr(bdB.querySelectorAll('.bd-row'));
+  var bSts = arr(bdB.querySelectorAll('.st'));
+
+  function playDemo() {
+    timers.forEach(clearTimeout); timers = [];
+    /* reset */
+    dTyped.textContent = ''; dReply.hidden = true; dCur.hidden = false;
+    dStatus.textContent = 'agent idle'; dMeter.textContent = '$0.0000';
+    trs.forEach(function (tr) {
+      ['.co', '.who', '.em'].forEach(function (sel) {
+        var el = tr.querySelector(sel); el.style.opacity = ''; el.style.transform = '';
+      });
+    });
+    board.classList.remove('in'); bdA.hidden = false; bdB.hidden = true;
+    bdName.textContent = 'companies.search · 11'; bdSub.textContent = 'ranked by cost per useful result';
+    aRows.forEach(function (r) { r.classList.remove('in', 'picked', 'dim'); });
+    bRows.forEach(function (r) { r.classList.remove('in', 'picked', 'dim'); });
+    bSts.forEach(function (st) { st.textContent = '···'; st.className = 'st'; });
+    bdBadge.classList.remove('in'); bdScan.style.opacity = 0;
+    if (reduced) {
+      dTyped.textContent = P2; dCur.hidden = true;
+      trs.forEach(function (tr) {
+        ['.co', '.who', '.em'].forEach(function (sel) { tr.querySelector(sel).style.opacity = 1; });
+      });
+      board.classList.add('in'); bdA.hidden = true; bdB.hidden = false;
+      bdName.textContent = 'people.email.find'; bdSub.textContent = 'cheapest first · misses free';
+      bRows.forEach(function (r) { r.classList.add('in'); });
+      bSts[0].textContent = 'miss · $0.00'; bSts[0].className = 'st miss';
+      bSts[1].textContent = '429 · $0.00'; bSts[1].className = 'st miss';
+      bSts[2].textContent = '✓ $0.024'; bSts[2].className = 'st hit';
+      bRows[2].classList.add('picked'); bdBadge.classList.add('in');
+      dMeter.textContent = '$1.7600'; dStatus.textContent = '100 verified emails · misses free';
+      return;
+    }
+
+    /* ---- act 1: search — the ranked provider board picks Apollo ---- */
+    typeInto(P1, 500, 32);
+    at(1900, function () { board.classList.add('in'); dStatus.textContent = 'ranking 11 providers…'; });
+    aRows.forEach(function (r, i) { at(2000 + i * 130, function () { r.classList.add('in'); }); });
+    /* the scan sweep, then the pick */
+    at(2750, function () { bdScan.style.opacity = 1; bdScan.style.top = aRows[0].offsetTop + 'px'; });
+    for (var k = 1; k < 4; k++) (function (k) {
+      at(2750 + k * 160, function () { bdScan.style.top = aRows[k].offsetTop + 'px'; });
+    })(k);
+    at(3450, function () { bdScan.style.opacity = 0; });
+    at(3550, function () {
+      aRows[0].classList.add('picked');
+      aRows.slice(1).forEach(function (r) { r.classList.add('dim'); });
+      dStatus.textContent = 'companies.search — Apollo picked · $0.026/page';
+    });
+    trs.forEach(function (tr, i) { at(3900 + i * 130, function () { var c = tr.querySelector('.co'); c.style.opacity = 1; c.style.transform = 'none'; }); });
+    meterTo(0, 0.10, 3900, 1100, 4);
+    at(5300, function () {
+      dTyped.textContent = ''; dCur.hidden = true; dReply.hidden = false;
+      dReply.innerHTML = '↩ 100 found <s>· $0.10 via Apollo</s>';
+    });
+
+    /* ---- act 2: emails — the waterfall ladder ---- */
+    at(6900, function () { dReply.hidden = true; dCur.hidden = false; board.classList.remove('in'); });
+    typeInto(P2, 7000, 32);
+    at(8500, function () {
+      bdA.hidden = true; bdB.hidden = false;
+      bdName.textContent = 'people.email.find'; bdSub.textContent = 'cheapest first · misses free';
+      board.classList.add('in');
+      dStatus.textContent = 'people.email.find — trying the cheapest first';
+    });
+    bRows.forEach(function (r, i) { at(8600 + i * 140, function () { r.classList.add('in'); }); });
+    at(9500, function () { bSts[0].textContent = 'miss · $0.00'; bSts[0].className = 'st miss'; bRows[0].classList.add('dim'); });
+    at(10100, function () { bSts[1].textContent = '429 · $0.00'; bSts[1].className = 'st miss'; bRows[1].classList.add('dim'); });
+    at(10700, function () {
+      bSts[2].textContent = '✓ $0.024'; bSts[2].className = 'st hit'; bRows[2].classList.add('picked');
+      dStatus.textContent = 'Hunter hit — only the hit is billed';
+    });
+    at(11000, function () { bdBadge.classList.add('in'); });
+    trs.forEach(function (tr, i) {
+      at(11100 + i * 280, function () { var w = tr.querySelector('.who'); w.style.opacity = 1; w.style.transform = 'none'; });
+      at(11250 + i * 280, function () { var e = tr.querySelector('.em'); e.style.opacity = 1; e.style.transform = 'none'; });
+    });
+    meterTo(0.10, 1.76, 11100, 2500, 4);
+    at(13900, function () {
+      dTyped.textContent = ''; dCur.hidden = true; dReply.hidden = false;
+      dReply.innerHTML = '↩ 100 work emails <s>· $1.66 · 3 vendors · misses free</s>';
+      dStatus.textContent = '100 verified emails · misses free';
+    });
+    /* loop */
+    at(18200, playDemo);
+  }
+  var demoStarted = false;
+  var demoIO = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting && !demoStarted) { demoStarted = true; playDemo(); }
+    });
+  }, { threshold: 0.35 });
+  demoIO.observe(document.querySelector('.demo'));
+
+  /* ---------- reveal-on-scroll (steps + bill strikes) ---------- */
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) e.target.classList.add('seen'); });
+  }, { threshold: 0.25 });
+  document.querySelectorAll('.bill-sec').forEach(function (s) { io.observe(s); });
+
+  /* ---------- use-case cards: each loops its mini film while on screen ---------- */
+  (function () {
+    var PHONE_FROM = '+1 (•••) •••-••••', PHONE_TO = '+1 (415) 630-2214';
+    /* the person and company cards play the same beats: input line, one row, then the chips */
+    function lineRowChips(at, el) {
+      at(250, function () { el.q('.uc-in').classList.add('in'); });
+      at(850, function () { el.rows[0].classList.add('in'); });
+      el.chips.forEach(function (c, i) { at(1250 + i * 260, function () { c.classList.add('in'); }); });
+    }
+    var anims = {
+      email: function (at, el) {
+        var rows = el.rows, sts = el.sts;
+        rows.forEach(function (r, i) { at(200 + i * 160, function () { r.classList.add('in'); }); });
+        at(1000, function () { sts[0].textContent = 'miss · $0.00'; sts[0].className = 'st miss'; rows[0].classList.add('dim'); });
+        at(1550, function () { sts[1].textContent = '429 · $0.00'; sts[1].className = 'st miss'; rows[1].classList.add('dim'); });
+        at(2100, function () { sts[2].textContent = '✓ $0.024'; sts[2].className = 'st hit'; rows[2].classList.add('picked'); });
+        at(2500, function () { el.q('.uc-em').classList.add('in'); });
+      },
+      phone: function (at, el) {
+        at(250, function () { el.q('.uc-in').classList.add('in'); });
+        var mask = el.q('.uc-mask'), n = 0;
+        for (var i = 0; i < PHONE_TO.length; i++) if (PHONE_FROM[i] !== PHONE_TO[i]) {
+          n++;
+          (function (upto) {
+            at(750 + upto * 140, function () {
+              var out = '', seen = 0;
+              for (var k = 0; k < PHONE_TO.length; k++) {
+                if (PHONE_FROM[k] === PHONE_TO[k]) { out += PHONE_TO[k]; continue; }
+                seen++; out += seen <= upto ? PHONE_TO[k] : '•';
+              }
+              mask.textContent = out;
+            });
+          })(n);
+        }
+        at(2450, function () { el.chips[0].classList.add('in'); });
+        at(2700, function () { el.chips[1].classList.add('in'); });
+      },
+      person: lineRowChips,
+      company: lineRowChips,
+      lookalike: function (at, el) {
+        at(250, function () { el.rows[0].classList.add('in'); });
+        at(600, function () { el.rows[0].classList.add('picked'); });
+        el.rows.forEach(function (r, i) {
+          if (i === 0) return;
+          at(950 + (i - 1) * 300, function () { r.classList.add('in'); });
+        });
+      },
+      verify: function (at, el) {
+        el.rows.forEach(function (r, i) { at(200 + i * 140, function () { r.classList.add('in'); }); });
+        el.rows.forEach(function (r, i) {
+          at(1350 + i * 320, function () {
+            var st = el.sts[i];
+            if (i === 2) { st.textContent = '✕ bounced'; st.className = 'st miss'; r.classList.add('dim'); }
+            else { st.textContent = '✓'; st.className = 'st hit'; }
+          });
+        });
+        at(2900, function () { el.chips[0].classList.add('in'); });
+      },
+      role: function (at, el) {
+        at(250, function () { el.rows[0].classList.add('in'); });
+        el.rows.forEach(function (r, i) {
+          if (i === 0) return;
+          at(950 + (i - 1) * 280, function () { r.classList.add('in'); });
+        });
+        at(2100, function () { el.rows[2].classList.add('picked'); });
+      },
+      signals: function (at, el) {
+        el.rows.forEach(function (r, i) { at(400 + i * 560, function () { r.classList.add('in'); }); });
+        at(2500, function () { el.chips[0].classList.add('in'); });
+      }
+    };
+    document.querySelectorAll('.uc[data-uc]').forEach(function (card) {
+      var kind = card.getAttribute('data-uc'), fn = anims[kind];
+      if (!fn) return;
+      var el = {
+        q: function (sel) { return card.querySelector(sel); },
+        rows: arr(card.querySelectorAll('.uc-row')),
+        sts: arr(card.querySelectorAll('.st')),
+        chips: arr(card.querySelectorAll('.uc-chip'))
+      };
+      var orig = el.sts.map(function (st) { return { t: st.textContent, c: st.className }; });
+      function resetCard() {
+        el.rows.forEach(function (r) { r.classList.remove('in', 'dim', 'picked'); });
+        el.chips.forEach(function (c) { c.classList.remove('in'); });
+        ['.uc-em', '.uc-in'].forEach(function (sel) { var n = el.q(sel); if (n) n.classList.remove('in'); });
+        el.sts.forEach(function (st, i) { st.textContent = orig[i].t; st.className = orig[i].c; });
+        var mask = el.q('.uc-mask'); if (mask) mask.textContent = PHONE_FROM;
+      }
+      if (reduced) { fn(function (ms, f) { f(); }, el); return; }
+      var timers = [], running = false;
+      function cycle() {
+        resetCard();
+        fn(function (ms, f) { timers.push(setTimeout(f, ms)); }, el);
+        timers.push(setTimeout(cycle, 5600));
+      }
+      var io2 = new IntersectionObserver(function (es) {
+        es.forEach(function (e) {
+          if (e.isIntersecting && !running) { running = true; cycle(); }
+          else if (!e.isIntersecting && running) { running = false; timers.forEach(clearTimeout); timers = []; }
+        });
+      }, { threshold: 0.3 });
+      io2.observe(card);
+    });
+  })();
+
+  /* ---------- the bench: scroll-scrubbed duel → MAGIC MOVE → grouped chart ---------- */
+  function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+  function sub(q, a, b) { return clamp01((q - a) / (b - a)); }
+  function easeInOut(t) { return t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+
+  var benchTrack = document.getElementById('benchTrack');
+  var duelBox = document.getElementById('duelBox');
+  var groupsBox = document.getElementById('groupsBox');
+  var dBars = arr(duelBox.querySelectorAll('.d-bar'));
+  var dVals = arr(duelBox.querySelectorAll('.d-val'));
+  var dLabs = arr(duelBox.querySelectorAll('.d-lab'));
+  var dCat = duelBox.querySelector('.d-cat');
+  var groups = arr(groupsBox.querySelectorAll('.bgroup'));
+  var b2bBars = arr(groups[1].querySelectorAll('.bbar'));
+  var gBars = arr(groupsBox.querySelectorAll('.bbar'));
+  var gEms = arr(groupsBox.querySelectorAll('.bcol em'));
+
+  /* fly geometry, measured once with transforms in a known state */
+  var flyGeo = null;
+  function measureFly() {
+    var wasHidden = duelBox.style.visibility === 'hidden';
+    duelBox.style.visibility = '';
+    dBars[0].style.transform = 'scaleY(1)'; dBars[1].style.transform = 'scaleY(1)';
+    var prev = groupsBox.style.opacity; groupsBox.style.opacity = '1';
+    flyGeo = [[dBars[1], b2bBars[0]], [dBars[0], b2bBars[3]]].map(function (pair) {
+      var src = pair[0].getBoundingClientRect(), dst = pair[1].getBoundingClientRect();
+      return {
+        el: pair[0],
+        dx: (dst.left + dst.width / 2) - (src.left + src.width / 2),
+        dy: dst.bottom - src.bottom,
+        sx: dst.width / src.width,
+        sy: dst.height / src.height
+      };
+    });
+    groupsBox.style.opacity = prev;
+    if (wasHidden) duelBox.style.visibility = 'hidden';
+  }
+  addEventListener('resize', function () { flyGeo = null; });
+
+  function benchScrub() {
+    var vh = innerHeight;
+    var r = benchTrack.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > vh) return;
+    var q = clamp01(-r.top / (r.height - vh));
+    if (reduced) q = q > 0.05 ? 1 : 0;
+    /* stage 1: the duel grows, words fade in — then out before the move */
+    var wordsOut = 1 - easeInOut(sub(q, 0.40, 0.50));
+    dLabs.forEach(function (l) { l.style.opacity = Math.min(sub(q, 0.04, 0.14), wordsOut); });
+    dCat.style.opacity = Math.min(sub(q, 0.08, 0.18), wordsOut);
+    dVals[0].style.opacity = Math.min(sub(q, 0.16, 0.24), wordsOut);
+    dVals[1].style.opacity = Math.min(sub(q, 0.28, 0.36), wordsOut);
+    /* the chart frame settles in beneath */
+    groupsBox.style.opacity = sub(q, 0.46, 0.56);
+    /* the magic move, scrubbed: the duel bars fly onto their chart twins */
+    var t = easeInOut(sub(q, 0.50, 0.68));
+    if (t > 0 && !flyGeo && q < 0.52) measureFly();
+    var landed = t >= 1;
+    duelBox.style.visibility = landed ? 'hidden' : '';
+    if (!landed) {
+      var g0 = easeInOut(sub(q, 0.05, 0.21)), g1 = easeInOut(sub(q, 0.15, 0.31));
+      if (t === 0 || !flyGeo) {
+        dBars[0].style.transform = 'scaleY(' + g0 + ')';
+        dBars[1].style.transform = 'scaleY(' + g1 + ')';
+      } else {
+        flyGeo.forEach(function (f) {
+          f.el.style.transform = 'translate(' + (f.dx * t) + 'px,' + (f.dy * t) + 'px) ' +
+            'scale(' + (1 + (f.sx - 1) * t) + ',' + (1 + (f.sy - 1) * t) + ')';
+        });
+      }
+    }
+    /* the twins take over the instant the flight lands (and hand back on reverse) */
+    b2bBars[0].style.transform = landed ? 'scaleY(1)' : 'scaleY(0)';
+    b2bBars[3].style.transform = landed ? 'scaleY(1)' : 'scaleY(0)';
+    /* the rest of the chart grows during the flight */
+    gBars.forEach(function (b, i) {
+      if (b === b2bBars[0] || b === b2bBars[3]) return;
+      var gi = Math.floor(i / 4), ci = i % 4;
+      b.style.transform = 'scaleY(' + easeInOut(sub(q, 0.56 + gi * 0.03 + ci * 0.012, 0.68 + gi * 0.03 + ci * 0.012)) + ')';
+    });
+    gEms.forEach(function (em, i) {
+      var gi = Math.floor(i / 4), ci = i % 4;
+      em.style.opacity = sub(q, 0.66 + gi * 0.03 + ci * 0.012, 0.74 + gi * 0.03 + ci * 0.012);
+    });
+  }
+  var ticking = false;
+  addEventListener('scroll', function () {
+    if (ticking) return; ticking = true;
+    requestAnimationFrame(function () { benchScrub(); ticking = false; });
+  }, { passive: true });
+  benchScrub();
+
+  /* ---------- copy the install command ---------- */
+  var copyBtn = document.getElementById('copyBtn');
+  copyBtn.addEventListener('click', function () {
+    var txt = 'set up treg — treg.to/llms.txt';
+    function copied() {
+      copyBtn.textContent = 'copied ✓';
+      setTimeout(function () { copyBtn.textContent = 'copy'; }, 1600);
+    }
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(copied, function () {
+      var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+      copied();
+    });
+  });
+})();
+</script>
+<script src="/sitetrack.js"></script>
+<script>
+/* the `people-search-hero` experiment (PostHog #94813): variant from the flag, exposure captured
+   by posthog-js on the flag read; CTA clicks are the primary metric. All of it inert when
+   analytics is off or the experiment is not running. */
+(function () {
+  try {
+    if (!window.posthog) return;
+    if (!window.__heroForced) {
+      posthog.onFeatureFlags(function () {
+        var v = posthog.getFeatureFlag('people-search-hero');
+        if (v === 'gtm' || v === 'control') {
+          try { localStorage.setItem('ps_hero_variant', v); } catch (e) {}
+          window.__applyHero(v);
+        }
+      });
+    }
+    [['ctaNav', 'nav'], ['ctaHero', 'hero'], ['ctaFinal', 'final']].forEach(function (pair) {
+      var el = document.getElementById(pair[0]);
+      if (el) el.addEventListener('click', function () {
+        try { posthog.capture('ps_hero_cta_click', { cta: pair[1], hero_variant: window.__heroVariant }); } catch (e) {}
+      });
+    });
+  } catch (e) { /* analytics must never break the page */ }
+})();
+</script>
+<script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
+</body>
+</html>

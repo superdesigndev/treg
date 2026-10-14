@@ -1,0 +1,49 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "about": "Senior Software Engineer with experience in machine learning systems, platform engineering and product engineering.\nCambridge, Masters of Mathematics (2019).",
+          "currentPosition": [
+            "… {14 field(s) truncated}"
+          ],
+          "education": [
+            "… {12 field(s) truncated}"
+          ],
+          "experience": [
+            "… {14 field(s) truncated}",
+            "… 4 more item(s) truncated"
+          ],
+          "firstName": "Michael",
+          "handle": "michael-diggin-8825431a7",
+          "headline": "Gemini at Google DeepMind",
+          "id": "ACoAADBPySIBvTyHeQcNWmxwhWmzkJclmU99cG4",
+          "image": "https://media.licdn.com/dms/image/v2/C4D03AQERHJl3YtEVAw/profile-displayphoto-shrink_800_800/profile-displayphoto-shrink_800_800/0/1597684900234?e=1791417600&v=beta&t=P9956bRfcxAVZhWvvHcqxY42ToiKHsC25… [210 chars]",
+          "lastName": "Diggin",
+          "location": "United Kingdom",
+          "openToWork": false,
+          "premium": false,
+          "skills": [
+            "… {1 field(s) truncated}",
+            "… 16 more item(s) truncated"
+          ],
+          "url": "https://www.linkedin.com/in/michael-diggin-8825431a7"
+        },
+        "… 2 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.1012,
+  "items": 3,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "hint": "large_result: this response is ~49 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "11a5da69-4c84-497f-874b-1ef83f779e80"
+}

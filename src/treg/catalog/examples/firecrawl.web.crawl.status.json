@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "status": "completed",
+  "completed": 1,
+  "total": 1,
+  "creditsUsed": 1,
+  "data": [
+    {"markdown": "# Example Domain", "metadata": {"sourceURL": "https://example.com", "statusCode": 200}}
+  ]
+}

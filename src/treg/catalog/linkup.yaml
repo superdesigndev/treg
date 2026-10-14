@@ -1,0 +1,220 @@
+provider: linkup
+source:
+  docs: https://docs.linkup.so/pages/documentation/get-started/introduction
+  openapi: https://api.linkup.so/v1/openapi.json
+  curated: '2026-09-29'
+pricing_url: https://docs.linkup.so/pages/documentation/platform/pricing
+limits: "Search and Fetch allow 10 requests/second per organization. Research polling should not exceed one request/second. HTTP 429 can mean insufficient credit or excess concurrency."
+endpoints:
+  - id: linkup.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v1/search
+    body_allowlist: true
+    name: Search the open web
+    summary: Return ranked sources, a sourced answer, or structured JSON from a web query.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, example: "What is example.com used for?"}
+        depth: {type: string, required: true, enum: [flash, fast, standard, deep], example: flash}
+        outputType: {type: string, required: true, enum: [searchResults, sourcedAnswer, structured], example: searchResults}
+        maxResults: {type: number, required: false, min: 1, max: 20, example: 5}
+        includeDomains: {type: "array[string]", required: false, maxItems: 100}
+        excludeDomains: {type: "array[string]", required: false}
+        fromDate: {type: string, required: false, note: "ISO date YYYY-MM-DD."}
+        toDate: {type: string, required: false, note: "ISO date YYYY-MM-DD."}
+        structuredOutputSchema: {type: string, required: false, note: "JSON Schema encoded as a string; required for structured output."}
+        includeImages: {type: boolean, required: false, default: false}
+        includeInlineCitations: {type: boolean, required: false, default: false}
+        includeSources: {type: boolean, required: false, default: false}
+      note: "Depth and output type determine price. The structured output schema is a JSON-encoded string, not an object."
+    test_request: {body: {q: "What is example.com used for?", depth: flash, outputType: searchResults, maxResults: 2}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.depth: deep, body.outputType: searchResults}, value: 0.05}
+        - {when: {body.depth: deep, body.outputType: sourcedAnswer}, value: 0.055}
+        - {when: {body.depth: deep, body.outputType: structured}, value: 0.055}
+        - {when: {body.depth: flash, body.outputType: searchResults}, value: 0.005}
+        - {when: {body.depth: fast, body.outputType: searchResults}, value: 0.005}
+        - {when: {body.depth: standard, body.outputType: searchResults}, value: 0.005}
+        - {when: {body.depth: flash, body.outputType: sourcedAnswer}, value: 0.006}
+        - {when: {body.depth: fast, body.outputType: sourcedAnswer}, value: 0.006}
+        - {when: {body.depth: standard, body.outputType: sourcedAnswer}, value: 0.006}
+        - {when: {body.depth: flash, body.outputType: structured}, value: 0.006}
+        - {when: {body.depth: fast, body.outputType: structured}, value: 0.006}
+        - {when: {body.depth: standard, body.outputType: structured}, value: 0.006}
+      fallback: {value: 0.055, note: "Maximum documented Search price."}
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://docs.linkup.so/pages/documentation/platform/pricing
+      checked: '2026-09-29'
+      confidence: documented
+      note: "Search is billed per successful request by depth and output type."
+    verified: '2026-09-29'
+    added: '2026-09-28'
+    docs_url: https://docs.linkup.so/pages/documentation/endpoints/search/reference
+    example_response: examples/linkup.web.search.json
+
+  - id: linkup.web.fetch
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /v1/fetch
+    body_allowlist: true
+    name: Fetch a web page
+    summary: Retrieve clean Markdown from a public HTML or PDF URL.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        mode: {type: string, required: false, default: standard, enum: [standard, pro]}
+        renderJs: {type: boolean, required: false, default: false}
+        extractImages: {type: boolean, required: false, default: false}
+      note: "Structured output has a separate catalog tool because providing schema adds $0.001 to any mode and renderJs combination. A team's own raw tool can request raw page bytes."
+    test_request: {body: {url: "https://example.com", mode: standard, renderJs: false}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.mode: standard, body.renderJs: false}, value: 0.001}
+        - {when: {body.mode: standard, body.renderJs: true}, value: 0.005}
+        - {when: {body.mode: pro, body.renderJs: false}, value: 0.005}
+        - {when: {body.mode: pro, body.renderJs: true}, value: 0.01}
+      fallback: {value: 0.01, note: "Maximum Markdown-only Fetch price."}
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://docs.linkup.so/pages/documentation/platform/pricing
+      checked: '2026-09-29'
+      confidence: documented
+      note: "Markdown Fetch is billed per successful request by mode and JavaScript rendering."
+    verified: '2026-09-29'
+    added: '2026-09-28'
+    docs_url: https://docs.linkup.so/pages/documentation/endpoints/fetch/reference
+    example_response: examples/linkup.web.fetch.json
+
+  - id: linkup.web.fetch.structured
+    capability: web.extract.structured
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /v1/fetch
+    body_allowlist: true
+    name: Extract structured data from a web page
+    summary: Fetch a page and extract typed JSON with a supplied schema.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        schema: {type: object, required: true, example: {type: object, properties: {title: {type: string}}}}
+        instructions: {type: string, required: false, note: "Additional extraction guidance; maximum 4,000 characters."}
+        mode: {type: string, required: false, default: standard, enum: [standard, pro]}
+        renderJs: {type: boolean, required: false, default: false}
+        extractImages: {type: boolean, required: false, default: false}
+    test_request: {body: {url: "https://example.com", mode: standard, renderJs: false, schema: {type: object, properties: {title: {type: string}}}}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.mode: standard, body.renderJs: false}, value: 0.002}
+        - {when: {body.mode: standard, body.renderJs: true}, value: 0.006}
+        - {when: {body.mode: pro, body.renderJs: false}, value: 0.006}
+        - {when: {body.mode: pro, body.renderJs: true}, value: 0.011}
+      fallback: {value: 0.011, note: "Maximum structured Fetch price."}
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://docs.linkup.so/pages/documentation/platform/pricing
+      checked: '2026-09-29'
+      confidence: documented
+      note: "A supplied schema adds $0.001 to the mode and JavaScript rendering price."
+    verified: '2026-09-29'
+    added: '2026-09-28'
+    docs_url: https://docs.linkup.so/pages/documentation/endpoints/fetch/reference
+    example_response: examples/linkup.web.fetch.structured.json
+
+  - id: linkup.web.answer
+    capability: web.answer
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /v1/research
+    body_allowlist: true
+    name: Research a web question
+    summary: Start asynchronous multi-source research with citations.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, example: "What is example.com used for?"}
+        outputType: {type: string, required: true, enum: [sourcedAnswer, structured], example: sourcedAnswer}
+        reasoningDepth: {type: string, required: true, enum: [S, M, L, XL], example: S}
+        mode: {type: string, required: false, default: auto, enum: [answer, auto, investigate, research]}
+        includeDomains: {type: "array[string]", required: false, maxItems: 100}
+        excludeDomains: {type: "array[string]", required: false}
+        fromDate: {type: string, required: false, note: "ISO date YYYY-MM-DD."}
+        toDate: {type: string, required: false, note: "ISO date YYYY-MM-DD."}
+        structuredOutputSchema: {type: string, required: false, note: "JSON Schema encoded as a string; required for structured output."}
+      note: "Research can take minutes. A failed task consumes no Linkup credit; poll the returned id."
+    test_request: {body: {q: "What is example.com used for?", outputType: sourcedAnswer, reasoningDepth: S, mode: answer}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.reasoningDepth: S}, value: 0.25}
+        - {when: {body.reasoningDepth: M}, value: 0.5}
+        - {when: {body.reasoningDepth: L}, value: 1.5}
+        - {when: {body.reasoningDepth: XL}, value: 2.5}
+      fallback: {value: 2.5, note: "Maximum documented Research price."}
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://docs.linkup.so/pages/documentation/platform/pricing
+      checked: '2026-09-29'
+      confidence: documented
+      note: "Research price depends on reasoningDepth, not mode. Linkup documents that errors deduct no credit; treg releases a failed task's hold."
+    verified: '2026-09-29'
+    added: '2026-09-28'
+    docs_url: https://docs.linkup.so/pages/documentation/endpoints/research/post
+    example_response: examples/linkup.web.answer.json
+    async:
+      id_from: id
+      poll:
+        endpoint: linkup.web.answer.status
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        progress: [pending, processing]
+        success: [completed]
+        failure: [failed]
+      result: {path: output}
+      interval: 5
+
+  - id: linkup.web.answer.status
+    async: false
+    kind: utility
+    capability: web.answer.status
+    platform: web
+    domain: answer
+    scope: any_account
+    method: GET
+    path: /v1/research/{id}
+    name: Check a research task
+    summary: Read the status and result of a research task started by this team.
+    resource_ownership:
+      requires: {kind: "poll:linkup.web.answer.status", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "00000000-0000-4000-8000-000000000001"}
+    test_request: {pathParams: {id: "499df310-0eab-4b2d-97f6-fa79a6d66d86"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling does not consume Linkup credit."}
+    verified: '2026-09-29'
+    added: '2026-09-28'
+    docs_url: https://docs.linkup.so/pages/documentation/endpoints/research/get
+    example_response: examples/linkup.web.answer.status.json

@@ -1,0 +1,57 @@
+{
+  "code": 200,
+  "message": "Request successful. This request will incur a charge.",
+  "message_zh": "请求成功，本次请求将被计费。",
+  "support": "Discord: https://discord.gg/aMEAS8Xsvz",
+  "time": "2026-10-04 16:13:12",
+  "time_stamp": 1791155592,
+  "time_zone": "America/Los_Angeles",
+  "docs": "https://api.tikhub.io/#/TikTok-Web-API/fetch_user_post_api_v1_tiktok_web_fetch_user_post_get",
+  "router": "/api/v1/tiktok/web/fetch_user_post",
+  "params": {
+    "secUid": "MS4wLjABAAAAv7iSuuXDJGDvJkmH_vz1qkDZYo1apxgzaxdBSeIuPiM",
+    "count": "5"
+  },
+  "data": {
+    "hasMorePrevious": true,
+    "itemList": [
+      {
+        "id": "7692114317151423775",
+        "desc": "ATEEZ on the FYF. BTS on tour. dance challenges on repeat. @rachelszero and friends reminisce on K-Pop Summer on TikTok",
+        "createTime": 1790959957,
+        "author": {
+          "uniqueId": "tiktok"
+        },
+        "stats": {
+          "collectCount": 322,
+          "commentCount": 1583,
+          "diggCount": 3639,
+          "playCount": 229000,
+          "shareCount": 343
+        },
+        "…": "other fields truncated"
+      },
+      {
+        "id": "7691450773619625247",
+        "desc": "if your FYF had you hitting the Zara Larsson, you'll know Pop Girl Summer is never-ending. @McCall Mirabella the music and moments that shaped the season 🐬",
+        "createTime": 1790805450,
+        "author": {
+          "uniqueId": "tiktok"
+        },
+        "stats": {
+          "collectCount": 398,
+          "commentCount": 1057,
+          "diggCount": 4472,
+          "playCount": 204900,
+          "shareCount": 381
+        },
+        "…": "other fields truncated"
+      }
+    ],
+    "statusCode": 0,
+    "status_code": 0,
+    "status_msg": "",
+    "cursor": "1790196319000",
+    "hasMore": true
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: steam-app: ELDEN RING · $59.99 · 833313 reviews"
+    ]
+  },
+  "recipe": "steam-app",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 183,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "app_id": "1245620",
+      "description": "THE CRITICALLY ACCLAIMED FANTASY ACTION RPG. Rise, Tarnished, and be guided by grace to brandish the power of the Elden Ring and become an Elden Lord in the Lands Between.",
+      "developers": "FromSoftware, Inc.",
+      "discount": 0,
+      "genres": "Action, RPG",
+      "metacritic": 94,
+      "name": "ELDEN RING",
+      "negative": 56931,
+      "platforms": "windows",
+      "positive": 776382,
+      "price": "$59.99",
+      "publishers": "FromSoftware, Inc., Bandai Namco Entertainment",
+      "release": "Feb 24, 2022",
+      "review_score": "Very Positive",
+      "reviews": 833313,
+      "tags": "Single-player, Multi-player, PvP, Online PvP, Co-op, Online Co-op, Steam Achievements, Full controller support, Steam Trading Cards, Camera Comfort, Custom Volume Controls, Playable without Timed Input, Save Anytime, Stereo Sound, Surround Sound, Steam Cloud, Family Sharing",
+      "url": "https://store.steampowered.com/app/1245620/"
+    }
+  ]
+}

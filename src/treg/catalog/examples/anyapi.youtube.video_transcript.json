@@ -1,0 +1,28 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "language": "en",
+      "segments": [
+        {
+          "durationSeconds": 1.68,
+          "startSeconds": 1.36,
+          "text": "[♪♪♪]"
+        },
+        "… 60 more item(s) truncated"
+      ],
+      "transcript": "[♪♪♪]\n♪ We're no strangers to love ♪\n♪ You know the rules and so do I ♪\n♪ A full commitment's what I'm thinking of ♪\n♪ You wouldn't get this from any other guy ♪\n♪ I just wanna tell you how I'm feelin… [2089 chars]"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.011,
+  "items": 61,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-fox",
+    "name": "Fox",
+    "kind": "anonymous",
+    "artworkKey": "fox"
+  },
+  "resultId": "f7918a17-7e4a-4959-921b-1a73bef3a1e2"
+}

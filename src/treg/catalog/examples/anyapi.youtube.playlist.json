@@ -1,0 +1,34 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "owner": "Redlist - Just Hits",
+      "title": "Pop Music Playlist - Timeless Pop Songs (Updated Weekly 2026)",
+      "totalVideos": 200,
+      "videos": [
+        {
+          "channel": "ROSÉ and Bruno Mars",
+          "id": "ekr2nIex040",
+          "lengthSeconds": 174,
+          "lengthText": "2:54",
+          "thumbnail": "https://i.ytimg.com/vi/ekr2nIex040/hqdefault.jpg?sqp=-oaymwEnCNACELwBSFryq4qpAxkIARUAAIhCGAHYAQHiAQoIGBACGAY4AUAB&rs=AOn4CLBRSqFFz5z7JDdmHE_tOSScjzIDXQ",
+          "title": "ROSÉ & Bruno Mars - APT. (Official Music Video)",
+          "url": "https://www.youtube.com/watch?v=ekr2nIex040"
+        },
+        "… 199 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 200,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "hint": "large_result: this response is ~71 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "fac64ddd-0ec9-4f4d-8a16-6b68e82c7dea"
+}

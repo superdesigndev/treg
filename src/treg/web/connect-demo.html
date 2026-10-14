@@ -65,7 +65,7 @@ pre{background:#141414;border:1px solid #262626;border-radius:8px;padding:12px;o
 
   <div class="step">
     <h3>3. Call tools <span id="s3" class="state off">no token</span></h3>
-    <p>The same five tools any MCP client gets. All of them need the token you just granted — an
+    <p>Try a selection of tools from the team MCP interface. Each needs the token you just granted; an
     unauthenticated call is answered with a 401 telling the client where to authorize. <b>call</b> is
     the only one that spends the team's balance, so it does what treg asks an agent to do — reads the
     price first and asks before spending.</p>
@@ -170,8 +170,7 @@ async function exchange(code) {
   document.querySelectorAll(".tool").forEach((b) => (b.disabled = false));
   $("btnRefresh").disabled = false; $("btnDisconnect").disabled = false; $("btnCall").disabled = false;
   log("token received", { token_type: body.token_type, expires_in: body.expires_in,
-                          access_token: body.access_token.slice(0, 24) + "…",
-                          refresh_token: body.refresh_token.slice(0, 12) + "…" });
+                          access_token: "[received]", refresh_token: "[received]" });
 }
 
 let rpcId = 0;

@@ -1,0 +1,144 @@
+{
+  "meta": {
+    "blocked": [
+      "www.facebook.com"
+    ],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: meta-ads-advertiser: page 15087023444 · ALL · active · 20 ad(s) · one view · direct"
+    ]
+  },
+  "recipe": "meta-ads-advertiser",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 197,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "ad_archive_id": "1702938977100376",
+      "ad_url": "https://www.facebook.com/ads/library/?id=1702938977100376",
+      "body": "Bring sports more fully into your day with the Nike App.",
+      "cards": [
+        {
+          "body": "Bring sports more fully into your day with the Nike App.",
+          "cta": "Install Now",
+          "image": "https://scontent-sin11-1.xx.fbcdn.net/v/t39.35426-6/431748186_289316047369916_1595311644416959995_n.jpg?_nc_cat=104&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=IC1Te-3U5nwQ7kNvwG9uwc6&_nc_oc=Adp_e0Jes0TuKkwuwjc8pYl3SbW1NYsDsnFy1-7ZDywabBNAbU8F2nv8OSKtLGriyD_pJcJcMMk9AAh3j3s5EPcz&_nc_zt=14&_nc_ht=scontent-sin11-1…",
+          "link_url": "https://www.nike.com/ph/t/acg-polartec-wolf-tree-mid-rise-trousers-mVbQBn/CV0615-060",
+          "title": "Nike ACG Polartec ® 'Wolf Tree' Women's Mid-Rise Trousers",
+          "video": null
+        },
+        {
+          "body": "Bring sports more fully into your day with the Nike App.",
+          "cta": "Install Now",
+          "image": "https://scontent-sin11-1.xx.fbcdn.net/v/t39.35426-6/431734766_930233981755195_3984431312184472988_n.jpg?_nc_cat=104&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=BHTOHfVFB-UQ7kNvwFwai65&_nc_oc=AdoC2GHASnuu-bVN7rdHMHsscwb-KwfsjNejKS5im84ZFrBOJ_cSWQAbiI6AEP3h1tFnhXIhnxrxpDFg0-1M6o4J&_nc_zt=14&_nc_ht=scontent-sin11-1…",
+          "link_url": "https://www.nike.com/ph/t/fc-barcelona-2023-24-stadium-fourth-dri-fit-football-shirt-j09wGH/DR5081-729",
+          "title": "Nike F.C. Barcelona 2023/24 Stadium Fourth Women's Nike Dri-FIT Football Shirt",
+          "video": null
+        }
+      ],
+      "cta": "Install now",
+      "cta_type": "INSTALL_MOBILE_APP",
+      "currency": null,
+      "display_format": "dpa",
+      "end_date": null,
+      "images": [
+        "https://scontent-sin11-1.xx.fbcdn.net/v/t39.35426-6/431748186_289316047369916_1595311644416959995_n.jpg?_nc_cat=104&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=IC1Te-3U5nwQ7kNvwG9uwc6&_nc_oc=Adp_e0Jes0TuKkwuwjc8pYl3SbW1NYsDsnFy1-7ZDywabBNAbU8F2nv8OSKtLGriyD_pJcJcMMk9AAh3j3s5EPcz&_nc_zt=14&_nc_ht=scontent-sin11-1…",
+        "https://scontent-sin11-1.xx.fbcdn.net/v/t39.35426-6/431734766_930233981755195_3984431312184472988_n.jpg?_nc_cat=104&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=BHTOHfVFB-UQ7kNvwFwai65&_nc_oc=AdoC2GHASnuu-bVN7rdHMHsscwb-KwfsjNejKS5im84ZFrBOJ_cSWQAbiI6AEP3h1tFnhXIhnxrxpDFg0-1M6o4J&_nc_zt=14&_nc_ht=scontent-sin11-1…"
+      ],
+      "impressions": null,
+      "is_active": true,
+      "link_caption": "itunes.apple.com",
+      "link_url": "http://itunes.apple.com/app/id1095459556",
+      "page_id": "15087023444",
+      "page_likes": 39504399,
+      "page_name": "Nike",
+      "page_url": "https://www.facebook.com/nike/",
+      "paid_for_by": null,
+      "platforms": [
+        "facebook",
+        "instagram"
+      ],
+      "same_creative_ads": null,
+      "spend": null,
+      "start_date": "2025-04-07T07:00:00Z",
+      "title": "Nike ACG Polartec ® 'Wolf Tree' Women's Mid-Rise Trousers",
+      "videos": []
+    },
+    {
+      "ad_archive_id": "1559738104701476",
+      "ad_url": "https://www.facebook.com/ads/library/?id=1559738104701476",
+      "body": "Encuentra tu mejor estilo.\nLlegó el momento de que disfrutes los beneficios que la Nike App tiene para ti 😎. ¡Descárgala ahora!",
+      "cards": [
+        {
+          "body": "Encuentra tu mejor estilo.\nLlegó el momento de que disfrutes los beneficios que la Nike App tiene para ti 😎. ¡Descárgala ahora!",
+          "cta": "Install Now",
+          "image": "https://scontent-sin6-2.xx.fbcdn.net/v/t39.35426-6/399930460_249559881434186_1655395527070305162_n.jpg?_nc_cat=109&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=Jhj3fPzg5ooQ7kNvwE20Voc&_nc_oc=AdorpxyhGd-47DsnT3r_eMIp_81SCcmidCUGU0K-Gtq2cc9ZhXzaGkARZMLrH03kZtfpc5Fg1Rf1K3y-99yf9eyo&_nc_zt=14&_nc_ht=scontent-sin6-2.x…",
+          "link_url": "https://www.nike.com/mx/t/camiseta-de-tirantes-estampada-cropped-dri-fit-one-Rbwdbp?cp=54413048966_soc_",
+          "title": "Camiseta de tirantes estampada cropped para mujer Nike Dri-FIT One - Negro",
+          "video": null
+        },
+        {
+          "body": "Encuentra tu mejor estilo.\nLlegó el momento de que disfrutes los beneficios que la Nike App tiene para ti 😎. ¡Descárgala ahora!",
+          "cta": "Install Now",
+          "image": "https://scontent-sin11-2.xx.fbcdn.net/v/t39.35426-6/399982152_693805559478496_8949402392943933768_n.jpg?_nc_cat=101&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=AbG1jIIntkAQ7kNvwEoxVUN&_nc_oc=AdoVNV-B9Us9UPGhHYo3qEvPs1h4aGi2CoY9dxnC_1dDq3zgDkoQz86qD2K_9uOTrD81j03sutQF3JguMqA9Ow9c&_nc_zt=14&_nc_ht=scontent-sin11-2…",
+          "link_url": "https://www.nike.com/mx/t/dri-fit-adv-aps-chamarra-de-condición-física-7MzcVt?cp=54413048966_soc_",
+          "title": "Nike Dri-FIT ADV A.P.S. Chamarra de condición física para hombre - Negro",
+          "video": null
+        }
+      ],
+      "cta": "Install now",
+      "cta_type": "INSTALL_MOBILE_APP",
+      "currency": null,
+      "display_format": "dpa",
+      "end_date": null,
+      "images": [
+        "https://scontent-sin6-2.xx.fbcdn.net/v/t39.35426-6/399930460_249559881434186_1655395527070305162_n.jpg?_nc_cat=109&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=Jhj3fPzg5ooQ7kNvwE20Voc&_nc_oc=AdorpxyhGd-47DsnT3r_eMIp_81SCcmidCUGU0K-Gtq2cc9ZhXzaGkARZMLrH03kZtfpc5Fg1Rf1K3y-99yf9eyo&_nc_zt=14&_nc_ht=scontent-sin6-2.x…",
+        "https://scontent-sin11-2.xx.fbcdn.net/v/t39.35426-6/399982152_693805559478496_8949402392943933768_n.jpg?_nc_cat=101&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=AbG1jIIntkAQ7kNvwEoxVUN&_nc_oc=AdoVNV-B9Us9UPGhHYo3qEvPs1h4aGi2CoY9dxnC_1dDq3zgDkoQz86qD2K_9uOTrD81j03sutQF3JguMqA9Ow9c&_nc_zt=14&_nc_ht=scontent-sin11-2…"
+      ],
+      "impressions": null,
+      "is_active": true,
+      "link_caption": "play.google.com",
+      "link_url": "http://play.google.com/store/apps/details?id=com.nike.omega",
+      "page_id": "15087023444",
+      "page_likes": 39504399,
+      "page_name": "Nike",
+      "page_url": "https://www.facebook.com/nike/",
+      "paid_for_by": null,
+      "platforms": [
+        "facebook",
+        "instagram"
+      ],
+      "same_creative_ads": null,
+      "spend": null,
+      "start_date": "2025-04-25T07:00:00Z",
+      "title": "Camiseta de tirantes estampada cropped para mujer Nike Dri-FIT One - Negro",
+      "videos": []
+    }
+  ]
+}

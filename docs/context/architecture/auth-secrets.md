@@ -2,11 +2,36 @@
 title: Auth & secrets — injectors, encryption, OAuth freshness, health
 status: shipped
 sources:
-  - src/treg/injectors.py
+  - src/treg/infra/upstream/injectors.py
+  - src/treg/infra/upstream/ssrf.py
   - src/treg/crypto.py
   - src/treg/oauth.py
+  - src/treg/domain/connections/__init__.py
+  - src/treg/domain/connections/authorization.py
+  - src/treg/domain/connections/oauth_flow.py
+  - src/treg/domain/connections/refresh.py
+  - src/treg/infra/oauth_exchange.py
+  - src/treg/infra/oauth_refresh.py
   - src/treg/oauth_providers.py
+  - frontend/src/state/session.js
+  - frontend/src/state/keys.js
+  - frontend/src/pages/TeamPage.vue
   - src/treg/health.py
+  - src/treg/application/connect.py
+  - src/treg/alembic/versions/0051_context_dev_tool_host.py
+  - src/treg/routers/connections.py
+  - src/treg/routers/resources.py
+  - src/treg/domain/tools/__init__.py
+  - src/treg/domain/tools/bindings.py
+  - src/treg/domain/tools/bundles.py
+  - src/treg/domain/identity/api_keys.py
+  - src/treg/domain/identity/access.py
+  - src/treg/routers/api_keys.py
+  - tests/test_api_keys.py
+  - tests/test_oauth_refresh.py
+  - tests/test_financialdatasets.py
+  - tests/test_key_providers.py
+  - src/treg/config.py
 related:
   - architecture/proxy-model.md
   - architecture/data-model.md
@@ -15,19 +40,206 @@ related:
 
 # Auth & secrets
 
+Fetchin uses a pasted `X-API-Key` at `https://api.fetchin.io`. Its free internal
+`GET /api/v1/subscription` probe rejects invalid credentials and accepts a valid account even when
+its credit balance is zero. `TREG_PLATFORM_KEY_FETCHINIO` supplies the optional shared binding;
+the own-key-first ladder keeps a team's credential unmetered. The same free route supplies capacity
+data and is not exposed as a catalog tool.
+
+Tavily uses a pasted Bearer key at `https://api.tavily.com`. Its free internal `GET /usage` probe
+rejects invalid credentials and validates both team-owned and optional platform credentials without
+exposing usage as a catalog tool. `TREG_PLATFORM_KEY_TAVILY` supplies the server-held fallback; the
+existing own-key-first ladder means a team's key always wins and remains unmetered. The public
+surface is limited to Search, Extract, Map, and Crawl.
+
+Linkup uses a pasted Bearer key at `https://api.linkup.so`. Its free internal
+`GET /v1/credits/balance` probe validates a connected key and supplies capacity evidence without
+exposing the account balance as a catalog tool. `TREG_PLATFORM_KEY_LINKUP` supplies the optional
+shared binding; a team's own key wins and remains unmetered by treg.
+
+Crawl4AI uses a pasted Bearer key (`sk_live_…`) at `https://api.crawl4ai.com`. The free
+`GET /v1/billing/balance` validates a connected key (a bogus key answers 401) and supplies capacity
+evidence; it trails the per-call `x-c4-balance` header by about a minute. `TREG_PLATFORM_KEY_CRAWL4AI`
+supplies the optional shared binding; a team's own key wins and remains unmetered by treg.
+
+Spider uses a pasted Bearer key at `https://api.spider.cloud`. The free internal
+`GET /data/credits` probe validates connected keys and supplies capacity evidence.
+`TREG_PLATFORM_KEY_SPIDERCLOUD` supplies the optional shared binding; the own-key-first ladder
+keeps a team's credential unmetered. Only the priced Search listing is shared-key eligible.
+
+ScrapeGraphAI uses a pasted raw `SGAI-APIKEY` header at `https://v2-api.scrapegraphai.com`. Its free
+internal `GET /api/credits` probe rejects invalid credentials and validates team-owned and optional
+platform credentials while also supplying capacity data. `TREG_PLATFORM_KEY_SCRAPEGRAPHAI` supplies
+the server-held fallback; the existing own-key-first ladder keeps a team's credential unmetered.
+
+Serper uses a pasted raw `X-API-KEY` header at `https://google.serper.dev`. Its free internal
+`GET /account` probe validates team-owned and optional platform credentials while also supplying
+balance and rate-limit evidence. `CatalogTarget` approves `https://scrape.serper.dev` for the same
+credential without broadening the primary host. `TREG_PLATFORM_KEY_SERPER` supplies the server-held
+fallback; the existing own-key-first ladder keeps a team's credential unmetered.
+
+`ADYNTEL` is the first pasted-key provider whose two credentials ride in the JSON request body.
+The primary `api_key` and second `email` are ordinary declarative bindings with `location: json`;
+the relay contains no Adyntel branch. Tier 4 reads `TREG_PLATFORM_KEY_ADYNTEL` and
+`TREG_PLATFORM_EMAIL_ADYNTEL`, while a team connection stores its own pair and remains unmetered.
+The first connect step can only receive the key, so the provider's declared HTTP 422 probe outcome
+leaves it explicitly unchecked until the email is added; it is never labelled verified from that
+partial probe. JSON injection requires a JSON object, overwrites only the named top-level fields,
+rejects duplicate object keys, emits non-ASCII text as UTF-8, and recalculates Content-Length after
+serialization. It is deliberately not byte-faithful and must not be used for APIs that sign raw
+body bytes. Providers without a JSON binding retain the existing streamed-body path.
+
+`TRESTLEIQ` uses a pasted raw `x-api-key` header. Its connection probe calls a provider-owned
+invalid-number sandbox fixture. The typed `probe_cost_micro=15000` marks the first paid key probe;
+the connect dialog renders the warning from that field, and provisioning deliberately omits it from
+the tool health check so later health runs cannot spend the team's provider wallet.
+`TREG_PLATFORM_KEY_TRESTLEIQ` supplies the optional shared binding; a team's own key still wins.
+
+`HLRLOOKUP` reuses the Adyntel pattern: `api_key` and `api_secret` are both `location: json`
+bindings, and the relay has no HLR Lookup branch. HLR Lookup does not sign or hash the raw body, so
+JSON re-serialization is safe. The free `POST /apiv2/balance` probe answers 401 when either half of
+the pair is wrong, but 400 to a key sent alone, valid or not. The first connect step therefore
+stores a team key unchecked (declared `probe_deferred_statuses=(400,)`), and adding the secret does
+not re-probe the pair: a wrong team pair surfaces as the provider's unbilled 401 on the first call.
+Tier 4 reads `TREG_PLATFORM_KEY_HLRLOOKUP` and `TREG_PLATFORM_KEY_HLRLOOKUP_SECRET`
+(`platform_extra_setting`), so a team's own pair never rides with treg's secret.
+
+`LIMADATA` uses a pasted raw `x-api-key` header. Its free connection probe sends an invalid empty
+web-search body: the assigned key returns HTTP 400 and a bogus key returns 401. The real local
+connection flow accepted the former and rejected the latter. `TREG_PLATFORM_KEY_LIMADATA` is the
+separate optional shared binding; a team's key still wins and remains unmetered.
+
+BounceBan uses a pasted raw `Authorization` header with no `Bearer` prefix. The free
+`GET /v1/account` probe rejected a bogus key with HTTP 401 and accepted the supplied key with HTTP
+200 through the real connection flow. `TREG_PLATFORM_KEY_BOUNCEBAN` supplies the optional shared
+binding; a team's key still wins and remains unmetered. Provisioning includes the standard API tool
+and its explicit waterfall-host companion without exposing the credential.
+
+ZeroBounce uses the standard pasted-key flow with an `api_key` query parameter. Its free usage
+probe rejects bad keys with HTTP 403 and accepts the supplied key with HTTP 200. The probe does not
+use the balance route because that route can answer a bad key with HTTP 200 and `Credits=-1`.
+`TREG_PLATFORM_KEY_ZEROBOUNCE` supplies the optional shared binding; a team's key still wins and
+remains unmetered.
+
+`MOLTSETS` is a pasted Bearer-key provider whose free `POST /get_account` probe validates both team
+and optional platform credentials. The existing own-key-first ladder and deployment allow-list apply.
+
+`SUMBLE` uses the standard pasted Bearer-key path and a free technology-search miss probe; garbage-key rejection was verified through the local connection API.
+
+`GETLEADSIO` uses the standard pasted Bearer-key path at `app.getleads.io`. Its free fair-use probe
+rejects bad keys with 401 and accepts a valid zero-credit account. The same route supplies capacity
+data; it is not a public catalog tool.
+
+Financial Datasets uses the standard pasted-key and platform-key paths with a raw `X-API-KEY`
+header. `OAuthProvider.probe_url` points at the smallest practical price-snapshot request and
+`probe_path` remains empty. The absolute URL therefore verifies a pasted key only during connect;
+`_autoprovision_provider_tool` does not persist a recurring health check for this provider.
+The existing `probe_reject_statuses` metadata rejects every normal HTTP result except `200` and
+`402`. Thus, a `402` proves that the credential was recognized but its upstream Credits account is
+empty, while unrelated failures such as `429` and `500` cannot validate a key. This rule applies
+only during connection validation: an ordinary data call still relays a `402` as a failure. No
+shared connection logic, health schema, or Financial-Datasets-only health branch is added.
+Its 13 discovery helpers declare the generic `platform_auth: anonymous` mode. When no team tool or
+stored provider key exists, treg calls those verified public routes with no injected credential.
+If a caller supplies `X-API-KEY` directly, the faithful relay preserves it and Financial Datasets
+can charge that key.
+
+QuickEnrich uses `QUICKENRICH`, a pasted Bearer key on `app.quickenrich.io`. The free
+POST Contact Finder probe rejects invalid keys with HTTP 401 and does not require a positive credit
+balance to accept a successful probe. `platform_key_quickenrich` supplies the separate server-held platform credential.
+No OAuth app or special injector is needed. See the QuickEnrich section in [catalog](catalog.md).
+
+TinyFish uses a pasted `X-API-Key`. Its primary Agent host supplies the free `/v1/wallet` probe,
+while `CatalogTarget` approves the separate Search and Fetch hosts for the same credential. The
+wallet remains connection/capacity evidence rather than a public tool. `TREG_PLATFORM_KEY_TINYFISH`
+supplies the optional shared binding; a team's own key retains priority and is never metered.
+
+Tier 4 has explicit platform-key slots for MiniMax, OpenRouter, Replicate, reAPI, PiAPI and TinyFish. The web and async cron
+receive them as environment secrets, and the worker constructs the same platform bindings as the call
+path. Key values are never copied into task records, logs or archive evidence.
+
+## Managed treg API keys
+
+Treg API keys authenticate callers; provider secrets authorize upstream services. These stores are
+separate. New additional human and agent keys start with `treg_`, are returned once, and are stored
+only as SHA-256 hashes plus a safe prefix. A signed identity key has no stored hash. Its stable
+`default_human` row controls that team membership. New human memberships leave the legacy
+`Membership.token_hash` compatibility field empty and return a team-pinned signed default token, so
+they do not manufacture a `legacy_human` row. Existing non-empty hashes retain their migrated rows.
+
+Authentication loads the key first and the live membership second. Disable and revoke therefore
+take effect without changing role, access, cap, or billing data. Revoke is permanent. Rotation
+uses a conditional row update as its cross-process claim, then revokes the old row and links it to
+one new row. The claim also hides the revoked predecessor from the default inventory; its row, key
+events, and Activity snapshots remain available for audit. A competing request receives 409 instead
+of creating another replacement or leaking a database error. The key audit table and Activity
+snapshot contain no complete secret.
+
+The signed human Default key is the exception to replacement-row rotation. Its control row carries
+`default_generation`; the team-pinned token carries the signed `kg` claim. Rotating increments that
+same row and returns the newly derived token, so the prior token fails as `revoked key` while Default
+keys for the user's other teams, random additional keys, agent keys, and browser sessions are unchanged.
+Default keys cannot be revoked: disable/enable is the temporary stop, and rotate is the replacement.
+Newly minted Default keys also carry `scp=team`; their signed `org` is authoritative for resource
+access, so a conflicting `X-Treg-Org` cannot redirect one team's key to another team. Org-less
+`scp=bootstrap` login tokens are seven-day onboarding credentials, not managed API keys.
+
+`last_used_at` is approximate display metadata. Authentication commits its read transaction before
+`api_keys.touch()` schedules a best-effort background update. The process and the conditional UPDATE
+both enforce a five-minute window, the in-process map is bounded, and one writer uses the background
+pool. Requests that share one key do not serialize on an `ApiKey` row write.
+
+Every response that returns a complete caller credential uses `Cache-Control: no-store`. Owners and
+admins can list, inspect Activity, disable, and enable another human's key, and revoke hash-backed
+human keys. Only the assigned human can rotate a Default or additional human key. Admins can rename,
+rotate, revoke, and hide agent keys.
+
+`MILLIONVERIFIER` is a pasted-key Enrichment provider. Both own keys and platform bindings inject
+`api` into the query at `https://api.millionverifier.com`. Its free `/api/v3/credits` probe returns
+HTTP 200 with `error: apikey_not_found` for a garbage key; `token_reject_field="error"` rejects
+that body while allowing valid zero-credit accounts. `platform_key_millionverifier` reads
+`TREG_PLATFORM_KEY_MILLIONVERIFIER`; platform access also requires the existing allow-list.
+
+## Instagram grant methods (2026-09-01)
+
+Instagram is one provider with two explicit protocol profiles. The default `instagram-login`
+profile uses separate Instagram app credentials, comma-separated `instagram_business_*` scopes,
+`api.instagram.com` for the code exchange, and `graph.instagram.com` for calls. It exchanges the
+short token for a renewable long-lived token and stores the generic refresh protocol in the
+encrypted blob. The optional `facebook-page` profile uses the existing Meta app, Facebook Login,
+Page discovery, and a derived Page token. The grants are separate `Secret` rows. See
+[instagram-oauth](instagram-oauth.md) for the endpoint matrix and setup contract.
+
+The reusable multi-method rules live in `domain/connections/authorization.py`: capability
+ownership, legacy-method inference, method-specific profiles, endpoint-method selection, and scope
+translation. `oauth_providers.py` supplies registry data and keeps compatibility methods that
+delegate to those domain rules. The initial token exchange is an infrastructure adapter in
+`infra/oauth_exchange.py`; `oauth.py` is a compatibility facade only.
+
+`authorization_method` is stored on both `PendingOAuth` and `Secret`. Existing Instagram rows are
+backfilled as `facebook-page`. The callback performs token and required identity requests after it
+closes the database session. A required identity miss produces `setup_required` and no tool. Its
+detail comes from the selected provider profile's `identity_missing_detail`, so the shared callback
+contains no Instagram copy. Legacy grant inference also uses
+`OAuthProvider.authorization_method_name()` everywhere; shared call and reconnect code does not
+repeat provider ids.
+
 The hard part: match every credential shape a real skill uses, keep it encrypted, and keep OAuth tokens
 alive, without the proxy ever branching on shape.
 
-## Injectors — the seam (`injectors.py`)
-The proxy calls `inject(headers, params, binding, secret)`, which dispatches on `binding["injector"]`
-through the `INJECTORS` registry (populated by the `@register(name)` decorator). Four shapes, two
+## Injectors — the seam (`infra/upstream/injectors.py`)
+The proxy calls `inject(headers, params, binding, secret, json_body=...)`, which dispatches on
+`binding["injector"]` through the `INJECTORS` registry (populated by the `@register(name)` decorator). Four shapes, two
 mechanics:
 - **place a string:** `env_injector`, `cli_auth_injector` → `_place()` renders `binding["format"]` (with
-  `{secret}`) into a header or query param per `binding["location"]`/`["name"]`.
+  `{secret}`) into a header, query parameter, or top-level JSON field per
+  `binding["location"]`/`["name"]`.
 - **pull a field from a JSON blob:** `secret_file_injector`, `oauth_injector` → `_token_from_json(blob,
   binding["secret_field"])` extracts a token (default field `access_token`) then `_place()`s it.
 
-`_place()` overwrites a same-named caller param for query bindings so the injected credential wins.
+`_place()` overwrites a same-named caller value for query and JSON bindings so the injected
+credential wins. Binding validation accepts only `header`, `query`, or `json`, and rejects duplicate
+target names within each location.
 Adding a shape is one function; the proxy never changes.
 
 ## Encryption + tokens (`crypto.py`)
@@ -37,28 +249,40 @@ restart — a loud signal to set the key). `new_key()` mints one. Caller tokens:
 (urlsafe random) + `hash_token()` (SHA-256); the DB stores only the hash. Values are never returned to
 clients.
 
-## OAuth freshness (`oauth.py`)
+## OAuth freshness (`domain/connections/refresh.py`)
 Two modes, detected by `is_refreshable(blob)` (has `refresh_token` + `client_id` + `client_secret`):
 - **auto:** `ensure_fresh(secret, db, client)` — if `is_stale()` (past `expires_at`/`expiry` minus
-  `_SKEW=60s`), `refresh()` POSTs `token_uri` (default `_DEFAULT_TOKEN_URI`), re-encrypts + persists the
-  new blob, then returns. A **single-flight** `asyncio.Lock` per secret id (`_locks`) plus a
+  `_SKEW=60s`), the `OAuthRefreshPort` POSTs `token_uri` (default `_DEFAULT_TOKEN_URI`), then the domain
+  command re-encrypts and persists the new blob. The read transaction commits before token-endpoint I/O,
+  and the conditional write opens a new short transaction, so provider latency holds no pooled connection.
+  A **single-flight** `asyncio.Lock` per secret id (`_locks`) plus a
   `db.refresh()` re-check under the lock prevents a refresh stampede. The `_locks` map is now **bounded**:
   before a stale refresh, if it holds more than 512 entries the idle (unheld) locks are dropped — a fresh
   lock is created on next need — so a long-lived worker can't accumulate one lock per secret forever.
-  `refresh()` updates both `access_token` and `token` keys so either binding `secret_field` stays fresh.
+  The HTTP adapter updates both `access_token` and `token` keys so either binding `secret_field` stays fresh.
 - **manual:** a bare uploaded token (not refreshable) is injected as-is; the user re-uploads on expiry.
 
-`ensure_fresh` is called by `call_tool()` before injecting, and by the health runner. The injector
+`treg.oauth` re-exports the refresh family for compatibility with connect, health, call, and lazy local-run
+consumers. `ensure_fresh` is called by `call_tool()` before injecting, and by the health runner. The injector
 stays dumb; one refresh function serves both. Its write-back is **conditional on the prior ciphertext**
 (`UPDATE … WHERE value = old`) then reloads the row — so under multiple workers a second refresh can't
-clobber a refresh_token the first already rotated (the in-process lock alone doesn't cross processes). `refresh` always stamps a fallback `expires_at` (so a
+clobber a refresh_token the first already rotated (the in-process lock alone doesn't cross processes). The adapter always stamps a fallback `expires_at` (so a
 provider that omits `expires_in` doesn't force a refresh on every call), coerces a null `expires_in`,
 and raises a clear error when a 200 body carries no `access_token`; `_expires_at` treats a naive ISO
 `expiry` as UTC.
 
+Resource discovery and resource selection also call this same `ensure_fresh` implementation before
+they close their read session and start provider I/O. They do not implement their own lock, exchange,
+or conditional write path.
+
 `refresh()` posts the credential's recorded `client_id_param` dialect (TikTok reads `client_key`, not
 `client_id`), snapshotted onto the blob at mint time so a refresh months later still speaks the dialect
-the grant was minted with.
+the grant was minted with. The same snapshotting covers `token_endpoint_auth_method`: X and Pinterest
+demand the secret in HTTP **Basic**, and for a while only `exchange_code` knew — so connect succeeded
+and every refresh 401'd two hours later (surfaced to callers as `502 oauth refresh failed`; ≥6 orgs
+hit it live). Now the method rides in the blob and `refresh()` honors it; a legacy blob without the
+field gets body auth, then ONE retry with Basic on a 4xx, and stamps whichever worked — existing
+broken connections self-heal on their next call, no migration.
 
 **Connect flow (mint the first token):** `consent_url(pending)` builds the provider consent URL
 (default `access_type=offline` + `prompt=consent` so a refresh token comes back); `exchange_code(pending,
@@ -80,24 +304,96 @@ unrenewable one earns a warning (`EXPIRING_SOON_DAYS=7`). `connection_view()` is
 (no token material) the dashboard/CLI read, with a single actionable `needs_reconnect` flag.
 
 ## Curated OAuth provider registry (`oauth_providers.py`)
+Octen is an API-key provider with an `x-api-key` binding. Its connection probe sends an empty
+Search query: a valid key receives an unbilled 400 validation response, while an invalid key
+receives 401. `TREG_PLATFORM_KEY_OCTEN` supplies the optional shared binding through the
+typed setting; a team's own key remains first and unmetered. No account balance endpoint is
+documented for this credential.
+
+Parallel is an API-key provider with an `x-api-key` binding. Its connection probe reads the free
+`GET /v1/monitors/stats`: a valid key receives 200 and an invalid key 401. Its balance route takes
+an Account API OAuth token, not this key, so it is not the probe. `TREG_PLATFORM_KEY_PARALLEL`
+supplies the optional shared binding; a team's own key remains first and unmetered.
+
+Connecting a provider persists its API `base_url` and indexed `host` on the team's tool. Changing
+the registry's base URL affects new connections and direct catalog calls, but an existing named
+tool or URL-passthrough call keeps using its stored host until reconnect or a scoped data migration.
+Host migrations must identify the provider-created tool through its connection binding, leaving
+manually registered tools at their caller-chosen URL.
+
 Two ways to connect a provider. **Bring-your-own (BYO):** `POST /oauth/start` takes a caller-supplied
 `client_id`/`client_secret`/URIs — works for any OAuth2 provider. **Curated:** for the providers where
-**treg itself holds the approved app** (Google Search Console/Analytics/Business Profile/Ads, YouTube,
+**treg itself holds the approved app** (Google Search Console/Analytics/Business Profile/Tag Manager/Ads, YouTube,
 LinkedIn, X, TikTok, Facebook, Instagram, Meta Ads — added PRs #20/#21), the user picks a provider and
 consents, supplying nothing. The asymmetry is the point of a hosted registry: the gating cost on these
 platforms is the *approval* (a Google Ads developer token, Meta App Review), not the OAuth dance — treg
 has already cleared it. treg's own client id/secret load from `Settings` (named by
 `client_id_setting`/`client_secret_setting`, so they come from `.env` like every other setting).
+The Meta pair carries three tiers — read / post / **manage** (comments + DMs on Instagram; engagement,
+visitor content, metadata/webhooks, Messenger, Page video, leads_retrieval + its required
+pages_manage_ads rider, and catalog_management on Facebook Pages) — sized for the 2026-08 App Review
+bundle; Instagram manage includes both `instagram_manage_messages` and its Page-side
+`pages_messaging` rider. `default_capability` remains the broadest tier by design.
+`TREG_OAUTH_REVIEW_PENDING` is the one operational source for incomplete provider reviews. Generic
+registry metadata maps each key to its fallback, conditional warning, effective new-connect choices,
+and default method. With both Instagram keys pending, plain Connect uses Page `page-tools`; reviewers
+and app roles can still select `page-messages` or direct Instagram Login explicitly. Removing a key
+changes the API, CLI, agent, and dashboard experience together after restart.
+Meta initially returns a long-lived **user** token, but Instagram Graph operations—especially the
+Messaging API—must act through the Facebook Page linked to the selected professional account. The
+Instagram provider therefore declares a resource-token lookup. On account selection,
+`select_connection_resource()` privately resolves the linked Page token, stores it as
+`page_access_token` inside the same encrypted OAuth blob (retaining `access_token` for discovery),
+and the provisioned tool's generic OAuth binding injects that derived field. Provider metadata maps
+the linked Page id into the encrypted `page_id` context field and declares a generic resource-setup
+request. For Instagram, that request subscribes the Page to the app's
+`messages,messaging_postbacks` fields. The setup is scope-gated, so read/post-only connections do
+not attempt it. Provider discovery and setup HTTP calls run after the read database session closes;
+the result is written in a new short transaction. Resource listings and
+connection views never include the Page token; existing connections must reselect their account
+once to populate it. The token and object id are separate concerns: Instagram
+profile/media operations still target the Instagram account id, while Facebook-login inbox sync is
+the Page messaging surface—`/{page_id}/conversations?platform=instagram` for listing and
+`/{page_id}/messages` for replies. Calling the conversations edge with the Instagram account id
+produces Meta error `(#3)` despite a valid Page token.
+Facebook Pages uses the same lookup without the setup request: every Page edge rejects the user
+token (code 190 / subcode 2069032), so selecting a Page stores that Page's token as
+`page_access_token`, and one Facebook connection acts on one Page. Until a resource is selected,
+`_provider_bindings` binds the root `access_token`, so the probe and the picker work before the
+derived token exists. A reconnect replaces the whole blob, so the callback unselects the resource
+and, after its commit, derives the token again from the new grant. When the new grant no longer
+reaches that resource, the connection stays on the root token and reports `setup_required`.
+Google Search Console's hand-written tool example calls out its distinct direct-tool convention:
+substitute `{site_url}` with a value encoded exactly once (`sc-domain%3Aexample.com`), and never encode
+again a property identifier returned by the sites list.
+
+Google Tag Manager shares the standard Google client credentials and exposes three cumulative tiers:
+`read` grants `tagmanager.readonly`; `write` adds `tagmanager.edit.containers`; `manage` adds
+`tagmanager.edit.containerversions` and `tagmanager.publish`. The account list is both the health probe
+and resource picker, with the selected `accounts/{id}` path stamped into the tool example. treg
+deliberately does **not** request `tagmanager.delete.containers`, `tagmanager.manage.users`, or
+`tagmanager.manage.accounts`: agents can audit configuration, prepare workspace changes, create
+versions, and publish (including rollback by publishing an earlier version), but cannot delete whole
+containers or administer access.
 
 Each entry is a frozen `OAuthProvider` dataclass; `REGISTRY` is the `{service: provider}` map. Key
 module symbols:
 - `get(service)` — look up one provider. `credentials(provider)` — treg's own id/secret (raises if this
   deployment hasn't set them). `is_configured(provider)` — whether this deployment can offer it (a
   `token`-kind provider needs nothing from treg, so always offerable).
-- `listing()` — the marketplace payload (`GET /oauth/providers`): every provider, grouped by
+- `listing()` — the catalog payload (`GET /oauth/providers`): every provider, grouped by
   `CATEGORY_ORDER`, each flagged `configured`, with per-capability scopes already in plain English via
   `scope_label()`/`SCOPE_LABELS` (a lookup keyed by the raw scope string;
-  `test_every_requested_scope_has_a_plain_english_label` guards it).
+  `test_every_requested_scope_has_a_plain_english_label` guards it). Authorization methods include
+  their display label, connect description, and their own configured state. The dashboard and CLI
+  consume this metadata instead of mapping provider or method ids themselves. A multi-method
+  provider's top-level `configured` value is true when any declared method is configured.
+- `CatalogTarget` and `profile_for_catalog_host()` let a provider opt in to binding a catalog
+  endpoint's optional `host` to an exact provider-approved HTTPS base URL. A target may override
+  the provider's token placement and
+  format, as Diffbot Web Search does for Bearer auth. Catalog data cannot add credential destinations;
+  opted-in provider's resolution rejects an unapproved host before any secret reaches relay or
+  money is reserved. Providers without targets retain their prior primary-base behavior.
 - `consent_notice` — one line the dashboard shows **before** the consent popup opens, for a provider
   whose consent screen names something the user has not seen on treg. Only the Meta family carries one:
   the shared Meta app is registered as **Crewlet**, a sibling product of the same company (Superdesign
@@ -110,8 +406,28 @@ module symbols:
   are cumulative supersets (write ⊇ read); `default_capability` is the **broadest** (an agent product needs
   write eventually, so one honest consent screen beats connecting twice). `scopes_for()` /
   `satisfied_capabilities()` decide when a later capability needs a re-consent.
-- `auth_kind` = `"oauth"` (treg's app), `"token"` (Slack — a workspace-scoped bot the user creates and
-  pastes; `is_token_kind`), or `"key"` (an **API-key provider** connected by pasting a key: Apollo, PDL,
+- `platform_billed` + `billed_read_usd`/`billed_write_usd`/`billed_write_link_usd` — providers whose
+  UPSTREAM bills the app owner per use, whoever's token made the call. X is the one entry: it dropped
+  plan tiers for prepaid pay-per-use (per resource read / per post written, checked 2026-08-12), so a
+  registry X connect spends treg's credits and the proxy meters those calls against the org's balance
+  (`api.py` `_billed_marketplace` → the tier-4 reserve→settle path; [money](money.md)). Gated on the
+  deploy opting in via `TREG_OAUTH_BILLED_PROVIDERS` (`config.oauth_billed_set` — empty means free,
+  the kill-switch shape `platform_providers` uses). The rates here are the fallback for uncatalogued
+  routes; a priced catalog entry wins — and since a `free` block has a falsy `usd`, "priced" has to be
+  read as *not free*, or a catalog that says $0 quietly bills the fallback instead. **Every X entry
+  therefore carries a real rate**, taken from X's per-resource-type rate card rather than one read
+  price and one write price (`x.yaml` curates five; `catalog_ingest.X_RATES` transcribes the card and
+  `X_ROUTE_RATES` maps the other 168 routes onto it), and `tests/test_marketplace_call.py` walks the
+  provider asserting the published number equals the reserved one. The `billed_*` fields here are the
+  fallback for a path no entry claims; **the $0.001 owned-read rate is deliberately not among them**,
+  since X grants it only to the app's own owner and a registry connect's member never is. `listing()` carries `metered` +
+  `billed_rates` so the dashboard can show the price BEFORE consent — and so the catalog's own price
+  display can stop calling a connected account free (`catMetered`, [dashboard](../interface/dashboard.md)). A **BYO connect is never metered** — the callback
+  stamps `secret.provider` only in registry mode, and that attribution is the whole detection.
+- `auth_kind` = `"oauth"` (treg's app), `"token"` (a user-pasted Bearer token: Slack plus the
+  MiniMax, OpenRouter, Replicate and reAPI AI-generation providers; PiAPI pastes an `X-API-Key`
+  and is a `"key"` provider),
+  or `"key"` (an **API-key provider** connected by pasting a key: Apollo, PDL,
   Akta, Hunter, Crunchbase, Lusha, Coresignal, Diffbot, The Companies API, LeadMagic on a new
   **Enrichment** shelf, TikHub + Bright Data + Just One API under
   Social, under **SEO** Semrush + DataForSEO, SE Ranking, Moz, Majestic, Serpstat, and under
@@ -130,14 +446,67 @@ module symbols:
   `token_ok_field`==`token_ok_value` match (Majestic's `Code`=="OK"), a `token_reject_field` present
   (Serpstat's `error`), or an `ERROR`-prefixed text body (Semrush). The connect probe may be a POST with a
   `probe_json` body (Serpstat's JSON-RPC), and `token_encode="base64"` turns a pasted `login:password` into
-  the Basic blob for `Basic {secret}` (DataForSEO, Moz). `can_autoprovision` (has a `base_url` and either needs no
+  the Basic blob for `Basic {secret}` (DataForSEO, Moz). The binding carries `token_encode` too, and the
+  injector's `ensure_base64` re-applies the same already-encoded check at call time, so a raw pair stored by
+  `treg secret add <provider>` (which never runs the connect probe) renders the same header. `can_autoprovision` (has a `base_url` and either needs no
   second credential or treg holds it) drives auto-building a callable tool on a successful connect;
-  `needs_extra_credential` covers Google Ads' `developer-token` header (a second binding the operator supplies).
+  `needs_extra_credential` covers a second header the primary slot can't carry: Google Ads'
+  `developer-token` (treg-held, via `extra_credential_setting`) and Tomba's per-user `X-Tomba-Secret`
+  (setting left empty → the user supplies it through `POST /connections/{id}/extra-credential`, which
+  rebuilds the tool with BOTH bindings — the primary half comes from `_provider_bindings`, so it follows
+  the provider's own auth shape rather than assuming OAuth). Tomba's probe (`/v1/usage`) deliberately
+  answers the key alone, so connect-time verification works before the secret is bound.
+  `required_headers` carries fixed provider protocol headers that must accompany the credential on
+  every request (Crustdata pins `x-api-version: 2025-11-01`). The connect probe sends them too, and
+  `_provider_bindings` turns each into an ordinary constant-format binding over the same secret
+  reference. The generic injector therefore overwrites a stale caller value without teaching the
+  proxy which provider it is relaying. `_platform_bindings` mirrors the same constants when tier 4
+  is enabled, so a platform key cannot silently lose a required protocol header. The metadata alone
+  still does not opt a provider into tier 4; pricing, a configured platform-key setting, and the
+  deployment allow-list remain separate gates. Secret-evidence scrubbing ignores a binding whose
+  format has no `{secret}` placeholder. This keeps a protocol constant such as `2025-11-01` out of
+  the secret-spelling set while the real credential and its rendered authorization value remain
+  scrubbed.
+  **Split-host vendors get one extra Tool per host** (`extra_tools`): GA4 runs reports on
+  `analyticsdata` but lists the property ids those reports need on `analyticsadmin` — one scope covers
+  both, but `/call/` resolution is per-HOST, so without a second row the agent is walled off (admin
+  path on the data host → Google 404; admin host → treg "no registered tool"; 13 calls/7 orgs observed
+  stuck there). The extra (`<connection>-admin`) binds the SAME secret, upserts idempotently on
+  connect/reconnect, and `_backfill_provider_extra_tools` runs after the schema phase in the ordered
+  release upgrade to heal older connections automatically. The schema phase uses Alembic directly for
+  empty or stamped databases and refuses a non-empty unstamped database with the 0.14.x adoption remedy.
+  The default `python -m treg` serve command runs
+  that phase before Uvicorn; raw ASGI deployments run `python -m treg upgrade` once per release. The
+  backfill is registry-generic: it scans provider-attributed
+  Secrets, requires the corresponding main Tool to be bound to that Secret, then calls the same extra
+  upsert, so adding a future `extra_tools` entry needs no one-off migration. Revoke already sweeps the
+  companions (any tool whose only binding was the deleted credential goes). `resource_example` closes the loop from the
+  other side: the moment the user picks their property (`POST /connections/{id}/resource`), the
+  template renders `{resource}`/`{resource_name}` into a ready-made call stamped into the data tool's
+  examples (marker `stamped: resource`, so re-picking replaces instead of piling up).
 - Post-connect helpers the dashboard/CLI drive: resource **discovery** (`supports_discovery`,
-  `discover_*` — which site/property/account this connection acts on), row **enrichment**
+  `discover_*` — which site/property/account this connection acts on), row **enrichment**.
+  Discovery can walk a SECOND listing (`discover_extra_path` + `discover_extra_list_paths`): Meta's
+  Business Manager owns assets on the user's behalf, so an agency member sees `[]` from
+  `/me/accounts` for exactly the Pages/Instagram accounts they manage all day — the Business walk
+  (`/me/businesses?fields=owned_pages{…},client_pages{…}`, gated on the `business_management` scope
+  now in every Facebook/Instagram capability) flattens nested lists of primary-shaped rows into the
+  same picker, deduped by id with the primary listing winning, and a failing extra listing is
+  swallowed (pre-scope connections get a clean permission error that must read as "no extra assets"),
   (`supports_enrichment`, `enrich_*` — Google Ads returns bare ids, so a per-row lookup fills the human name),
   and **identity** (`has_identity`, `identity_*` — providers with nothing to pick, like LinkedIn/X/TikTok,
   capture who consented instead). A `probe_path` gives registry tools a real health check.
+- **A versioned path expires on a calendar, not on a deploy.** Google Ads puts its API version in the
+  URL, so `probe_path`, `discover_path`, `enrich_path` and `examples` all hard-code one. Google sunsets
+  each major after ~12 months: v21 died on 2026-08-05 and every Ads call — including the connect-time
+  account listing — failed until the pin moved to v25 on 2026-08-17. Nothing in the codebase can catch
+  this. No commit changed, no test failed (nothing in the suite makes a live call), and the two failure
+  modes read differently: a version that **never existed** returns an HTML 404, a **sunset** one returns
+  a JSON 400 `UNSUPPORTED_VERSION`. `POST /health/run` would surface it on the day it breaks — it probes
+  every credential through the same versioned `probe_path`, but nothing schedules it by default.
+  Operators may add a health worker to their own deployment. Bump the version in all four places together:
+  `oauth_providers.GOOGLE_ADS`, `catalog/google-ads.yaml`, `catalog/google-ads.extended.yaml`, and
+  `scripts/catalog_ingest.py:GADS_VERSION`.
 
 ## Credential health (`health.py`)
 `run_all(db, client, org_id=None)` iterates tools (filtered to `org_id` when set, so `/health/run` never
@@ -155,6 +524,12 @@ never alert), then falling back to a current org-owner's webhook if the owner ha
 unauthenticated `register_user`), so non-http(s) / loopback / private / link-local hosts are rejected at
 set-time and re-checked before POST (blind-SSRF guard). Triggered on demand or by a cron hitting
 `POST /health/run` (a super-admin may pass `?all_orgs=1` so one cron token sweeps the whole platform).
+Webhook targets follow the same globally routable unicast rule as upstream calls. Rejecting
+CGNAT `100.64.0.0/10` protects overlay-network services and metadata endpoints such as Alibaba
+Cloud's `100.100.100.200`, even though the range is not ordinary private IPv4 space. NAT64
+translation prefixes mapping non-global IPv4 targets are also internal, not a route around this
+rule. See [proxy target guards](proxy-model.md#resolution-and-relay-guards) for the address-space rationale.
+
 Verdicts follow **worst-status-wins** within a run (a no-probe tool can't downgrade a secret a real
 probe just marked `invalid`), a transport error / `5xx` / `429` maps to `unknown` (not a false `invalid`
 + webhook spam), an injection failure maps to `invalid`, and only secrets **evaluated this run** are
@@ -167,6 +542,19 @@ silent death (the LinkedIn shape). `_view()` now carries `provider`/`refreshable
 so the caller sees both axes. `_probe()` merges a binding's query onto the URL with `copy_add_param` rather
 than passing `params=` (httpx would otherwise **replace** a probe path's own query string, e.g. YouTube's
 `?part=snippet&mine=true`, and fail a healthy credential).
+
+A provider in `TREG_PAUSED_PROVIDERS` is skipped whole: no refresh, no probe, no verdict, and no
+expiry alert. A paused upstream would fail every check, and the connection must be intact when the
+pause is lifted. No job deletes or disables a connection after failed checks; removal is a user's
+disconnect only.
+
+## treg's own accounts
+
+A provider's tier-4 key is `TREG_PLATFORM_KEY_<PROVIDER>`; a paired half has its own setting
+(`TREG_PLATFORM_KEY_TOMBA_SECRET`). `TREG_PLATFORM_ACCOUNTS` adds more accounts behind a provider as
+JSON from provider to labelled account settings, and a malformed value refuses to start. These
+values live only in the environment: a binding names a setting and, with several accounts, an
+account label, never a value ([proxy model](proxy-model.md)).
 
 ## Storage / security posture (MVP)
 TLS-only in transit (paste/upload over https, like GitHub/Vercel secrets); Fernet at rest. Per-membership
@@ -186,7 +574,9 @@ member: on Linux the CLI runs as a dedicated `treg-run` user, so the credential 
 (unreadable by the member's uid), not on the member's own account. A deliberate, narrow exception.
 
 **Ownership boundary (who may use which secret).** A member may only **bind/inject a secret they own**
-(`_validate_bindings` / `_validate_cli_secrets`, both calling `_require_secret_ownership`); admins/owners
+(`domain/tools/bindings.py` — `validate_bindings` / `validate_cli_secrets`, both calling
+`require_secret_ownership`; `routers/resources.py` keeps same-named wrappers that translate the
+domain's `ToolConfigError`/`SecretOwnershipError` into 422/403); admins/owners
 may wire up shared-key tools. This stops a
 member laundering a teammate's key into a tool they control (then exfiltrating it via the proxy's
 `base_url` or via `/grant`). Editing a tool **grandfathers** the secrets already on it — only a
@@ -196,4 +586,45 @@ shared-key tool they may run but not read) requires the **runner proof** (`X-Tre
 `TREG_RUN_PROOF`, held only by the root-installed `treg-run` runner) — so a direct member call can't read
 someone else's key value. A tool's `base_url` is validated against the internal-address block-list (loopback/private/link-local/
 metadata, incl. numeric IP encodings) at registration AND the proxy re-resolves the host at call time
-(`health.host_is_public`, gated by `proxy_ssrf_check`) — no SSRF, even via DNS rebinding.
+(`infra.upstream.ssrf.host_is_public`, also re-exported by `health`, gated by `proxy_ssrf_check`) — no
+SSRF, even via DNS rebinding. `routers.resources._require_public_base_url` also rejects a `base_url`
+that points back at treg itself (`application.hub.points_at_treg`), so a team cannot register a tool
+that calls treg's own API through the proxy instead of using treg's tools by their ids directly.
+
+## Kitt AI key connection
+
+`TRYKITT` registers Kitt AI under `trykitt`, with `x-api-key` header injection at
+`https://api.trykitt.ai`. `/credit` returns 200 even with a valid zero balance and 401
+for a bogus key. `platform_key_trykitt` loads `TREG_PLATFORM_KEY_TRYKITT`; the normal
+platform-provider allow-list is also required. Own keys always take precedence.
+
+
+## ContactOut pasted API tokens
+
+`oauth_providers.CONTACTOUT` verifies against `/v1/stats` and requires `status_code: 200` as well
+as HTTP success. Its binding injects the raw `token` header. Both garbage rejection and valid
+connection creation were tested live.
+
+
+## HarvestAPI integration
+
+`HARVESTAPI` uses a pasted `X-API-Key` and internal `/users/my-api-user` probe. The wallet endpoint is not a catalog tool.
+
+
+## Dropleads key connection
+
+`DROPLEADS` uses the standard pasted-key connection path and injects `X-API-Key`. The free
+`/api/v2/prime-db/credits/balance` probe rejects an invalid key and accepts a valid account with a
+zero balance. One connection provisions the primary `dropleads` tool and the `dropleads-contact`
+companion tool; both bind the same secret. `CatalogTarget` separately permits catalog calls to the
+companion host. `platform_key_dropleads` supplies the optional shared key, and the platform-provider
+allow-list remains required. An organization's own key has priority and is never metered by treg.
+
+
+## Prospeo key connection
+
+`PROSPEO` uses the standard pasted-key connection path and injects the raw `X-KEY` header at
+`https://api.prospeo.io`. Its explicit `GET /account-information` probe accepts a valid Starter
+account and rejects a garbage key with `INVALID_API_KEY`; the account route remains internal rather
+than becoming a catalog tool. `platform_key_prospeo` supplies the optional shared key, gated by the
+platform-provider allow-list. An organization's own key keeps priority and is never metered by treg.

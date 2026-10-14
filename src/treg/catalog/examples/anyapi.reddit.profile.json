@@ -1,0 +1,35 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "avatarUrl": "https://styles.redditmedia.com/t5_3k30p/styles/profileIcon_uj015iwx9s7g1.png",
+      "bio": "Reddit CEO",
+      "commentKarma": 756493,
+      "comments": 3209,
+      "createdUtc": 1118030400,
+      "displayName": "spez",
+      "employee": true,
+      "followers": 0,
+      "id": "1w72",
+      "karma": 940980,
+      "nsfw": false,
+      "postKarma": 184487,
+      "posts": 845,
+      "profileUrl": "https://www.reddit.com/user/spez/",
+      "trophies": 52,
+      "username": "spez",
+      "verified": false
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00225,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "resultId": "5282c221-d07a-4a57-a0f6-f14101fb58b2"
+}

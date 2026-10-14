@@ -1,0 +1,76 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 1210,
+    "from_cache": false,
+    "llm_calls": 0,
+    "pages_fetched": 3,
+    "partial": false,
+    "warnings": [
+      "module: x-user-tweets: @nasa · 20 posts"
+    ]
+  },
+  "recipe": "x-user-tweets",
+  "usage": {
+    "boxes": [
+      "gate",
+      "recipe"
+    ],
+    "cache": "miss",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      },
+      {
+        "attempts": 1,
+        "cache": "api",
+        "call": "scrape",
+        "engine": "api",
+        "proxy": "none",
+        "units": 1,
+        "url": "https://api.x.com/…"
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 160,
+      "search": 3000
+    },
+    "units": 4
+  },
+  "version": 3,
+  "rows": [
+    {
+      "author": "NASA",
+      "created": "2026-10-10T16:03:01Z",
+      "id": "2108951443214569649",
+      "is_retweet": true,
+      "likes": 0,
+      "quotes": 0,
+      "replies": 0,
+      "retweets": 48,
+      "text": "RT @NASASpox: NASA’s mission reached across the planet and beyond this week 🚀\n\n❄️ Inspiration Tour heads to Alaska\n🌎 NASA leads at IAC in Antalya\n🧑‍🚀 Crew-12 returns home\n🌕 Artemis II science data released\n\nHere’s what's new in your NASA Minute! https://t.co/2RzkW9OwCS",
+      "url": "https://x.com/NASA/status/2108951443214569649"
+    },
+    {
+      "author": "NASA",
+      "created": "2026-10-09T21:11:31Z",
+      "id": "2108666692368990239",
+      "is_retweet": true,
+      "likes": 0,
+      "quotes": 0,
+      "replies": 0,
+      "retweets": 75,
+      "text": "RT @NASASpaceOps: .@NASA is advancing American leadership in space by taking the next step toward a future where commercial space stations lead the way in low Earth orbit. On Friday, the agency released its final Request for Proposals inviting industry to submit plans for the next generation of comm…",
+      "url": "https://x.com/NASA/status/2108666692368990239"
+    }
+  ]
+}

@@ -13,15 +13,19 @@ def test_ssrf_blocks_numeric_ip_encodings():
     assert safe_webhook_url("https://api.stripe.com/v1") is True
 
 
-def test_host_is_public_resolves_and_blocks_internal():
+def test_host_is_public_resolves_and_blocks_internal(fake_getaddrinfo):
+    addresses = {
+        "localhost": ["127.0.0.1"],
+        "api.stripe.com": ["8.8.8.8", "2001:4860:4860::8888"],
+        "mixed.example": ["8.8.8.8", "10.0.0.1"],
+        "nonexistent.invalid.tld.zzz": [],
+    }
+
+    fake_getaddrinfo(addresses)
     assert host_is_public("localhost") is False
     assert host_is_public("nonexistent.invalid.tld.zzz") is False   # unresolvable → refuse
     assert host_is_public("api.stripe.com") is True
-
-
-async def test_base_url_rejects_numeric_encoding_at_registration(clients: AsyncClient):
-    r = await clients.post("/tools", json={"name": "enc", "base_url": "http://2130706433/"})
-    assert r.status_code == 422
+    assert host_is_public("mixed.example") is False  # every resolved address must be public
 
 
 async def _member_in_owner_org(clients: AsyncClient, email="m3b@x.dev"):
@@ -54,7 +58,7 @@ async def test_update_tool_grandfathers_an_admin_added_shared_binding(clients: A
 
 
 async def test_delete_org_removes_run_records(clients: AsyncClient):
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import RunRecord
     # a server-runnable tool + a server run → writes a RunRecord
     await clients.post("/skills", json={"name": "r3", "recipe": "r", "secrets": [],

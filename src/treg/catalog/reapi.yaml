@@ -1,0 +1,314 @@
+provider: reapi
+source:
+  docs: https://reapi.ai/docs
+  curated: 2026-09-14
+pricing_url: https://reapi.ai/models
+limits: "Every generation is asynchronous: submission answers with a task id; poll GET /tasks/{id} every 10 seconds (polling is free). Output URLs stay valid for about 7 days. Reference media must be public HTTPS URLs that return raw media bytes with a media content-type; the pre-flight probe rejects HTML file pages and short-lived paste hosts, and the task fails unbilled with a generic 'upstream unreachable' error."
+async:
+  id_from: id
+  poll:
+    endpoint: reapi.tasks.get
+    param: {in: pathParams, name: id}
+  status:
+    path: status
+    success: [completed]
+    failure: [failed]
+  result:
+    path: output.video_urls
+    ttl_note: "7d"
+  interval: 10
+endpoints:
+  - id: reapi.tasks.get
+    kind: utility
+    capability: video-gen.task.status
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /tasks/{id}
+    name: "Check a reAPI task"
+    summary: "Read a generation task's status, output URLs and the credits it consumed (1 credit = $0.001)."
+    resource_ownership:
+      requires: {kind: "poll:reapi.tasks.get", param: id}
+    async: false
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "task_01a09ddf13f8745c85ee3aaea0529e2a"}
+    test_request: {pathParams: {id: "task_01a09ddf13f8745c85ee3aaea0529e2a"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling does not consume credits."}
+    verified: 2026-09-14
+    added: '2026-09-14'
+    example_response: examples/reapi.tasks.get.json
+    docs_url: https://reapi.ai/docs/api/tasks
+
+  - id: reapi.video-gen.seedance-2-5
+    capability: video-gen.seedance-2-5.generate
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /videos/generations
+    name: "ByteDance: Seedance 2.5"
+    summary: "Create a Seedance 2.5 video task from a prompt, optionally guided by up to 30 reference images and 10 audio tracks, with synced generated audio."
+    input:
+      body:
+        model: {type: string, required: true, enum: [doubao-seedance-2.5-face], example: doubao-seedance-2.5-face}
+        prompt: {type: string, required: true, example: "A paper boat drifts across a quiet pond at sunrise.", note: "Up to 20,000 characters; refer to references as @image1, @audio1."}
+        duration: {type: integer, required: false, default: 5, min: -1, max: 30, example: 5, note: "Seconds of output, 4-30, or -1 (auto) which the provider REQUIRES when the prompt edits a @video reference: the output then follows the source clip. -1 reserves 30 seconds at the requested resolution; every task settles at the credits reAPI reports."}
+        size: {type: string, required: false, default: adaptive, enum: [adaptive, "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], example: "16:9", note: "When image_with_roles uses role first_frame or last_frame, size must be adaptive — not a fixed ratio such as 1:1."}
+        resolution: {type: string, required: false, default: 720p, enum: [480p, 720p, 1080p], example: 480p}
+        generate_audio: {type: boolean, required: false, default: true}
+        image_urls: {type: array, required: false, example: ["https://picsum.photos/seed/treg-aigc/720/1280"], note: "Up to 30 public image URLs (<30 MB each), used as references. Mutually exclusive with image_with_roles — send one or the other, never both; combining them yields provider HTTP 400 code 20003. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
+        audio_urls: {type: array, required: false, note: "Up to 10 public audio URLs (<=15 MB, 2-30 s each; combined <=30 s). Audio references are not billed."}
+        image_with_roles: {type: array, required: false, note: "Objects {url, role} with role first_frame, last_frame or reference_image. Mutually exclusive with image_urls — send one or the other, never both; combining them yields provider HTTP 400 code 20003. When using role first_frame or last_frame, size must be adaptive (not a fixed ratio such as 1:1)."}
+        seed: {type: integer, required: false}
+        watermark: {type: boolean, required: false, default: false}
+      bodyType: json
+    test_request:
+      body: {model: doubao-seedance-2.5-face, prompt: "A paper boat drifts across a quiet pond at sunrise.", duration: 5, size: "16:9", resolution: 480p}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.resolution: 480p, body.duration: -1}, value: 3.558}
+        - {when: {body.resolution: 720p, body.duration: -1}, value: 8.0049}
+        - {when: {body.resolution: 1080p, body.duration: -1}, value: 13.86}
+        - {when: {body.resolution: 480p}, value: 0.1186, times: body.duration, times_min: 4}
+        - {when: {body.resolution: 720p}, value: 0.26683, times: body.duration, times_min: 4}
+        - {when: {body.resolution: 1080p}, value: 0.462, times: body.duration, times_min: 4}
+      fallback: {value: 13.87, note: "Thirty seconds of 1080p output at the documented per-second rate ($13.86), rounded up a cent to clear float comparison. The -1 (auto) rows reserve thirty seconds at the requested resolution; the table is the reserve only, the reported credits settle."}
+      currency: USD
+      settle: usage
+      usage: {path: usage.credits, unit: credit}
+      source: observed
+      source_url: https://reapi.ai/models/seedance-2-5
+      checked: 2026-09-14
+      confidence: verified
+      note: "Billed per second of output; failed or moderated tasks are refunded in full. 480p and 720p rates are the credits observed live on 2026-09-14 (593 credits for 5 s at 480p; 4,803 for 18 s at 720p), which sit just under the pricing page's rounded $0.119 / $0.267. Video references (video_urls) add their own length to the billable seconds and are deliberately not listed so the table stays exact."
+    verified: 2026-09-14
+    added: '2026-09-14'
+    example_response: examples/reapi.video-gen.seedance-2-5.json
+    docs_url: https://reapi.ai/docs/seedance-2-5
+
+  - id: reapi.video-gen.seedance-2-5.unrestricted
+    capability: video-gen.seedance-2-5-unrestricted.generate
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /videos/generations
+    name: "ByteDance: Seedance 2.5 (Less Restriction)"
+    summary: "Less Restriction: the same Seedance 2.5 model with content_filter off, so a photo of a real person is accepted as the subject reference and a voice clip as the speech reference; the default row refuses real faces. Same route and price; illegal content is still refused."
+    input:
+      body:
+        model: {type: string, required: true, enum: [doubao-seedance-2.5-face], example: doubao-seedance-2.5-face}
+        content_filter: {type: boolean, required: true, example: false, note: "Send false for the relaxed route. This row exists so the relaxed route is discoverable beside PiAPI's less-restriction task."}
+        prompt: {type: string, required: true, example: "The person in @image1 talks to the camera in a handheld selfie video.", note: "Up to 20,000 characters; refer to references as @image1, @audio1."}
+        duration: {type: integer, required: false, default: 5, min: -1, max: 30, example: 5, note: "Seconds of output, 4-30, or -1 (auto) which the provider REQUIRES when the prompt edits a @video reference: the output then follows the source clip. -1 reserves 30 seconds at the requested resolution; every task settles at the credits reAPI reports."}
+        size: {type: string, required: false, default: adaptive, enum: [adaptive, "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], example: "9:16", note: "When image_with_roles uses role first_frame or last_frame, size must be adaptive — not a fixed ratio such as 1:1."}
+        resolution: {type: string, required: false, default: 720p, enum: [480p, 720p, 1080p], example: 480p}
+        generate_audio: {type: boolean, required: false, default: true}
+        image_urls: {type: array, required: false, example: ["https://picsum.photos/seed/treg-aigc/720/1280"], note: "Up to 30 public image URLs; a photo of a person is accepted as the subject reference. Mutually exclusive with image_with_roles — send one or the other, never both; combining them yields provider HTTP 400 code 20003. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
+        audio_urls: {type: array, required: false, note: "Up to 10 public audio URLs; a voice reference drives the generated speech."}
+        image_with_roles: {type: array, required: false, note: "Objects {url, role} with role first_frame, last_frame or reference_image. Mutually exclusive with image_urls — send one or the other, never both; combining them yields provider HTTP 400 code 20003. When using role first_frame or last_frame, size must be adaptive (not a fixed ratio such as 1:1)."}
+        seed: {type: integer, required: false}
+      bodyType: json
+    test_request:
+      body: {model: doubao-seedance-2.5-face, content_filter: false, prompt: "The subject in @image1 slowly turns toward the camera.", duration: 5, size: "9:16", resolution: 480p, image_urls: ["https://picsum.photos/seed/treg-aigc/720/1280"]}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.resolution: 480p, body.duration: -1}, value: 3.558}
+        - {when: {body.resolution: 720p, body.duration: -1}, value: 8.0049}
+        - {when: {body.resolution: 1080p, body.duration: -1}, value: 13.86}
+        - {when: {body.resolution: 480p}, value: 0.1186, times: body.duration, times_min: 4}
+        - {when: {body.resolution: 720p}, value: 0.26683, times: body.duration, times_min: 4}
+        - {when: {body.resolution: 1080p}, value: 0.462, times: body.duration, times_min: 4}
+      fallback: {value: 13.87, note: "Thirty seconds of 1080p output at the documented per-second rate ($13.86), rounded up a cent to clear float comparison. The -1 (auto) rows reserve thirty seconds at the requested resolution; the table is the reserve only, the reported credits settle."}
+      currency: USD
+      settle: usage
+      usage: {path: usage.credits, unit: credit}
+      source: observed
+      source_url: https://reapi.ai/models/seedance-2-5
+      checked: 2026-09-14
+      confidence: verified
+      note: "Same meter as the default row: per second of output, refunded on failure. Live 2026-09-14: an 18 s 720p clip from one face image plus one voice clip settled 4,803 credits ($4.80); the 5 s 480p probe from a reference image settled 593."
+    verified: 2026-09-14
+    added: '2026-09-14'
+    example_response: examples/reapi.video-gen.seedance-2-5.unrestricted.json
+    docs_url: https://reapi.ai/docs/seedance-2-5
+
+  - id: reapi.image-gen.gpt-image-2-5
+    capability: image-gen.gpt-image-2-5.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /images/generations
+    name: "OpenAI: GPT Image 2.5 (Flare / Sunburst)"
+    summary: "Generate or edit images with GPT Image 2.5. Flare is the fast default; Sunburst is the precise editor. The -official models are OpenAI's own metered channel, priced by quality and size; the flat-rate channel had no upstream capacity when listed."
+    async:
+      id_from: id
+      poll:
+        endpoint: reapi.tasks.get
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        success: [completed]
+        failure: [failed]
+      result:
+        path: output.image_urls
+        ttl_note: "7d"
+      interval: 5
+    input:
+      body:
+        model: {type: string, required: true, enum: [gpt-image-2.5-flare-official, gpt-image-2.5-sunburst-official, gpt-image-2.5-flare, gpt-image-2.5-sunburst], example: gpt-image-2.5-flare-official}
+        prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane.", note: "Up to 32,000 characters."}
+        size: {type: string, required: false, default: 1024x1024, enum: [1024x1024, 1024x1536, 1536x1024], example: 1024x1024, note: "Other custom sizes exist upstream but are not listed: the price table covers these three."}
+        quality: {type: string, required: false, default: low, enum: [low, medium, high], example: low, note: "Quality is the biggest cost lever on the official channel; xhigh/max are not listed."}
+        n: {type: integer, required: false, default: 1, min: 1, max: 10, example: 1}
+        image_urls: {type: array, required: false, note: "Up to 16 public image URLs to edit. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
+        mask_url: {type: string, required: false, note: "Masked inpainting; requires image_urls."}
+        background: {type: string, required: false, default: auto, enum: [auto, opaque, transparent]}
+      bodyType: json
+    test_request:
+      body: {model: gpt-image-2.5-flare-official, prompt: "A clean editorial illustration of a paper airplane.", size: 1024x1024, quality: low, n: 1}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.model: gpt-image-2.5-flare, body.quality: low}, value: 0.0173, times: body.n}
+        - {when: {body.model: gpt-image-2.5-flare, body.quality: medium}, value: 0.0173, times: body.n}
+        - {when: {body.model: gpt-image-2.5-flare, body.quality: high}, value: 0.0173, times: body.n}
+        - {when: {body.model: gpt-image-2.5-sunburst, body.quality: low}, value: 0.023, times: body.n}
+        - {when: {body.model: gpt-image-2.5-sunburst, body.quality: medium}, value: 0.023, times: body.n}
+        - {when: {body.model: gpt-image-2.5-sunburst, body.quality: high}, value: 0.023, times: body.n}
+        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: low, body.size: 1024x1024}, value: 0.005, times: body.n}
+        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: low, body.size: 1024x1536}, value: 0.004, times: body.n}
+        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: low, body.size: 1536x1024}, value: 0.004, times: body.n}
+        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: medium, body.size: 1024x1024}, value: 0.01, times: body.n}
+        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: medium, body.size: 1024x1536}, value: 0.008, times: body.n}
+        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: medium, body.size: 1536x1024}, value: 0.008, times: body.n}
+        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: high, body.size: 1024x1024}, value: 0.04, times: body.n}
+        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: high, body.size: 1024x1536}, value: 0.031, times: body.n}
+        - {when: {body.model: gpt-image-2.5-flare-official, body.quality: high, body.size: 1536x1024}, value: 0.031, times: body.n}
+        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: low, body.size: 1024x1024}, value: 0.005, times: body.n}
+        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: low, body.size: 1024x1536}, value: 0.004, times: body.n}
+        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: low, body.size: 1536x1024}, value: 0.004, times: body.n}
+        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: medium, body.size: 1024x1024}, value: 0.01, times: body.n}
+        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: medium, body.size: 1024x1536}, value: 0.008, times: body.n}
+        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: medium, body.size: 1536x1024}, value: 0.008, times: body.n}
+        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: high, body.size: 1024x1024}, value: 0.04, times: body.n}
+        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: high, body.size: 1024x1536}, value: 0.031, times: body.n}
+        - {when: {body.model: gpt-image-2.5-sunburst-official, body.quality: high, body.size: 1536x1024}, value: 0.031, times: body.n}
+      fallback: {value: 0.41, note: "Ten high-quality 1024x1024 images on the official channel ($0.40), rounded up a cent to clear float comparison."}
+      currency: USD
+      settle: table
+      source: observed
+      source_url: https://reapi.ai/models/gpt-image-2-5
+      checked: 2026-09-14
+      confidence: verified
+      note: "Official channel cells are the credits observed live on 2026-09-14 (5/4/4 low, 10/8/8 medium, 40/31/31 high for 1024x1024 / 1024x1536 / 1536x1024; Flare and Sunburst meter identically). Upstream is token-metered, so a very long prompt adds a fraction of a cent the table does not carry. Flat-rate channel rows ($0.0173 Flare / $0.023 Sunburst per image) are documented only: both answered 'No available channel' upstream at listing time and charged nothing."
+    verified: 2026-09-14
+    added: '2026-09-14'
+    example_response: examples/reapi.image-gen.gpt-image-2-5.json
+    docs_url: https://reapi.ai/docs/gpt-image-2-5
+
+  - id: reapi.image-gen.gpt-image-2
+    capability: image-gen.gpt-image-2.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /images/generations
+    name: "OpenAI: GPT Image 2"
+    summary: "Generate or edit one image with GPT Image 2 at a flat per-resolution price."
+    async:
+      id_from: id
+      poll:
+        endpoint: reapi.tasks.get
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        success: [completed]
+        failure: [failed]
+      result:
+        path: output.image_urls
+        ttl_note: "7d"
+      interval: 5
+    input:
+      body:
+        model: {type: string, required: true, enum: [gpt-image-2], example: gpt-image-2}
+        prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
+        size: {type: string, required: false, default: "1:1", enum: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9"], example: "1:1", note: "Aspect ratio."}
+        resolution: {type: string, required: false, default: 1k, enum: [1k, 2k, 4k], example: 1k}
+        image_urls: {type: array, required: false, note: "Up to 16 public image URLs for image-to-image. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
+      bodyType: json
+    test_request:
+      body: {model: gpt-image-2, prompt: "A clean editorial illustration of a paper airplane.", size: "1:1", resolution: 1k}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.resolution: 1k}, value: 0.03}
+        - {when: {body.resolution: 2k}, value: 0.05}
+        - {when: {body.resolution: 4k}, value: 0.08}
+      fallback: {value: 0.081, note: "One 4K image at the documented flat rate, rounded up a tenth of a cent to clear float comparison."}
+      currency: USD
+      settle: table
+      source: observed
+      source_url: https://reapi.ai/models/gpt-image-2
+      checked: 2026-09-14
+      confidence: verified
+      note: "One image per request (n is fixed at 1). Failed or moderated requests are not charged. Live 2026-09-14: one 1k image settled 30 credits; 2k and 4k are documented only."
+    verified: 2026-09-14
+    added: '2026-09-14'
+    example_response: examples/reapi.image-gen.gpt-image-2.json
+    docs_url: https://reapi.ai/docs/gpt-image-2
+
+  - id: reapi.image-gen.gemini-3-pro-image
+    capability: image-gen.gemini-3-pro-image.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /images/generations
+    name: "Google: Gemini 3 Pro Image (Nano Banana Pro)"
+    summary: "Generate or edit one image with Gemini 3 Pro Image at 1K, 2K or 4K, from a prompt and up to 14 reference images."
+    async:
+      id_from: id
+      poll:
+        endpoint: reapi.tasks.get
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        success: [completed]
+        failure: [failed]
+      result:
+        path: output.image_urls
+        ttl_note: "7d"
+      interval: 5
+    input:
+      body:
+        model: {type: string, required: true, enum: [gemini-3-pro-image-preview], example: gemini-3-pro-image-preview}
+        prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
+        size: {type: string, required: false, default: "1:1", enum: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "5:4", "4:5"], example: "1:1", note: "Aspect ratio."}
+        resolution: {type: string, required: false, default: 1K, enum: [1K, 2K, 4K], example: 1K}
+        image_urls: {type: array, required: false, note: "Up to 14 public image URLs for image-to-image. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML, and the task then fails unbilled with the vendor's generic upstream error). `treg host <file>` prints a URL that satisfies this."}
+      bodyType: json
+    test_request:
+      body: {model: gemini-3-pro-image-preview, prompt: "A clean editorial illustration of a paper airplane.", size: "1:1", resolution: 1K}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.resolution: 1K}, value: 0.03}
+        - {when: {body.resolution: 2K}, value: 0.03}
+        - {when: {body.resolution: 4K}, value: 0.033}
+      fallback: {value: 0.034, note: "One 4K image at the documented flat rate, rounded up a tenth of a cent to clear float comparison."}
+      currency: USD
+      settle: table
+      source: observed
+      source_url: https://reapi.ai/models/gemini-3-pro-image-preview
+      checked: 2026-09-14
+      confidence: verified
+      note: "Default channel; live 2026-09-14 one 1K image settled 30 credits (4K documented only). The -official Google channel ($0.108 / $0.192) is token-metered and not listed. One image per request."
+    verified: 2026-09-14
+    added: '2026-09-14'
+    example_response: examples/reapi.image-gen.gemini-3-pro-image.json
+    docs_url: https://reapi.ai/docs/gemini-3-pro-image-preview

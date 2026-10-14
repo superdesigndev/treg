@@ -1,0 +1,42 @@
+{
+  "balance_sheets": [
+    {
+      "accession_number": "0000320193-25-000079",
+      "accumulated_other_comprehensive_income": -5571000000,
+      "cash_and_equivalents": 35934000000,
+      "currency": "USD",
+      "current_assets": 147957000000,
+      "current_debt": 20867000000,
+      "current_investments": 18763000000,
+      "current_liabilities": 165631000000,
+      "deferred_revenue": 9055000000,
+      "deposit_liabilities": 13700000000,
+      "filing_date": "2025-10-31",
+      "filing_datetime": "2025-10-31T10:01:26-04:00",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/0000320193-25-000079-index.htm",
+      "fiscal_period": "FY2025",
+      "form_type": "10-K",
+      "goodwill_and_intangible_assets": null,
+      "inventory": 5718000000,
+      "investments": 96486000000,
+      "non_current_assets": 211284000000,
+      "non_current_debt": 90678000000,
+      "non_current_investments": 77723000000,
+      "non_current_liabilities": 119877000000,
+      "outstanding_shares": 14776353000,
+      "period": "annual",
+      "property_plant_and_equipment": 49834000000,
+      "report_period": "2025-09-27",
+      "retained_earnings": -14264000000,
+      "shareholders_equity": 73733000000,
+      "tax_assets": 20777000000,
+      "tax_liabilities": null,
+      "ticker": "AAPL",
+      "total_assets": 359241000000,
+      "total_debt": 111545000000,
+      "total_liabilities": 285508000000,
+      "trade_and_non_trade_payables": 69860000000,
+      "trade_and_non_trade_receivables": 39777000000
+    }
+  ]
+}

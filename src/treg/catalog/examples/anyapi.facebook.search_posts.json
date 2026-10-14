@@ -1,0 +1,33 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "authorName": "SNKR TODAY",
+          "authorUrl": "https://www.facebook.com/snkrtoday",
+          "commentCount": 10,
+          "createdUtc": 1789656711,
+          "id": "1406986531538231",
+          "image": "{\n    \"uri\": \"https://scontent.flas1-1.fna.fbcdn.net/v/t39.30808-6/813583104_1406984624871755_5575618558664767153_n.jpg",
+          "reactionCount": 319,
+          "shareCount": 35,
+          "text": "Nike Alphafly 4 ขึ้นหน้าเว็บ เตรียมขายผ่านแอปฯ Nike วันที่ 29 ตุลาคม 2569 นี้\nราคา 9,400 บาท \n\nด้านล่างนี่คือรายละเอียดที่ใส่มาในหน้าเว็บ\n\nรองเท้าวิ่งระดับตำนานของเรามอบพลังมากขึ้น แต่เบาลง\n\nรองเท้าวิ… [1610 chars]",
+          "url": "https://www.facebook.com/snkrtoday/posts/pfbid02zBTU2LpS3FCnp2c3urk2dn9cm2xpZiKb88E58P5kN9HGovw3wnjfpXfXGDjLRgail"
+        },
+        "… 2 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00996,
+  "items": 3,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "resultId": "0148f072-d781-4074-962d-a03c8ad52d5a"
+}

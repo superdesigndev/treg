@@ -1,0 +1,56 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: instagram-profile: @nasa · 104263989 followers · 4961 posts · public"
+    ]
+  },
+  "recipe": "instagram-profile",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 178,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 4,
+  "rows": [
+    {
+      "biography": null,
+      "category": null,
+      "external_url": null,
+      "followers": 104263989,
+      "following": null,
+      "full_name": "NASA",
+      "is_private": false,
+      "is_verified": true,
+      "posts": 4961,
+      "profile_pic_url": "https://scontent-fra3-2.cdninstagram.com/v/t51.2885-19/29090066_159271188110124_1152068159029641216_n.jpg?stp=dst-jpg_s100x100_tt6&_nc_cat=1&ccb=7-5&_nc_sid=bf7eb4&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=zzbkUXHgySkQ7kNvwFSNJZL&_nc_oc=AdphZCby1aP7bTAhFoGzvOz-R_nFGzQIV6…",
+      "user_id": "528817151",
+      "username": "nasa"
+    }
+  ]
+}

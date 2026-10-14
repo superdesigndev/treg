@@ -1,0 +1,33 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "author": "PresidentObama",
+      "body": "Hi, I’m Barack Obama, President of the United States. Ask me anything. I’ll be taking your questions for half an hour starting at about 4:30 ET.\n\nProof it's me: https://twitter.com/BarackObama/status/… [1260 chars]",
+      "createdUtc": 1346270496,
+      "id": "z1c9z",
+      "image": "self",
+      "isArchived": true,
+      "isLocked": false,
+      "isNsfw": false,
+      "numComments": 22720,
+      "permalink": "/r/IAmA/comments/z1c9z/i_am_barack_obama_president_of_the_united_states/",
+      "score": 216187,
+      "subreddit": "IAmA",
+      "title": "I am Barack Obama, President of the United States -- AMA",
+      "upvoteRatio": 0.68,
+      "url": "https://www.reddit.com/r/IAmA/comments/z1c9z/i_am_barack_obama_president_of_the_united_states/"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0005,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "resultId": "8bc8ac68-7c20-4904-a798-7d9815659b0c"
+}

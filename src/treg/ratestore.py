@@ -22,6 +22,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import Ephemeral
@@ -57,13 +58,27 @@ async def kv_put(db: AsyncSession, ns: str, k: str, v: dict, ttl_s: float | None
     the code's lifetime)."""
     row = await db.get(Ephemeral, (ns, k))
     if row is None:
+        # An INSERT that another process may be racing: two uvicorn workers striking the same
+        # provider write the same `capacity:lock` key within the same millisecond, and the loser
+        # of a plain INSERT died on `ephemeral_pkey` (prod, 2026-09-06). ON CONFLICT makes the
+        # last writer win, which is what a key/value put means.
         exp = _utcnow_naive() + timedelta(seconds=ttl_s or 0)
-        db.add(Ephemeral(ns=ns, k=k, v=v, expires_at=exp))
+        await db.execute(_upsert(db.get_bind().dialect.name, ns=ns, k=k, v=v, expires_at=exp))
         return
     row.v = v  # reassign (not in-place) so SQLAlchemy marks the JSON column dirty
     if ttl_s is not None:
         row.expires_at = _utcnow_naive() + timedelta(seconds=ttl_s)
     db.add(row)
+
+
+def _upsert(dialect: str, **values):
+    """`INSERT ... ON CONFLICT (ns, k) DO UPDATE` for the dialect at hand - both backends spell it
+    the same way, but SQLAlchemy exposes it per dialect."""
+    insert = postgresql.insert if dialect == "postgresql" else sqlite.insert
+    stmt = insert(Ephemeral).values(**values)
+    return stmt.on_conflict_do_update(
+        index_elements=[Ephemeral.ns, Ephemeral.k],
+        set_={"v": stmt.excluded.v, "expires_at": stmt.excluded.expires_at})
 
 
 async def kv_pop(db: AsyncSession, ns: str, k: str) -> dict | None:

@@ -1,0 +1,10 @@
+{
+  "model": "SKILL_BASED",
+  "source": {"refId": "example", "headline": "Founder", "skills": ["Leadership"]},
+  "score": 95,
+  "selling": {"communication": {"types": ["high steadiness"], "whatToSay": ["Explain the process"]}},
+  "hiring": {"communication": {"types": ["team-oriented"]}},
+  "assessments": {"archetype": "Questioner", "ocean": {}, "disc": {}},
+  "status": "SUCCESS",
+  "success": true
+}

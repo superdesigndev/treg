@@ -41,7 +41,7 @@ Strongly preferred (each one directly improves your listing):
 
 The fastest route: paste the prompt from the **"List as vendor"** button on the dashboard's
 Catalog page into your coding agent — it follows the hosted instructions at
-[`/vendor-listing`](https://treg.superdesign.dev/vendor-listing) and opens the PR for you.
+[`/vendor-listing`](https://treg.to/vendor-listing) and opens the PR for you.
 Or open an issue or PR on this repo yourself, with:
 
 0. **A contact email in the PR/issue description** (e.g. `Contact: partnerships@yourapi.com`) —
@@ -56,6 +56,15 @@ Or open an issue or PR on this repo yourself, with:
 6. Your 8–15 core endpoints, each with example parameter values and a cheap test target
 7. A test credential (or a small credits grant) sent privately once we reach out — **never in
    the issue/PR** — so we can run live verification
+8. **A self-verification ledger**: before submitting, run every `test_request` live against your
+   own account and record, per endpoint, the HTTP status, the cost your YAML claims, and the cost
+   your meter actually charged (charge field, rate-card endpoint, or balance delta), dated. Docs
+   drift; meters don't — a real submission's docs-transcribed price was 5× under what the meter
+   charged. Deliberate-miss test targets must be labeled as such, with the hit price observed
+   once on a real target.
+9. **A full-surface map**: every documented operation, marked catalogued or excluded-with-reason —
+   including the free count/preview routes and your cheapest operation tiers, which are the ones
+   agents (and reviewers) look for first.
 
 The example below is the complete shape of a listing.
 
@@ -146,7 +155,19 @@ The `capability` field is what puts you on the comparison shelf: an agent asking
 `web.backlinks.summary` sees every provider that implements it, with prices side by side. If
 your API does a job the taxonomy lacks, the file proposes it under `proposed_capabilities:`.
 
+Capability first, for every endpoint: search `capabilities.yaml` and the other provider files for
+the job before writing the field, and reuse an existing id rather than a near-duplicate. Propose a
+new one only when nothing covers the job; if another provider already has an endpoint doing it
+unmapped, name that endpoint in the PR so both get attached. Overlap is the point: endpoints that
+share a capability are the ones agents compare and route between.
+
 ### 3. What we run before it merges
+
+Your self-verification ledger speeds this up but never replaces it: every claim in a vendor PR —
+prices, probe behavior, evidence — is re-checked against an **independent** live run with a
+credential we control. `verified:` stamps and example responses are ours to add, on what we
+watched succeed. A ledger that disagrees with its own YAML bounces the PR; a price that disagrees
+with our meter gets corrected from the observed charge.
 
 ```bash
 # 1. Live bogus-key test: a garbage key POSTed to /connections/token must come back rejected
@@ -157,6 +178,10 @@ uv run python scripts/catalog_validate.py     # must exit 0
 # 4. The full test suite
 uv run --frozen python -m pytest -q
 ```
+
+Every endpoint row also carries `added:`, the UTC day it reached the catalog. Run
+`uv run python scripts/catalog_added.py` before opening the PR: it writes today's date on every
+row without one. An existing tool's date never changes.
 
 Endpoints that pass get a `verified:` date and a truncated, PII-scrubbed real example response
 committed to `src/treg/catalog/examples/` — that example is what convinces an agent choosing

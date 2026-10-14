@@ -1,0 +1,17 @@
+{
+  "count": {
+    "value": "5352442",
+    "isEstimate": false
+  },
+  "items": [
+    {
+      "id": "person-id-redacted",
+      "fullName": "Example Person",
+      "entityType": "person",
+      "location": "Redacted",
+      "URLs": {
+        "linkedin": "linkedin.com/in/example-person"
+      }
+    }
+  ]
+}

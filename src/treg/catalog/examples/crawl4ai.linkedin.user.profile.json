@@ -1,0 +1,53 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: step module: 1 null fields across 1 items",
+      "module: linkedin-profile: williamhgates · Bill Gates · 41000000 followers"
+    ]
+  },
+  "recipe": "linkedin-profile",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 199,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 3,
+  "rows": [
+    {
+      "about": "Chair of the Gates Foundation. Founder of Breakthrough Energy. Co-founder of Microsoft. Voracious reader. Avid traveler. Active blogger.",
+      "current_company": "Gates Foundation",
+      "followers": 41000000,
+      "headline": "Chair, Gates Foundation and Founder, Breakthrough Energy",
+      "location": "Seattle, Washington, United States",
+      "name": "Bill Gates",
+      "school": "Harvard University",
+      "url": "https://www.linkedin.com/in/williamhgates"
+    }
+  ]
+}

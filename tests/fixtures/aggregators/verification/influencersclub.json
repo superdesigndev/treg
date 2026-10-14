@@ -1,0 +1,102 @@
+{
+  "verified_at": "2026-09-08T10:33:11",
+  "source": "Live direct vs Orthogonal /v1/run, same test_request; /v1/details confirmed fixed pricing.",
+  "results": [
+    {
+      "endpoint_id": "influencersclub.creators.audience.overlap",
+      "limit": null,
+      "direct_status": 200,
+      "relay_status": 200,
+      "cost_micro": 660000,
+      "same_shape": true
+    },
+    {
+      "endpoint_id": "influencersclub.creators.enrich.full",
+      "limit": null,
+      "direct_status": 200,
+      "relay_status": 200,
+      "cost_micro": 660000,
+      "same_shape": true
+    },
+    {
+      "endpoint_id": "influencersclub.creators.enrich.raw",
+      "limit": null,
+      "direct_status": 200,
+      "relay_status": 200,
+      "cost_micro": 20000,
+      "same_shape": true
+    },
+    {
+      "endpoint_id": "influencersclub.creators.filters.audience_interests",
+      "limit": null,
+      "direct_status": 200,
+      "relay_status": 200,
+      "cost_micro": 0,
+      "same_shape": true
+    },
+    {
+      "endpoint_id": "influencersclub.creators.filters.languages",
+      "limit": null,
+      "direct_status": 200,
+      "relay_status": 200,
+      "cost_micro": 0,
+      "same_shape": true
+    },
+    {
+      "endpoint_id": "influencersclub.creators.post.details",
+      "limit": null,
+      "direct_status": 200,
+      "relay_status": 200,
+      "cost_micro": 20000,
+      "same_shape": true
+    },
+    {
+      "endpoint_id": "influencersclub.creators.posts",
+      "limit": null,
+      "direct_status": 200,
+      "relay_status": 200,
+      "cost_micro": 20000,
+      "same_shape": true
+    },
+    {
+      "endpoint_id": "influencersclub.creators.search",
+      "limit": 2,
+      "direct_status": 200,
+      "relay_status": 200,
+      "cost_micro": 30000,
+      "same_shape": true
+    },
+    {
+      "endpoint_id": "influencersclub.creators.search",
+      "limit": 10,
+      "direct_status": 200,
+      "relay_status": 200,
+      "cost_micro": 30000,
+      "same_shape": true
+    },
+    {
+      "endpoint_id": "influencersclub.creators.similar",
+      "limit": 2,
+      "direct_status": 200,
+      "relay_status": 200,
+      "cost_micro": 30000,
+      "same_shape": true
+    },
+    {
+      "endpoint_id": "influencersclub.creators.similar",
+      "limit": 10,
+      "direct_status": 200,
+      "relay_status": 200,
+      "cost_micro": 30000,
+      "same_shape": true
+    },
+    {
+      "endpoint_id": "influencersclub.creators.socials",
+      "limit": null,
+      "direct_status": 200,
+      "relay_status": 200,
+      "cost_micro": 330000,
+      "same_shape": true
+    }
+  ]
+}

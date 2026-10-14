@@ -1,0 +1,26 @@
+{
+  "requestId": "d7400ad58aee7ef287bd5bb4ddbf59a1",
+  "resolvedSearchType": "",
+  "results": [
+    {
+      "id": "https://www.venturesquare.net/en/1105652/",
+      "title": "Graph, Vector, and Relational DB in One Engine… Graphi, 17 Billion Won Series A - 벤처스퀘어",
+      "url": "https://www.venturesquare.net/en/1105652/",
+      "publishedDate": "2026-08-13T00:00:00.000Z"
+    },
+    {
+      "id": "https://en.wowtale.net/2026/08/14/234729/",
+      "title": "Algorix Raises $11.5M Series A Led by K2 Investment Partners, Bringing Total Funding to $14M - WOWTALE",
+      "url": "https://en.wowtale.net/2026/08/14/234729/",
+      "publishedDate": "2026-08-14T00:00:00.000Z"
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "searchTime": 572.2,
+  "costDollars": {
+    "total": 0.007,
+    "search": {
+      "neural": 0.007
+    }
+  }
+}

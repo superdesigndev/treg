@@ -1,0 +1,15 @@
+[
+ {
+  "output": {
+   "email": "k.example@linear.app",
+   "first_name": "Karri",
+   "last_name": "Saarinen"
+  },
+  "raw": {
+   "data": {
+    "title": "CEO, Cofounder",
+    "company_name": "Linear"
+   }
+  }
+ }
+]

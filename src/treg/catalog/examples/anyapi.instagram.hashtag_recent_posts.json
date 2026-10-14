@@ -1,0 +1,43 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "yaUfag5Vl-4L09Q3hBSxXnvd5g0NjBRjpNT6PkvWyJ50u-ilvsUKTtWi_XLwwqYneh0Pp6C069ryicsNYOdVoWgZgFJGrLutu9JloxwKZLsCUVrDYbmx_B4PdjPPaKmtnnGaU1yzrmPF7_cl9pfJeJNkRIrppI3qYIL8heZe8T-vSs6E1EHd4gjJ5cVXPxALP_87R8wl… [718 chars]",
+      "posts": [
+        {
+          "caption": "✨ قناع MEDICUBE Collagen Milk ✨\nلبشرة أكثر ترطيبًا، نعومة وإشراقة 🤍\n🇰🇷 أصلي كوري\n🚘 توصيل لجميع محافظات العراق\n.\n.\n.\n#MEDICUBE #CollagenMask #Skincare #عناية_بالبشرة #مستحضرات_تجميل",
+          "comments": 0,
+          "createdUtc": 1789808639,
+          "hashtags": [
+            "#MEDICUBE",
+            "… 4 more item(s) truncated"
+          ],
+          "id": "3989526465626700555",
+          "likes": 0,
+          "media": [
+            {
+              "type": "photo",
+              "url": "https://scontent-arn2-1.cdninstagram.com/v/t51.82787-15/818062538_18092688503418182_4141333586415629010_n.webp?_nc_cat=101&ig_cache_key=Mzk4OTUyNjQ2NTYyNjcwMDU1NQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad… [564 chars]"
+            }
+          ],
+          "shortcode": "DddpS7dsvsL",
+          "url": "https://www.instagram.com/p/DddpS7dsvsL/",
+          "username": "shop_vanilla0"
+        },
+        "… 11 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0015,
+  "items": 12,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-lynx",
+    "name": "Lynx",
+    "kind": "anonymous",
+    "artworkKey": "lynx"
+  },
+  "hint": "large_result: this response is ~25 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "6ab0fa67-327a-4c3b-afdf-1f45278ddb27"
+}

@@ -1,0 +1,23 @@
+{
+  "insider_trades": [
+    {
+      "filing_date": "2026-09-10",
+      "form_type": "4",
+      "is_board_director": false,
+      "issuer": "Apple Inc.",
+      "name": "Newstead Jennifer",
+      "report_period": "2026-09-08",
+      "security_title": "Common Stock",
+      "shares_owned_after_transaction": 34352,
+      "shares_owned_before_transaction": 35790,
+      "ticker": "AAPL",
+      "title": "SVP, GC and Government Affairs",
+      "transaction_code": "S",
+      "transaction_date": "2026-09-08",
+      "transaction_price_per_share": 317.23,
+      "transaction_shares": 1438,
+      "transaction_type": "Open market sale",
+      "transaction_value": 456176.74
+    }
+  ]
+}

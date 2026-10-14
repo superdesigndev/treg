@@ -105,16 +105,19 @@ async def send_invite(email: str, inviter: str, org_name: str, role: str, code: 
 
 
 async def send_topup_receipt(email: str, org_name: str, amount_micro: int, balance_micro: int,
-                             *, auto: bool = False) -> bool:
+                             *, auto: bool = False, bonus_micro: int = 0) -> bool:
     """Balance was added. Stripe emails its own payment receipt (the tax document); THIS email is the
     one that says what the money became — how much call balance the team now has — which Stripe cannot
     know. An automatic top-up says so plainly: an unattended charge nobody was told about is how a
     chargeback starts."""
     added, left = _money(amount_micro), _money(balance_micro)
     how = "Auto top-up" if auto else "Top-up"
+    # The bonus is named next to the charge so the receipt and the balance agree: "$100 + $10 bonus"
+    # explains a balance that went up $110 on a $100 card charge, which otherwise reads as a mistake.
+    bonus = f' <span style="color:#19D0E8">+ {_money(bonus_micro)} bonus</span>' if bonus_micro else ""
     lead = (f'Your balance dropped below your auto top-up threshold, so we charged your saved card '
             f'<b style="color:#f2efe8">{added}</b>.' if auto
-            else f'Thanks — <b style="color:#f2efe8">{added}</b> has been added to your balance.')
+            else f'Thanks — <b style="color:#f2efe8">{added}</b>{bonus} has been added to your balance.')
     body = (
         f'<p style="margin:0 0 6px;color:#f2efe8;font-size:16px;font-weight:600">{how} confirmed</p>'
         f'<p style="margin:0 0 18px;color:#8e8c86;font-size:13px;line-height:1.6">{lead}</p>'
@@ -126,7 +129,8 @@ async def send_topup_receipt(email: str, org_name: str, amount_micro: int, balan
         '<p style="margin:18px 0 0;color:#8e8c86;font-size:12px;line-height:1.6">Run <span style="color:#19D0E8">treg balance</span> to see what it\'s made of and where it goes.</p>'
     )
     subject = f"{added} added to your tools-registry balance"
-    text = (f"{how} confirmed: {added} added to {org_name}'s tools-registry balance.\n"
+    bonus_txt = f" (+ {_money(bonus_micro)} bonus)" if bonus_micro else ""
+    text = (f"{how} confirmed: {added}{bonus_txt} added to {org_name}'s tools-registry balance.\n"
             f"Balance now: {left}. Run `treg balance` for the detail.")
     return await _send(email, subject, _WRAP.format(body=body), text)
 

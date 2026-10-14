@@ -1,0 +1,29 @@
+{
+  "pagination": {
+    "totalElements": 1000,
+    "totalPages": 100,
+    "pageNumber": 1,
+    "previousElements": 0,
+    "pageSize": 10,
+    "totalResultCount": 1438
+  },
+  "elements": [
+    {
+      "id": "1234567890",
+      "name": "Synthetic example",
+      "position": "Synthetic example",
+      "location": {
+        "linkedinText": "Synthetic example"
+      },
+      "linkedinUrl": null,
+      "publicIdentifier": null,
+      "hidden": true
+    }
+  ],
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinProfileSearch"
+  ],
+  "cost": 0.004
+}

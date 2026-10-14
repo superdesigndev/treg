@@ -1,0 +1,80 @@
+{
+  "age_s": 264006,
+  "cached": true,
+  "ms": 3,
+  "n": 10,
+  "results": [
+    {
+      "snippet": "Spider is a concurrency-first crawling engine written in Rust. It streams pages as they arrive, renders JavaScript only on pages that need it, ...",
+      "source": "gs",
+      "title": "spider-rs/spider: Foundational low latency web ...",
+      "url": "https://github.com/spider-rs/spider"
+    },
+    {
+      "snippet": "I've been working on tools to make web crawling / scraping more approachable. My most recent project is ScoutLang - a web crawling DSL written ...",
+      "source": "gs",
+      "title": "A modern web crawling programming language (written in ...",
+      "url": "https://www.reddit.com/r/rust/comments/1dy8j4o/a_modern_web_crawling_programming_language/"
+    },
+    {
+      "snippet": "Spider is multi-threaded crawler that can be configured to scrape web pages. It has the ability to gather millions of pages within seconds. §How to use ...",
+      "source": "gs",
+      "title": "spider - Rust",
+      "url": "https://docs.rs/spider"
+    },
+    {
+      "snippet": "A hands-on guide to building a fast, concurrent web crawler in Rust using async/await and Tokio, covering request handling, rate limiting, ...",
+      "source": "gs",
+      "title": "How to Build a High-Performance Web Crawler with Async ...",
+      "url": "https://oneuptime.com/blog/post/2026-01-25-high-performance-web-crawler-async-rust/view"
+    },
+    {
+      "snippet": "Fast, lightweight Firecrawl/Tavily alternative in Rust. Web scraper, crawler & search API with MCP server for AI agents.",
+      "source": "gs",
+      "title": "fastcrw/crw",
+      "url": "https://github.com/us/crw"
+    },
+    {
+      "snippet": "Web crawler in Rust · Initializing a Rust project · Making HTTP requests · Extracting links · Iterating over all links · Writing the HTML to ...",
+      "source": "gs",
+      "title": "Web crawler in Rust",
+      "url": "https://rolisz.ro/2020/web-crawler-in-rust/"
+    },
+    {
+      "snippet": "The API receives POST /crawl for doc.rust-lang.org/book with a limit of 30 and streams back 30 pages of markdown, 319 kilobytes in all, with status 200.",
+      "source": "gs",
+      "title": "AI Web Crawler API for Agents and RAG | Spider",
+      "url": "https://spider.cloud/"
+    },
+    {
+      "snippet": "This fun #rustlang tutorial is going to walk through making web requests with Rust and build up to being able to crawl websites that you ...",
+      "source": "gs",
+      "title": "How to make a web crawler with Rust",
+      "url": "https://www.youtube.com/watch?v=hNtJ3njnEk8"
+    },
+    {
+      "snippet": "In this tutorial, we'll build a high-performance web crawler that demonstrates Rust's key strengths: memory safety without garbage ...",
+      "source": "gs",
+      "title": "Building a Concurrent Web Crawler in Rust",
+      "url": "https://medium.com/rustaceans/building-a-concurrent-web-crawler-in-rust-624dbb5f9d22"
+    },
+    {
+      "snippet": "I am learning Rust. I have written a web crawler that would scrape all the pages from my own blog (which is running on Ghost) and would generate ...",
+      "source": "gs",
+      "title": "Web crawler in Rust",
+      "url": "https://codereview.stackexchange.com/questions/238158/web-crawler-in-rust"
+    }
+  ],
+  "source": "disk",
+  "usage": {
+    "boxes": [
+      "search"
+    ],
+    "remaining_before": {
+      "concurrent": 9,
+      "requests": 29,
+      "search": 119
+    },
+    "units": 1
+  }
+}

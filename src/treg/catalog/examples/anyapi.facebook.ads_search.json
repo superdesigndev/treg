@@ -1,0 +1,48 @@
+{
+  "output": {
+    "data": {
+      "ads": [
+        {
+          "active": true,
+          "adCount": 2,
+          "ctaText": "Learn more",
+          "ctaType": "LEARN_MORE",
+          "displayFormat": "VIDEO",
+          "endDate": 1789801200,
+          "id": "925321173274919",
+          "linkUrl": "https://fb.com/canvas_doc/1072291375736811",
+          "media": [
+            "… {3 field(s) truncated}"
+          ],
+          "pageId": "89516513179",
+          "pageName": "Nordstrom Rack",
+          "pageProfilePicture": "https://scontent-lga3-3.xx.fbcdn.net/v/t39.35426-6/764807066_1529917005842224_1129201910993892893_n.jpg?stp=dst-jpg_s60x60_tt6&_nc_cat=104&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=iaDqoHlQKKgQ7kNvwH8KZTS&_nc_oc… [413 chars]",
+          "platforms": [
+            "FACEBOOK",
+            "… 2 more item(s) truncated"
+          ],
+          "sourceUrl": "https://www.facebook.com/ads/library/?id=925321173274919",
+          "startDate": 1785740400,
+          "text": "Buy online and pick up in store for free! Get up to 70% off Nike, Vince, Madewell, adidas and more.",
+          "title": "Fast & Free Pickup"
+        },
+        "… 29 more item(s) truncated"
+      ],
+      "nextCursor": "dtocBMBgVMlyd-LgXXDahAh8uvxYo1-unR27kyXEyt0GiP2gN3USjW7bngStD18uUuqws_3OTPvBMZPkH9GyS1Greo92IA1Ya0e9dIlWKp-faIDkS-rysIO_P4A9wXi9-BHHzgJ3U1Iub3QfV-wkpR68xkPygrY436kT_kjoLg1oq7p_hNM91TvLbRk6khWvzkdpZ8Cl… [250 chars]",
+      "totalResults": 26427
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 30,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "hint": "large_result: this response is ~97 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "f2b5962f-5218-42c7-9e06-0192048286d2"
+}

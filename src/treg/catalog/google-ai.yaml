@@ -1,0 +1,399 @@
+provider: google-ai
+source:
+  docs: https://ai.google.dev/gemini-api/docs/image-generation
+  openapi: null
+  curated: 2026-09-29
+pricing_url: https://ai.google.dev/gemini-api/docs/pricing
+proposed_capabilities:
+  image-gen.gemini-3-1-flash-image.generate: "Gemini 3.1 Flash Image (Nano Banana 2)"
+  image-gen.gemini-3-1-flash-lite-image.generate: "Gemini 3.1 Flash Lite Image (Nano Banana 2 Lite)"
+  voice-gen.gemini-3-8-flash-tts.generate: "Gemini 3.8 Flash TTS"
+  voice-gen.gemini-3-8-flash-lite-tts.generate: "Gemini 3.8 Flash-Lite TTS"
+  music-gen.lyria-3-5.generate: "Lyria 3.5 (full song)"
+  music-gen.lyria-3-clip.generate: "Lyria 3 Clip (30-second clip)"
+limits: "Synchronous: one generateContent call takes about 25-70 seconds and answers with the image inline as base64 (`candidates[0].content.parts[].inlineData.data`), not a URL. A 2K answer is about 9 MB and a 4K one about 23 MB, most of it a `thoughtSignature` that only multi-turn editing needs; add `fields=candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback` to receive about 4 MB (2K) instead. Rate limits and a spend cap per 10 minutes follow the Google Cloud billing account's tier; 429 RESOURCE_EXHAUSTED is that limit, 503 UNAVAILABLE is Google-side demand and is worth a later retry."
+endpoints:
+  - id: google-ai.image-gen.gemini-3-pro-image
+    capability: image-gen.gemini-3-pro-image.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /models/{model}:generateContent
+    name: "Google: Gemini 3 Pro Image (Nano Banana Pro)"
+    summary: "Generate or edit one image with Gemini 3 Pro Image at 1K, 2K or 4K on Google's own API, from a prompt and optional reference image URLs; the image returns inline as base64."
+    # The image arrives inline, so a 2K/4K answer is far above the 8 MiB settlement buffer: the
+    # body is read to disk and settled from Google's own token meters.
+    spooled_response: true
+    input:
+      pathParams:
+        model: {type: string, required: true, enum: [gemini-3-pro-image, gemini-3-pro-image-preview], example: gemini-3-pro-image, note: "gemini-3-pro-image is the stable model; the -preview alias is the same model at the same price."}
+      queryParams:
+        fields: {type: string, required: false, example: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback", note: "Google's partial-response mask. The example drops the multi-megabyte thoughtSignature and roughly halves the answer; keep usageMetadata in any mask you send."}
+      body:
+        contents:
+          type: array
+          required: true
+          example: [{parts: [{text: "A clean editorial illustration of a paper airplane."}]}]
+          note: "One user turn: {parts: [{text: prompt}, ...references]}. A reference image is {fileData: {mimeType: image/png, fileUri: <public https URL>}} (Google fetches it; `treg host <file>` prints a URL that works) or {inlineData: {mimeType, data: <base64>}} (a 10 MB request carrying a 7.5 MB image worked live). Up to 14 references; each bills 258 input tokens whatever its size."
+        generationConfig:
+          type: object
+          required: true
+          properties:
+            responseModalities: {type: array, required: false, example: [IMAGE], note: "[IMAGE] for the image alone. [TEXT, IMAGE] permits a text part but does not guarantee one: a live [TEXT, IMAGE] call asking for a one-sentence description returned only the image."}
+            imageConfig:
+              type: object
+              required: false
+              properties:
+                imageSize: {type: string, required: false, default: 1K, enum: [1K, 2K, 4K], example: 2K, note: "Uppercase K. 1K and 2K bill the same 1,120 output tokens, 4K bills 2,000."}
+                aspectRatio: {type: string, required: false, enum: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"], example: "1:1", note: "Omitted, the model picks the frame from the prompt (a live call without it returned 1408x768). Pass it whenever the output size matters."}
+      bodyType: json
+    test_request:
+      pathParams: {model: gemini-3-pro-image}
+      queryParams: {fields: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback"}
+      body: {contents: [{parts: [{text: "A clean editorial illustration of a paper airplane."}]}], generationConfig: {responseModalities: [IMAGE], imageConfig: {imageSize: 1K, aspectRatio: "1:1"}}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.generationConfig.imageConfig.imageSize: 1K}, value: 0.15}
+        - {when: {body.generationConfig.imageConfig.imageSize: 2K}, value: 0.15}
+        - {when: {body.generationConfig.imageConfig.imageSize: 4K}, value: 0.26}
+      fallback: {value: 0.26, note: "One 4K image with its prompt, thinking and reference-image tokens; the reported token meters settle."}
+      currency: USD
+      settle: usage
+      usage:
+        unit: usd
+        terms:
+          - {path: usageMetadata.promptTokenCount, rate: 0.000002}
+          - {path: usageMetadata.candidatesTokenCount, rate: 0.000012}
+          - {path: usageMetadata.thoughtsTokenCount, rate: 0.000012}
+          - {path: "usageMetadata.candidatesTokensDetails[modality=IMAGE].tokenCount", rate: 0.000108}
+      source: docs
+      source_url: https://ai.google.dev/gemini-api/docs/pricing
+      checked: 2026-09-29
+      confidence: documented
+      note: "Token-metered at Google's paid-tier rates: input $2/M, text and thinking output $12/M, image output $120/M (the image term adds $108/M on top of candidatesTokenCount, which already counts it at $12/M). One 1K or 2K image is 1,120 image tokens ($0.1344), a 4K image 2,000 ($0.24); a reference image adds about 258 input tokens. The row is the hold; usageMetadata settles. A blocked image answers HTTP 200 with finishReason IMAGE_SAFETY, empty content and no image: live, it settled its prompt and thinking tokens only ($0.003956), not the hold. Check finishReason before reading parts."
+    verified: 2026-09-29
+    added: '2026-09-29'
+    example_response: examples/google-ai.image-gen.gemini-3-pro-image.json
+    docs_url: https://ai.google.dev/gemini-api/docs/image-generation
+
+  - id: google-ai.image-gen.gemini-3-1-flash-image
+    capability: image-gen.gemini-3-1-flash-image.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /models/{model}:generateContent
+    name: "Google: Gemini 3.1 Flash Image (Nano Banana 2)"
+    summary: "Generate or edit one image with Gemini 3.1 Flash Image at 512px, 1K, 2K or 4K on Google's own API, from a prompt and optional reference images; the image returns inline as base64."
+    spooled_response: true
+    input:
+      pathParams:
+        model: {type: string, required: true, enum: [gemini-3.1-flash-image, gemini-3.1-flash-image-preview], example: gemini-3.1-flash-image, note: "gemini-3.1-flash-image is the stable model; the -preview alias is the same model at the same price."}
+      queryParams:
+        fields: {type: string, required: false, example: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback", note: "Google's partial-response mask; the example drops the multi-megabyte thoughtSignature. Keep usageMetadata in any mask you send."}
+      body:
+        contents:
+          type: array
+          required: true
+          example: [{parts: [{text: "A clean editorial illustration of a paper airplane."}]}]
+          note: "One user turn: {parts: [{text: prompt}, ...references]}. A reference image is {fileData: {mimeType: image/png, fileUri: <public https URL>}} (Google fetches it; `treg host <file>` prints a URL that works) or {inlineData: {mimeType, data: <base64>}}."
+        generationConfig:
+          type: object
+          required: true
+          properties:
+            responseModalities: {type: array, required: false, example: [IMAGE], note: "[IMAGE] for the image alone."}
+            imageConfig:
+              type: object
+              required: false
+              properties:
+                imageSize: {type: string, required: false, default: "1K", enum: ["512", "1K", "2K", "4K"], example: "2K", note: "512 is written without K. Image tokens: 512 747, 1K 1,120, 2K 1,680, 4K 2,520."}
+                aspectRatio: {type: string, required: false, enum: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"], example: "1:1", note: "Omitted, the model picks the frame from the prompt. Pass it whenever the output size matters."}
+      bodyType: json
+    test_request:
+      pathParams: {model: gemini-3.1-flash-image}
+      queryParams: {fields: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback"}
+      body: {contents: [{parts: [{text: "A clean editorial illustration of a paper airplane."}]}], generationConfig: {responseModalities: [IMAGE], imageConfig: {imageSize: "1K", aspectRatio: "1:1"}}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.generationConfig.imageConfig.imageSize: "512"}, value: 0.05}
+        - {when: {body.generationConfig.imageConfig.imageSize: "1K"}, value: 0.075}
+        - {when: {body.generationConfig.imageConfig.imageSize: "2K"}, value: 0.11}
+        - {when: {body.generationConfig.imageConfig.imageSize: "4K"}, value: 0.165}
+      fallback: {value: 0.165, note: "One 4K image with its prompt, text and reference-image tokens; the reported token meters settle."}
+      currency: USD
+      settle: usage
+      usage:
+        unit: usd
+        terms:
+          - {path: usageMetadata.promptTokenCount, rate: 0.0000005}
+          - {path: usageMetadata.candidatesTokenCount, rate: 0.000003}
+          - {path: usageMetadata.thoughtsTokenCount, rate: 0.000003}
+          - {path: "usageMetadata.candidatesTokensDetails[modality=IMAGE].tokenCount", rate: 0.000057}
+      source: docs
+      source_url: https://ai.google.dev/gemini-api/docs/pricing
+      checked: 2026-09-30
+      confidence: documented
+      note: "Token-metered at Google's paid-tier rates: input $0.50/M, text and thinking output $3/M, image output $60/M (the image term adds $57/M on top of candidatesTokenCount, which already counts it at $3/M). Live 2026-09-30 the image meter read 747 tokens at 512px, 1,120 at 1K, 1,680 at 2K and 2,520 at 4K ($0.045 / $0.067 / $0.101 / $0.151 per image), plus about 400 text tokens in candidatesTokenCount; no thoughtsTokenCount is reported. A 4K answer is about 23 MB and is spooled. The row is the hold; usageMetadata settles."
+    verified: 2026-09-30
+    added: '2026-09-29'
+    example_response: examples/google-ai.image-gen.gemini-3-1-flash-image.json
+    docs_url: https://ai.google.dev/gemini-api/docs/image-generation
+
+  - id: google-ai.image-gen.gemini-3-1-flash-lite-image
+    capability: image-gen.gemini-3-1-flash-lite-image.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /models/{model}:generateContent
+    name: "Google: Gemini 3.1 Flash Lite Image (Nano Banana 2 Lite)"
+    summary: "Generate or edit one 1K image with Gemini 3.1 Flash Lite Image on Google's own API, the cheapest Gemini image model; the image returns inline as base64."
+    input:
+      pathParams:
+        model: {type: string, required: true, enum: [gemini-3.1-flash-lite-image], example: gemini-3.1-flash-lite-image, note: "gemini-3.1-flash-lite-image is the stable model; the -preview alias is the same model at the same price."}
+      queryParams:
+        fields: {type: string, required: false, example: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback", note: "Google's partial-response mask; the example drops the multi-megabyte thoughtSignature. Keep usageMetadata in any mask you send."}
+      body:
+        contents:
+          type: array
+          required: true
+          example: [{parts: [{text: "A clean editorial illustration of a paper airplane."}]}]
+          note: "One user turn: {parts: [{text: prompt}, ...references]}. A reference image is {fileData: {mimeType: image/png, fileUri: <public https URL>}} (Google fetches it; `treg host <file>` prints a URL that works) or {inlineData: {mimeType, data: <base64>}}."
+        generationConfig:
+          type: object
+          required: true
+          properties:
+            responseModalities: {type: array, required: false, example: [IMAGE], note: "[IMAGE] for the image alone."}
+            imageConfig:
+              type: object
+              required: false
+              properties:
+                imageSize: {type: string, required: false, default: "1K", enum: ["1K"], example: "1K", note: "Only 1K is supported (512, 2K and 4K answer 400)."}
+                aspectRatio: {type: string, required: false, enum: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"], example: "1:1", note: "Omitted, the model picks the frame from the prompt. Pass it whenever the output size matters."}
+      bodyType: json
+    test_request:
+      pathParams: {model: gemini-3.1-flash-lite-image}
+      queryParams: {fields: "candidates(content(parts(text,inlineData)),finishReason),usageMetadata,modelVersion,responseId,promptFeedback"}
+      body: {contents: [{parts: [{text: "A clean editorial illustration of a paper airplane."}]}], generationConfig: {responseModalities: [IMAGE], imageConfig: {imageSize: "1K", aspectRatio: "1:1"}}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.generationConfig.imageConfig.imageSize: "1K"}, value: 0.04}
+      fallback: {value: 0.04, note: "One 1K image with its prompt, text and reference-image tokens; the reported token meters settle."}
+      currency: USD
+      settle: usage
+      usage:
+        unit: usd
+        terms:
+          - {path: usageMetadata.promptTokenCount, rate: 0.00000025}
+          - {path: usageMetadata.candidatesTokenCount, rate: 0.0000015}
+          - {path: usageMetadata.thoughtsTokenCount, rate: 0.0000015}
+          - {path: "usageMetadata.candidatesTokensDetails[modality=IMAGE].tokenCount", rate: 0.0000285}
+      source: docs
+      source_url: https://ai.google.dev/gemini-api/docs/pricing
+      checked: 2026-09-30
+      confidence: documented
+      note: "Token-metered at Google's paid-tier rates: input $0.25/M, text and thinking output $1.50/M, image output $30/M (the image term adds $28.50/M on top of candidatesTokenCount). Only 1K exists: live 2026-09-30, 512, 2K and 4K each answered 400 'not supported for this model'. A 1K image reads 1,120 image tokens ($0.0336) plus about 400 text tokens; an answer is about 2.2 MB, so it is buffered, not spooled. The row is the hold; usageMetadata settles."
+    verified: 2026-09-30
+    added: '2026-09-29'
+    example_response: examples/google-ai.image-gen.gemini-3-1-flash-lite-image.json
+    docs_url: https://ai.google.dev/gemini-api/docs/image-generation
+
+  - id: google-ai.voice-gen.gemini-3-8-flash-tts
+    capability: voice-gen.gemini-3-8-flash-tts.generate
+    platform: voice-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /models/{model}:generateContent
+    name: "Google: Gemini 3.8 Flash TTS"
+    summary: "Speak a text in one of 30 prebuilt voices, or a two-speaker dialogue, with Gemini 3.8 Flash TTS on Google's own API; the audio returns inline as base64 WAV (24 kHz mono)."
+    spooled_response: true
+    input:
+      pathParams:
+        model: {type: string, required: true, enum: [gemini-3.8-flash-tts], example: gemini-3.8-flash-tts}
+      body:
+        contents:
+          type: array
+          required: true
+          example: [{parts: [{text: "Say cheerfully: Welcome to treg."}]}]
+          note: "One user turn: {parts: [{text: script}]}. Style is steered in the text itself (\"Say cheerfully: ...\"). For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
+        generationConfig:
+          type: object
+          required: true
+          properties:
+            responseModalities: {type: array, required: true, example: [AUDIO], note: "Must be [AUDIO]."}
+            speechConfig:
+              type: object
+              required: true
+              note: "Either {voiceConfig: {prebuiltVoiceConfig: {voiceName}}} for one voice, or {multiSpeakerVoiceConfig: {speakerVoiceConfigs: [{speaker, voiceConfig: {prebuiltVoiceConfig: {voiceName}}}]}} for exactly two named speakers. Voices: Zephyr, Puck, Charon, Kore, Fenrir, Leda, Orus, Aoede, Callirrhoe, Autonoe, Enceladus, Iapetus, Umbriel, Algieba, Despina, Erinome, Algenib, Rasalgethi, Laomedeia, Achernar, Alnilam, Schedar, Gacrux, Pulcherrima, Achird, Zubenelgenubi, Vindemiatrix, Sadachbia, Sadaltager, Sulafat."
+              example: {voiceConfig: {prebuiltVoiceConfig: {voiceName: Kore}}}
+      bodyType: json
+    test_request:
+      pathParams: {model: gemini-3.8-flash-tts}
+      body: {contents: [{parts: [{text: "Say cheerfully: Welcome to treg, the tool catalog for your agents."}]}], generationConfig: {responseModalities: [AUDIO], speechConfig: {voiceConfig: {prebuiltVoiceConfig: {voiceName: Kore}}}}}
+    cost:
+      type: per_success
+      value: 0.05
+      per: 1
+      unit: call
+      fallback: {value: 0.05, note: "About 5,500 audio tokens (3.7 minutes); the reported token meters settle, and a long script may settle above it."}
+      currency: USD
+      settle: usage
+      usage:
+        unit: usd
+        terms:
+          - {path: usageMetadata.promptTokenCount, rate: 0.0000005}
+          - {path: usageMetadata.candidatesTokenCount, rate: 0.000009}
+          - {path: usageMetadata.thoughtsTokenCount, rate: 0.000009}
+      source: docs
+      source_url: https://ai.google.dev/gemini-api/docs/pricing
+      checked: 2026-09-30
+      confidence: documented
+      note: "Token-metered at Google's paid-tier rates (through 2026-12-31): input $0.50/M, audio output $9/M, about 25 audio tokens a second ($0.00225 per 10 s). Live 2026-09-30 a 7.1 s line read 22 prompt and 228 audio tokens ($0.002063). A five-minute WAV is about 19 MB of base64 and is spooled."
+    verified: 2026-09-30
+    added: '2026-09-29'
+    example_response: examples/google-ai.voice-gen.gemini-3-8-flash-tts.json
+    docs_url: https://ai.google.dev/gemini-api/docs/speech-generation
+
+  - id: google-ai.voice-gen.gemini-3-8-flash-lite-tts
+    capability: voice-gen.gemini-3-8-flash-lite-tts.generate
+    platform: voice-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /models/{model}:generateContent
+    name: "Google: Gemini 3.8 Flash-Lite TTS"
+    summary: "Speak a text in one of 30 prebuilt voices, or a two-speaker dialogue, with Gemini 3.8 Flash-Lite TTS on Google's own API; the audio returns inline as base64 WAV (24 kHz mono)."
+    spooled_response: true
+    input:
+      pathParams:
+        model: {type: string, required: true, enum: [gemini-3.8-flash-lite-tts], example: gemini-3.8-flash-lite-tts}
+      body:
+        contents:
+          type: array
+          required: true
+          example: [{parts: [{text: "Say cheerfully: Welcome to treg."}]}]
+          note: "One user turn: {parts: [{text: script}]}. Style is steered in the text itself (\"Say cheerfully: ...\"). For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
+        generationConfig:
+          type: object
+          required: true
+          properties:
+            responseModalities: {type: array, required: true, example: [AUDIO], note: "Must be [AUDIO]."}
+            speechConfig:
+              type: object
+              required: true
+              note: "Either {voiceConfig: {prebuiltVoiceConfig: {voiceName}}} for one voice, or {multiSpeakerVoiceConfig: {speakerVoiceConfigs: [{speaker, voiceConfig: {prebuiltVoiceConfig: {voiceName}}}]}} for exactly two named speakers. Voices: Zephyr, Puck, Charon, Kore, Fenrir, Leda, Orus, Aoede, Callirrhoe, Autonoe, Enceladus, Iapetus, Umbriel, Algieba, Despina, Erinome, Algenib, Rasalgethi, Laomedeia, Achernar, Alnilam, Schedar, Gacrux, Pulcherrima, Achird, Zubenelgenubi, Vindemiatrix, Sadachbia, Sadaltager, Sulafat."
+              example: {voiceConfig: {prebuiltVoiceConfig: {voiceName: Kore}}}
+      bodyType: json
+    test_request:
+      pathParams: {model: gemini-3.8-flash-lite-tts}
+      body: {contents: [{parts: [{text: "Say cheerfully: Welcome to treg, the tool catalog for your agents."}]}], generationConfig: {responseModalities: [AUDIO], speechConfig: {voiceConfig: {prebuiltVoiceConfig: {voiceName: Kore}}}}}
+    cost:
+      type: per_success
+      value: 0.035
+      per: 1
+      unit: call
+      fallback: {value: 0.035, note: "About 5,800 audio tokens (3.9 minutes); the reported token meters settle, and a long script may settle above it."}
+      currency: USD
+      settle: usage
+      usage:
+        unit: usd
+        terms:
+          - {path: usageMetadata.promptTokenCount, rate: 0.0000005}
+          - {path: usageMetadata.candidatesTokenCount, rate: 0.000006}
+          - {path: usageMetadata.thoughtsTokenCount, rate: 0.000006}
+      source: docs
+      source_url: https://ai.google.dev/gemini-api/docs/pricing
+      checked: 2026-09-30
+      confidence: documented
+      note: "Token-metered at Google's paid-tier rates: input $0.50/M, audio output $6/M ($0.0015 per 10 s). Live 2026-09-30 a 7.5 s line read 22 prompt and 240 audio tokens ($0.001451). A five-minute WAV is about 19 MB of base64 and is spooled."
+    verified: 2026-09-30
+    added: '2026-09-29'
+    example_response: examples/google-ai.voice-gen.gemini-3-8-flash-lite-tts.json
+    docs_url: https://ai.google.dev/gemini-api/docs/speech-generation
+
+  - id: google-ai.music-gen.lyria-3-5
+    capability: music-gen.lyria-3-5.generate
+    platform: music-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /models/{model}:generateContent
+    name: "Google: Lyria 3.5"
+    summary: "Compose a full song (about three minutes) from a text prompt with Lyria 3.5 on Google's own API; the MP3 returns inline as base64 with its lyrics or section markers."
+    spooled_response: true
+    # A generation Google refuses answers 200 without STOP; only a finished song is billed.
+    expect: {json_path: candidates.0.finishReason, equals: STOP}
+    input:
+      pathParams:
+        model: {type: string, required: true, enum: [lyria-3.5], example: lyria-3.5}
+      body:
+        contents:
+          type: array
+          required: true
+          example: [{parts: [{text: "An upbeat lo-fi hip hop instrumental with warm piano chords."}]}]
+          note: "One user turn: {parts: [{text: prompt}]}. Describe genre, mood, instruments and tempo; ask for an instrumental or supply lyrics in the prompt. The answer carries an MP3 part (inlineData, audio/mpeg) and a text part with the lyrics or section markers."
+      bodyType: json
+    test_request:
+      pathParams: {model: lyria-3.5}
+      body: {contents: [{parts: [{text: "An upbeat lo-fi hip hop instrumental with warm piano chords and soft vinyl crackle."}]}]}
+    cost:
+      type: per_success
+      value: 0.08
+      per: 1
+      unit: call
+      currency: USD
+      source: docs
+      source_url: https://ai.google.dev/gemini-api/docs/pricing
+      checked: 2026-09-30
+      confidence: documented
+      note: "$0.08 per song, flat. usageMetadata reports tokens but no audio meter and is not the bill. Live 2026-09-30 a prompt returned a 179 s, 192 kbps MP3 (4.3 MB, 5.7 MB as base64) in 36 s; longer songs approach the 8 MiB buffer, so the answer is spooled. Only a STOP answer is billed."
+    verified: 2026-09-30
+    added: '2026-09-29'
+    example_response: examples/google-ai.music-gen.lyria-3-5.json
+    docs_url: https://ai.google.dev/gemini-api/docs/music-generation
+
+  - id: google-ai.music-gen.lyria-3-clip
+    capability: music-gen.lyria-3-clip.generate
+    platform: music-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /models/{model}:generateContent
+    name: "Google: Lyria 3 Clip"
+    summary: "Compose a 30-second music clip from a text prompt with Lyria 3 Clip on Google's own API; the MP3 returns inline as base64."
+    spooled_response: true
+    # A generation Google refuses answers 200 without STOP; only a finished song is billed.
+    expect: {json_path: candidates.0.finishReason, equals: STOP}
+    input:
+      pathParams:
+        model: {type: string, required: true, enum: [lyria-3-clip-preview], example: lyria-3-clip-preview}
+      body:
+        contents:
+          type: array
+          required: true
+          example: [{parts: [{text: "An upbeat lo-fi hip hop instrumental with warm piano chords."}]}]
+          note: "One user turn: {parts: [{text: prompt}]}. Describe genre, mood, instruments and tempo; ask for an instrumental or supply lyrics in the prompt. The answer carries an MP3 part (inlineData, audio/mpeg) and a text part with the lyrics or section markers."
+      bodyType: json
+    test_request:
+      pathParams: {model: lyria-3-clip-preview}
+      body: {contents: [{parts: [{text: "An upbeat lo-fi hip hop instrumental with warm piano chords and soft vinyl crackle."}]}]}
+    cost:
+      type: per_success
+      value: 0.04
+      per: 1
+      unit: call
+      currency: USD
+      source: docs
+      source_url: https://ai.google.dev/gemini-api/docs/pricing
+      checked: 2026-09-30
+      confidence: documented
+      note: "$0.04 per 30-second clip, flat. Live 2026-09-30 a prompt returned a 30 s, 192 kbps MP3 (0.73 MB) in 14 s. Only a STOP answer is billed."
+    verified: 2026-09-30
+    added: '2026-09-29'
+    example_response: examples/google-ai.music-gen.lyria-3-clip.json
+    docs_url: https://ai.google.dev/gemini-api/docs/music-generation

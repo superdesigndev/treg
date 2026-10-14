@@ -1,0 +1,33 @@
+{
+  "output": {
+    "data": {
+      "followers": [
+        {
+          "avatarUrl": "https://p16-common-sign.tiktokcdn-eu.com/tos-maliva-avt-0068/7cea1fb433ef904a33317c1836aeef18~tplv-tiktokx-cropcenter-q:720:720:q70.heic?dr=9607&refresh_token=546c38bf&x-expires=1789894800&x-signature… [325 chars]",
+          "followerCount": 292,
+          "followingCount": 1306,
+          "nickname": ".zay",
+          "region": "US",
+          "userId": "7252854691686761514",
+          "username": "luhhzayyy_"
+        },
+        "… 49 more item(s) truncated"
+      ],
+      "nextCursor": "zB7tJ2-ptOmlmGFWkELWqX-JxMrywNvwZZNXNuZIldbHzQ6vEeJa0b4yk7nGISIqVU-w1ukO4dSuG4OX0mtzI3x1c2MjaSVImhb5o-XlS4ffbu_cF6pqij6I9wjP6vIBQL6q1KtpVW8rLDiG5V4YqjEB3BCoeZgxrHckvpE9",
+      "total": 4781611
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 50,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "hint": "large_result: this response is ~25 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "ae07f317-5f59-474e-a8fe-4bbb3e35d39c"
+}

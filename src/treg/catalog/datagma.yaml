@@ -1,0 +1,162 @@
+# Deliberately small, single-record Datagma surface. The free /api/ingress/v1/mine account route
+# is internal to connection checks and capacity collection. Search, bulk, reverse lookup, social
+# lookup and optional full-phone expansion are excluded until their pricing and response contracts
+# are independently verified.
+provider: datagma
+source:
+  docs: https://datagmaapi.readme.io/reference/getting-started-with-your-api
+  curated: '2026-09-18'
+pricing_url: https://datagma.com/pricing
+limits: "Datagma documents a maximum of 10 requests per second."
+proposed_capabilities: {}
+endpoints:
+  - id: datagma.people.email.find
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: GET
+    path: /api/ingress/v8/findEmail
+    name: Find a verified work email
+    summary: Find a person's verified work email from their name and company
+    input:
+      queryParams:
+        firstName: {type: string, required: false, example: Patrick}
+        lastName: {type: string, required: false, example: Collison}
+        fullName: {type: string, required: false, example: Patrick Collison}
+        company: {type: string, required: false, example: stripe.com, note: Company name or domain.}
+        linkedInSlug: {type: string, required: false, note: LinkedIn profile slug.}
+      note: Provide fullName or firstName + lastName, together with company; linkedInSlug can improve the match. Only a verified email is treated as a hit. A cached repeat or miss can report creditBurn 0 and is not charged.
+    test_request: {queryParams: {fullName: Patrick Collison, company: stripe.com}}
+    cost: &one_credit
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: result
+      source: observed
+      source_url: https://datagmaapi.readme.io/reference/find-email-from-full-name-company
+      checked: '2026-09-18'
+      confidence: verified
+      note: Datagma reports the exact charge in creditBurn. A fresh verified email used one credit; a cached repeat reported zero.
+    verified: '2026-09-18'
+    added: '2026-09-18'
+    example_response: examples/datagma.people.email.find.json
+    docs_url: https://datagmaapi.readme.io/reference/find-email-from-full-name-company
+
+  - id: datagma.people.enrich
+    domain: contacts
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: GET
+    path: /api/ingress/v2/full
+    name: Enrich a person
+    summary: Enrich one person from an email, LinkedIn URL, or name and company domain
+    input:
+      queryParams:
+        data: {type: string, required: true, note: Email, LinkedIn profile URL, or company domain when fullName is also supplied.}
+        fullName: {type: string, required: false}
+        countryCode: {type: string, required: false, note: Optional two-letter country hint.}
+        companyPremium: {type: boolean, required: true, enum: [false]}
+        companyFull: {type: boolean, required: true, enum: [false]}
+        personFull: {type: boolean, required: true, enum: [false]}
+        phoneFull: {type: boolean, required: true, enum: [false]}
+        deepTraffic: {type: boolean, required: true, enum: [false]}
+        debug: {type: boolean, required: true, enum: [false]}
+      note: This fixed basic-person mode excludes phone and optional premium expansions so the price stays one credit.
+    test_request:
+      queryParams: {data: datagma.com, fullName: Raphael Azot, companyPremium: false, companyFull: false, personFull: false, phoneFull: false, deepTraffic: false, debug: false}
+    cost:
+      <<: *one_credit
+      note: Datagma reports the exact charge in creditBurn. A successful basic-person enrichment used one credit.
+    verified: '2026-09-18'
+    added: '2026-09-18'
+    example_response: examples/datagma.people.enrich.json
+    docs_url: https://datagmaapi.readme.io/reference/enrich-a-person-or-company
+
+  - id: datagma.companies.enrich
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /api/ingress/v2/full
+    name: Enrich a company
+    summary: Enrich one company from its domain, name, email, or LinkedIn URL
+    input:
+      queryParams:
+        data: {type: string, required: true, example: algolia.com, note: Company domain, company name, company email, or LinkedIn company URL.}
+        companyPremium: {type: boolean, required: true, enum: [true]}
+        companyFull: {type: boolean, required: true, enum: [true]}
+        personFull: {type: boolean, required: true, enum: [false]}
+        phoneFull: {type: boolean, required: true, enum: [false]}
+        deepTraffic: {type: boolean, required: true, enum: [false]}
+        debug: {type: boolean, required: true, enum: [false]}
+      note: Premium and full company data are requested together for the same verified one-credit charge. Person and phone expansions stay off.
+    test_request:
+      queryParams: {data: algolia.com, companyPremium: true, companyFull: true, personFull: false, phoneFull: false, deepTraffic: false, debug: false}
+    cost:
+      <<: *one_credit
+      note: Datagma reports the exact charge in creditBurn. A successful premium + full company enrichment used one credit.
+    verified: '2026-09-18'
+    added: '2026-09-18'
+    example_response: examples/datagma.companies.enrich.json
+    docs_url: https://datagmaapi.readme.io/reference/enrich-a-person-or-company
+
+  - id: datagma.people.phone.find
+    domain: contacts
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: GET
+    path: /api/ingress/v1/search
+    name: Find a mobile phone
+    summary: Find one person's mobile number from an email or LinkedIn profile
+    input:
+      queryParams:
+        email: {type: string, required: false, format: email}
+        username: {type: string, required: false, note: Full LinkedIn profile URL.}
+        minimumMatch: {type: integer, required: false, min: 1, default: 1}
+        whatsapp_check: {type: boolean, required: false, default: false}
+      note: Provide email, username, or both. A successful result costs 30 credits, a $0.6774 base cost before the configured platform margin. Responses reporting creditBurn 0 are not charged; a geographic or privacy restriction was observed returning a free 403. This high-cost tool is direct-only and is not an automatic routed fallback or Enrich Arena contender.
+    test_request: {queryParams: {email: dshah@hubspot.com, username: https://www.linkedin.com/in/dharmesh, minimumMatch: 1, whatsapp_check: false}}
+    cost:
+      type: per_success
+      value: 30
+      currency: credit
+      per: 1
+      unit: result
+      source: observed
+      source_url: https://datagmaapi.readme.io/reference/find-mobile-phone
+      checked: '2026-09-18'
+      confidence: verified
+      note: Datagma reports the exact charge in creditBurn. A successful mobile lookup used 30 credits; a restricted lookup used zero.
+    verified: '2026-09-18'
+    added: '2026-09-18'
+    example_response: examples/datagma.people.phone.find.json
+    docs_url: https://datagmaapi.readme.io/reference/find-mobile-phone
+
+  - id: datagma.people.job-change.detect
+    domain: contacts
+    capability: people.signals
+    platform: people
+    scope: any_account
+    method: GET
+    path: /api/ingress/v4/update
+    name: Detect a job change
+    summary: Check whether one person has changed employer or role
+    input:
+      queryParams:
+        fullName: {type: string, required: true}
+        companyName: {type: string, required: true}
+        jobTitle: {type: string, required: false}
+      note: Compare the supplied employment data with Datagma's current record. Status NO_NEW_COMPANY means no employer change was detected.
+    test_request: {queryParams: {fullName: Raphael Azot, companyName: Datagma, jobTitle: CEO}}
+    cost:
+      <<: *one_credit
+      note: Datagma reports the exact charge in creditBurn. A completed job-change check used one credit.
+    verified: '2026-09-18'
+    added: '2026-09-18'
+    example_response: examples/datagma.people.job-change.detect.json
+    docs_url: https://datagmaapi.readme.io/reference/detect-job-change

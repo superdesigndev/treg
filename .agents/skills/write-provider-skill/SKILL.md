@@ -1,6 +1,8 @@
 ---
 name: write-provider-skill
 description: Build a treg provider skill — the endpoint map + mistake map that lets an agent do real work on a platform API through treg's proxy. Use when adding a skill for a connected provider (Google Ads, LinkedIn, Meta Ads, TikTok, X, Instagram, Search Console), or when an existing provider skill needs verifying or extending.
+metadata:
+  internal: true  # repo tooling: hidden from `npx skills add superdesigndev/treg`
 ---
 
 # Writing a provider skill

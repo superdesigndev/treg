@@ -25,12 +25,13 @@ limits: "default project quota is low and must be raised by request"
 pricing_url: https://developers.google.com/my-business/content/limits
 endpoints:
   - id: google-business-profile.accounts
+    added: '2026-07-28'
     capability: google-business.accounts
     platform: google-business
     scope: own_account
     method: GET
     path: /v1/accounts
-    name: "Accounts"
+    name: "List your Business Profile accounts"
     summary: "List the Google Business Profile accounts you manage"
     input:
       queryParams:
@@ -42,12 +43,13 @@ endpoints:
     docs_url: https://developers.google.com/my-business/reference/accountmanagement/rest/v1/accounts/list
 
   - id: google-business-profile.locations
+    added: '2026-07-28'
     capability: google-business.locations
     platform: google-business
     scope: own_account
     method: GET
     path: /v1/accounts/{account_id}/locations
-    name: "List business locations"
+    name: "List your business listings — address, hours, category"
     summary: "List your business's listings with their addresses, hours and categories"
     input:
       pathParams:
@@ -62,12 +64,13 @@ endpoints:
     docs_url: https://developers.google.com/my-business/reference/businessinformation/rest/v1/accounts.locations/list
 
   - id: google-business-profile.reviews
+    added: '2026-07-28'
     capability: google-business.reviews
     platform: google-business
     scope: own_account
     method: GET
     path: /v4/accounts/{account_id}/locations/{location_id}/reviews
-    name: "Get customer reviews for a location"
+    name: "List customer reviews on your business listing"
     summary: "Read the reviews customers left on your Google Business Profile listing"
     input:
       pathParams:
@@ -82,13 +85,14 @@ endpoints:
     docs_url: https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews/list
 
   - id: google-business-profile.review.reply
+    added: '2026-07-28'
     kind: action
     capability: google-business.review.reply
     platform: google-business
     scope: own_account
     method: PUT
     path: /v4/accounts/{account_id}/locations/{location_id}/reviews/{review_id}/reply
-    name: "Reply to a review"
+    name: "Reply to a customer review as the business"
     summary: "Reply publicly to a customer review as the business"
     input:
       pathParams:

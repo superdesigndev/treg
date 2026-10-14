@@ -1,0 +1,5 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Other market data">
+  <rect x="2.5" y="3" width="19" height="18" rx="3" fill="#EDF5F0"/>
+  <path d="M5 16.5l4.4-4.2 3.2 2.1 5.9-6" fill="none" stroke="#2E8B57" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="18.5" cy="8.4" r="1.5" fill="#2E8B57"/>
+</svg>

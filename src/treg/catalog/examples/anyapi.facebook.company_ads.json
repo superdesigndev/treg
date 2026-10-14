@@ -1,0 +1,47 @@
+{
+  "output": {
+    "data": {
+      "ads": [
+        {
+          "active": true,
+          "adCount": 0,
+          "currency": "",
+          "displayFormat": "DPA",
+          "endDate": 1789801200,
+          "id": "1497860139029622",
+          "media": [
+            {
+              "type": "photo",
+              "url": "https://scontent-bos5-1.xx.fbcdn.net/v/t39.35426-6/815037699_2871965363196962_965168410128458868_n.jpg?_nc_cat=109&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=8dnrPqzgWB0Q7kNvwEECksZ&_nc_oc=AdoBvYMdDkCGHFCv-hSzOys… [389 chars]"
+            },
+            "… 5 more item(s) truncated"
+          ],
+          "pageId": "15087023444",
+          "pageName": "Nike",
+          "pageProfilePicture": "https://scontent-bos5-1.xx.fbcdn.net/v/t39.35426-6/817043171_2362103474560803_2991836090528441182_n.jpg?stp=dst-jpg_s60x60_tt6&_nc_cat=104&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=zEXK4DKJgSYQ7kNvwHEcFHi&_nc_oc… [413 chars]",
+          "platforms": [
+            "FACEBOOK",
+            "… 4 more item(s) truncated"
+          ],
+          "startDate": 1789714800,
+          "text": "Equípate para tus entrenamientos e impulsa tus carreras con colores vibrantes como tu ritmo."
+        },
+        "… 29 more item(s) truncated"
+      ],
+      "nextCursor": "KKtltbP-2er3YPxnB5tNK6POcU68hOD9RvRaMVrfUnJhBcCNteYvBO6JcdBOqWbnQDLLyKxIXiSlP6zVC9LibGTKAOuAHBDy0jH5ZEfu18E6xkqQgkY-TZdosB6NyRgeDjUV-pm3fmGMmdvnmC-eqGGOF3j-pvdvJXTOkbCQhVxI_5Bl7r4pkxtii5L0u6HOYTl8ExM_… [251 chars]"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 30,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "hint": "large_result: this response is ~94 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "4b449f61-bc6f-4f5d-97cd-52597c15b8fd"
+}

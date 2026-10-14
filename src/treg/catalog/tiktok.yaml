@@ -21,12 +21,13 @@ source:
 pricing_url: https://developers.tiktok.com/doc/display-api-get-started
 endpoints:
   - id: tiktok.tiktok.user.profile
+    added: '2026-07-28'
     capability: tiktok.user.profile
     platform: tiktok
     scope: own_account
     method: GET
     path: /v2/user/info/
-    name: "Get your profile and follower counts"
+    name: "Your TikTok profile — follower and like counts"
     summary: "Get your own TikTok profile with follower, following and total-like counts"
     input:
       queryParams:
@@ -36,12 +37,13 @@ endpoints:
     docs_url: https://developers.tiktok.com/doc/display-api-get-user-info/
 
   - id: tiktok.tiktok.user.videos
+    added: '2026-07-28'
     capability: tiktok.user.videos
     platform: tiktok
     scope: own_account
     method: POST
     path: /v2/video/list/
-    name: "List your videos with engagement stats"
+    name: "Your TikTok videos — views, likes, comments, shares"
     summary: "List your own TikTok videos with view, like, comment and share counts"
     input:
       queryParams:
@@ -75,13 +77,14 @@ endpoints:
   # (private) regardless of the privacy_level sent, and creator_info reports the allowed values.
   # Always read tiktok.creator.info first rather than assuming PUBLIC_TO_EVERYONE will stick.
   - id: tiktok.tiktok.creator.info
+    added: '2026-07-28'
     kind: account
     capability: tiktok.creator.info
     platform: tiktok
     scope: own_account
     method: POST
     path: /v2/post/publish/creator_info/query/
-    name: "Get creator posting permissions and limits"
+    name: "Your TikTok posting permissions and limits"
     summary: "Get what the connected TikTok creator is allowed to post (privacy options, limits)"
     input:
       note: "no parameters — an empty POST with Content-Type: application/json; charset=UTF-8. Returns creator_nickname, privacy_level_options (the ONLY privacy_level values the direct-post call will accept for this creator), max_video_post_duration_sec, and the comment/duet/stitch toggles the account has disabled. TikTok's own guidelines REQUIRE calling this before a direct post and showing the creator these options — an app that hardcodes them fails audit. Needs video.publish or video.upload"
@@ -90,13 +93,14 @@ endpoints:
     docs_url: https://developers.tiktok.com/doc/content-posting-api-reference-query-creator-info/
 
   - id: tiktok.tiktok.video.publish.init
+    added: '2026-07-28'
     kind: action
     capability: tiktok.video.publish
     platform: tiktok
     scope: own_account
     method: POST
     path: /v2/post/publish/video/init/
-    name: "Publish a video to TikTok"
+    name: "Publish a video to your TikTok profile"
     summary: "Publish a video directly to your own TikTok profile"
     input:
       body:
@@ -109,13 +113,14 @@ endpoints:
     docs_url: https://developers.tiktok.com/doc/content-posting-api-reference-direct-post/
 
   - id: tiktok.tiktok.video.inbox.init
+    added: '2026-07-28'
     kind: action
     capability: tiktok.video.draft
     platform: tiktok
     scope: own_account
     method: POST
     path: /v2/post/publish/inbox/video/init/
-    name: "Send a video draft to your inbox"
+    name: "Send a video draft to your TikTok inbox"
     summary: "Send a video to your TikTok inbox as a draft for you to finish and post"
     input:
       body:
@@ -127,13 +132,14 @@ endpoints:
     docs_url: https://developers.tiktok.com/doc/content-posting-api-reference-upload-video/
 
   - id: tiktok.tiktok.content.init
+    added: '2026-07-28'
     kind: action
     capability: tiktok.photo.publish
     platform: tiktok
     scope: own_account
     method: POST
     path: /v2/post/publish/content/init/
-    name: "Publish a photo post"
+    name: "Publish a photo post to your TikTok profile"
     summary: "Publish a photo post to your own TikTok profile, or send it to your inbox"
     input:
       body:
@@ -148,13 +154,14 @@ endpoints:
     docs_url: https://developers.tiktok.com/doc/content-posting-api-reference-direct-post/
 
   - id: tiktok.tiktok.publish.status
+    added: '2026-07-28'
     kind: utility
     capability: tiktok.publish.status
     platform: tiktok
     scope: own_account
     method: POST
     path: /v2/post/publish/status/fetch/
-    name: "Check publish status"
+    name: "Check a TikTok upload's publish status"
     summary: "Check whether a TikTok upload has finished publishing"
     input:
       body:

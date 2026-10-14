@@ -1,0 +1,27 @@
+{
+  "name": "treg",
+  "displayName": "01 Treg",
+  "version": "0.25.0",
+  "description": "OpenRouter for tools — 2,896 agent-callable endpoints across 60 providers: SEO and SERP data, backlinks, social and trends, people and company enrichment, ads, scraping. Search by the task, see the price, then call it. Credentials are injected server-side, so the agent never holds a key. Pay per call, not per subscription.",
+  "author": {
+    "name": "Superdesign",
+    "email": "jason@superdesign.dev",
+    "url": "https://treg.to"
+  },
+  "homepage": "https://treg.to",
+  "repository": "https://github.com/superdesigndev/treg",
+  "license": "Apache-2.0",
+  "keywords": [
+    "api",
+    "tools",
+    "seo",
+    "serp",
+    "backlinks",
+    "enrichment",
+    "web-data",
+    "oauth"
+  ],
+  "logo": "assets/logo.svg",
+  "skills": "./skills/",
+  "mcpServers": "./mcp.json"
+}

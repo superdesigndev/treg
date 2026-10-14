@@ -1,0 +1,564 @@
+provider: minimax
+source:
+  docs: https://platform.minimax.io/docs/api-reference/api-overview
+  curated: 2026-09-02
+pricing_url: https://platform.minimax.io/docs/guides/pricing-paygo
+limits: "Video generation is asynchronous; poll every 10 seconds. Video download URLs expire after about 9 hours. Synchronous TTS accepts up to 10,000 characters; generated audio URLs expire after 24 hours."
+proposed_capabilities:
+  # Per-model capabilities: each is the join key for one model, so the row stands alone in the
+  # model wall today and merges with other ROUTES to the same model (aggregator listings) when
+  # those are curated later. The job-level video-gen.from_text/.from_image capabilities stay
+  # deliberately memberless until models are hand-picked into a comparison row.
+  video-gen.hailuo.from_text: "Generate a Hailuo video from a text prompt"
+  video-gen.hailuo.from_image: "Animate an image into a Hailuo video"
+  video-gen.h3.generate: "Generate an H3 (Hailuo 3) video from text, optionally with first/last frame images"
+  image-gen.image-01.from_text: "Generate images with MiniMax image-01"
+  voice-gen.speech-2-8-hd.generate: "MiniMax Speech 2.8 HD"
+  voice-gen.speech-2-8-turbo.generate: "MiniMax Speech 2.8 Turbo"
+async:
+  id_from: task_id
+  poll:
+    endpoint: minimax.video-gen.task.status
+    param: {in: queryParams, name: task_id}
+  status:
+    path: status
+    success: [Success]
+    failure: [Fail]
+  result:
+    fetch: minimax.video-gen.result.retrieve
+    fetch_param: {in: queryParams, name: file_id, value_from: file_id}
+    ttl_note: "9h"
+  interval: 10
+endpoints:
+  - id: minimax.video-gen.from_text
+    capability: video-gen.hailuo.from_text
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /v1/video_generation
+    name: "MiniMax: Hailuo (text-to-video)"
+    summary: "Create a Hailuo video generation task from a text prompt."
+    input:
+      body:
+        # Live 2026-09-02 (base_resp 2013 on both): MiniMax-Hailuo-2.3-Fast "does not support
+        # Text-to-Video mode", and 512P "is only supported when param 'first_frame_image' provided".
+        # Both are image-to-video-only and live on the from_image row.
+        model: {type: string, required: true, enum: [MiniMax-Hailuo-2.3, MiniMax-Hailuo-02], example: MiniMax-Hailuo-2.3}
+        prompt: {type: string, required: true, example: "A paper boat drifts across a quiet pond at sunrise."}
+        duration: {type: integer, required: false, default: 6, min: 6, max: 10, example: 6}
+        resolution: {type: string, required: false, default: 768P, enum: [768P, 1080P], example: 768P, note: "1080P is 6 seconds only; see the price table for valid model-resolution-duration combinations."}
+        prompt_optimizer: {type: boolean, required: false, default: true}
+      bodyType: json
+    test_request:
+      body: {model: MiniMax-Hailuo-2.3, prompt: "A paper boat drifts across a quiet pond at sunrise.", duration: 6, resolution: 768P}
+    # MiniMax answers HTTP 200 with the error in the envelope (`base_resp.status_code` 2013 = invalid
+    # params). This rule makes such an answer a failure: the hold is released and no task is deferred.
+    expect: {json_path: base_resp.status_code, equals: 0}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 768P, body.duration: 6}, value: 0.28}
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 768P, body.duration: 10}, value: 0.56}
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 1080P, body.duration: 6}, value: 0.49}
+        - {when: {body.model: MiniMax-Hailuo-2.3, body.resolution: 768P, body.duration: 6}, value: 0.28}
+        - {when: {body.model: MiniMax-Hailuo-2.3, body.resolution: 768P, body.duration: 10}, value: 0.56}
+        - {when: {body.model: MiniMax-Hailuo-2.3, body.resolution: 1080P, body.duration: 6}, value: 0.49}
+      fallback: {value: 0.56, note: "The highest documented Hailuo text-to-video combination is a 10-second 768P video; unmatched combinations reserve this explicit upper bound."}
+      currency: USD
+      settle: table
+      source: docs
+      source_url: https://platform.minimax.io/docs/guides/pricing-paygo#video
+      checked: 2026-09-01
+      confidence: documented
+    verified: 2026-09-02
+    added: '2026-09-04'
+    example_response: examples/minimax.video-gen.from_text.json
+    docs_url: https://platform.minimax.io/docs/api-reference/video-generation-t2v
+
+  - id: minimax.video-gen.from_image
+    capability: video-gen.hailuo.from_image
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /v1/video_generation
+    name: "MiniMax: Hailuo (image-to-video)"
+    summary: "Animate a first-frame image into a Hailuo video, optionally guided by a prompt."
+    input:
+      body:
+        model: {type: string, required: true, enum: [MiniMax-Hailuo-2.3, MiniMax-Hailuo-2.3-Fast, MiniMax-Hailuo-02], example: MiniMax-Hailuo-02}
+        first_frame_image: {type: string, required: true, example: "https://example.com/first-frame.png", note: "A public image URL or a data URL."}
+        prompt: {type: string, required: false, example: "The camera slowly pulls back."}
+        duration: {type: integer, required: false, default: 6, min: 6, max: 10, example: 6}
+        resolution: {type: string, required: false, default: 768P, enum: [512P, 768P, 1080P], example: 512P, note: "512P is Hailuo-02 only; see the price table for valid model-resolution-duration combinations."}
+        prompt_optimizer: {type: boolean, required: false, default: true}
+      bodyType: json
+    test_request:
+      body: {model: MiniMax-Hailuo-02, first_frame_image: "https://picsum.photos/seed/treg-aigc/512/512", prompt: "The camera slowly pulls back.", duration: 6, resolution: 512P}
+    expect: {json_path: base_resp.status_code, equals: 0}
+    cost: &hailuo_cost
+      type: per_success
+      table:
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 512P, body.duration: 6}, value: 0.10}
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 512P, body.duration: 10}, value: 0.15}
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 768P, body.duration: 6}, value: 0.28}
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 768P, body.duration: 10}, value: 0.56}
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 1080P, body.duration: 6}, value: 0.49}
+        - {when: {body.model: MiniMax-Hailuo-2.3, body.resolution: 768P, body.duration: 6}, value: 0.28}
+        - {when: {body.model: MiniMax-Hailuo-2.3, body.resolution: 768P, body.duration: 10}, value: 0.56}
+        - {when: {body.model: MiniMax-Hailuo-2.3, body.resolution: 1080P, body.duration: 6}, value: 0.49}
+        - {when: {body.model: MiniMax-Hailuo-2.3-Fast, body.resolution: 768P, body.duration: 6}, value: 0.19}
+        - {when: {body.model: MiniMax-Hailuo-2.3-Fast, body.resolution: 768P, body.duration: 10}, value: 0.32}
+        - {when: {body.model: MiniMax-Hailuo-2.3-Fast, body.resolution: 1080P, body.duration: 6}, value: 0.33}
+      fallback: {value: 0.56, note: "The highest documented Hailuo combination is a 10-second 768P video; unmatched combinations reserve this explicit upper bound."}
+      currency: USD
+      settle: table
+      source: docs
+      source_url: https://platform.minimax.io/docs/guides/pricing-paygo#video
+      checked: 2026-09-01
+      confidence: documented
+      note: "MiniMax charges only successful Hailuo video generations."
+    verified: 2026-09-01
+    added: '2026-09-04'
+    example_response: examples/minimax.video-gen.from_image.json
+    docs_url: https://platform.minimax.io/docs/api-reference/video-generation-i2v
+
+  - id: minimax.video-gen.task.status
+    kind: utility
+    capability: video-gen.task.status
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /v1/query/video_generation
+    name: "Check a Hailuo video task"
+    summary: "Read the current status and generated file ID for a Hailuo video task."
+    resource_ownership:
+      requires: {kind: "poll:minimax.video-gen.task.status", param: task_id}
+      produces:
+        - {kind: "fetch:minimax.video-gen.result.retrieve", path: file_id}
+    async: false
+    input:
+      queryParams:
+        task_id: {type: string, required: true, example: "106916112212032"}
+    test_request: {queryParams: {task_id: "437021055357229"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Task status checks are free."}
+    verified: 2026-09-01
+    added: '2026-09-04'
+    example_response: examples/minimax.video-gen.task.status.json
+    docs_url: https://platform.minimax.io/docs/api-reference/video-generation-query
+
+  - id: minimax.video-gen.result.retrieve
+    kind: utility
+    capability: video-gen.result.retrieve
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /v1/files/retrieve
+    name: "Retrieve a generated Hailuo file"
+    summary: "Exchange a successful video task's file ID for its temporary download URL."
+    resource_ownership:
+      requires: {kind: "fetch:minimax.video-gen.result.retrieve", param: file_id}
+    async: false
+    input:
+      queryParams:
+        file_id: {type: string, required: true, example: "176844028768320"}
+    test_request: {queryParams: {file_id: "437019583025452"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Generated file metadata retrieval is free."}
+    verified: 2026-09-01
+    added: '2026-09-04'
+    example_response: examples/minimax.video-gen.result.retrieve.json
+    docs_url: https://platform.minimax.io/docs/api-reference/file-management-retrieve
+
+  - id: minimax.video-gen.h3.generate
+    capability: video-gen.h3.generate
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /v2/video_generation
+    name: "MiniMax: H3"
+    summary: "Create a Hailuo 3 (H3 / H3-Max) video task from a multimodal content array: one text item is required, with up to two optional first/last-frame images. The v2 API serves only the H3 family; Hailuo 2.x models use /v1/video_generation."
+    # The v2 chain differs from the provider-default v1 chain on every axis: path-parameter
+    # polling, lowercase terminal statuses, and the video URL directly in the terminal body
+    # (no files/retrieve exchange), so this row overrides the whole descriptor.
+    async:
+      id_from: task_id
+      poll:
+        endpoint: minimax.video-gen.v2.task.status
+        param: {in: pathParams, name: task_id}
+      status:
+        path: task.status
+        success: [succeeded]
+        failure: [failed, cancelled]
+      result:
+        path: task.content.url
+        ttl_note: "Download URL is time-limited; query the task again to mint a fresh one."
+      interval: 10
+    input:
+      body:
+        model: {type: string, required: true, enum: [MiniMax-H3, MiniMax-H3-Max], example: MiniMax-H3-Max}
+        content:
+          type: array
+          required: true
+          note: "Items of type text / image_url. One non-empty text item is required (max 7000 chars); up to two images (JPG/PNG/WEBP, <=30MB) set the first and last frame."
+        resolution: {type: string, required: true, enum: [480P, 768P, 2K], example: 480P, note: "H3 supports 768P and 2K; H3-Max supports 480P and 768P."}
+        duration: {type: integer, required: true, min: 4, max: 15, example: 5, note: "H3 accepts 4-15 seconds; H3-Max accepts 5-15."}
+        ratio: {type: string, required: false, enum: [adaptive, "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], example: "16:9", note: "Required for text-only tasks, where adaptive is rejected; adaptive suits image-led tasks."}
+      bodyType: json
+    test_request:
+      body:
+        model: MiniMax-H3-Max
+        content: [{type: text, text: "A paper boat drifts across a quiet pond at sunrise."}]
+        resolution: 480P
+        duration: 5
+        ratio: "16:9"
+    cost:
+      type: per_success
+      table:
+        - {when: {body.model: MiniMax-H3, body.resolution: 768P}, value: 0.08, times: body.duration}
+        - {when: {body.model: MiniMax-H3, body.resolution: 2K}, value: 0.13, times: body.duration}
+        # H3-Max accepts 5-15 s (H3 4-15 s): `times_min` keeps the displayed floor honest ($0.25).
+        - {when: {body.model: MiniMax-H3-Max, body.resolution: 480P}, value: 0.05, times: body.duration, times_min: 5}
+        - {when: {body.model: MiniMax-H3-Max, body.resolution: 768P}, value: 0.08, times: body.duration, times_min: 5}
+      fallback: {value: 1.96, note: "Fifteen seconds of 2K output at the highest documented per-second rate ($1.95), rounded up a cent to clear float comparison."}
+      currency: USD
+      settle: table
+      source: docs
+      source_url: https://platform.minimax.io/docs/guides/pricing-paygo#video
+      checked: 2026-09-02
+      confidence: documented
+      note: "Billed per second of output video; only successful generations are charged."
+    verified: 2026-09-02
+    added: '2026-09-04'
+    example_response: examples/minimax.video-gen.h3.generate.json
+    docs_url: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
+  - id: minimax.video-gen.v2.task.status
+    kind: utility
+    capability: video-gen.task.status
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /v2/query/video_generation/{task_id}
+    name: "Check a Hailuo 3 video task"
+    summary: "Read a v2 (H3 family) video task's status; a succeeded task carries its time-limited download URL at task.content.url."
+    resource_ownership:
+      requires: {kind: "poll:minimax.video-gen.v2.task.status", param: task_id}
+    async: false
+    input:
+      pathParams:
+        task_id: {type: string, required: true, example: "312409584736256"}
+    test_request: {pathParams: {task_id: "312409584736256"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Task status checks are free."}
+    verified: 2026-09-02
+    added: '2026-09-04'
+    example_response: examples/minimax.video-gen.v2.task.status.json
+    docs_url: https://platform.minimax.io/docs/api-reference/video-generation-v2-query
+
+  - id: minimax.image-gen.from_text
+    added: '2026-09-04'
+    capability: image-gen.image-01.from_text
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /v1/image_generation
+    name: "MiniMax: image-01"
+    summary: "Generate one or more images synchronously from a text prompt."
+    async: false
+    platform_request:
+      body.model: image-01
+    input:
+      body:
+        model: {type: string, required: true, enum: [image-01], example: image-01}
+        prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
+        aspect_ratio: {type: string, required: false, default: "1:1", example: "1:1"}
+        response_format: {type: string, required: false, default: url, example: url}
+        n: {type: integer, required: false, default: 1, min: 1, max: 9, example: 1}
+      bodyType: json
+    test_request:
+      body: {model: image-01, prompt: "A clean editorial illustration of a paper airplane.", aspect_ratio: "1:1", response_format: url, n: 1}
+    # Image generation uses the same HTTP-200 error envelope as video submission. Without this,
+    # invalid params such as a missing prompt or n=10 settle at the table/fallback price.
+    expect: {json_path: base_resp.status_code, equals: 0}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.model: image-01}, value: 0.0035, times: body.n}
+      fallback: {value: 0.0315, note: "Nine image-01 outputs at the documented per-image rate are the explicit request maximum."}
+      currency: USD
+      settle: table
+      source: docs
+      source_url: https://platform.minimax.io/docs/guides/pricing-paygo#image
+      checked: 2026-09-01
+      confidence: documented
+      note: "Price is per generated image."
+    docs_url: https://platform.minimax.io/docs/api-reference/image-generation-t2i
+
+  - id: minimax.voice-gen.speech-2-8-hd
+    added: '2026-09-17'
+    capability: voice-gen.speech-2-8-hd.generate
+    platform: voice-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /v1/t2a_v2
+    name: "MiniMax: Speech 2.8 HD"
+    summary: "Generate high-definition speech from up to 10,000 characters of text."
+    async: false
+    platform_request:
+      body.model: speech-2.8-hd
+      body.stream: false
+      body.output_format: url
+    input:
+      body:
+        model: {type: string, required: true, enum: [speech-2.8-hd], example: speech-2.8-hd}
+        text: {type: string, required: true, max: 10000, example: "A calm voice can make a complex idea feel simple.", note: "Fewer than 10,000 characters. Use <#x#> between speakable segments for a pause of x seconds."}
+        stream: {type: boolean, required: true, enum: [false], example: false, note: "This catalog route is non-streaming so the relay returns one bounded JSON response."}
+        output_format: {type: string, required: true, enum: [url], example: url, note: "The returned audio URL is valid for 24 hours."}
+        voice_setting:
+          type: object
+          required: true
+          example: {voice_id: English_expressive_narrator, speed: 1, vol: 1, pitch: 0}
+          note: "voice_id is required. Optional controls include speed, vol, pitch, emotion, text_normalization and latex_read. speech-2.8 emotion is happy | sad | angry | fearful | disgusted | surprised | calm; whisper and fluent are 2.6-only (status 2013 on 2.8, even with a whispering-named voice_id — use a whispering-style voice_id instead, or speech-2.6 for emotion=whisper)."
+          properties:
+            voice_id: {type: string, required: true, example: English_expressive_narrator}
+            speed: {type: number, required: false, example: 1}
+            vol: {type: number, required: false, example: 1}
+            pitch: {type: integer, required: false, example: 0}
+            emotion:
+              type: string
+              required: false
+              enum: [happy, sad, angry, fearful, disgusted, surprised, calm]
+              note: "speech-2.8 allows happy | sad | angry | fearful | disgusted | surprised | calm. whisper and fluent are 2.6-only and return status 2013 on 2.8 even with a whispering-named voice_id; use a whispering-style voice_id, or speech-2.6 for emotion=whisper."
+        audio_setting:
+          type: object
+          required: false
+          example: {sample_rate: 32000, bitrate: 128000, format: mp3, channel: 1}
+          note: "Non-streaming output supports mp3, wav and flac. bitrate (mp3 only) is 32000 | 64000 | 128000 | 256000; 192000 is invalid (status 2013). sample_rate is 8000 | 16000 | 22050 | 24000 | 32000 | 44100."
+          properties:
+            sample_rate: {type: integer, required: false, example: 32000, enum: [8000, 16000, 22050, 24000, 32000, 44100]}
+            bitrate: {type: integer, required: false, example: 128000, enum: [32000, 64000, 128000, 256000], note: "mp3 only. 192000 is invalid (status 2013)."}
+            format: {type: string, required: false, example: mp3, note: "Non-streaming output supports mp3, wav and flac."}
+            channel: {type: integer, required: false, example: 1}
+        language_boost:
+          type: string
+          required: false
+          example: auto
+          enum:
+            - Chinese
+            - Chinese,Yue
+            - English
+            - Arabic
+            - Russian
+            - Spanish
+            - French
+            - Portuguese
+            - German
+            - Turkish
+            - Dutch
+            - Ukrainian
+            - Vietnamese
+            - Indonesian
+            - Japanese
+            - Italian
+            - Korean
+            - Thai
+            - Polish
+            - Romanian
+            - Greek
+            - Czech
+            - Finnish
+            - Hindi
+            - Bulgarian
+            - Danish
+            - Hebrew
+            - Malay
+            - Persian
+            - Slovak
+            - Swedish
+            - Croatian
+            - Filipino
+            - Hungarian
+            - Norwegian
+            - Slovenian
+            - Catalan
+            - Nynorsk
+            - Tamil
+            - Afrikaans
+            - auto
+          note: "Exact enum strings only. English(UK) and en-GB are invalid (status 2013); use English. auto detects the language."
+        pronunciation_dict: {type: object, required: false, example: {tone: ["Treg/tree-g"]}, note: "Custom pronunciation pairs in source/target form."}
+        subtitle_enable: {type: boolean, required: false, default: false}
+        subtitle_type: {type: string, required: false, default: sentence, enum: [sentence, word], example: sentence}
+        voice_modify: {type: object, required: false, note: "Optional pitch, intensity, timbre and sound_effects controls."}
+      bodyType: json
+    test_request:
+      body:
+        model: speech-2.8-hd
+        text: "Hello."
+        stream: false
+        output_format: url
+        voice_setting: {voice_id: English_expressive_narrator, speed: 1, vol: 1, pitch: 0}
+        audio_setting: {sample_rate: 32000, bitrate: 128000, format: mp3, channel: 1}
+    expect: {json_path: base_resp.status_code, equals: 0}
+    cost:
+      type: per_success
+      value: 1.00
+      currency: USD
+      per: 10000
+      unit: character
+      display: {unit: characters, grouped: true}
+      source: docs
+      source_url: https://platform.minimax.io/docs/guides/pricing-paygo#audio
+      checked: 2026-09-18
+      confidence: documented
+      note: "MiniMax bills synchronous Speech 2.8 HD by input characters at $100 per million ($1 per 10,000). Failed requests are not charged."
+    skipped: "Not live-called: synthesis spends real MiniMax credits, and no explicit paid verification was authorized for this change."
+    docs_url: https://platform.minimax.io/docs/api-reference/speech-t2a-http
+
+  - id: minimax.voice-gen.speech-2-8-turbo
+    added: '2026-09-17'
+    capability: voice-gen.speech-2-8-turbo.generate
+    platform: voice-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /v1/t2a_v2
+    name: "MiniMax: Speech 2.8 Turbo"
+    summary: "Generate fast, cost-efficient speech from up to 10,000 characters of text."
+    async: false
+    platform_request:
+      body.model: speech-2.8-turbo
+      body.stream: false
+      body.output_format: url
+    input:
+      body:
+        model: {type: string, required: true, enum: [speech-2.8-turbo], example: speech-2.8-turbo}
+        text: {type: string, required: true, max: 10000, example: "A calm voice can make a complex idea feel simple.", note: "Fewer than 10,000 characters. Use <#x#> between speakable segments for a pause of x seconds."}
+        stream: {type: boolean, required: true, enum: [false], example: false, note: "This catalog route is non-streaming so the relay returns one bounded JSON response."}
+        output_format: {type: string, required: true, enum: [url], example: url, note: "The returned audio URL is valid for 24 hours."}
+        voice_setting:
+          type: object
+          required: true
+          example: {voice_id: English_expressive_narrator, speed: 1, vol: 1, pitch: 0}
+          note: "voice_id is required. Optional controls include speed, vol, pitch, emotion, text_normalization and latex_read. speech-2.8 emotion is happy | sad | angry | fearful | disgusted | surprised | calm; whisper and fluent are 2.6-only (status 2013 on 2.8, even with a whispering-named voice_id — use a whispering-style voice_id instead, or speech-2.6 for emotion=whisper)."
+          properties:
+            voice_id: {type: string, required: true, example: English_expressive_narrator}
+            speed: {type: number, required: false, example: 1}
+            vol: {type: number, required: false, example: 1}
+            pitch: {type: integer, required: false, example: 0}
+            emotion:
+              type: string
+              required: false
+              enum: [happy, sad, angry, fearful, disgusted, surprised, calm]
+              note: "speech-2.8 allows happy | sad | angry | fearful | disgusted | surprised | calm. whisper and fluent are 2.6-only and return status 2013 on 2.8 even with a whispering-named voice_id; use a whispering-style voice_id, or speech-2.6 for emotion=whisper."
+        audio_setting:
+          type: object
+          required: false
+          example: {sample_rate: 32000, bitrate: 128000, format: mp3, channel: 1}
+          note: "Non-streaming output supports mp3, wav and flac. bitrate (mp3 only) is 32000 | 64000 | 128000 | 256000; 192000 is invalid (status 2013). sample_rate is 8000 | 16000 | 22050 | 24000 | 32000 | 44100."
+          properties:
+            sample_rate: {type: integer, required: false, example: 32000, enum: [8000, 16000, 22050, 24000, 32000, 44100]}
+            bitrate: {type: integer, required: false, example: 128000, enum: [32000, 64000, 128000, 256000], note: "mp3 only. 192000 is invalid (status 2013)."}
+            format: {type: string, required: false, example: mp3, note: "Non-streaming output supports mp3, wav and flac."}
+            channel: {type: integer, required: false, example: 1}
+        language_boost:
+          type: string
+          required: false
+          example: auto
+          enum:
+            - Chinese
+            - Chinese,Yue
+            - English
+            - Arabic
+            - Russian
+            - Spanish
+            - French
+            - Portuguese
+            - German
+            - Turkish
+            - Dutch
+            - Ukrainian
+            - Vietnamese
+            - Indonesian
+            - Japanese
+            - Italian
+            - Korean
+            - Thai
+            - Polish
+            - Romanian
+            - Greek
+            - Czech
+            - Finnish
+            - Hindi
+            - Bulgarian
+            - Danish
+            - Hebrew
+            - Malay
+            - Persian
+            - Slovak
+            - Swedish
+            - Croatian
+            - Filipino
+            - Hungarian
+            - Norwegian
+            - Slovenian
+            - Catalan
+            - Nynorsk
+            - Tamil
+            - Afrikaans
+            - auto
+          note: "Exact enum strings only. English(UK) and en-GB are invalid (status 2013); use English. auto detects the language."
+        pronunciation_dict: {type: object, required: false, example: {tone: ["Treg/tree-g"]}, note: "Custom pronunciation pairs in source/target form."}
+        subtitle_enable: {type: boolean, required: false, default: false}
+        subtitle_type: {type: string, required: false, default: sentence, enum: [sentence, word], example: sentence}
+        voice_modify: {type: object, required: false, note: "Optional pitch, intensity, timbre and sound_effects controls."}
+      bodyType: json
+    test_request:
+      body:
+        model: speech-2.8-turbo
+        text: "Hello."
+        stream: false
+        output_format: url
+        voice_setting: {voice_id: English_expressive_narrator, speed: 1, vol: 1, pitch: 0}
+        audio_setting: {sample_rate: 32000, bitrate: 128000, format: mp3, channel: 1}
+    expect: {json_path: base_resp.status_code, equals: 0}
+    cost:
+      type: per_success
+      value: 0.60
+      currency: USD
+      per: 10000
+      unit: character
+      display: {unit: characters, grouped: true}
+      source: docs
+      source_url: https://platform.minimax.io/docs/guides/pricing-paygo#audio
+      checked: 2026-09-18
+      confidence: documented
+      note: "MiniMax bills synchronous Speech 2.8 Turbo by input characters at $60 per million ($0.60 per 10,000). Failed requests are not charged."
+    skipped: "Not live-called: synthesis spends real MiniMax credits, and no explicit paid verification was authorized for this change."
+    docs_url: https://platform.minimax.io/docs/api-reference/speech-t2a-http
+
+  - id: minimax.voice-gen.voices.list
+    kind: utility
+    capability: voice-gen.voices.list
+    platform: voice-gen
+    scope: any_account
+    method: POST
+    path: /v1/get_voice
+    name: "List available voices"
+    summary: "List the current MiniMax system voices and their voice IDs."
+    async: false
+    platform_request:
+      body.voice_type: system
+    input:
+      body:
+        voice_type: {type: string, required: true, enum: [system], example: system, note: "This catalog action intentionally exposes system voices only, so account-specific cloned or generated voices never cross team boundaries on treg's shared MiniMax connection."}
+      bodyType: json
+    test_request: {body: {voice_type: system}}
+    expect: {json_path: base_resp.status_code, equals: 0}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Voice discovery is a free account-management read."}
+    verified: 2026-09-18
+    added: '2026-09-17'
+    example_response: examples/minimax.voice-gen.voices.list.json
+    docs_url: https://platform.minimax.io/docs/api-reference/voice-management-get

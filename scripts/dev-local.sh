@@ -13,6 +13,7 @@
 #
 # Usage:
 #   scripts/dev-local.sh up            # start the server (idempotent)
+#   TREG_HUB_ENABLED=1 …/dev-local.sh up   # a feature flag from your shell reaches the server
 #   scripts/dev-local.sh down          # stop it
 #   scripts/dev-local.sh status        # window list + port check
 #   scripts/dev-local.sh logs          # tail the server window
@@ -26,12 +27,27 @@ set -euo pipefail
 SESSION="treg-dev"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT=18790
-DEV_DB="$ROOT/treg-dev.db"                 # *.db is gitignored
+DEV_DB="${TREG_DEV_DB:-$ROOT/treg-dev.db}"                 # *.db is gitignored
 DEV_HOME="$ROOT/scripts/.dev-home"         # sandbox HOME for the dev CLI
 
 DEV_KEYS="$DEV_HOME/dev-keys.env"           # stable dev-only Fernet + session keys, minted once —
                                             # without them every --reload restart drops sessions/secrets
-SERVER_ENV="TREG_EMAIL_DEV_MODE=true TREG_DATABASE_URL=sqlite+aiosqlite:///$DEV_DB"
+# Feature flags from YOUR shell reach the server through here. A tmux session inherits the TMUX
+# SERVER's environment, not the calling client's, so `TREG_HUB_ENABLED=1 dev-local.sh up` would
+# otherwise start a server that never saw the flag: it looks like it worked, and every hub route
+# answers 404. These expand HERE, in this script's own process, so the value is baked into the
+# command string tmux runs. Add a flag to the list to pass it through.
+PASSTHROUGH=""
+# Keys never go here (they would sit in the tmux command line): put them in $DEV_KEYS, which the
+# server sources. The first-run onboarding, for instance, reads TREG_ONBOARDING_TREG_TOKEN,
+# TREG_ONBOARDING_GITHUB_TOKEN and TREG_AI_GATEWAY_API_KEY from there.
+for _v in TREG_HUB_ENABLED TREG_TABLE_ENABLED TREG_TABLE_TEAMS TREG_TABLE_USERS TREG_SHEETS_REDIRECT_URIS \
+          TREG_ONBOARDING_V2 TREG_ONBOARDING_V2_EMAILS TREG_ONBOARDING_TREG_URL; do
+  [ -n "${!_v:-}" ] && PASSTHROUGH="$PASSTHROUGH $_v=${!_v}"
+done
+# This script's own three come LAST so they always win: the dev stack keeps its own sqlite database
+# and its OTP dev mode whatever the caller's shell says.
+SERVER_ENV="${PASSTHROUGH# } TREG_EMAIL_DEV_MODE=true TREG_FRONTEND_DEV=${TREG_FRONTEND_DEV:-true} TREG_PUBLIC_URL=http://localhost:$PORT TREG_CONNECT_DEMO_ENABLED=true TREG_DATABASE_URL=sqlite+aiosqlite:///$DEV_DB"
 SERVER_CMD="cd $ROOT && set -a && . $DEV_KEYS && set +a && env $SERVER_ENV uv run python -m treg --reload"
 
 ensure_dev_keys() {
@@ -60,6 +76,10 @@ preflight() {
 up() {
   preflight
   ensure_dev_keys
+  command -v npm >/dev/null 2>&1 || die "npm not found. Install Node 22.12 or later."
+  if [ ! -d "$ROOT/frontend/node_modules" ]; then
+    (cd "$ROOT/frontend" && npm ci --include=dev)
+  fi
   if port_up "$PORT" && ! tmux has-session -t "$SESSION" 2>/dev/null; then
     die "port $PORT is already in use by something outside this script (lsof -i :$PORT)"
   fi
@@ -70,6 +90,10 @@ up() {
     info "waiting for the server…"
     for _ in $(seq 1 30); do port_up "$PORT" && break; sleep 0.5; done
     port_up "$PORT" || { tmux capture-pane -pt "$SESSION:server" | tail -20; die "server didn't come up — window output above"; }
+  fi
+  if ! tmux list-windows -t "$SESSION" -F '#{window_name}' | grep -qx frontend; then
+    port_up 5173 && die "port 5173 is already in use outside this dev stack"
+    tmux new-window -t "$SESSION" -n frontend "cd '$ROOT/frontend' && npm run dev -- --host localhost"
   fi
   ok "server up  →  http://localhost:$PORT   (dashboard · /docs · /login)"
   echo "  email OTP dev mode is ON: codes appear on the page / in the API response"

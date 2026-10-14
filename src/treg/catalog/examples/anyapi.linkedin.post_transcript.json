@@ -1,0 +1,21 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "transcript": "Hey, my name is Declan Jackson. I am a member of technical staff here at Artificial Analysis and I'm going to do a quick chat through the recent release of Gemini 3.5 Flash. This release is really int… [1865 chars]",
+      "transcriptNotAvailable": false,
+      "url": "https://www.linkedin.com/posts/artificial-analysis_gemini-35-flash-is-a-step-forward-for-google-activity-7465082408409870337-4Pm-"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "8e8d5e07-53fd-4e8a-b5d1-52ae6a635138"
+}

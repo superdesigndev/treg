@@ -1,0 +1,359 @@
+# Dropleads synchronous API surface. The account/balance route and leads/export/cost are
+# intentionally internal: neither is a public catalog tool. BYOK is never metered by treg.
+provider: dropleads
+source:
+  docs: https://dropleads.readme.io/
+  openapi: null
+  curated: '2026-09-15'
+limits: 'Live account headers observed 60 requests/minute on prime.dropleads.io and 30,000 on api.dropleads.io; treat these as account-specific, not universal plan promises.'
+pricing_url: https://dropleads.io/pricing
+proposed_capabilities:
+  people.enrich.verified: Enrich one person and require verified email data
+endpoints:
+  - id: dropleads.people.email.find
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    host: api.dropleads.io
+    path: /email-finder
+    name: Find a work email
+    summary: Find a person's work email from their name and company.
+    input:
+      bodyType: json
+      body:
+        first_name: {type: string, required: true, example: Jane}
+        last_name: {type: string, required: true, example: Doe}
+        company_domain: {type: string, required: false, example: example.com}
+        company_name: {type: string, required: false, example: Example}
+      note: Provide first_name and last_name plus either company_domain or company_name.
+    test_request:
+      body: {first_name: Jane, last_name: Doe, company_domain: example.test}
+    cost: &email_find_cost
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://dropleads.readme.io/reference/email-finder
+      checked: '2026-09-15'
+      confidence: documented
+      note: One credit when an email is found; a not_found response is free. The response-reported credits_charged is authoritative.
+    docs_url: https://dropleads.readme.io/reference/email-finder
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/dropleads.people.email.find.json
+
+  - id: dropleads.people.phone.find
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    host: api.dropleads.io
+    path: /mobile-finder
+    name: Find a mobile number
+    summary: Find a person's mobile number from a LinkedIn profile URL.
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: true, example: https://www.linkedin.com/in/example}
+    test_request:
+      body: {linkedin_url: https://www.linkedin.com/in/treg-nonexistent-20260915}
+    cost:
+      type: per_success
+      value: 3
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://dropleads.readme.io/reference/mobile-finder
+      checked: '2026-09-15'
+      confidence: documented
+      note: Three credits when a mobile is found; a miss is free. The response-reported credits_charged is authoritative.
+    docs_url: https://dropleads.readme.io/reference/mobile-finder
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/dropleads.people.phone.find.json
+
+  - id: dropleads.people.email.verify
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    host: api.dropleads.io
+    path: /email-verifier
+    name: Verify an email address — catch-all result
+    summary: Check an email address for deliverability.
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, example: hello@example.com}
+    test_request:
+      body: {email: nobody-treg-20260915@example.test}
+    cost:
+      type: per_call
+      value: 0.1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://dropleads.readme.io/reference/email-verifier
+      checked: '2026-09-15'
+      confidence: verified
+      note: Reserves 0.1 credit. Dropleads reports the exact credits_charged, including zero for an uncharged catch-all result.
+    docs_url: https://dropleads.readme.io/reference/email-verifier
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/dropleads.people.email.verify.json
+
+  - id: dropleads.people.search
+    capability: people.search
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v2/prime-db/leads/search
+    name: Search people
+    summary: Search the Dropleads people database with company, role, location and intent filters.
+    input: &people_search_input
+      bodyType: json
+      body:
+        filters: &people_filters
+          type: object
+          required: true
+          example: {companyDomains: [example.com], jobTitles: [Founder]}
+          note: >-
+            Filter object. Supported keys are jobTitles, jobTitlesExclude, jobTitlesSimilar,
+            industries, industriesExclude, keywords, keywordsExclude, technologies,
+            technologiesExclude, departments, departmentsExclude, seniority, seniorityExclude,
+            companyNames, companyDomains, linkedinUrls, employeeRanges, customEmployeeRange,
+            revenueRange, fundingRange, foundedYear, countries, states, cities, locationScope,
+            personalCountries, personalStates, personalCities, personalRegions,
+            organizationCountries, organizationStates, organizationCities,
+            organizationRegions, lists, companyLists, segments, segmentsExclude, buyingIntent,
+            and requireEmail. Most inclusion/exclusion fields are arrays; personal and
+            organization location scopes and saved-list filters use the documented objects.
+            countries uses the live-verified plain list of country names; an include object
+            returns 200 but is ignored by the provider.
+        pagination:
+          type: object
+          required: false
+          default: {page: 1, limit: 20}
+          example: {page: 1, limit: 10}
+          note: page starts at 1; limit is clamped by Dropleads to 50.
+    test_request:
+      body: {filters: {companyDomains: [example.test]}, pagination: {page: 1, limit: 1}}
+    cost: &free_cost
+      type: free
+      value: 0
+      currency: USD
+      per: 1
+      unit: call
+      note: Searching and counting do not consume credits; only returned-data actions are metered.
+    docs_url: https://dropleads.readme.io/reference/post_api-v2-prime-db-leads-search
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/dropleads.people.search.json
+
+  - id: dropleads.people.search.count
+    capability: people.search.count
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v2/prime-db/leads/count
+    name: Count matching people
+    summary: Count people matching Dropleads search filters without returning records.
+    input:
+      bodyType: json
+      body:
+        filters: *people_filters
+    test_request:
+      body: {filters: {companyDomains: [example.test]}}
+    cost: *free_cost
+    docs_url: https://dropleads.readme.io/reference/post_api-v2-prime-db-leads-count
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/dropleads.people.search.count.json
+
+  - id: dropleads.people.enrich.verified
+    capability: people.enrich.verified
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v2/prime-db/leads/enrich
+    name: Enrich a person with verified email
+    summary: Enrich one person and return an email with Dropleads verification metadata.
+    input: &verified_person_input
+      bodyType: json
+      body:
+        id: {type: string, required: false}
+        first_name: {type: string, required: false, example: Jane}
+        last_name: {type: string, required: false, example: Doe}
+        name: {type: string, required: false, example: Jane Doe}
+        email: {type: string, required: false, example: jane@example.com}
+        organization_name: {type: string, required: false, example: Example}
+        domain: {type: string, required: false, example: example.com}
+        linkedin_url: {type: string, required: false, example: https://www.linkedin.com/in/example}
+        email_verification_type:
+          type: string
+          required: false
+          default: valid_and_catchall
+          enum: [valid_only, valid_and_catchall]
+      note: Supply at least one documented identity. valid_only excludes catch-all addresses.
+    test_request:
+      body: {name: Jane Doe, organization_name: Example, domain: example.com, email_verification_type: valid_and_catchall}
+    cost: &person_enrich_cost
+      type: per_success
+      value: 0.2
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://dropleads.readme.io/reference/post_api-v2-prime-db-leads-enrich
+      checked: '2026-09-15'
+      confidence: documented
+      note: 0.2 credit for a returned verified lead; a miss is free. credits_consumed is authoritative.
+    docs_url: https://dropleads.readme.io/reference/post_api-v2-prime-db-leads-enrich
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/dropleads.people.enrich.verified.json
+  - id: dropleads.people.enrich
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/v2/prime-db/leads/simple-enrich
+    name: Enrich a person
+    miss:
+      status: 400
+      when: "error == 'Person not found. Try providing more information like LinkedIn URL or company name.'"
+      means: "nobody matched the identity (400 with this exact error) — a normal, free outcome, not a bad request. Other 400 bodies stay real request errors."
+    summary: Enrich one person without requiring a verified email result.
+    input:
+      <<: *verified_person_input
+      body:
+        id: {type: string, required: false}
+        first_name: {type: string, required: false, example: Jane}
+        last_name: {type: string, required: false, example: Doe}
+        name: {type: string, required: false, example: Jane Doe}
+        email: {type: string, required: false, example: jane@example.com}
+        organization_name: {type: string, required: false, example: Example}
+        domain: {type: string, required: false, example: example.com}
+        linkedin_url: {type: string, required: false, example: https://www.linkedin.com/in/example}
+    test_request:
+      body: {name: Jane Doe, organization_name: Example, domain: example.com}
+    cost:
+      <<: *person_enrich_cost
+      source: observed
+      confidence: verified
+      note: 0.2 credit for a returned person; a miss is free. credits_consumed is authoritative.
+    docs_url: https://dropleads.readme.io/reference/post_api-v2-prime-db-leads-simple-enrich
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/dropleads.people.enrich.json
+  - id: dropleads.companies.search
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    domain: companies
+    method: POST
+    path: /api/v1/companies/search
+    name: Search companies
+    summary: Search companies with firmographic, location and technology filters.
+    input: &company_search_input
+      bodyType: json
+      body:
+        filters: &company_filters
+          type: object
+          required: true
+          example: {companyDomains: [example.com]}
+          note: >-
+            Supports companyNames, companyDomains, linkedinUrls, industries,
+            industriesExclude, keywords, keywordsExclude, technologies,
+            technologiesExclude, employeeRanges, customEmployeeRange, revenueRange,
+            fundingRange, foundedYear, countries, states, cities, regions and lists.
+            countries uses the live-verified {include: [country names]} object shape; a plain
+            list returns 200 but is ignored by the provider.
+        pagination:
+          type: object
+          required: false
+          default: {page: 1, limit: 20}
+          example: {page: 1, limit: 10}
+          note: page starts at 1; limit is at most 50.
+    test_request:
+      body: {filters: {companyDomains: [example.test]}, pagination: {page: 1, limit: 1}}
+    cost: &company_cost
+      type: per_result
+      value: 0.1
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://dropleads.readme.io/reference/post_api-v1-companies-search
+      checked: '2026-09-15'
+      confidence: documented
+      note: 0.1 credit per returned company. credits.creditsDeducted is authoritative; empty results are free.
+    docs_url: https://dropleads.readme.io/reference/post_api-v1-companies-search
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/dropleads.companies.search.json
+
+  - id: dropleads.companies.search.count
+    capability: companies.search.count
+    platform: companies
+    scope: any_account
+    domain: companies
+    method: POST
+    path: /api/v1/companies/count
+    name: Count matching companies
+    summary: Count companies matching search filters without returning records.
+    input:
+      bodyType: json
+      body:
+        filters: *company_filters
+    test_request:
+      body: {filters: {companyDomains: [example.test]}}
+    cost: *free_cost
+    docs_url: https://dropleads.readme.io/reference/post_api-v1-companies-count
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/dropleads.companies.search.count.json
+
+  - id: dropleads.companies.enrich
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    domain: companies
+    method: POST
+    path: /api/v1/companies/enrich
+    name: Enrich companies
+    summary: Enrich up to 50 companies synchronously by domain and/or company name.
+    input:
+      bodyType: json
+      body:
+        domains:
+          type: array[string]
+          required: false
+          example: [example.com]
+        companyNames:
+          type: array[string]
+          required: false
+          example: [Example]
+      note: Supply domains and/or companyNames; the combined maximum is 50.
+    test_request:
+      body: {domains: [example.test]}
+    cost:
+      <<: *company_cost
+      unit: record
+      note: 0.1 credit per returned company. credits.creditsDeducted is authoritative; the combined input maximum is 50.
+    docs_url: https://dropleads.readme.io/reference/post_api-v1-companies-enrich
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/dropleads.companies.enrich.json

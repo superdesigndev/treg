@@ -1,0 +1,574 @@
+"""Orchestrate deferred settlement for metered asynchronous provider tasks."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from dataclasses import dataclass
+from datetime import timedelta
+
+import httpx
+from urllib.parse import quote
+from sqlalchemy import select, update
+
+from .. import archive, audit, oauth_providers
+from ..config import TREG_USER_AGENT
+from ..domain.governance.access import pinned_tag_predicates
+from ..domain import asynctasks
+from ..domain import money as ledger
+from ..domain.catalog import store as catalog_store
+from ..domain.catalog.results import classify, has_result_rules, verdict
+from ..domain.money import settlement
+from ..infra.db import session_maker
+from ..infra import money_admission
+from ..infra.money_session import money_session
+from ..infra.upstream.relay import relay
+from ..models import AsyncResourceRecord, AsyncTaskRecord, Hold, Tool
+from ..timeutil import utcnow_naive
+from .call import keyslots
+from .call.resolve import _host_of
+from .call.types import ResolutionFailed, UpstreamRequest
+
+
+log = logging.getLogger("treg.asynctasks")
+DEFAULT_LIMIT = 50
+GLOBAL_CONCURRENCY = 8
+PROVIDER_CONCURRENCY = 2
+POLL_TIMEOUT_S = 10
+PROCESS_TIMEOUT_S = 30
+CLAIM_LEASE_S = 60
+# Terminal task JSON is small; a provider that streams more than this is not answering a poll.
+MAX_POLL_BODY_BYTES = 2 * 1024 * 1024
+
+
+def _json_value(value: object) -> object:
+    """Detach catalog objects from YAML scalar types before storing them in a JSON column."""
+    return json.loads(json.dumps(value, default=lambda item: item.isoformat()))
+
+
+async def defer_submission(mk, body: bytes, org_id: int, *, tags: dict | None = None) -> int:
+    """Persist the pending task before allowing the request path to leave its hold open."""
+    now = utcnow_naive()
+    # The request path has already established that this body is JSON and carries the task id
+    # (`_submission_accepted`); a failure here is a programming error and surfaces as one.
+    extracted = asynctasks.extract_submission(mk.async_descriptor or {}, json.loads(body))
+    task_id, poll_url, error = extracted.task_id, extracted.poll_url, ""
+    due = now + min(timedelta(seconds=60), asynctasks.max_age(mk.async_descriptor))
+    async with session_maker() as db:
+        hold = await db.get(Hold, mk.call_id)
+        if hold is None:
+            raise RuntimeError("async submission hold disappeared before persistence")
+        row = AsyncTaskRecord(
+            call_id=str(mk.call_id), org_id=org_id, provider=mk.provider,
+            tags=dict(tags) if tags else None,
+            endpoint_id=mk.endpoint_id, task_id=task_id, poll_url=poll_url,
+            reserved_micro=hold.amount_micro, descriptor=_json_value(mk.async_descriptor or {}),
+            settlement_basis=_json_value(mk.settlement_basis),
+            created_at=now, next_check_at=due, error=error, key_slot=mk.key_slot,
+        )
+        db.add(row)
+        if task_id is not None:
+            poll = (row.descriptor or {}).get("poll") or {}
+            if poll.get("endpoint"):
+                await _remember_resource(db, row, f"poll:{poll['endpoint']}", task_id)
+            result = (row.descriptor or {}).get("result") or {}
+            if (result.get("fetch")
+                    and (result.get("fetch_param") or {}).get("value_from")
+                    == (row.descriptor or {}).get("id_from")):
+                await _remember_resource(db, row, f"fetch:{result['fetch']}", task_id)
+        await db.commit()
+    mk.call_id = None
+    return int(hold.amount_micro)
+
+
+def _result_id(descriptor: dict, document: object) -> str | None:
+    fetch = asynctasks.artifact(descriptor, document).get("fetch")
+    return str(fetch["value"]) if fetch and fetch.get("value") not in (None, "") else None
+
+
+def _dotted(document: object, path: str) -> object:
+    value = document
+    for part in path.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return None
+        value = value[part]
+    return value
+
+
+async def _remember_resource(db, row: AsyncTaskRecord, kind: str, resource_id: str) -> None:
+    exists = (await db.execute(select(AsyncResourceRecord.id).where(
+        AsyncResourceRecord.org_id == row.org_id,
+        AsyncResourceRecord.provider == row.provider,
+        AsyncResourceRecord.resource_kind == kind,
+        AsyncResourceRecord.resource_id == resource_id,
+    ))).scalar_one_or_none()
+    if exists is None:
+        db.add(AsyncResourceRecord(
+            org_id=row.org_id, provider=row.provider, resource_kind=kind,
+            resource_id=resource_id, source_call_id=row.call_id,
+            tags=dict(row.tags) if row.tags else None, key_slot=row.key_slot,
+        ))
+
+
+async def remember_platform_resources(
+    org_id: int, provider: str, call_id: str, rule: dict, body: bytes,
+    *, tags: dict | None = None, key_slot: str | None = None,
+) -> int:
+    """Persist opaque ids a successful call created on treg's shared provider account."""
+    try:
+        document = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return 0
+    resources = {
+        (str(item.get("kind") or ""), str(value))
+        for item in rule.get("produces") or []
+        if isinstance(item, dict)
+        and (value := _dotted(document, str(item.get("path") or ""))) not in (None, "")
+    }
+    if not resources:
+        return 0
+    added = 0
+    async with session_maker() as db:
+        for kind, resource_id in resources:
+            exists = (await db.execute(select(AsyncResourceRecord.id).where(
+                AsyncResourceRecord.org_id == org_id,
+                AsyncResourceRecord.provider == provider,
+                AsyncResourceRecord.resource_kind == kind,
+                AsyncResourceRecord.resource_id == resource_id,
+            ))).scalar_one_or_none()
+            if exists is None:
+                db.add(AsyncResourceRecord(
+                    org_id=org_id, provider=provider, resource_kind=kind,
+                    resource_id=resource_id, source_call_id=call_id,
+                    tags=dict(tags) if tags else None, key_slot=key_slot,
+                ))
+                added += 1
+        await db.commit()
+    return added
+
+
+async def observe_owned_poll(call_id: str, status_code: int, body: bytes) -> str:
+    """Apply a live, org-authorized poll to its original task; never charge the poll itself."""
+    if not 200 <= status_code < 300:
+        return "noop"
+    try:
+        document = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return "noop"
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        if row is None or row.status != asynctasks.PENDING:
+            return "noop"
+        snapshot = row.model_copy()
+    outcome = asynctasks.classify_terminal(snapshot.descriptor, document)
+    if outcome not in ("success", "failure", "billed_failure"):
+        return "noop"
+    return await _finish_terminal(
+        snapshot, outcome, document, status_code, body, utcnow_naive(), require_usage=True)
+
+
+async def views_for(
+    org_id: int, call_ids: list[str], *, pinned_tags: dict | None = None,
+) -> dict[str, dict]:
+    """The task's own account of each metered async call, keyed by call id, for activity displays.
+
+    The audit row froze the reserve as "charged" at submission; this is where the display learns
+    what actually happened (settled amount, refund, 24-hour fallback) and what the caller bought.
+    Terminal JSON comes from the archive; a settled task whose recording was shed still reports its
+    money truthfully, only without a link.
+    """
+    if not call_ids:
+        return {}
+    async with session_maker() as db:
+        rows = (await db.execute(
+            select(AsyncTaskRecord).where(
+                AsyncTaskRecord.org_id == org_id,
+                *pinned_tag_predicates(AsyncTaskRecord.tags, pinned_tags),
+                AsyncTaskRecord.call_id.in_(list(call_ids))))).scalars().all()
+    if not rows:
+        return {}
+    documents = await archive.load_terminal_responses(
+        [(row.call_id, row.endpoint_id) for row in rows if row.status == asynctasks.SETTLED])
+    views: dict[str, dict] = {}
+    for row in rows:
+        view = {
+            "status": row.status, "task_id": row.task_id,
+            "reserved_micro": row.reserved_micro, "settled_micro": row.settled_micro,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+            "error": row.error or None,
+            "result_url": None, "fetch_command": None,
+            "ttl_note": ((row.descriptor.get("result") or {}).get("ttl_note") or None),
+        }
+        body = documents.get(row.call_id)
+        if body is not None:
+            try:
+                found = asynctasks.artifact(row.descriptor, json.loads(body))
+            except ValueError:
+                found = {}
+            view["result_url"] = found.get("result_url")
+            fetch = found.get("fetch")
+            if fetch:
+                view["fetch_command"] = asynctasks.fetch_command(fetch)
+        views[row.call_id] = view
+    return views
+
+
+@dataclass(frozen=True)
+class TickResult:
+    claimed: int = 0
+    settled: int = 0
+    released: int = 0
+    backed_off: int = 0
+    timed_out: int = 0
+
+
+async def _due_candidates(limit: int, now) -> list[tuple[str, str]]:
+    async with session_maker() as db:
+        return list((await db.execute(
+            select(AsyncTaskRecord.call_id, AsyncTaskRecord.provider)
+            .where(AsyncTaskRecord.status == asynctasks.PENDING,
+                   AsyncTaskRecord.next_check_at <= now)
+            .order_by(AsyncTaskRecord.next_check_at, AsyncTaskRecord.call_id)
+            .limit(limit)
+        )).all())
+
+
+async def _claim_due(call_id: str, now) -> int | None:
+    """Claim only after a network slot is available; attempts is the fencing token."""
+    async with session_maker() as db:
+        attempt = (await db.execute(update(AsyncTaskRecord).where(
+            AsyncTaskRecord.call_id == call_id,
+            AsyncTaskRecord.status == asynctasks.PENDING,
+            AsyncTaskRecord.next_check_at <= now,
+        ).values(attempts=AsyncTaskRecord.attempts + 1,
+                 next_check_at=now + timedelta(seconds=CLAIM_LEASE_S))
+          .returning(AsyncTaskRecord.attempts))).scalar_one_or_none()
+        await db.commit()
+        return attempt
+
+
+def _poll_target(row: AsyncTaskRecord) -> tuple[str, str, list[tuple[str, str]]]:
+    poll = row.descriptor.get("poll") or {}
+    if row.poll_url:
+        return "GET", row.poll_url, []
+    endpoint_id = poll.get("endpoint")
+    endpoint = catalog_store.load().by_id.get(endpoint_id)
+    if not endpoint:
+        raise RuntimeError(f"poll endpoint {endpoint_id!r} is not catalogued")
+    provider = oauth_providers.get(row.provider)
+    if provider is None or not provider.base_url:
+        raise RuntimeError(f"provider {row.provider!r} is not relayable")
+    url = provider.base_url.rstrip("/") + "/" + endpoint["path"].lstrip("/")
+    query: list[tuple[str, str]] = []
+    param = poll.get("param") or {}
+    if param:
+        # The declared location decides, never a coincidental placeholder; a path value is
+        # percent-encoded so a provider-controlled task id cannot add URL syntax.
+        name, value = str(param.get("name") or ""), str(row.task_id)
+        if param.get("in") == "pathParams":
+            marker = "{" + name + "}"
+            if marker not in url:
+                raise RuntimeError(f"poll endpoint {endpoint_id!r} has no {marker} placeholder")
+            url = url.replace(marker, quote(value, safe=""))
+        else:
+            query.append((name, value))
+    return str(endpoint.get("method") or "GET"), url, query
+
+
+async def _poll(row: AsyncTaskRecord, client: httpx.AsyncClient) -> tuple[int, bytes]:
+    provider = oauth_providers.get(row.provider)
+    if provider is None:
+        raise RuntimeError(f"provider {row.provider!r} is not registered")
+    method, url, query = _poll_target(row)
+    # The query travels as `query_items`: the relay composes the upstream URL from those (it
+    # forwards a URL's own query string nowhere), so a query-parameter poll (MiniMax v1
+    # `?task_id=`) appended to the URL reached the provider empty - "invalid params" until the
+    # 24-hour deadline. Path-parameter polls never showed it. Live 2026-09-02.
+    # The task exists only on the account that accepted it (`keyslots`); a retired account
+    # raises here and the row fails like any other unreachable poll.
+    account = keyslots.pinned(row.provider, owners=(row.key_slot,))
+    tool = Tool(org_id=row.org_id, name=row.endpoint_id, owner="treg-worker",
+                base_url=provider.base_url, host=_host_of(provider.base_url),
+                bindings=oauth_providers.platform_bindings(provider, account))
+
+    async def empty():
+        if False:
+            yield b""
+
+    request = UpstreamRequest(method=method, raw_headers=(), query_items=tuple(query),
+                              body_stream=empty, has_body=False)
+    response = await relay(request, url, tool, [], client, force_identity=True)
+    try:
+        chunks, size = [], 0
+        async for chunk in response.body_stream:
+            size += len(chunk)
+            if size > MAX_POLL_BODY_BYTES:
+                raise ValueError(f"poll response exceeds {MAX_POLL_BODY_BYTES} bytes")
+            chunks.append(chunk)
+        return response.status, b"".join(chunks)
+    finally:
+        await response.close()
+
+
+async def _finish(call_id: str, outcome: str, document: object | None, now, *,
+                  require_usage: bool = False, expected_attempt: int | None = None,
+                  terminal_hit: bool | None = None, terminal_verdict: str | None = None) -> str:
+    async with money_session(session_maker()) as db:
+        row = await db.get(AsyncTaskRecord, call_id, with_for_update=True)
+        if row is None or row.status != asynctasks.PENDING:
+            return "noop"
+        if expected_attempt is not None and row.attempts != expected_attempt:
+            return "noop"
+        # The 24-hour bound, not a descriptor's shorter `max_age`: that one only ends polling. A
+        # finished answer seen while the row is still pending is a delivered answer and settles.
+        if outcome in ("success", "failure", "billed_failure") and asynctasks.expired(row.created_at, now):
+            outcome = "timed_out"
+        if outcome in ("success", "failure", "billed_failure", "timed_out", "account_retired") \
+                and await db.get(Hold, call_id) is None:
+            # The request path already closed this hold (cancelled at the commit boundary, or
+            # reaped): there is no money left to move, and a row "settled" at zero would lie.
+            row.status = asynctasks.RELEASED
+            row.settled_micro = 0
+            row.error = "hold was already closed before the terminal state"
+            row.completed_at = now
+            await db.commit()
+            log.warning("async task %s reached %s but its hold was already closed", call_id, outcome)
+            return "closed_hold"
+        if outcome in ("success", "billed_failure"):
+            evidence = {"terminal": document}
+            if outcome == "success":
+                row.result_id = _result_id(row.descriptor, document)
+                fetch = (row.descriptor or {}).get("result") or {}
+                if row.result_id is not None and fetch.get("fetch"):
+                    await _remember_resource(db, row, f"fetch:{fetch['fetch']}", row.result_id)
+            unobserved = (row.settlement_basis["amount"]["kind"] == "usage"
+                          and settlement.usage_evidence(row.settlement_basis, evidence) is None)
+            if unobserved and require_usage:
+                # A caller may see completion before the provider publishes its final usage.
+                # Retain fetch ownership, but leave money and the worker's due time untouched.
+                await db.commit()
+                return "awaiting_usage"
+            raw = settlement.settle(row.settlement_basis, evidence)
+            if unobserved:
+                row.error = "usage field missing from the terminal response; settled at the reserve"
+                log.error("ASYNC USAGE UNOBSERVED: call %s on %s succeeded but %s carried no usage "
+                          "figure; settled at the reserve - check the provider's response shape",
+                          row.call_id, row.provider, row.endpoint_id)
+            row.settled_micro = await ledger.settle_in_transaction(db, row.call_id, raw, meta={
+                "provider": row.provider, "cost_source": row.settlement_basis["amount"]["kind"],
+                "async_task": True, "terminal_outcome": outcome,
+                **({"reconcile_review": True} if unobserved else {}),
+            })
+            row.status = asynctasks.SETTLED
+            row.hit = terminal_hit
+            row.verdict = terminal_verdict
+            if outcome == "billed_failure" and not row.error:
+                row.error = "provider reported a billable terminal failure"
+        elif outcome == "failure":
+            await ledger.release_in_transaction(db, row.call_id, reason="async_task_failed",
+                                                meta={"provider": row.provider, "async_task": True})
+            row.settled_micro = 0
+            row.status = asynctasks.RELEASED
+            row.hit = terminal_hit
+        elif outcome == "timed_out":
+            # No terminal state within the task's window (24 hours, or the descriptor's `max_age`)
+            # means treg does not know whether the caller got anything. The platform absorbs that
+            # uncertainty: the hold goes back to the team in full, the upstream charge (if any) is
+            # treg's, and the row is flagged for a human.
+            # Charging the reserve here would bill a customer for an outcome nobody observed.
+            await ledger.release_in_transaction(db, row.call_id, reason="async_task_timed_out",
+                                                meta={"provider": row.provider, "async_task": True,
+                                                      "reconcile_review": True})
+            row.settled_micro = 0
+            row.status = asynctasks.TIMED_OUT
+            row.error = "terminal state not observed within the polling window; hold released, platform absorbs"
+            log.error("ASYNC TASK TIMED OUT: call %s on %s (%s) had no terminal state in its window; "
+                      "released %d micro-USD to the team, platform absorbs the upstream charge - "
+                      "check whether the provider changed its status field",
+                      row.call_id, row.provider, row.endpoint_id, row.reserved_micro)
+        elif outcome == "account_retired":
+            # The treg account that accepted the task is no longer configured, so no poll can ever
+            # observe it. Waiting out the deadline would only keep the team's balance held: release
+            # in full now, the platform absorbs any upstream charge, and a human reconciles.
+            await ledger.release_in_transaction(db, row.call_id, reason="async_task_account_retired",
+                                                meta={"provider": row.provider, "async_task": True,
+                                                      "reconcile_review": True})
+            row.settled_micro = 0
+            row.status = asynctasks.RELEASED
+            row.error = f"treg account {row.key_slot!r} is no longer configured; hold released, platform absorbs"
+            log.error("ASYNC TASK ON A RETIRED ACCOUNT: call %s on %s/%s released %d micro-USD to the "
+                      "team; the task cannot be polled again", row.call_id, row.provider,
+                      row.key_slot, row.reserved_micro)
+        else:
+            row.consecutive_failures = row.consecutive_failures + 1 if outcome == "poll_error" else 0
+            due = (asynctasks.next_failure_check(now, row.consecutive_failures)
+                   if row.consecutive_failures else asynctasks.next_check(now, row.attempts))
+            row.next_check_at = min(due, row.created_at + asynctasks.max_age(row.descriptor))
+            await db.commit()
+            return "backed_off"
+        row.completed_at = now
+        await db.commit()
+        return row.status
+
+
+async def _finish_balance(org_id: int | None, operation: str, call_id: str, outcome: str,
+                          document: object | None, now, **kwargs) -> str:
+    """Admit one balance-row finish, then open its session. Not used around a second admit."""
+    orgs = money_admission.require_balance_orgs([org_id])
+    async with money_admission.admit(orgs, operation=operation):
+        return await _finish(call_id, outcome, document, now, **kwargs)
+
+
+async def _finish_terminal(snapshot: AsyncTaskRecord, outcome: str, document: object,
+                           status_code: int, body: bytes, now, *, require_usage: bool = False,
+                           expected_attempt: int | None = None) -> str:
+    """One settlement and evidence path for caller polling and the recovery worker."""
+    # A confirmed terminal failure produced no contact for this attempt. Count it in
+    # routing's P(hit); pending and timed-out jobs still have no known verdict.
+    terminal_hit = (classify(snapshot.endpoint_id, status_code, body).hit
+                    if outcome == "success" else
+                    False if has_result_rules(snapshot.endpoint_id) else None)
+    # Only a finished answer carries a verdict word; a failure has nothing to judge.
+    terminal_verdict = verdict(snapshot.endpoint_id, status_code, body) if outcome == "success" else None
+    # The snapshot only selects admission. _finish rechecks the locked row and remains the
+    # authority for charging; a release inside an already-admitted success scope is not a second admit.
+    # Missing usage skips admission only when a non-expired success or billed failure will
+    # keep the hold. A failure, and any already-expired terminal state, releases it.
+    usage_missing = (require_usage and snapshot.settlement_basis["amount"]["kind"] == "usage"
+                     and settlement.usage_evidence(
+                         snapshot.settlement_basis, {"terminal": document}) is None)
+    expired = asynctasks.expired(snapshot.created_at, now)
+    retains_hold = (usage_missing and outcome in ("success", "billed_failure") and not expired)
+    finish_args = dict(require_usage=require_usage, expected_attempt=expected_attempt,
+                       terminal_hit=terminal_hit, terminal_verdict=terminal_verdict)
+    if retains_hold:
+        # Task-row update only: the hold stays, and the balance row is not touched.
+        result = await _finish(snapshot.call_id, outcome, document, now, **finish_args)
+    elif outcome in ("success", "billed_failure") and not expired:
+        result = await _finish_balance(
+            snapshot.org_id, "async", snapshot.call_id, outcome, document, now, **finish_args)
+    else:
+        result = await _finish_balance(
+            snapshot.org_id, "release", snapshot.call_id, outcome, document, now, **finish_args)
+    expected = asynctasks.SETTLED if outcome in ("success", "billed_failure") else asynctasks.RELEASED
+    if result == expected:
+        if terminal_hit is not None:
+            audit.record_async_call_hit(
+                snapshot.call_id, snapshot.endpoint_id, snapshot.org_id, terminal_hit,
+                verdict=terminal_verdict)
+        # Only the winning finalizer records evidence; a late poll cannot replace the result
+        # whose usage was charged. Archive failure cannot undo the committed money transaction.
+        try:
+            await archive.store_terminal_response(
+                snapshot.call_id, snapshot.provider, snapshot.endpoint_id, status_code, body)
+        except Exception:  # noqa: BLE001 - archive is best effort, settlement is durable
+            log.exception("could not archive terminal evidence for %s", snapshot.call_id)
+    return result
+
+
+async def _process(call_id: str, client: httpx.AsyncClient, attempt: int) -> str:
+    now = utcnow_naive()
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        if row is None or row.status != asynctasks.PENDING or row.attempts != attempt:
+            return "noop"
+        if row.error:
+            if not asynctasks.expired(row.created_at, now, row.descriptor):
+                return "backed_off"
+        snapshot = row.model_copy()
+    if asynctasks.expired(snapshot.created_at, now, snapshot.descriptor):
+        return await _finish_balance(
+            snapshot.org_id, "release", call_id, "timed_out", None, now, expected_attempt=attempt)
+    try:
+        async with asyncio.timeout(POLL_TIMEOUT_S):
+            status, body = await _poll(snapshot, client)
+        if not 200 <= status < 300:
+            # Only a successful poll is evidence. A 404 or 401 body that happens to carry
+            # "status": "succeeded" is an error envelope, not a terminal state; the CLI treats
+            # every non-2xx the same way, and money must not depend on an error page's fields.
+            log.warning("async poll for call %s returned HTTP %s; backing off", call_id, status)
+            return await _finish(call_id, "poll_error", None, utcnow_naive(), expected_attempt=attempt)
+        document = json.loads(body)
+        outcome = asynctasks.classify_terminal(snapshot.descriptor, document)
+        if outcome in ("success", "failure", "billed_failure"):
+            return await _finish_terminal(snapshot, outcome, document, status, body, utcnow_naive(),
+                                          expected_attempt=attempt)
+        return await _finish(call_id, outcome, document, utcnow_naive(), expected_attempt=attempt)
+    except money_admission.AdmissionRefused:
+        raise
+    except ResolutionFailed as exc:
+        if exc.kind != "platform_account_retired":
+            log.warning("async poll failed for call %s: %s: %s", call_id, type(exc).__name__, exc)
+            return await _finish(call_id, "poll_error", None, utcnow_naive(), expected_attempt=attempt)
+        # Retired: released below, outside the handler, so a failing release is handled alone.
+    except Exception as exc:  # noqa: BLE001 - one row's failure must never abort the tick
+        # relay() raises GatewayFailed (an unset platform key, an SSRF refusal), httpx raises its
+        # own, JSON raises ValueError: all mean "no evidence this tick". Back off and say why; the
+        # deadline still ends it, and the whole tick keeps serving the other rows.
+        log.warning("async poll failed for call %s: %s: %s", call_id, type(exc).__name__, exc)
+        return await _finish(call_id, "poll_error", None, utcnow_naive(), expected_attempt=attempt)
+    try:
+        return await _finish_balance(snapshot.org_id, "release", call_id, "account_retired",
+                                     None, utcnow_naive(), expected_attempt=attempt)
+    except money_admission.AdmissionRefused:
+        raise
+    except Exception:  # noqa: BLE001 - the row stays pending; the next tick or the deadline ends it
+        log.exception("could not release async task %s on a retired account", call_id)
+        return "backed_off"
+
+
+async def settle_due(*, limit: int = DEFAULT_LIMIT, client: httpx.AsyncClient | None = None) -> TickResult:
+    """Claim one worker tick and process network waits under global and provider caps."""
+    now = utcnow_naive()
+    candidates = await _due_candidates(limit, now)
+    if not candidates:
+        return TickResult()
+    # Load the catalog before any poll starts, in a thread: `_poll_target` reads it, and the first
+    # read in a fresh worker process parses every provider file. Inside a poll that parse froze the
+    # event loop past POLL_TIMEOUT_S, so polls already in flight timed out without the provider
+    # being slow. After this the polls read the cached catalog and their timeout measures the
+    # provider alone.
+    await asyncio.to_thread(catalog_store.load)
+    global_sem = asyncio.Semaphore(GLOBAL_CONCURRENCY)
+    provider_sems: dict[str, asyncio.Semaphore] = {}
+    owned = client is None
+    client = client or httpx.AsyncClient(timeout=POLL_TIMEOUT_S, headers={"User-Agent": TREG_USER_AGENT})
+    claimed = 0
+
+    async def run(call_id: str, provider: str) -> str:
+        nonlocal claimed
+        sem = provider_sems.setdefault(provider, asyncio.Semaphore(PROVIDER_CONCURRENCY))
+        async with sem, global_sem:
+            attempt = None
+            try:
+                async with asyncio.timeout(PROCESS_TIMEOUT_S):
+                    attempt = await _claim_due(call_id, utcnow_naive())
+                    if attempt is None:
+                        return "noop"
+                    claimed += 1
+                    return await _process(call_id, client, attempt)
+            except TimeoutError:
+                if attempt is None:
+                    return "backed_off"
+                return await _finish(call_id, "poll_error", None, utcnow_naive(),
+                                     expected_attempt=attempt)
+
+    try:
+        results = await asyncio.gather(*(run(*item) for item in candidates), return_exceptions=True)
+    finally:
+        if owned:
+            await client.aclose()
+    outcomes = []
+    for (call_id, _), result in zip(candidates, results):
+        if isinstance(result, BaseException):  # _process already guards; this is the last net
+            log.error("async task %s: tick-level failure: %s", call_id, result, exc_info=result)
+            outcomes.append("backed_off")
+        else:
+            outcomes.append(result)
+    return TickResult(
+        claimed=claimed, settled=outcomes.count(asynctasks.SETTLED),
+        released=outcomes.count(asynctasks.RELEASED),
+        backed_off=outcomes.count("backed_off"), timed_out=outcomes.count(asynctasks.TIMED_OUT),
+    )

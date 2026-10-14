@@ -1,0 +1,31 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "address": "11 Washington Ave, Miami Beach, FL, United States, Florida",
+          "category": "Seafood Restaurant",
+          "email": "marketing@joesstonecrab.com",
+          "followers": 44000,
+          "image": "https://scontent-ord5-2.xx.fbcdn.net/v/t39.30808-1/626760115_1324209663080275_798372662851648055_n.webp",
+          "phone": "(305) 673-0365",
+          "title": "Joe's Stone Crab",
+          "url": "https://www.facebook.com/JoesStoneCrab/",
+          "website": "http://joesstonecrab.com/"
+        }
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 1,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "28bcbda6-175e-4b6c-903e-fcfb238470ba"
+}

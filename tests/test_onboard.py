@@ -13,8 +13,9 @@ from sqlalchemy import select
 from conftest import make_upstream
 
 from treg.api import app
-from treg.db import reset_db, session_maker
-from treg.models import CallRecord, Membership, Org, Secret, Tool, User
+from treg.infra.db import reset_db, session_maker
+from treg.domain.identity import session as sess
+from treg.models import CallRecord, DenyRule, Membership, Org, Secret, Tool, User
 
 ADMIN = "ENV-ADMIN-SECRET"
 
@@ -107,10 +108,20 @@ async def test_seed_tool_and_accept_teammate(c):
     # the dashboard narrative: the user creates a REAL team, seeds the echo tool, and invites a
     # demo teammate that auto-joins. Use an IDENTITY token (like the dashboard session) so X-Treg-Org
     # resolves the active team across orgs — a per-org token is bound to one org.
-    code = (await c.post("/auth/email/start", json={"email": "builder@x.io"})).json()["dev_code"]
-    tok = (await c.post("/auth/email/verify", json={"email": "builder@x.io", "code": code})).json()["token"]
+    started = (await c.post("/auth/email/start", json={"email": "builder@x.io"})).json()
+    if code := started.get("dev_code"):
+        tok = (await c.post(
+            "/auth/email/verify", json={"email": "builder@x.io", "code": code})).json()["token"]
+    else:
+        # Postgres correctly suppresses the SQLite-only dev OTP. This journey needs an identity token,
+        # not an OTP assertion, so establish the already-proven identity directly for that engine.
+        async with session_maker() as s:
+            user = User(email="builder@x.io")
+            s.add(user)
+            await s.commit()
+        tok = sess.make_identity(user.id)
     org = (await c.post("/orgs", json={"name": "Acme"}, headers=_h(tok))).json()  # first team: identity token only, no org yet
-    oh = {**_h(tok), "X-Treg-Org": org["org"]}
+    oh = _h(org["token"])
     # seed the tool
     st = await c.post("/onboard/seed-tool", headers=oh)
     assert st.status_code == 200 and st.json()["tool"] == "echo"
@@ -125,6 +136,14 @@ async def test_seed_tool_and_accept_teammate(c):
     await c.post(f"/orgs/{org['org_id']}/invites", json={"email": "real@person.com", "role": "member"}, headers=oh)
     bad = await c.post("/onboard/accept-teammate", json={"email": "real@person.com"}, headers=oh)
     assert bad.status_code == 400
+    assert bad.json() == {"detail": "onboarding auto-accept is for demo teammates only"}
+    missing = await c.post(
+        "/onboard/accept-teammate",
+        json={"email": "missing@demo.treg.local"},
+        headers=oh,
+    )
+    assert missing.status_code == 404
+    assert missing.json() == {"detail": "no pending invite for that email"}
 
 
 async def test_demo_footprint_excluded_from_admin_stats(c):
@@ -135,3 +154,27 @@ async def test_demo_footprint_excluded_from_admin_stats(c):
     assert after["users"] == before["users"]  # the three fake teammates don't count
     assert after["orgs"] == before["orgs"]     # the demo team doesn't count
     assert after["tools"] == before["tools"]   # nor its tool
+
+
+async def test_reset_sweeps_deny_rules_naming_a_demo_teammate(c):
+    """A member-scoped deny rule may name the demo teammate in the user's REAL team. `DenyRule.user_id`
+    is a foreign key, so on Postgres deleting the demo User with that rule alive fails at the key
+    and reset returns a 500. Every other path that deletes a User sweeps first; reset did not."""
+    async with session_maker() as s:
+        user = User(email="builder@x.io")
+        s.add(user)
+        await s.commit()
+    tok = sess.make_identity(user.id)
+    org = (await c.post("/orgs", json={"name": "Acme"}, headers=_h(tok))).json()
+    oh = _h(org["token"])
+    await c.post(f"/orgs/{org['org_id']}/invites", json={"email": "alex@demo.treg.local", "role": "member"}, headers=oh)
+    assert (await c.post("/onboard/accept-teammate", json={"email": "alex@demo.treg.local"}, headers=oh)).status_code == 200
+    async with session_maker() as s:
+        alex = (await s.execute(select(User).where(User.email == "alex@demo.treg.local"))).scalar_one()
+    r = await c.post(f"/orgs/{org['org_id']}/deny", json={"host": "api.example.com", "user_id": alex.id}, headers=oh)
+    assert r.status_code == 200, r.text
+    rr = await c.post("/onboard/reset", headers=oh)
+    assert rr.status_code == 200, rr.text
+    async with session_maker() as s:
+        assert await s.get(User, alex.id) is None
+        assert (await s.execute(select(DenyRule).where(DenyRule.user_id == alex.id))).first() is None

@@ -37,12 +37,13 @@ source:
 pricing_url: https://majestic.com/plans-pricing
 endpoints:
   - id: majestic.web.url.metrics
+    added: '2026-07-28'
     capability: web.url.metrics
     platform: web
     scope: any_account
     method: GET
     path: /api/json
-    name: "Get Trust Flow and Citation Flow for URLs"
+    name: "Trust Flow and Citation Flow by domain or URL"
     summary: "Trust Flow, Citation Flow and link counts for up to 100 URLs or domains per call"
     input:
       queryParams:
@@ -68,12 +69,13 @@ endpoints:
     docs_url: https://developer-support.majestic.com/api/commands/get-index-item-info.shtml
 
   - id: majestic.web.backlinks.summary
+    added: '2026-07-28'
     capability: web.backlinks.summary
     platform: web
     scope: any_account
     method: GET
     path: /api/json
-    name: "Get backlink summary for a domain"
+    name: "Backlinks summary by domain — referring domains, .edu/.gov"
     summary: "Aggregate backlink profile of a domain — external links, referring domains, .edu/.gov"
     input:
       queryParams:
@@ -101,12 +103,13 @@ endpoints:
     docs_url: https://developer-support.majestic.com/api/commands/get-index-item-info.shtml
 
   - id: majestic.web.backlinks.list
+    added: '2026-07-28'
     capability: web.backlinks.list
     platform: web
     scope: any_account
     method: GET
     path: /api/json
-    name: "List backlinks to a URL"
+    name: "Backlinks by domain or URL — anchor texts, Trust Flow"
     summary: "Individual backlinks to a URL or domain, with anchor text and both ends' Trust Flow"
     input:
       queryParams:
@@ -140,12 +143,13 @@ endpoints:
     docs_url: https://developer-support.majestic.com/api/commands/get-back-link-data.shtml
 
   - id: majestic.web.linking_domains.list
+    added: '2026-07-28'
     capability: web.linking_domains.list
     platform: web
     scope: any_account
     method: GET
     path: /api/json
-    name: "List referring domains linking to a target"
+    name: "Referring domains by domain — Trust Flow, country, IP"
     summary: "Referring domains linking to a target, with Trust Flow, country, IP and link count"
     input:
       queryParams:
@@ -173,12 +177,13 @@ endpoints:
     docs_url: https://developer-support.majestic.com/api/commands/get-ref-domains.shtml
 
   - id: majestic.web.anchors.list
+    added: '2026-07-28'
     capability: web.anchors.list
     platform: web
     scope: any_account
     method: GET
     path: /api/json
-    name: "List anchor texts linking to a target"
+    name: "Anchor texts in backlinks by domain or URL"
     summary: "Anchor texts pointing at a target, with referring-domain and link counts per phrase"
     input:
       queryParams:
@@ -208,12 +213,13 @@ endpoints:
     docs_url: https://developer-support.majestic.com/api/commands/get-anchor-text.shtml
 
   - id: majestic.web.site.top_pages
+    added: '2026-07-28'
     capability: web.site.top_pages
     platform: web
     scope: any_account
     method: GET
     path: /api/json
-    name: "List a site's most-linked pages"
+    name: "Most-linked pages by domain — backlinks, Trust Flow"
     summary: "A site's most-linked pages, with Trust Flow, Citation Flow and backlink counts"
     input:
       queryParams:
@@ -238,13 +244,14 @@ endpoints:
     docs_url: https://developer-support.majestic.com/api/commands/get-top-pages.shtml
 
   - id: majestic.account.usage
+    added: '2026-07-28'
     kind: account
     capability: account.usage
     platform: account
     scope: own_account
     method: GET
     path: /api/json
-    name: "Get account usage and index status"
+    name: "Account usage — remaining units and index status"
     summary: "Remaining Analysis, Retrieval and Index Item units, plan dates and current index build"
     input:
       queryParams:

@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 347,
+    "from_cache": false,
+    "llm_calls": 0,
+    "pages_fetched": 1,
+    "partial": false,
+    "warnings": [
+      "module: step module: 11 null fields across 9 items",
+      "module: linkedin-profile-posts: williamhgates · 8 posts from the page"
+    ]
+  },
+  "recipe": "linkedin-profile-posts",
+  "usage": {
+    "boxes": [
+      "gate",
+      "crawl"
+    ],
+    "cache": "miss",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      },
+      {
+        "cache": "archive",
+        "call": "scrape",
+        "engine": "archive",
+        "units": 1,
+        "url": "https://www.linkedin.com/in/williamhgates"
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 172,
+      "search": 3000
+    },
+    "units": 2
+  },
+  "version": 3,
+  "rows": [
+    {
+      "comments": 19,
+      "kind": "post",
+      "likes": 92,
+      "media": null,
+      "posted_at": "2026-10-11T03:45:31Z",
+      "reposts": null,
+      "text": "Tackling malnutrition requires more than a steady supply of nutritious food. Access to healthcare, clean water, and safe sanitation are just as essential to growing up healthy.",
+      "url": "https://www.linkedin.com/feed/update/urn:li:activity:7514893923710984192/"
+    },
+    {
+      "comments": 398,
+      "kind": "post",
+      "likes": 3030,
+      "media": null,
+      "posted_at": "2026-10-08T21:11:23Z",
+      "reposts": null,
+      "text": "Those white clouds you see behind planes are not emissions or chemicals. They’re clouds that form when planes fly through cold, humid air, and they are responsible for half of the global warming caused by aviation. Fortunately, it’s a relatively easy fix.",
+      "url": "https://www.linkedin.com/feed/update/urn:li:activity:7514069962865500160/"
+    }
+  ]
+}

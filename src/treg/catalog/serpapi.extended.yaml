@@ -6,12 +6,13 @@ source:
   - https://serpapi.com/search-api
 endpoints:
 - id: serpapi.x.google-maps
-  tier: extended
+  capability: google.serp.maps
   platform: google
+  tier: extended
   method: GET
   path: /search
-  name: Search Google Maps places
-  summary: Live Google Maps place results for a keyword and location — position, place_id, rating, address, phone, website
+  name: "Google Maps place results for a query — rating, address"
+  summary: Live Google Maps place results for a keyword and location, or a Google place_id lookup — position, place_id, rating, address, phone, website
   input:
     queryParams:
       engine:
@@ -21,12 +22,12 @@ endpoints:
       type:
         type: string
         required: true
-        note: search (keyword search) or place (single place lookup)
+        note: 'search (keyword list) or place (single-place lookup via place_id). Prefer type=place with place_id. Upstream does not require type when place_id is set (https://serpapi.com/google-maps-api); Treg still requires type — send type=place for a place_id lookup.'
         example: search
       q:
         type: string
         required: true
-        note: search keyword
+        note: 'required for type=search (keyword). For a place_id lookup, Treg still requires q — send the place name, or the same place_id as q, alongside place_id.'
         example: pizza
       ll:
         type: string
@@ -38,7 +39,12 @@ endpoints:
         required: false
         note: pagination offset, increments of 20
         example: 0
-    note: answers arrive in `local_results`.
+      place_id:
+        type: string
+        required: false
+        note: 'Google place_id for a single-place lookup / NAP (name, address, phone, website). Prefer with type=place. Upstream accepts place_id without other optional params (https://serpapi.com/google-maps-api); Treg still requires type and q, so send type=place and a q (place name, or place_id as q) alongside place_id.'
+        example: ChIJifIePKtZwokRVZ-UdRGkZzs
+    note: 'Keyword search answers arrive in `local_results`; a place_id lookup answers in `place_results`. Search: engine=google_maps type=search q=pizza ll=@…. Place lookup: engine=google_maps type=place q=<place name or place_id> place_id=ChIJifIePKtZwokRVZ-UdRGkZzs.'
   cost:
     type: per_success
     value: 0.015
@@ -58,6 +64,7 @@ endpoints:
       ll: '@40.7455096,-74.0083012,14z'
   docs_url: https://serpapi.com/google-maps-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-maps.json
   observed_time: 1.95
 - id: serpapi.x.google-shopping
@@ -65,7 +72,7 @@ endpoints:
   platform: google
   method: GET
   path: /search
-  name: Search Google Shopping products
+  name: "Google Shopping results for a query — price, seller"
   summary: Live Google Shopping results for a keyword — price, seller, rating, delivery
   input:
     queryParams:
@@ -108,6 +115,7 @@ endpoints:
       hl: en
   docs_url: https://serpapi.com/google-shopping-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-shopping.json
   observed_time: 1.98
 - id: serpapi.x.google-scholar
@@ -115,7 +123,7 @@ endpoints:
   platform: google
   method: GET
   path: /search
-  name: Search Google Scholar articles
+  name: "Google Scholar results for a query — citation counts"
   summary: Live Google Scholar results for a keyword — title, link, snippet, citation count
   input:
     queryParams:
@@ -144,14 +152,16 @@ endpoints:
       q: biology
   docs_url: https://serpapi.com/google-scholar-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-scholar.json
   observed_time: 6.55
 - id: serpapi.x.google-trends
-  tier: extended
+  capability: google.keywords.trends
   platform: google
+  tier: extended
   method: GET
   path: /search
-  name: Get Google Trends interest data
+  name: "Google Trends interest over time for search terms"
   summary: Interest-over-time, regional breakdown, related topics or related queries for up to 5 comma-separated terms
   input:
     queryParams:
@@ -167,7 +177,7 @@ endpoints:
       data_type:
         type: string
         required: false
-        note: TIMESERIES (default) | GEO_MAP | GEO_MAP_0 | RELATED_TOPICS | RELATED_QUERIES
+        note: 'TIMESERIES (default; single or multiple queries) | GEO_MAP (compared breakdown by region; multiple comma-separated q only) | GEO_MAP_0 (interest by region; single query only) | RELATED_TOPICS (single query only) | RELATED_QUERIES (single query only)'
         example: TIMESERIES
       geo:
         type: string
@@ -179,7 +189,7 @@ endpoints:
         required: false
         note: e.g. "today 12-m", "now 7-d"
         example: today 12-m
-    note: 'result key depends on data_type: interest_over_time / compared_breakdown_by_region / interest_by_region / related_topics / related_queries.'
+    note: 'result key depends on data_type: TIMESERIES interest_over_time (single or multiple q); GEO_MAP compared_breakdown_by_region (multiple q only); GEO_MAP_0 interest_by_region (single q); RELATED_TOPICS related_topics (single q); RELATED_QUERIES related_queries (single q).'
   cost:
     type: per_success
     value: 0.015
@@ -198,14 +208,16 @@ endpoints:
       geo: US
   docs_url: https://serpapi.com/google-trends-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-trends.json
   observed_time: 7.14
 - id: serpapi.x.google-news
-  tier: extended
+  capability: google.serp.news
   platform: google
+  tier: extended
   method: GET
   path: /search
-  name: Search Google News articles
+  name: "Google News results for a query or topic"
   summary: Live Google News results for a keyword, topic token or story token
   input:
     queryParams:
@@ -249,6 +261,7 @@ endpoints:
       hl: en
   docs_url: https://serpapi.com/google-news-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-news.json
   observed_time: 2.11
 - id: serpapi.x.google-images
@@ -256,7 +269,7 @@ endpoints:
   platform: google
   method: GET
   path: /search
-  name: Search Google Images
+  name: "Google Images results for a query"
   summary: Live Google Images results for a keyword — thumbnail, original URL, source, size
   input:
     queryParams:
@@ -285,6 +298,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/google-images-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-images.json
   observed_time: 3.63
 - id: serpapi.x.google-jobs
@@ -292,7 +306,7 @@ endpoints:
   platform: google
   method: GET
   path: /search
-  name: Search Google Jobs listings
+  name: "Google Jobs postings for a query and location"
   summary: Live Google Jobs results for a keyword and location
   input:
     queryParams:
@@ -339,6 +353,7 @@ endpoints:
       hl: en
   docs_url: https://serpapi.com/google-jobs-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-jobs.json
   observed_time: 2.85
 - id: serpapi.x.google-finance
@@ -346,7 +361,7 @@ endpoints:
   platform: google
   method: GET
   path: /search
-  name: Get Google Finance quote and history
+  name: "Google Finance quote, chart and news by ticker"
   summary: Live Google Finance data for a ticker — price, chart series, key statistics, related news
   input:
     queryParams:
@@ -386,6 +401,7 @@ endpoints:
       window: 1Y
   docs_url: https://serpapi.com/google-finance-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-finance.json
   observed_time: 1.41
 - id: serpapi.x.google-patents
@@ -393,7 +409,7 @@ endpoints:
   platform: google
   method: GET
   path: /search
-  name: Search Google Patents
+  name: "Google Patents results for a query — inventor, assignee"
   summary: Live Google Patents results for a keyword — patent id, dates, inventor, assignee
   input:
     queryParams:
@@ -441,6 +457,7 @@ endpoints:
       num: 10
   docs_url: https://serpapi.com/google-patents-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-patents.json
   observed_time: 1.59
 - id: serpapi.x.google-flights
@@ -448,7 +465,7 @@ endpoints:
   platform: google
   method: GET
   path: /search
-  name: Search Google Flights itineraries
+  name: "Google Flights itineraries by route and date — prices"
   summary: Live Google Flights results — best/other flights, price insights, for a route and date
   input:
     queryParams:
@@ -504,6 +521,7 @@ endpoints:
       type: '2'
   docs_url: https://serpapi.com/google-flights-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-flights.json
   observed_time: 2.45
 - id: serpapi.x.google-hotels
@@ -511,7 +529,7 @@ endpoints:
   platform: google
   method: GET
   path: /search
-  name: Search Google Hotels properties
+  name: "Google Hotels results for a query and stay dates"
   summary: Live Google Hotels results for a query, check-in/out dates and party size
   input:
     queryParams:
@@ -557,14 +575,16 @@ endpoints:
       adults: 2
   docs_url: https://serpapi.com/google-hotels-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-hotels.json
   observed_time: 7.59
 - id: serpapi.x.google-local
-  tier: extended
+  capability: google.serp.local
   platform: google
+  tier: extended
   method: GET
   path: /search
-  name: Search Google local business results
+  name: "Google local pack results for a query and location"
   summary: The Google 'local pack' — nearby businesses for a keyword and location
   input:
     queryParams:
@@ -606,6 +626,7 @@ endpoints:
       location: New York, New York, United States
   docs_url: https://serpapi.com/google-local-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-local.json
   observed_time: 11.29
 - id: serpapi.x.google-lens
@@ -613,7 +634,7 @@ endpoints:
   platform: google
   method: GET
   path: /search
-  name: Reverse image search with Google Lens
+  name: "Google Lens reverse image search by image URL"
   summary: Visual matches, exact matches or 'about this image' data for an image URL
   input:
     queryParams:
@@ -648,6 +669,7 @@ endpoints:
       type: visual_matches
   docs_url: https://serpapi.com/google-lens-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-lens.json
   observed_time: 4.1
 - id: serpapi.x.google-videos
@@ -655,7 +677,7 @@ endpoints:
   platform: google
   method: GET
   path: /search
-  name: Search Google Videos
+  name: "Google Videos results for a query"
   summary: Live Google Videos vertical results for a keyword
   input:
     queryParams:
@@ -684,6 +706,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/google-videos-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-videos.json
   observed_time: 3.62
 - id: serpapi.x.google-events
@@ -691,7 +714,7 @@ endpoints:
   platform: google
   method: GET
   path: /search
-  name: Search Google Events listings
+  name: "Google Events results for a query and location"
   summary: Live Google Events vertical results for a keyword and location
   input:
     queryParams:
@@ -728,6 +751,7 @@ endpoints:
       q: concerts in austin
   docs_url: https://serpapi.com/google-events-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-events.json
   observed_time: 1.57
 - id: serpapi.x.google-ads
@@ -735,7 +759,7 @@ endpoints:
   platform: google
   method: GET
   path: /search
-  name: Get paid ads shown on a Google SERP
+  name: "Paid ads on a Google results page for a query"
   summary: The shopping/text ad units Google shows on its own results page for a keyword (distinct from the Ads Transparency Center)
   input:
     queryParams:
@@ -760,7 +784,7 @@ endpoints:
         required: true
         note: city-level origin of the search — confirmed REQUIRED live (a bare gl/hl call 400s with "Missing `location` parameter")
         example: Austin, Texas, United States
-    note: answers arrive in `ads_results`.
+    note: answers arrive in `ads` (not `ads_results`).
   cost:
     type: per_success
     value: 0.015
@@ -779,6 +803,7 @@ endpoints:
       location: Austin, Texas, United States
   docs_url: https://serpapi.com/google-ads-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-ads.json
 - id: serpapi.x.google-light
   tier: extended
@@ -786,7 +811,7 @@ endpoints:
   method: GET
   path: /search
   capability: google.serp.organic
-  name: Search Google (lightweight organic)
+  name: "Google organic results for a query — fast, trimmed"
   summary: A faster, trimmed-down variant of the main Google organic engine — same query grammar, smaller payload
   input:
     queryParams:
@@ -823,14 +848,16 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/google-light-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-light.json
   observed_time: 0.75
 - id: serpapi.x.google-ai-mode
-  tier: extended
+  capability: google.serp.ai_mode
   platform: google
+  tier: extended
   method: GET
   path: /search
-  name: Get Google AI Mode response
+  name: "Google AI Mode answer for a query"
   summary: Google's conversational AI Mode answer for a query
   input:
     queryParams:
@@ -859,13 +886,15 @@ endpoints:
       q: best coffee brewing method
   docs_url: https://serpapi.com/google-ai-mode-api
   verified: '2026-07-30'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.google-ai-mode.json
 - id: serpapi.x.google-ai-overview
+  added: '2026-07-28'
   tier: extended
   platform: google
   method: GET
   path: /search
-  name: Get a Google AI Overview panel
+  name: "Google AI Overview panel by page token"
   summary: The AI Overview panel Google attaches to a SERP, fetched via the page_token a prior engine=google call returned
   input:
     queryParams:
@@ -895,7 +924,7 @@ endpoints:
   platform: bing
   method: GET
   path: /search
-  name: Search Bing organic results
+  name: "Bing organic search results for a query"
   summary: Live Bing organic results for a keyword
   input:
     queryParams:
@@ -934,6 +963,7 @@ endpoints:
       mkt: en-US
   docs_url: https://serpapi.com/bing-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.bing-search.json
   observed_time: 11.83
   capability: bing.serp.organic
@@ -942,7 +972,7 @@ endpoints:
   platform: bing
   method: GET
   path: /search
-  name: Search Bing News
+  name: "Bing News results for a query"
   summary: Live Bing News vertical results for a keyword
   input:
     queryParams:
@@ -971,6 +1001,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/bing-news-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.bing-news.json
   observed_time: 1.14
   capability: bing.serp.news
@@ -979,7 +1010,7 @@ endpoints:
   platform: bing
   method: GET
   path: /search
-  name: Search Bing Images
+  name: "Bing Images results for a query"
   summary: Live Bing Images vertical results for a keyword
   input:
     queryParams:
@@ -1008,6 +1039,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/bing-images-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.bing-images.json
   observed_time: 1.85
   capability: bing.serp.images
@@ -1016,7 +1048,7 @@ endpoints:
   platform: bing
   method: GET
   path: /search
-  name: Search Bing Videos
+  name: "Bing Videos results for a query"
   summary: Live Bing Videos vertical results for a keyword
   input:
     queryParams:
@@ -1045,6 +1077,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/bing-videos-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.bing-videos.json
   observed_time: 2.36
   capability: bing.serp.videos
@@ -1053,7 +1086,7 @@ endpoints:
   platform: bing
   method: GET
   path: /search
-  name: Search Bing Shopping
+  name: "Bing Shopping results for a query"
   summary: Live Bing Shopping vertical results for a keyword
   input:
     queryParams:
@@ -1082,6 +1115,7 @@ endpoints:
       q: coffee maker
   docs_url: https://serpapi.com/bing-shopping-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.bing-shopping.json
   observed_time: 3.02
   capability: bing.serp.shopping
@@ -1090,7 +1124,7 @@ endpoints:
   platform: bing
   method: GET
   path: /search
-  name: Get a Bing Copilot answer
+  name: "Bing Copilot answer for a prompt"
   summary: Bing's conversational Copilot answer for a prompt
   input:
     queryParams:
@@ -1119,13 +1153,14 @@ endpoints:
       q: what is the capital of france
   docs_url: https://serpapi.com/bing-copilot-api
   verified: '2026-07-30'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.bing-copilot.json
 - id: serpapi.x.baidu-search
   tier: extended
   platform: baidu
   method: GET
   path: /search
-  name: Search Baidu organic results
+  name: "Baidu organic search results for a query"
   summary: Live Baidu organic results for a keyword
   input:
     queryParams:
@@ -1158,6 +1193,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/baidu-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.baidu-search.json
   observed_time: 19.5
   capability: baidu.serp.organic
@@ -1166,7 +1202,7 @@ endpoints:
   platform: baidu
   method: GET
   path: /search
-  name: Search Baidu News
+  name: "Baidu News results for a query"
   summary: Live Baidu News vertical results for a keyword
   input:
     queryParams:
@@ -1195,6 +1231,7 @@ endpoints:
       q: coffee
   docs_url: https://serpapi.com/baidu-news-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.baidu-news.json
   observed_time: 2.89
   capability: baidu.serp.news
@@ -1203,7 +1240,7 @@ endpoints:
   platform: duckduckgo
   method: GET
   path: /search
-  name: Search DuckDuckGo organic results
+  name: "DuckDuckGo organic search results for a query"
   summary: Live DuckDuckGo organic results for a keyword
   input:
     queryParams:
@@ -1239,6 +1276,7 @@ endpoints:
       kl: us-en
   docs_url: https://serpapi.com/duckduckgo-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.duckduckgo-search.json
   observed_time: 6.88
   capability: duckduckgo.serp.organic
@@ -1247,7 +1285,7 @@ endpoints:
   platform: duckduckgo
   method: GET
   path: /search
-  name: Search DuckDuckGo News
+  name: "DuckDuckGo News results for a query"
   summary: Live DuckDuckGo News vertical results for a keyword
   input:
     queryParams:
@@ -1276,6 +1314,7 @@ endpoints:
       q: apple
   docs_url: https://serpapi.com/duckduckgo-news-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.duckduckgo-news.json
   observed_time: 5.19
   capability: duckduckgo.serp.news
@@ -1284,7 +1323,7 @@ endpoints:
   platform: duckduckgo
   method: GET
   path: /search
-  name: Search DuckDuckGo (lightweight)
+  name: "DuckDuckGo organic results for a query — fast, trimmed"
   summary: A faster, trimmed-down variant of DuckDuckGo organic search
   input:
     queryParams:
@@ -1313,6 +1352,7 @@ endpoints:
       q: apple
   docs_url: https://serpapi.com/duckduckgo-light-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.duckduckgo-light.json
   observed_time: 1.88
   capability: duckduckgo.serp.organic
@@ -1321,7 +1361,7 @@ endpoints:
   platform: duckduckgo
   method: GET
   path: /search
-  name: Search DuckDuckGo Maps
+  name: "DuckDuckGo Maps results for a query and location"
   summary: Live DuckDuckGo Maps vertical results for a keyword and location
   input:
     queryParams:
@@ -1350,13 +1390,14 @@ endpoints:
       q: pizza
   docs_url: https://serpapi.com/duckduckgo-maps-api
   verified: '2026-07-30'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.duckduckgo-maps.json
 - id: serpapi.x.yahoo-search
   tier: extended
   platform: yahoo
   method: GET
   path: /search
-  name: Search Yahoo organic results
+  name: "Yahoo organic search results for a query"
   summary: Live Yahoo organic results for a keyword
   input:
     queryParams:
@@ -1392,6 +1433,7 @@ endpoints:
       vc: us
   docs_url: https://serpapi.com/yahoo-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yahoo-search.json
   observed_time: 3.17
   capability: yahoo.serp.organic
@@ -1400,7 +1442,7 @@ endpoints:
   platform: yahoo
   method: GET
   path: /search
-  name: Search Yahoo Images
+  name: "Yahoo Images results for a query"
   summary: Live Yahoo Images vertical results for a keyword
   input:
     queryParams:
@@ -1429,6 +1471,7 @@ endpoints:
       p: coffee
   docs_url: https://serpapi.com/yahoo-images-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yahoo-images.json
   observed_time: 1.99
   capability: yahoo.serp.images
@@ -1437,7 +1480,7 @@ endpoints:
   platform: yahoo
   method: GET
   path: /search
-  name: Search Yahoo Videos
+  name: "Yahoo Videos results for a query"
   summary: Live Yahoo Videos vertical results for a keyword
   input:
     queryParams:
@@ -1466,6 +1509,7 @@ endpoints:
       p: coffee
   docs_url: https://serpapi.com/yahoo-videos-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yahoo-videos.json
   observed_time: 1.99
   capability: yahoo.serp.videos
@@ -1474,7 +1518,7 @@ endpoints:
   platform: yandex
   method: GET
   path: /search
-  name: Search Yandex organic results
+  name: "Yandex organic search results for a query"
   summary: Live Yandex organic results for a keyword
   input:
     queryParams:
@@ -1509,6 +1553,7 @@ endpoints:
       text: coffee
   docs_url: https://serpapi.com/yandex-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yandex-search.json
   observed_time: 2.01
   capability: yandex.serp.organic
@@ -1517,7 +1562,7 @@ endpoints:
   platform: yandex
   method: GET
   path: /search
-  name: Search Yandex Images
+  name: "Yandex Images results for a query"
   summary: Live Yandex Images vertical results for a keyword
   input:
     queryParams:
@@ -1546,6 +1591,7 @@ endpoints:
       text: coffee
   docs_url: https://serpapi.com/yandex-images-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yandex-images.json
   observed_time: 2.15
   capability: yandex.serp.images
@@ -1554,7 +1600,7 @@ endpoints:
   platform: yandex
   method: GET
   path: /search
-  name: Search Yandex Videos
+  name: "Yandex Videos results for a query"
   summary: Live Yandex Videos vertical results for a keyword
   input:
     queryParams:
@@ -1583,6 +1629,7 @@ endpoints:
       text: coffee
   docs_url: https://serpapi.com/yandex-videos-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yandex-videos.json
   observed_time: 2.3
   capability: yandex.serp.videos
@@ -1591,7 +1638,7 @@ endpoints:
   platform: naver
   method: GET
   path: /search
-  name: Search Naver organic results
+  name: "Naver organic search results for a query"
   summary: Live Naver organic results for a keyword
   input:
     queryParams:
@@ -1625,6 +1672,7 @@ endpoints:
       query: paris
   docs_url: https://serpapi.com/naver-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.naver-search.json
   observed_time: 2.97
   capability: naver.serp.organic
@@ -1633,7 +1681,7 @@ endpoints:
   platform: naver
   method: GET
   path: /search
-  name: Get a Naver AI overview panel
+  name: "Naver AI overview panel for a query"
   summary: Naver's AI-generated overview panel for a query
   input:
     queryParams:
@@ -1662,6 +1710,7 @@ endpoints:
       query: coffee
   docs_url: https://serpapi.com/naver-ai-overview-api
   verified: '2026-07-30'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.naver-ai-overview.json
 - id: serpapi.x.amazon-search
   tier: extended
@@ -1669,7 +1718,7 @@ endpoints:
   method: GET
   path: /search
   capability: amazon.search.products
-  name: Search Amazon products
+  name: "Amazon product search by keyword — ASIN, price, rating"
   summary: Live Amazon search results for a keyword — ASIN, title, price, rating, reviews
   input:
     queryParams:
@@ -1705,6 +1754,7 @@ endpoints:
       amazon_domain: amazon.com
   docs_url: https://serpapi.com/amazon-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.amazon-search.json
   observed_time: 2.39
 - id: serpapi.x.amazon-product
@@ -1713,7 +1763,7 @@ endpoints:
   method: GET
   path: /search
   capability: amazon.product.detail
-  name: Get an Amazon product's detail page
+  name: "Amazon product page by ASIN — price, specs, reviews"
   summary: Full Amazon product page data for a given ASIN — price, specs, reviews, related products
   input:
     queryParams:
@@ -1748,6 +1798,7 @@ endpoints:
       amazon_domain: amazon.com
   docs_url: https://serpapi.com/amazon-product-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.amazon-product.json
   observed_time: 10.71
 - id: serpapi.x.ebay-search
@@ -1755,7 +1806,7 @@ endpoints:
   platform: ebay
   method: GET
   path: /search
-  name: Search eBay listings
+  name: "eBay listing search by keyword or category"
   summary: Live eBay search results for a keyword or category
   input:
     queryParams:
@@ -1789,6 +1840,7 @@ endpoints:
       _nkw: Coffee
   docs_url: https://serpapi.com/ebay-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.ebay-search.json
   observed_time: 4.72
   capability: ebay.search.products
@@ -1797,7 +1849,7 @@ endpoints:
   platform: ebay
   method: GET
   path: /search
-  name: Get an eBay listing's detail page
+  name: "eBay listing page by product id — price, seller, shipping"
   summary: Full eBay item page data for a given product id — price, seller, shipping, specifications
   input:
     queryParams:
@@ -1830,6 +1882,7 @@ endpoints:
       product_id: '305576857892'
   docs_url: https://serpapi.com/ebay-product-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.ebay-product.json
   observed_time: 2.52
   capability: ebay.product.detail
@@ -1838,7 +1891,7 @@ endpoints:
   platform: walmart
   method: GET
   path: /search
-  name: Search Walmart products
+  name: "Walmart product search by keyword"
   summary: Live Walmart search results for a keyword
   input:
     queryParams:
@@ -1872,6 +1925,7 @@ endpoints:
       query: coffee maker
   docs_url: https://serpapi.com/walmart-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.walmart-search.json
   observed_time: 47.47
   capability: walmart.search.products
@@ -1880,7 +1934,7 @@ endpoints:
   platform: walmart
   method: GET
   path: /search
-  name: Get a Walmart product's detail page
+  name: "Walmart product page by product id — price, stock, reviews"
   summary: Full Walmart product page data for a given product id — price, stock, shipping, reviews
   input:
     queryParams:
@@ -1909,15 +1963,17 @@ endpoints:
       product_id: '147423982'
   docs_url: https://serpapi.com/walmart-product-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.walmart-product.json
   observed_time: 5.15
   capability: walmart.product.detail
 - id: serpapi.x.home-depot-search
   tier: extended
-  platform: web
+  capability: home-depot.products.search
+  platform: home-depot
   method: GET
   path: /search
-  name: Search Home Depot products
+  name: "Search Home Depot products"
   summary: Live Home Depot search results for a keyword
   input:
     queryParams:
@@ -1950,6 +2006,7 @@ endpoints:
       q: hammer
   docs_url: https://serpapi.com/home-depot-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.home-depot-search.json
   observed_time: 13.05
 - id: serpapi.x.yelp-search
@@ -1957,7 +2014,7 @@ endpoints:
   platform: yelp
   method: GET
   path: /search
-  name: Search Yelp businesses
+  name: "Yelp business search by description and location"
   summary: Live Yelp business listings for a description and location
   input:
     queryParams:
@@ -1993,6 +2050,7 @@ endpoints:
       find_desc: Coffee
   docs_url: https://serpapi.com/yelp-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.yelp-search.json
   observed_time: 2.49
   capability: yelp.business.search
@@ -2001,7 +2059,7 @@ endpoints:
   platform: tripadvisor
   method: GET
   path: /search
-  name: Search Tripadvisor listings
+  name: "Tripadvisor search for a destination — hotels, restaurants"
   summary: Live Tripadvisor results for a destination or query — hotels, restaurants, things to do
   input:
     queryParams:
@@ -2036,6 +2094,7 @@ endpoints:
       ssrc: r
   docs_url: https://serpapi.com/tripadvisor-search-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.tripadvisor-search.json
   observed_time: 0.87
   capability: tripadvisor.search.general
@@ -2044,7 +2103,7 @@ endpoints:
   platform: facebook
   method: GET
   path: /search
-  name: Get a public Facebook profile or Page
+  name: "Public Facebook profile or Page by username or id"
   summary: Public Facebook profile/Page data for a username or numeric id — followers, likes, about, photos
   input:
     queryParams:
@@ -2074,6 +2133,7 @@ endpoints:
       profile_id: Modernatx
   docs_url: https://serpapi.com/facebook-profile-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.facebook-profile.json
   observed_time: 0.79
   capability: facebook.user.profile
@@ -2083,7 +2143,7 @@ endpoints:
   method: GET
   path: /search
   capability: instagram.user.profile
-  name: Get a public Instagram profile
+  name: "Public Instagram profile by username — bio, followers"
   summary: Public Instagram profile data for a username — bio, followers, recent posts
   input:
     queryParams:
@@ -2117,6 +2177,7 @@ endpoints:
       profile_id: serpapicom
   docs_url: https://serpapi.com/instagram-profile-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.instagram-profile.json
   observed_time: 4.84
 - id: serpapi.x.brave-ai-mode
@@ -2124,7 +2185,7 @@ endpoints:
   platform: ai-search
   method: GET
   path: /search
-  name: Get a Brave AI Mode answer
+  name: "Brave AI Mode answer for a query"
   summary: Brave Search's conversational AI answer for a query
   input:
     queryParams:
@@ -2153,5 +2214,6 @@ endpoints:
       q: best coffee brewing method
   docs_url: https://serpapi.com/brave-ai-mode-api
   verified: '2026-07-30'
+  added: '2026-07-28'
   example_response: examples/serpapi.x.brave-ai-mode.json
   capability: ai-search.brave.answer

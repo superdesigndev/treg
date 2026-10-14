@@ -1,0 +1,44 @@
+{
+  "results": [
+    {
+      "urn": "urn:li:ugcPost:7496695636868726785",
+      "actor": {
+        "linkedinURL": "https://www.linkedin.com/in/satyanadella",
+        "name": "Satya Nadella",
+        "image": "https://media.licdn.com/dms/image/v2/C5603AQHHUuOSlRVA1w/profile-displayphoto-shrink_800_800/profile-displayphoto-shrink_800_800/0/1579726625483?e=1788998400&v=beta&t=oDRL-_r8el18eGH7AWxiGxU37uSPpx2LksjoBRnorWI",
+        "entityType": "person",
+        "linkedinID": "satyanadella"
+      },
+      "postRange": {
+        "earliest": "2026-08-21T21:37:19.310Z",
+        "latest": "2026-08-22T21:37:19.309Z"
+      },
+      "postAge": "2 days ago",
+      "socialActivityCounts": {
+        "commentsCount": 499,
+        "sharesCount": 584,
+        "reactionsCount": 15862,
+        "reactionTypeCounts": [
+          {
+            "count": 14465,
+            "reactionType": "LIKE"
+          },
+          {
+            "count": 777,
+            "reactionType": "PRAISE"
+          },
+          "… 4 more item(s) truncated"
+        ]
+      },
+      "images": [
+        "https://media.licdn.com/dms/image/v2/D5622AQH-QwLd19FsrQ/feedshare-shrink_1280/B56aAmc9M0GUAQ-/0/1787351520295?e=1788998400&v=beta&t=0bkCWWF7Uhbu9tJR85kk-STnh1i_z0IbVeGq4-OTuOg",
+        "https://media.licdn.com/dms/image/v2/D5622AQH688dI7B3O0g/feedshare-image-high-res/B56aAmc9OQJAAU-/0/1787351520420?e=1788998400&v=beta&t=hdwA4ujfbEnlWndKHeZ3fNVR8CE3v9VVEBd0h3QhMv8",
+        "… 1 more item(s) truncated"
+      ],
+      "commentary": "Delivery day at our Microsoft DCs as the first production Vera Rubins arrive. A huge thank you to our partners at NVIDIA and our Azure hardware and datacenter teams for all the incredible work that brought us to this milestone!",
+      "url": "https://www.linkedin.com/posts/satyanadella_delivery-day-at-our-microsoft-dcs-as-the-activity-7496695637644828672-K-l_?utm_source=social_share_send&utm_medium=android_app&rcm=ACoAAG0SINkBgI63flZo-Sv9FNFHyYgWXUmtPkM"
+    }
+  ],
+  "hasMoreResults": true,
+  "paginationToken": "dXJuOmxpOmFjdGl2aXR5Ojc0OTY2OTU2Mzc2NDQ4Mjg2NzItMTc4NzM1MTUyMTg1NQ=="
+}

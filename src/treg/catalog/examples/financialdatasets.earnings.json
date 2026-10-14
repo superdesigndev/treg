@@ -1,0 +1,280 @@
+{
+  "earnings": [
+    {
+      "accession_number": "0000320193-26-000018",
+      "currency": "USD",
+      "filing_date": "2026-07-30",
+      "filing_datetime": "2026-07-30T16:30:28-04:00",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000018/0000320193-26-000018-index.htm",
+      "filing_window": "AFTER_HOURS",
+      "fiscal_period": "2026-Q3",
+      "quarterly": {
+        "capital_expenditure": -6799000000,
+        "capital_expenditure_yoy_chg": 0.9639,
+        "cash_and_equivalents": 39544000000,
+        "change_in_cash_and_equivalents": 3610000000,
+        "earnings_per_share": 2.02,
+        "earnings_per_share_yoy_chg": 0.2866,
+        "eps_surprise": "BEAT",
+        "eps_surprise_pct": 0.1543,
+        "estimated_earnings_per_share": 1.75,
+        "estimated_revenue": 103901929700,
+        "free_cash_flow": 110197000000,
+        "free_cash_flow_yoy_chg": 3.5153,
+        "gross_margin": 0.500562069879452,
+        "gross_margin_yoy_chg_bps": 356.6,
+        "gross_margin_yoy_chg_pct": 0.0767,
+        "gross_profit": 54770000000,
+        "gross_profit_yoy_chg": 0.2528,
+        "net_cash_flow_from_financing": -94575000000,
+        "net_cash_flow_from_financing_yoy_chg": -2.8084,
+        "net_cash_flow_from_investing": -18811000000,
+        "net_cash_flow_from_investing_yoy_chg": -4.7081,
+        "net_cash_flow_from_operations": 116996000000,
+        "net_cash_flow_from_operations_yoy_chg": 3.1984,
+        "net_income": 29789000000,
+        "net_income_yoy_chg": 0.2712,
+        "net_margin": 0.2722520266503377,
+        "net_margin_yoy_chg_bps": 230.5,
+        "net_margin_yoy_chg_pct": 0.0925,
+        "operating_income": 35695000000,
+        "operating_income_yoy_chg": 0.2657,
+        "operating_margin": 0.3262290137729969,
+        "operating_margin_yoy_chg_bps": 263.2,
+        "operating_margin_yoy_chg_pct": 0.0878,
+        "revenue": 109417000000,
+        "revenue_surprise": "BEAT",
+        "revenue_surprise_pct": 0.0531,
+        "revenue_yoy_chg": 0.1636,
+        "shareholders_equity": 107520000000,
+        "total_assets": 383266000000,
+        "total_debt": 82347000000,
+        "total_liabilities": 275746000000,
+        "weighted_average_shares": 14656110000,
+        "weighted_average_shares_diluted": 14714676000
+      },
+      "report_period": "2026-06-27",
+      "signals": [
+        {
+          "details": {
+            "actual": 2.02,
+            "estimate": 1.75,
+            "surprise_pct": 0.1543
+          },
+          "headline": "EPS of $2.02 beat estimate of $1.75 by 15.4%",
+          "metric": "earnings_per_share",
+          "period": "2026-Q3",
+          "type": "EPS_BEAT"
+        },
+        {
+          "details": {
+            "actual": 109417000000,
+            "estimate": 103901929700,
+            "surprise_pct": 0.0531
+          },
+          "headline": "Revenue of $109.4B beat estimate of $103.9B by 5.31%",
+          "metric": "revenue",
+          "period": "2026-Q3",
+          "type": "REVENUE_BEAT"
+        },
+        {
+          "details": {
+            "current": 6799000000,
+            "yoy_chg": 0.9639
+          },
+          "headline": "Capital expenditure grew 96.4% year-over-year to $6.8B",
+          "metric": "capital_expenditure",
+          "period": "2026-Q3",
+          "type": "STRONG_CAPEX_INCREASE"
+        },
+        {
+          "details": {
+            "bps": 356.6,
+            "current": 0.500562069879452,
+            "margin": "gross_margin"
+          },
+          "headline": "Gross margin expanded 357bps year-over-year to 50.1%",
+          "metric": "gross_margin",
+          "period": "2026-Q3",
+          "type": "MARGIN_EXPANSION"
+        },
+        {
+          "details": {
+            "current": 109417000000,
+            "yoy_chg": 0.1636
+          },
+          "headline": "Revenue grew 16.4% year-over-year to $109.4B",
+          "metric": "revenue",
+          "period": "2026-Q3",
+          "type": "REVENUE_INCREASE"
+        },
+        {
+          "details": {
+            "current": 29789000000,
+            "yoy_chg": 0.2712
+          },
+          "headline": "Net income grew 27.1% year-over-year to $29.8B",
+          "metric": "net_income",
+          "period": "2026-Q3",
+          "type": "NET_INCOME_INCREASE"
+        },
+        {
+          "details": {
+            "current": 2.02,
+            "yoy_chg": 0.2866
+          },
+          "headline": "EPS grew 28.7% year-over-year to $2.02",
+          "metric": "earnings_per_share",
+          "period": "2026-Q3",
+          "type": "EPS_INCREASE"
+        },
+        {
+          "details": {
+            "metric_name": "dividends_per_common_share",
+            "period": "Q4 2026",
+            "point_estimate": 0.27,
+            "unit": "dollars per share"
+          },
+          "headline": "Initiated Q4 2026 dividends per common share guidance of $0.27",
+          "metric": "dividends_per_common_share",
+          "period": "Q4 2026",
+          "type": "GUIDANCE_INITIATED"
+        }
+      ],
+      "source_type": "8-K",
+      "ticker": "AAPL"
+    },
+    {
+      "accession_number": "0000320193-26-000020",
+      "currency": "USD",
+      "filing_date": "2026-07-31",
+      "filing_datetime": "2026-07-31T06:01:02-04:00",
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000020/0000320193-26-000020-index.htm",
+      "filing_window": "PRE_MARKET",
+      "fiscal_period": "2026-Q3",
+      "quarterly": {
+        "capital_expenditure": -2455000000,
+        "capital_expenditure_yoy_chg": -0.2909,
+        "cash_and_equivalents": 39544000000,
+        "change_in_cash_and_equivalents": -6028000000,
+        "earnings_per_share": 2.02,
+        "earnings_per_share_yoy_chg": 0.2866,
+        "eps_surprise": "BEAT",
+        "eps_surprise_pct": 0.1543,
+        "estimated_earnings_per_share": 1.75,
+        "estimated_revenue": 103901929700,
+        "free_cash_flow": 31914000000,
+        "free_cash_flow_yoy_chg": 0.3077,
+        "gross_margin": 0.500562069879452,
+        "gross_margin_yoy_chg_bps": 356.6,
+        "gross_margin_yoy_chg_pct": 0.0767,
+        "gross_profit": 54770000000,
+        "gross_profit_yoy_chg": 0.2528,
+        "net_cash_flow_from_financing": -32640000000,
+        "net_cash_flow_from_financing_yoy_chg": -0.3144,
+        "net_cash_flow_from_investing": -7757000000,
+        "net_cash_flow_from_investing_yoy_chg": -2.5291,
+        "net_cash_flow_from_operations": 34369000000,
+        "net_cash_flow_from_operations_yoy_chg": 0.2333,
+        "net_income": 29789000000,
+        "net_income_yoy_chg": 0.2712,
+        "net_margin": 0.2722520266503377,
+        "net_margin_yoy_chg_bps": 230.5,
+        "net_margin_yoy_chg_pct": 0.0925,
+        "operating_income": 35695000000,
+        "operating_income_yoy_chg": 0.2657,
+        "operating_margin": 0.3262290137729969,
+        "operating_margin_yoy_chg_bps": 263.2,
+        "operating_margin_yoy_chg_pct": 0.0878,
+        "revenue": 109417000000,
+        "revenue_surprise": "BEAT",
+        "revenue_surprise_pct": 0.0531,
+        "revenue_yoy_chg": 0.1636,
+        "shareholders_equity": 107520000000,
+        "total_assets": 383266000000,
+        "total_debt": 95304000000,
+        "total_liabilities": 275746000000,
+        "weighted_average_shares": 14656110000,
+        "weighted_average_shares_diluted": 14714676000
+      },
+      "report_period": "2026-06-27",
+      "signals": [
+        {
+          "details": {
+            "actual": 2.02,
+            "estimate": 1.75,
+            "surprise_pct": 0.1543
+          },
+          "headline": "EPS of $2.02 beat estimate of $1.75 by 15.4%",
+          "metric": "earnings_per_share",
+          "period": "2026-Q3",
+          "type": "EPS_BEAT"
+        },
+        {
+          "details": {
+            "actual": 109417000000,
+            "estimate": 103901929700,
+            "surprise_pct": 0.0531
+          },
+          "headline": "Revenue of $109.4B beat estimate of $103.9B by 5.31%",
+          "metric": "revenue",
+          "period": "2026-Q3",
+          "type": "REVENUE_BEAT"
+        },
+        {
+          "details": {
+            "bps": 356.6,
+            "current": 0.500562069879452,
+            "margin": "gross_margin"
+          },
+          "headline": "Gross margin expanded 357bps year-over-year to 50.1%",
+          "metric": "gross_margin",
+          "period": "2026-Q3",
+          "type": "MARGIN_EXPANSION"
+        },
+        {
+          "details": {
+            "current": 109417000000,
+            "yoy_chg": 0.1636
+          },
+          "headline": "Revenue grew 16.4% year-over-year to $109.4B",
+          "metric": "revenue",
+          "period": "2026-Q3",
+          "type": "REVENUE_INCREASE"
+        },
+        {
+          "details": {
+            "current": 29789000000,
+            "yoy_chg": 0.2712
+          },
+          "headline": "Net income grew 27.1% year-over-year to $29.8B",
+          "metric": "net_income",
+          "period": "2026-Q3",
+          "type": "NET_INCOME_INCREASE"
+        },
+        {
+          "details": {
+            "current": 2.02,
+            "yoy_chg": 0.2866
+          },
+          "headline": "EPS grew 28.7% year-over-year to $2.02",
+          "metric": "earnings_per_share",
+          "period": "2026-Q3",
+          "type": "EPS_INCREASE"
+        },
+        {
+          "details": {
+            "current": 2455000000,
+            "yoy_chg": -0.2909
+          },
+          "headline": "Capital expenditure declined 29.1% year-over-year to $2.5B",
+          "metric": "capital_expenditure",
+          "period": "2026-Q3",
+          "type": "CAPEX_DECLINE"
+        }
+      ],
+      "source_type": "10-Q",
+      "ticker": "AAPL"
+    }
+  ]
+}

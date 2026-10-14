@@ -1,0 +1,4272 @@
+provider: litescrape
+source:
+  docs: https://litescrape.com/docs/reference
+  openapi: https://api.litescrape.com/api/openapi.json
+  curated: '2026-09-29'
+pricing_url: https://litescrape.com/pricing
+limits: The key status API reports a configured concurrency limit (25 on the tested key). No hourly, daily, monthly
+  or per-second cap is published. Failed calls are unbilled.
+proposed_capabilities:
+  google.serp.ads: Find sponsored ads on a Google results page
+  google.shopping.product: Get merchant offers and details for a Google Shopping product
+  google.maps.contributor_reviews: List the reviews written by a Google Maps contributor
+  google.maps.popular_times: Check how busy a Google Maps place is now
+  google.maps.posts: Read public posts from a Google Maps business
+  google.maps.photo_metadata: Get place and contributor details for a Google Maps photo
+  bing.maps.search: Search Bing Maps businesses or resolve one listing
+  duckduckgo.maps.search: Search DuckDuckGo Maps places in a viewport
+  apple-maps.places: Get public Apple Maps place details by MUID
+  apple-maps.reviews: Read Apple Maps place ratings and reviews
+  tripadvisor.place.detail: Get one Tripadvisor place's details
+  google-play.search.games: Search or browse Google Play games
+  google-play.search.books: Search or browse Google Play books
+  google-play.search.movies: Search or browse Google Play movies
+  google-play.product: Get details of a Google Play product
+  google-play.reviews: List reviews for a Google Play product
+  app-store.product: Get details of an App Store product
+  app-store.reviews: List reviews for an App Store product
+  web.extract.advanced: Fetch rendered web content with browser controls
+  web.screenshot.advanced: Capture a web screenshot with browser controls
+  web.screenshot.download: Download a screenshot captured under the connected key
+endpoints:
+- id: litescrape.google.serp.news
+  capability: google.serp.news
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /api/google/search
+  name: Search Google News
+  summary: Search Google News articles using Litescrape's news vertical.
+  input:
+    queryParams:
+      q: {type: string, required: true, maxLength: 2048}
+      tbm: {type: string, required: true, enum: [nws]}
+      num: {type: integer, required: false, min: 1, max: 10}
+      hl: {type: string, required: false}
+  test_request: {queryParams: {q: "AI policy", tbm: nws, num: 10, hl: en}}
+  cost: {type: per_success, value: 0.00015, currency: USD, per: 1, unit: call,
+         source: docs, source_url: "https://litescrape.com/pricing", checked: '2026-10-05',
+         confidence: verified, note: "The news vertical uses the same Google Search request and per-success price."}
+  docs_url: https://litescrape.com/docs/google-search
+  strict_query: true
+  verified: '2026-10-05'
+  added: '2026-10-05'
+  example_response: examples/litescrape.google.serp.news.json
+- id: litescrape.google.serp.organic
+  capability: google.serp.organic
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /api/google/search
+  name: Search Google
+  summary: 'Returns a Google results page as JSON: organic results plus every other result group Google served,
+    such as ads, AI Overview, knowledge graph, and local results'
+  input:
+    queryParams:
+      fast_mode:
+        type: boolean
+        required: false
+        default: false
+        note: Set true to return only organic_results, search_metadata, and search_parameters, skipping AI Overview
+          and all other result groups. Only lowercase true or false are accepted.
+      q:
+        type: string
+        required: false
+        maxLength: 2048
+        example: coffee shops in Austin
+        note: Search query, up to 2,048 characters. Required unless ludocid or kgmid is supplied.
+      ludocid:
+        type: string
+        required: false
+        maxLength: 128
+        example: '1234567890123456789'
+        note: Decimal Google CID for a local entity search. Can replace q.
+      kgmid:
+        type: string
+        required: false
+        maxLength: 512
+        example: /m/0k8z
+        note: Google Knowledge Graph machine ID, such as /m/0k8z. Can replace q.
+      location:
+        type: string
+        required: false
+        maxLength: 512
+        example: Austin, Texas, United States
+        note: Human-readable search location, up to 512 characters. Use only one of location, uule, or lat and lon.
+      uule:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Pre-encoded Google location token, up to 2,048 characters. Use only one of location, uule, or lat
+          and lon.
+      lat:
+        type: number
+        required: false
+        min: -90
+        max: 90
+        example: 30.2672
+        note: Latitude between -90 and 90. Supply with lon; conflicts with location and uule.
+      lon:
+        type: number
+        required: false
+        min: -180
+        max: 180
+        example: -97.7431
+        note: Longitude between -180 and 180. Supply with lat; conflicts with location and uule.
+      radius:
+        type: number
+        required: false
+        min: 1
+        max: 1000
+        note: Search radius in meters around location or lat and lon, which it requires. 1 to 199 on desktop, 1
+          to 1,000 on tablet or mobile.
+      lsig:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Opaque Google local or Knowledge Graph signature, up to 4,096 characters.
+      si:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Opaque cached Google search context, up to 4,096 characters.
+      ibp:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Google layout or expansion control, up to 4,096 characters.
+      uds:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Opaque Google filter token, up to 4,096 characters.
+      color_scheme:
+        type: string
+        required: false
+        enum:
+        - light
+        - dark
+        note: Google's light or dark result presentation.
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+        example: google.com
+        note: A Google domain from Google's supported list, such as google.com or google.co.uk.
+      gl:
+        type: string
+        required: false
+        example: us
+        note: Lowercase two-letter country code used to localize results.
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: Google interface and result language, such as en, en-US, or de. Defaults to en.
+      cr:
+        type: string
+        required: false
+        example: countryUS
+        note: 'Country restriction: one or more countryXX values joined with |, such as countryUS.'
+      lr:
+        type: string
+        required: false
+        example: lang_en
+        note: 'Language restriction: one or more lang_xx values joined with |, such as lang_en.'
+      device:
+        type: string
+        required: false
+        default: desktop
+        enum:
+        - desktop
+        - tablet
+        - mobile
+        example: desktop
+        note: 'Google returns its real layout for the selected device: desktop, tablet, or mobile.'
+      tbs:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Google search-filter string, such as qdr:w, up to 4,096 characters.
+      safe:
+        type: string
+        required: false
+        enum:
+        - active
+        - 'off'
+        note: 'Google adult-content filtering: active or off.'
+      nfpr:
+        type: string
+        required: false
+        enum:
+        - '0'
+        - '1'
+        note: Set 1 to disable Google spelling auto-correction, or 0 to allow it.
+      filter:
+        type: string
+        required: false
+        enum:
+        - '0'
+        - '1'
+        note: 'Google similar-results filtering: 0 or 1.'
+      pws:
+        type: string
+        required: false
+        enum:
+        - '0'
+        - '1'
+        note: 'Google personalization flag: 0 or 1. 0 asks for non-personalized results.'
+      peek_pws:
+        type: string
+        required: false
+        enum:
+        - '0'
+        - '1'
+        note: 'Google personalization companion flag: 0 or 1, forwarded to Google unchanged.'
+      tbm:
+        type: string
+        required: false
+        enum:
+        - lcl
+        - vid
+        - nws
+        - shop
+        - pts
+        note: 'Google vertical: lcl, vid, nws, shop, or pts. Google Images (isch) is rejected with 400 unsupported_search_vertical.'
+      start:
+        type: integer
+        required: false
+        min: 0
+        default: 0
+        example: 10
+        note: Result offset for pagination. Defaults to 0.
+      num:
+        type: integer
+        required: false
+        min: 1
+        max: 10
+        note: 'Requested result count, 1 to 10. A best-effort hint: Google may return fewer rows, and results are
+          never padded.'
+      as_dt:
+        type: string
+        required: false
+        enum:
+        - i
+        - e
+        note: Include (i) or exclude (e) the as_sitesearch host. Requires as_sitesearch.
+      as_epq:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Exact phrase the results must contain, up to 2,048 characters.
+      as_eq:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Words the results must not contain, up to 2,048 characters.
+      as_lq:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Return pages that link to this complete HTTP(S) URL.
+      as_nlo:
+        type: integer
+        required: false
+        min: 0
+        note: Lower bound of a number range. Supply with as_nhi.
+      as_nhi:
+        type: integer
+        required: false
+        min: 0
+        note: Upper bound of a number range. Supply with as_nlo.
+      as_oq:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Additional terms of which any may match, up to 2,048 characters.
+      as_q:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Additional terms that must all match, up to 2,048 characters.
+      as_qdr:
+        type: string
+        required: false
+        example: m3
+        note: 'Date range: d, w, m, or y with an optional positive count, such as m3 for the past three months.'
+      as_rq:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Return pages related to this complete HTTP(S) URL.
+      as_sitesearch:
+        type: string
+        required: false
+        maxLength: 253
+        example: example.com
+        note: Hostname to include or exclude, such as example.com. A hostname, not a URL.
+      oq:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Original query text from a Google URL, up to 2,048 characters; forwarded unchanged.
+      gs_lp:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Opaque Google autocomplete-session value from a Google URL, up to 4,096 characters; forwarded unchanged.
+      sclient:
+        type: string
+        required: false
+        maxLength: 64
+        note: 'Google client label such as gws-wiz-serp: up to 64 letters, digits, dots, underscores, or hyphens.'
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: OpenAI API documentation
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google.serp.organic.json
+- id: litescrape.google.serp.ai_overview
+  capability: google.serp.ai_overview
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /api/google/ai-overview
+  name: Get Google AI Overview
+  summary: Returns only the AI Overview from a Google results page, and accepts the Google Search parameters except
+    fast_mode
+  input:
+    queryParams:
+      q:
+        type: string
+        required: false
+        maxLength: 2048
+        example: coffee shops in Austin
+        note: Search query, up to 2,048 characters. Required unless ludocid or kgmid is supplied.
+      ludocid:
+        type: string
+        required: false
+        maxLength: 128
+        example: '1234567890123456789'
+        note: Decimal Google CID for a local entity search. Can replace q.
+      kgmid:
+        type: string
+        required: false
+        maxLength: 512
+        example: /m/0k8z
+        note: Google Knowledge Graph machine ID, such as /m/0k8z. Can replace q.
+      location:
+        type: string
+        required: false
+        maxLength: 512
+        example: Austin, Texas, United States
+        note: Human-readable search location, up to 512 characters. Use only one of location, uule, or lat and lon.
+      uule:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Pre-encoded Google location token, up to 2,048 characters. Use only one of location, uule, or lat
+          and lon.
+      lat:
+        type: number
+        required: false
+        min: -90
+        max: 90
+        example: 30.2672
+        note: Latitude between -90 and 90. Supply with lon; conflicts with location and uule.
+      lon:
+        type: number
+        required: false
+        min: -180
+        max: 180
+        example: -97.7431
+        note: Longitude between -180 and 180. Supply with lat; conflicts with location and uule.
+      radius:
+        type: number
+        required: false
+        min: 1
+        max: 1000
+        note: Search radius in meters around location or lat and lon, which it requires. 1 to 199 on desktop, 1
+          to 1,000 on tablet or mobile.
+      lsig:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Opaque Google local or Knowledge Graph signature, up to 4,096 characters.
+      si:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Opaque cached Google search context, up to 4,096 characters.
+      ibp:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Google layout or expansion control, up to 4,096 characters.
+      uds:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Opaque Google filter token, up to 4,096 characters.
+      color_scheme:
+        type: string
+        required: false
+        enum:
+        - light
+        - dark
+        note: Google's light or dark result presentation.
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+        example: google.com
+        note: A Google domain from Google's supported list, such as google.com or google.co.uk.
+      gl:
+        type: string
+        required: false
+        example: us
+        note: Lowercase two-letter country code used to localize results.
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: Google interface and result language, such as en, en-US, or de. Defaults to en.
+      cr:
+        type: string
+        required: false
+        example: countryUS
+        note: 'Country restriction: one or more countryXX values joined with |, such as countryUS.'
+      lr:
+        type: string
+        required: false
+        example: lang_en
+        note: 'Language restriction: one or more lang_xx values joined with |, such as lang_en.'
+      device:
+        type: string
+        required: false
+        default: desktop
+        enum:
+        - desktop
+        - tablet
+        - mobile
+        example: desktop
+        note: 'Google returns its real layout for the selected device: desktop, tablet, or mobile.'
+      tbs:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Google search-filter string, such as qdr:w, up to 4,096 characters.
+      safe:
+        type: string
+        required: false
+        enum:
+        - active
+        - 'off'
+        note: 'Google adult-content filtering: active or off.'
+      nfpr:
+        type: string
+        required: false
+        enum:
+        - '0'
+        - '1'
+        note: Set 1 to disable Google spelling auto-correction, or 0 to allow it.
+      filter:
+        type: string
+        required: false
+        enum:
+        - '0'
+        - '1'
+        note: 'Google similar-results filtering: 0 or 1.'
+      pws:
+        type: string
+        required: false
+        enum:
+        - '0'
+        - '1'
+        note: 'Google personalization flag: 0 or 1. 0 asks for non-personalized results.'
+      peek_pws:
+        type: string
+        required: false
+        enum:
+        - '0'
+        - '1'
+        note: 'Google personalization companion flag: 0 or 1, forwarded to Google unchanged.'
+      tbm:
+        type: string
+        required: false
+        enum:
+        - lcl
+        - vid
+        - nws
+        - shop
+        - pts
+        note: 'Google vertical: lcl, vid, nws, shop, or pts. Google Images (isch) is rejected with 400 unsupported_search_vertical.'
+      start:
+        type: integer
+        required: false
+        min: 0
+        default: 0
+        example: 10
+        note: Result offset for pagination. Defaults to 0.
+      num:
+        type: integer
+        required: false
+        min: 1
+        max: 10
+        note: 'Requested result count, 1 to 10. A best-effort hint: Google may return fewer rows, and results are
+          never padded.'
+      as_dt:
+        type: string
+        required: false
+        enum:
+        - i
+        - e
+        note: Include (i) or exclude (e) the as_sitesearch host. Requires as_sitesearch.
+      as_epq:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Exact phrase the results must contain, up to 2,048 characters.
+      as_eq:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Words the results must not contain, up to 2,048 characters.
+      as_lq:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Return pages that link to this complete HTTP(S) URL.
+      as_nlo:
+        type: integer
+        required: false
+        min: 0
+        note: Lower bound of a number range. Supply with as_nhi.
+      as_nhi:
+        type: integer
+        required: false
+        min: 0
+        note: Upper bound of a number range. Supply with as_nlo.
+      as_oq:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Additional terms of which any may match, up to 2,048 characters.
+      as_q:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Additional terms that must all match, up to 2,048 characters.
+      as_qdr:
+        type: string
+        required: false
+        example: m3
+        note: 'Date range: d, w, m, or y with an optional positive count, such as m3 for the past three months.'
+      as_rq:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Return pages related to this complete HTTP(S) URL.
+      as_sitesearch:
+        type: string
+        required: false
+        maxLength: 253
+        example: example.com
+        note: Hostname to include or exclude, such as example.com. A hostname, not a URL.
+      oq:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Original query text from a Google URL, up to 2,048 characters; forwarded unchanged.
+      gs_lp:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Opaque Google autocomplete-session value from a Google URL, up to 4,096 characters; forwarded unchanged.
+      sclient:
+        type: string
+        required: false
+        maxLength: 64
+        note: 'Google client label such as gws-wiz-serp: up to 64 letters, digits, dots, underscores, or hyphens.'
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+    note: A 200 with ai_overview:null and search_metadata.ai_overview_state=not_served is unbilled by Litescrape.
+  test_request:
+    queryParams:
+      q: what is photosynthesis
+      hl: en
+      gl: us
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free. A Google AI Overview not_served
+      response is also free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google.serp.ai_overview.json
+- id: litescrape.google.serp.ai_mode
+  capability: google.serp.ai_mode
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /api/google/ai-mode
+  name: Get Google AI Mode answer
+  summary: Returns the answer Google AI Mode generates for a question, as ordered text blocks, with the sources
+    it cited
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        maxLength: 2048
+        example: what is the best espresso machine for a small kitchen
+        note: Question to ask, up to 2,048 characters. Required on every turn, including follow-ups.
+      continuable:
+        type: boolean
+        required: false
+        default: false
+        note: Return a subsequent_request_token so this answer can be followed up, when Google offers a continuation.
+      subsequent_request_token:
+        type: string
+        required: false
+        maxLength: 128
+        note: Token from a previous continuable response. Send it with a new q to continue that conversation; reuse
+          the same gl, hl and location. Expires after 30 minutes. Cannot be combined with image_url.
+      image_url:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Public http or https URL of an image to include in the question, up to 2,048 characters. The image
+          may be at most 20 MB. Cannot be combined with subsequent_request_token.
+      location:
+        type: string
+        required: false
+        maxLength: 63
+        example: Austin, Texas
+        note: Human-readable search location, such as Austin, Texas. At most 63 UTF-8 bytes. Mutually exclusive
+          with uule.
+      uule:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Pre-encoded Google location token. Mutually exclusive with location.
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+        example: google.com
+        note: Google domain used for the request.
+      gl:
+        type: string
+        required: false
+        minLength: 2
+        maxLength: 2
+        example: us
+        note: Two-letter country code used to localize results.
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: Language code such as en, en-GB, or de.
+      device:
+        type: string
+        required: false
+        default: desktop
+        enum:
+        - desktop
+        - tablet
+        - mobile
+        note: Google device layout. Each device is served Google's real layout for it.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: what is photosynthesis
+      hl: en
+      gl: us
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google.serp.ai_mode.json
+- id: litescrape.google.serp.ads
+  capability: google.serp.ads
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /api/google/ads
+  name: Find Google Search ads
+  summary: Returns the Google results page for a query at a named location, including the ads, local_ads, and shopping_results
+    groups when Google serves them
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        maxLength: 2048
+        example: coffee maker
+        note: Google Ads query, up to 2,048 characters with no control characters.
+      location:
+        type: string
+        required: true
+        maxLength: 512
+        example: Austin, Texas, United States
+        note: Named location to search from, up to 512 characters and at most 63 bytes once URL-encoded.
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: Google interface and result language, such as en, en-US, or de. Defaults to en.
+      safe:
+        type: string
+        required: false
+        enum:
+        - active
+        - 'off'
+        note: 'Google adult-content filtering: active or off.'
+      nfpr:
+        type: string
+        required: false
+        enum:
+        - '0'
+        - '1'
+        note: Set 1 to disable Google spelling auto-correction, or 0 to allow it.
+      device:
+        type: string
+        required: false
+        default: desktop
+        enum:
+        - desktop
+        - tablet
+        - mobile
+        example: desktop
+        note: 'Google returns its real layout for the selected device: desktop, tablet, or mobile.'
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: running shoes
+      location: Austin, Texas, United States
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google.serp.ads.json
+- id: litescrape.google.serp.local
+  capability: google.serp.local
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /api/google/local
+  name: Search Google Local
+  summary: Returns Google Local business listings in `local_results`, with ratings, addresses, hours and links when
+    Google shows them
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 2048
+        example: coffee shops
+        note: Local search query, 1 to 2,048 characters with no control characters.
+      location:
+        type: string
+        required: false
+        maxLength: 512
+        example: Austin, Texas
+        note: Human-readable search location, up to 512 characters. Mutually exclusive with uule.
+      uule:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Canonical Google named-location token (starting w+CAIQICI), up to 2,048 characters. Mutually exclusive
+          with location.
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+        example: google.com
+        note: Google domain used for the request.
+      gl:
+        type: string
+        required: false
+        minLength: 2
+        maxLength: 2
+        example: us
+        note: Two-letter country code used to localize results; case-insensitive.
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: Language code such as en, en-US, or fr.
+      ludocid:
+        type: string
+        required: false
+        maxLength: 128
+        example: '15667002398697190332'
+        note: Decimal Google local CID of one business, up to 128 digits.
+      tbs:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Native Google filter token, up to 4,096 characters. Google may ignore some values.
+      start:
+        type: integer
+        required: false
+        min: 0
+        max: 10000
+        default: 0
+        note: Result offset from 0 through 10,000. Offsets beyond Google's 1,000-result window return an empty page.
+      device:
+        type: string
+        required: false
+        default: desktop
+        enum:
+        - desktop
+        - tablet
+        - mobile
+        note: Google device layout. Desktop returns up to 20 results per page; tablet and mobile up to 10.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: coffee shops in Austin Texas
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google.serp.local.json
+- id: litescrape.google.serp.shopping
+  capability: google.serp.shopping
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /api/google/shopping
+  name: Search Google Shopping
+  summary: Returns the Google Shopping product grid, category blocks, sponsored listings and refinement filters
+  input:
+    queryParams:
+      q:
+        type: string
+        required: false
+        maxLength: 2048
+        example: coffee maker
+        note: Product search term, up to 2,048 characters. Required unless shoprs is supplied. This is a search,
+          not an exact product ID lookup.
+      shoprs:
+        type: string
+        required: false
+        maxLength: 4096
+        note: Refinement token from a previous response's filters. An explicit refinement parameter replaces the
+          refinement it carries.
+      min_price:
+        type: number
+        required: false
+        min: 0
+        max: 1000000000
+        note: Lower price bound in the storefront currency. Cannot be combined with on_sale, free_shipping or small_business.
+      max_price:
+        type: number
+        required: false
+        min: 0
+        max: 1000000000
+        note: Upper price bound in the storefront currency, at or above min_price. Cannot be combined with on_sale,
+          free_shipping or small_business.
+      sort_by:
+        type: string
+        required: false
+        enum:
+        - '1'
+        - '2'
+        - '3'
+        - '4'
+        note: 'Sort order: 1 price low to high, 2 price high to low, 3 rating high to low, 4 relevance (the default).
+          Combines with any one refinement.'
+      free_shipping:
+        type: boolean
+        required: false
+        default: false
+        note: Show only products with free shipping. Cannot be combined with another refinement.
+      on_sale:
+        type: boolean
+        required: false
+        default: false
+        note: Show only products Google marks as on sale. Cannot be combined with another refinement.
+      small_business:
+        type: boolean
+        required: false
+        default: false
+        note: Show only products from small businesses. Cannot be combined with another refinement.
+      start:
+        type: integer
+        required: false
+        min: 0
+        max: 1000
+        default: 0
+        note: Result offset.
+      num:
+        type: integer
+        required: false
+        min: 1
+        max: 100
+        example: 60
+        note: Number of products to return. Google serves 40 products per page; a larger num reads further pages
+          within the same call and returns fewer only when Google has no more products.
+      location:
+        type: string
+        required: false
+        maxLength: 63
+        example: Austin, Texas
+        note: Human-readable search location, such as Austin, Texas. At most 63 UTF-8 bytes. Mutually exclusive
+          with uule.
+      uule:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Pre-encoded Google location token. Mutually exclusive with location.
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+        example: google.com
+        note: Google domain used for the request.
+      gl:
+        type: string
+        required: false
+        minLength: 2
+        maxLength: 2
+        example: us
+        note: Two-letter country code used to localize results.
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: Language code such as en, en-GB, or de.
+      device:
+        type: string
+        required: false
+        default: desktop
+        enum:
+        - desktop
+        - tablet
+        - mobile
+        note: Google device layout. Each device is served Google's real layout for it.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: coffee maker
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google.serp.shopping.json
+- id: litescrape.google.shopping.product
+  capability: google.shopping.product
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /api/google/shopping/product
+  name: Get a Google Shopping product
+  summary: Returns one Google Shopping product's merchant offers, specifications, reviews and related products
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        maxLength: 2048
+        example: coffee maker
+        note: Required search term from the shopping request that found the product. Google resolves the product
+          page against it as well as the identifiers.
+      gpcid:
+        type: string
+        required: false
+        example: '16418087637395758399'
+        note: Product cluster ID from a shopping result. Required unless prds is supplied; follow litescrape_product_link
+          for a ready-made request.
+      headline_offer_docid:
+        type: string
+        required: false
+        example: '8780992468355455962'
+        note: Optional headline offer document ID from the same shopping result; use with gpcid.
+      image_docid:
+        type: string
+        required: false
+        example: '9437029998757085507'
+        note: Optional image document ID from the same shopping result; use with gpcid.
+      prds:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Google product selector token from a previous response. Mutually exclusive with gpcid and its companion
+          document IDs.
+      location:
+        type: string
+        required: false
+        maxLength: 63
+        example: Austin, Texas
+        note: Human-readable search location, such as Austin, Texas. At most 63 UTF-8 bytes. Mutually exclusive
+          with uule.
+      uule:
+        type: string
+        required: false
+        maxLength: 2048
+        note: Pre-encoded Google location token. Mutually exclusive with location.
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+        example: google.com
+        note: Google domain used for the request.
+      gl:
+        type: string
+        required: false
+        minLength: 2
+        maxLength: 2
+        example: us
+        note: Two-letter country code used to localize results.
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: Language code such as en, en-GB, or de.
+      device:
+        type: string
+        required: false
+        default: desktop
+        enum:
+        - desktop
+        - tablet
+        - mobile
+        note: Google device layout. Each device is served Google's real layout for it.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: coffee maker
+      gpcid: '3753285529675071078'
+      headline_offer_docid: '2823574139643882398'
+      image_docid: '5002652757944012799'
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google.shopping.product.json
+- id: litescrape.google.serp.maps
+  capability: google.serp.maps
+  platform: google
+  domain: search
+  scope: any_account
+  method: GET
+  path: /api/google/maps
+  name: Search Google Maps
+  summary: Search Google Maps with q and type=search to get up to 20 places in local_results, or look up one exact
+    place by place_id, data_cid or data to get place_results
+  input:
+    queryParams:
+      q:
+        type: string
+        required: false
+        example: coffee shops in Austin, TX
+        note: Search query, such as coffee shops in Austin, TX. Required when type=search. A search needs one of
+          q, place_id, data_cid or data.
+      type:
+        type: string
+        required: false
+        enum:
+        - search
+        - place
+        example: search
+        note: search returns a list of places in local_results; place returns one exact place in place_results.
+          Required when searching by q or by filter data, and type=place is required with an exact-place data sequence.
+          Can be omitted with place_id or data_cid.
+      place_id:
+        type: string
+        required: false
+        example: ChIJT2h1HKZZwokR0kgzEtsa03k
+        note: Google Place ID for an exact-place lookup. Mutually exclusive with data_cid and an exact-place data
+          sequence.
+      data_cid:
+        type: string
+        required: false
+        note: Decimal Google CID for an exact-place lookup. Mutually exclusive with place_id and an exact-place
+          data sequence.
+      data:
+        type: string
+        required: false
+        note: Google Maps protobuf sequence copied from a Maps URL, beginning with ! and at most 8,192 characters.
+          A sequence that identifies one place requires type=place and is mutually exclusive with place_id and data_cid.
+      ll:
+        type: string
+        required: false
+        example: '@30.2672,-97.7431,14z'
+        note: Map viewport as @latitude,longitude,zoomz or @latitude,longitude,radiusm, for example @30.2672,-97.7431,14z.
+          Already includes its scale, so do not add z or m. Mutually exclusive with location and lat/lon.
+      location:
+        type: string
+        required: false
+        example: Austin, Texas, United States
+        note: Human-readable location to center the map on, such as Austin, Texas. Requires z or m. Mutually exclusive
+          with ll and lat/lon.
+      lat:
+        type: number
+        required: false
+        min: -90
+        max: 90
+        note: Latitude of the map center. Supply with lon and either z or m. Mutually exclusive with ll and location.
+      lon:
+        type: number
+        required: false
+        min: -180
+        max: 180
+        note: Longitude of the map center. Supply with lat and either z or m. Mutually exclusive with ll and location.
+      z:
+        type: number
+        required: false
+        min: 3
+        max: 30
+        note: Zoom level from 3 through 30. Use with location or lat/lon. Mutually exclusive with m.
+      m:
+        type: number
+        required: false
+        min: 1
+        max: 15028132
+        note: Map radius in meters, from 1 through 15,028,132. Use with location or lat/lon. Mutually exclusive
+          with z.
+      nearby:
+        type: boolean
+        required: false
+        default: false
+        note: Set to true to remove near me wording from the query so the supplied viewport is used. Requires ll,
+          location or lat/lon.
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: Language code such as en, en-GB, or de.
+      gl:
+        type: string
+        required: false
+        minLength: 2
+        maxLength: 2
+        default: us
+        example: us
+        note: Two-letter country code used to localize results. Defaults to us.
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+        example: google.com
+        note: Google domain used for the request.
+      start:
+        type: integer
+        required: false
+        min: 0
+        default: 0
+        note: 'Result offset in steps of 20: 0, 20, 40 and so on. Prefer following pagination.next from the previous
+          response.'
+      min_price:
+        type: integer
+        required: false
+        min: 0
+        note: Minimum Google price level, a non-negative integer. Must not exceed max_price.
+      max_price:
+        type: integer
+        required: false
+        min: 0
+        note: Maximum Google price level, a non-negative integer. Must be at least min_price.
+      min_rating:
+        type: number
+        required: false
+        note: Minimum star rating. Google treats it as a relevance preference, so lower-rated or unrated places
+          may still appear.
+      open_state:
+        type: string
+        required: false
+        enum:
+        - now
+        - 24h
+        note: now returns places open now; 24h returns places open 24 hours. Cannot be combined with open_on_day
+          or open_at_hour.
+      open_on_day:
+        type: string
+        required: false
+        enum:
+        - mon
+        - tue
+        - wed
+        - thu
+        - fri
+        - sat
+        - sun
+        note: Return places open on this weekday, optionally at open_at_hour. Cannot be combined with open_state.
+      open_at_hour:
+        type: integer
+        required: false
+        min: 0
+        max: 23
+        note: Hour from 0 through 23 at which the place must be open. Requires open_on_day. Cannot be combined with
+          open_state.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: coffee shops in Austin TX
+      type: search
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google.serp.maps.json
+- id: litescrape.google.maps.reviews
+  capability: google.maps.reviews
+  platform: google
+  domain: reviews
+  scope: any_account
+  method: GET
+  path: /api/google/reviews
+  name: Read Google Maps reviews
+  summary: Returns reviews for one place identified by place_id or data_id; Google Maps responses include both,
+    plus a ready-made reviews_link
+  input:
+    queryParams:
+      place_id:
+        type: string
+        required: false
+        example: ChIJT2h1HKZZwokR0kgzEtsa03k
+        note: Google Place ID. Exactly one of place_id or data_id is required.
+      data_id:
+        type: string
+        required: false
+        example: 0x89c258e28c304997:0xfcafe4e7ce35ee8c
+        note: Hexadecimal Google Maps feature ID, such as the data_id in a Google Maps response. Exactly one of
+          place_id or data_id is required.
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: Review language code such as en, en-GB, or de.
+      gl:
+        type: string
+        required: false
+        minLength: 2
+        maxLength: 2
+        default: us
+        example: us
+        note: Two-letter country code used to localize results, normalized to lowercase. Defaults to us.
+      sort_by:
+        type: string
+        required: false
+        default: qualityScore
+        enum:
+        - qualityScore
+        - newestFirst
+        - ratingHigh
+        - ratingLow
+        note: 'Review order: qualityScore (most relevant), newestFirst, ratingHigh or ratingLow.'
+      topic_id:
+        type: string
+        required: false
+        note: Return only reviews about one topic. Use a topics[].id from a previous response. Mutually exclusive
+          with query.
+      query:
+        type: string
+        required: false
+        example: parking
+        note: Free-text filter that returns reviews mentioning these words. Mutually exclusive with topic_id.
+      num:
+        type: integer
+        required: false
+        min: 1
+        max: 100
+        note: Number of reviews to return. An initial unfiltered request returns 8 by default and accepts 1 through
+          100; requests with topic_id, query or next_page_token return 10 by default and accept 1 through 20.
+      next_page_token:
+        type: string
+        required: false
+        note: Opaque token from a previous response. Send it with the same place, language, country, sort and filters,
+          or follow pagination.next. Tokens expire after 30 minutes.
+      source_metadata:
+        type: boolean
+        required: false
+        default: false
+        note: Set to true to include each review source's icon and rating scale.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      place_id: ChIJjQxOkUG3RIYRQvNw_5i6b8s
+      num: 5
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google.maps.reviews.json
+- id: litescrape.google.maps.contributor_reviews
+  capability: google.maps.contributor_reviews
+  platform: google
+  domain: reviews
+  scope: any_account
+  method: GET
+  path: /api/google/contributor-reviews
+  name: Read a Maps contributor's reviews
+  summary: Returns the public review history of one Google Maps contributor, up to 200 reviews in one response
+  input:
+    queryParams:
+      contributor_id:
+        type: string
+        required: true
+        example: '109736708296406538146'
+        note: Required 10 to 32 digit contributor ID, from a Google Maps contributor URL (/maps/contrib/{id}/reviews)
+          or user.contributor_id in a Google Reviews response.
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: Review and interface language such as en, en-US, or fr.
+      gl:
+        type: string
+        required: false
+        default: us
+        example: us
+        note: Two-letter country code used to localize results, normalized to lowercase. Defaults to us.
+      limit:
+        type: integer
+        required: false
+        min: 1
+        max: 200
+        default: 200
+        note: Maximum number of reviews to return, from 1 through 200.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      contributor_id: '109736708296406538146'
+      limit: 5
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google.maps.contributor_reviews.json
+- id: litescrape.google.maps.popular_times
+  capability: google.maps.popular_times
+  platform: google
+  domain: places
+  scope: any_account
+  method: GET
+  path: /api/google/maps/popular-times
+  name: Check live Google Maps busyness
+  summary: 'Returns popular_times for one place: the live busyness score compared with the usual score for this
+    time, plus the usual hourly curve for each weekday'
+  input:
+    queryParams:
+      place_id:
+        type: string
+        required: true
+        maxLength: 512
+        example: ChIJT2h1HKZZwokR0kgzEtsa03k
+        note: Required Google Place ID, up to 512 letters, digits, _ or -. Copy it from a Google Maps search or
+          place response.
+      hl:
+        type: string
+        required: false
+        maxLength: 32
+        default: en
+        example: en
+        note: Language code such as en, en-GB, or de.
+      gl:
+        type: string
+        required: false
+        default: us
+        example: us
+        note: Two-letter country code used to localize results. Defaults to us.
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+        example: google.com
+        note: Google domain used for the request.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      place_id: ChIJjQxOkUG3RIYRQvNw_5i6b8s
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google.maps.popular_times.json
+- id: litescrape.google.maps.posts
+  capability: google.maps.posts
+  platform: google
+  domain: places
+  scope: any_account
+  method: GET
+  path: /api/google/maps/posts
+  name: Read Google Maps business posts
+  summary: Returns the posts a business published on Google Maps
+  input:
+    queryParams:
+      data_id:
+        type: string
+        required: true
+        example: 0x89c258e28c304997:0xfcafe4e7ce35ee8c
+        note: Required hexadecimal Maps feature ID. Follow posts_link from a Google Maps place response or copy
+          its data_id.
+      next_page_token:
+        type: string
+        required: false
+        minLength: 16
+        maxLength: 4096
+        note: Opaque continuation token returned by a previous Maps Posts response.
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: Language code such as en, en-GB, or de.
+      gl:
+        type: string
+        required: false
+        minLength: 2
+        maxLength: 2
+        example: us
+        note: Two-letter country code used to localize results.
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+        example: google.com
+        note: Google domain used for the request.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      data_id: 0x8644b741914e0c8d:0xcb6fba98ff70f342
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google.maps.posts.json
+- id: litescrape.google.maps.photo_metadata
+  capability: google.maps.photo_metadata
+  platform: google
+  domain: places
+  scope: any_account
+  method: GET
+  path: /api/google/maps/photo-meta
+  name: Get Google Maps photo metadata
+  summary: Returns the contributor, place, coordinates, type and date of one Google Maps photo
+  input:
+    queryParams:
+      data_id:
+        type: string
+        required: true
+        maxLength: 4096
+        example: CIABIhAAQr6KrxiC_knILBjf2RxL
+        note: Required Google Maps photo ID. Follow a photo_meta_link from a Google Maps place response or copy
+          the nested photo data_id.
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: Language code such as en, en-GB, or de.
+      gl:
+        type: string
+        required: false
+        minLength: 2
+        maxLength: 2
+        example: us
+        note: Two-letter country code used to localize results.
+      google_domain:
+        type: string
+        required: false
+        default: google.com
+        example: google.com
+        note: Google domain used for the request.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      data_id: CIABIhAAQr6KrxiC_knILBjf2RxL
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google.maps.photo_metadata.json
+- id: litescrape.bing.serp.organic
+  capability: bing.serp.organic
+  platform: bing
+  domain: search
+  scope: any_account
+  method: GET
+  path: /api/bing/search
+  name: Search Bing
+  summary: 'Returns Bing web results: organic results, ads, answer boxes, Knowledge Graph cards, local, shopping,
+    news and related searches when Bing shows them'
+  input:
+    queryParams:
+      engine:
+        type: string
+        required: false
+        default: bing
+        enum:
+        - bing
+        note: Search engine. Optional; the only accepted value is bing.
+      q:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 2048
+        example: pizza shops in New York
+        note: Search query, up to 2,048 characters with no control characters. Bing search operators are preserved.
+      location:
+        type: string
+        required: false
+        maxLength: 256
+        example: New York, New York
+        note: Optional city-level search origin, up to 256 characters.
+      lat:
+        type: number
+        required: false
+        min: -90
+        max: 90
+        example: 40.7128
+        note: Optional search-origin latitude from -90 through 90. Independent of lon and location.
+      lon:
+        type: number
+        required: false
+        min: -180
+        max: 180
+        example: -74.006
+        note: Optional search-origin longitude from -180 through 180. Independent of lat and location.
+      mkt:
+        type: string
+        required: false
+        example: en-US
+        note: Bing market in language-country form, such as en-US; case-insensitive. Mutually exclusive with cc.
+      cc:
+        type: string
+        required: false
+        example: US
+        note: Two-letter ISO country code of the search origin, such as US; case-insensitive. Mutually exclusive
+          with mkt.
+      first:
+        type: integer
+        required: false
+        min: 1
+        max: 9007199254740991
+        default: 1
+        note: One-based offset of the first organic result.
+      safeSearch:
+        type: string
+        required: false
+        default: moderate
+        enum:
+        - 'off'
+        - moderate
+        - strict
+        note: 'Adult-content filtering: off, moderate, or strict. Case-insensitive.'
+      filters:
+        type: string
+        required: false
+        maxLength: 8192
+        example: ex1:"ez5_20069_20433"
+        note: Native Bing display or date filters, up to 8,192 characters with no control characters.
+      device:
+        type: string
+        required: false
+        default: desktop
+        enum:
+        - desktop
+        - tablet
+        - mobile
+        note: 'Request profile: desktop, tablet, or mobile. Case-insensitive.'
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: coffee shops Austin
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.bing.serp.organic.json
+- id: litescrape.bing.maps.search
+  capability: bing.maps.search
+  platform: bing
+  domain: places
+  scope: any_account
+  method: GET
+  path: /api/bing/maps
+  name: Search Bing Maps
+  summary: Searches Bing Maps listings when `q` is supplied, or returns one place's details when `place_id` is supplied;
+    at least one of the two is required
+  input:
+    queryParams:
+      q:
+        type: string
+        required: false
+        maxLength: 2048
+        example: coffee Austin Texas
+        note: Search query, up to 2,048 characters. Required unless place_id is present.
+      cp:
+        type: string
+        required: false
+        maxLength: 128
+        example: 30.2672~-97.7431
+        note: Map center in latitude~longitude form.
+      setlang:
+        type: string
+        required: false
+        maxLength: 16
+        example: en-US
+        note: Bing Maps interface language, such as en-US; up to 16 characters.
+      place_id:
+        type: string
+        required: false
+        maxLength: 256
+        note: Bing Maps place identifier from a listing row's place_id, up to 256 characters. Required unless q
+          is present.
+      first:
+        type: integer
+        required: false
+        min: 0
+        max: 10000
+        default: 0
+        note: Listing offset from 0 through 10,000.
+      count:
+        type: integer
+        required: false
+        min: 1
+        max: 30
+        default: 30
+        note: Number of listings, 1 through 30.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: coffee shops Austin
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.bing.maps.search.json
+- id: litescrape.duckduckgo.serp.organic
+  capability: duckduckgo.serp.organic
+  platform: duckduckgo
+  domain: search
+  scope: any_account
+  method: GET
+  path: /api/duckduckgo/search
+  name: Search DuckDuckGo
+  summary: Returns ranked DuckDuckGo web results in `organic_results`
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 500
+        example: coffee Austin Texas
+        note: Search text, 1 to 500 characters.
+      kl:
+        type: string
+        required: false
+        maxLength: 32
+        example: us-en
+        note: DuckDuckGo region and language token, such as us-en; up to 32 characters.
+      search_assist:
+        type: boolean
+        required: false
+        default: true
+        note: Use DuckDuckGo query assistance. Mutually exclusive with m.
+      safe:
+        type: string
+        required: false
+        default: '-1'
+        enum:
+        - '1'
+        - '-1'
+        - '-2'
+        note: 'Safe-search level: 1 is strict, -1 is moderate, -2 is off.'
+      df:
+        type: string
+        required: false
+        maxLength: 64
+        example: w
+        note: 'Date filter: d (past day), w (past week), m (past month), y (past year), or a YYYY-MM-DD..YYYY-MM-DD
+          range.'
+      start:
+        type: integer
+        required: false
+        min: 0
+        max: 10000
+        default: 0
+        note: Result offset from 0 through 10,000.
+      m:
+        type: integer
+        required: false
+        min: 1
+        max: 50
+        default: 50
+        note: Number of results, 1 through 50. Mutually exclusive with search_assist.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: coffee shops Austin
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.duckduckgo.serp.organic.json
+- id: litescrape.duckduckgo.maps.search
+  capability: duckduckgo.maps.search
+  platform: duckduckgo
+  domain: places
+  scope: any_account
+  method: GET
+  path: /api/duckduckgo/maps
+  name: Search DuckDuckGo Maps
+  summary: Returns places from DuckDuckGo's local results in `local_results`
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 500
+        example: coffee
+        note: Place or category query, 1 to 500 characters.
+      bbox:
+        type: string
+        required: false
+        maxLength: 256
+        example: 30.35,-97.90,30.10,-97.50
+        note: Map rectangle as top,left,bottom,right (latitude,longitude of the top-left corner, then of the bottom-right
+          corner); must not wrap the antimeridian. Use instead of lat/lon; one of the two is required.
+      lat:
+        type: number
+        required: false
+        min: -90
+        max: 90
+        example: 30.2672
+        note: Map center latitude from -90 through 90. Requires lon; use instead of bbox.
+      lon:
+        type: number
+        required: false
+        min: -180
+        max: 180
+        example: -97.7431
+        note: Map center longitude from -180 through 180. Requires lat; use instead of bbox.
+      strict_bbox:
+        type: boolean
+        required: false
+        default: true
+        note: Exclude results outside the requested bounds.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: coffee shops
+      bbox: 30.30,-97.80,30.20,-97.70
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.duckduckgo.maps.search.json
+- id: litescrape.apple_maps.places
+  capability: apple-maps.places
+  platform: apple-maps
+  domain: places
+  scope: any_account
+  method: GET
+  path: /api/apple/maps/places
+  name: Get Apple Maps places
+  summary: Resolve one to 50 unsigned 64-bit decimal Apple Maps MUIDs
+  input:
+    queryParams:
+      muid:
+        type: string
+        required: true
+        example: '4372355869446211302'
+        note: One to 50 comma-separated unsigned 64-bit decimal Apple Maps place IDs.
+      locale:
+        type: string
+        required: false
+        default: en-US
+        example: en-US
+        note: Apple-supported language-region locale such as en-US, en-GB, fr-FR, ja-JP, or zh-TW. Controls language
+          and regional formatting.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      muid: '4372355869446211302'
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.apple_maps.places.json
+- id: litescrape.apple_maps.reviews
+  capability: apple-maps.reviews
+  platform: apple-maps
+  domain: reviews
+  scope: any_account
+  method: GET
+  path: /api/apple/maps/reviews
+  name: Read Apple Maps reviews
+  summary: Returns Apple's own rating summary and written reviews for one Apple Maps place; ratings and reviews
+    attributed to other providers are omitted
+  input:
+    queryParams:
+      muid:
+        type: string
+        required: true
+        example: '4560078147072908047'
+        note: Exactly one unsigned 64-bit decimal Apple Maps place ID, such as the muid in an Apple Maps Places
+          response.
+      locale:
+        type: string
+        required: false
+        default: en-US
+        example: en-US
+        note: Apple-supported language-region locale such as en-US, en-GB, fr-FR, ja-JP, or zh-TW. Controls language
+          and regional formatting.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      muid: '4560078147072908047'
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.apple_maps.reviews.json
+- id: litescrape.yelp.business.search
+  added: '2026-09-29'
+  capability: yelp.business.search
+  platform: yelp
+  domain: places
+  scope: any_account
+  method: GET
+  path: /api/yelp/search
+  name: Search Yelp businesses
+  summary: Returns Yelp businesses in `organic_results`
+  input:
+    queryParams:
+      find_desc:
+        type: string
+        required: false
+        maxLength: 500
+        example: coffee
+        note: Business name, category, or search terms, up to 500 characters.
+      find_loc:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 500
+        example: Austin, TX
+        note: Search location, 1 to 500 characters.
+      yelp_domain:
+        type: string
+        required: false
+        default: www.yelp.com
+        example: www.yelp.com
+        note: Supported first-party localized Yelp hostname, such as www.yelp.co.uk. Links in the response use this
+          hostname.
+      l:
+        type: string
+        required: false
+        maxLength: 1024
+        example: g:-97.80,30.20,-97.70,30.30
+        note: Yelp map-bounds token, up to 1,024 characters.
+      cflt:
+        type: string
+        required: false
+        maxLength: 128
+        example: coffee
+        note: Yelp category identifier, such as coffee.
+      sortby:
+        type: string
+        required: false
+        default: recommended
+        enum:
+        - recommended
+        - rating
+        - review_count
+        note: Result order.
+      attrs:
+        type: string
+        required: false
+        maxLength: 4096
+        example: OutdoorSeating
+        note: Comma-separated Yelp attribute filters, such as OutdoorSeating; up to 4,096 characters.
+      start:
+        type: integer
+        required: false
+        min: 0
+        max: 10000
+        default: 0
+        note: Result offset from 0 through 10,000.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+    note: Four live requests returned upstream 503 service_unavailable. The documented request contract and price
+      are retained; no successful result is verified yet.
+  test_request:
+    queryParams:
+      find_desc: coffee
+      find_loc: Austin, TX
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: documented
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+- id: litescrape.yelp.business.reviews
+  capability: yelp.business.reviews
+  platform: yelp
+  domain: reviews
+  scope: any_account
+  method: GET
+  path: /api/yelp/reviews
+  name: Read Yelp reviews
+  summary: Returns public reviews for one Yelp business in `reviews`
+  input:
+    queryParams:
+      place_id:
+        type: string
+        required: true
+        maxLength: 128
+        example: dDz2erKJ_Z2HMur0tQ_iJA
+        note: 'Encoded Yelp business ID: letters, numbers, underscores, and hyphens.'
+      yelp_domain:
+        type: string
+        required: false
+        default: www.yelp.com
+        example: www.yelp.com
+        note: Supported first-party localized Yelp hostname, such as www.yelp.co.uk. Links in the response use this
+          hostname.
+      hl:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: 'Review language: a two-letter code with an optional two-letter region, such as en or fr-FR.'
+      q:
+        type: string
+        required: false
+        maxLength: 500
+        note: 'Not supported: Yelp does not offer review text filtering. Any value returns 422 unsupported_parameter.'
+      sortby:
+        type: string
+        required: false
+        default: relevance_desc
+        enum:
+        - relevance_desc
+        - date_desc
+        - date_asc
+        - rating_desc
+        - rating_asc
+        - elites_desc
+        note: Review order.
+      rating:
+        type: string
+        required: false
+        maxLength: 32
+        example: 5,4
+        note: Comma-separated star ratings to include, each from 1 through 5.
+      not_recommended:
+        type: boolean
+        required: false
+        default: false
+        note: 'Not supported: Yelp does not expose its not-recommended reviews. true returns 422 unsupported_parameter.'
+      start:
+        type: integer
+        required: false
+        min: 0
+        max: 10000
+        default: 0
+        note: Review offset from 0 through 10,000.
+      num:
+        type: integer
+        required: false
+        min: 1
+        max: 49
+        default: 49
+        note: Number of reviews, 1 through 49.
+      not_recommended_start:
+        type: integer
+        required: false
+        min: 0
+        note: Not supported, because not_recommended is not supported. Any value returns 400.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      place_id: dDz2erKJ_Z2HMur0tQ_iJA
+      num: 10
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.yelp.business.reviews.json
+- id: litescrape.tripadvisor.search.general
+  capability: tripadvisor.search.general
+  platform: tripadvisor
+  domain: places
+  scope: any_account
+  method: GET
+  path: /api/tripadvisor/search
+  name: Search Tripadvisor
+  summary: Returns Tripadvisor hotels, restaurants, attractions and places in `search_results`
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 500
+        example: coffee
+        note: Search text, 1 to 500 characters.
+      tripadvisor_domain:
+        type: string
+        required: false
+        default: www.tripadvisor.com
+        example: www.tripadvisor.com
+        note: Supported first-party localized Tripadvisor hostname, such as www.tripadvisor.co.uk.
+      locale:
+        type: string
+        required: false
+        default: en-US
+        note: Lowercase language code with an optional uppercase country, such as en or en-US.
+      geo_id:
+        type: integer
+        required: false
+        min: 1
+        max: 9007199254740991
+        example: 30196
+        note: Tripadvisor geography ID to search within.
+      lat:
+        type: number
+        required: false
+        min: -90
+        max: 90
+        example: 30.2672
+        note: Search center latitude from -90 through 90. Requires lon.
+      lon:
+        type: number
+        required: false
+        min: -180
+        max: 180
+        example: -97.7431
+        note: Search center longitude from -180 through 180. Requires lat.
+      place_type:
+        type: string
+        required: false
+        default: all
+        enum:
+        - all
+        - accommodation
+        - attraction
+        - attraction_product
+        - eatery
+        - geo
+        note: Restrict results to one entity type.
+      start:
+        type: integer
+        required: false
+        min: 0
+        max: 10000
+        default: 0
+        note: Result offset from 0 through 10,000. Offsets and positions count any leading exact match.
+      num:
+        type: integer
+        required: false
+        min: 1
+        max: 30
+        default: 30
+        note: Maximum number of search_results, 1 through 30, including any leading exact match.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: hotels in Austin Texas
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.tripadvisor.search.general.json
+- id: litescrape.tripadvisor.place.detail
+  capability: tripadvisor.place.detail
+  platform: tripadvisor
+  domain: places
+  scope: any_account
+  method: GET
+  path: /api/tripadvisor/place
+  name: Get Tripadvisor place details
+  summary: 'Returns one Tripadvisor place in `place_results`: identity, location, rating, images and, for restaurants,
+    contact details, hours and rankings when Tripadvisor supplies them'
+  input:
+    queryParams:
+      place_id:
+        type: integer
+        required: true
+        min: 1
+        max: 9007199254740991
+        example: 437641
+        note: Numeric Tripadvisor place ID, up to 16 digits.
+      tripadvisor_domain:
+        type: string
+        required: false
+        default: www.tripadvisor.com
+        example: www.tripadvisor.com
+        note: Supported first-party localized Tripadvisor hostname, such as www.tripadvisor.co.uk.
+      locale:
+        type: string
+        required: false
+        default: en-US
+        note: Lowercase language code with an optional uppercase country, such as en or en-US.
+      currency:
+        type: string
+        required: false
+        default: USD
+        note: Three-letter ISO currency code for price fields; case-insensitive.
+      geo_id:
+        type: integer
+        required: false
+        min: 1
+        max: 9007199254740991
+        example: 30196
+        note: Tripadvisor ID of the place's parent geography.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      place_id: '18941405'
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.tripadvisor.place.detail.json
+- id: litescrape.tripadvisor.business.reviews
+  capability: tripadvisor.business.reviews
+  platform: tripadvisor
+  domain: reviews
+  scope: any_account
+  method: GET
+  path: /api/tripadvisor/reviews
+  name: Read Tripadvisor reviews
+  summary: 'Returns public reviews for one Tripadvisor place in `reviews`, in Tripadvisor''s order; rows Tripadvisor
+    promotes carry `featured: true` and can appear ahead of newer reviews'
+  input:
+    queryParams:
+      place_id:
+        type: integer
+        required: true
+        min: 1
+        max: 9007199254740991
+        example: 437641
+        note: Numeric Tripadvisor place ID, up to 16 digits.
+      tripadvisor_domain:
+        type: string
+        required: false
+        default: www.tripadvisor.com
+        example: www.tripadvisor.com
+        note: Supported first-party localized Tripadvisor hostname, such as www.tripadvisor.co.uk.
+      locale:
+        type: string
+        required: false
+        default: en-US
+        note: Lowercase language code with an optional uppercase country, such as en or en-US.
+      start:
+        type: integer
+        required: false
+        min: 0
+        max: 10000
+        default: 0
+        note: Review offset from 0 through 10,000.
+      num:
+        type: integer
+        required: false
+        min: 1
+        max: 50
+        default: 10
+        note: Number of reviews, 1 through 50.
+      sort_by:
+        type: string
+        required: false
+        default: recent
+        enum:
+        - recent
+        - relevance
+        note: 'Review order: recent (newest first) or relevance.'
+      translate:
+        type: boolean
+        required: false
+        default: false
+        note: Request Tripadvisor's machine translation of reviews.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      place_id: '18941405'
+      num: 5
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.tripadvisor.business.reviews.json
+- id: litescrape.google_play.search.apps
+  capability: google-play.search.apps
+  platform: google-play
+  domain: apps
+  scope: any_account
+  method: GET
+  path: /api/google/play/apps
+  name: Search Google Play apps
+  summary: Search and browse Android apps, categories, device storefronts, and charts
+  input:
+    queryParams:
+      hl:
+        type: string
+        required: false
+        maxLength: 32
+        default: en
+        example: en
+        note: Storefront language, such as en, de, or zh-TW. Maximum 32 characters.
+      gl:
+        type: string
+        required: false
+        default: us
+        example: us
+        note: Two-letter country code.
+      q:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 2048
+        example: coffee
+        note: At most 2,048 UTF-8 bytes.
+      chart:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 128
+        note: Chart identifier such as topselling_free, topselling_paid, or topgrossing. Excludes q and all pagination
+          selectors. Apps and games charts require phone or an omitted store_device.
+      next_page_token:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 65536
+        note: Use the returned next_page_token with the same parameters. Excludes chart, section_page_token, and
+          see_more_token.
+      section_page_token:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 65536
+        note: Continue one result group using its returned token and the same parameters. Excludes the other pagination
+          selectors and chart.
+      see_more_token:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 65536
+        note: Open a result collection using its returned token and the same parameters. Excludes the other pagination
+          selectors and chart.
+      apps_category:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 128
+        note: Native app category identifier, such as MEDICAL. Excludes q and an explicit store_device.
+      store_device:
+        type: string
+        required: false
+        enum:
+        - phone
+        - tablet
+        - tv
+        - chromebook
+        - watch
+        - car
+        note: Omit for the default phone storefront. An explicit selection excludes q and category.
+      age:
+        type: string
+        required: false
+        enum:
+        - AGE_RANGE1
+        - AGE_RANGE2
+        - AGE_RANGE3
+        note: Children's age range. Requires apps_category=FAMILY.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: Duolingo
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google_play.search.apps.json
+- id: litescrape.google_play.search.games
+  capability: google-play.search.games
+  platform: google-play
+  domain: apps
+  scope: any_account
+  method: GET
+  path: /api/google/play/games
+  name: Search Google Play games
+  summary: Browse games, categories, device storefronts, and charts, or query the shared Android app search
+  input:
+    queryParams:
+      hl:
+        type: string
+        required: false
+        maxLength: 32
+        default: en
+        example: en
+        note: Storefront language, such as en, de, or zh-TW. Maximum 32 characters.
+      gl:
+        type: string
+        required: false
+        default: us
+        example: us
+        note: Two-letter country code.
+      q:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 2048
+        example: coffee
+        note: At most 2,048 UTF-8 bytes.
+      chart:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 128
+        note: Chart identifier such as topselling_free, topselling_paid, or topgrossing. Excludes q and all pagination
+          selectors. Apps and games charts require phone or an omitted store_device.
+      next_page_token:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 65536
+        note: Use the returned next_page_token with the same parameters. Excludes chart, section_page_token, and
+          see_more_token.
+      section_page_token:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 65536
+        note: Continue one result group using its returned token and the same parameters. Excludes the other pagination
+          selectors and chart.
+      see_more_token:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 65536
+        note: Open a result collection using its returned token and the same parameters. Excludes the other pagination
+          selectors and chart.
+      games_category:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 128
+        note: Native game category identifier, such as GAME_PUZZLE. Excludes q and an explicit store_device.
+      store_device:
+        type: string
+        required: false
+        enum:
+        - phone
+        - tablet
+        - tv
+        - chromebook
+        - watch
+        - windows
+        note: Omit for the default phone storefront. An explicit selection excludes q and category.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams: {}
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google_play.search.games.json
+- id: litescrape.google_play.search.books
+  capability: google-play.search.books
+  platform: google-play
+  domain: apps
+  scope: any_account
+  method: GET
+  path: /api/google/play/books
+  name: Search Google Play books
+  summary: Search and browse ebooks, audiobooks, series, categories, and charts
+  input:
+    queryParams:
+      hl:
+        type: string
+        required: false
+        maxLength: 32
+        default: en
+        example: en
+        note: Storefront language, such as en, de, or zh-TW. Maximum 32 characters.
+      gl:
+        type: string
+        required: false
+        default: us
+        example: us
+        note: Two-letter country code.
+      q:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 2048
+        example: coffee
+        note: At most 2,048 UTF-8 bytes.
+      chart:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 128
+        note: Chart identifier such as topselling_free, topselling_paid, or topgrossing. Excludes q and all pagination
+          selectors. Apps and games charts require phone or an omitted store_device.
+      next_page_token:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 65536
+        note: Use the returned next_page_token with the same parameters. Excludes chart, section_page_token, and
+          see_more_token.
+      section_page_token:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 65536
+        note: Continue one result group using its returned token and the same parameters. Excludes the other pagination
+          selectors and chart.
+      see_more_token:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 65536
+        note: Open a result collection using its returned token and the same parameters. Excludes the other pagination
+          selectors and chart.
+      books_category:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 128
+        note: Native book category identifier, such as coll_1689 for children's books. Excludes q.
+      age:
+        type: string
+        required: false
+        enum:
+        - AGE_RANGE1
+        - AGE_RANGE2
+        - AGE_RANGE3
+        note: Children's age range. Requires books_category=coll_1689.
+      price:
+        type: integer
+        required: false
+        min: 1
+        max: 2
+        note: 1 for free books or 2 for paid books. Requires q.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: Dune
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google_play.search.books.json
+- id: litescrape.google_play.search.movies
+  capability: google-play.search.movies
+  platform: google-play
+  domain: apps
+  scope: any_account
+  method: GET
+  path: /api/google/play/movies
+  name: Search Google Play movies
+  summary: Search and browse movies, TV shows, episodes, categories, and charts
+  input:
+    queryParams:
+      hl:
+        type: string
+        required: false
+        maxLength: 32
+        default: en
+        example: en
+        note: Storefront language, such as en, de, or zh-TW. Maximum 32 characters.
+      gl:
+        type: string
+        required: false
+        default: us
+        example: us
+        note: Two-letter country code.
+      q:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 2048
+        example: coffee
+        note: At most 2,048 UTF-8 bytes.
+      chart:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 128
+        note: Chart identifier such as topselling_free, topselling_paid, or topgrossing. Excludes q and all pagination
+          selectors. Apps and games charts require phone or an omitted store_device.
+      next_page_token:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 65536
+        note: Use the returned next_page_token with the same parameters. Excludes chart, section_page_token, and
+          see_more_token.
+      section_page_token:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 65536
+        note: Continue one result group using its returned token and the same parameters. Excludes the other pagination
+          selectors and chart.
+      see_more_token:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 65536
+        note: Open a result collection using its returned token and the same parameters. Excludes the other pagination
+          selectors and chart.
+      movies_category:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 128
+        note: Native movie category identifier, such as FAMILY for family movies. Excludes q.
+      age:
+        type: string
+        required: false
+        enum:
+        - AGE_RANGE1
+        - AGE_RANGE2
+        - AGE_RANGE3
+        note: Children's age range. Requires movies_category=FAMILY.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      q: Dune
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google_play.search.movies.json
+- id: litescrape.google_play.product
+  capability: google-play.product
+  platform: google-play
+  domain: apps
+  scope: any_account
+  method: GET
+  path: /api/google/play/product
+  name: Get Google Play product details
+  summary: Read app, ebook, audiobook, movie, or TV product details
+  input:
+    queryParams:
+      hl:
+        type: string
+        required: false
+        maxLength: 32
+        default: en
+        example: en
+        note: Storefront language, such as en, de, or zh-TW. Maximum 32 characters.
+      gl:
+        type: string
+        required: false
+        default: us
+        example: us
+        note: Two-letter country code.
+      product_id:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 512
+        example: com.duolingo
+        note: Native Google Play product identifier, with 1 to 512 letters, digits, underscores, dots, or hyphens.
+      store:
+        type: string
+        required: false
+        default: apps
+        enum:
+        - apps
+        - books
+        - audiobooks
+        - movies
+        - tv
+        note: Product catalog containing this identifier.
+      season_id:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 512
+        note: Native season identifier, such as tvseason-OVPad1njPzI.P. Requires store=tv.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      product_id: com.duolingo
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google_play.product.json
+- id: litescrape.google_play.reviews
+  capability: google-play.reviews
+  platform: google-play
+  domain: reviews
+  scope: any_account
+  method: GET
+  path: /api/google/play/reviews
+  name: Read Google Play reviews
+  summary: Filter and paginate product reviews, including available developer replies
+  input:
+    queryParams:
+      hl:
+        type: string
+        required: false
+        maxLength: 32
+        default: en
+        example: en
+        note: Storefront language, such as en, de, or zh-TW. Maximum 32 characters.
+      gl:
+        type: string
+        required: false
+        default: us
+        example: us
+        note: Two-letter country code.
+      product_id:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 512
+        example: com.duolingo
+        note: Native Google Play product identifier, with 1 to 512 letters, digits, underscores, dots, or hyphens.
+      store:
+        type: string
+        required: false
+        default: apps
+        enum:
+        - apps
+        - books
+        - audiobooks
+        - movies
+        - tv
+        note: Product catalog containing this identifier.
+      platform:
+        type: string
+        required: false
+        default: phone
+        enum:
+        - phone
+        - tablet
+        - watch
+        - chromebook
+        - tv
+        note: Platform associated with the reviews.
+      rating:
+        type: integer
+        required: false
+        min: 1
+        max: 5
+        note: Only reviews with this rating, from 1 through 5.
+      sort_by:
+        type: integer
+        required: false
+        min: 1
+        max: 3
+        default: 1
+        note: 1 for relevant, 2 for newest, or 3 for rating.
+      num:
+        type: integer
+        required: false
+        min: 1
+        max: 199
+        default: 40
+        note: Number of reviews, from 1 through 199.
+      next_page_token:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 65536
+        note: Returned review continuation. Preserve product, store, language, country, platform, rating, sort order,
+          and count.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      product_id: com.duolingo
+      num: 5
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.google_play.reviews.json
+- id: litescrape.app_store.search.apps
+  capability: app-store.search.apps
+  platform: app-store
+  domain: apps
+  scope: any_account
+  method: GET
+  path: /api/apple/app-store/search
+  name: Search the Apple App Store
+  summary: Search iPhone, iPad, and Mac apps or developers by storefront
+  input:
+    queryParams:
+      country:
+        type: string
+        required: false
+        default: us
+        example: us
+        note: Two-letter Apple storefront country. UK is accepted as an alias for GB.
+      term:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 2048
+        example: coffee
+        note: Search term with 1 to 2,048 UTF-8 bytes of printable text, and at most 4,096 bytes after URL encoding.
+      lang:
+        type: string
+        required: false
+        default: en-us
+        example: en-us
+        note: Language-region code, such as en-us or fr-fr.
+      num:
+        type: integer
+        required: false
+        min: 1
+        max: 200
+        default: 10
+        note: Maximum results after filtering, from 1 through 200.
+      disallow_explicit:
+        type: boolean
+        required: false
+        default: false
+        note: Exclude explicit results when true.
+      property:
+        type: string
+        required: false
+        note: Use developer to match developer names, ignoring case.
+      category_id:
+        type: integer
+        required: false
+        min: 1
+        max: 2147483647
+        note: Filter results by a native genre identifier, from 1 through 2,147,483,647.
+      device:
+        type: string
+        required: false
+        default: mobile
+        enum:
+        - mobile
+        - tablet
+        - desktop
+        note: mobile for iPhone apps, tablet for iPad apps, or desktop for Mac apps.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      term: Duolingo
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.app_store.search.apps.json
+- id: litescrape.app_store.product
+  capability: app-store.product
+  platform: app-store
+  domain: apps
+  scope: any_account
+  method: GET
+  path: /api/apple/app-store/product
+  name: Get App Store product details
+  summary: Read app details, version history, screenshots, ratings, privacy disclosures, and related apps
+  input:
+    queryParams:
+      country:
+        type: string
+        required: false
+        default: us
+        example: us
+        note: Two-letter Apple storefront country. UK is accepted as an alias for GB.
+      product_id:
+        type: string
+        required: true
+        example: '570060128'
+        note: Positive decimal Apple app identifier, up to 20 digits.
+      type:
+        type: string
+        required: false
+        default: app
+        note: App product type. Only app is supported.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      product_id: '570060128'
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.app_store.product.json
+- id: litescrape.app_store.reviews
+  capability: app-store.reviews
+  platform: app-store
+  domain: reviews
+  scope: any_account
+  method: GET
+  path: /api/apple/app-store/reviews
+  name: Read App Store reviews
+  summary: Read storefront-specific app reviews
+  input:
+    queryParams:
+      country:
+        type: string
+        required: false
+        default: us
+        example: us
+        note: Two-letter Apple storefront country. UK is accepted as an alias for GB.
+      product_id:
+        type: string
+        required: true
+        example: '570060128'
+        note: Positive decimal Apple app identifier, up to 20 digits.
+      sort:
+        type: string
+        required: false
+        default: mostrecent
+        enum:
+        - mostrecent
+        - mosthelpful
+        note: mostrecent or mosthelpful. Apple's Mac storefront always returns newest first.
+      page:
+        type: integer
+        required: false
+        min: 1
+        max: 2147483647
+        default: 1
+        note: One-based page number, from 1 through 2,147,483,647. Exhausted pages return an empty review list.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      product_id: '570060128'
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.app_store.reviews.json
+- id: litescrape.web.fetch
+  capability: web.extract
+  platform: web
+  domain: extract
+  scope: any_account
+  method: GET
+  path: /api/web/fetch
+  name: Fetch rendered web content
+  summary: Fetch a public HTTP(S) page and return LLM-ready content
+  input:
+    queryParams:
+      assert_status_code:
+        type: integer
+        required: false
+        min: 100
+        max: 599
+        example: 200
+        note: Expected origin HTTP status, 100-599. A different status is rejected; otherwise a rendered error page
+          is a successful capture.
+      base:
+        type: string
+        required: false
+        enum:
+        - initial
+        - final
+        note: Resolve relative links against the requested URL (initial, default) or the final URL after redirects
+          (final).
+      detach_invisibles:
+        type: boolean
+        required: false
+        note: Drop display:none elements from the page.
+      engine:
+        type: string
+        required: false
+        enum:
+        - auto
+        - browser
+        - curl
+        note: auto (default; lightweight HTTP first, a browser when needed), browser, or curl (no JavaScript).
+      keep_img_data_url:
+        type: boolean
+        required: false
+        note: 'Keep inline data: images in Markdown.'
+      locale:
+        type: string
+        required: false
+        minLength: 2
+        maxLength: 64
+        example: en-US
+        note: Browser locale as a language tag, 2-64 characters. Defaults to the browser's own.
+      markdown_chunking:
+        type: string
+        required: false
+        enum:
+        - 'true'
+        - h1
+        - h2
+        - h3
+        - h4
+        - h5
+        - structured
+        - s1
+        - s2
+        - s3
+        - s4
+        - s5
+        note: 'true, h1-h5, structured or s1-s5: split the Markdown and return chunks.'
+      max_tokens:
+        type: integer
+        required: false
+        min: 500
+        max: 10000000
+        note: Integer 500-10,000,000. Trim content to this many tokens.
+      no_gfm:
+        type: string
+        required: false
+        note: 'true, false or table: disable GitHub-flavored Markdown, or only its tables.'
+      page_timeout:
+        type: integer
+        required: false
+        min: 1
+        max: 180
+        example: 30
+        note: Seconds from 1 through 180 for page loading and browser operations. Cannot extend the total request
+          budget set by timeout.
+      preset:
+        type: string
+        required: false
+        enum:
+        - reader
+        - index
+        - research
+        - agent
+        - spider
+        note: Option preset. Fills only the options the request leaves unset.
+      referer:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 8192
+        example: https://example.com
+        note: HTTP(S) URL sent as the Referer.
+      remove_overlay:
+        type: boolean
+        required: false
+        note: Remove modal and cookie-banner overlays from the page.
+      remove_selector:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 2048
+        example: nav, footer
+        note: CSS selector removed before extraction, 1-2,048 characters; POST also accepts a list of 1-16 selectors.
+      respond_timing:
+        type: string
+        required: false
+        enum:
+        - html
+        - visible-content
+        - mutation-idle
+        - resource-idle
+        - media-idle
+        - network-idle
+        example: network-idle
+        note: Page readiness condition to reach before responding.
+      respond_with:
+        type: string
+        required: false
+        minLength: 3
+        maxLength: 64
+        example: markdown
+        note: 'Output format: content (default; main content as Markdown, or the whole page when extraction keeps
+          too little), markdown (whole page as Markdown), html, text, frontmatter (content plus front matter), or
+          a ''+'' combination such as markdown+frontmatter. For screenshots use /api/web/screenshot.'
+      retain_images:
+        type: string
+        required: false
+        enum:
+        - none
+        - all
+        - alt
+        example: alt
+        note: 'Images to keep: all (default), alt (alt text only) or none.'
+      retain_links:
+        type: string
+        required: false
+        enum:
+        - none
+        - all
+        - text
+        - gpt-oss
+        note: 'Links to keep: all (default), text (link text only), none, or gpt-oss (citation format with a links
+          summary).'
+      retain_media:
+        type: string
+        required: false
+        enum:
+        - none
+        - text
+        - link
+        - image
+        - html
+        note: 'How video, audio and embedded video appear: none, text, link (default), image or html.'
+      robots_txt:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 256
+        example: MyBot
+        note: User agent, 1-256 characters, to check against the site's robots.txt; disallowed URLs are rejected.
+      target_selector:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 2048
+        example: article
+        note: CSS selector to extract, 1-2,048 characters; POST also accepts a list of 1-16 selectors. Implies waiting
+          for the selector. Match-all selectors are rejected.
+      token_budget:
+        type: integer
+        required: false
+        min: 1
+        max: 10000000
+        note: Integer 1-10,000,000. Reject the page when its token count exceeds the budget.
+      url:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 8192
+        example: https://example.com
+        note: Public HTTP(S) URL to capture, 1-8,192 characters. Include http:// or https://; bare domains are rejected.
+          The host must be public, on port 80 or 443, without embedded credentials.
+      user_agent:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 1024
+        note: User-Agent for the page request, 1-1,024 characters without control characters. Defaults to the browser's
+          own.
+      wait_for_selector:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 2048
+        example: main
+        note: CSS selector to wait for after navigation, 1-2,048 characters. POST also accepts a list of 1-16 selectors.
+      with_iframe:
+        type: string
+        required: false
+        note: 'true, false or quoted: include iframe content before extraction.'
+      with_images_summary:
+        type: boolean
+        required: false
+        note: Add an images list to the response.
+      with_links_summary:
+        type: string
+        required: false
+        note: 'true, false or all: add a links list to the response.'
+      with_shadow_dom:
+        type: boolean
+        required: false
+        note: Include open shadow DOM content before extraction.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+  test_request:
+    queryParams:
+      url: https://example.com
+      respond_with: markdown
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.web.fetch.json
+- id: litescrape.web.fetch.post
+  capability: web.extract.advanced
+  platform: web
+  domain: extract
+  scope: any_account
+  method: POST
+  path: /api/web/fetch
+  name: "Web extraction with browser options"
+  summary: Fetch a public HTTP(S) page and return LLM-ready content
+  input:
+    queryParams:
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+    bodyType: json
+    body:
+      url:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 8192
+        example: https://example.com
+        note: Public HTTP(S) URL to capture, 1-8,192 characters. Include http:// or https://; bare domains are rejected.
+          The host must be public, on port 80 or 443, without embedded credentials.
+      remove_overlay:
+        type: boolean
+        required: false
+        note: Remove modal and cookie-banner overlays from the page.
+      detach_invisibles:
+        type: boolean
+        required: false
+        note: Drop display:none elements from the page.
+      wait_for_selector:
+        type: string
+        required: false
+        example: main
+        note: CSS selector to wait for after navigation, 1-2,048 characters. POST also accepts a list of 1-16 selectors.
+      set_cookies:
+        type: list
+        required: false
+        note: POST only. 1-100 cookies in Set-Cookie syntax (name=value; Path=/; Domain=...), one line each, up
+          to 4,096 characters.
+      user_agent:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 1024
+        note: User-Agent for the page request, 1-1,024 characters without control characters. Defaults to the browser's
+          own.
+      inject_page_script:
+        type: list
+        required: false
+        note: POST only. 1-8 scripts (source, or a URL to a script), up to 8,192 characters each, run in the main
+          frame.
+      inject_frame_script:
+        type: list
+        required: false
+        note: POST only. 1-8 scripts (source, or a URL to a script), up to 8,192 characters each, run in every frame.
+      page_timeout:
+        type: integer
+        required: false
+        min: 1
+        max: 180
+        example: 30
+        note: Seconds from 1 through 180 for page loading and browser operations. Cannot extend the total request
+          budget set by timeout.
+      locale:
+        type: string
+        required: false
+        minLength: 2
+        maxLength: 64
+        example: en-US
+        note: Browser locale as a language tag, 2-64 characters. Defaults to the browser's own.
+      referer:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 8192
+        example: https://example.com
+        note: HTTP(S) URL sent as the Referer.
+      assert_status_code:
+        type: integer
+        required: false
+        min: 100
+        max: 599
+        example: 200
+        note: Expected origin HTTP status, 100-599. A different status is rejected; otherwise a rendered error page
+          is a successful capture.
+      viewport:
+        type: dict
+        required: false
+        note: 'POST only. Browser viewport; width and height are required. Default: 1280 x 1280.'
+      robots_txt:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 256
+        example: MyBot
+        note: User agent, 1-256 characters, to check against the site's robots.txt; disallowed URLs are rejected.
+      respond_timing:
+        type: string
+        required: false
+        enum:
+        - html
+        - visible-content
+        - mutation-idle
+        - resource-idle
+        - media-idle
+        - network-idle
+        example: network-idle
+        note: Page readiness condition to reach before responding.
+      respond_with:
+        type: string
+        required: false
+        minLength: 3
+        maxLength: 64
+        example: markdown
+        note: 'Output format: content (default; main content as Markdown, or the whole page when extraction keeps
+          too little), markdown (whole page as Markdown), html, text, frontmatter (content plus front matter), or
+          a ''+'' combination such as markdown+frontmatter. For screenshots use /api/web/screenshot.'
+      with_links_summary:
+        type: string
+        required: false
+        note: 'true, false or all: add a links list to the response.'
+      with_images_summary:
+        type: boolean
+        required: false
+        note: Add an images list to the response.
+      retain_images:
+        type: string
+        required: false
+        enum:
+        - none
+        - all
+        - alt
+        example: alt
+        note: 'Images to keep: all (default), alt (alt text only) or none.'
+      retain_links:
+        type: string
+        required: false
+        enum:
+        - none
+        - all
+        - text
+        - gpt-oss
+        note: 'Links to keep: all (default), text (link text only), none, or gpt-oss (citation format with a links
+          summary).'
+      retain_media:
+        type: string
+        required: false
+        enum:
+        - none
+        - text
+        - link
+        - image
+        - html
+        note: 'How video, audio and embedded video appear: none, text, link (default), image or html.'
+      preset:
+        type: string
+        required: false
+        enum:
+        - reader
+        - index
+        - research
+        - agent
+        - spider
+        note: Option preset. Fills only the options the request leaves unset.
+      no_gfm:
+        type: string
+        required: false
+        note: 'true, false or table: disable GitHub-flavored Markdown, or only its tables.'
+      target_selector:
+        type: string
+        required: false
+        example: article
+        note: CSS selector to extract, 1-2,048 characters; POST also accepts a list of 1-16 selectors. Implies waiting
+          for the selector. Match-all selectors are rejected.
+      remove_selector:
+        type: string
+        required: false
+        example: nav, footer
+        note: CSS selector removed before extraction, 1-2,048 characters; POST also accepts a list of 1-16 selectors.
+      keep_img_data_url:
+        type: boolean
+        required: false
+        note: 'Keep inline data: images in Markdown.'
+      with_iframe:
+        type: string
+        required: false
+        note: 'true, false or quoted: include iframe content before extraction.'
+      with_shadow_dom:
+        type: boolean
+        required: false
+        note: Include open shadow DOM content before extraction.
+      engine:
+        type: string
+        required: false
+        enum:
+        - auto
+        - browser
+        - curl
+        note: auto (default; lightweight HTTP first, a browser when needed), browser, or curl (no JavaScript).
+      token_budget:
+        type: integer
+        required: false
+        min: 1
+        max: 10000000
+        note: Integer 1-10,000,000. Reject the page when its token count exceeds the budget.
+      markdown:
+        type: dict
+        required: false
+        note: Turndown options Jina exposes as X-Md-* headers.
+      markdown_chunking:
+        type: string
+        required: false
+        enum:
+        - 'true'
+        - h1
+        - h2
+        - h3
+        - h4
+        - h5
+        - structured
+        - s1
+        - s2
+        - s3
+        - s4
+        - s5
+        note: 'true, h1-h5, structured or s1-s5: split the Markdown and return chunks.'
+      max_tokens:
+        type: integer
+        required: false
+        min: 500
+        max: 10000000
+        note: Integer 500-10,000,000. Trim content to this many tokens.
+      base:
+        type: string
+        required: false
+        enum:
+        - initial
+        - final
+        note: Resolve relative links against the requested URL (initial, default) or the final URL after redirects
+          (final).
+  test_request:
+    queryParams:
+      timeout: 60
+    body:
+      url: https://example.com
+      respond_with: markdown
+      viewport:
+        width: 1280
+        height: 800
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  body_allowlist: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.web.fetch.post.json
+- id: litescrape.web.screenshot
+  capability: web.screenshot
+  platform: web
+  domain: extract
+  scope: any_account
+  method: GET
+  path: /api/web/screenshot
+  name: Capture a web page screenshot
+  summary: Capture a public HTTP(S) page as a PNG
+  platform_blocked: The image download needs the same key and treg cannot assign the returned URL to one organization on a shared account. Connect your own Litescrape key.
+  input:
+    queryParams:
+      assert_status_code:
+        type: integer
+        required: false
+        min: 100
+        max: 599
+        example: 200
+        note: Expected origin HTTP status, 100-599. A different status is rejected; otherwise a rendered error page
+          is a successful capture.
+      detach_invisibles:
+        type: boolean
+        required: false
+        note: Drop display:none elements from the page.
+      full_page:
+        type: boolean
+        required: false
+        default: false
+        example: true
+        note: Capture the full page when true. The default, false, captures the viewport.
+      locale:
+        type: string
+        required: false
+        minLength: 2
+        maxLength: 64
+        example: en-US
+        note: Browser locale as a language tag, 2-64 characters. Defaults to the browser's own.
+      page_timeout:
+        type: integer
+        required: false
+        min: 1
+        max: 180
+        example: 30
+        note: Seconds from 1 through 180 for page loading and browser operations. Cannot extend the total request
+          budget set by timeout.
+      referer:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 8192
+        example: https://example.com
+        note: HTTP(S) URL sent as the Referer.
+      remove_overlay:
+        type: boolean
+        required: false
+        note: Remove modal and cookie-banner overlays from the page.
+      respond_timing:
+        type: string
+        required: false
+        enum:
+        - html
+        - visible-content
+        - mutation-idle
+        - resource-idle
+        - media-idle
+        - network-idle
+        example: network-idle
+        note: Page readiness condition to reach before responding.
+      robots_txt:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 256
+        example: MyBot
+        note: User agent, 1-256 characters, to check against the site's robots.txt; disallowed URLs are rejected.
+      url:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 8192
+        example: https://example.com
+        note: Public HTTP(S) URL to capture, 1-8,192 characters. Include http:// or https://; bare domains are rejected.
+          The host must be public, on port 80 or 443, without embedded credentials.
+      user_agent:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 1024
+        note: User-Agent for the page request, 1-1,024 characters without control characters. Defaults to the browser's
+          own.
+      wait_for_selector:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 2048
+        example: main
+        note: CSS selector to wait for after navigation, 1-2,048 characters. POST also accepts a list of 1-16 selectors.
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+    note: The returned screenshot_url needs the same bearer key for PNG download. That download is free and the
+      URL expires after seven days.
+  test_request:
+    queryParams:
+      url: https://example.com
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  strict_query: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.web.screenshot.json
+- id: litescrape.web.screenshot.post
+  capability: web.screenshot.advanced
+  platform: web
+  domain: extract
+  scope: any_account
+  method: POST
+  path: /api/web/screenshot
+  name: "Screenshot with browser options"
+  platform_blocked: The image download needs the same key and treg cannot assign the returned URL to one organization on a shared account. Connect your own Litescrape key.
+  summary: Capture a public HTTP(S) page as a PNG
+  input:
+    queryParams:
+      timeout:
+        type: number
+        required: false
+        max: 90.0
+        note: Optional budget for the entire request in seconds, measured from gateway receipt until the response
+          is ready to send. Includes admission, queueing and settlement. Must be greater than 0 and at most 90.
+          On expiry, the call is not billed and returns 503 request_deadline_exceeded with retryable=true and a
+          request ID. Omit to retain the standard server deadline.
+    bodyType: json
+    body:
+      url:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 8192
+        example: https://example.com
+        note: Public HTTP(S) URL to capture, 1-8,192 characters. Include http:// or https://; bare domains are rejected.
+          The host must be public, on port 80 or 443, without embedded credentials.
+      remove_overlay:
+        type: boolean
+        required: false
+        note: Remove modal and cookie-banner overlays from the page.
+      detach_invisibles:
+        type: boolean
+        required: false
+        note: Drop display:none elements from the page.
+      wait_for_selector:
+        type: string
+        required: false
+        example: main
+        note: CSS selector to wait for after navigation, 1-2,048 characters. POST also accepts a list of 1-16 selectors.
+      set_cookies:
+        type: list
+        required: false
+        note: POST only. 1-100 cookies in Set-Cookie syntax (name=value; Path=/; Domain=...), one line each, up
+          to 4,096 characters.
+      user_agent:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 1024
+        note: User-Agent for the page request, 1-1,024 characters without control characters. Defaults to the browser's
+          own.
+      inject_page_script:
+        type: list
+        required: false
+        note: POST only. 1-8 scripts (source, or a URL to a script), up to 8,192 characters each, run in the main
+          frame.
+      inject_frame_script:
+        type: list
+        required: false
+        note: POST only. 1-8 scripts (source, or a URL to a script), up to 8,192 characters each, run in every frame.
+      page_timeout:
+        type: integer
+        required: false
+        min: 1
+        max: 180
+        example: 30
+        note: Seconds from 1 through 180 for page loading and browser operations. Cannot extend the total request
+          budget set by timeout.
+      locale:
+        type: string
+        required: false
+        minLength: 2
+        maxLength: 64
+        example: en-US
+        note: Browser locale as a language tag, 2-64 characters. Defaults to the browser's own.
+      referer:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 8192
+        example: https://example.com
+        note: HTTP(S) URL sent as the Referer.
+      assert_status_code:
+        type: integer
+        required: false
+        min: 100
+        max: 599
+        example: 200
+        note: Expected origin HTTP status, 100-599. A different status is rejected; otherwise a rendered error page
+          is a successful capture.
+      viewport:
+        type: dict
+        required: false
+        note: 'POST only. Browser viewport; width and height are required. Default: 1280 x 1280.'
+      robots_txt:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 256
+        example: MyBot
+        note: User agent, 1-256 characters, to check against the site's robots.txt; disallowed URLs are rejected.
+      respond_timing:
+        type: string
+        required: false
+        enum:
+        - html
+        - visible-content
+        - mutation-idle
+        - resource-idle
+        - media-idle
+        - network-idle
+        example: network-idle
+        note: Page readiness condition to reach before responding.
+      full_page:
+        type: boolean
+        required: false
+        default: false
+        example: true
+        note: Capture the full page when true. The default, false, captures the viewport.
+    note: The returned screenshot_url needs the same bearer key for PNG download. That download is free and the
+      URL expires after seven days.
+  test_request:
+    queryParams:
+      timeout: 60
+    body:
+      url: https://example.com
+      full_page: true
+      viewport:
+        width: 1280
+        height: 800
+  cost:
+    type: per_success
+    value: 0.00015
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://litescrape.com/pricing
+    checked: '2026-09-29'
+    confidence: verified
+    note: One successful API response consumes one prepaid call; failures are free.
+  docs_url: https://litescrape.com/docs/reference
+  body_allowlist: true
+  verified: '2026-09-29'
+  added: '2026-09-29'
+  example_response: examples/litescrape.web.screenshot.post.json
+- id: litescrape.web.screenshot.download
+  added: '2026-09-29'
+  capability: web.screenshot.download
+  platform: web
+  domain: extract
+  kind: utility
+  scope: own_account
+  method: GET
+  path: /api/artifacts/web/screenshot
+  name: Download a captured screenshot
+  summary: Download the PNG referenced by screenshot_url using the connected key
+  platform_blocked: Screenshots created on the shared account cannot be assigned to an organization from the returned URL. Connect your own Litescrape key.
+  input:
+    queryParams:
+      id: {type: string, required: true, note: Screenshot ID from screenshot_url}
+      bucket: {type: string, required: true, note: Capture date from screenshot_url in YYYYMMDD form}
+  strict_query: true
+  cost: {type: free, value: 0, currency: USD, unit: call, note: Screenshot artifact download consumes no LiteScrape call.}
+  docs_url: https://litescrape.com/docs/reference

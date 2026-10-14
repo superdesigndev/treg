@@ -24,12 +24,13 @@ source:
 pricing_url: https://developers.snap.com/api/marketing-api/Ads-API/introduction
 endpoints:
   - id: snapchat-ads.organizations
+    added: '2026-07-28'
     capability: snapchat-ads.organizations
     platform: snapchat-ads
     scope: own_account
     method: GET
     path: /me/organizations
-    name: "Organizations"
+    name: "List your Snapchat business organizations"
     summary: "List the Snapchat business organizations you belong to"
     input:
       queryParams:
@@ -39,12 +40,13 @@ endpoints:
     docs_url: https://developers.snap.com/api/marketing-api/Ads-API/organizations
 
   - id: snapchat-ads.accounts
+    added: '2026-07-28'
     capability: snapchat-ads.accounts
     platform: snapchat-ads
     scope: own_account
     method: GET
     path: /organizations/{organization_id}/adaccounts
-    name: "Accounts"
+    name: "List Snapchat ad accounts in your organization"
     summary: "List the Snapchat ad accounts in a business organization"
     input:
       pathParams:
@@ -57,12 +59,13 @@ endpoints:
     docs_url: https://developers.snap.com/api/marketing-api/Ads-API/adaccounts
 
   - id: snapchat-ads.query
+    added: '2026-07-28'
     capability: snapchat-ads.query
     platform: snapchat-ads
     scope: own_account
     method: GET
     path: /adaccounts/{ad_account_id}/stats
-    name: "Get ad account performance stats"
+    name: "Your Snapchat ad account performance — spend, swipes"
     summary: "Get spend, impressions and swipes for your whole Snapchat ad account"
     input:
       pathParams:
@@ -80,12 +83,13 @@ endpoints:
     docs_url: https://developers.snap.com/api/marketing-api/Ads-API/measurement
 
   - id: snapchat-ads.campaigns
+    added: '2026-07-28'
     capability: snapchat-ads.campaigns
     platform: snapchat-ads
     scope: own_account
     method: GET
     path: /adaccounts/{ad_account_id}/campaigns
-    name: "List campaigns"
+    name: "List your Snapchat ad campaigns — objective, budget"
     summary: "List the campaigns in your Snapchat ad account with status, objective and budget"
     input:
       pathParams:
@@ -99,12 +103,13 @@ endpoints:
     docs_url: https://developers.snap.com/api/marketing-api/Ads-API/campaigns
 
   - id: snapchat-ads.campaign.stats
+    added: '2026-07-28'
     capability: snapchat-ads.campaign.stats
     platform: snapchat-ads
     scope: own_account
     method: GET
     path: /campaigns/{campaign_id}/stats
-    name: "Campaign stats"
+    name: "One Snapchat campaign's performance — spend, swipes"
     summary: "Get spend, impressions and swipes for one Snapchat campaign"
     input:
       pathParams:
@@ -121,12 +126,13 @@ endpoints:
     docs_url: https://developers.snap.com/api/marketing-api/Ads-API/measurement
 
   - id: snapchat-ads.ads
+    added: '2026-07-28'
     capability: snapchat-ads.ads
     platform: snapchat-ads
     scope: own_account
     method: GET
     path: /adaccounts/{ad_account_id}/ads
-    name: "List ads"
+    name: "List your Snapchat ads — creatives and ad types"
     summary: "List the ads in your Snapchat ad account with their creatives and types"
     input:
       pathParams:

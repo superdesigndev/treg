@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "tiktok-post",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 172,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "author": {
+        "followers": 36500000,
+        "id": "313520613518753792",
+        "name": "Cardi B",
+        "username": "iamcardib",
+        "verified": true
+      },
+      "cover": "https://p16-common-sign.tiktokcdn.com/tos-useast5-p-0068-tx/o4QExFqVJBQBD3DhQfqpVSFgEfMUgOtEnJmAR8~tplv-tiktokx-origin.image?dr=14575&x-expires=1791867600&x-signature=W5z8v345N9YLvkrUNvo8oDCQVTg%3D&t=4d5b0474&ps=13740610&shp=81f88b70&shcp=43f4a2f9&idc=my2",
+      "created_at": "2026-06-22T02:11:46Z",
+      "description": "Come haul with me ❤️",
+      "duration_s": 108.0,
+      "hashtags": [],
+      "music": {
+        "author": "Cardi B",
+        "original": true,
+        "title": "original sound"
+      },
+      "post_id": "7654036719242726670",
+      "region": "US",
+      "stats": {
+        "comments": 26200,
+        "likes": 5300000,
+        "plays": 29000000,
+        "saves": 178766,
+        "shares": 119500
+      },
+      "subtitles": [
+        {
+          "language": "eng-US",
+          "url": "https://v16-webapp.tiktok.com/41dcdd13a2d6d67e9b68198c404ebcca/6acdc068/video/tos/alisg/tos-alisg-v-37c799-sg/49c2472f0ed3413290f120379eddd501/?a=1988&bti=ODszNWYuMDE6&&bt=6785&ft=-ElcomDUPD12N3K0-n-UxTH5LY6e3wv25scAp&mime_type=video_mp4&rc=MzNpZHA5cjQ8OzMzZzczNEBpMzNpZHA5cjQ8OzMzZzczNEBsNGdpMmQ0Z3B…"
+        }
+      ],
+      "url": "https://www.tiktok.com/@iamcardib/video/7654036719242726670"
+    }
+  ]
+}

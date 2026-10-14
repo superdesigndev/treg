@@ -1,0 +1,205 @@
+provider: parallel
+source:
+  docs: https://docs.parallel.ai/getting-started/overview
+  openapi: https://docs.parallel.ai/public-openapi.json
+  curated: '2026-10-09'
+pricing_url: https://docs.parallel.ai/getting-started/pricing
+limits: "Search, Extract and Entity Search each allow 600 requests per minute on a rolling 60-second window. HTTP 429 is a rate limit; HTTP 402 is insufficient credit, which in-flight requests count against."
+
+endpoints:
+  - id: parallel.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v1/search
+    body_allowlist: true
+    name: Search the web fast
+    summary: Return ranked pages with query-focused excerpts in turbo or fast mode.
+    input:
+      bodyType: json
+      body:
+        search_queries: {type: "array[string]", required: true, minItems: 1, example: ["python requests library"], note: "Concise keyword queries, 3-6 words each; two or three give the best results."}
+        mode: {type: string, required: true, enum: [turbo, fast], example: fast, note: "Turbo answers in about 200 ms for English and Japanese queries; fast in about 700 ms. basic and advanced are the separate advanced search tool."}
+        objective: {type: string, required: false, example: "What is the Python requests library?", note: "The question behind the search, in plain words; focuses the excerpts."}
+        max_chars_total: {type: integer, required: false, note: "Upper bound on excerpt characters across all results."}
+        session_id: {type: string, required: false, note: "Echo the returned session_id on related search and extract calls."}
+        client_model: {type: string, required: false, note: "The model reading the results; tailors default excerpt settings."}
+        advanced_settings: {type: object, required: false, note: "{max_results (default 10, capped at 20), source_policy {include_domains, exclude_domains, after_date}, fetch_policy {max_age_seconds >= 600, timeout_seconds}, excerpt_settings {max_chars_per_result}, location (ISO country code)}. Each result past 10 adds $0.001."}
+      note: "Omitting mode upstream selects advanced, so this tool requires turbo or fast. Results carry url, title, publish_date and markdown excerpts; usage lists the billed SKUs."
+    test_request: {body: {search_queries: ["python requests library"], mode: fast, advanced_settings: {max_results: 2}}}
+    cost:
+      type: per_call
+      value: 0.001
+      fallback: {value: 0.001, note: "The search with its ten included results; usage settles any result past ten."}
+      currency: USD
+      unit: call
+      settle: usage
+      usage:
+        unit: usd
+        terms:
+          - {path: "usage[name=sku_search].count", rate: 0.001}
+          - {path: "usage[name=sku_extract_excerpts].count", rate: 0.001}
+      source: observed
+      source_url: https://docs.parallel.ai/getting-started/pricing
+      checked: '2026-10-09'
+      confidence: verified
+      note: "$0.001 per turbo or fast search with ten results included; each result past ten adds $0.001. Live: a two-result turbo search reported usage sku_search 1; a 15-result turbo search reported sku_search 1 and sku_extract_excerpts 5. The hold is the base price and usage settles the rest."
+    verified: '2026-10-09'
+    added: '2026-10-09'
+    example_response: examples/parallel.web.search.json
+    docs_url: https://docs.parallel.ai/search/search-quickstart
+
+  - id: parallel.web.search.advanced
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v1/search
+    body_allowlist: true
+    name: Search the web in depth
+    summary: Return ranked pages with query-focused excerpts in basic or advanced mode.
+    input:
+      bodyType: json
+      body:
+        search_queries: {type: "array[string]", required: true, minItems: 1, example: ["python requests library"], note: "Concise keyword queries, 3-6 words each; two or three give the best results."}
+        mode: {type: string, required: false, default: advanced, enum: [basic, advanced], example: basic, note: "Basic answers in about 1 s; advanced in about 3 s with the highest quality."}
+        objective: {type: string, required: false, example: "What is the Python requests library?", note: "The question behind the search, in plain words; focuses the excerpts."}
+        max_chars_total: {type: integer, required: false, note: "Upper bound on excerpt characters across all results."}
+        session_id: {type: string, required: false, note: "Echo the returned session_id on related search and extract calls."}
+        client_model: {type: string, required: false, note: "The model reading the results; tailors default excerpt settings."}
+        advanced_settings: {type: object, required: false, note: "{max_results (default 10, capped at 20), source_policy {include_domains, exclude_domains, after_date}, fetch_policy {max_age_seconds >= 600, timeout_seconds}, excerpt_settings {max_chars_per_result}, location (ISO country code)}. Each result past 10 adds $0.001."}
+      note: "Results carry url, title, publish_date and markdown excerpts; usage lists the billed SKUs. Use the fast search tool for turbo or fast mode at $0.001."
+    test_request: {body: {search_queries: ["python requests library"], objective: "What is the Python requests library?", mode: basic, advanced_settings: {max_results: 2}}}
+    cost:
+      type: per_call
+      value: 0.005
+      fallback: {value: 0.005, note: "The search with its ten included results; usage settles any result past ten."}
+      currency: USD
+      unit: call
+      settle: usage
+      usage:
+        unit: usd
+        terms:
+          - {path: "usage[name=sku_search].count", rate: 0.005}
+          - {path: "usage[name=sku_extract_excerpts].count", rate: 0.001}
+      source: docs
+      source_url: https://docs.parallel.ai/getting-started/pricing
+      checked: '2026-10-09'
+      confidence: documented
+      note: "$0.005 per basic or advanced search with ten results included; each result past ten adds $0.001. Live: a two-result basic search reported usage sku_search 1, the same SKU name as turbo, so the mode price comes from this row and not from the response. The hold is the base price and usage settles the rest."
+    verified: '2026-10-09'
+    added: '2026-10-09'
+    example_response: examples/parallel.web.search.advanced.json
+    docs_url: https://docs.parallel.ai/search/modes
+
+  - id: parallel.web.extract
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /v1/extract
+    body_allowlist: true
+    name: Extract web pages
+    summary: Return focused excerpts or full Markdown content from up to 20 public URLs.
+    input:
+      bodyType: json
+      body:
+        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 20, example: ["https://example.com"]}
+        objective: {type: string, required: false, note: "What you want from the pages; focuses the excerpts. Up to 5,000 characters."}
+        search_queries: {type: "array[string]", required: false, note: "Keyword queries that focus the excerpts."}
+        max_chars_total: {type: integer, required: false, note: "Upper bound on excerpt characters across all results."}
+        session_id: {type: string, required: false}
+        client_model: {type: string, required: false}
+        advanced_settings: {type: object, required: false, example: {full_content: true}, note: "{full_content: true or {max_chars_per_result}, excerpt_settings {max_chars_per_result}, fetch_policy {max_age_seconds >= 600, timeout_seconds, disable_cache_fallback}}. Full content is off by default."}
+      note: "A URL that cannot be read returns inside a 200 under errors[] with its error_type and reports no usage. Top-level full_content, excerpts or fetch_policy are rejected; they belong under advanced_settings."
+    test_request: {body: {urls: ["https://example.com"], advanced_settings: {full_content: true}}}
+    cost:
+      type: per_success
+      value: 0.001
+      fallback: {value: 0.001, note: "One URL; usage settles each further URL."}
+      currency: USD
+      unit: page
+      settle: usage
+      usage:
+        unit: usd
+        terms:
+          - {path: "usage[name=sku_extract_excerpts].count", rate: 0.001}
+      source: observed
+      source_url: https://docs.parallel.ai/getting-started/pricing
+      checked: '2026-10-09'
+      confidence: verified
+      note: "$0.001 per extracted URL; full content costs the same. Live: two readable URLs with full content reported usage sku_extract_excerpts 2; one unreachable URL returned errors[] and an empty usage list. The hold is one URL and usage settles the rest."
+    verified: '2026-10-09'
+    added: '2026-10-09'
+    example_response: examples/parallel.web.extract.json
+    docs_url: https://docs.parallel.ai/extract/extract-quickstart
+
+  - id: parallel.people.search
+    capability: people.search
+    platform: people
+    domain: people
+    scope: any_account
+    method: POST
+    path: /v1beta/findall/entity-search
+    body_allowlist: true
+    name: Search people by description
+    summary: Return ranked people matching a plain-language description, each with a profile URL and summary.
+    input:
+      bodyType: json
+      body:
+        entity_type: {type: string, required: true, enum: [people], example: people}
+        objective: {type: string, required: true, example: "Founders of open source vector database companies", note: "Describe the people in words: role, company, industry, location."}
+        match_limit: {type: integer, required: false, default: 100, min: 5, max: 100, example: 5, note: "Most entities to return; may return fewer. Parallel allows up to 1,000 at $0.00005 per entity past 100; a team's own raw tool can ask for more."}
+      note: "Each entity is {name, url, description}; url is usually a LinkedIn profile. No contact data: pair with a people.enrich or people.email.find tool. An objective that matches nobody answers 200 with an empty entities list. Public beta."
+    test_request: {body: {entity_type: people, objective: "Founders of open source vector database companies", match_limit: 5}}
+    cost:
+      type: per_call
+      value: 0.005
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://docs.parallel.ai/getting-started/pricing
+      checked: '2026-10-09'
+      confidence: documented
+      note: "$0.005 per request with 100 results included, including an empty answer. The response reports no usage, so this price settles. Live: ten empty company searches lowered the account balance by $0.05."
+    verified: '2026-10-09'
+    added: '2026-10-09'
+    example_response: examples/parallel.people.search.json
+    docs_url: https://docs.parallel.ai/findall-api/entity-search
+
+  - id: parallel.companies.search
+    capability: companies.search
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /v1beta/findall/entity-search
+    body_allowlist: true
+    name: Search companies by description
+    summary: Return ranked companies matching a plain-language description, each with a URL and summary.
+    input:
+      bodyType: json
+      body:
+        entity_type: {type: string, required: true, enum: [companies], example: companies}
+        objective: {type: string, required: true, example: "Open source vector database companies", note: "Describe the companies in words: product, stage, industry, location."}
+        match_limit: {type: integer, required: false, default: 100, min: 5, max: 100, example: 5, note: "Most entities to return; may return fewer. Parallel allows up to 1,000 at $0.00005 per entity past 100; a team's own raw tool can ask for more."}
+      note: "Each entity is {name, url, description}; url is usually a LinkedIn company page and can repeat one company under regional hosts. An objective that matches nothing answers 200 with an empty entities list. Public beta."
+    test_request: {body: {entity_type: companies, objective: "Open source vector database companies", match_limit: 5}}
+    cost:
+      type: per_call
+      value: 0.005
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://docs.parallel.ai/getting-started/pricing
+      checked: '2026-10-09'
+      confidence: documented
+      note: "$0.005 per request with 100 results included, including an empty answer. The response reports no usage, so this price settles. Live: ten empty company searches lowered the account balance by $0.05."
+    verified: '2026-10-09'
+    added: '2026-10-09'
+    example_response: examples/parallel.companies.search.json
+    docs_url: https://docs.parallel.ai/findall-api/entity-search

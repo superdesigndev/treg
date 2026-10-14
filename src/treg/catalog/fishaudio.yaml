@@ -1,0 +1,211 @@
+provider: fishaudio
+source:
+  docs: https://docs.fish.audio/api-reference/introduction
+  curated: 2026-09-21
+pricing_url: https://docs.fish.audio/developer-guide/models-pricing/pricing-and-rate-limits
+limits: "Platform TTS supports s2.1-pro. The shared account uses a conservative 5-concurrent-request limit. Shared-key TTS accepts organization-owned voices and Fish voices verified as public; bring your own key to use other Fish models or account voices."
+proposed_capabilities:
+  voice-gen.fishaudio.s2-1-pro.generate: "Generate speech with Fish Audio S2.1 Pro"
+  voice-gen.private-voices.create: "Create a reusable private voice from reference audio"
+  voice-gen.private-voices.list: "List reusable private voices"
+  voice-gen.private-voices.update: "Update a reusable private voice"
+  voice-gen.private-voices.delete: "Delete a reusable private voice"
+endpoints:
+  - id: fishaudio.tts.s2-1-pro
+    capability: voice-gen.fishaudio.s2-1-pro.generate
+    platform: voice-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /v1/tts
+    name: "Fish Audio: S2.1 Pro text to speech"
+    summary: "Generate audio from text, optionally using a reusable private voice owned by the current team."
+    input:
+      headers:
+        model: {type: string, required: true, enum: [s2.1-pro], example: s2.1-pro}
+      body:
+        text: {type: string, required: true, min: 1, example: "Welcome to treg."}
+        reference_id: {type: string_or_array, required: false, note: "Omit for Fish's default voice. On treg's key each id must be owned by the current team or verified by Fish as public."}
+        temperature: {type: number, required: false, min: 0, max: 1, default: 0.7}
+        top_p: {type: number, required: false, min: 0, max: 1, default: 0.7}
+        prosody:
+          type: object
+          required: false
+          example: {speed: 1, volume: 0, normalize_loudness: true}
+          properties:
+            speed: {type: number, required: false, min: 0.5, max: 2, default: 1}
+            volume: {type: number, required: false, default: 0, note: "Volume adjustment in decibels; Fish documents no numeric bound."}
+            normalize_loudness: {type: boolean, required: false, default: true}
+        chunk_length: {type: integer, required: false, min: 100, max: 300, default: 300}
+        format: {type: string, required: false, enum: [mp3, wav, pcm, opus], default: mp3, example: mp3}
+        sample_rate: {type: integer, required: false, enum: [8000, 16000, 24000, 32000, 44100, 48000], note: "Supported output rates depend on the selected format."}
+        mp3_bitrate: {type: integer, required: false, enum: [64, 128, 192], default: 128}
+        opus_bitrate: {type: integer, required: false, enum: [-1000, 24000, 32000, 48000, 64000], default: -1000}
+        normalize: {type: boolean, required: false, default: true}
+        latency: {type: string, required: false, enum: [low, normal, balanced], default: normal}
+        max_new_tokens: {type: integer, required: false, default: 1024}
+        repetition_penalty: {type: number, required: false, default: 1.2}
+        min_chunk_length: {type: integer, required: false, min: 0, max: 100, default: 50}
+        condition_on_previous_chunks: {type: boolean, required: false, default: true}
+        early_stop_threshold: {type: number, required: false, min: 0, max: 1, default: 1}
+      bodyType: json
+    platform_request: {headers.model: s2.1-pro}
+    managed_resource:
+      operation: use
+      kind: voice
+      id: {in: body, path: reference_id, optional: true, many: true}
+      public_lookup:
+        method: GET
+        path: /model/{id}
+        requires: {visibility: public}
+    test_request:
+      headers: {model: s2.1-pro}
+      body: {text: "This is a Fish Audio test.", format: mp3}
+    cost:
+      type: per_success
+      value: 15
+      currency: USD
+      per: 1000000
+      unit: utf8_byte
+      source: docs
+      source_url: https://docs.fish.audio/developer-guide/models-pricing/pricing-and-rate-limits
+      checked: 2026-09-21
+      confidence: documented
+      note: "Fish bills S2.1 Pro by UTF-8 input bytes."
+      display: {unit: "UTF-8 bytes", grouped: true}
+    verified: 2026-09-22
+    added: '2026-09-22'
+    example_response: examples/fishaudio.tts.s2-1-pro.json
+    docs_url: https://docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech
+
+  - id: fishaudio.voices.create
+    capability: voice-gen.private-voices.create
+    platform: voice-gen
+    domain: models
+    kind: account
+    scope: any_account
+    method: POST
+    path: /model
+    name: "Fish Audio: create private voice"
+    summary: "Create a reusable private voice from one or more reference-audio files."
+    input:
+      body:
+        type: {type: string, required: true, enum: [tts], example: tts}
+        title: {type: string, required: true, min: 1, max: 100, example: "Product narrator"}
+        train_mode: {type: string, required: true, enum: [fast], example: fast}
+        visibility: {type: string, required: true, enum: [private], example: private}
+        voices: {type: "array[file]", required: true, min: 1, max: 20, note: "Reference-audio file parts used to clone the private voice."}
+        texts: {type: "array[string]", required: false, max: 20, note: "Optional transcripts matching the uploaded voice files."}
+        description: {type: string, required: false, max: 500}
+      bodyType: multipart
+    platform_request: {body.type: tts, body.train_mode: fast, body.visibility: private}
+    managed_resource:
+      operation: create
+      kind: voice
+      id: {in: response, path: _id}
+      name_from: {in: body, path: title}
+      cleanup_endpoint: fishaudio.voices.delete
+    test_request:
+      bodyType: multipart
+      body: {type: tts, title: "treg verification voice", train_mode: fast, visibility: private}
+      files:
+        voices: {filename: voice-reference.wav, content_type: audio/wav, note: "Supply a consenting spoken-voice sample when deliberately re-running this write verification."}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "No separate model-management charge is published; verify against the funded account before enabling Fish in the platform allow-list."}
+    verified: 2026-09-22
+    added: '2026-09-22'
+    example_response: examples/fishaudio.voices.create.json
+    docs_url: https://docs.fish.audio/api-reference/endpoint/model/create-model
+
+  - id: fishaudio.voices.list
+    added: '2026-09-22'
+    capability: voice-gen.private-voices.list
+    platform: voice-gen
+    domain: models
+    kind: account
+    scope: own_account
+    method: GET
+    path: /model
+    name: "Fish Audio: list managed voices"
+    summary: "List the connected Fish account's voices under BYOK, or this treg organization's platform-created voices otherwise."
+    input:
+      queryParams:
+        self: {type: boolean, required: true, enum: [true], example: true}
+        page_size: {type: integer, required: false, min: 1, max: 100, default: 10}
+        page_number: {type: integer, required: false, min: 1, default: 1}
+    test_request: {queryParams: {self: true, page_size: 1, page_number: 1}}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://docs.fish.audio/api-reference/endpoint/model/list-models
+
+  - id: fishaudio.voices.discover
+    kind: utility
+    capability: voice-gen.voices.list
+    platform: voice-gen
+    domain: models
+    scope: any_account
+    method: GET
+    path: /model
+    name: "Fish Audio: discover public voices"
+    summary: "Find public Fish voices; pass an item's _id to TTS as reference_id. Set licensed=true for Fish's rights-secured subset."
+    strict_query: true
+    input:
+      queryParams:
+        self: {type: string, required: true, enum: ["false"], example: "false"}
+        licensed: {type: string, required: true, enum: ["true", "false"], example: "true", note: "true returns only Fish-licensed voices; false returns the broader public/community catalog."}
+        title: {type: string, required: false, note: "Optional title search."}
+        language: {type: string, required: false, note: "Optional language filter."}
+        sort_by: {type: string, required: false, enum: [score, task_count, created_at], default: score}
+        page_size: {type: integer, required: false, min: 1, max: 100, default: 10}
+        page_number: {type: integer, required: false, min: 1, default: 1}
+    test_request:
+      queryParams: {self: "false", licensed: "true", page_size: 3, page_number: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Public-voice discovery is a free account-management read."}
+    verified: 2026-09-22
+    added: '2026-09-22'
+    example_response: examples/fishaudio.voices.discover.json
+    docs_url: https://docs.fish.audio/api-reference/endpoint/model/list-models
+
+  - id: fishaudio.voices.update
+    added: '2026-09-22'
+    capability: voice-gen.private-voices.update
+    platform: voice-gen
+    domain: models
+    kind: account
+    scope: any_account
+    method: PATCH
+    path: /model/{id}
+    name: "Fish Audio: update private voice"
+    summary: "Update one reusable private voice after organization ownership is verified."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "7f92a4..."}
+      body:
+        title: {type: string, required: false, min: 1, max: 100}
+        description: {type: string, required: false, max: 500}
+        visibility: {type: string, required: false, enum: [private]}
+      bodyType: json
+    platform_request: {body.visibility: private}
+    managed_resource:
+      operation: update
+      kind: voice
+      id: {in: pathParams, name: id}
+      name_from: {in: body, path: title}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://docs.fish.audio/api-reference/endpoint/model/update-model
+
+  - id: fishaudio.voices.delete
+    added: '2026-09-22'
+    capability: voice-gen.private-voices.delete
+    platform: voice-gen
+    domain: models
+    kind: account
+    scope: any_account
+    method: DELETE
+    path: /model/{id}
+    name: "Fish Audio: delete private voice"
+    summary: "Delete one reusable private voice after organization ownership is verified."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "7f92a4..."}
+    managed_resource: {operation: delete, kind: voice, id: {in: pathParams, name: id}}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://docs.fish.audio/api-reference/endpoint/model/delete-model

@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: package-info: npm requests → \"0.3.0\""
+    ]
+  },
+  "recipe": "package-info",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 195,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "dependencies": 7,
+      "description": "An streaming XHR abstraction that works in browsers and node.js",
+      "downloads": null,
+      "ecosystem": "npm",
+      "homepage": "https://github.com/unshiftio/requests",
+      "license": "MIT",
+      "name": "requests",
+      "published": "2019-08-06T12:17:47.116Z",
+      "repository": "https://github.com/unshiftio/requests",
+      "url": "https://www.npmjs.com/package/requests",
+      "version": "0.3.0"
+    }
+  ]
+}

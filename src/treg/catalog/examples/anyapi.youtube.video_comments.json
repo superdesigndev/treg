@@ -1,0 +1,30 @@
+{
+  "output": {
+    "data": {
+      "comments": [
+        {
+          "author": "@YouTube",
+          "id": "Ugzge340dBgB75hWBm54AaABAg",
+          "likes": 317000,
+          "publishedTime": "1 year ago",
+          "replies": 962,
+          "text": "can confirm: he never gave us up"
+        },
+        "… 19 more item(s) truncated"
+      ],
+      "nextCursor": "l6kfOVy4gT_acaNJ-JA5mtURyAa4XA7zygkNngIkJNnWS43NcDz6nkfKpnMXVhSintVDFdqUT2ZwMz_uirvsqliWZJF1eQUA-cVhznHIb-HkqsWZYBMyKgHfibfpfVJ52Sqh0i8BxkVQ8HTX7117rEzcFDe0QFfHNSVfktaBQmOexlb0gEc1OgP1Q7E4V6oQvrJGmgvj… [264 chars]"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0008,
+  "items": 20,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-quokka",
+    "name": "Quokka",
+    "kind": "anonymous",
+    "artworkKey": "quokka"
+  },
+  "resultId": "f0aedd65-32f0-4e7a-b388-dbba2a93f0b2"
+}

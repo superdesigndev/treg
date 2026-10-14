@@ -1,0 +1,45 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "kTd_s_ewWWXksZawenRwvl2ldwPYweIzObSNPLgzH_Ek0VRc0OAvFvhw0gBtf71sUx6PH5hjg6E3GX4L62geP_x8OzYpFP2D2XMtJA8yiRHGM-ULZYymTgI9sk7NPaY1rogSoAOQes0TDS4PxHS2_xW09dwuUicMeWDR",
+      "videos": [
+        {
+          "caption": "when you give your friend the aux cord… ",
+          "comments": 2569,
+          "createdUtc": 1789745502,
+          "id": "7686898345519942925",
+          "image": "https://p19-common-sign.tiktokcdn-eu.com/tos-useast5-p-0068-tx/oArajViAWF1EIswXHAQ3NsGffbeAJFQDDPkCur~tplv-tiktokx-cropcenter-q:300:400:q70.jpeg?dr=9232&refresh_token=ed3140da&x-expires=1789894800&x-signature=VUlgY8xZNIQOGf7ViFzYGPE8WMM%3D&t=bacd0480&ps=933b5bde&shp=d05b14bd&shcp=1d1a97fc&idc=useast2b&biz_tag=tt_video&s=PUBLISH&sc=cover",
+          "likes": 824708,
+          "saves": 57461,
+          "url": "https://www.tiktok.com/@zachking/video/7686898345519942925",
+          "views": 4827822
+        },
+        {
+          "caption": "this person is painting themselves to be invisible. #artist #duet ",
+          "comments": 5397,
+          "createdUtc": 1789219758,
+          "id": "7684640179050663182",
+          "image": "https://p16-common-sign.tiktokcdn-eu.com/tos-useast5-p-0068-tx/oEUAhBaqk4Ar6iiAOiTxCjlE7ElAPBVVxg5rI~tplv-tiktokx-cropcenter-q:300:400:q70.jpeg?dr=9232&refresh_token=15e7c871&x-expires=1789894800&x-signature=F7iJJfLLIkgzAwOPBr2iid5Evd0%3D&t=bacd0480&ps=933b5bde&shp=d05b14bd&shcp=1d1a97fc&idc=useast2b&sc=cover&biz_tag=tt_video&s=PUBLISH",
+          "likes": 538239,
+          "saves": 26468,
+          "url": "https://www.tiktok.com/@zachking/video/7684640179050663182",
+          "views": 5378122
+        },
+        "… 19 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0007,
+  "items": 21,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-bison-cb2f8f3c",
+    "name": "Bison",
+    "kind": "anonymous",
+    "artworkKey": "bison"
+  },
+  "hint": "large_result: this response is ~13 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+  "resultId": "3256d26c-cc72-4817-9c6b-38bcccffe0e6"
+}

@@ -1,0 +1,54 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "lwW4VZ2EhHC4qBmoAQz6u6-F8pyEVsBumN70gJwgSQiMJ8_uAUOGldbC96zRKKUqN8b_cVSYG_ncUeETple7IdBWd7YxszP7cHAk1bqHwn6fYM7IgbEnb8PHB82idtFuF6dv_vEaKHkR-Todp6p5jz1krCPwLUQSgKnlNNnIakiaWUAlfbhe6iuHKWXG8JI7MFu1180bvUnQcq-y57KKqVrNpWnInth2om4gfetSy2c-BHnQgKsHMeenQzcyt1-iovjQFgrZFm7a3bVJZjBHp96mD_WNEjDqWoiys2_dVXjmDz0qIyaPw-z4I8UvWE8xp_3K6XFqE83Fw6ZMLb1e2eUPE8HYTa5Xy4Qjk60BYiwy9ngAT3uuMRxWifWtFML_CrQok9-KIA-gZuIfdm_ihfQ8lBRyMgzCytQqip5yzKsZhwp0ADgrjZkNvvFbKe43EewwiYZULv1Bru0E3Qz3QHWr_HBR8k2z6kAR_QBnu1V4qPxRFvqF… [1164 chars total]",
+      "tweets": [
+        {
+          "bookmarks": 0,
+          "createdUtc": 1789780543,
+          "id": "2101118004087886212",
+          "isPinned": null,
+          "isReply": true,
+          "lang": "qme",
+          "likes": 2,
+          "media": [],
+          "quotes": 0,
+          "replies": 0,
+          "retweets": 0,
+          "text": "@yongfook 💯",
+          "url": "https://x.com/i/web/status/2101118004087886212",
+          "views": 1597
+        },
+        {
+          "bookmarks": 0,
+          "createdUtc": 1789777235,
+          "id": "2101104126436556990",
+          "isPinned": null,
+          "isReply": true,
+          "lang": "en",
+          "likes": 2,
+          "media": [],
+          "quotes": 0,
+          "replies": 1,
+          "retweets": 0,
+          "text": "@DarylUrbanski No that'd be a call :D",
+          "url": "https://x.com/i/web/status/2101104126436556990",
+          "views": 1070
+        },
+        "… 18 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0005,
+  "items": 20,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-lynx",
+    "name": "Lynx",
+    "kind": "anonymous",
+    "artworkKey": "lynx"
+  },
+  "resultId": "6758ee10-afff-44e1-b114-0afe8beca2f2"
+}

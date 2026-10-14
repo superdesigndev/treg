@@ -1,0 +1,31 @@
+{
+  "output": {
+    "data": {
+      "items": [
+        {
+          "avatarUrl": "https://pbs.twimg.com/profile_images/1697749409851985920/HbrI04tM_normal.jpg",
+          "followers": 41901544,
+          "location": "Earth",
+          "name": "SpaceX",
+          "username": "SpaceX",
+          "verified": true
+        },
+        "… 69 more item(s) truncated"
+      ],
+      "nextCursor": "lCK5x-KzCh_HV9oO4kElq5G0XCjkrrwfg52gzW4-YlwZtOP3lMtI5-24jzvM_UGYPDO0yC0ld05EUCaT7Fu4BVLOr_IxnfnRlRMHyzL5d-sKqI7evjDUCYxbkt2M0-MGqL0xg8ViBHTG4eSRHwaFS6v2gDproUrVXxwCgiSAhg7iiPGn-I-5wVWXAwDfX_BLLF8MEXJg… [1710 chars]"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0005,
+  "items": 70,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-lynx",
+    "name": "Lynx",
+    "kind": "anonymous",
+    "artworkKey": "lynx"
+  },
+  "hint": "large_result: this response is ~15 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "34858606-9951-402d-bea8-0aa384db0a35"
+}

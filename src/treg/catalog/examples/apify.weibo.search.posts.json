@@ -1,0 +1,42 @@
+[
+  {
+    "scraped_at": "2026-09-23T17:41:26+00:00",
+    "kind": "post",
+    "mid": "5337649100000000",
+    "mblogid": "RfNqqEXMP",
+    "url": "https://weibo.com/1000000001/RfNqqEXMP",
+    "created_at": "2026-08-30T16:23:08+08:00",
+    "text": "喝点咖啡吧☕️ ​",
+    "text_raw": "喝点咖啡吧☕️ ​",
+    "is_long_text": false,
+    "source": "运动博主",
+    "region_name": "发布于 云南",
+    "reposts_count": 1,
+    "comments_count": 2,
+    "attitudes_count": 54,
+    "reads_count": null,
+    "pic_num": 1,
+    "image_urls": [
+      "https://wx1.sinaimg.cn/large/example0001.jpg"
+    ],
+    "video_url": null,
+    "video_cover_url": null,
+    "video_duration": null,
+    "video_play_count": null,
+    "topics": [],
+    "is_repost": false,
+    "retweeted_mid": null,
+    "retweeted_user_id": null,
+    "retweeted_text_raw": null,
+    "is_ad": false,
+    "edit_count": null,
+    "user_id": "1000000001",
+    "user_screen_name": "example_user",
+    "user_verified": true,
+    "user_verified_type": 0,
+    "user_verified_reason": "运动博主",
+    "user_followers_count": 169550,
+    "source_keyword": "咖啡",
+    "source_user": null
+  }
+]

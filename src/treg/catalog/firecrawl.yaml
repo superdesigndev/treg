@@ -1,0 +1,282 @@
+provider: firecrawl
+source:
+  docs: https://docs.firecrawl.dev/introduction
+  curated: '2026-09-28'
+pricing_url: https://www.firecrawl.dev/pricing
+limits: >-
+  The Standard plan allows 500 Scrape, Map and Search submissions/minute,
+  100 Crawl and Batch Scrape submissions/minute, and 25 concurrent browsers.
+  Firecrawl applies limits per team across API keys. treg smooths its shared key at
+  the strictest 100 submissions/minute; BYOK uses its own team's limits.
+proposed_capabilities:
+  web.extract.batch.status: Read a batch scrape's progress and results
+expect: {json_path: success, equals: true}
+
+endpoints:
+  - id: firecrawl.web.scrape
+    async: false
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /v2/scrape
+    body_allowlist: true
+    name: Scrape a web page
+    summary: Fetch one page as Markdown, HTML or links.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        formats: {type: "array[string]", required: false, minItems: 1, maxItems: 3, enum: [markdown, html, links], example: [markdown]}
+        onlyMainContent: {type: boolean, required: false, default: true}
+        maxAge: {type: integer, required: false, min: 0, max: 172800000, example: 0}
+        parsers: {type: "array[string]", required: true, minItems: 0, maxItems: 0, example: []}
+      note: "Pass parsers: [] to keep PDF URLs at the flat one-credit rate; PDF content is then returned as base64. JSON, question, highlights, threat scans and other charged options are excluded. A target 403/404 document is billable; an upstream request with no document is free."
+    test_request: {body: {url: "https://example.com", formats: [markdown], maxAge: 0, parsers: []}}
+    cost: &one_page
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: page
+      source: observed
+      source_url: https://docs.firecrawl.dev/billing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "One basic page costs one credit with parsers: []; a PDF is returned as base64. Firecrawl bills a returned target 403/404 document, but no-document failures are free."
+    verified: '2026-09-28'
+    added: '2026-09-28'
+    docs_url: https://docs.firecrawl.dev/api-reference/endpoint/scrape
+    example_response: examples/firecrawl.web.scrape.json
+
+  - id: firecrawl.web.search
+    async: false
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v2/search
+    body_allowlist: true
+    name: Search the open web
+    summary: Find up to ten web results without scraping their full pages.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Firecrawl API documentation"}
+        limit: {type: integer, required: true, min: 1, max: 10, example: 3}
+        includeDomains: {type: "array[string]", required: false, maxItems: 20}
+        excludeDomains: {type: "array[string]", required: false, maxItems: 20}
+      note: "The ten-result cap fixes the base cost at two credits. scrapeOptions and other add-ons are outside this catalog tool; use a raw BYOK tool for them."
+    test_request: {body: {query: "Firecrawl API documentation", limit: 3}}
+    cost:
+      type: per_success
+      value: 2
+      fallback: {value: 2, note: "The curated request allows at most ten search results and no scrape add-on."}
+      currency: credit
+      unit: call
+      settle: usage
+      usage: {path: creditsUsed, unit: credit}
+      source: observed
+      source_url: https://docs.firecrawl.dev/billing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "The live three-result search returned creditsUsed: 2 and the account balance fell by two credits."
+    verified: '2026-09-28'
+    added: '2026-09-28'
+    docs_url: https://docs.firecrawl.dev/api-reference/endpoint/search
+    example_response: examples/firecrawl.web.search.json
+
+  - id: firecrawl.web.map
+    async: false
+    capability: web.map
+    platform: web
+    domain: map
+    scope: any_account
+    method: POST
+    path: /v2/map
+    body_allowlist: true
+    name: Map a website
+    summary: Discover URLs on a website without scraping their content.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        search: {type: string, required: false, example: "documentation"}
+        limit: {type: integer, required: false, min: 1, max: 1000, example: 10}
+        includeSubdomains: {type: boolean, required: false, default: false}
+        ignoreQueryParameters: {type: boolean, required: false, default: true}
+      note: "Firecrawl's billing guide says one credit per Map call, while its pricing page labels Map per page. Live one-link, three-link and five-link calls each cost one credit."
+    test_request: {body: {url: "https://example.com", limit: 5}}
+    cost:
+      <<: *one_page
+      unit: call
+      note: "Live one-link, three-link and five-link maps each reduced the balance by one credit; Firecrawl's billing guide states one credit per call."
+    verified: '2026-09-28'
+    added: '2026-09-28'
+    docs_url: https://docs.firecrawl.dev/api-reference/endpoint/map
+    example_response: examples/firecrawl.web.map.json
+
+  - id: firecrawl.web.crawl
+    capability: web.crawl
+    platform: web
+    domain: crawl
+    scope: any_account
+    method: POST
+    path: /v2/crawl
+    body_allowlist: true
+    name: Crawl a website
+    summary: Start a bounded crawl and pay for pages processed.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        limit: {type: integer, required: true, min: 1, max: 10, example: 3}
+        maxDiscoveryDepth: {type: integer, required: false, min: 0, max: 10, example: 1}
+        includePaths: {type: "array[string]", required: false, maxItems: 20}
+        excludePaths: {type: "array[string]", required: false, maxItems: 20}
+        scrapeOptions: {type: object, required: true, enum: [{parsers: []}], example: {parsers: []}}
+      note: "Crawls require limit <= 10 and scrapeOptions: {parsers: []}, so PDF URLs use the flat rate and return base64. Other charged scrape options, external links and ignored robots rules are excluded."
+    test_request: {body: {url: "https://example.com", limit: 1, maxDiscoveryDepth: 0, scrapeOptions: {parsers: []}}}
+    cost:
+      type: per_success
+      # Table rows require `when`; enumerate limits to hold requested pages rather than all ten.
+      table:
+        - {when: {body.limit: 1}, value: 1, times: body.limit}
+        - {when: {body.limit: 2}, value: 1, times: body.limit}
+        - {when: {body.limit: 3}, value: 1, times: body.limit}
+        - {when: {body.limit: 4}, value: 1, times: body.limit}
+        - {when: {body.limit: 5}, value: 1, times: body.limit}
+        - {when: {body.limit: 6}, value: 1, times: body.limit}
+        - {when: {body.limit: 7}, value: 1, times: body.limit}
+        - {when: {body.limit: 8}, value: 1, times: body.limit}
+        - {when: {body.limit: 9}, value: 1, times: body.limit}
+        - {when: {body.limit: 10}, value: 1, times: body.limit}
+      fallback: {value: 10, note: "The curated crawl limit is at most ten pages."}
+      currency: credit
+      unit: page
+      settle: usage
+      usage: {path: creditsUsed, unit: credit}
+      source: observed
+      source_url: https://docs.firecrawl.dev/billing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "A live one-page crawl ended with creditsUsed: 1 and reduced the balance by one credit. The hold is the requested page limit and terminal usage settles it."
+    verified: '2026-09-28'
+    added: '2026-09-28'
+    docs_url: https://docs.firecrawl.dev/api-reference/endpoint/crawl-post
+    example_response: examples/firecrawl.web.crawl.json
+    async:
+      id_from: id
+      poll:
+        endpoint: firecrawl.web.crawl.status
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        progress: [scraping]
+        success: [completed]
+        failure: []
+        billed_failure: [failed, cancelled]
+      result: {path: data}
+      interval: 5
+
+  - id: firecrawl.web.crawl.status
+    async: false
+    kind: utility
+    capability: web.crawl.status
+    platform: web
+    scope: any_account
+    method: GET
+    path: /v2/crawl/{id}
+    name: Check a website crawl
+    summary: Read an owned crawl's status, result pages and credit usage.
+    resource_ownership:
+      requires: {kind: "poll:firecrawl.web.crawl.status", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "01a0e888-65d6-75ae-afff-7b8e37572349"}
+      query:
+        skip: {type: integer, required: false, min: 0, note: "Use the skip value from the returned next URL to fetch another page of results."}
+    test_request: {pathParams: {id: "01a0e888-65d6-75ae-afff-7b8e37572349"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling does not consume Firecrawl credits."}
+    verified: '2026-09-28'
+    added: '2026-09-28'
+    docs_url: https://docs.firecrawl.dev/api-reference/endpoint/crawl-get
+    example_response: examples/firecrawl.web.crawl.status.json
+
+  - id: firecrawl.web.batch-scrape
+    capability: web.extract.batch
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /v2/batch/scrape
+    body_allowlist: true
+    name: "Extract a batch of pages"
+    summary: Start a bounded batch scrape of up to ten URLs.
+    input:
+      bodyType: json
+      body:
+        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 10, example: ["https://example.com"]}
+        formats: {type: "array[string]", required: true, minItems: 1, maxItems: 3, enum: [markdown, html, links], example: [markdown]}
+        onlyMainContent: {type: boolean, required: false, default: true}
+        maxAge: {type: integer, required: false, min: 0, max: 172800000, example: 0}
+        parsers: {type: "array[string]", required: true, minItems: 0, maxItems: 0, example: []}
+      note: "The URL list caps the hold at ten pages. Pass parsers: [] so PDFs use the flat one-credit rate and return base64. JSON and other charged options are excluded."
+    test_request: {body: {urls: ["https://example.com"], formats: [markdown], maxAge: 0, parsers: []}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.onlyMainContent: true}, value: 10}
+      fallback: {value: 10, note: "At most ten basic URLs can be submitted."}
+      currency: credit
+      unit: page
+      settle: usage
+      usage: {path: creditsUsed, unit: credit}
+      source: observed
+      source_url: https://docs.firecrawl.dev/billing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "A live one-URL batch ended with creditsUsed: 1 and reduced the balance by one credit. The ten-credit hold is a conservative upper bound; terminal usage settles the actual charge."
+    verified: '2026-09-28'
+    added: '2026-09-28'
+    docs_url: https://docs.firecrawl.dev/api-reference/endpoint/batch-scrape
+    example_response: examples/firecrawl.web.batch-scrape.json
+    async:
+      id_from: id
+      poll:
+        endpoint: firecrawl.web.batch-scrape.status
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        progress: [scraping]
+        success: [completed]
+        failure: []
+        billed_failure: [failed, cancelled]
+      result: {path: data}
+      interval: 5
+
+  - id: firecrawl.web.batch-scrape.status
+    async: false
+    kind: utility
+    capability: web.extract.batch.status
+    platform: web
+    scope: any_account
+    method: GET
+    path: /v2/batch/scrape/{id}
+    name: Check a batch scrape
+    summary: Read an owned batch's status, result pages and credit usage.
+    resource_ownership:
+      requires: {kind: "poll:firecrawl.web.batch-scrape.status", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "01a0e887-c66f-76e9-abc1-3f749d48e3ab"}
+      query:
+        skip: {type: integer, required: false, min: 0, note: "Use the skip value from the returned next URL to fetch another page of results."}
+    test_request: {pathParams: {id: "01a0e887-c66f-76e9-abc1-3f749d48e3ab"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling does not consume Firecrawl credits."}
+    verified: '2026-09-28'
+    added: '2026-09-28'
+    docs_url: https://docs.firecrawl.dev/api-reference/endpoint/batch-scrape-get
+    example_response: examples/firecrawl.web.batch-scrape.status.json

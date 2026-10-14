@@ -1,5 +1,2 @@
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="microsoft-ads">
-  <!-- Placeholder lettermark. Replace with the official microsoft-ads brand SVG. -->
-  <rect width="24" height="24" rx="5" fill="#0078D4"/>
-  <text x="12" y="12" fill="#fff" font-family="ui-sans-serif,system-ui,Arial,sans-serif" font-size="9" font-weight="700" text-anchor="middle" dominant-baseline="central">MA</text>
-</svg>
+<!-- Official vendor icon: https://ads.microsoft.com/favicon.ico (Microsoft four-square logo, vectorized with its exact colors) ; retrieved 2026-09-24 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 23 23" role="img" aria-label="microsoft-ads"><rect x="1" y="1" width="10" height="10" fill="#F25022"/><rect x="12" y="1" width="10" height="10" fill="#7FBA00"/><rect x="1" y="12" width="10" height="10" fill="#00A4EF"/><rect x="12" y="12" width="10" height="10" fill="#FFB900"/></svg>

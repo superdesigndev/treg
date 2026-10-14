@@ -1,0 +1,20 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "language": "",
+      "transcript": "WEBVTT\n\n\n00:00:00.020 --> 00:00:01.540\nYour tariffs are illegal. They're not.\n\n00:00:01.541 --> 00:00:03.461\nThe president can charge whatever country he wants.\n\n00:00:03.462 --> 00:00:05.021\nBut he used this law to implement them\n\n00:00:05.022 --> 00:00:06.301\nand didn't have the power to do so.\n\n00:00:06.302 --> 00:00:08.181\nFine. Then I'll do new tariffs under different laws.\n\n00:00:08.182 --> 00:00:10.261\nA 10% global tariff, effective immediately.\n\n00:00:10.262 --> 00:00:11.861\nAlso, accord… [1749 chars total]"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "e6b6ace7-9f06-4317-80fb-730dc87b9538"
+}

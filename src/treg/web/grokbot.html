@@ -1,0 +1,1820 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grok Bot for Outreach — Enrich and Verify Contacts from Chat | treg</title>
+<meta name="description" content="Connect Grok Bot to {ENDPOINTS} tools with one treg plugin: find companies, enrich decision-makers and verify work emails from chat. Pay per call, misses free, 0% markup.">
+<link rel="canonical" href="https://treg.to/grokbot"/>
+<meta property="og:title" content="Grok Bot for Outreach — Enrich and Verify Contacts from Chat | treg"/>
+<meta property="og:description" content="Connect Grok Bot to {ENDPOINTS} tools with one treg plugin: find companies, enrich decision-makers and verify work emails from chat. Pay per call, misses free, 0% markup."/>
+<meta property="og:url" content="https://treg.to/grokbot"/>
+<meta property="og:type" content="website"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta property="og:image" content="{BASE}/media/og.png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta name="twitter:image" content="{BASE}/media/og.png"/>
+<link rel="icon" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #FDFCFB;
+    --card: #F5F4F1;
+    --ink: #101010;
+    --muted: #8A8885;
+    --line: #E9E7E2;
+    --teal: #54B9A6;
+    --teal-ink: #2E7A6B;
+    --green: #2E9E5B;
+    --bubble-dark: #1B1B1A;
+    --display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+    --text: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--text); font-size: 16px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: rgba(84,185,166,.28); }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px;
+    padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); text-decoration: none; cursor: pointer;
+  }
+  .pill:hover { background: var(--card); }
+  .pill.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .pill.dark:hover { background: #2b2b2a; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+  /* ---------- nav + hero ---------- */
+  .nav {
+    position: fixed; inset: 0 0 auto 0; z-index: 90; display: flex; align-items: center;
+    justify-content: space-between; padding: 14px 28px;
+    background: rgba(253,252,251,.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid transparent; transition: border-color .3s;
+  }
+  .nav.scrolled { border-color: var(--line); }
+  .wordmark { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 15px; }
+  .blob-ico { width: 22px; height: 22px; border-radius: 44% 46% 48% 50%; background: var(--ink); position: relative; }
+  .blob-ico::before, .blob-ico::after { content: ""; position: absolute; top: 7px; width: 3px; height: 6px; border-radius: 2px; background: #fff; transform: rotate(8deg); }
+  .blob-ico::before { left: 6px; } .blob-ico::after { right: 6px; transform: rotate(-8deg); }
+  .wm-treg { width: 22px; height: 22px; border-radius: 7px; display: inline-block; vertical-align: -5px; }
+  .wm-grok { width: 24px; height: 24px; border-radius: 8px; display: inline-block; }
+
+  .hero { padding: 150px 24px 40px; text-align: center; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500;
+    color: var(--teal-ink); background: rgba(84,185,166,.12); border: 1px solid rgba(84,185,166,.35);
+    padding: 6px 14px; border-radius: 999px; margin-bottom: 26px;
+  }
+  .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); }
+  .hero h1 {
+    font-family: var(--display); font-weight: 500; letter-spacing: -.03em;
+    font-size: clamp(42px, 7vw, 78px); line-height: 1.04; margin: 0 auto 22px; max-width: 16ch; text-wrap: balance;
+  }
+  .hero h1 .h1-logo { width: .74em; height: .74em; border-radius: .17em; vertical-align: -.07em; display: inline-block; }
+  .hero p.sub { max-width: 52ch; margin: 0 auto 34px; color: var(--muted); font-size: 18px; text-wrap: balance; }
+  .hero p.sub strong { color: var(--ink); font-weight: 500; }
+  .ctas { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+  /* ---------- story stage ---------- */
+  .story { position: relative; height: 2300vh; }
+  .stage { position: sticky; top: 0; height: 100vh; overflow: hidden; }
+  .camera { position: absolute; left: 0; top: 0; width: 1160px; height: 760px; transform-origin: 0 0; will-change: transform; }
+
+  /* ---- Grok Bot app ---- */
+  .app {
+    position: absolute; inset: 0; background: #fff; border: 1px solid var(--line);
+    border-radius: 22px; box-shadow: 0 30px 90px -38px rgba(20,18,12,.28);
+    display: flex; overflow: hidden; font-size: 14px;
+  }
+  .side { width: 300px; flex: none; border-right: 1px solid var(--line); background: var(--bg); padding: 20px 16px; display: flex; flex-direction: column; }
+  .side-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .traffic { display: flex; gap: 7px; }
+  .traffic i { width: 12px; height: 12px; border-radius: 50%; }
+  .traffic i:nth-child(1) { background: #F26D5F; } .traffic i:nth-child(2) { background: #F5BE4F; } .traffic i:nth-child(3) { background: #5FC454; }
+  .side .plus { color: #55534F; font-size: 20px; line-height: 1; }
+  .side .search {
+    background: var(--card); border-radius: 12px; padding: 10px 14px; color: var(--muted);
+    font-size: 14px; display: flex; gap: 8px; align-items: center; margin-bottom: 14px;
+  }
+  .chat-list { display: flex; flex-direction: column; gap: 2px; }
+  .chat-row { display: flex; gap: 12px; padding: 11px 10px; border-radius: 14px; align-items: center; }
+  .chat-row.on { background: #EFEEE9; }
+  .avatar { width: 40px; height: 40px; flex: none; position: relative; }
+  .avatar i { position: absolute; inset: 0; border-radius: 46% 50% 48% 52%; }
+  .avatar::before, .avatar::after {
+    content: ""; position: absolute; top: 13px; width: 4px; height: 9px; border-radius: 3px; background: #fff; z-index: 1;
+  }
+  .avatar::before { left: 13px; transform: rotate(10deg); } .avatar::after { right: 13px; transform: rotate(-10deg); }
+  .av-green i { background: #57B894; }
+  .av-orange i { background: #EF9A4D; }
+  .av-blue i { background: #4C8FE8; border-radius: 50% 50% 46% 54%; }
+  .av-purple i { background: #8B5CD6; border-radius: 52% 48% 50% 50%; }
+  .av-red i { background: #E85D5D; clip-path: polygon(50% 2%, 98% 94%, 2% 94%); border-radius: 0; }
+  .av-red::before { top: 22px; left: 15px; } .av-red::after { top: 22px; right: 15px; }
+  .cmeta { min-width: 0; flex: 1; }
+  .cmeta .t { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; font-size: 14px; }
+  .cmeta .t time { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .cmeta .p { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 4px; }
+  .side-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 12px; font-size: 14px; color: #43413E; }
+  .side-row.plugins-row { transition: background .3s, box-shadow .3s; }
+  .plugins-row.hot { background: #EFEEE9; box-shadow: 0 0 0 2px var(--teal); }
+  .plug-ico { width: 17px; height: 15px; border: 1.7px solid currentColor; border-radius: 4px 4px 6px 6px; position: relative; }
+  .plug-ico::after { content: ""; position: absolute; left: 3px; top: -6px; width: 6px; height: 5px; border-left: 1.7px solid currentColor; border-right: 1.7px solid currentColor; }
+  .me { width: 26px; height: 26px; border-radius: 50%; background: #E4E2DD; color: #55534F; font-size: 11px; font-weight: 600; display: grid; place-items: center; }
+
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #fff; }
+  .main-head { display: flex; align-items: center; gap: 12px; padding: 16px 22px; border-bottom: 1px solid var(--line); font-weight: 600; font-size: 15px; }
+  .main-head .avatar { width: 30px; height: 30px; }
+  .main-head .avatar::before, .main-head .avatar::after { top: 10px; width: 3px; height: 7px; }
+  .main-head .avatar::before { left: 10px; } .main-head .avatar::after { right: 10px; }
+  .screen-ico { margin-left: auto; width: 18px; height: 13px; border: 1.7px solid #98968F; border-radius: 3px; position: relative; }
+  .screen-ico::after { content: ""; position: absolute; left: 4px; bottom: -5px; width: 6px; height: 2px; background: #98968F; }
+  .main-body { flex: 1; padding: 20px 24px 12px; overflow: hidden; position: relative; }
+  .chatflow { display: flex; flex-direction: column; align-items: stretch; will-change: transform; }
+  .chatflow > .msg.bot { align-self: flex-start; }
+  .chatflow > .msg.user { align-self: flex-end; }
+  .msg { max-width: 78%; padding: 12px 16px; border-radius: 18px; background: var(--card); font-size: 14px; line-height: 1.5; margin-top: 12px; }
+  .msg.user { align-self: flex-end; background: var(--bubble-dark); color: #fff; border-bottom-right-radius: 6px; }
+  .msg.bot { border-bottom-left-radius: 6px; align-self: flex-start; }
+  .mention { color: var(--teal-ink); background: rgba(84,185,166,.16); border-radius: 6px; padding: 1px 6px; font-weight: 500; }
+  .msg.user .mention { color: #8FE0CF; background: rgba(84,185,166,.22); }
+  .msg-link { color: #7FB8E8; text-decoration: underline; text-underline-offset: 2px; }
+  /* the $0.37 gets a highlighter sweep once its bubble has landed */
+  .price-hl { position: relative; z-index: 0; white-space: nowrap; }
+  .price-hl::before {
+    content: ""; position: absolute; inset: -1px -5px -3px -4px; z-index: -1; border-radius: 5px;
+    background: #F8E14B; opacity: .75; transform: scaleX(0) skewX(-6deg); transform-origin: left center;
+    transition: transform .45s cubic-bezier(.3,.7,.3,1) .55s;
+  }
+  #tregSummary.in .price-hl::before { transform: scaleX(1) skewX(-6deg); }
+  /* the 0% markup equation, in the landing page's terminal grammar */
+  .zeq-msg {
+    background: #1B1B1A; color: #F8F8F7; font-family: var(--mono); font-size: 12.5px;
+    display: flex; align-items: center; gap: 9px; border-bottom-left-radius: 6px !important;
+  }
+  .zeq-msg .zps { color: #7FDCAE; flex: none; }
+  .zeq-msg code { font-family: var(--mono); white-space: nowrap; }
+  .zeq-msg b { color: #7FDCAE; font-weight: 700; }
+  .zeq-msg .zc { width: 6px; height: 13px; background: #7FDCAE; flex: none; animation: blink 1s steps(1) infinite; }
+
+  /* chat items grow in like real messages: bottom-anchored, pushing history up */
+  .appear {
+    opacity: 0; max-height: 0; margin-top: 0; overflow: hidden;
+    transition: opacity .5s ease .15s, max-height .65s cubic-bezier(.3,.7,.3,1), margin-top .65s cubic-bezier(.3,.7,.3,1);
+  }
+  .appear.in { opacity: 1; max-height: 720px; margin-top: 12px; }
+  /* plain bubbles get a tight cap so their growth is slow enough for the
+     thread push-up to track them — prevents a new message poking below the clip */
+  .msg.appear.in { max-height: 96px; }
+
+  /* computer card (in chat) */
+  .cardmsg { max-width: 86%; background: var(--card); border-radius: 20px; padding: 16px 18px; }
+  .cardmsg .chead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .cardmsg .chead b { font-size: 14.5px; }
+  .status-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 3px 12px; border-radius: 999px; background: #E7EFE7; color: #3E7A4E; font-weight: 500; }
+  .status-pill i { width: 6px; height: 6px; border-radius: 50%; background: #4DA167; }
+  .status-pill.working { background: #EDEAE2; color: #8A7B4F; }
+  .status-pill.working i { background: #C9A94E; }
+  .cardmsg .csub { color: #43413E; font-size: 13.5px; margin-bottom: 12px; }
+  .desktop {
+    position: relative; border-radius: 14px; overflow: hidden; height: 240px;
+    background: linear-gradient(160deg, #7BA8D9 0%, #9DB8D4 30%, #C7B49A 55%, #C97C4A 78%, #55704E 100%);
+  }
+  .mini-window {
+    position: absolute; background: #fff; border-radius: 8px; box-shadow: 0 12px 30px -12px rgba(0,0,0,.4);
+    overflow: hidden; font-size: 8.5px;
+  }
+  .mini-window .mtitle { height: 14px; background: #F3F2EF; display: flex; align-items: center; gap: 3px; padding: 0 6px; }
+  .mini-window .mtitle i { width: 4px; height: 4px; border-radius: 50%; background: #D8D6D0; }
+  .mini-sheet { left: 50%; top: 24px; transform: translateX(-50%); width: 66%; height: 190px; }
+  .mini-sheet table { border-collapse: collapse; width: 100%; font-size: 7.6px; font-family: var(--text); table-layout: fixed; }
+  .mini-sheet th, .mini-sheet td { border: .5px solid #E5E4E0; padding: 2.5px 5px; text-align: left; white-space: nowrap; overflow: hidden; color: #333; }
+  .mini-sheet th { background: #F6F5F2; color: #777; font-weight: 500; }
+  .mini-sheet .shname { padding: 3px 6px; display: flex; gap: 4px; align-items: center; font-size: 8px; color: #444; border-bottom: .5px solid #EEE; }
+  .mini-sheet .shname .gs { width: 8px; height: 10px; background: #1E9E5A; border-radius: 2px; }
+  .mini-fill td.f { color: transparent; }
+  .mini-fill td.f .ok { color: transparent; }
+  .mini-fill.filled td.f { color: #333; transition: color .45s; }
+  .mini-fill.filled td.f .ok { color: var(--green); transition: color .45s .1s; }
+
+  /* treg activity card */
+  .tregcard { max-width: 86%; background: var(--card); border-radius: 20px; padding: 16px 18px; }
+  .tregcard .chead { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .treg-mark { width: 26px; height: 26px; border-radius: 8px; display: block; flex: none; }
+  .tregcard .chead b { font-size: 14px; }
+  .tregcard .chead .via { color: var(--muted); font-size: 12px; font-weight: 400; }
+  /* grow-in rows: appear one by one and push the thread up, like a live UI */
+  .grow {
+    opacity: 0; max-height: 0; overflow: hidden; margin-top: 0;
+    transition: opacity .4s ease .12s, max-height .5s cubic-bezier(.3,.7,.3,1), margin-top .5s cubic-bezier(.3,.7,.3,1);
+  }
+  .grow.in { opacity: 1; max-height: 56px; margin-top: 7px; }
+  .tstep { font-family: var(--mono); font-size: 12px; color: #55534F; }
+  .tstep b { color: var(--ink); font-weight: 500; }
+  .pc-row {
+    display: flex; gap: 10px; align-items: center; font-size: 13px;
+    background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px;
+    transition: box-shadow .35s, border-color .35s;
+  }
+  .pc-row b { font-weight: 600; }
+  .pc-row .pc-logo { width: 20px; height: 20px; border-radius: 6px; flex: none; display: block; }
+  .pc-row .pc-what { color: var(--muted); font-size: 12px; }
+  .pc-row .pc-price { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: #55534F; }
+  .pc-row.picked { border-color: rgba(84,185,166,.7); box-shadow: 0 0 0 2px rgba(84,185,166,.35); }
+  .pc-row.picked .pc-price { color: var(--teal-ink); }
+  .pc-row.dim.in { opacity: .45; }
+  .tregcard { position: relative; }
+  /* the provider scan sweep, ported from the enrichment-launch video */
+  .pc-scan {
+    position: absolute; left: 12px; right: 12px; height: 36px; border-radius: 10px; opacity: 0;
+    background: linear-gradient(90deg, rgba(84,185,166,.08), rgba(84,185,166,.24), rgba(84,185,166,.08));
+    border: 1px solid rgba(84,185,166,.4); pointer-events: none;
+  }
+  .pc-lock { font-size: 12.5px; color: var(--teal-ink); font-weight: 500; }
+  .pc-lock b { font-weight: 600; }
+  .lead { display: flex; gap: 10px; align-items: center; font-size: 13px; }
+  .lead img { width: 26px; height: 26px; border-radius: 50%; flex: none; object-fit: cover; background: #E4E2DD; }
+  .lead .lmeta { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+  .lead .lmeta b { font-weight: 600; font-size: 12.8px; }
+  .lead .lmeta span { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lemail {
+    margin-left: auto; flex: none; font-family: var(--mono); font-size: 10.6px; color: #55534F;
+    opacity: 0; transform: translateX(8px); transition: opacity .35s, transform .35s;
+  }
+  .lemail .okv { color: var(--green); font-weight: 600; }
+  .lead.mail .lemail { opacity: 1; transform: none; }
+  .lead.more { color: var(--muted); font-size: 12px; padding-left: 36px; }
+  .vstep .vlogo { width: 15px; height: 15px; border-radius: 4px; display: inline-block; vertical-align: -3px; margin: 0 1px; }
+  /* the results sheet: a window on the Bot's own computer, inside the chat card */
+  .desktop.deep { height: auto; padding: 26px 30px; }
+  .desktop.deep .sheet2wrap { box-shadow: 0 18px 44px -16px rgba(0,0,0,.45); border: 0; }
+  .wtitle { display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; background: #F3F2EF; border-bottom: 1px solid #E8E7E3; }
+  .wtitle i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .wtitle i:nth-child(1) { background: #F26D5F; } .wtitle i:nth-child(2) { background: #F5BE4F; } .wtitle i:nth-child(3) { background: #5FC454; }
+  .wtitle span { margin-left: 6px; font-size: 10px; color: #8A8885; }
+  .sheet2wrap { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .sheet2wrap .shname { padding: 8px 12px; display: flex; gap: 8px; align-items: center; font-size: 12px; font-weight: 500; border-bottom: 1px solid #EEE; }
+  .sheet2wrap .shname .gs { width: 14px; height: 18px; background: #1E9E5A; border-radius: 3px; flex: none; }
+  table.sheet2 { border-collapse: collapse; width: 100%; font-size: 11.8px; table-layout: fixed; }
+  table.sheet2 th, table.sheet2 td { border: .5px solid #ECEBE7; padding: 5.5px 10px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #333; }
+  table.sheet2 th { background: #F8F7F5; color: #777; font-weight: 500; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; }
+  table.sheet2 .f { color: transparent; }
+  table.sheet2 tr.filled .f { color: #333; transition: color .45s; }
+  table.sheet2 .f .ok2 { color: transparent; }
+  table.sheet2 tr.filled .f .ok2 { color: var(--green); font-weight: 600; transition: color .45s .1s; }
+  table.sheet2 .em2 { font-family: var(--mono); font-size: 10.8px; }
+  .tregfoot { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+  .tregfoot b { color: var(--teal-ink); font-weight: 500; }
+
+  .composer {
+    margin: 8px 22px 18px; border: 1px solid var(--line); border-radius: 999px;
+    padding: 13px 18px; display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 14.5px;
+    background: #fff;
+  }
+  .composer .cplus { font-size: 18px; line-height: 1; }
+  .composer .typed { color: var(--ink); white-space: nowrap; overflow: hidden; text-align: left; }
+  .composer .ph { color: var(--muted); }
+  .composer .ph[hidden] { display: none; }
+  .composer .send {
+    margin-left: auto; width: 34px; height: 34px; flex: none; border-radius: 50%;
+    background: var(--ink); color: #fff; display: grid; place-items: center; font-size: 17px; font-weight: 600;
+  }
+  .composer .send[hidden] { display: none; }
+  .composer .mic { margin-left: auto; width: 34px; height: 34px; flex: none; border-radius: 50%; background: var(--ink); position: relative; }
+  .composer .mic::before { content: ""; position: absolute; left: 50%; top: 9px; transform: translateX(-50%); width: 7px; height: 11px; border-radius: 4px; background: #fff; }
+  .composer .mic::after { content: ""; position: absolute; left: 50%; bottom: 7px; transform: translateX(-50%); width: 11px; height: 5px; border: 1.5px solid #fff; border-top: 0; border-radius: 0 0 7px 7px; }
+  .caret { display: inline-block; width: 1.5px; height: 16px; vertical-align: -3px; background: var(--ink); animation: blink 1s steps(1) infinite; }
+  .caret[hidden] { display: none; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* click cursor */
+  .cursor {
+    position: absolute; width: 22px; height: 22px; z-index: 40; pointer-events: none;
+    transition: opacity .4s; opacity: 0;
+  }
+  .cursor.show { opacity: 1; }
+  .cursor svg { display: block; filter: drop-shadow(0 2px 4px rgba(0,0,0,.35)); }
+  .cursor .ripple {
+    position: absolute; left: -4px; top: -4px; width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid var(--teal); opacity: 0; transform: scale(.4);
+  }
+  .cursor.clicked .ripple { animation: rip .6s ease-out; }
+  @keyframes rip { 0% { opacity: .9; transform: scale(.4);} 100% { opacity: 0; transform: scale(1.5);} }
+
+  /* plugins modal */
+  .modal-scrim {
+    position: absolute; inset: 0; background: rgba(20,18,12,.28); z-index: 30;
+    opacity: 0; transition: opacity .45s; pointer-events: none; border-radius: 22px;
+  }
+  .modal-scrim.in { opacity: 1; }
+  .modal {
+    position: absolute; left: 50%; top: 50%; width: 660px; z-index: 35;
+    transform: translate(-50%, -46%) scale(.96); opacity: 0;
+    transition: opacity .45s ease, transform .5s cubic-bezier(.3,.7,.3,1);
+    background: #fff; border-radius: 18px; box-shadow: 0 40px 100px -30px rgba(20,18,12,.45); padding: 22px 24px;
+  }
+  .modal.in { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .modal .m-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .modal h4 { margin: 0; font-family: var(--display); font-size: 19px; font-weight: 600; }
+  .modal .m-x { color: var(--muted); font-size: 17px; line-height: 1; }
+  .m-installed {
+    display: inline-flex; align-items: center; gap: 10px; background: var(--card); border-radius: 10px;
+    padding: 6px 12px; font-size: 12.5px; color: #43413E; margin-bottom: 14px;
+  }
+  .m-installed .icons { display: flex; }
+  .m-installed .icons i {
+    width: 18px; height: 18px; border-radius: 5px; margin-right: -4px; border: 1.5px solid #fff;
+    display: grid; place-items: center; font-size: 9px; font-weight: 700; color: #fff;
+  }
+  .m-installed .icons i:nth-child(1) { background: #E8564A; }
+  .m-installed .icons i:nth-child(2) { background: #4C8FE8; }
+  .m-installed .icons i:nth-child(3) { background: #9CB542; }
+  .m-installed .icons i:nth-child(4) { background: #101010; }
+  .m-installed .chev { color: var(--muted); }
+  .m-search {
+    border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 14px; font-size: 14px;
+    display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--ink); background: #FAF9F7;
+  }
+  .m-search .q { color: var(--muted); }
+  .m-search .caret { margin-left: -4px; }
+  .m-pills { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 16px; }
+  .m-pill { font-size: 12px; padding: 5px 13px; border-radius: 999px; border: 1px solid var(--line); color: #43413E; background: #fff; }
+  .m-pill.on { background: var(--card); border-color: #D9D7D1; font-weight: 500; }
+  .m-seclab { font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
+  .m-rows { display: flex; flex-direction: column; gap: 4px; }
+  .m-row { display: flex; align-items: center; gap: 13px; padding: 9px 8px; border-radius: 12px; }
+  .m-row .p-ico {
+    width: 38px; height: 38px; flex: none; border-radius: 10px; display: grid; place-items: center;
+    font-weight: 700; font-size: 16px; color: #fff; border: 1px solid var(--line);
+  }
+  .p-ico svg { width: 24px; height: 24px; display: block; }
+  .p-gmail, .p-drive { background: #fff; }
+  .p-cal { background: #4285F4; border-color: #4285F4; }
+  .p-cal svg text { font-family: var(--text); }
+  .p-gran { background: #C7D65A; border-color: #C7D65A; }
+  .p-treg { padding: 0; border: 0 !important; background: transparent; }
+  .p-treg svg { width: 38px; height: 38px; }
+  .m-row .rmeta { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+  .m-row .rname { display: block; font-weight: 600; font-size: 14px; }
+  .m-row .rdesc { display: block; color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-add {
+    flex: none; border: 0; border-radius: 999px; padding: 7px 18px; font-size: 13px; font-weight: 500;
+    font-family: var(--text); cursor: pointer; background: var(--card); color: var(--ink); transition: all .35s;
+  }
+  .m-added { flex: none; font-size: 13px; font-weight: 500; color: #3E7A4E; }
+  #tregAdd.done { background: transparent; color: #3E7A4E; padding-left: 0; padding-right: 8px; }
+  #tregAdd .l2 { display: none; }
+  #tregAdd.done .l1 { display: none; }
+  #tregAdd.done .l2 { display: inline; }
+  #mFeatured[hidden], #mResults[hidden] { display: none; }
+
+  .okk { color: var(--green); font-weight: 600; }
+  .em { font-family: var(--mono); font-size: 12px; }
+
+  /* mail overlay */
+  .mail-ov {
+    position: absolute; left: 50%; bottom: 0; width: 88%; height: 86%; z-index: 55;
+    transform: translate(-50%, 105%); will-change: transform;
+    background: #fff; border-radius: 18px 18px 0 0; box-shadow: 0 -30px 90px -30px rgba(20,18,12,.4);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .mail-top { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+  .mail-top b { font-size: 14.5px; }
+  .draft-chip { font-size: 11.5px; color: var(--teal-ink); background: rgba(84,185,166,.14); border-radius: 999px; padding: 3px 11px; font-weight: 500; }
+  .mail-top .fromchip { margin-left: auto; font-size: 12px; color: var(--muted); }
+  .mail-cols { flex: 1; display: flex; min-height: 0; }
+  .mail-list { width: 280px; flex: none; border-right: 1px solid var(--line); overflow: hidden; }
+  .mail-row { padding: 12px 18px; border-bottom: 1px solid #F1F0EC; opacity: 0; transform: translateX(-10px); transition: opacity .4s, transform .4s; }
+  .mail-row.in { opacity: 1; transform: none; }
+  .mail-row .to { font-weight: 600; font-size: 13.5px; display: flex; justify-content: space-between; }
+  .mail-row .to .d { color: var(--muted); font-weight: 400; font-size: 11px; }
+  .mail-row .sb { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mail-view { flex: 1; padding: 20px 26px; font-size: 14px; overflow: hidden; }
+  .mail-view .field { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid #F1F0EC; color: #55534F; font-size: 13.5px; }
+  .mail-view .field b { color: var(--muted); font-weight: 500; width: 62px; flex: none; }
+  .mail-view .bodytxt { margin-top: 16px; font-size: 14px; line-height: 1.7; max-width: 60ch; }
+  .mail-view .sig { color: var(--muted); }
+  .send-row { margin-top: 18px; display: flex; gap: 10px; }
+
+  /* calendar overlay */
+  .cal-ov {
+    position: absolute; left: 50%; bottom: 0; width: 88%; height: 86%; z-index: 58;
+    transform: translate(-50%, 105%); will-change: transform;
+    background: #fff; border-radius: 18px 18px 0 0; box-shadow: 0 -30px 90px -30px rgba(20,18,12,.4);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .cal-grid { flex: 1; display: flex; min-height: 0; }
+  .cal-day { flex: 1; position: relative; border-right: 1px solid #F1F0EC; }
+  .cal-day:last-child { border-right: 0; }
+  .cal-dh {
+    position: absolute; top: 0; left: 0; right: 0; height: 30px; display: grid; place-items: center;
+    font-size: 11.5px; font-weight: 600; color: #55534F; border-bottom: 1px solid #EBEAE6; background: #FAF9F6; z-index: 2;
+  }
+  .cal-body {
+    position: absolute; left: 0; right: 0; top: 31px; bottom: 0; display: block;
+    background: repeating-linear-gradient(180deg, transparent 0 65px, #F3F2EF 65px 66px);
+  }
+  .mtg {
+    position: absolute; left: 6px; right: 6px; border-radius: 9px; padding: 6px 9px;
+    background: #DFF0EB; border-left: 3px solid var(--teal-ink);
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 600; color: var(--ink); line-height: 1.3; overflow: hidden;
+    box-shadow: 0 1px 2px rgba(20,18,12,.06);
+    opacity: 0; transform: scale(.92) translateY(4px); transition: opacity .35s ease, transform .35s cubic-bezier(.3,.7,.3,1);
+  }
+  .mtg img { width: 24px; height: 24px; border-radius: 50%; flex: none; object-fit: cover; box-shadow: 0 0 0 2px #fff; }
+  .mtg .mt { display: flex; flex-direction: column; min-width: 0; }
+  .mtg .mt b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mtg i { display: block; font-style: normal; font-family: var(--mono); font-weight: 400; font-size: 9.5px; color: #4A6F66; margin-top: 1px; }
+  .mtg.half { padding: 5px 7px; font-size: 10px; }
+  .mtg.half img { width: 16px; height: 16px; }
+  .mtg.half i { font-size: 8.5px; }
+  .mtg.old { background: #F1F0EC; border-left-color: #C9C7C1; opacity: 1; transform: none; box-shadow: none; }
+  .mtg.old i { color: #8A8885; }
+  .mtg.pop { opacity: 1; transform: none; }
+
+  /* caption */
+  .caption-wrap { position: absolute; left: 0; right: 0; bottom: 34px; display: flex; justify-content: center; pointer-events: none; z-index: 70; }
+  .caption {
+    position: absolute; bottom: 0; opacity: 0; transform: translateY(10px); transition: opacity .4s, transform .4s;
+    font-family: var(--display); font-size: clamp(15px, 2vw, 20px); font-weight: 500; letter-spacing: -.01em;
+    background: rgba(253,252,251,.9); backdrop-filter: blur(8px); padding: 10px 22px; border-radius: 999px;
+    border: 1px solid var(--line); white-space: nowrap;
+  }
+  .caption .no { color: var(--muted); font-family: var(--mono); font-size: .72em; margin-right: 10px; }
+  .caption.on { opacity: 1; transform: none; }
+
+  /* ---------- post-story sections ---------- */
+  .section { padding: 110px 24px; }
+  .section h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; font-size: clamp(30px, 4.6vw, 46px); text-align: center; margin: 0 0 14px; text-wrap: balance; }
+  .section .lede { text-align: center; color: var(--muted); max-width: 56ch; margin: 0 auto 48px; font-size: 17px; text-wrap: balance; }
+
+  /* ---- the six public Grok cards, recut in treg's light-page grammar ---- */
+  .bot-gallery { padding-top: 124px; overflow: hidden; }
+  .bot-gallery h2 .hl2 { color: var(--teal-ink); font-weight: 600; }
+  .bot-kicker {
+    width: fit-content; margin: 0 auto 18px; display: flex; align-items: center; gap: 9px;
+    color: var(--teal-ink); font-family: var(--mono); font-size: 12px; letter-spacing: .02em;
+  }
+  .bot-kicker i {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--teal); display: inline-block;
+    box-shadow: 0 0 0 5px rgba(84,185,166,.12);
+  }
+  .bot-deck {
+    max-width: 1040px; margin: 0 auto; display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px;
+  }
+  .bot-card {
+    --blink: 0s;
+    grid-column: span 2; min-height: 454px; position: relative; overflow: hidden;
+    display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 23px;
+    background: #fff; color: var(--ink); text-decoration: none;
+    box-shadow: 0 12px 36px -28px rgba(20,18,12,.42);
+    opacity: 0; transform: translateY(32px) scale(.985);
+    transition: opacity .6s ease, transform .7s cubic-bezier(.2,.75,.2,1), border-color .25s, box-shadow .25s;
+  }
+  .bot-card:nth-child(2) { --blink: .7s; }
+  .bot-card:nth-child(3) { --blink: 1.4s; }
+  .bot-card:nth-child(4) { --blink: 2.1s; }
+  .bot-card:nth-child(5) { --blink: 2.8s; }
+  .bot-card:nth-child(6) { --blink: 3.5s; }
+  .bot-gallery.seen .bot-card { opacity: 1; transform: none; }
+  .bot-gallery.seen .bot-card:nth-child(2) { transition-delay: .08s; }
+  .bot-gallery.seen .bot-card:nth-child(3) { transition-delay: .16s; }
+  .bot-gallery.seen .bot-card:nth-child(4) { transition-delay: .24s; }
+  .bot-gallery.seen .bot-card:nth-child(5) { transition-delay: .32s; }
+  .bot-gallery.seen .bot-card:nth-child(6) { transition-delay: .4s; }
+  .bot-gallery.seen .bot-card:hover {
+    transform: translateY(-7px); transition-delay: 0s; border-color: rgba(84,185,166,.7);
+    box-shadow: 0 26px 58px -32px rgba(20,18,12,.38);
+  }
+  .bot-visual {
+    height: 188px; flex: none; position: relative; overflow: hidden; display: grid; place-items: center;
+    background:
+      radial-gradient(circle at 18% 15%, #1C6B5C 0%, transparent 45%),
+      radial-gradient(circle at 82% 78%, #16A085 0%, transparent 55%),
+      radial-gradient(ellipse at 50% 50%, #0D3D34 0%, #050F0D 80%);
+    border-bottom: 1px solid rgba(16,16,16,.08);
+  }
+  .bot-avatar {
+    width: 92px; height: 92px; position: relative; display: grid; place-items: center;
+    filter: drop-shadow(0 18px 24px rgba(0,25,23,.2));
+    transition: transform .45s cubic-bezier(.2,.8,.2,1);
+  }
+  .bot-card:hover .bot-avatar { transform: translateY(-3px) scale(1.04); }
+  .bot-face { position: relative; display: block; background: #18BEA9; }
+  .face-scout {
+    width: 51px; height: 80px; background: #32AA9B;
+    border-radius: 48% 52% 45% 47% / 29% 30% 26% 28%;
+  }
+  .face-rival {
+    width: 70px; height: 79px; background: #32AA9B;
+    clip-path: path("M 15 3 Q 35 -1 56 2 Q 70 4 70 15 Q 68 45 59 63 Q 51 79 35 79 Q 18 79 10 66 Q 2 53 0 20 Q -1 9 7 6 Q 11 4 15 3 Z");
+  }
+  .face-serp {
+    width: 68px; height: 76px; background: #32AA9B;
+    clip-path: path("M 34 0 Q 38 0 42 3 L 63 15 Q 68 18 68 24 L 68 52 Q 68 59 62 63 L 40 74 Q 34 78 28 74 L 6 63 Q 0 59 0 52 L 0 25 Q 0 18 6 15 L 29 2 Q 32 0 34 0 Z");
+  }
+  .face-creator { width: 66px; height: 39px; border-radius: 45% 50% 48% 48%; margin-top: 19px; }
+  .face-creator::before, .face-creator::after { content: ""; position: absolute; background: inherit; border-radius: 50%; }
+  .face-creator::before { width: 40px; height: 48px; left: 7px; top: -22px; }
+  .face-creator::after { width: 38px; height: 39px; right: -4px; top: -5px; }
+  .face-icp { width: 82px; height: 82px; background: transparent; }
+  .face-icp::before {
+    content: ""; position: absolute; width: 58px; height: 58px; left: 12px; top: 12px;
+    background: #32AA9B; border-radius: 29% 43% 31% 41% / 39% 31% 43% 29%;
+    transform: rotate(39deg);
+  }
+  .face-gtm { width: 82px; height: 53px; background: #32AA9B; border-radius: 999px; }
+  .bot-eyes {
+    --eye-x: 0px; --eye-y: 0px; --eye-rot: 0deg;
+    position: absolute; left: 50%; top: 44%; z-index: 3; display: flex; gap: 8px;
+    transform: translate(-50%, -50%) translate(var(--eye-x), var(--eye-y)) rotate(var(--eye-rot));
+    transition: transform .16s cubic-bezier(.2,.7,.2,1); will-change: transform;
+  }
+  .face-scout .bot-eyes { top: 56%; left: 49%; gap: 6px; align-items: flex-start; }
+  .face-scout .bot-eye:first-child { position: relative; width: 6px; height: 13px; top: -5px; transform: rotate(45deg); }
+  .face-scout .bot-eye + .bot-eye { position: relative; width: 6px; height: 16px; top: 1px; transform: rotate(-16deg); }
+  .face-rival .bot-eyes { top: 42%; left: 69%; gap: 10px; align-items: flex-start; }
+  .face-rival .bot-eye:first-child { position: relative; width: 6px; height: 14px; top: 2px; transform: rotate(-18deg); }
+  .face-rival .bot-eye + .bot-eye { position: relative; width: 6px; height: 14px; top: -2px; transform: rotate(-18deg); }
+  .face-serp .bot-eyes { top: 57%; left: 40%; gap: 7px; align-items: flex-start; }
+  .face-serp .bot-eye:first-child { position: relative; width: 6px; height: 13px; top: -4px; transform: rotate(45deg); }
+  .face-serp .bot-eye + .bot-eye { position: relative; width: 6px; height: 17px; top: 2px; transform: rotate(-15deg); }
+  .face-creator .bot-eyes { top: 28%; left: 58%; }
+  .face-icp .bot-eyes { top: 43%; left: 56%; gap: 10px; }
+  .face-icp .bot-eye, .face-icp .bot-eye + .bot-eye { width: 6px; height: 14px; transform: rotate(-20deg); }
+  .face-gtm .bot-eyes { top: 41%; left: 68%; gap: 11px; align-items: flex-start; }
+  .face-gtm .bot-eye:first-child { position: relative; width: 6px; height: 15px; top: 2px; transform: rotate(-12deg); }
+  .face-gtm .bot-eye + .bot-eye { position: relative; width: 6px; height: 15px; top: -2px; transform: rotate(-16deg); }
+  .bot-eye {
+    display: block; width: 6px; height: 14px; border-radius: 999px; background: #06211E;
+    transform: rotate(-12deg); transform-origin: center; animation: bot-blink 5.4s var(--blink) infinite;
+  }
+  .bot-eye + .bot-eye { transform: rotate(12deg); }
+  @keyframes bot-blink { 0%, 44%, 47%, 100% { scale: 1 1; } 45%, 46% { scale: 1 .12; } }
+  .bot-copy {
+    flex: 1; display: flex; flex-direction: column; align-items: center; padding: 22px 22px 21px;
+    text-align: center; background: linear-gradient(180deg, #fff, #FBFAF7);
+  }
+  .bot-card h3 { margin: 0 0 2px; font-family: var(--display); font-size: 22px; line-height: 1.12; letter-spacing: -.02em; font-weight: 600; }
+  .bot-by { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+  .bot-by.branded { display: inline-flex; align-items: center; gap: 4px; }
+  .bot-by-logo { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+  .bot-card p { margin: 0; max-width: 280px; min-height: 43px; color: #65635F; font-size: 14px; line-height: 1.52; text-wrap: balance; }
+  .bot-tags { margin-top: 13px; display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  .bot-tag {
+    padding: 5px 8px; border: 1px solid rgba(46,126,113,.18); border-radius: 999px;
+    background: rgba(84,185,166,.09); color: var(--teal-ink);
+    font-family: var(--mono); font-size: 9.5px; line-height: 1; letter-spacing: .025em; white-space: nowrap;
+  }
+  .bot-open {
+    margin-top: auto; padding-top: 18px; display: inline-flex; align-items: center; gap: 9px;
+    color: var(--ink); font-weight: 600; font-size: 13px;
+  }
+  .bot-open-brand { display: inline-flex; align-items: center; gap: 5px; }
+  .bot-open-logo { width: 17px; height: 17px; border-radius: 5px; flex: none; }
+  .bot-arrow { font-size: 17px; transition: transform .2s ease; }
+  .bot-card:hover .bot-arrow { transform: translate(3px, -3px); }
+  @media (max-width: 900px) {
+    .bot-deck { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .bot-card { grid-column: span 3; }
+  }
+  @media (max-width: 620px) {
+    .bot-deck { grid-template-columns: 1fr; }
+    .bot-card { grid-column: 1; min-height: 440px; }
+    .bot-gallery { padding-top: 96px; }
+  }
+  /* ---- the catalog, in the treg landing page's grammar:
+         category headers with a hairline running on, then capability cards ---- */
+  .catwrap { max-width: 1000px; margin: 0 auto; }
+  .pcat {
+    font-family: var(--display); font-weight: 600; font-size: 17px; letter-spacing: -.01em;
+    display: flex; align-items: center; gap: 14px; margin: 38px 0 12px;
+  }
+  .pcat:first-child { margin-top: 0; }
+  .pcat::after { content: ""; height: 1px; background: var(--line); flex: 1; }
+  .pgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .pcard {
+    border-radius: 14px; padding: 13px 14px; background: #fff;
+    box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 4px 14px -6px rgba(20,18,12,.08);
+    display: flex; align-items: center; gap: 12px; transition: box-shadow .24s ease;
+  }
+  .pcard:hover { box-shadow: 0 2px 4px rgba(20,18,12,.06), 0 14px 30px -10px rgba(20,18,12,.16); }
+  .pcard .ph {
+    display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 11px;
+    background: #FBFAF7; border: 1px solid rgba(0,0,0,.07);
+  }
+  .pcard .ph img { width: 23px; height: 23px; border-radius: 5px; object-fit: contain; }
+  .pcard .pt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .pcard .pt b { font-weight: 600; font-size: 13.5px; line-height: 1.25; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pcard .pt s { font-family: var(--mono); font-size: 10.5px; color: var(--muted); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pcard .pt s.was { text-decoration: line-through; text-decoration-color: rgba(192,54,47,.55); text-decoration-thickness: 1.5px; }
+  /* the catalog trails off — ghost rows fading to nothing, then the +N line */
+  .morewrap {
+    margin-top: 10px; pointer-events: none;
+    -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.55) 0%, transparent 92%);
+    mask-image: linear-gradient(180deg, rgba(0,0,0,.55) 0%, transparent 92%);
+  }
+  .moreline { text-align: center; margin-top: -8px; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  @media (max-width: 880px) { .pgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  /* ---- the bill: struck subscriptions vs the per-lead price ---- */
+  .bill-sec h2 .hl2 { color: #118453; font-weight: 600; }
+  .bill { max-width: 900px; margin: 0 auto; display: flex; gap: 44px; align-items: center; justify-content: center; }
+  .bill-left { display: flex; flex-direction: column; gap: 7px; min-width: 330px; }
+  .b-row { display: flex; align-items: center; gap: 12px; font-size: 15px; }
+  .b-row img { width: 30px; height: 30px; border-radius: 8px; object-fit: contain; flex: none; background: #FBFAF7; border: 1px solid rgba(0,0,0,.06); }
+  .b-row b { font-weight: 600; }
+  .b-row s { margin-left: auto; text-decoration: none; color: var(--muted); position: relative; font-variant-numeric: tabular-nums; }
+  .b-row .strike {
+    position: absolute; left: -5px; right: -5px; top: 50%; margin-top: -2px; height: 4px;
+    background: #C0362F; border-radius: 2px; transform: scaleX(0); transform-origin: left center;
+    transition: transform .35s cubic-bezier(.3,.7,.3,1);
+  }
+  .seen .b-row .strike { transform: scaleX(1); }
+  .seen .b-row:nth-child(1) .strike { transition-delay: .15s; } .seen .b-row:nth-child(2) .strike { transition-delay: .27s; }
+  .seen .b-row:nth-child(3) .strike { transition-delay: .39s; } .seen .b-row:nth-child(4) .strike { transition-delay: .51s; }
+  .seen .b-row:nth-child(5) .strike { transition-delay: .63s; } .seen .b-row:nth-child(6) .strike { transition-delay: .75s; }
+  .seen .b-row:nth-child(7) .strike { transition-delay: .87s; } .seen .b-row:nth-child(8) .strike { transition-delay: .99s; }
+  .seen .b-row:nth-child(9) .strike { transition-delay: 1.11s; }
+  .bill-divider { width: 1px; align-self: stretch; background: var(--line); }
+  .bill-right { display: flex; flex-direction: column; gap: 12px; }
+  .bill-right .bk { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 15px; color: var(--muted); }
+  .bill-right .bk svg { width: 22px; height: 22px; border-radius: 6px; }
+  .bill-right .bb {
+    font-family: var(--display); font-weight: 600; font-size: clamp(52px, 7vw, 84px); line-height: 1.02;
+    letter-spacing: -.03em; color: #118453; opacity: 0; transform: translateY(12px);
+    transition: opacity .6s ease 1.25s, transform .65s cubic-bezier(.3,.7,.3,1) 1.25s;
+    font-variant-numeric: tabular-nums;
+  }
+  .seen .bill-right .bb { opacity: 1; transform: none; }
+  .bill-right .bb small { display: block; font-family: var(--text); font-weight: 500; font-size: 16px; letter-spacing: 0; color: var(--ink); margin-top: 8px; }
+  .bill-right .bnote { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+  .fineprint { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 34px; }
+
+  /* ---- the benchmark: a sticky stage — the duel plays, then hands off to the
+         grouped chart as you scroll (scrubbed, like the hero story) ---- */
+  .wf-sec h2 .hl2, .tools-sec h2 .hl2 { color: var(--teal-ink); font-weight: 600; }
+  .bench-track { position: relative; height: 260vh; }
+  .bench-stage {
+    position: sticky; top: 0; min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 70px 24px 24px; box-sizing: border-box;
+  }
+  .bench-stage h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; font-size: clamp(30px, 4.6vw, 46px); text-align: center; margin: 0 0 14px; text-wrap: balance; }
+  .bench-stage .lede { text-align: center; color: var(--muted); max-width: 56ch; margin: 0 auto 30px; font-size: 17px; text-wrap: balance; }
+  .bench-stage .fineprint { margin-top: 8px; }
+  /* scrubbed: tiny linear transitions just to smooth discrete wheel steps */
+  .d-bar, .bbar { transition: transform .1s linear; }
+  .d-val, .d-lab, .d-cat, .bgroups, .bcol em { transition: opacity .1s linear; }
+  .bstage-wrap { position: relative; width: 100%; max-width: 1080px; height: 470px; margin: 0 auto; --dk: 2.4px; --bk: 2.9px; }  /* px per score point: duel bars / grouped bars */
+  .duel {
+    position: absolute; inset: 0; display: flex; justify-content: center; gap: 110px; align-items: flex-end;
+    padding-bottom: 120px;
+  }
+  .d-col { position: relative; width: 200px; display: flex; flex-direction: column; align-items: center; }
+  .d-bar {
+    width: 120px; height: calc(var(--h) * var(--dk)); border-radius: 12px 12px 5px 5px; background: #D6D6D1;
+    transform: scaleY(0); transform-origin: 50% 100%; will-change: transform;
+  }
+  .d-bar.win { background: #118453; }
+  .d-val {
+    position: absolute; top: -44px; left: 0; right: 0; text-align: center;
+    font-family: var(--mono); font-size: 30px; color: var(--muted); opacity: 0;
+  }
+  .d-val.win { color: #118453; font-weight: 500; }
+  .d-lab { margin-top: 14px; display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; white-space: nowrap; opacity: 0; }
+  .d-lab img { width: 26px; height: 26px; border-radius: 7px; }
+  .d-lab i { font-style: normal; color: var(--muted); font-weight: 500; }
+  .d-lab .d-treg { width: 26px; height: 26px; border-radius: 7px; }
+  .d-cat { position: absolute; left: 0; right: 0; bottom: 34px; text-align: center; font-family: var(--mono); font-size: 13px; color: var(--muted); opacity: 0; }
+  .bgroups {
+    position: absolute; inset: 0; display: flex; justify-content: center; gap: 44px; align-items: center;
+    flex-wrap: wrap; opacity: 0;
+  }
+  .bgroup { display: flex; flex-direction: column; align-items: center; }
+  .bcols { display: flex; gap: 14px; align-items: flex-end; height: 245px; }
+  .bcol { position: relative; width: 44px; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+  .bbar {
+    display: block; width: 100%; height: calc(var(--h) * var(--bk)); border-radius: 8px 8px 3px 3px; background: #D6D6D1;
+    transform: scaleY(0); transform-origin: 50% 100%; will-change: transform;
+  }
+  .bbar.win { background: #118453; }
+  .bcol em {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--h) * 2px + 6px);
+    font-style: normal; font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: nowrap;
+    opacity: 0;
+  }
+  .bcol em { bottom: calc(var(--h) * var(--bk) + 6px); }
+  .bcol em.win { color: #118453; font-weight: 500; }
+  .bico { position: absolute; left: 50%; transform: translateX(-50%); bottom: -34px; width: 26px; height: 26px; border-radius: 7px; object-fit: contain; background: #FBFAF7; border: 1px solid rgba(0,0,0,.07); }
+  .bglab { margin-top: 46px; font-weight: 600; font-size: 15px; }
+  @media (max-width: 720px) {
+    .bench-stage { padding-top: 78px; justify-content: flex-start; }
+    .bench-stage h2 { font-size: 27px; margin-bottom: 8px; }
+    .bench-stage .lede { font-size: 15px; margin-bottom: 14px; }
+    .bstage-wrap { height: 500px; --dk: 1.9px; --bk: 1.5px; }
+    .duel { gap: 24px; padding-bottom: 170px; }
+    .d-col { width: 150px; }
+    .d-bar { width: 84px; }
+    .d-val { font-size: 24px; top: -38px; }
+    .d-lab { font-size: 13px; gap: 6px; white-space: normal; text-align: center; justify-content: center; flex-wrap: wrap; max-width: 150px; }
+    .d-lab img, .d-lab .d-treg { width: 20px; height: 20px; }
+    .d-cat { bottom: 70px; }
+    .bgroups { gap: 34px 22px; align-content: center; }
+    .bcols { gap: 7px; height: 132px; }
+    .bcol { width: 30px; }
+    .bcol em { font-size: 10px; }
+    .bico { width: 22px; height: 22px; bottom: -30px; }
+    .bglab { margin-top: 38px; font-size: 13px; }
+  }
+  @media (max-width: 880px) {
+    .tool-grid { grid-template-columns: repeat(2, 1fr); }
+    .bill { flex-direction: column; gap: 30px; }
+    .bill-divider { display: none; }
+  }
+  .nav-links { display: flex; gap: 22px; align-items: center; margin-right: 10px; }
+  .nav-links a { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 500; color: #43413E; text-decoration: none; }
+  .nav-links a:hover { color: var(--ink); }
+  .nav-jump { display: inline-flex; align-items: center; margin-right: 14px; font-size: 14px; font-weight: 500; color: #43413E; text-decoration: none; }
+  .nav-jump:hover { color: var(--ink); }
+  @media (max-width: 1020px) { .nav-links, .nav-jump { display: none; } }
+  @media (max-width: 720px) {
+    .nav { padding: 10px 14px; }
+    .wordmark { white-space: nowrap; }
+    .nav .pill { white-space: nowrap; padding: 8px 14px; font-size: 13px; }
+    .nav .pill:not(.dark) { display: none; }
+    .hero { padding-top: 110px; }
+  }
+  .cta-final { text-align: center; padding: 120px 24px 80px; }
+  /* the "also available on" strip: icon links to the agent-agnostic page */
+  .also-on { margin-top: 38px; display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .also-on > span { font-family: var(--mono); font-size: 13px; color: var(--muted); margin-right: 6px; }
+  .also-on a { display: inline-flex; border-radius: 10px; transition: transform .2s ease, box-shadow .2s ease; }
+  .also-on a:hover { transform: translateY(-2px); box-shadow: 0 8px 18px -8px rgba(20,18,12,.3); }
+  .also-on img, .also-on .hermes-ico { width: 34px; height: 34px; border-radius: 10px; display: block; }
+  .also-on .hermes-img { background: #fff; border: 1px solid rgba(0,0,0,.08); padding: 3px; box-sizing: border-box; }
+
+  /* ---- footer ---- */
+  .site-foot { border-top: 1px solid var(--line); background: #FAF9F6; padding: 34px 28px 26px; }
+  .sf-inner { max-width: 1020px; margin: 0 auto; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 34px; }
+  .sf-note { color: var(--muted); font-size: 12.5px; margin-left: 10px; }
+  .sf-cols { display: flex; gap: 56px; flex-wrap: wrap; }
+  .sf-col { display: flex; flex-direction: column; gap: 7px; min-width: 108px; }
+  .sf-col .lab { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .sf-col a { color: #43413E; text-decoration: none; font-size: 13.5px; }
+  .sf-col a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+  .sf-brand { display: flex; align-items: center; gap: 9px; font-family: var(--display); font-size: 15px; }
+  .sf-brand svg { width: 22px; height: 22px; border-radius: 7px; }
+  .sf-brand b { font-weight: 600; }
+  .sf-tag { color: var(--muted); font-size: 13px; font-family: var(--text); margin-left: 4px; }
+  .sf-links { display: flex; gap: 22px; flex-wrap: wrap; }
+  .sf-links a { color: #43413E; text-decoration: none; font-size: 13.5px; }
+  .sf-links a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+  .sf-legal { max-width: 1020px; margin: 20px auto 0; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  .cta-final h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; font-size: clamp(32px, 5vw, 54px); margin: 0 0 26px; text-wrap: balance; }
+  .foot { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; max-width: 1020px; margin: 90px auto 0; padding: 26px 0 34px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
+
+  @media (max-width: 720px) {
+    .wedge { grid-template-columns: 1fr; }
+    .caption { white-space: normal; text-align: center; max-width: 88vw; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .caret { animation: none; }
+    .bot-card { opacity: 1; transform: none; transition: none; }
+    .bot-eye { animation: none; }
+  }
+  /* ---- sign-in modal: stays on this page, no hop to the dashboard's landing ---- */
+  .scrim { position: fixed; inset: 0; background: rgba(26,26,26,.55); display: none; place-items: center; z-index: 200; padding: 20px; backdrop-filter: blur(6px); }
+  .scrim.open { display: grid; }
+  .smodal { width: min(400px, 94vw); background: #fff; border-radius: 20px; padding: 30px 28px; text-align: center; position: relative; box-shadow: 0 30px 90px -38px rgba(20,18,12,.4); }
+  .smodal .cls { position: absolute; top: 12px; right: 15px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+  .smodal .cls:hover { color: var(--ink); }
+  .smodal h3 { font-family: var(--display); font-weight: 600; font-size: 22px; margin: 4px 0 6px; letter-spacing: -.015em; }
+  .smodal p { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 0 0 18px; }
+  .smodal .pill { width: 100%; justify-content: center; margin-top: 9px; box-sizing: border-box; }
+  .smodal .div { display: flex; align-items: center; gap: 10px; margin: 16px 0 6px; color: var(--muted); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
+  .smodal .div::before, .smodal .div::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .smodal input { width: 100%; margin-top: 9px; background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 11px 13px; font-family: var(--mono); font-size: 13px; outline: none; box-sizing: border-box; }
+  .smodal input:focus { border-color: var(--ink); }
+  .smodal .err { color: #C0392B; font-size: 11.5px; margin-top: 10px; min-height: 14px; }
+</style>
+<script src="/captcha.js" defer></script>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <span class="wordmark"><img class="wm-grok" src="/media/grokbot/grokbot.png" alt="" width="24" height="24"> Grok Bot <span style="color:var(--muted);font-weight:400">×</span> <a href="/" style="display:inline-flex;align-items:center;gap:10px;color:inherit;text-decoration:none" aria-label="treg home"><svg class="wm-treg" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</a></span>
+  <span style="display:flex;gap:8px">
+    <a class="nav-jump" href="#bots">Bot gallery</a>
+    <span class="nav-links"><a href="#bench">#1 in benchmark</a><a href="#pricing">Pricing</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a><a href="https://x.com/treg_ai" target="_blank" rel="noopener" aria-label="treg on X"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a><a href="https://discord.gg/6mQYYfFMAn" target="_blank" rel="noopener" aria-label="treg on Discord"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z"/></svg></a></span>
+    <a class="pill dark" href="/app?ref=grokbot" id="ctaNav">Setup treg</a>
+    <a class="pill" href="https://x.ai/bot/plugin/55647425" target="_blank" rel="noopener">Install plugin</a>
+  </span>
+</nav>
+
+<header class="hero">
+  <span class="eyebrow"><span class="dot"></span> New plugin · treg</span>
+  <h1>Connect <img class="h1-logo" src="/media/grokbot/grokbot.png" alt="" width="58" height="58"> Grok Bot<br>to <svg class="h1-logo" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> any data &amp; tools.</h1>
+  <p class="sub">Install one plugin and your Bot can <strong>search, enrich, and verify contacts</strong> across Apollo, People&nbsp;Data&nbsp;Labs, Exa, Hunter — {PROVIDERS} providers, side by side. It fills the sheet and drafts the emails. You approve.</p>
+  <div class="ctas">
+    <a class="pill dark" href="/app?ref=grokbot" id="ctaHero">Setup treg</a>
+    <a class="pill" href="https://x.ai/bot/plugin/55647425" target="_blank" rel="noopener">Install plugin</a>
+  </div>
+</header>
+
+<div class="story" id="story">
+  <div class="stage" id="stage">
+    <div class="camera" id="camera">
+      <div class="app" id="app">
+        <aside class="side">
+          <div class="side-top"><span class="traffic"><i></i><i></i><i></i></span><span class="plus">+</span></div>
+          <div class="search">⌕ Search</div>
+          <div class="chat-list">
+            <div class="chat-row"><span class="avatar av-green" aria-hidden="true"><i></i></span><span class="cmeta"><span class="t">Chief <time>Yesterday</time></span><span class="p">booked the venue and sent the c…</span></span></div>
+            <div class="chat-row on"><span class="avatar av-orange" aria-hidden="true"><i></i></span><span class="cmeta"><span class="t">Sales Outbound <time>15:32</time></span><span class="p" id="soPreview">Q3 target accounts…</span></span></div>
+            <div class="chat-row"><span class="avatar av-red" aria-hidden="true"><i></i></span><span class="cmeta"><span class="t">Inbox Manager <time>12:33</time></span><span class="p">sent. inbox at zero, 5 drafts park…</span></span></div>
+            <div class="chat-row"><span class="avatar av-purple" aria-hidden="true"><i></i></span><span class="cmeta"><span class="t">Account Manager <time>10:33</time></span><span class="p">invite's out to vicky. globex note…</span></span></div>
+            <div class="chat-row"><span class="avatar av-blue" aria-hidden="true"><i></i></span><span class="cmeta"><span class="t">Talent Scout <time>7:33</time></span><span class="p">3 intros drafted in your voice, hel…</span></span></div>
+          </div>
+          <div class="side-foot">
+            <div class="side-row plugins-row" id="pluginsRow"><span class="plug-ico" aria-hidden="true"></span> Plugins</div>
+            <div class="side-row"><span class="me">JZ</span> Jason Zhou</div>
+          </div>
+        </aside>
+
+        <div class="main">
+          <div class="main-head"><span class="avatar av-orange" aria-hidden="true"><i></i></span> Sales Outbound <span class="screen-ico" aria-hidden="true"></span></div>
+          <div class="main-body">
+            <div class="chatflow" id="chatflow">
+            <div class="msg bot">Hey — give me a job. Outbound, account research, or a list to work through.</div>
+
+            <div class="msg user appear" id="userMsg1">
+              <span class="mention">@treg</span> get me the head of product for every company in
+              <a class="msg-link" href="#story" onclick="return false">Q3 target accounts</a> — verified emails please
+            </div>
+
+            <div class="tregcard appear" id="tregCard">
+              <div class="chead"><svg class="treg-mark" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#000"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> <b>treg</b> <span class="via">· {ENDPOINTS} tools · pay per call</span></div>
+              <div class="grow tstep" data-tg="0">"person by role at company" → 3 providers</div>
+              <div class="grow pc-row" data-tg="1" id="pcExa"><img class="pc-logo" src="/media/grokbot/exa-32.png" alt="" width="20" height="20"><b>Exa</b><span class="pc-what">people search</span><span class="pc-price">$0.010 / query</span></div>
+              <div class="grow pc-row" data-tg="2" id="pcApollo"><img class="pc-logo" src="/media/grokbot/apollo-fab7.png" alt="" width="20" height="20"><b>Apollo</b><span class="pc-what">person match + work email</span><span class="pc-price">$0.026 / contact</span></div>
+              <div class="grow pc-row" data-tg="3" id="pcPdl"><img class="pc-logo" src="/media/grokbot/peopledatalabs-2b4a.png" alt="" width="20" height="20"><b>People Data Labs</b><span class="pc-what">person enrich</span><span class="pc-price">$0.028 / contact</span></div>
+              <div class="pc-scan" id="pcScan" aria-hidden="true"></div>
+              <div class="pc-scan" id="leadScan" aria-hidden="true"></div>
+              <div class="grow pc-lock" data-tg="4">✓ locked in — <b>Apollo</b> · best price for match + work email</div>
+              <div class="grow tstep vstep" data-tg="11">find &amp; verify emails —
+                <img class="vlogo" src="/media/grokbot/apollo-fab7.png" alt="" width="15" height="15">
+                <img class="vlogo" src="/media/grokbot/hunter-985c.png" alt="" width="15" height="15">
+                <img class="vlogo" src="/media/grokbot/peopledatalabs-2b4a.png" alt="" width="15" height="15">
+              </div>
+              <div class="grow lead" data-tg="5"><img src="https://randomuser.me/api/portraits/women/44.jpg" alt=""><span class="lmeta"><b>Maya Okafor</b><span>Northwind Labs · Head of Product</span></span><span class="lemail">m.okafor@northwindlabs.io <span class="okv">✓</span></span></div>
+              <div class="grow lead" data-tg="6"><img src="https://randomuser.me/api/portraits/men/32.jpg" alt=""><span class="lmeta"><b>Daniel Reyes</b><span>Brightloop · VP Product</span></span><span class="lemail">daniel@brightloop.com <span class="okv">✓</span></span></div>
+              <div class="grow lead" data-tg="7"><img src="https://randomuser.me/api/portraits/women/68.jpg" alt=""><span class="lmeta"><b>Priya Natarajan</b><span>Stackwell · Head of Product</span></span><span class="lemail">priya.n@stackwell.dev <span class="okv">✓</span></span></div>
+              <div class="grow lead" data-tg="8"><img src="https://randomuser.me/api/portraits/men/75.jpg" alt=""><span class="lmeta"><b>Jonas Bergström</b><span>Ferroline Systems · CPO</span></span><span class="lemail">jonas@ferroline.se <span class="okv">✓</span></span></div>
+              <div class="grow lead" data-tg="9"><img src="https://randomuser.me/api/portraits/women/12.jpg" alt=""><span class="lmeta"><b>Amelia Chow</b><span>Signalpost · Head of Product</span></span><span class="lemail">amelia@signalpost.app <span class="okv">✓</span></span></div>
+              <div class="grow lead more" data-tg="10">+ 3 more…</div>
+              <div class="tregfoot"><span>balance −<b>$0.37</b></span><span>0% markup · provider's own price</span></div>
+            </div>
+
+            <div class="msg bot appear" id="tregSummary">Found <b>129 matching profiles</b> for <b class="price-hl">$0.37</b>.</div>
+
+            <div class="msg bot appear zeq-msg" id="zeqMsg"><span class="zps">$</span><code>provider rate <b>+ $0.000 markup</b> = your price</code><span class="zc"></span></div>
+
+            <div class="cardmsg appear" id="sheetCard">
+              <div class="chead"><b>Computer</b> <span class="status-pill working" id="sheetStatus"><i></i><span id="sheetStatusTxt">Writing</span></span></div>
+              <div class="csub">Writing 129 verified emails back to your sheet.</div>
+              <div class="desktop deep">
+              <div class="sheet2wrap">
+              <div class="wtitle"><i></i><i></i><i></i><span>Q3 target accounts — Google Sheets</span></div>
+                <div class="shname"><span class="gs"></span> Q3 target accounts</div>
+                <table class="sheet2" id="sheet2">
+                  <tr><th style="width:26%">Company</th><th style="width:26%">Head of Product</th><th style="width:38%">Email</th><th style="width:10%">✓</th></tr>
+                  <tr><td>Northwind Labs</td><td><span class="f">Maya Okafor</span></td><td><span class="f em2">m.okafor@northwindlabs.io</span></td><td><span class="f"><span class="ok2">✓</span></span></td></tr>
+                  <tr><td>Brightloop</td><td><span class="f">Daniel Reyes</span></td><td><span class="f em2">daniel@brightloop.com</span></td><td><span class="f"><span class="ok2">✓</span></span></td></tr>
+                  <tr><td>Stackwell</td><td><span class="f">Priya Natarajan</span></td><td><span class="f em2">priya.n@stackwell.dev</span></td><td><span class="f"><span class="ok2">✓</span></span></td></tr>
+                  <tr><td>Ferroline Systems</td><td><span class="f">Jonas Bergström</span></td><td><span class="f em2">jonas@ferroline.se</span></td><td><span class="f"><span class="ok2">✓</span></span></td></tr>
+                  <tr><td>Signalpost</td><td><span class="f">Amelia Chow</span></td><td><span class="f em2">amelia@signalpost.app</span></td><td><span class="f"><span class="ok2">✓</span></span></td></tr>
+                  <tr><td>Opsloom</td><td><span class="f">Tomás Ferreira</span></td><td><span class="f em2">tomas@opsloom.io</span></td><td><span class="f"><span class="ok2">✓</span></span></td></tr>
+                  <tr><td>Lumenary</td><td><span class="f">Sofia Marchetti</span></td><td><span class="f em2">sofia@lumenary.co</span></td><td><span class="f"><span class="ok2">✓</span></span></td></tr>
+                  <tr><td>Craftware</td><td><span class="f">Ben Whitfield</span></td><td><span class="f em2">ben.w@craftware.com</span></td><td><span class="f"><span class="ok2">✓</span></span></td></tr>
+                </table>
+              </div>
+              </div>
+            </div>
+
+            <div class="msg bot appear" id="botDone">Done — 129 verified emails in your sheet. Want intro drafts?</div>
+            <div class="msg user appear" id="userMsg2">draft the intros. lets gooo</div>
+            </div>
+          </div>
+          <div class="composer" id="composer"><span class="cplus">+</span><span class="typed" id="typed"></span><span class="caret" id="caret" hidden></span><span class="ph" id="ph">Message Sales Outbound</span><span class="send" id="sendBtn" hidden>↑</span><span class="mic" aria-hidden="true" id="micBtn"></span></div>
+        </div>
+
+        <!-- calendar overlay -->
+        <div class="cal-ov" id="calOv" aria-hidden="true">
+          <div class="mail-top"><b>Calendar</b><span class="draft-chip">next week</span><span class="fromchip">intro calls · booked from replies</span></div>
+          <div class="cal-grid" id="calGrid">
+            <div class="cal-day"><span class="cal-dh">Mon</span><span class="cal-body"></span></div>
+            <div class="cal-day"><span class="cal-dh">Tue</span><span class="cal-body"></span></div>
+            <div class="cal-day"><span class="cal-dh">Wed</span><span class="cal-body"></span></div>
+            <div class="cal-day"><span class="cal-dh">Thu</span><span class="cal-body"></span></div>
+            <div class="cal-day"><span class="cal-dh">Fri</span><span class="cal-body"></span></div>
+          </div>
+        </div>
+
+        <!-- cursor -->
+        <div class="cursor" id="cursor">
+          <span class="ripple"></span>
+          <svg width="22" height="22" viewBox="0 0 24 24"><path d="M5 3l14 8-6.5 1.5L9 19z" fill="#101010" stroke="#fff" stroke-width="1.6"/></svg>
+        </div>
+
+        <!-- plugins modal -->
+        <div class="modal-scrim" id="scrim"></div>
+        <div class="modal" id="modal" aria-hidden="true">
+          <div class="m-top"><h4>Plugins</h4><span class="m-x" aria-hidden="true">✕</span></div>
+          <div class="m-search"><span>⌕</span><span id="mTyped"></span><span class="caret" id="mCaret" hidden></span><span class="q" id="mPh">Search plugins</span></div>
+          <div class="m-pills">
+            <span class="m-pill on">All</span><span class="m-pill">Featured</span><span class="m-pill">Team plugins</span>
+            <span class="m-pill">Agent Orchestration</span><span class="m-pill">Data Analytics</span><span class="m-pill">Design</span>
+            <span class="m-pill">Productivity</span><span class="m-pill">Research</span><span class="m-pill">Sales</span><span class="m-pill">Scheduling</span>
+          </div>
+          <div id="mFeatured">
+            <div class="m-seclab">Featured</div>
+            <div class="m-rows">
+              <div class="m-row"><span class="p-ico p-gmail"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#EA4335" d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/></svg></span><span class="rmeta"><span class="rname">Gmail</span><span class="rdesc">Search, read, draft, and manage email.</span></span><span class="m-added">✓ Added</span></div>
+              <div class="m-row"><span class="p-ico p-cal"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="4" fill="#4285F4"/><text x="12" y="16.4" text-anchor="middle" font-size="10.5" font-weight="600" fill="#fff">31</text></svg></span><span class="rmeta"><span class="rname">Google Calendar</span><span class="rdesc">Search events and schedule meetings.</span></span><span class="m-added">✓ Added</span></div>
+              <div class="m-row"><span class="p-ico p-drive"><svg viewBox="0 0 87.3 78" aria-hidden="true"><path fill="#0066da" d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"/><path fill="#00ac47" d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.5z"/><path fill="#ea4335" d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z"/><path fill="#00832d" d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"/><path fill="#2684fc" d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"/><path fill="#ffba00" d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z"/></svg></span><span class="rmeta"><span class="rname">Google Drive</span><span class="rdesc">Search, read, create, and share files.</span></span><span class="m-added">✓ Added</span></div>
+              <div class="m-row"><span class="p-ico p-gran"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="#2F3A0E" stroke-width="3" stroke-linecap="round" d="M20 12a8 8 0 1 0-8 8 6 6 0 1 0 0-12 4 4 0 1 0 4 4"/></svg></span><span class="rmeta"><span class="rname">Granola</span><span class="rdesc">Your meetings in your workflow.</span></span><button class="m-add">Add</button></div>
+            </div>
+          </div>
+          <div id="mResults" hidden>
+            <div class="m-seclab">Results</div>
+            <div class="m-rows">
+              <div class="m-row"><span class="p-ico p-treg"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#000"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg></span><span class="rmeta"><span class="rname">Treg</span><span class="rdesc">Give your agent {ENDPOINTS} external API endpoints and skills — enrichment, SEO, social, scraping.</span></span><button class="m-add" id="tregAdd"><span class="l1">Add</span><span class="l2">✓ Added</span></button></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- mail overlay -->
+        <div class="mail-ov" id="mailOv" aria-hidden="true">
+          <div class="mail-top"><b id="mailTitle">Drafts</b><span class="draft-chip" id="mailChip">8 for review</span><span class="fromchip">from Sales Outbound · nothing sends without you</span></div>
+          <div class="mail-cols">
+            <div class="mail-list" id="mailList">
+              <div class="mail-row" style="background:var(--card)"><div class="to">Maya Okafor <span class="d">now</span></div><div class="sb">Northwind's 3 infra roles — the migration?</div></div>
+              <div class="mail-row"><div class="to">Daniel Reyes <span class="d">now</span></div><div class="sb">Brightloop × the Q3 launch you teased</div></div>
+              <div class="mail-row"><div class="to">Priya Natarajan <span class="d">now</span></div><div class="sb">Saw Stackwell's SDK rewrite shipped</div></div>
+              <div class="mail-row"><div class="to">Jonas Bergström <span class="d">now</span></div><div class="sb">Ferroline's Series B — congrats</div></div>
+              <div class="mail-row"><div class="to">Amelia Chow <span class="d">now</span></div><div class="sb">Signalpost's pricing page changed…</div></div>
+              <div class="mail-row"><div class="to">Tomás Ferreira <span class="d">now</span></div><div class="sb">Opsloom + the workflow gap we cover</div></div>
+              <div class="mail-row"><div class="to">Sofia Marchetti <span class="d">now</span></div><div class="sb">Lumenary's roadmap post — a thought</div></div>
+              <div class="mail-row"><div class="to">Ben Whitfield <span class="d">now</span></div><div class="sb">Craftware and the review backlog</div></div>
+            </div>
+            <div class="mail-view">
+              <div class="field"><b>To</b> <span class="em">m.okafor@northwindlabs.io</span> <span class="okk" style="margin-left:auto;font-size:12.5px">✓ verified</span></div>
+              <div class="field"><b>Subject</b> Northwind's 3 infra roles — the migration?</div>
+              <div class="bodytxt">
+                Hi Maya,<br><br>
+                Saw Northwind opened three infra roles this month. Usually that means the migration you mentioned in March is finally moving.<br><br>
+                We cut the same work in half for two teams your size. Worth fifteen minutes next week?<br><br>
+                <span class="sig">Jason</span>
+              </div>
+              <div class="send-row"><button class="pill dark" id="sendMailBtn" style="font-size:13px;padding:8px 18px">Send email</button><button class="pill" style="font-size:13px;padding:8px 18px">Discard</button></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="caption-wrap" aria-live="polite">
+      <span class="caption" data-cap="0"><span class="no">—</span>This is Grok Bot. Meet Sales Outbound.</span>
+      <span class="caption" data-cap="1"><span class="no">01</span>Open Plugins.</span>
+      <span class="caption" data-cap="2"><span class="no">02</span>Search "Treg". Add. That's the whole setup.</span>
+      <span class="caption" data-cap="3"><span class="no">03</span>@ the plugin, link your sheet, ask.</span>
+      <span class="caption" data-cap="5"><span class="no">04</span>It works the catalog — every call priced, 0% markup.</span>
+      <span class="caption" data-cap="6"><span class="no">05</span>The Bot's computer, right in the chat. Sheet's still empty.</span>
+      <span class="caption" data-cap="7"><span class="no">06</span>Rows fill, one by one. Every email verified.</span>
+      <span class="caption" data-cap="8"><span class="no">07</span>"draft the intros. lets gooo"</span>
+      <span class="caption" data-cap="9"><span class="no">08</span>Eight drafts, ready for review. You hit send.</span>
+      <span class="caption" data-cap="10"><span class="no">09</span>Sent — and follow-ups queue themselves.</span>
+      <span class="caption" data-cap="11"><span class="no">10</span>Replies land. Your calendar fills itself.</span>
+    </div>
+  </div>
+</div>
+
+<section class="section bot-gallery" id="bots" aria-labelledby="bots-title">
+  <div class="bot-kicker"><i aria-hidden="true"></i>Built by the treg team · 6 bots live</div>
+  <h2 id="bots-title">Meet the <span class="hl2">Grok Bot crew.</span></h2>
+  <p class="lede">Six focused teammates, ordered from market map to full GTM orchestration. Move around and meet the team.</p>
+  <div class="bot-deck">
+    <a class="bot-card" href="https://x.ai/bot/yrm2MJ2nInUhoneTBSwJF" target="_blank" rel="noopener" aria-label="Open ICP Map Coach on Grok">
+      <div class="bot-visual" aria-hidden="true"><div class="bot-avatar"><span class="bot-face face-icp"><span class="bot-eyes"><i class="bot-eye"></i><i class="bot-eye"></i></span></span></div></div>
+      <div class="bot-copy"><h3>ICP Map Coach</h3><span class="bot-by branded">by <svg class="bot-by-logo" viewBox="0 0 512 512" aria-label="treg"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+        <p>Map target accounts and the buying teams behind them.</p>
+        <span class="bot-tags" aria-label="Capabilities"><span class="bot-tag">TAM</span><span class="bot-tag">ICP</span><span class="bot-tag">Buying teams</span></span>
+        <span class="bot-open">Open in <span class="bot-open-brand"><img class="bot-open-logo" src="/media/grokbot/grokbot.png" alt="" width="17" height="17" loading="lazy"> Grok</span><span class="bot-arrow" aria-hidden="true">↗</span></span>
+      </div>
+    </a>
+    <a class="bot-card" href="https://x.ai/bot/mfaurGq6eY9rIvIpMfUFI" target="_blank" rel="noopener" aria-label="Open Lookalike Scout on Grok">
+      <div class="bot-visual" aria-hidden="true"><div class="bot-avatar"><span class="bot-face face-scout"><span class="bot-eyes"><i class="bot-eye"></i><i class="bot-eye"></i></span></span></div></div>
+      <div class="bot-copy"><h3>Lookalike Scout</h3><span class="bot-by branded">by <svg class="bot-by-logo" viewBox="0 0 512 512" aria-label="treg"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+        <p>Find lookalike accounts and verified buyers from one seed company.</p>
+        <span class="bot-tags" aria-label="Capabilities"><span class="bot-tag">Lookalikes</span><span class="bot-tag">Buyers</span><span class="bot-tag">Outbound</span></span>
+        <span class="bot-open">Open in <span class="bot-open-brand"><img class="bot-open-logo" src="/media/grokbot/grokbot.png" alt="" width="17" height="17" loading="lazy"> Grok</span><span class="bot-arrow" aria-hidden="true">↗</span></span>
+      </div>
+    </a>
+    <a class="bot-card" href="https://x.ai/bot/WKRY_T1y-KOmOn2q5vpRW" target="_blank" rel="noopener" aria-label="Open Rival Watch Desk on Grok">
+      <div class="bot-visual" aria-hidden="true"><div class="bot-avatar"><span class="bot-face face-rival"><span class="bot-eyes"><i class="bot-eye"></i><i class="bot-eye"></i></span></span></div></div>
+      <div class="bot-copy"><h3>Rival Watch Desk</h3><span class="bot-by branded">by <svg class="bot-by-logo" viewBox="0 0 512 512" aria-label="treg"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+        <p>Track rival funding, hiring, news, and ads in one live brief.</p>
+        <span class="bot-tags" aria-label="Capabilities"><span class="bot-tag">Competitors</span><span class="bot-tag">Signals</span><span class="bot-tag">Alerts</span></span>
+        <span class="bot-open">Open in <span class="bot-open-brand"><img class="bot-open-logo" src="/media/grokbot/grokbot.png" alt="" width="17" height="17" loading="lazy"> Grok</span><span class="bot-arrow" aria-hidden="true">↗</span></span>
+      </div>
+    </a>
+    <a class="bot-card" href="https://x.ai/bot/iN9VkE6H4f4CLidzMaNaZ" target="_blank" rel="noopener" aria-label="Open SERP Watch Team on Grok">
+      <div class="bot-visual" aria-hidden="true"><div class="bot-avatar"><span class="bot-face face-serp"><span class="bot-eyes"><i class="bot-eye"></i><i class="bot-eye"></i></span></span></div></div>
+      <div class="bot-copy"><h3>SERP Watch Team</h3><span class="bot-by branded">by <svg class="bot-by-logo" viewBox="0 0 512 512" aria-label="treg"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+        <p>Track search rankings and AI visibility, then spot what to publish next.</p>
+        <span class="bot-tags" aria-label="Capabilities"><span class="bot-tag">SERP</span><span class="bot-tag">AI visibility</span><span class="bot-tag">Content</span></span>
+        <span class="bot-open">Open in <span class="bot-open-brand"><img class="bot-open-logo" src="/media/grokbot/grokbot.png" alt="" width="17" height="17" loading="lazy"> Grok</span><span class="bot-arrow" aria-hidden="true">↗</span></span>
+      </div>
+    </a>
+    <a class="bot-card" href="https://x.ai/bot/6IU2bm7uuSPk6ETC-gC4D" target="_blank" rel="noopener" aria-label="Open Creator Shortlist Crew on Grok">
+      <div class="bot-visual" aria-hidden="true"><div class="bot-avatar"><span class="bot-face face-creator"><span class="bot-eyes"><i class="bot-eye"></i><i class="bot-eye"></i></span></span></div></div>
+      <div class="bot-copy"><h3>Creator Shortlist Crew</h3><span class="bot-by branded">by <svg class="bot-by-logo" viewBox="0 0 512 512" aria-label="treg"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+        <p>Discover niche creators, enrich contacts, and keep a living shortlist.</p>
+        <span class="bot-tags" aria-label="Capabilities"><span class="bot-tag">Creators</span><span class="bot-tag">Contacts</span><span class="bot-tag">Partnerships</span></span>
+        <span class="bot-open">Open in <span class="bot-open-brand"><img class="bot-open-logo" src="/media/grokbot/grokbot.png" alt="" width="17" height="17" loading="lazy"> Grok</span><span class="bot-arrow" aria-hidden="true">↗</span></span>
+      </div>
+    </a>
+    <a class="bot-card" href="https://x.ai/bot/PIGZO9iQIeWkbmE79Q7bT" target="_blank" rel="noopener" aria-label="Open GTM Expert on Grok">
+      <div class="bot-visual" aria-hidden="true"><div class="bot-avatar"><span class="bot-face face-gtm"><span class="bot-eyes"><i class="bot-eye"></i><i class="bot-eye"></i></span></span></div></div>
+      <div class="bot-copy"><h3>GTM Expert</h3><span class="bot-by branded">by <svg class="bot-by-logo" viewBox="0 0 512 512" aria-label="treg"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+        <p>Coordinate lookalikes, rival intel, search, creators, and ICP maps.</p>
+        <span class="bot-tags" aria-label="Capabilities"><span class="bot-tag">GTM</span><span class="bot-tag">Orchestration</span><span class="bot-tag">All-in-one</span></span>
+        <span class="bot-open">Open in <span class="bot-open-brand"><img class="bot-open-logo" src="/media/grokbot/grokbot.png" alt="" width="17" height="17" loading="lazy"> Grok</span><span class="bot-arrow" aria-hidden="true">↗</span></span>
+      </div>
+    </a>
+  </div>
+</section>
+
+<section class="wf-sec" id="bench">
+ <div class="bench-track" id="benchTrack">
+  <div class="bench-stage">
+  <h2>The most accurate<br><span class="hl2">people finder</span> for agents.</h2>
+  <p class="lede">People Search Bench by LessieAI — 119 real tasks, % answered correctly. Same agent, with and without the plugin.</p>
+
+  <div class="bstage-wrap">
+  <div class="duel" id="duelBox">
+    <div class="d-col">
+      <div class="d-bar" style="--h:43"></div>
+      <div class="d-val">43%</div>
+      <div class="d-lab"><img src="/media/grokbot/claudecode-color.png" alt="" width="26" height="26" loading="lazy">Claude Code alone</div>
+    </div>
+    <div class="d-col">
+      <div class="d-bar win" style="--h:78.2"></div>
+      <div class="d-val win">78.2%</div>
+      <div class="d-lab"><img src="/media/grokbot/claudecode-color.png" alt="" width="26" height="26" loading="lazy">Claude Code <i>+</i> <svg class="d-treg" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</div>
+    </div>
+  <div class="d-cat">B2B prospecting · % of tasks answered correctly</div>
+  </div>
+
+  <div class="bgroups" id="groupsBox">
+    <div class="bgroup">
+      <div class="bcols">
+        <span class="bcol" style="--h:80.0"><i class="bbar win"></i><em class="win">80.0</em><img src="/favicon.svg" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+        <span class="bcol" style="--h:68.2"><i class="bbar"></i><em>68.2</em><img src="/media/grokbot/co-lessie.png" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+        <span class="bcol" style="--h:64.7"><i class="bbar"></i><em>64.7</em><img src="/media/grokbot/co-exa.png" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+        <span class="bcol" style="--h:50.5"><i class="bbar"></i><em>50.5</em><img src="/media/grokbot/claudecode-color.png" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+      </div>
+      <div class="bglab">Recruiting</div>
+    </div>
+    <div class="bgroup">
+      <div class="bcols">
+        <span class="bcol" style="--h:78.2"><i class="bbar win"></i><em class="win">78.2</em><img src="/favicon.svg" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+        <span class="bcol" style="--h:60.6"><i class="bbar"></i><em>60.6</em><img src="/media/grokbot/co-lessie.png" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+        <span class="bcol" style="--h:55.2"><i class="bbar"></i><em>55.2</em><img src="/media/grokbot/co-exa.png" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+        <span class="bcol" style="--h:43"><i class="bbar"></i><em>43.0</em><img src="/media/grokbot/claudecode-color.png" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+      </div>
+      <div class="bglab">B2B prospecting</div>
+    </div>
+    <div class="bgroup">
+      <div class="bcols">
+        <span class="bcol" style="--h:76.3"><i class="bbar win"></i><em class="win">76.3</em><img src="/favicon.svg" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+        <span class="bcol" style="--h:70.4"><i class="bbar"></i><em>70.4</em><img src="/media/grokbot/co-lessie.png" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+        <span class="bcol" style="--h:61.2"><i class="bbar"></i><em>61.2</em><img src="/media/grokbot/co-exa.png" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+        <span class="bcol" style="--h:57"><i class="bbar"></i><em>57.0</em><img src="/media/grokbot/claudecode-color.png" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+      </div>
+      <div class="bglab">Deterministic</div>
+    </div>
+    <div class="bgroup">
+      <div class="bcols">
+        <span class="bcol" style="--h:62.9"><i class="bbar win"></i><em class="win">62.9</em><img src="/favicon.svg" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+        <span class="bcol" style="--h:62.3"><i class="bbar"></i><em>62.3</em><img src="/media/grokbot/co-lessie.png" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+        <span class="bcol" style="--h:41.6"><i class="bbar"></i><em>41.6</em><img src="/media/grokbot/co-exa.png" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+        <span class="bcol" style="--h:43.2"><i class="bbar"></i><em>43.2</em><img src="/media/grokbot/claudecode-color.png" alt="" class="bico" width="26" height="26" loading="lazy"></span>
+      </div>
+      <div class="bglab">Influencer</div>
+    </div>
+  </div>
+  </div>
+  <p class="fineprint">treg · Lessie · Exa · Claude Code alone — github.com/LessieAI/people-search-bench</p>
+  </div>
+ </div>
+</section>
+
+<section class="section tools-sec" id="tools">
+  <h2>Not just enrich — <span class="hl2">{ENDPOINTS} data &amp; tools</span>.</h2>
+  <p class="lede">treg is the tool catalog for your agent — the providers that actually hold the data, behind one token and one balance.</p>
+  <div class="catwrap">
+    <div class="pgrid">
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/co-exa.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Find person by role</b><s>Exa · $0.010 / query</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/apollo-fab7.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Match + work email</b><s>Apollo · $0.026 / contact</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/peopledatalabs-2b4a.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Person enrich</b><s>People Data Labs · $0.028</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/hunter-985c.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Email verify</b><s>Hunter · $0.003 / check</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/lusha-61ff.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Contact data</b><s class="was">Lusha · $49/mo</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/co-tomba.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Email finder</b><s class="was">Tomba · $89/mo</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/co-companyenrich.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Company enrich</b><s class="was">CompanyEnrich · $49/mo</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/co-crustdata.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Company &amp; headcount</b><s>Crustdata</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/linkedin-d423.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>LinkedIn profiles</b><s>no official API</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/x-00cb.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>X posts &amp; trends</b><s class="was">X API · $200/mo</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/tiktok-8a18.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>TikTok trends &amp; sounds</b><s>API: invite-only</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/instagram-a57d.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Instagram posts &amp; reels</b><s>API: app review</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/youtube-d32e.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>YouTube videos &amp; stats</b><s>quota-capped</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/reddit-f5f9.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Reddit threads</b><s>rate-limited</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/google-a5ed.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Google reviews</b><s>priced per call</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/google-ads.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Ad research</b><s>Google Ads library</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/google-a5ed.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Live SERP results</b><s class="was">SerpApi · $75/mo</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/dataforseo-aa76.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Keyword volume</b><s>DataForSEO</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/majestic-33c9.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Backlinks &amp; anchors</b><s class="was">Majestic · $50/mo</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/serpstat-22b1.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Keyword gaps</b><s>Serpstat</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/apify-18d3.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Web scraping</b><s>Apify actors</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/brightdata-c31a.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Proxy scraping</b><s>Bright Data</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/crunchbase-fc0d.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Funding rounds</b><s class="was">Crunchbase · $99/mo</s></span></div>
+      <div class="pcard"><span class="ph"><img src="/media/grokbot/bing-38c1.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Web search</b><s>Bing</s></span></div>
+    </div>
+    <div class="morewrap" aria-hidden="true">
+      <div class="pgrid">
+        <div class="pcard"><span class="ph"><img src="/media/grokbot/co-coresignal.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Job postings</b><s>Coresignal</s></span></div>
+        <div class="pcard"><span class="ph"><img src="/media/grokbot/analytics-aea4.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>GA4 sessions &amp; goals</b><s>OAuth</s></span></div>
+        <div class="pcard"><span class="ph"><img src="/media/grokbot/google-a5ed.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Search Console</b><s>OAuth</s></span></div>
+        <div class="pcard"><span class="ph"><img src="/media/grokbot/peopledatalabs-2b4a.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Lookalike people</b><s>People Data Labs</s></span></div>
+        <div class="pcard"><span class="ph"><img src="/media/grokbot/tiktok-8a18.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Creator analytics</b><s>not exposed publicly</s></span></div>
+        <div class="pcard"><span class="ph"><img src="/media/grokbot/dataforseo-aa76.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Page audits</b><s>DataForSEO OnPage</s></span></div>
+        <div class="pcard"><span class="ph"><img src="/media/grokbot/serpstat-22b1.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Rank tracking</b><s>Serpstat</s></span></div>
+        <div class="pcard"><span class="ph"><img src="/media/grokbot/majestic-33c9.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Trust &amp; citation flow</b><s>Majestic</s></span></div>
+        <div class="pcard"><span class="ph"><img src="/media/grokbot/x-00cb.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Profile lookups</b><s>X</s></span></div>
+        <div class="pcard"><span class="ph"><img src="/media/grokbot/reddit-f5f9.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Subreddit search</b><s>Reddit</s></span></div>
+        <div class="pcard"><span class="ph"><img src="/media/grokbot/instagram-a57d.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Hashtag research</b><s>Instagram</s></span></div>
+        <div class="pcard"><span class="ph"><img src="/media/grokbot/hunter-985c.png" alt="" width="23" height="23" loading="lazy"></span><span class="pt"><b>Domain search</b><s>Hunter</s></span></div>
+      </div>
+    </div>
+    <div class="moreline">+ many more across {PROVIDERS} providers</div>
+    <div class="ctas" style="display:flex;justify-content:center;margin-top:20px">
+      <a class="pill dark" href="/catalog">Browse the catalog →</a>
+    </div>
+  </div>
+</section>
+
+<section class="section bill-sec" id="pricing" style="padding-top:40px">
+  <h2>No subscription. No contract.<br><span class="hl2">Pays for results only.</span></h2>
+  <p class="lede">Every call is metered at the provider's own rate from a prepaid balance — 0% markup.</p>
+  <div class="bill">
+    <div class="bill-left">
+      <div class="b-row"><img src="/media/grokbot/apollo-fab7.png" alt="" width="30" height="30" loading="lazy"><b>Apollo</b><s>$59/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="/media/grokbot/hunter-985c.png" alt="" width="30" height="30" loading="lazy"><b>Hunter</b><s>$34/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="/media/grokbot/lusha-61ff.png" alt="" width="30" height="30" loading="lazy"><b>Lusha</b><s>$49/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="/media/grokbot/co-companyenrich.png" alt="" width="30" height="30" loading="lazy"><b>CompanyEnrich</b><s>$49/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="/media/grokbot/crunchbase-fc0d.png" alt="" width="30" height="30" loading="lazy"><b>Crunchbase</b><s>$99/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="/media/grokbot/peopledatalabs-2b4a.png" alt="" width="30" height="30" loading="lazy"><b>People Data Labs</b><s>$98/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="/media/grokbot/co-clay.png" alt="" width="30" height="30" loading="lazy"><b>Clay</b><s>$149/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="/media/grokbot/co-tomba.png" alt="" width="30" height="30" loading="lazy"><b>Tomba</b><s>$89/mo<i class="strike"></i></s></div>
+      <div class="b-row"><img src="/media/grokbot/co-findymail.png" alt="" width="30" height="30" loading="lazy"><b>Findymail</b><s>$99/mo<i class="strike"></i></s></div>
+    </div>
+    <div class="bill-divider" aria-hidden="true"></div>
+    <div class="bill-right">
+      <div class="bk">with <svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</div>
+      <div class="bb">$0.0029<small>per verified lead</small></div>
+      <div class="bnote">the demo above: 129 leads · $0.37 · 0% markup</div>
+    </div>
+  </div>
+  <p class="fineprint">Example run at current catalog rates. New teams start with $1.00 free.</p>
+</section>
+
+
+<section class="cta-final">
+  <h2>Connect your Bot to anything.</h2>
+  <div class="ctas">
+    <a class="pill dark" href="/app?ref=grokbot" id="ctaFinal">Setup treg</a>
+    <a class="pill" href="https://x.ai/bot/plugin/55647425" target="_blank" rel="noopener">Install plugin</a>
+  </div>
+  <div class="also-on">
+    <span>Also available on</span>
+    <a href="/people-search" title="Claude Code"><img src="/media/grokbot/claudecode-color.png" alt="Claude Code" width="34" height="34" loading="lazy"></a>
+    <a href="/people-search" title="Codex"><img src="/media/grokbot/codex-color.png" alt="Codex" width="34" height="34" loading="lazy"></a>
+    <a href="/people-search" title="OpenClaw"><img src="/media/grokbot/openclaw-color.png" alt="OpenClaw" width="34" height="34" loading="lazy"></a>
+    <a href="/people-search" title="Hermes"><img src="/media/grokbot/hermes.png" alt="Hermes" class="hermes-img" width="34" height="34" loading="lazy"></a>
+  </div>
+</section>
+
+<footer class="site-foot">
+  <div class="sf-inner">
+    <span class="sf-brand"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> <b>treg</b><span class="sf-tag">the tool catalog for your agent</span><div class="sf-note">100% open source</div></span>
+    <nav class="sf-cols" aria-label="Site">
+      <div class="sf-col"><div class="lab">Explore</div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><!--hosted--><a href="/gtm-engineering">GTM engineering</a><!--/hosted--><a href="/agents/claude-code">Agents</a><a href="/people-search">People search</a></div>
+      <div class="sf-col"><div class="lab">Build</div>
+        <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
+      <div class="sf-col"><div class="lab">Company</div>
+        <a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </nav>
+  </div>
+  <div class="sf-legal">© 2026 treg · A treg concept page — Grok Bot is a product of xAI; not affiliated with or endorsed by xAI.</div>
+</footer>
+
+<!-- sign-in modal: shown when a Setup CTA is clicked while signed out -->
+<div class="scrim" id="signin-scrim">
+  <div class="smodal" role="dialog" aria-label="Sign in">
+    <button class="cls" id="signinClose" aria-label="Close">✕</button>
+    <h3>Sign in to treg</h3>
+    <p>first sign-in creates your account · $1.00 free</p>
+    <a class="pill dark" href="/auth/github" style="text-decoration:none">Continue with GitHub</a>
+    <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
+    <div class="div">or email a code</div>
+    <div id="em-step1">
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
+      <button class="pill" id="em-btn1">Email me a sign-in code</button>
+    </div>
+    <div id="em-step2" style="display:none">
+      <input id="em-code" inputmode="numeric" placeholder="6-digit code"/>
+      <button class="pill dark" id="em-btn2">Sign in</button>
+    </div>
+    <div class="err" id="em-err"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  /* ---------- Setup CTAs: signed in → the app; signed out → the sign-in modal, right here ---------- */
+  /* The dashboard's first-run welcome preselects Grok Bot when it finds this stash (index.html
+     `_welcomeAgentFromRef`); set before any sign-in hop so OAuth round-trips keep it. */
+  function stashRef() { try { localStorage.setItem('treg-ref', 'grokbot'); } catch (e) {} }
+  var scrim = document.getElementById('signin-scrim');
+  function openSignin() { stashRef(); scrim.classList.add('open'); document.getElementById('em-input').focus(); }
+  function closeSignin() { scrim.classList.remove('open'); }
+  document.getElementById('signinClose').addEventListener('click', closeSignin);
+  scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSignin(); });
+  addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSignin(); });
+  ['ctaNav', 'ctaHero', 'ctaFinal'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      stashRef();
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; /* let new-tab clicks be */
+      e.preventDefault();
+      fetch('/auth/me', { credentials: 'same-origin' }).then(function (r) {
+        if (r.ok) location.href = '/app'; else openSignin();
+      }).catch(openSignin);
+    });
+  });
+  document.getElementById('em-btn1').addEventListener('click', emailStart);
+  document.getElementById('em-input').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailStart(); });
+  document.getElementById('em-btn2').addEventListener('click', emailVerify);
+  document.getElementById('em-code').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailVerify(); });
+  function emailStart() {
+    var em = document.getElementById('em-input').value.trim();
+    var err = document.getElementById('em-err');
+    if (!em) { err.textContent = 'Enter your email address.'; return; }
+    if (document.getElementById('em-btn1').disabled) return; document.getElementById('em-btn1').disabled = true; document.getElementById('em-btn1').textContent = 'Sending…'; err.textContent = '';
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (d) {
+          if (!r.ok) throw new Error(d.detail || 'could not send the code');
+          return d;
+        });
+      })
+      .then(function (d) {
+        document.getElementById('em-step1').style.display = 'none';
+        document.getElementById('em-step2').style.display = 'block';
+        if (d.dev_code) { document.getElementById('em-code').value = d.dev_code; err.style.color = 'var(--green)'; err.textContent = 'dev mode — your code: ' + d.dev_code; }
+        else { err.style.color = ''; }
+        document.getElementById('em-code').focus();
+      })
+      .catch(function (e2) { err.textContent = e2.message; document.getElementById('em-btn1').disabled = false; document.getElementById('em-btn1').textContent = 'Email me a sign-in code'; });
+  }
+  function emailVerify() {
+    var em = document.getElementById('em-input').value.trim();
+    var code = document.getElementById('em-code').value.trim();
+    var err = document.getElementById('em-err');
+    if (!code) return;
+    document.getElementById('em-btn2').textContent = 'Verifying…'; err.textContent = '';
+    fetch('/auth/email/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, code: code }) })
+      .then(function (r) { if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.detail || "that code didn't work"); }); location.href = '/app'; })
+      .catch(function (e2) { err.textContent = e2.message; document.getElementById('em-btn2').textContent = 'Sign in'; });
+  }
+})();
+</script>
+
+<script>
+(function () {
+  var nav = document.getElementById('nav');
+  var story = document.getElementById('story');
+  var stage = document.getElementById('stage');
+  var camera = document.getElementById('camera');
+  var APP_W = 1160, APP_H = 760;
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var el = {};
+  ['pluginsRow','cursor','scrim','modal','mTyped','mCaret','mPh','mFeatured','mResults','tregAdd','userMsg1','userMsg2',
+   'tregCard','tregSummary','pcExa','pcApollo','pcPdl','pcScan',
+   'leadScan','zeqMsg','sheetCard','sheetStatus','sheetStatusTxt','botDone',
+   'typed','caret','ph','sendBtn','micBtn','mailOv','mailList','mailTitle','mailChip','sendMailBtn','calOv',
+   'soPreview','chatflow'].forEach(function (id) { el[id] = document.getElementById(id); });
+  var captions = Array.prototype.slice.call(document.querySelectorAll('.caption'));
+  var tregGrows = Array.prototype.slice.call(document.querySelectorAll('#tregCard .grow'));
+  var leadRows = Array.prototype.slice.call(document.querySelectorAll('#tregCard .lead')).filter(function (r) { return !r.classList.contains('more'); });
+  var sheetRows = Array.prototype.slice.call(document.querySelectorAll('#sheet2 tr')).slice(1);
+  var mailRows = Array.prototype.slice.call(document.querySelectorAll('#mailList .mail-row'));
+  var mainBody = el.chatflow.parentNode;
+
+  /* the booked week, built from data: 6 back-to-back slots a day, shuffled
+     landing order (`o`) so replies feel like they trickle in at random */
+  var FACE = {
+    maya: 'women/44', daniel: 'men/32', priya: 'women/68', jonas: 'men/75', amelia: 'women/12',
+    tomas: 'men/45', sofia: 'women/22', ben: 'men/29', elena: 'women/33', marcus: 'men/11',
+    dalv: 'men/56', ivy: 'women/47', omar: 'men/68', lena: 'women/55',
+    nadia: 'women/65', chris: 'men/85', hana: 'women/8', leo: 'men/22'
+  };
+  /* 8 hourly slots a day (at: 0–7 → 9:00–16:00), back to back, with a few
+     DOUBLE-BOOKED half-width pairs — the overwhelmed-calendar look */
+  var CAL = [
+    [ { at: 0, old: 1, n: 'Team sync', s: '9:00' },
+      { at: 1, f: 'maya', n: 'Maya Okafor', s: 'Northwind · 10:00' },
+      { at: 2, f: 'jonas', n: 'Ferroline', s: 'demo · 11:00' },
+      { at: 3, f: 'elena', n: 'Elena Sørensen', s: 'Northwind · 12:00' },
+      { at: 4, f: 'tomas', n: 'Tomás Ferreira', s: 'Opsloom · 13:00' },
+      { at: 5, f: 'ben', n: 'Craftware', s: 'scoping · 14:00' },
+      { at: 6, f: 'nadia', n: 'Nadia Petrov', s: 'Craftware · 15:00' },
+      { at: 7, f: 'maya', n: 'Northwind', s: 'pilot · 16:00' } ],
+    [ { at: 0, f: 'daniel', n: 'Daniel Reyes', s: 'Brightloop · 9:00' },
+      { at: 1, f: 'maya', n: 'Northwind', s: 'scoping · 10:00' },
+      { at: 2, f: 'marcus', n: 'Marcus Webb', s: 'Brightloop · 11:00' },
+      { at: 3, side: 'l', f: 'priya', n: 'Priya N.', s: '12:00' },
+      { at: 3, side: 'r', f: 'hana', n: 'Hana Kim', s: '12:00' },
+      { at: 4, f: 'ivy', n: 'Ivy Lund', s: 'Opsloom · 13:00' },
+      { at: 5, f: 'ben', n: 'Ben Whitfield', s: 'Craftware · 14:00' },
+      { at: 6, f: 'tomas', n: 'Opsloom', s: 'demo · 15:00' },
+      { at: 7, f: 'daniel', n: 'Brightloop', s: 'pilot · 16:00' } ],
+    [ { at: 0, f: 'jonas', n: 'Jonas Bergström', s: 'Ferroline · 9:00' },
+      { at: 1, f: 'priya', n: 'Stackwell', s: 'demo · 10:00' },
+      { at: 2, f: 'dalv', n: 'Daniel Alvarez', s: 'Signalpost · 11:00' },
+      { at: 3, f: 'amelia', n: 'Amelia Chow', s: 'Signalpost · 12:00' },
+      { at: 4, f: 'lena', n: 'Lena Ito', s: 'Lumenary · 13:00' },
+      { at: 5, f: 'sofia', n: 'Sofia Marchetti', s: 'Lumenary · 14:00' },
+      { at: 6, side: 'l', f: 'amelia', n: 'Signalpost', s: '15:00' },
+      { at: 6, side: 'r', f: 'leo', n: 'Leo F.', s: '15:00' },
+      { at: 7, f: 'sofia', n: 'Lumenary', s: 'demo · 16:00' } ],
+    [ { at: 0, f: 'sofia', n: 'Lumenary', s: 'scoping · 9:00' },
+      { at: 1, f: 'ben', n: 'Craftware', s: 'demo · 10:00' },
+      { at: 2, f: 'amelia', n: 'Signalpost', s: 'scoping · 11:00' },
+      { at: 3, f: 'daniel', n: 'Brightloop', s: 'demo · 12:00' },
+      { at: 4, f: 'omar', n: 'Omar Diaz', s: 'Ferroline · 13:00' },
+      { at: 5, f: 'chris', n: 'Chris Okoye', s: 'Opsloom · 14:00' },
+      { at: 6, f: 'jonas', n: 'Ferroline', s: 'scoping · 15:00' },
+      { at: 7, old: 1, n: '1:1', s: '16:00' } ],
+    [ { at: 0, f: 'maya', n: 'Northwind', s: 'demo · 9:00' },
+      { at: 1, f: 'tomas', n: 'Opsloom', s: 'pilot · 10:00' },
+      { at: 2, side: 'l', f: 'amelia', n: 'Signalpost', s: '11:00' },
+      { at: 2, side: 'r', f: 'hana', n: 'Stackwell', s: '11:00' },
+      { at: 3, f: 'marcus', n: 'Brightloop', s: 'scoping · 12:00' },
+      { at: 4, f: 'priya', n: 'Stackwell', s: 'demo · 13:00' },
+      { at: 5, f: 'jonas', n: 'Ferroline', s: 'pilot · 14:00' },
+      { at: 6, f: 'nadia', n: 'Craftware', s: 'pilot · 15:00' },
+      { at: 7, f: 'elena', n: 'Northwind', s: 'kickoff · 16:00' } ]
+  ];
+  var mtgN = 0;
+  Array.prototype.slice.call(document.querySelectorAll('#calGrid .cal-body')).forEach(function (body, di) {
+    CAL[di].forEach(function (m) {
+      var sp = document.createElement('span');
+      sp.className = 'mtg' + (m.old ? ' old' : '') + (m.side ? ' half' : '');
+      sp.style.top = (8 + m.at * 66) + 'px'; sp.style.height = '58px';
+      if (m.side === 'l') sp.style.right = 'calc(50% + 2px)';
+      if (m.side === 'r') sp.style.left = 'calc(50% + 2px)';
+      if (!m.old) { sp.dataset.ord = (mtgN * 17) % 41; mtgN++; }
+      sp.innerHTML = (m.f ? '<img src="https://randomuser.me/api/portraits/' + FACE[m.f] + '.jpg" alt="">' : '') +
+        '<span class="mt"><b>' + m.n + '</b><i>' + m.s + '</i></span>';
+      body.appendChild(sp);
+    });
+  });
+  var calMtgs = Array.prototype.slice.call(document.querySelectorAll('#calOv .mtg:not(.old)'));
+
+  /* app-space center of an element */
+  function focusOf(node) {
+    var r = node.getBoundingClientRect(), c = camera.getBoundingClientRect();
+    var s = c.width / APP_W;
+    return { x: (r.left - c.left + r.width / 2) / s, y: (r.top - c.top + r.height / 2) / s };
+  }
+
+  /* message-1 rich typing */
+  var msg1Tokens = [
+    { t: '@treg', cls: 'mention' },
+    { t: ' get me the head of product for every company in ' },
+    { t: 'Q3 target accounts', cls: 'msg-link' },
+    { t: ' — verified emails please' }
+  ];
+  var msg1Len = msg1Tokens.reduce(function (n, tk) { return n + tk.t.length; }, 0);
+  function renderTokens(tokens, chars) {
+    var html = '', left = chars;
+    tokens.forEach(function (tk) {
+      if (left <= 0) return;
+      var take = tk.t.slice(0, left); left -= tk.t.length;
+      html += tk.cls ? '<span class="' + tk.cls + '">' + take + '</span>' : take;
+    });
+    return html;
+  }
+  var msg2Text = 'draft the intros. lets gooo';
+
+  /*
+   * Timeline — p in [0,1] across the whole track.
+   * Each beat: [start, end, zoom, focusFn] + per-frame scrub hook.
+   */
+  function center() { return { x: APP_W / 2, y: APP_H / 2 }; }
+  var curP = 0; /* current progress, readable from beat focus functions */
+  var beats = [
+    { a: 0.000, b: 0.042, z: 1.00, f: center, cap: 0 },
+    { a: 0.042, b: 0.098, z: 2.30, f: function () { return focusOf(el.pluginsRow); }, cap: 1 },
+    { a: 0.098, b: 0.215, z: 1.28, f: function () { return focusOf(el.modal); }, cap: 2 },
+    { a: 0.215, b: 0.302, z: 1.95, f: function () { return focusOf(el.typed.parentNode); }, cap: 3 },
+    /* the crux beat: track the card while it builds, then hold on the summary
+       at the bottom so the whole story reads before the camera moves on */
+    { a: 0.302, b: 0.535, z: 1.30, f: function () {
+        /* when the summary lands, pan straight DOWN to it — keep x locked on
+           the card so the camera doesn't drift toward the narrow bubble */
+        var card = focusOf(el.tregCard);
+        if (act(curP, 4) > 0.93) card.y = focusOf(el.tregSummary).y;
+        return card;
+      }, cap: 5 },
+    { a: 0.535, b: 0.598, z: 1.42, f: function () { return focusOf(el.sheetCard); }, cap: 6 },
+    { a: 0.598, b: 0.695, z: 1.50, f: function () { return focusOf(el.sheetCard); }, cap: 7 },
+    { a: 0.695, b: 0.760, z: 1.95, f: function () {
+        /* once the message is sent, pan to the bubble so it reads in full */
+        var c = focusOf(el.typed.parentNode);
+        if (act(curP, 7) > 0.72) { var m = focusOf(el.userMsg2); c.x = m.x; c.y = (c.y + m.y) / 2; }
+        return c;
+      }, cap: 8 },
+    { a: 0.760, b: 0.845, z: 1.02, f: function () { return { x: APP_W / 2, y: APP_H / 2 + 10 }; }, cap: 9 },
+    { a: 0.845, b: 0.912, z: 1.02, f: function () { return { x: APP_W / 2, y: APP_H / 2 + 10 }; }, cap: 10 },
+    { a: 0.912, b: 1.001, z: 1.05, f: function () { return { x: APP_W / 2, y: APP_H / 2 + 6 }; }, cap: 11 }
+  ];
+
+  /* camera reaches its target over the first SETTLE of each beat; in-scene
+     animation starts only after that plus a small breathing pause (PAUSE). */
+  var SETTLE = 0.40, PAUSE = 0.12;
+  function easeInOut(t) { return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+  function clamp01(v) { return Math.min(1, Math.max(0, v)); }
+  function sub(p, a, b) { return clamp01((p - a) / (b - a)); }
+  function act(p, i) { return clamp01((sub(p, beats[i].a, beats[i].b) - SETTLE - PAUSE) / (1 - SETTLE - PAUSE)); }
+  function mix2(a, b, t) { return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }; }
+
+  /* camera target from p: blend between beat focus points across boundaries */
+  function cameraTarget(p) {
+    var i = beats.length - 1;
+    for (var k = 0; k < beats.length; k++) if (p < beats[k].b) { i = k; break; }
+    var cur = beats[i];
+    var t = sub(p, cur.a, cur.b);
+    var prev = beats[Math.max(0, i - 1)];
+    var mix = easeInOut(clamp01(t / SETTLE));
+    var f0 = prev.f(), f1 = cur.f();
+    return {
+      x: f0.x + (f1.x - f0.x) * mix,
+      y: f0.y + (f1.y - f0.y) * mix,
+      z: prev.z + (cur.z - prev.z) * mix,
+      beat: i, t: t
+    };
+  }
+
+  /* discrete + scrubbed state, all reversible. Every in-scene animation keys off
+     act(p, beat) so it only starts once the camera has settled on its target. */
+  function applyState(p) {
+    var B = function (i) { return beats[i]; };
+
+    /* beat 1: camera settles on Plugins, then cursor arrives and clicks */
+    var a1 = act(p, 1);
+    var inB12 = p >= B(1).a && p < B(3).a - 0.004;
+    var clickedPlugins = a1 > 0.55;
+    el.pluginsRow.classList.toggle('hot', clickedPlugins && inB12);
+
+    /* beat 2: modal opens (after the click), camera settles, THEN "Treg" types,
+       results filter, cursor travels to Add and clicks it */
+    var a2 = act(p, 2);
+    var modalOpen = p >= B(2).a && p < B(3).a - 0.004;
+    el.scrim.classList.toggle('in', modalOpen);
+    el.modal.classList.toggle('in', modalOpen);
+    el.modal.setAttribute('aria-hidden', modalOpen ? 'false' : 'true');
+    var typedQ = '';
+    if (modalOpen) {
+      var q = 'Treg';
+      typedQ = q.slice(0, Math.round(clamp01(a2 / 0.30) * q.length));
+      el.mTyped.textContent = typedQ;
+      el.mPh.hidden = !!typedQ;
+      el.mCaret.hidden = !(p >= B(2).a && a2 < 0.42);
+      el.mFeatured.hidden = !!typedQ;
+      el.mResults.hidden = !typedQ;
+      el.tregAdd.classList.toggle('done', a2 > 0.78);
+    } else { el.mPh.hidden = false; el.mTyped.textContent = ''; }
+
+    /* beat 3: camera on composer, pause, then message 1 types + SEND is clicked */
+    var a3 = act(p, 3);
+    var typing1 = p >= B(3).a && p < B(4).a;
+    var typed1Chars = Math.round(clamp01(a3 / 0.55) * msg1Len);
+    var sent1 = a3 > 0.82;
+    if (typing1 && !sent1) {
+      el.typed.innerHTML = renderTokens(msg1Tokens, typed1Chars);
+      el.caret.hidden = false;
+    } else if (p < B(3).a) { el.typed.innerHTML = ''; el.caret.hidden = true; }
+    el.userMsg1.classList.toggle('in', p >= B(3).a && sent1);
+    if (sent1 && p < B(7).a) { el.typed.innerHTML = ''; el.caret.hidden = true; }
+
+    /* beat 4 (the crux): catalog search → provider rows land slowly, each with
+       its logo → the scan sweep (from the enrichment-launch video) → lock-in
+       (winner ringed, rest dimmed) → leads stream in while emails verify → summary */
+    var a5 = act(p, 4);
+    el.tregCard.classList.toggle('in', p >= B(4).a && a5 > 0.02);
+    /* stagger map per data-tg: 0 search line; 1-3 provider rows (slow);
+       4 lock line; 5-9 leads; 10 "+3 more" */
+    /* phase map: search line → provider rows → scan #1 → lock Apollo →
+       COLLAPSE Exa/PDL → profiles stream in → "find & verify emails" header →
+       scan #2 over the profiles while emails pop in on the right → summary */
+    var TG_AT = [0.03, 0.07, 0.13, 0.19, 0.34, 0.42, 0.47, 0.52, 0.57, 0.62, 0.66, 0.70];
+    var locked = a5 > TG_AT[4];
+    tregGrows.forEach(function (g) {
+      g.classList.toggle('in', a5 > TG_AT[+g.dataset.tg]);
+    });
+    el.pcExa.classList.toggle('dim', locked);
+    el.pcPdl.classList.toggle('dim', locked);
+    /* scan #1 across the provider rows */
+    var scanOn = p >= B(4).a && a5 > 0.24 && a5 < 0.36;
+    el.pcScan.style.opacity = scanOn ? 1 : 0;
+    if (scanOn) {
+      var y0 = el.pcExa.offsetTop, y1 = el.pcPdl.offsetTop;
+      el.pcScan.style.top = (y0 + (y1 - y0) * sub(a5, 0.24, 0.33)) + 'px';
+    }
+    el.pcApollo.classList.toggle('picked', locked);
+    /* scan #2 over the profiles; each email pops as the bar passes its row */
+    var leads = leadRows;
+    var scan2On = p >= B(4).a && a5 > 0.74 && a5 < 0.92;
+    el.leadScan.style.opacity = scan2On ? 1 : 0;
+    if (scan2On && leads.length) {
+      var ly0 = leads[0].offsetTop, ly1 = leads[leads.length - 1].offsetTop;
+      el.leadScan.style.top = (ly0 + (ly1 - ly0) * sub(a5, 0.74, 0.89)) + 'px';
+    }
+    leads.forEach(function (r, i) {
+      r.classList.toggle('mail', a5 > 0.75 + i * 0.032);
+    });
+    el.tregSummary.classList.toggle('in', p >= B(4).a && a5 > 0.90);
+    el.zeqMsg.classList.toggle('in', p >= B(4).a && a5 > 0.97);
+
+    /* beat 5: the Bot's computer lands in the chat with the sheet;
+       beat 6: rows fill one by one once the camera has settled on it */
+    el.sheetCard.classList.toggle('in', p >= B(5).a && act(p, 5) > 0.05);
+    var a7 = act(p, 6);
+    sheetRows.forEach(function (r, i) { r.classList.toggle('filled', p >= B(6).a && a7 > 0.04 + i * 0.10); });
+    var allFilled = p >= B(6).a && a7 > 0.04 + (sheetRows.length - 1) * 0.10;
+    if (allFilled) { el.sheetStatus.classList.remove('working'); el.sheetStatusTxt.textContent = 'Done'; }
+    else { el.sheetStatus.classList.add('working'); el.sheetStatusTxt.textContent = 'Writing'; }
+    el.botDone.classList.toggle('in', p >= B(7).a - 0.01);
+
+    /* beat 7: camera back on composer, then message 2 types + send */
+    var a8 = act(p, 7);
+    var typed2Chars = Math.round(clamp01(a8 / 0.45) * msg2Text.length);
+    var sent2 = a8 > 0.70;
+    if (p >= B(7).a && !sent2) {
+      el.typed.textContent = msg2Text.slice(0, typed2Chars);
+      el.caret.hidden = false;
+    } else if (p >= B(7).a && sent2) { el.typed.textContent = ''; el.caret.hidden = true; }
+    el.userMsg2.classList.toggle('in', p >= B(7).a && sent2);
+
+    /* composer chrome: placeholder hides while text exists; send replaces mic */
+    var hasText = el.typed.textContent.length > 0 || el.typed.children.length > 0;
+    el.ph.hidden = hasText;
+    el.sendBtn.hidden = !hasText;
+    el.micBtn.style.display = hasText ? 'none' : '';
+
+    /* the guided cursor — position scrubbed off scroll, never time-based.
+       beat 1: arrives at Plugins and clicks. beat 2: travels to Add, clicks.
+       beats 3/8: travels to the send button once the message is typed, clicks. */
+    var cShow = (p > B(1).a + 0.005 && p < B(3).a - 0.004) ||
+                (typing1 && a3 > 0.58) || (p >= B(7).a && p < B(8).a && a8 > 0.45 && a8 < 0.88);
+    el.cursor.classList.toggle('show', cShow);
+    if (cShow) {
+      var target;
+      if (p < B(3).a - 0.004) {
+        var atPlugins = focusOf(el.pluginsRow); atPlugins.x += 30; atPlugins.y += 6;
+        target = mix2({ x: atPlugins.x + 90, y: atPlugins.y + 60 }, atPlugins, easeInOut(clamp01(a1 / 0.5)));
+        if (modalOpen && typedQ.length >= 4) {
+          target = mix2(atPlugins, focusOf(el.tregAdd), easeInOut(sub(a2, 0.42, 0.66)));
+        }
+      } else {
+        var toSend = focusOf(el.sendBtn.hidden ? el.micBtn : el.sendBtn);
+        var aa = p < B(4).a ? a3 : a8;
+        var w = p < B(4).a ? [0.58, 0.76] : [0.45, 0.60];
+        target = mix2({ x: toSend.x - 160, y: toSend.y - 90 }, toSend, easeInOut(sub(aa, w[0], w[1])));
+      }
+      el.cursor.style.left = target.x + 'px';
+      el.cursor.style.top = target.y + 'px';
+    }
+    var clickNow = (p < B(2).a && clickedPlugins) || (modalOpen && a2 > 0.70 && a2 < 0.92) ||
+                   (typing1 && a3 > 0.78 && a3 < 0.92) || (p >= B(7).a && a8 > 0.62 && a8 < 0.74);
+    el.cursor.classList.toggle('clicked', clickNow);
+
+    /* beat 8: camera frames the app, then the mail panel rises and drafts land */
+    var a9 = act(p, 8);
+    var mailOn = p >= B(8).a && a9 > 0.01;
+    var rise = easeInOut(clamp01(a9 / 0.30));
+    el.mailOv.style.transform = 'translate(-50%, ' + ((1 - rise) * 105) + '%)';
+    el.mailOv.setAttribute('aria-hidden', mailOn ? 'false' : 'true');
+    mailRows.forEach(function (r, i) { r.classList.toggle('in', a9 > 0.30 + i * 0.075); });
+
+    /* beat 9: you hit send — everything goes out, follow-ups queue themselves */
+    var a10 = act(p, 9);
+    var sentAll = p >= B(9).a && a10 > 0.10;
+    mailRows.forEach(function (r, i) {
+      var d = r.querySelector('.d');
+      var isSent = p >= B(9).a && a10 > 0.12 + i * 0.055;
+      if (d) { d.textContent = isSent ? '✓ sent' : 'now'; d.style.color = isSent ? '#118453' : ''; d.style.fontWeight = isSent ? '600' : ''; }
+    });
+    el.mailTitle.textContent = sentAll ? 'Sent' : 'Drafts';
+    el.mailChip.textContent = sentAll ? '8 sent · follow-ups in 3 days' : '8 for review';
+    var btnSent = p >= B(9).a && a10 > 0.12;
+    el.sendMailBtn.textContent = btnSent ? '✓ Sent' : 'Send email';
+    el.sendMailBtn.style.background = btnSent ? 'var(--teal-ink)' : '';
+    el.sendMailBtn.style.borderColor = btnSent ? 'var(--teal-ink)' : '';
+    el.soPreview.textContent = sentAll ? '8 sent. Follow-ups queued.' : (mailOn ? 'Done. 8 drafts for review.' : 'Q3 target accounts…');
+
+    /* beat 10: replies come back — the calendar rises, meetings pop in */
+    var a11 = act(p, 10);
+    var calOn = p >= B(10).a && a11 > 0.01;
+    var calRise = easeInOut(clamp01(a11 / 0.28));
+    el.calOv.style.transform = 'translate(-50%, ' + ((1 - calRise) * 105) + '%)';
+    el.calOv.setAttribute('aria-hidden', calOn ? 'false' : 'true');
+    el.mailOv.style.opacity = 1 - 0.6 * calRise;
+    /* hold on the near-empty week first, then meetings land in shuffled order,
+       like real replies trickling in */
+    calMtgs.forEach(function (m) { m.classList.toggle('pop', a11 > 0.30 + (+m.dataset.ord) * 0.015); });
+
+    /* caption */
+    var beat = cameraTarget(p).beat;
+    captions.forEach(function (c) { c.classList.toggle('on', +c.dataset.cap === beats[beat].cap); });
+  }
+
+  /* smooth camera + chat push-up: lerp toward targets every frame */
+  var cx = APP_W / 2, cy = APP_H / 2, cz = 1, chatOff = 0;
+  function frame() {
+    var vh = window.innerHeight;
+    var rect = story.getBoundingClientRect();
+    var total = rect.height - vh;
+    var p = clamp01(total > 0 ? -rect.top / total : 0);
+    curP = p;
+    nav.classList.toggle('scrolled', window.scrollY > 24);
+
+    applyState(p);
+    benchScrub(vh);
+
+    /* real-messenger behavior: when the thread outgrows the pane, slide it up.
+       clientHeight includes the pane's own padding (20 top + 12 bottom), which
+       sits outside the thread's box — subtract it or the last bubble clips. */
+    var overflow = Math.max(0, el.chatflow.scrollHeight - (mainBody.clientHeight - 34));
+    var k = reduced ? 1 : 0.14;
+    chatOff += (overflow - chatOff) * (reduced ? 1 : 0.26);
+    el.chatflow.style.transform = 'translateY(' + (-chatOff) + 'px)';
+
+    var tgt = cameraTarget(p);
+    cx += (tgt.x - cx) * k; cy += (tgt.y - cy) * k; cz += (tgt.z - cz) * k;
+
+    var sw = stage.clientWidth, sh = stage.clientHeight;
+    var fit = Math.min(sw / (APP_W + 70), sh / (APP_H + 90));
+    var S = fit * cz;
+    camera.style.transform = 'translate(' + (sw / 2 - cx * S) + 'px,' + (sh / 2 - cy * S) + 'px) scale(' + S + ')';
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  /* The public Grok cards look back at the pointer. Keep the travel small so
+     the motion reads as attention, not a novelty cursor effect. */
+  if (!reduced) {
+    Array.prototype.slice.call(document.querySelectorAll('.bot-visual')).forEach(function (visual) {
+      var eyes = visual.querySelector('.bot-eyes');
+      visual.addEventListener('pointermove', function (e) {
+        var r = visual.getBoundingClientRect();
+        var x = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width - .5) * 2));
+        var y = Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height - .5) * 2));
+        eyes.style.setProperty('--eye-x', (x * 5).toFixed(2) + 'px');
+        eyes.style.setProperty('--eye-y', (y * 3.5).toFixed(2) + 'px');
+        eyes.style.setProperty('--eye-rot', (x * 5).toFixed(2) + 'deg');
+      });
+      visual.addEventListener('pointerleave', function () {
+        eyes.style.setProperty('--eye-x', '0px');
+        eyes.style.setProperty('--eye-y', '0px');
+        eyes.style.setProperty('--eye-rot', '0deg');
+      });
+    });
+  }
+
+  /* reveal-on-scroll for the bill strikes */
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) e.target.classList.add('seen'); });
+  }, { threshold: 0.25 });
+  document.querySelectorAll('.bill-sec, .bot-gallery').forEach(function (s) { io.observe(s); });
+
+  /* the bench: autoplays once when it scrolls into view. The duel plays,
+     then the MAGIC MOVE — the two duel bars fly into the B2B group and
+     become its treg and Claude Code bars, as the rest of the chart grows in. */
+  var benchTrack = document.getElementById('benchTrack');
+  var duelBox = document.getElementById('duelBox');
+  var groupsBox = document.getElementById('groupsBox');
+  var dBars = Array.prototype.slice.call(duelBox.querySelectorAll('.d-bar'));
+  var dVals = Array.prototype.slice.call(duelBox.querySelectorAll('.d-val'));
+  var dLabs = Array.prototype.slice.call(duelBox.querySelectorAll('.d-lab'));
+  var dCat = duelBox.querySelector('.d-cat');
+  var groups = Array.prototype.slice.call(groupsBox.querySelectorAll('.bgroup'));
+  var b2bBars = Array.prototype.slice.call(groups[1].querySelectorAll('.bbar'));
+  var gBars = Array.prototype.slice.call(groupsBox.querySelectorAll('.bbar'));
+  var gEms = Array.prototype.slice.call(groupsBox.querySelectorAll('.bcol em'));
+  /* fly geometry, measured once with transforms in a known state (bottom edges
+     and widths are transform-stable; heights come from layout) */
+  var flyGeo = null;
+  function measureFly() {
+    flyGeo = [[dBars[1], b2bBars[0]], [dBars[0], b2bBars[3]]].map(function (pair) {
+      var src = pair[0].getBoundingClientRect(), dst = pair[1].getBoundingClientRect();
+      return {
+        el: pair[0], twin: pair[1],
+        dx: (dst.left + dst.width / 2) - (src.left + src.width / 2),
+        dy: dst.bottom - src.bottom,
+        sx: dst.width / src.width,
+        sy: pair[1].offsetHeight / pair[0].offsetHeight
+      };
+    });
+  }
+  window.addEventListener('resize', function () { flyGeo = null; });
+  function benchScrub(vh) {
+    var r = benchTrack.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > vh) return;
+    var q = clamp01(-r.top / (r.height - vh));
+    if (reduced) q = q > 0.05 ? 1 : 0;
+    /* stage 1: the duel grows, words fade in — then fade out before the move */
+    var wordsOut = 1 - easeInOut(sub(q, 0.40, 0.50));
+    dLabs.forEach(function (l) { l.style.opacity = Math.min(sub(q, 0.04, 0.14), wordsOut); });
+    dCat.style.opacity = Math.min(sub(q, 0.08, 0.18), wordsOut);
+    dVals[0].style.opacity = Math.min(sub(q, 0.16, 0.24), wordsOut);
+    dVals[1].style.opacity = Math.min(sub(q, 0.28, 0.36), wordsOut);
+    /* the chart frame settles in beneath */
+    groupsBox.style.opacity = sub(q, 0.46, 0.56);
+    /* the magic move, scrubbed: the duel bars fly onto their chart twins */
+    var t = easeInOut(sub(q, 0.50, 0.68));
+    /* measured lazily at any point before landing: until flyGeo exists the bars carry only a
+       scaleY, whose bottom edge and width are what measureFly reads — so a fast scroll (or a
+       resize mid-flight) that skips the take-off frame still gets a correct flight */
+    if (t > 0 && t < 1 && !flyGeo) measureFly();
+    var landed = t >= 1;
+    duelBox.style.visibility = landed ? 'hidden' : '';
+    if (!landed) {
+      var g0 = easeInOut(sub(q, 0.05, 0.21)), g1 = easeInOut(sub(q, 0.15, 0.31));
+      if (t === 0 || !flyGeo) {
+        dBars[0].style.transform = 'scaleY(' + g0 + ')';
+        dBars[1].style.transform = 'scaleY(' + g1 + ')';
+      } else {
+        flyGeo.forEach(function (f) {
+          f.el.style.transform = 'translate(' + (f.dx * t) + 'px,' + (f.dy * t) + 'px) ' +
+            'scale(' + (1 + (f.sx - 1) * t) + ',' + (1 + (f.sy - 1) * t) + ')';
+        });
+      }
+    }
+    /* the twins take over the instant the flight lands (and hand back on reverse) */
+    b2bBars[0].style.transform = landed ? 'scaleY(1)' : 'scaleY(0)';
+    b2bBars[3].style.transform = landed ? 'scaleY(1)' : 'scaleY(0)';
+    /* the rest of the chart grows during the flight */
+    gBars.forEach(function (b, i) {
+      if (b === b2bBars[0] || b === b2bBars[3]) return;
+      var gi = Math.floor(i / 4), ci = i % 4;
+      var a0 = 0.54 + gi * 0.06 + ci * 0.018;
+      b.style.transform = 'scaleY(' + easeInOut(sub(q, a0, a0 + 0.12)) + ')';
+    });
+    gEms.forEach(function (e2) { e2.style.opacity = sub(q, 0.85, 0.93); });
+  }
+
+})();
+</script>
+<script src="/sitetrack.js"></script>
+<script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
+</body>
+</html>

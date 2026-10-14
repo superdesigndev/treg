@@ -1,0 +1,40 @@
+{
+  "investments": [
+    {
+      "id": 2457673,
+      "totalAmountRaised": 6500000000,
+      "date": "2023-03-15T00:00:00.000Z",
+      "createdBy": "company",
+      "companyID": "OYClaZ4jscaMd-JHzdbItcb2o3wRHoY",
+      "companyInvestorID": "2k1zgkAhKlLwa8S-zcGBins3pDPrjNi",
+      "companyInvestor": {
+        "id": "2k1zgkAhKlLwa8S-zcGBins3pDPrjNi",
+        "name": "GIC",
+        "description": "We are driven by a common purpose – securing Singapore’s financial future.",
+        "country": "Singapore",
+        "region": "Singapore",
+        "locality": "Singapore",
+        "URLs": {
+          "golden": "golden.com/wiki/GIC_Private_Limited-ZY5VKG",
+          "contact": "www.gic.com.sg/contact-us/",
+          "twitter": "twitter.com/gicsingapore",
+          "website": "gic.com.sg",
+          "facebook": "www.facebook.com/gicpossibilities",
+          "linkedin": "linkedin.com/company/gic",
+          "angelList": "angel.co/gic",
+          "signalNFX": "signal.nfx.com/firms/gic",
+          "crunchbase": "crunchbase.com/organization/gic"
+        },
+        "industryList": [
+          "Investment & Asset Management",
+          "Real Estate Development"
+        ],
+        "linkedinIndustries": [
+          "Financial Services"
+        ]
+      }
+    }
+  ],
+  "pages": 109,
+  "totalResults": 109
+}

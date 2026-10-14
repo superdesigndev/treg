@@ -3,6 +3,9 @@ title: Super-admin — cross-tenant read + control
 status: shipped
 sources:
   - src/treg/api.py
+  - src/treg/routers/admin.py
+  - src/treg/application/evidence_retention.py
+  - src/treg/domain/identity/access.py
   - src/treg/config.py
 related:
   - architecture/multi-tenancy.md
@@ -14,7 +17,7 @@ related:
 Everything else is org-scoped; super-admin is the one capability that sees **across all orgs**. It's
 deliberately separate from org roles.
 
-## Authorization (`require_superadmin` in api.py) — hybrid
+## Authorization (`require_superadmin` in `domain.identity.access`) — hybrid
 A caller is a super-admin if EITHER:
 - the presented `X-Treg-Token` equals the env `admin_token` (`get_settings().admin_token`, from
   `TREG_ADMIN_TOKEN`), compared with `hmac.compare_digest` → principal `"env-admin"`; OR
@@ -24,37 +27,83 @@ A caller is a super-admin if EITHER:
 Otherwise 403. The env key bootstraps; `POST /admin/users/{id}/superadmin` then grants named users the
 flag (so a web portal can log in with either). Returns a principal string (for audit).
 
+The dependency lives in `domain.identity.access` and every consumer imports it from there; the
+transitional `api.py` re-export retired with the rest of the stage-3 compatibility surface.
+
+**On the admin primary pool.** The gate takes `Depends(get_admin_session)`, shared by handlers
+that use the primary, with a bounded pool separate from the API's (`ops/deploy.md` § Database
+pools). Successful authorization commits before returning, releasing the primary connection.
+Opted-in reports can then use `get_admin_read_session`: the configured read database, or the
+original admin pool when no read URL is set. Neither path uses the API pool. A configured reader
+failure never retries on the primary. Authorization always checks the primary so replication lag
+does not delay suspension or permission revocation.
+
+The cross-tenant read, mutation, and reconciliation handlers live in three ordered blocks in
+`routers.admin`. The mutation block shares the org deletion and member-rule cleanup helpers from
+`routers.orgs`.
+
 ## Suspension enforcement (in `require_member`)
 Two flags gate the **org-scoped** path: `require_member` raises 403 if `user.suspended` ("account
 suspended") or `org.suspended` ("org suspended"). Set by the admin endpoints below. Super-admin
 endpoints are unaffected (they use `require_superadmin`).
 
 ## Endpoints (all under `/admin/*`, gated by `require_superadmin`)
+
+- **Feedback:** `GET /admin/feedback` (`routers.feedback.admin_feedback`) returns private reports,
+  filtered by optional category, with `limit` and descending-ID `before` pagination. It shares
+  `get_admin_session` with the super-admin gate. See [feedback](feedback.md).
 - **Reads:** `admin_stats` (totals, `tools_by_injector`/`tools_by_host`, `credential_health` rollup,
   call volume + success rate, `growth` counts — computed in-process over small result sets),
   `admin_orgs` (every org + member/role/tool/secret/bundle counts), `admin_org_detail`,
-  `admin_users` (+ their memberships), `admin_tools`, `admin_calls`, `admin_health` (non-`ok` secrets).
+  `admin_users` (+ their memberships), `admin_tools`, `admin_calls`, `admin_share` (per job over the
+  last `minutes`: requests asked, and the answers callers got per provider: a direct call's 2xx
+  that its adapter did not judge a miss, and only the last attempt of a routed parent that
+  succeeded; `teams` gives the same answers per team: teams served per provider, the share
+  averaged over teams, and the direct and routed team counts),
+  `admin_health` (non-`ok` secrets).
+- **Failure evidence:** `admin_errors` (`?days=7&limit=100&provider=&status=&tier=`) — failed calls at
+  every credential tier, including plain own tools (`tier: null`), with `CallRecord.error_request` /
+  `error_response`, the redacted capture of what the caller sent and what the provider answered (see
+  [data-model](data-model.md)). `tier` filters an exact marketplace tier; an empty value selects plain
+  own tools. Superadmin and not org-admin
+  because the rows hold customers' request content; `GET /calls` deliberately does **not** expose
+  these columns, and it defers them so they are not even fetched. The route is read-only: the
+  evidence and org-name queries use `get_admin_read_session` and may reflect replication lag.
+  The 14-day retention purge (blanking both columns to `'<expired>'`) is the `treg-worker admin
+  purge-evidence` cron (`application/evidence_retention.py`), in bounded batches. A row past the
+  window is listed as `expired` with no evidence even before the cron reaches it.
 - **Reconciliation (Phase 5):** `admin_reconcile_drift|spend|repeats` (`?since_days=30`) — cross-org
   aggregates over platform-tier spend, so super-admin and not org-admin: price drift per endpoint,
   settled spend per provider (the invoice comparison), and the repeat-query rate. Query-time reports
   over existing rows; no scheduler. Logic in `src/treg/reconcile.py`;
   `scripts/provider_balances.py` is the manual companion that reads the providers' own balances.
+  The async-task settlement report follows the same super-admin and dedicated admin-pool boundary.
 - **Mutations (Phase 2):** `admin_set_superadmin`, `admin_suspend_user`, `admin_delete_user` (removes
-  memberships, then `_cascade_delete_org` any org left with zero members, and **promotes a survivor to
+  memberships, then `cascade_delete_org` (in `domain/governance/teams.py`) any org left with zero members, and **promotes a survivor to
   owner** in any org left without one), `admin_suspend_org`, `admin_delete_org` (force, cross-tenant).
-  Org deletion shares `_cascade_delete_org` with the owner's own `delete_org` (one cascade helper: tools,
+  Org deletion shares `cascade_delete_org` (in `domain/governance/teams.py`) with the owner's own `delete_org` (one cascade helper: tools,
   secrets, bundles, pending-oauth, call records, memberships, then the org).
 - **Last-superadmin floor:** `require_superadmin` returns the principal (`"env-admin"` or the user's
   email); the three destructive user ops refuse (`409`) when demoting/suspending/deleting would drop the
   count of active (`is_superadmin and not suspended`) users to zero — so a superadmin can't self-lock the
   platform out of `/admin/*`. The env token bypasses the floor (it can always recover).
+- **Org credit:** `admin_credit_org` (`POST /admin/orgs/{org_id}/credit`) — the HTTP equivalent of
+  `scripts/manual_grant.py`. Credits an org with promotional balance through `money.grant()`, preserving
+  the invariant that balance = sum(blocks) - sum(holds). Requires `amount_usd`, `ref` (idempotency key —
+  a duplicate ref for the same org returns 409), and `reason`. Always uses `kind="promotional"` so the
+  credit burns before purchased (non-refundable marketing expense). The script remains valid for
+  airgapped / direct-DB ops, and the route removes the need to open Render Postgres IP allowlists.
 
 ## Model + migration
-`User` gains `is_superadmin` + `suspended`; `Org` gains `suspended` (booleans). The startup migration
-(`db._ensure_bool_col`) adds these columns to existing tables (`ALTER … ADD COLUMN … NOT NULL
-DEFAULT 0`), so a live DB upgrades on restart.
+`User` gains `is_superadmin` + `suspended`; `Org` gains `suspended` (booleans). The columns are part
+of the Alembic baseline schema; a live DB picks up schema changes through the explicit
+`python -m treg upgrade` release phase, never on restart.
 
 ## CLI (`interface/cli.md`)
 `treg admin login --token` (saves the env key), `admin stats|orgs|org <id>|users|tools|calls|health`,
-and `admin grant|revoke|suspend-user|rm-user|suspend-org|rm-org`. `_admin_client` sends the saved
+`admin grant|revoke|suspend-user|rm-user|suspend-org|rm-org`, and
+`admin credit <org_id> --amount-usd <n> --ref <ticket> --reason <text>`. `_admin_client` sends the saved
 `admin_token` if present, else the active org token (works for an `is_superadmin` user).
+
+The standalone grant script uses the configured database session and does not manage hosted
+network access. Operators must use a checkout matching the target schema.

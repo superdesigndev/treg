@@ -1,0 +1,53 @@
+{
+  "message": "Search could not be completed — the query was too broad to finish in time. Narrow it (add a title, seniority, or location filter) and retry.",
+  "credits_consumed": 0,
+  "credit_preview": {
+    "base_count": 0,
+    "base_credits": 0,
+    "email_count": 0,
+    "mobile_count": 0,
+    "email_credits": 0,
+    "mobile_credits": 0,
+    "total_credits": 0,
+    "charged_now": true,
+    "direct_phone_credits": 0
+  },
+  "people": [],
+  "has_more": false,
+  "next_cursor": null,
+  "count": 0,
+  "returned_count": 0,
+  "query": {
+    "company_domain": "leadmagic.io",
+    "titles": [
+      "Head of Marketing"
+    ],
+    "limit": 1,
+    "include_contact_details": false
+  },
+  "metadata": {
+    "query_name": "people_search_v3",
+    "query_path": "full_search_snapshot",
+    "has_more": false,
+    "snapshot_id": "43f54650e347151910808e1a870b6596e0fb5bfc",
+    "snapshot_page_start": 0,
+    "snapshot_cache_status": "cold",
+    "snapshot_limit_reached": false,
+    "has_more_beyond_snapshot": false,
+    "pagination": "snapshot",
+    "interpreted_search": {
+      "search_error": "query_budget_exceeded"
+    },
+    "full_search_requested": false,
+    "full_search_returned": false,
+    "detail_mode": "base_only",
+    "include_email": true,
+    "include_mobile": true,
+    "require_actionable": false,
+    "search_error": "query_budget_exceeded",
+    "degraded": true,
+    "credit_model": "1_credit_per_returned_person_plus_1_per_returned_email_plus_5_per_returned_mobile"
+  },
+  "_scrubbed": true,
+  "_note": "captured live 2026-08-28 via treg; emails/phones scrubbed"
+}

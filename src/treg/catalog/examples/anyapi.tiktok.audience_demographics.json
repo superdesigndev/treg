@@ -1,0 +1,28 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "audienceLocations": [
+        {
+          "count": 94,
+          "country": "Bangladesh",
+          "countryCode": "BD",
+          "percentage": "7.25%"
+        },
+        "… 132 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.018,
+  "items": 133,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-fox",
+    "name": "Fox",
+    "kind": "anonymous",
+    "artworkKey": "fox"
+  },
+  "hint": "large_result: this response is ~9 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq`… [308 chars]",
+  "resultId": "c715bde2-954c-477e-b835-f4ceddb39281"
+}

@@ -18,7 +18,7 @@ Every other way into treg requires the caller to **know about treg** — `treg c
 and it has no key. The local proxy closes that gap: catch the call on the way out, and let the **server**
 add the credential.
 
-**Not `proxy.py`.** That is the SERVER relay (`relay()`), the thing that injects. This is the local
+**Not `infra/upstream/relay.py`.** That is the SERVER relay (`relay()`), the thing that injects. This is the local
 catcher that feeds it — two ends of one call. The module is named for `localrun.py`, its neighbour in
 "code that runs on the member's machine". Plan + build log: `docs/LOCAL-PROXY-PLAN.md`.
 

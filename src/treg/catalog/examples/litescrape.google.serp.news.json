@@ -1,0 +1,28 @@
+{
+  "search_metadata": {
+    "status": "Success"
+  },
+  "search_parameters": {
+    "tbm": "nws"
+  },
+  "news_results": [
+    {
+      "position": 1,
+      "title": "Trump unveils 'Super Intelligence Force' to oversee AI policy",
+      "link": "https://www.bbc.com/news/articles/cqj6jenp26zyo",
+      "source": "BBC",
+      "date": "2 hours ago",
+      "published_at": "2026-10-05 06:15:29 UTC",
+      "snippet": "US President Donald Trump has unveiled a new taskforce focused on artificial intelligence, which will be led by Director of National..."
+    },
+    {
+      "position": 2,
+      "title": "Chinese hackers impersonated AI experts to target US policy minds",
+      "link": "https://www.aljazeera.com/economy/2026/10/1/chinese-hackers-impersonated-ai-experts-to-target-us-policy-minds",
+      "source": "Al Jazeera",
+      "date": "3 days ago",
+      "published_at": "2026-10-01 16:39:00 UTC",
+      "snippet": "TA419 hackers used deceptive tactics to impersonate real figures, such as a former White House AI official."
+    }
+  ]
+}

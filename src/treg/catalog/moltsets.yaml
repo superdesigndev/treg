@@ -1,0 +1,327 @@
+# MoltSets tool API. Account, billing, and usage endpoints are internal probes rather than tools.
+# Live-verified 2026-09-16 within 49 requests and two phone-token hits. Found rows consume one
+# ordinary record; misses/errors are free. Phone hits additionally consume one phone token.
+provider: moltsets
+source:
+  docs: https://docs.moltsets.com/
+  openapi: https://api.moltsets.com/openapi.json
+  curated: '2026-09-16'
+pricing_url: https://moltsets.com/pricing
+limits: "Enrichment 15,000 records/5h and 75,000/week; search 7,500 records/5h and 37,500/week. Request limits are 5x the corresponding 5h record limits. Rolling windows are reported by get_account."
+expect: &found
+  json_path: status
+  equals: ok
+proposed_capabilities:
+  linkedin.profile.search: Find professional profiles by name and company
+  people.audiences.maid: Convert an email to mobile advertising IDs
+  people.audiences.sha256: Convert a business email to personal-email SHA-256 hashes
+  people.audiences.hashes: Resolve business and personal email hashes from a professional profile
+  companies.identify.ip: Identify companies associated with an IP address
+endpoints:
+- id: moltsets.people.search
+  domain: contacts
+  capability: people.search
+  platform: people
+  scope: any_account
+  method: POST
+  path: /search_people
+  name: Search people
+  summary: Search people by identity, role, company, location, industry, and company size
+  input:
+    bodyType: json
+    body:
+      query: {type: string}
+      title: {type: string}
+      company: {type: string}
+      company_domain: {type: string}
+      country: {type: string}
+      state: {type: string}
+      city: {type: string}
+      seniority: {type: string, enum: [Intern, Entry, Senior, Manager, Director, VP, Head, C Suite, Owner, Partner]}
+      industry: {type: string}
+      department: {type: string}
+      functional_area: {type: string}
+      employee_range: {type: string, enum: [1-10, 11-20, 21-50, 51-200, 201-500, 501-1000, 1001-5000, 5001+]}
+      revenue_range: {type: string}
+      naics_code: {type: string}
+      linkedin_industry: {type: string}
+      exclude_company_domain: {type: array, items: {type: string}}
+      exclude_country: {type: array, items: {type: string}}
+      exclude_state: {type: array, items: {type: string}}
+      exclude_industry: {type: array, items: {type: string}}
+      exclude_seniority: {type: array, items: {type: string}}
+      exclude_employee_range: {type: array, items: {type: string}}
+      limit: {type: integer, min: 1, max: 25, default: 10}
+      offset: {type: integer, min: 0, default: 0}
+  test_request: {body: {query: treg-nonexistent-person-20260916, limit: 1}}
+  cost: &record_cost
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.moltsets.com/
+    checked: '2026-09-16'
+    confidence: verified
+    note: One ordinary record per result; misses and errors are free.
+  platform_blocked: Variable result counts cannot yet be settled safely from the generic response contract; connect your own MoltSets key.
+  verified: '2026-09-16'
+  added: '2026-09-16'
+  example_response: examples/moltsets.people.search.json
+  docs_url: https://docs.moltsets.com/api-reference/search-people
+
+- id: moltsets.companies.search
+  domain: companies
+  capability: companies.search
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /search_companies
+  name: Search companies
+  summary: Search companies by name, domain, industry, size, revenue, and location
+  input:
+    bodyType: json
+    body:
+      query: {type: string}
+      domain: {type: string}
+      industry: {type: string}
+      employee_range: {type: string, enum: [1-10, 11-20, 21-50, 51-200, 201-500, 501-1000, 1001-5000, 5001+]}
+      revenue_range: {type: string}
+      naics_code: {type: string}
+      linkedin_industry: {type: string}
+      country: {type: string}
+      state: {type: string}
+      exclude_domain: {type: array, items: {type: string}}
+      exclude_industry: {type: array, items: {type: string}}
+      exclude_employee_range: {type: array, items: {type: string}}
+      exclude_revenue_range: {type: array, items: {type: string}}
+      limit: {type: integer, min: 1, max: 25, default: 10}
+      offset: {type: integer, min: 0, default: 0}
+  test_request: {body: {query: treg-nonexistent-company-20260916, limit: 1}}
+  cost: *record_cost
+  platform_blocked: Variable result counts cannot yet be settled safely from the generic response contract; connect your own MoltSets key.
+  verified: '2026-09-16'
+  added: '2026-09-16'
+  example_response: examples/moltsets.companies.search.json
+  docs_url: https://docs.moltsets.com/api-reference/search-companies
+
+- id: moltsets.linkedin.profile.search
+  domain: contacts
+  capability: linkedin.profile.search
+  platform: linkedin
+  scope: any_account
+  method: POST
+  path: /search_linkedin_profile
+  name: Search professional profiles
+  summary: Find professional profiles from a name and company
+  input: &name_company_input
+    bodyType: json
+    body:
+      name: {type: string}
+      first_name: {type: string}
+      last_name: {type: string}
+      company: {type: string}
+      company_domain: {type: string}
+      count_only: {type: boolean, default: false, note: Free when true.}
+  test_request: {body: {name: Treg Nonexistent Person 20260916, company_domain: example.invalid, count_only: true}}
+  cost: *record_cost
+  platform_blocked: Full searches can return multiple records and count_only has different pricing; connect your own MoltSets key.
+  verified: '2026-09-16'
+  added: '2026-09-16'
+  example_response: examples/moltsets.linkedin.profile.search.json
+  docs_url: https://docs.moltsets.com/api-reference/search-linkedin-profile
+
+- id: moltsets.people.email.find.name
+  domain: contacts
+  capability: people.email.find
+  platform: people
+  scope: any_account
+  method: POST
+  path: /search_business_email_by_name
+  name: Find business email by name
+  summary: Find a business email from a name and company
+  input:
+    bodyType: json
+    body:
+      name: {type: string}
+      first_name: {type: string}
+      last_name: {type: string}
+      company: {type: string}
+      company_domain: {type: string}
+  test_request: {body: {name: Treg Nonexistent Person 20260916, company_domain: example.invalid}}
+  cost: &success_cost
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: observed
+    source_url: https://docs.moltsets.com/
+    checked: '2026-09-16'
+    confidence: verified
+    note: One ordinary record on status ok; status not_found and errors are free.
+  expect: *found
+  verified: '2026-09-16'
+  added: '2026-09-16'
+  example_response: examples/moltsets.people.email.find.name.json
+  docs_url: https://docs.moltsets.com/api-reference/search-business-email-by-name
+
+- id: moltsets.people.enrich.name
+  domain: contacts
+  capability: people.enrich
+  platform: people
+  scope: any_account
+  method: POST
+  path: /search_business_profile_by_name
+  name: Enrich person by name
+  summary: Find a business profile from a name and company
+  input:
+    bodyType: json
+    body:
+      name: {type: string}
+      first_name: {type: string}
+      last_name: {type: string}
+      company: {type: string}
+      company_domain: {type: string}
+  test_request: {body: {name: Treg Nonexistent Person 20260916, company_domain: example.invalid}}
+  cost: *success_cost
+  expect: *found
+  verified: '2026-09-16'
+  added: '2026-09-16'
+  example_response: examples/moltsets.people.enrich.name.json
+  docs_url: https://docs.moltsets.com/api-reference/search-business-profile-by-name
+- id: moltsets.people.enrich.email
+  domain: contacts
+  capability: people.enrich
+  platform: people
+  scope: any_account
+  method: POST
+  path: /reverse_email_lookup
+  name: Enrich person from email
+  summary: Resolve a business profile and hashed contact data from an email
+  input: &email_input
+    bodyType: json
+    body:
+      email: {type: string, required: true}
+  test_request: {body: {email: nobody-20260916@example.invalid}}
+  cost: *success_cost
+  expect: *found
+  verified: '2026-09-16'
+  added: '2026-09-16'
+  example_response: examples/moltsets.people.enrich.email.json
+  docs_url: https://docs.moltsets.com/api-reference/reverse-email-lookup
+
+- id: moltsets.people.enrich.linkedin
+  domain: contacts
+  capability: people.enrich
+  platform: people
+  scope: any_account
+  method: POST
+  path: /reverse_linkedin_lookup
+  name: Enrich person from profile
+  summary: Resolve a person and company from a professional profile
+  input: &linkedin_input
+    bodyType: json
+    body:
+      linkedin_url: {type: string, required: true}
+  test_request: {body: {linkedin_url: https://linkedin.com/in/treg-nonexistent-20260916}}
+  cost: *success_cost
+  expect: *found
+  verified: '2026-09-16'
+  added: '2026-09-16'
+  example_response: examples/moltsets.people.enrich.linkedin.json
+  docs_url: https://docs.moltsets.com/api-reference/reverse-linkedin-lookup
+
+- id: moltsets.people.audiences.maid
+  domain: contacts
+  capability: people.audiences.maid
+  platform: people
+  scope: any_account
+  method: POST
+  path: /email_to_maid
+  name: Convert email to mobile advertising IDs
+  summary: Resolve mobile advertising identifiers from an email
+  input: *email_input
+  test_request: {body: {email: nobody-20260916@example.invalid}}
+  cost: *success_cost
+  expect: *found
+  verified: '2026-09-16'
+  added: '2026-09-16'
+  example_response: examples/moltsets.people.audiences.maid.json
+  docs_url: https://docs.moltsets.com/api-reference/email-to-maid
+
+- id: moltsets.people.audiences.sha256
+  domain: contacts
+  capability: people.audiences.sha256
+  platform: people
+  scope: any_account
+  method: POST
+  path: /business_email_to_sha256
+  name: Convert business email to personal hashes
+  summary: Resolve SHA-256 hashes of personal emails from a business email
+  input: *email_input
+  test_request: {body: {email: nobody-20260916@example.invalid}}
+  cost: *success_cost
+  expect: *found
+  verified: '2026-09-16'
+  added: '2026-09-16'
+  example_response: examples/moltsets.people.audiences.sha256.json
+  docs_url: https://docs.moltsets.com/api-reference/business-email-to-sha256
+
+- id: moltsets.people.audiences.hashes
+  domain: contacts
+  capability: people.audiences.hashes
+  platform: people
+  scope: any_account
+  method: POST
+  path: /linkedin_to_sha256
+  name: Resolve email hashes from profile
+  summary: Resolve business and personal email hashes from a professional profile
+  input: *linkedin_input
+  test_request: {body: {linkedin_url: https://linkedin.com/in/treg-nonexistent-20260916}}
+  cost: *success_cost
+  expect: *found
+  verified: '2026-09-16'
+  added: '2026-09-16'
+  example_response: examples/moltsets.people.audiences.hashes.json
+  docs_url: https://docs.moltsets.com/api-reference/linkedin-to-sha256
+
+- id: moltsets.linkedin.profile.from-email
+  domain: contacts
+  capability: linkedin.profile.from_email
+  platform: linkedin
+  scope: any_account
+  method: POST
+  path: /email_to_linkedin
+  name: Find professional profile from email
+  summary: Resolve a professional profile URL from an email
+  input: *email_input
+  test_request: {body: {email: nobody-20260916@example.invalid}}
+  cost: *success_cost
+  expect: *found
+  verified: '2026-09-16'
+  added: '2026-09-16'
+  example_response: examples/moltsets.linkedin.profile.from-email.json
+  docs_url: https://docs.moltsets.com/api-reference/email-to-linkedin
+
+- id: moltsets.companies.identify.ip
+  domain: companies
+  capability: companies.identify.ip
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /ip_to_company
+  name: Identify company from IP
+  summary: Resolve companies associated with an IPv4 address
+  input:
+    bodyType: json
+    body:
+      ip_address: {type: string, required: true}
+  test_request: {body: {ip_address: 192.0.2.1}}
+  cost: *success_cost
+  expect: *found
+  verified: '2026-09-16'
+  added: '2026-09-16'
+  example_response: examples/moltsets.companies.identify.ip.json
+  docs_url: https://docs.moltsets.com/api-reference/ip-to-company

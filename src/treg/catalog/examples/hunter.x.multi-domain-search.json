@@ -1,31 +1,33 @@
 {
   "data": [
     {
-      "name": "Nabi K.",
-      "position": null,
-      "department": null,
-      "seniority": null,
+      "reveal_handle": "Qk1hQ2c9PS0tZW5jcnlwdGVkLW9wYXF1ZS1oYW5kbGU",
+      "name": "John D.",
+      "position": "Chief Technology Officer",
+      "department": "executive",
+      "seniority": "executive",
       "type": "personal",
-      "decision_maker": false,
-      "domain": "messenger.com",
-      "company_name": "messenger",
+      "decision_maker": true,
+      "domain": "stripe.com",
+      "company_name": "stripe",
       "full_name_exists": true,
       "phone_number_exists": false,
-      "linkedin_exists": false,
+      "linkedin_exists": true,
       "verification": {
         "date": null,
-        "status": "accept_all"
-      },
-      "reveal_handle": "CnS9hQrM5hL8PoTTBo-Aa6yE98mNlHMM2tkjh_g_syiAbtJYHVC3JfdHpsCti-Jo-wTBgTfwI_XrCUaVdsw--Njuz57Tx-Pij2HLM--DwzrGpYFAp90MGe2p2B9RQ"
-    },
-    "… 99 more item(s) truncated"
+        "status": "valid"
+      }
+    }
   ],
   "meta": {
-    "results": 92757380,
-    "next_search_after": "O6Hp5YniRZIxG95WoHQKY4YX7bjEDWvO8ux2pgIt-28S1v3dYoSEw_DA_-X0Td5wLXTpDLqJ74MMwNiSD6TdnpZ6SSowrSk--uRJvMe7RztcVDr8n--aahVvuiDWA8_HD1nzcklhA",
+    "results": 4821,
+    "next_search_after": "IjRhZi1lbmNyeXB0ZWQtb3BhcXVlLWN1cnNvci10b2tlbiI",
     "params": {
-      "type": [
-        "personal"
+      "location": [
+        "US"
+      ],
+      "department": [
+        "executive"
       ]
     }
   }

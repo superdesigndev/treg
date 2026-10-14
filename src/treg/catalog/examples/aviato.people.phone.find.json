@@ -1,0 +1,13 @@
+{
+  "phones": [
+    {
+      "phoneNumber": "+1-202-555-0100",
+      "score": 0.99
+    },
+    {
+      "phoneNumber": "+1-202-555-0101",
+      "score": 0.95
+    }
+  ],
+  "_note": "The live response returned two phone objects; phone values and scores are placeholders."
+}

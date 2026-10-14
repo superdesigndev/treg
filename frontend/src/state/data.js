@@ -1,0 +1,154 @@
+import { storageGet } from './storage.js'
+import { createElements } from './context'
+import { LS } from './constants.js'
+import { FIND_EMPTY } from './find.js'
+export default function data(){
+    let cfg={active:null,orgs:{}}; try{ cfg=JSON.parse(storageGet(LS))||cfg; }catch(e){}
+    return {
+      // the tool hub: hub.tools is every version of the team's tools (newest first); hub.tool the
+      // opened one; hub.tab overview|versions|price|listing|earnings|runs|health; run the opened run
+      hubOn:false, hub:{loading:false, tools:[], tool:null, tab:'overview', earnings:null, health:null, err:'', note:'', confirmRetire:null, runOpen:null},
+      run:{loading:false, data:null, err:''},
+      elements: createElements(),
+      bootReady: false, bootFailed: false,
+      bootStartedAt: performance.now(),  // ms since navigation: where the loader's animations already are (App.vue)
+      sessionChecked: false,  // /auth/me has answered (a page drawn before boot finishes waits on this for sign-in state)
+      theme: storageGet('treg-theme')||'light',
+      mobileNav: false,  // mobile sidebar toggle
+      // True when this load is a PUBLIC catalog URL (/catalog, /catalog/<slug>). The catalog API is
+      // unauthenticated, so the same marketplace views render for a signed-out visitor — that is
+      // what makes the catalog indexable without maintaining a second copy of the UI. Everything
+      // that needs a session (org switcher, vault, activity, team, try-it) is hidden on `authed`.
+      publicCatalog:false, oauthSignin:false,
+      cfg, tokenInput:'', busy:false, loginErr:'', addOrg:false, orgMenu:false, orgMenuStyle:null,
+      emailInput:'', codeInput:'', emailStage:false, devCode:'', pendingInvites:[], invitePrefill:'', inviteChoice:false, inviteBusy:false,
+      inviteSel:{}, inviteLinkOrg:null, inviteErr:'',  // multi-select accept: checked ids, the org_id the clicked email link was for, partial-failure note
+      tut:{i:0, panel:null}, tutCopied:false, tourI:0, helpMode:null, xtut:{i:0},
+      newOrg:false, newOrgName:'', orgBusy:false, orgErr:'', orgMsg:'',
+      orgMembers:[], orgMembersLoaded:false, orgInvites:[], inviteEmail:'', inviteRole:'member', lastInvite:null,
+      editAccess:null, accessDraft:{}, inviteCustomize:false, inviteLocalRun:true, inviteToolSel:{}, accessNote:'',
+      // agents (machine identities), projects (sub-scope) and deny rules (policy)
+      orgTab:'members', showInvite:false, showAddAgent:false,
+      apiKeys:[], apiKeySpend:null, keyName:'', keyNameInvalid:false, keyBusy:false, keyErr:'', keyMsg:null, editKey:null, editKeyName:'', keyMenu:null, keyConfirm:null, activityKey:'',
+      agentSnip:'prompt',   // which paste-ready snippet the agent card shows (prompt = hand-to-agent, first)
+      snipAgent:null,    // an EXISTING agent whose setup snippets are open (no token — placeholder)
+      agents:[], agentName:'', agentRole:'member', agentCap:-1, agentBusy:false, agentErr:'', agentProjSel:{}, agentAccessMode:null, agentToolSel:{},
+      observedAgents:[], promoteHint:'', promotePending:null,
+      credentialIssues:{}, confirmAgent:null, // unacknowledged key results, memory only and scoped by org
+      projects:[], projectName:'', projBusy:false, confirmProj:null, projDraft:{},
+      editProj:null, projToolDraft:{}, projToolBusy:false,
+      denyRules:[], denyForm:{host:'',path_prefix:'',method:'',user_id:null,project_id:null,note:''}, denyBusy:false, confirmDeny:null, cliDeny:[],
+      bootVersion:'', newVersion:false,
+      usage:null, usageDays:30, usageSpend:null, usageSpendBusy:false, usageSpendErr:'', spendRange:{preset:30, from:'', to:''}, spendFilter:{group:'day', key:'', provider:'', stack:'key'}, spendRankPage:0, spendRankOpen:false, myUsage:null, actTab:'feed', buildTab:'vendor',  // Activity page: 'feed' | 'usage'
+      tagUsage:{}, tagKeys:[],   // spend per X-Treg-Meta key: {customer:{…}, workspace:{…}}
+  // usage-metering: rollups + the member's own used/cap
+      // Billing (Stripe top-ups). `billing` null = not loaded / not an admin; billing.configured
+      // false = this deployment sells no balance, so the whole block stays hidden.
+      billing:null, billingBusy:false, topupAmount:10, autoAmount:10, autoThreshold:5, autoPerHour:5, autoConsent:false, autoOpen:false,
+      topupOpen:false, topupPick:10, topupOther:null, topupAuto:true, topupErr:'',
+      capCfg:null, capUsd:0, capBusy:false, capErr:'',
+      archiveBusy:false, archiveErr:'',
+      renameName:'', renameSlug:'', renameBusy:false, renameErr:'',
+      budgets:[], budDims:[], budDim:'', budVal:'', budDaily:'', budBusy:false, budErr:'',
+      bhist:{items:[],loading:false,ok:true},   // past top-ups + their invoice/receipt links; ok=false means Stripe was unreachable, amounts are still right
+      // Referral program. Seeded with the same SHAPE the API returns (terms/totals/cap present and
+      // zeroed) so the template can read ref.terms.hold_days on the very first paint. `loaded` keeps
+      // the subtitle invisible until the real terms arrive; it used to read "$0.00 … 0 days later".
+      refTab:'friend',  // 'friend' | 'partner' — the fork at the top of the Referrals view
+      ref:{loading:false,loaded:false,eligible:false,code:'',link:'',credit_org:null,referrals:[],
+           terms:{referrer_micro:0,referred_micro:0,min_topup_micro:0,hold_days:0},
+           totals:{signed_up:0,topped_up:0,earned_micro:0,pending_micro:0},cap:{paid:0,limit:0}},
+      refCopied:false,
+      confirmDel:'', confirmLeave:false, confirmRemove:null,
+      showJoin:false, joinCode:'', joinBusy:false, joinErr:'',
+      secrets:[], showSecrets:false, secretRows:[{name:'',value:'',kind:'env'}], secretBusy:false, secretErr:'', runNote:'',
+      newTool:false, toolBusy:false, toolErr:'', confirmDelTool:null, confirmDelSecret:null,
+      tForm:{id:null, name:'', base_url:'', bindings:[]},
+      addToolMenu:false,  // the ＋ Add tool [endpoint | cli] chooser
+      // Connections: registry OAuth connects (see oauth_providers.py). `providers` is what treg
+      // holds an approved app for; `connections` is what this org has actually connected.
+      providers:[], connections:[], connErr:'', connBusy:false, confirmDisc:null, resPick:null,
+      mkService:null,  // the open provider page
+      byokFocus:null,  // provider card to flash after a "Bring your own key" jump to Connections
+      connQ:'', connKind:'',  // the provider filter on Connections, and '' | 'account' | 'key'
+      // Catalog tab bar: 'all' + one key per catalog category.
+      mkTab:'all',
+      platLogoBad:{},  // platform slug (or `v:`+vendor) → no /logos/platforms/<slug>.svg (/logos/<vendor>.svg), so draw the initial tile
+      // Endpoint catalog (GET /catalog/*): the platform axis of the marketplace. Everything here is
+      // optional — a server without the catalog routes just renders no platform shelf.
+      platPrefetch:null,  // {slug, request}: see prefetchPlatform
+      plats:{list:[], providers:{}, loaded:false, loading:false, settled:false},  // settled: answered, even if it failed
+      // Find tools for a job (state/find.js): phase idle | recall | reading | done | error
+      find:{...FIND_EMPTY}, findCopied:'', findSoon:false,
+      platSlug:null, platData:null, platErr:'', platLoading:false,
+      platSetupOpen:false, // a platform shelf's account-and-setup list has been expanded
+      platShelfOpen:{},    // category → its featured shelf has been expanded to the full tile list
+      platQ:'',            // the shelf's search box
+      epTab:{},            // endpoint id → which pane of its detail is showing ('req' | 'res' | 'rev')
+      verdictKinds:['useful','partly','not_useful'],   // an endpoint's agent verdicts, in bar order
+      platCap:null,        // the compared capability a platform URL names, by its key (`compare`)
+      drawerTool:null,       // endpoint id open in the tool drawer
+      epInfo:{},         // endpoint id → {loading, data} from /catalog/endpoints/<id>
+      platComparisonLead:null,    // the endpoint whose detail carries the open comparison's siblings and plan
+      platComparisonSort:{key:'price', dir:'asc'},   // the comparison's order (DataTable v-model:sort)
+      mkTools:null,        // {service, loading, err, data} from /catalog/providers/<service>
+      platEx:{},           // endpoint id → {open, loading, err, text} for the lazily-fetched example
+      platCopied:'',       // endpoint id whose `treg call` line was just copied
+      capAsk:null,  // the access question, asked when a one-method provider has several scope levels
+      methodAsk:null,  // separate grants behind one provider: one selected method, then Continue
+      tokenAsk:null,  // bring-your-own-bot setup (Slack): a form, not a redirect
+      extraCred:{}, extraBusy:null,  // second credential a provider needs on top of OAuth (Google Ads' developer token)
+      cfgMenu:false,  // detail-page ⚙ Configure tool-picker (skills with >1 tool)
+      tryMenu:false,  // detail-page ▶ Try it tool-picker (skills with >1 tool)
+      // marketplace endpoint Try-it drawer
+      callView:null, callViewFull:false, callCopied:'',  // Activity → one call's request/response drawer
+      actOkOnly:true,  // Activity feed: successes only by default; the toggle shows failed/refused too
+      epTry:null, epTryTab:'agent', epTryAccess:null, epTryAccessByMethod:{}, epTryAuthMethod:'', epTryParams:[], epTryBody:'', epTryResp:'', epTryStatus:null,
+      epTryMs:null, epTryCost:null, epTryBusy:false,
+      catalogClis:null,  // bin → catalog default deny patterns (lazy, from /providers.json)
+      newSkill:false, skillJson:'', skillBusy:false, skillErr:'', skillMode:'folder',
+      skillFiles:[], detected:null, skillSel:{}, skillVals:{}, skillResults:null,
+      sessionMode:false, activeSlug: storageGet('treg-active')||null, meta:{github:false, public_url:location.origin},
+      view:'tools', q:'', err:'', loading:false, toolTab:'all', bundles:[], confirmDelBundle:null, installCopied:null,
+      copyRecipe:null, recipeTab:'cURL', viewRecipe:null, recipeSaved:false,
+      // detail pages (shareable /app/skills/<name> + /app/tools/<name> deep links)
+      detail:null, detailData:null, detailErr:'', detailLoading:false, detailFile:'SKILL.md', detailCopied:'', detailNote:'',
+      shareGate:null,  // logged-out arrival at a shared detail link: {kind,name} → focused sign-in page (no sandbox/tour)
+      share:{on:false, email:'', role:'viewer', full:true, busy:false, err:'', sent:null, member:null},  // detail-page "Share…" (invite + land on this page)
+      me:'', icHash:'', myOrgs:[], isAdmin:false,
+      onboarded:true,  // first-run onboarding done (server flag; gates the welcome modal)
+      onboardingV2:false, onboardingV2Exp:false, onboardingV2On:false, onboardingPreviewOn:false,  // the server's first-run flow (/onboarding) replaces the welcome modal
+      welcome:{on:false, step:0, name:'', agent:'claude-code', moreOpen:false, busy:false, err:''},  // first-run: name your team → pick your agent → setup line
+      emptyTab:'agent',
+      tools:[], health:{}, calls:[], runs:[], callsLoaded:false, activityNext:null, activityOlderBusy:false, adminStats:null, adminOrgs:[], adminUsers:[],
+      admHub:{on:false, state:'requested', rows:[], reason:{}, cap:{}, busy:null, updates:[]},  // hub listing review (superadmin)
+      adminBusy:false, confirmAdmUser:null, confirmAdmOrg:null,
+      proxy: location.origin, copyTool:null, snippetTab:'cURL', snippetTabs:['cURL','CLI','Claude Code','Python','Node'], copied:false,
+      exPath:'<PATH>', exMethod:'GET',
+      tryTool:null, tryMethod:'GET', tryPath:'', tryBody:'', trying:false, tryResp:null, tryStatus:0, tryMs:0,
+      useMode:'call', runArgsStr:'', running:false, runOut:null,
+      startCopyError:'', startCopied:'', startTab:'access', startAgentOpen:false, startTokenShow:false, mdMenu:false, llmsCopied:false, myToken:null, _myTokenOrg:null, defaultKeyId:null, defaultKeyState:null, tokenCopied:false,
+      agentGuide:null, agentGuideCopied:false, agentRowCopied:null,
+      vendorAsk:false, vendorCopied:false,
+      reqAsk:false, reqDone:false, reqBusy:false, reqErr:'', reqForm:{capability:'', note:'', contact:''},
+      demo:{signin:false},
+    teamResources:[],
+teamResourceBusy:false,
+teamResourceErr:'',
+teamResourceProvider:'',
+teamResourceKind:'',
+teamResourcePage:1,
+teamResourcePageSize:10,
+teamResourceCopied:null,
+epTryBodyType:'json',
+epTryMultipart:[],
+epTryFiles:{},
+epTryAudioUrl:'',
+epTryAudioName:'speech.mp3',
+fishVoices:[],
+fishVoicesSource:'platform',
+fishVoiceBusy:false,
+fishVoiceNote:'',
+fishVoiceDialog:null,
+};
+  }

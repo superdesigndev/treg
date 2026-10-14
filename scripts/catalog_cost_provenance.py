@@ -68,7 +68,7 @@ PROVIDERS: dict[str, dict] = {
                        "url": "https://docs.scrapecreators.com/openapi.json", "units": {"*": "call"}},
     # --- prices transcribed from docs / pricing pages → documented ----------------------------
     # Just One API's figures are a hand-exported snapshot of the logged-in dashboard's pricing page
-    # (scripts/data/justoneapi_prices.json) — first-party, but a local file nothing can re-check.
+    # (operator-supplied justoneapi_prices.json) — first-party, but a local file nothing can re-check.
     "justoneapi": {"source": "rate_card_api", "confidence": "documented",
                    "url": "https://www.justoneapi.com/", "units": {"*": "call"}},
     "brightdata": {"source": "docs", "confidence": "documented",

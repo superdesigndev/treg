@@ -31,12 +31,13 @@ source:
 pricing_url: https://learn.microsoft.com/advertising/guides/  # API free; requires a developer token.
 endpoints:
   - id: microsoft-ads.query
+    added: '2026-07-28'
     capability: microsoft-ads.query
     platform: microsoft-ads
     scope: own_account
     method: POST
     path: /Campaigns/QueryByAccountId
-    name: "List campaigns in an account"
+    name: "List your Microsoft Ads campaigns — status, budget"
     summary: "Campaigns in your Microsoft Advertising account, with status, budget and bid strategy"
     input:
       body:
@@ -49,12 +50,13 @@ endpoints:
     docs_url: https://learn.microsoft.com/en-us/advertising/campaign-management-service/getcampaignsbyaccountid?view=bingads-13
 
   - id: microsoft-ads.adgroups
+    added: '2026-07-28'
     capability: microsoft-ads.adgroups
     platform: microsoft-ads
     scope: own_account
     method: POST
     path: /AdGroups/QueryByCampaignId
-    name: "List ad groups in a campaign"
+    name: "List ad groups in a Microsoft Ads campaign — bids, status"
     summary: "List the ad groups in a Microsoft Advertising campaign with their bids and status"
     input:
       body:
@@ -66,12 +68,13 @@ endpoints:
     docs_url: https://learn.microsoft.com/en-us/advertising/campaign-management-service/getadgroupsbycampaignid?view=bingads-13
 
   - id: microsoft-ads.ads
+    added: '2026-07-28'
     capability: microsoft-ads.ads
     platform: microsoft-ads
     scope: own_account
     method: POST
     path: /Ads/QueryByAdGroupId
-    name: "List ads in an ad group"
+    name: "List ads in a Microsoft Ads ad group — headlines, URLs"
     summary: "List the ads in a Microsoft Advertising ad group with their headlines and final URLs"
     input:
       body:
@@ -84,12 +87,13 @@ endpoints:
     docs_url: https://learn.microsoft.com/en-us/advertising/campaign-management-service/getadsbyadgroupid?view=bingads-13
 
   - id: microsoft-ads.keywords
+    added: '2026-07-28'
     capability: microsoft-ads.keywords
     platform: microsoft-ads
     scope: own_account
     method: POST
     path: /Keywords/QueryByAdGroupId
-    name: "List keywords in an ad group"
+    name: "List keywords in a Microsoft Ads ad group — match types"
     summary: "List the keywords in a Microsoft Advertising ad group with match types and bids"
     input:
       body:

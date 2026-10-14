@@ -1,9 +1,11 @@
+from conftest import verified_signup
+
 
 
 # ---- deleting a team must clear everything that points at it -------------------------------
 
 async def test_org_delete_clears_EVERY_org_scoped_table(clients):
-    """The list in `_cascade_delete_org` has to stay in step with the schema, and twice it did not:
+    """The list in `cascade_delete_org` has to stay in step with the schema, and twice it did not:
     the money tables arrived with the prepaid balance and `CapabilityPin` with capability pins, and
     neither was added. The effect was invisible until someone tried it — and because every NEW team
     is granted $1.00, every team has a CreditBlock, so NO team could be deleted at all. Production
@@ -16,19 +18,35 @@ async def test_org_delete_clears_EVERY_org_scoped_table(clients):
     from sqlmodel import SQLModel
 
     from treg import models as m
-    from treg.api import _ORG_SCOPED_MODELS
+    from treg.domain.governance.teams import ORG_SCOPED_MODELS
 
-    covered = {model.__name__ for model in _ORG_SCOPED_MODELS}
+    covered = {model.__name__ for model in ORG_SCOPED_MODELS}
+    # Handled inside cascade_delete_org by hand rather than through the list, because their column
+    # is not named `org_id`: OAuthGrant.current_org_id (whole-family revocation) and
+    # Referral.referred_org_id. A column-name walk missed Referral for as long as referrals existed,
+    # so this walks FOREIGN KEYS to `org` instead: any way at all of pointing at a team counts.
+    handled_by_hand = {"OAuthGrant", "Referral", "HubRun"}   # HubRun: caller_org_id, deleted by hand
     missing = []
     for name, obj in vars(m).items():
         if not (inspect.isclass(obj) and issubclass(obj, SQLModel) and obj is not SQLModel):
             continue
         table = getattr(obj, "__table__", None)
-        if table is not None and "org_id" in table.columns and name not in covered:
+        if table is None or name in covered or name in handled_by_hand:
+            continue
+        if any(fk.column.table.name == "org" for fk in table.foreign_keys):
             missing.append(name)
     assert not missing, (
-        f"these models carry org_id but _cascade_delete_org never deletes them: {missing}. "
-        f"A team holding any of these rows cannot be deleted — the foreign key fails with a 500.")
+        f"these models reference org but cascade_delete_org never deletes them: {missing}. "
+        f"A team holding any of these rows cannot be deleted - the foreign key fails with a 500.")
+    # And there is only ONE list. The sandbox reaper and the demo reset each kept a private copy
+    # until 2026-09-02, when the copies had not learned about IdempotentCall and every sandbox
+    # mint returned a 500. A reaper that names its own tables is the bug coming back.
+    from treg.application.onboard import demo, sandbox
+    from treg.domain.governance.teams import cascade_delete_org
+
+    for module in (sandbox, demo):
+        assert not hasattr(module, "_ORG_MODELS"), f"{module.__name__} keeps its own org-table list"
+    assert sandbox.cascade_delete_org is cascade_delete_org
 
 
 async def test_a_team_with_a_BALANCE_can_still_be_deleted(clients):
@@ -41,7 +59,7 @@ async def test_a_team_with_a_BALANCE_can_still_be_deleted(clients):
     `test_org_delete_clears_EVERY_org_scoped_table` above, which checks the SCHEMA rather than the
     behaviour. This test is kept because it documents the real-world shape of the failure, but do not
     mistake it for the protection."""
-    r = await clients.post("/orgs", json={"name": "throwaway-team"})
+    r = await verified_signup(clients, json={"email": "throwaway-team@example.org"})
     assert r.status_code == 200, r.text
     org_id, slug, token = r.json()["org_id"], r.json()["org"], r.json()["token"]
     # the new team's OWN token: a per-org token has its org baked in, so X-Treg-Org cannot switch it
@@ -49,8 +67,78 @@ async def test_a_team_with_a_BALANCE_can_still_be_deleted(clients):
 
     bal = await clients.get(f"/orgs/{org_id}/balance", headers=hdr)
     assert bal.status_code == 200 and bal.json()["balance_micro"] > 0, (
-        "expected the new-team grant — without a balance this test would not reproduce the bug")
+        "expected the verified-account grant — without a balance this test would not reproduce the bug")
 
     gone = await clients.request("DELETE", f"/orgs/{org_id}", params={"confirm": slug}, headers=hdr)
     assert gone.status_code == 200, gone.text
     assert (await clients.get(f"/orgs/{org_id}/balance", headers=hdr)).status_code != 200
+
+
+async def test_a_team_with_oauth_family_authority_can_be_deleted(clients):
+    """OAuthGrant deliberately calls its FK `current_org_id`, so the schema-walking `org_id` guard
+    above cannot discover it. Pin its explicit cascade path before Postgres turns an omission into a
+    foreign-key 500 (SQLite does not enforce that FK in this suite)."""
+    from datetime import datetime
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import OAuthGrant, OAuthRefresh
+
+    former = (await clients.post("/orgs", json={"name": "former-oauth-family-team"})).json()
+    made = (await clients.post("/orgs", json={"name": "oauth-family-team"})).json()
+    async with session_maker() as db:
+        db.add(OAuthGrant(family_id="delete-family", current_org_id=made["org_id"]))
+        # Provenance can name a PREVIOUS team. Deleting current family authority still revokes and
+        # removes the whole family; otherwise this historical row is orphaned from its authority.
+        db.add(OAuthRefresh(token_hash="delete-token", family_id="delete-family", client_id="c",
+                            user_id=1, org_id=former["org_id"],
+                            expires_at=datetime(2026, 9, 1)))
+        await db.commit()
+    gone = await clients.request("DELETE", f"/orgs/{made['org_id']}",
+                                 params={"confirm": made["org"]},
+                                 headers={"X-Treg-Token": made["token"]})
+    assert gone.status_code == 200, gone.text
+    async with session_maker() as db:
+        assert (await db.execute(select(OAuthGrant).where(
+            OAuthGrant.family_id == "delete-family"))).scalar_one_or_none() is None
+        assert (await db.execute(select(OAuthRefresh).where(
+            OAuthRefresh.family_id == "delete-family"))).scalar_one_or_none() is None
+
+
+async def test_deleting_a_former_grant_team_removes_the_whole_family(clients):
+    """A moved family no longer names its former team through OAuthGrant; only the retired token's
+    immutable provenance does. Deleting that team used to delete just the retired evidence and leave
+    the live destination token working, so replay of the stolen old token became "unknown" instead
+    of triggering reuse detection. Team deletion must therefore revoke the provenance-side family
+    just as completely as the authority-side case above."""
+    from datetime import datetime, timedelta, timezone
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import OAuthGrant, OAuthRefresh, User
+
+    former = (await clients.post("/orgs", json={"name": "former-grant-team"})).json()
+    current = (await clients.post("/orgs", json={"name": "current-grant-team"})).json()
+    async with session_maker() as db:
+        user = (await db.execute(select(User).where(
+            User.email == "tim@superdesign.dev"))).scalar_one()
+        expires = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
+        db.add(OAuthGrant(family_id="moved-delete-family", current_org_id=current["org_id"]))
+        db.add(OAuthRefresh(
+            token_hash="retired-former-token", family_id="moved-delete-family", client_id="c",
+            user_id=user.id, org_id=former["org_id"], expires_at=expires,
+            retired_at=datetime.now(timezone.utc).replace(tzinfo=None), retired_reason="rotated"))
+        db.add(OAuthRefresh(
+            token_hash="live-current-token", family_id="moved-delete-family", client_id="c",
+            user_id=user.id, org_id=current["org_id"], expires_at=expires))
+        await db.commit()
+
+    gone = await clients.request(
+        "DELETE", f"/orgs/{former['org_id']}", params={"confirm": former["org"]},
+        headers={"X-Treg-Token": former["token"]})
+    assert gone.status_code == 200, gone.text
+    async with session_maker() as db:
+        assert (await db.execute(select(OAuthGrant).where(
+            OAuthGrant.family_id == "moved-delete-family"))).scalar_one_or_none() is None
+        assert (await db.execute(select(OAuthRefresh).where(
+            OAuthRefresh.family_id == "moved-delete-family"))).scalars().all() == []

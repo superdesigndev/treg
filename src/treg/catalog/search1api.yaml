@@ -1,0 +1,302 @@
+provider: search1api
+source:
+  docs: https://s1.dev/docs
+  openapi: https://api.search1api.com/openapi.json
+  curated: '2026-09-30'
+pricing_url: https://s1.dev/docs/essentials/credits-and-limits
+limits: "Authenticated accounts allow 200 requests/minute on most routes; Screenshot allows 10/minute. HTTP 429 carries Retry-After: 60. Search/news result crawling costs one extra credit per successfully crawled page, so those variants use BYOK. Batch bodies remain available through a team's raw tool."
+proposed_capabilities:
+  web.trending: "Read current developer trends"
+
+endpoints:
+  - id: search1api.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search
+    body_allowlist: true
+    name: Search the live web
+    summary: Return ranked web results from one or more search engines.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "site:example.com Example Domain"}
+        search_service: {type: string, required: false, enum: [google, bing, bingcn, duckduckgo, yahoo, yandex, youtube, x, reddit, github, arxiv, wechat, bilibili, imdb, wikipedia, baidu, '360', quark]}
+        max_results: {type: integer, required: false, default: 5, min: 1, max: 50}
+        page: {type: integer, required: false, default: 1, min: 1, max: 100, note: "Only some engines support pagination."}
+        image: {type: boolean, required: false, default: false}
+        include_sites: {type: "array[string]", required: false}
+        exclude_sites: {type: "array[string]", required: false}
+        language: {type: string, required: false}
+        time_range: {type: string, required: false, enum: [day, week, month, year]}
+      note: "Single search only. Full-page result crawling uses the BYOK tool because its successful-page charge is not reported per call."
+    test_request: {body: {query: "site:example.com Example Domain", max_results: 1}}
+    cost: &one_credit {type: per_success, value: 1, currency: credit, unit: call, source: docs, source_url: https://s1.dev/docs/essentials/credits-and-limits, checked: '2026-09-30', confidence: documented, note: "One credit on HTTP 200, including zero results; errors consume no credit."}
+    verified: '2026-09-30'
+    added: '2026-09-30'
+    example_response: examples/search1api.web.search.json
+    docs_url: https://s1.dev/docs/basic/search
+
+  - id: search1api.web.search.crawl
+    added: '2026-09-30'
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search
+    body_allowlist: true
+    platform_blocked: "Result crawling charges one credit per successfully crawled page without per-call charge evidence; connect your own Search1API key."
+    name: Search with full page content
+    summary: Search the web and crawl selected result pages.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "site:example.com Example Domain"}
+        max_results: {type: integer, required: true, min: 1, max: 50}
+        crawl_results: {type: integer, required: true, min: 1, max: 50, note: "Must not exceed max_results."}
+        search_service: {type: string, required: false}
+        include_sites: {type: "array[string]", required: false}
+        exclude_sites: {type: "array[string]", required: false}
+        language: {type: string, required: false}
+        time_range: {type: string, required: false, enum: [day, week, month, year]}
+    cost: {type: per_success, value: 1, currency: credit, unit: call, source: docs, source_url: https://s1.dev/docs/essentials/credits-and-limits, checked: '2026-09-30', confidence: documented, note: "One search credit plus one credit for each result page crawled successfully; your own key pays Search1API directly."}
+    docs_url: https://s1.dev/docs/basic/search
+
+  - id: search1api.web.news
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /news
+    body_allowlist: true
+    name: Search recent news
+    summary: Return ranked news coverage from one or more sources.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "OpenAI"}
+        search_service: {type: string, required: false, enum: [google, bing, duckduckgo, yahoo, hackernews, reuters]}
+        max_results: {type: integer, required: false, default: 5, min: 1, max: 50}
+        image: {type: boolean, required: false, default: false}
+        include_sites: {type: "array[string]", required: false}
+        exclude_sites: {type: "array[string]", required: false}
+        language: {type: string, required: false}
+        time_range: {type: string, required: false, enum: [day, week, month, year]}
+      note: "Single query without result crawling; a team's raw tool can send batch requests."
+    test_request: {body: {query: OpenAI, search_service: hackernews, max_results: 1}}
+    cost: *one_credit
+    verified: '2026-09-30'
+    added: '2026-09-30'
+    example_response: examples/search1api.web.news.json
+    docs_url: https://s1.dev/docs/basic/news
+
+  - id: search1api.web.news.crawl
+    added: '2026-09-30'
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /news
+    body_allowlist: true
+    platform_blocked: "Result crawling has a variable successful-page charge without per-call evidence; connect your own Search1API key."
+    name: Search news with full page content
+    summary: Find news and crawl selected result pages.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "OpenAI"}
+        max_results: {type: integer, required: true, min: 1, max: 50}
+        crawl_results: {type: integer, required: true, min: 1, max: 50, note: "Must not exceed max_results."}
+        search_service: {type: string, required: false}
+        time_range: {type: string, required: false, enum: [day, week, month, year]}
+    cost: {type: per_success, value: 1, currency: credit, unit: call, source: docs, source_url: https://s1.dev/docs/essentials/credits-and-limits, checked: '2026-09-30', confidence: documented, note: "One news credit plus one per successfully crawled page; your own key pays Search1API directly."}
+    docs_url: https://s1.dev/docs/basic/news
+
+  - id: search1api.web.crawl
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /crawl
+    body_allowlist: true
+    name: Read a web page
+    summary: Return clean text and metadata from one public URL.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        enableFallback: {type: boolean, required: false, default: true}
+      note: "A target page's 404 or 410 costs Search1API one credit; treg cannot prove that charge from the error body, so its shared tier absorbs it."
+    test_request: {body: {url: "https://example.com"}}
+    cost: *one_credit
+    verified: '2026-09-30'
+    added: '2026-09-30'
+    example_response: examples/search1api.web.crawl.json
+    docs_url: https://s1.dev/docs/basic/crawl
+
+  - id: search1api.web.sitemap
+    capability: web.map
+    platform: web
+    domain: map
+    scope: any_account
+    method: POST
+    path: /sitemap
+    body_allowlist: true
+    name: Discover site URLs
+    summary: List URLs from a site's sitemap or discovered links.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        type: {type: string, required: false, enum: [sitemap, all]}
+    test_request: {body: {url: "https://example.com", type: sitemap}}
+    cost: *one_credit
+    verified: '2026-09-30'
+    added: '2026-09-30'
+    example_response: examples/search1api.web.sitemap.json
+    docs_url: https://s1.dev/docs/basic/sitemap
+
+  - id: search1api.web.trending
+    capability: web.trending
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /trending
+    body_allowlist: true
+    name: Find trending developer topics
+    summary: Read current GitHub or Hacker News trends.
+    input:
+      bodyType: json
+      body:
+        search_service: {type: string, required: true, enum: [github, hackernews], example: hackernews}
+        max_results: {type: integer, required: false, min: 1, example: 5}
+    test_request: {body: {search_service: hackernews, max_results: 1}}
+    cost: *one_credit
+    verified: '2026-09-30'
+    added: '2026-09-30'
+    example_response: examples/search1api.web.trending.json
+    docs_url: https://s1.dev/docs/basic/trending
+
+  - id: search1api.web.extract.structured
+    capability: web.extract.structured
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /extract
+    body_allowlist: true
+    name: Extract structured page data
+    summary: Extract fields from a public page using a prompt and JSON Schema.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        prompt: {type: string, required: false, example: "Extract the page title."}
+        response_format: {type: object, required: true, note: "Use {type: json_schema, json_schema: <JSON Schema>}; the live API rejects omission despite its docs."}
+    test_request: {body: {url: "https://example.com", prompt: "Extract the page title.", response_format: {type: json_schema, json_schema: {type: object, properties: {title: {type: string}}, required: [title]}}}}
+    cost: {type: per_success, value: 10, currency: credit, unit: call, source: docs, source_url: https://s1.dev/docs/essentials/credits-and-limits, checked: '2026-09-30', confidence: documented, note: "Ten credits on success; rejected and failed requests are unbilled."}
+    verified: '2026-09-30'
+    added: '2026-09-30'
+    example_response: examples/search1api.web.extract.structured.json
+    docs_url: https://s1.dev/docs/advanced/extract
+
+  - id: search1api.web.screenshot
+    added: '2026-09-30'
+    capability: web.screenshot
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /screenshot
+    body_allowlist: true
+    name: Capture a web page
+    summary: Render one public URL as PNG, JPEG or WebP binary image data.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        format: {type: string, required: false, default: png, enum: [png, jpeg, webp]}
+        full_page: {type: boolean, required: false, default: false}
+        viewport: {type: object, required: false, note: "Width 320-2560, height 200-1440, device_scale_factor 1-2."}
+        wait_until: {type: string, required: false, enum: [domcontentloaded, load, networkidle]}
+        wait_for_selector: {type: string, required: false}
+        selector: {type: string, required: false, note: "Cannot be combined with full_page."}
+        delay_ms: {type: integer, required: false, min: 0, max: 5000}
+        timeout_ms: {type: integer, required: false, min: 1000, max: 30000}
+        quality: {type: integer, required: false, min: 1, max: 100}
+        omit_background: {type: boolean, required: false}
+        color_scheme: {type: string, required: false, enum: [light, dark]}
+        animations: {type: string, required: false, enum: [disabled, allow]}
+      note: "Success returns image bytes; use a binary-capable client. Full-page and selector cannot both be set."
+    test_request: {body: {url: "https://example.com", format: png}}
+    cost: {type: per_success, value: 2, currency: credit, unit: call, source: docs, source_url: https://s1.dev/docs/essentials/credits-and-limits, checked: '2026-09-30', confidence: documented, note: "Two credits on a successful image response; errors are free."}
+    docs_url: https://s1.dev/docs/basic/screenshot
+
+  - id: search1api.web.deepcrawl
+    capability: web.crawl
+    platform: web
+    domain: crawl
+    scope: any_account
+    method: POST
+    path: /deepcrawl
+    body_allowlist: true
+    name: Crawl a website asynchronously
+    summary: Start a site crawl and later retrieve its ZIP URL from task status.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        type: {type: string, required: false, enum: [sitemap, all]}
+      note: "The 20-credit charge is incurred when Search1API accepts the task, even if its later workflow fails."
+    test_request: {body: {url: "https://example.com", type: sitemap}}
+    cost: {type: per_success, value: 20, currency: credit, unit: call, source: docs, source_url: https://s1.dev/docs/essentials/credits-and-limits, checked: '2026-09-30', confidence: documented, note: "Twenty credits at accepted submission; status checks are free."}
+    verified: '2026-09-30'
+    added: '2026-09-30'
+    example_response: examples/search1api.web.deepcrawl.json
+    docs_url: https://s1.dev/docs/advanced/deepcrawl
+    resource_ownership:
+      produces:
+        - {kind: "poll:search1api.web.deepcrawl.status", path: taskId}
+    async:
+      id_from: taskId
+      poll:
+        endpoint: search1api.web.deepcrawl.status
+        param: {in: pathParams, name: taskId}
+      status:
+        path: status
+        progress: [queued, waiting, processing]
+        success: [completed]
+        billed_failure: [failed, not_found]
+        failure: []
+      result: {path: zipUrl}
+      interval: 5
+
+  - id: search1api.web.deepcrawl.status
+    async: false
+    kind: utility
+    capability: web.crawl.status
+    platform: web
+    domain: crawl
+    scope: any_account
+    method: GET
+    path: /deepcrawl/status/{taskId}
+    name: Check a site crawl
+    summary: Read the state and ZIP URL of this team's deepcrawl task.
+    resource_ownership:
+      requires: {kind: "poll:search1api.web.deepcrawl.status", param: taskId}
+    input:
+      pathParams:
+        taskId: {type: string, required: true, example: "00000000-0000-4000-8000-000000000001"}
+    test_request: {pathParams: {taskId: "00000000-0000-4000-8000-000000000001"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Task status consumes no credits."}
+    verified: '2026-09-30'
+    added: '2026-09-30'
+    example_response: examples/search1api.web.deepcrawl.status.json
+    docs_url: https://s1.dev/docs/advanced/deepcrawl

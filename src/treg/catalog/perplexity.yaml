@@ -1,0 +1,248 @@
+provider: perplexity
+source:
+  docs: https://docs.perplexity.ai/docs/getting-started/overview
+  curated: '2026-09-29'
+pricing_url: https://docs.perplexity.ai/docs/getting-started/pricing
+limits: "Search allows 50 query units/second. Agent starts at one request/second for a new account; higher usage tiers raise that limit. Platform calls use a conservative shared-key pace of one request/second."
+proposed_capabilities:
+  web.answer.cancel: "Cancel a web research task"
+
+endpoints:
+  - id: perplexity.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search
+    body_allowlist: true
+    name: Search the web
+    summary: Return ranked web pages and extracted snippets for one query.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "IANA reserved example domains"}
+        search_type: {type: string, required: true, enum: [web], example: web}
+        max_results: {type: integer, required: false, default: 10, min: 1, max: 20, example: 1}
+        country: {type: string, required: false, example: US}
+        search_domain_filter: {type: "array[string]", required: false, maxItems: 20}
+        search_language_filter: {type: "array[string]", required: false, maxItems: 10}
+        search_context_size: {type: string, required: false, enum: [low, medium, high]}
+      note: "One successful request costs $0.005, including a no-result response. This row accepts one query; a raw own-key tool can use the full upstream API."
+    test_request: {body: {query: "IANA reserved example domains", search_type: web, max_results: 3}}
+    cost:
+      type: per_call
+      value: 0.005
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://docs.perplexity.ai/docs/getting-started/pricing
+      checked: '2026-09-29'
+      confidence: verified
+      note: "Search bills each successful POST once, including a no-result response; there are no token charges."
+    verified: '2026-09-29'
+    added: '2026-09-29'
+    docs_url: https://docs.perplexity.ai/docs/search/quickstart
+    example_response: examples/perplexity.web.search.json
+
+  - id: perplexity.web.search.fast
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search
+    body_allowlist: true
+    name: Search the web quickly
+    summary: Return lower-latency web results for everyday lookup and agent workflows.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "IANA reserved example domains"}
+        search_type: {type: string, required: true, enum: [fast], example: fast}
+        max_results: {type: integer, required: false, default: 10, min: 1, max: 20, example: 1}
+        country: {type: string, required: false, example: US}
+        search_domain_filter: {type: "array[string]", required: false, maxItems: 20}
+        search_language_filter: {type: "array[string]", required: false, maxItems: 10}
+        search_context_size: {type: string, required: false, enum: [low, medium, high]}
+      note: "Use standard Search for rare, difficult or ambiguous questions. Fast Search has the same response shape and costs $0.001 per successful request."
+    test_request: {body: {query: "IANA reserved example domains", search_type: fast, max_results: 3}}
+    cost:
+      type: per_call
+      value: 0.001
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://docs.perplexity.ai/docs/search/fast-search
+      checked: '2026-09-29'
+      confidence: verified
+      note: "Fast Search bills each successful POST once; there are no token charges."
+    verified: '2026-09-29'
+    added: '2026-09-29'
+    docs_url: https://docs.perplexity.ai/docs/search/fast-search
+    example_response: examples/perplexity.web.search.fast.json
+
+  - id: perplexity.web.answer.fast
+    capability: web.answer
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /v1/agent
+    body_allowlist: true
+    name: Answer a web question quickly
+    summary: Produce a short cited answer with the fast Agent preset.
+    input:
+      bodyType: json
+      body:
+        preset: {type: string, required: true, enum: [fast], example: fast}
+        input: {type: string, required: true, example: "What is example.com used for?"}
+        max_steps: {type: integer, required: true, enum: [1], example: 1}
+        max_output_tokens: {type: integer, required: true, min: 1, max: 512, example: 160}
+      note: "The $0.01 hold is an estimate; the reported usage.cost.total_cost can exceed it. This tool limits steps and output tokens. Use your own raw tool for other models, tools or streaming."
+    test_request: {body: {preset: fast, input: "What is example.com used for? Answer in one sentence with a citation.", max_steps: 1, max_output_tokens: 160}}
+    cost:
+      type: per_call
+      value: 0.01
+      fallback: {value: 0.01, note: "A reservation estimate, not a price cap or fixed price; successful responses settle the reported cost."}
+      settle: usage
+      usage: {path: usage.cost.total_cost, unit: usd}
+      currency: USD
+      unit: call
+      source: observed
+      source_url: https://docs.perplexity.ai/docs/getting-started/pricing
+      checked: '2026-09-29'
+      confidence: verified
+      note: "Variable token and tool charge. A bounded live request reported $0.00125, including one $0.001 Fast Search invocation."
+    verified: '2026-09-29'
+    added: '2026-09-29'
+    docs_url: https://docs.perplexity.ai/docs/agent-api/quickstart
+    example_response: examples/perplexity.web.answer.fast.json
+
+  - id: perplexity.web.answer.low
+    capability: web.answer
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /v1/agent
+    body_allowlist: true
+    name: Research and answer a web question
+    summary: Produce a cited answer with light multi-step research.
+    input:
+      bodyType: json
+      body:
+        preset: {type: string, required: true, enum: [low], example: low}
+        input: {type: string, required: true, example: "What is example.com used for?"}
+        max_steps: {type: integer, required: true, min: 1, max: 3, example: 2}
+        max_output_tokens: {type: integer, required: true, min: 1, max: 1024, example: 256}
+      note: "The $0.02 hold is an estimate; the reported usage.cost.total_cost can exceed it. This tool limits steps and output tokens. Use your own raw tool for other models, tools or streaming."
+    test_request: {body: {preset: low, input: "What is example.com used for? Answer in one sentence with a citation.", max_steps: 2, max_output_tokens: 256}}
+    cost:
+      type: per_call
+      value: 0.02
+      fallback: {value: 0.02, note: "A reservation estimate, not a price cap or fixed price; successful responses settle the reported cost."}
+      settle: usage
+      usage: {path: usage.cost.total_cost, unit: usd}
+      currency: USD
+      unit: call
+      source: observed
+      source_url: https://docs.perplexity.ai/docs/getting-started/pricing
+      checked: '2026-09-29'
+      confidence: verified
+      note: "Variable token and tool charge. A bounded live request reported $0.00303, including one $0.0025 standard Search invocation."
+    verified: '2026-09-29'
+    added: '2026-09-29'
+    docs_url: https://docs.perplexity.ai/docs/agent-api/quickstart
+    example_response: examples/perplexity.web.answer.low.json
+
+  - id: perplexity.web.research.medium
+    added: '2026-09-29'
+    capability: web.answer.research
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /v1/agent
+    body_allowlist: true
+    platform_blocked: "Cancelled background runs did not return usage or cost evidence, so treg cannot settle a shared-key hold; connect your own Perplexity key."
+    name: Start background web research
+    summary: Queue a multi-step research answer and receive a response id for polling or cancellation.
+    input:
+      bodyType: json
+      body:
+        preset: {type: string, required: true, enum: [medium], example: medium}
+        input: {type: string, required: true, example: "Compare the purposes of example.com and example.org with citations."}
+        background: {type: boolean, required: true, enum: [true], example: true}
+        max_steps: {type: integer, required: false, min: 1, max: 20}
+        max_output_tokens: {type: integer, required: false, min: 1, max: 8192}
+      note: "Only your own key can run this tool. Completed and incomplete runs report usage.cost.total_cost; cancelled runs did not report cost in live tests."
+    test_request: {body: {preset: medium, input: "Compare the purposes of example.com and example.org with citations.", background: true, max_steps: 2, max_output_tokens: 1200}}
+    cost:
+      type: per_success
+      value: null
+      currency: USD
+      unit: call
+      source: observed
+      source_url: https://docs.perplexity.ai/docs/getting-started/pricing
+      checked: '2026-09-29'
+      confidence: unknown
+      note: "Variable token and tool cost on your own key. Live completed and incomplete runs reported $0.00433 and $0.00593; cancellation reported no usage."
+    docs_url: https://docs.perplexity.ai/docs/agent-api/background-mode
+    example_response: examples/perplexity.web.research.medium.json
+    async:
+      id_from: id
+      poll:
+        endpoint: perplexity.web.research.status
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        progress: [queued, in_progress, cancelling]
+        success: [completed]
+        failure: [failed, cancelled, incomplete]
+      result: {path: output}
+      interval: 3
+
+  - id: perplexity.web.research.status
+    added: '2026-09-29'
+    kind: utility
+    capability: web.answer.status
+    platform: web
+    domain: answer
+    scope: any_account
+    method: GET
+    path: /v1/agent/{id}
+    platform_blocked: "The background research tool uses only the caller's Perplexity account."
+    name: Check background research
+    summary: Retrieve the current state, output and terminal usage of your research run.
+    resource_ownership:
+      requires: {kind: "poll:perplexity.web.research.status", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "resp_00000000-0000-4000-8000-000000000001"}
+    test_request: {pathParams: {id: "resp_00000000-0000-4000-8000-000000000001"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling does not start another Agent run or report a separate charge."}
+    docs_url: https://docs.perplexity.ai/docs/agent-api/background-mode
+    example_response: examples/perplexity.web.research.status.json
+
+  - id: perplexity.web.research.cancel
+    added: '2026-09-29'
+    kind: utility
+    capability: web.answer.cancel
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /v1/agent/{id}/cancel
+    platform_blocked: "The background research tool uses only the caller's Perplexity account."
+    name: Cancel background research
+    summary: Request cancellation, then poll until the run reaches a terminal state.
+    resource_ownership:
+      requires: {kind: "poll:perplexity.web.research.status", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "resp_00000000-0000-4000-8000-000000000001"}
+    test_request: {pathParams: {id: "resp_00000000-0000-4000-8000-000000000001"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "The cancellation request has no separate charge; work already done may still be billed upstream."}
+    docs_url: https://docs.perplexity.ai/docs/agent-api/background-mode
+    example_response: examples/perplexity.web.research.cancel.json

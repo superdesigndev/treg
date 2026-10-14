@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "facebook-marketplace-item",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 186,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "categories": [
+        "Garden & Outdoor"
+      ],
+      "condition": "New",
+      "currency": "ZAR",
+      "description": "Good day everyone\n\nWe are a small home based business situated in pelikan park\nWe build these beautiful picket fences to put on your loved ones graves\n\nPrices on pics\nAll pricing includes the installation at the graveyard\n\nShould u wish to order pls remember full payment is required\nPls private msg …",
+      "is_sold": false,
+      "item_id": "886233566263264",
+      "listed_at": "2023-09-28T13:36:15Z",
+      "location": "Cape Town, South Africa",
+      "photos": [
+        "https://scontent-dus1-1.xx.fbcdn.net/v/t45.5328-4/382550723_9973328326075506_6355190775484055916_n.jpg?stp=dst-jpg_s960x960_tt6&_nc_cat=109&ccb=1-7&_nc_sid=247b10&_nc_ohc=0Fe2zUcD_KAQ7kNvwGNwpTI&_nc_oc=Adr5AthHY7TUnPL46rod_6T01mXfAmeEMToSovSKX4hO0cg4DcEfM_6snaq1MYXOG88&_nc_zt=23&_nc_ht=scontent-dus1…"
+      ],
+      "price": 1500.0,
+      "price_before": null,
+      "seller_id": "23872896529023198",
+      "title": "Pickett fences for Graves available",
+      "url": "https://www.facebook.com/marketplace/item/886233566263264/"
+    }
+  ]
+}

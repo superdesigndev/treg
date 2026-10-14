@@ -1,0 +1,27 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "id": "61593125908632",
+          "image": "https://scontent-ord5-2.xx.fbcdn.net/v/t39.30808-1/779996170_122106992991437530_4289225590178494768_n.png",
+          "name": "Brands boost",
+          "url": "https://www.facebook.com/people/Brands-boost/61593125908632/"
+        },
+        "… 2 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0198,
+  "items": 3,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "resultId": "1d085db5-d2d3-4321-870f-2d4eb13c6243"
+}

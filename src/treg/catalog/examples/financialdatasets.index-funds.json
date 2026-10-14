@@ -1,0 +1,27 @@
+{
+  "ticker": "SPY",
+  "fund": {
+    "name": "State Street SPDR S&P 500 ETF",
+    "cik": "884394",
+    "asset_class": "equity",
+    "as_of": "2026-06-30",
+    "filing_date": "2026-08-28",
+    "source": "nport",
+    "total_net_assets": 781188872106.76,
+    "total_holdings": 504,
+    "returned": 1,
+    "offset": 0
+  },
+  "holdings": [
+    {
+      "ticker": "NVDA",
+      "name": "NVIDIA Corp",
+      "cusip": "67066G104",
+      "isin": "US67066G1040",
+      "weight": 7.517011844111,
+      "market_value": 58722060041.15,
+      "shares": 293478235.0,
+      "asset_class": "equity"
+    }
+  ]
+}

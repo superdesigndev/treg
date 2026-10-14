@@ -1,0 +1,39 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "inlineData": {
+              "mimeType": "audio/wav",
+              "data": "UklGRqoEBABXQVZFZm10IBAAAAABAAEAwF0AAIC7AAACABAAZGF0YQDtAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD//wAA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AgD+/wIA/v8CAP7/AgD+/wIA/v8CAP7/AgD9/wIA/v8DAP7/AwD+/wMA/v8DAP7/AwD+/wMA/v8DAP7/AgD+/wIA/v8CAP3/AgD9/wEA/v8CAP3/AgD9/wIA/f8CAP3/AgD9/wMA/f8DAP3/AwD9/wQA/f8EAP3/BAD9/wQA/f8EAPz/BAD8/wQA/P8EAPz/AwD9/wMA/f8DAP3/AwD9… [351128 chars total]"
+            }
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 15,
+    "candidatesTokenCount": 172,
+    "totalTokenCount": 187,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 15
+      }
+    ],
+    "candidatesTokensDetails": [
+      {
+        "modality": "AUDIO",
+        "tokenCount": 172
+      }
+    ],
+    "serviceTier": "standard"
+  },
+  "modelVersion": "gemini-3.8-flash-lite-tts",
+  "responseId": "3-q7auaHH6qtg8UPsJO5OA"
+}

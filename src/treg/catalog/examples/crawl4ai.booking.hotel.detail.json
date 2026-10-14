@@ -1,0 +1,84 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "booking-hotel",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 192,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "address": "111 West Huron, River North, Chicago, IL 60654, United States",
+      "category_scores": [
+        {
+          "name": "Cleanliness",
+          "score": 8.3
+        },
+        {
+          "name": "Comfort",
+          "score": 8.5
+        }
+      ],
+      "check_in": "From 15:00 to 16:00",
+      "check_out": "From 11:30 to 12:00",
+      "city": "Chicago",
+      "country": "USA",
+      "description": "Located in Chicago’s vibrant River North neighborhood, this eco-friendly hotel is within walking distance of the unique shops and top restaurants on the Magnificent Mile. Free WiFi is available. Adorned in natural earth tone furniture and décor, every room at Hotel Felix includes a 32-inch flat-scre…",
+      "facilities": [
+        "Parking",
+        "Free WiFi"
+      ],
+      "hotel_id": "177574",
+      "latitude": 41.89472748056861,
+      "longitude": -87.63157591223717,
+      "name": "Hotel Felix",
+      "nearby": [
+        {
+          "distance_km": 0.75,
+          "name": "Water Tower Chicago"
+        },
+        {
+          "distance_km": 0.85,
+          "name": "Loyola University Museum Of Art"
+        }
+      ],
+      "photos": [
+        "https://cf.bstatic.com/xdata/images/hotel/max1024x768/903533783.jpg?k=76db9a48070c445428e4a25b9ca0969ec6d157498aa4e99dbdd8547a4e4a676f",
+        "https://cf.bstatic.com/xdata/images/hotel/max1024x768/903563986.jpg?k=bade8e34689b4b6cdf8a38dd499c9fa745d13d5f89bf008fecc29f144a9d90e2"
+      ],
+      "rating": 8.0,
+      "review_count": 1536,
+      "stars": 4,
+      "url": "https://www.booking.com/hotel/us/felix.html"
+    }
+  ]
+}

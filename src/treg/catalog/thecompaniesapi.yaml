@@ -26,13 +26,20 @@ source:
 pricing_url: https://www.thecompaniesapi.com/pricing
 endpoints:
   - id: thecompaniesapi.companies.enrich
+    added: '2026-07-28'
+    cache:
+      ignore_paths: ["meta.credits"]
+    test_request: {"pathParams": {"domain": "stripe.com"}}
     domain: companies
     capability: companies.enrich
+    miss:
+      status: 404
+      means: "`companyNotFound` — no company behind this domain, an expected outcome and free (1 credit only when found); do not retry the same domain"
     platform: companies
     scope: any_account
     method: GET
     path: /companies/{domain}
-    name: "Enrich a company by domain"
+    name: "Enrich a company by domain — 80+ datapoints"
     summary: "Enrich a company from its domain — 80+ datapoints: industry, size, revenue, socials"
     input:
       pathParams:
@@ -55,13 +62,15 @@ endpoints:
     docs_url: https://www.thecompaniesapi.com/api/enrich-company-from-domain
 
   - id: thecompaniesapi.companies.search
+    added: '2026-07-28'
+    test_request: {"queryParams": {"query": "[{\"attribute\": \"about.industries\", \"operator\": \"or\", \"sign\": \"equals\", \"values\": [\"fintech\"]}]", "size": 2}}
     domain: companies
     capability: companies.search
     platform: companies
     scope: any_account
     method: GET
     path: /companies
-    name: "Search companies by attributes"
+    name: "Search companies by industry, size, location or tech"
     summary: "Search companies by industry, size, location, technology or any other attribute filter"
     input:
       queryParams:
@@ -92,13 +101,15 @@ endpoints:
     docs_url: https://www.thecompaniesapi.com/api/search-companies
 
   - id: thecompaniesapi.companies.enrich_by_email
+    added: '2026-07-28'
+    test_request: {"queryParams": {"email": "patrick@stripe.com"}}
     domain: companies
     capability: companies.enrich
     platform: companies
     scope: any_account
     method: GET
     path: /companies/by-email
-    name: "Enrich company by email"
+    name: "Enrich the company behind an email address"
     summary: "Identify and enrich the company behind an email address"
     input:
       queryParams:
@@ -113,19 +124,21 @@ endpoints:
       unit: call
       source: docs
       source_url: https://www.thecompaniesapi.com/pricing
-      checked: '2026-07-28'
-      confidence: inferred
-      note: presumed 1 credit per company found, matching domain enrichment — this route's price is NOT explicitly published, so treat the figure as an inference and confirm against a real response's credit accounting before relying on it.
+      checked: '2026-08-13'
+      confidence: verified
+      note: '1 credit per company found. VERIFIED live 2026-08-13: the response body reports its own accounting — a by-email enrich returned meta.cost 1 (with meta.credits showing the remaining balance), confirming 1 credit per matched company.'
     docs_url: https://www.thecompaniesapi.com/api/enrich-company-from-email
 
   - id: thecompaniesapi.companies.email_pattern
+    added: '2026-07-28'
+    test_request: {"pathParams": {"domain": "stripe.com"}}
     domain: companies
     capability: companies.email_pattern
     platform: companies
     scope: any_account
     method: GET
     path: /companies/{domain}/email-patterns
-    name: "Get company email address patterns"
+    name: "A company's email address patterns by domain"
     summary: "Find which email-address formats a company uses, and how common each one is"
     input:
       pathParams:
@@ -148,6 +161,7 @@ endpoints:
     docs_url: https://www.thecompaniesapi.com/api/fetch-company-email-patterns
 
   - id: thecompaniesapi.account.usage
+    added: '2026-07-28'
     kind: utility
     capability: account.usage
     platform: account

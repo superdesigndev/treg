@@ -10,6 +10,7 @@ from __future__ import annotations
 from httpx import AsyncClient
 
 import treg.api as api_mod
+from treg.domain.governance import publicdemo as publicdemo_policy
 
 
 def _h(token: str) -> dict:
@@ -122,7 +123,7 @@ async def test_delete_revokes_and_unlocks(clients: AsyncClient):
 async def test_public_calls_are_rate_limited_per_ip(clients: AsyncClient, monkeypatch):
     org_id = await _org_with_stripe_tool(clients)
     pub = await _mint_public(clients, org_id)
-    monkeypatch.setattr(api_mod, "PUBLIC_DEMO_RATE_MAX", 3)
+    monkeypatch.setattr(publicdemo_policy, "PUBLIC_DEMO_RATE_MAX", 3)
     for _ in range(3):
         assert (await clients.post("/call/stripe", headers=_h(pub), content="a=1")).status_code == 200
     r = await clients.post("/call/stripe", headers=_h(pub), content="a=1")

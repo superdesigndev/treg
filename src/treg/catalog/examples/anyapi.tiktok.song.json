@@ -1,0 +1,27 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "album": "GNX",
+      "author": "Kendrick Lamar & SZA",
+      "coverUrl": "https://p77-sg.tiktokcdn.com/aweme/200x200/tos-alisg-v-2774/ooCBAEtE4DqIfBLAjADiRIneQATZEYFgAh8tm8.jpeg",
+      "duration": 59,
+      "isOriginal": false,
+      "shareUrl": "https://www.tiktok.com/music/luther-7439295283975702544",
+      "songId": "7439295283975702544",
+      "title": "luther",
+      "videoCount": 1424921
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0009,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-bison-cb2f8f3c",
+    "name": "Bison",
+    "kind": "anonymous",
+    "artworkKey": "bison"
+  },
+  "resultId": "11489586-829f-486b-8fdd-ea94f7f740ed"
+}

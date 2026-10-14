@@ -42,12 +42,13 @@ pricing_url: https://www.spyfu.com/api
 endpoints:
   # --- Domain stats -----------------------------------------------------------------------------
   - id: spyfu.google.domain.overview
+    added: '2026-07-28'
     capability: google.domain.overview
     platform: google
     scope: any_account
     method: GET
     path: /apis/domain_stats_api/v2/getLatestDomainStats
-    name: "Get domain's Google performance overview"
+    name: "Google overview by domain — keywords, clicks, ad budget"
     summary: "A domain's recent Google performance — keyword counts, clicks and monthly ad budget"
     input:
       queryParams:
@@ -67,19 +68,20 @@ endpoints:
       unit: row
       source: docs
       source_url: https://www.spyfu.com/api
-      checked: '2026-07-28'
-      confidence: inferred
-      note: billed per ROW, and one row = one month. Domain Stats CPM is $0.40-$1.00 per 1,000 rows, so a handful of months is a fraction of a cent — but getAllDomainStats on an old domain returns 150+ rows per call.
+      checked: '2026-08-13'
+      confidence: documented
+      note: 'billed per ROW, and one row = one month. Domain Stats CPM is $0.40-$1.00 per 1,000 rows (SpyFu''s published rate; catalog uses the $1.00 upper bound), so a handful of months is a fraction of a cent — but getAllDomainStats on an old domain returns 150+ rows per call. CONFIRMED live 2026-08-13: getLatestDomainStats returned 200 with one row.'
     docs_url: https://developer.spyfu.com/reference/domainstatsapi_getlatestdomainstats_get
 
   # --- Paid search (PPC) ------------------------------------------------------------------------
   - id: spyfu.google.domain.paid_keywords
+    added: '2026-07-28'
     capability: google.domain.paid_keywords
     platform: google
     scope: any_account
     method: GET
     path: /apis/keyword_api/v2/ppc/getMostSuccessful
-    name: "List a domain's top paid keywords"
+    name: "Top Google Ads keywords by domain — search volume, CPC"
     summary: "A domain's best-performing Google Ads keywords, with volume, CPC and monthly cost"
     input:
       queryParams:
@@ -110,12 +112,13 @@ endpoints:
     docs_url: https://developer.spyfu.com/reference/paidserpapi_getmostsuccessful_get
 
   - id: spyfu.google.domain.ad_history
+    added: '2026-07-28'
     capability: google.domain.ad_history
     platform: google
     scope: any_account
     method: GET
     path: /apis/cloud_ad_history_api/v2/domain/getDomainAdHistory
-    name: "Get a domain's Google Ads history"
+    name: "Google Ads history by domain — ad copy and keywords"
     summary: "Google Ads a domain has run over time, with ad copy and the keywords it ran against"
     input:
       queryParams:
@@ -146,12 +149,13 @@ endpoints:
 
   # --- Organic search (SEO) ---------------------------------------------------------------------
   - id: spyfu.google.domain.ranked_keywords
+    added: '2026-07-28'
     capability: google.domain.ranked_keywords
     platform: google
     scope: any_account
     method: GET
     path: /apis/serp_api/v2/seo/getMostValuableKeywords
-    name: "List a domain's top organic keywords"
+    name: "Google keywords a domain ranks for — clicks, search volume"
     summary: "Google organic keywords driving the most clicks to a domain, with rank and volume"
     input:
       queryParams:
@@ -183,19 +187,20 @@ endpoints:
       unit: row
       source: docs
       source_url: https://www.spyfu.com/api
-      checked: '2026-07-28'
-      confidence: inferred
-      note: SEO Research CPM is $0.50-$5.00 per 1,000 rows depending on the endpoint (the top-pages endpoints are the $5.00 end); the exact tier for this one is not called out separately in SpyFu's pricing table. pageSize defaults to 5 — set it explicitly.
+      checked: '2026-08-13'
+      confidence: documented
+      note: 'SEO Research CPM is $0.50-$5.00 per 1,000 rows depending on the endpoint (the top-pages endpoints are the $5.00 end); the exact tier for this one is not called out separately in SpyFu''s pricing table, so the catalog uses the $5.00 upper bound. CONFIRMED live 2026-08-13: getMostValuableKeywords returned 200 with rows. pageSize defaults to 5 — set it explicitly.'
     docs_url: https://developer.spyfu.com/reference/organicserpapi_getmostvaluablekeywords_get
 
   # --- Competitors (the cheapest family at $0.20 CPM) -------------------------------------------
   - id: spyfu.google.domain.competitors
+    added: '2026-07-28'
     capability: google.domain.competitors
     platform: google
     scope: any_account
     method: GET
     path: /apis/competitors_api/v2/seo/getTopCompetitors
-    name: "List a domain's organic search competitors"
+    name: "Google organic competitors by domain — shared keywords"
     summary: "Domains competing with a target in Google organic, ranked by shared keywords"
     input:
       queryParams:
@@ -220,12 +225,13 @@ endpoints:
     docs_url: https://developer.spyfu.com/reference/competitorsapi_gettopseocompetitors_get
 
   - id: spyfu.google.domain.ppc_competitors
+    added: '2026-07-28'
     capability: google.domain.competitors
     platform: google
     scope: any_account
     method: GET
     path: /apis/competitors_api/v2/ppc/getTopCompetitors
-    name: "List a domain's PPC ad competitors"
+    name: "Google Ads competitors by domain — shared paid keywords"
     summary: "Find the domains bidding against a target on the same Google Ads keywords"
     input:
       queryParams:

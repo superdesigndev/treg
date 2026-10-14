@@ -11,7 +11,8 @@ import pytest
 from httpx import AsyncClient
 
 import treg.api as api_mod
-from treg import pubfeed
+from treg.application.onboard import pubfeed
+from treg.application import onboard as onboard_use_cases
 
 SECRET = "whsec_test_secret"
 
@@ -67,11 +68,34 @@ async def test_webhook_is_404_when_unconfigured(clients: AsyncClient, monkeypatc
     assert r.status_code == 404
 
 
+async def test_unconfigured_webhook_does_not_read_the_body(monkeypatch):
+    monkeypatch.setattr(api_mod.get_settings(), "demo_stripe_webhook_secret", "")
+    read = False
+
+    async def payload():
+        nonlocal read
+        read = True
+        return _charge_event()
+
+    with pytest.raises(onboard_use_cases.SandboxError, match="webhook_unconfigured"):
+        await onboard_use_cases.accept_stripe_event(payload_factory=payload, signature="")
+    assert read is False
+
+
 async def test_webhook_rejects_bad_signature(clients: AsyncClient):
     r = await clients.post("/stripe/webhook", content=_charge_event(),
                            headers={"Stripe-Signature": "t=1,v1=deadbeef"})
     assert r.status_code == 400
+    assert r.json()["detail"] == "bad signature"
     assert len(pubfeed._events) == 0
+
+
+async def test_webhook_rejects_bad_payload(clients: AsyncClient):
+    body = b"not-json"
+    r = await clients.post(
+        "/stripe/webhook", content=body, headers={"Stripe-Signature": _sign(body)})
+    assert r.status_code == 400
+    assert r.json()["detail"] == "bad payload"
 
 
 async def test_webhook_feeds_only_server_chosen_fields(clients: AsyncClient):

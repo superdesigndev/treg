@@ -1,0 +1,15 @@
+{
+  "billing_email": "",
+  "credit": "1000.00",
+  "credit_mc": 1000000,
+  "free": "0.00",
+  "free_mc": 0,
+  "free_period": "2026-10",
+  "has_card": true,
+  "recharge": {},
+  "spend_cap_mc": 0,
+  "spend_month": "0.00",
+  "spend_month_mc": 0,
+  "tier": "starter",
+  "topups": 1
+}

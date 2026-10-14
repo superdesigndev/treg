@@ -1,0 +1,62 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: hn-hiring: 'Ask HN: Who is hiring? (October 2026)' · 253 top-level posts · 14 match 'rust' and remote"
+    ]
+  },
+  "recipe": "hn-hiring",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 186,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "author": "KevinBongart",
+      "company": "Mainmatter",
+      "location": null,
+      "posted": "2026-10-01T15:22:08Z",
+      "role": null,
+      "salary": null,
+      "text": "Mainmatter (https://mainmatter.com/rust-consulting/) | REMOTE (EU) | Lead Rust Engineering Consultant | Full-time | 100–140k€\nMainmatter (https://mainmatter.com), the company behind EuroRust (https://eurorust.eu), is looking for an exceptional Rust engineering consultant to lead our team. You'll be ",
+      "url": "https://news.ycombinator.com/item?id=49922899"
+    },
+    {
+      "author": "aspir",
+      "company": "Fastly",
+      "location": null,
+      "posted": "2026-10-01T15:24:06Z",
+      "role": null,
+      "salary": null,
+      "text": "Fastly | Software Engineers (Senior, Staff, Principal) | US, UK, EU, APAC ONSITE PREFERRED | Full-time When you look at the headers of major websites, you’ll see us. If it has to be performant, secure, scaled worldwide, and always-on, it uses Fastly.\nWe're a global edge cloud platform for performanc",
+      "url": "https://news.ycombinator.com/item?id=49922929"
+    }
+  ]
+}

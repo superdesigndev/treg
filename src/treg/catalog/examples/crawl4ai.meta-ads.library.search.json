@@ -1,0 +1,144 @@
+{
+  "meta": {
+    "blocked": [
+      "www.facebook.com"
+    ],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: meta-ads-search: 'running shoes' · ALL · active · 20 ad(s) · one view · direct"
+    ]
+  },
+  "recipe": "meta-ads-search",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 196,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "ad_archive_id": "953573607005202",
+      "ad_url": "https://www.facebook.com/ads/library/?id=953573607005202",
+      "body": "Another reason to try Meesho? 🤩 Get up to 35% off on your first order! Also enjoy 🚚 Free Delivery 💸 Cash-on-delivery ↩️ Easy returns 💰 Instant refunds",
+      "cards": [
+        {
+          "body": "Another reason to try Meesho? 🤩 Get up to 35% off on your first order! Also enjoy 🚚 Free Delivery 💸 Cash-on-delivery ↩️ Easy returns 💰 Instant refunds",
+          "cta": "Shop Now",
+          "image": "https://scontent-sin11-1.xx.fbcdn.net/v/t39.35426-6/718942866_992826486826582_3753584449563506279_n.jpg?_nc_cat=104&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=nzud4k9HsP4Q7kNvwFQp2K1&_nc_oc=AdqUU4PxkNuG14l2hANdL3zkjy__y3NRwW_p1PO9-5eK6otz1Os7v70VnBriD-MJL8bPlQdYI29nrHL0lt4EsRYL&_nc_zt=14&_nc_ht=scontent-sin11-1…",
+          "link_url": "https://www.meesho.com/StyFun%20Women's%20Bra/p/5ZJT6",
+          "title": "StyFun Women's Bra",
+          "video": null
+        },
+        {
+          "body": "Another reason to try Meesho? 🤩 Get up to 35% off on your first order! Also enjoy 🚚 Free Delivery 💸 Cash-on-delivery ↩️ Easy returns 💰 Instant refunds",
+          "cta": "Shop Now",
+          "image": "https://scontent-sin11-2.xx.fbcdn.net/v/t39.35426-6/719210419_1396220725896808_2914333168443133969_n.jpg?_nc_cat=108&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=gVuRIR0GbKkQ7kNvwHXg8Nc&_nc_oc=AdqMpFLG9ArgTKVsAl_AxVoQLhlCf1sjJres8EfIrMx268kMaQbcPpr4C2hdGhK9pct1mz5m5ICqZYLNhOjVJlEt&_nc_zt=14&_nc_ht=scontent-sin11-…",
+          "link_url": "https://www.meesho.com/Beautiful%20Solid%20Dial%20Designer%20Metal%20Analog%20Women%20Watches%20for%20Girls/p/60GLR",
+          "title": "Beautiful Solid Dial Designer Metal Analog Women Watches for Girls",
+          "video": null
+        }
+      ],
+      "cta": "Shop now",
+      "cta_type": "SHOP_NOW",
+      "currency": null,
+      "display_format": "dpa",
+      "end_date": null,
+      "images": [
+        "https://scontent-sin11-1.xx.fbcdn.net/v/t39.35426-6/718942866_992826486826582_3753584449563506279_n.jpg?_nc_cat=104&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=nzud4k9HsP4Q7kNvwFQp2K1&_nc_oc=AdqUU4PxkNuG14l2hANdL3zkjy__y3NRwW_p1PO9-5eK6otz1Os7v70VnBriD-MJL8bPlQdYI29nrHL0lt4EsRYL&_nc_zt=14&_nc_ht=scontent-sin11-1…",
+        "https://scontent-sin11-2.xx.fbcdn.net/v/t39.35426-6/719210419_1396220725896808_2914333168443133969_n.jpg?_nc_cat=108&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=gVuRIR0GbKkQ7kNvwHXg8Nc&_nc_oc=AdqMpFLG9ArgTKVsAl_AxVoQLhlCf1sjJres8EfIrMx268kMaQbcPpr4C2hdGhK9pct1mz5m5ICqZYLNhOjVJlEt&_nc_zt=14&_nc_ht=scontent-sin11-…"
+      ],
+      "impressions": null,
+      "is_active": true,
+      "link_caption": "meesho.com",
+      "link_url": "http://Meesho.com/",
+      "page_id": "269617286730030",
+      "page_likes": 1805735,
+      "page_name": "Meesho",
+      "page_url": "https://www.facebook.com/meeshosupply/",
+      "paid_for_by": null,
+      "platforms": [
+        "facebook",
+        "instagram"
+      ],
+      "same_creative_ads": null,
+      "spend": null,
+      "start_date": "2026-09-02T07:00:00Z",
+      "title": "StyFun Women's Bra",
+      "videos": []
+    },
+    {
+      "ad_archive_id": "1773321330526397",
+      "ad_url": "https://www.facebook.com/ads/library/?id=1773321330526397",
+      "body": "Another reason to try Meesho? 🤩 Get up to 35% off on your first order! Also enjoy 🚚 Free Delivery 💸 Cash-on-delivery ↩️ Easy returns 💰 Instant refunds",
+      "cards": [
+        {
+          "body": "Another reason to try Meesho? 🤩 Get up to 35% off on your first order! Also enjoy 🚚 Free Delivery 💸 Cash-on-delivery ↩️ Easy returns 💰 Instant refunds",
+          "cta": "Shop Now",
+          "image": "https://scontent-sin11-2.xx.fbcdn.net/v/t39.35426-6/725166078_2010437952915544_8509859095139654428_n.jpg?_nc_cat=108&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=ob46GGBHfnsQ7kNvwHGsXpq&_nc_oc=AdqSQ6VQgZOcmgx2C6TGTyU93aN_B3ZZ8UR8TeQRQ5fct1kvx9LkeY9XU2T7j-XLX91o8KqrZgsznVSbPDLIufJM&_nc_zt=14&_nc_ht=scontent-sin11-…",
+          "link_url": "https://www.meesho.com/Beautiful%20Solid%20Dial%20Designer%20Metal%20Analog%20Women%20Watches%20for%20Girls/p/60GLT",
+          "title": "Beautiful Solid Dial Designer Metal Analog Women Watches for Girls",
+          "video": null
+        },
+        {
+          "body": "Another reason to try Meesho? 🤩 Get up to 35% off on your first order! Also enjoy 🚚 Free Delivery 💸 Cash-on-delivery ↩️ Easy returns 💰 Instant refunds",
+          "cta": "Shop Now",
+          "image": "https://scontent-sin11-1.xx.fbcdn.net/v/t39.35426-6/725319311_1614094743410179_6631985672103979995_n.jpg?_nc_cat=104&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=m7RgtOeL0O4Q7kNvwHKaSlI&_nc_oc=AdqwmPNiThR3KXdl8C017l2uBdM3E90gkga8VhXFRv2PfMCQZP8MU6qhTKtLNfOswNyrduKQifUwxf3bNZq4DJ9u&_nc_zt=14&_nc_ht=scontent-sin11-…",
+          "link_url": "https://www.meesho.com/Girls%20%20%20Lehenga%20Cholis%20Pack%20Of%201/p/5YTJH",
+          "title": "Girls   Lehenga Cholis Pack Of 1",
+          "video": null
+        }
+      ],
+      "cta": "Shop now",
+      "cta_type": "SHOP_NOW",
+      "currency": null,
+      "display_format": "dpa",
+      "end_date": null,
+      "images": [
+        "https://scontent-sin11-2.xx.fbcdn.net/v/t39.35426-6/725166078_2010437952915544_8509859095139654428_n.jpg?_nc_cat=108&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=ob46GGBHfnsQ7kNvwHGsXpq&_nc_oc=AdqSQ6VQgZOcmgx2C6TGTyU93aN_B3ZZ8UR8TeQRQ5fct1kvx9LkeY9XU2T7j-XLX91o8KqrZgsznVSbPDLIufJM&_nc_zt=14&_nc_ht=scontent-sin11-…",
+        "https://scontent-sin11-1.xx.fbcdn.net/v/t39.35426-6/725319311_1614094743410179_6631985672103979995_n.jpg?_nc_cat=104&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=m7RgtOeL0O4Q7kNvwHKaSlI&_nc_oc=AdqwmPNiThR3KXdl8C017l2uBdM3E90gkga8VhXFRv2PfMCQZP8MU6qhTKtLNfOswNyrduKQifUwxf3bNZq4DJ9u&_nc_zt=14&_nc_ht=scontent-sin11-…"
+      ],
+      "impressions": null,
+      "is_active": true,
+      "link_caption": "meesho.com",
+      "link_url": "http://meesho.com/",
+      "page_id": "269617286730030",
+      "page_likes": 1805735,
+      "page_name": "Meesho",
+      "page_url": "https://www.facebook.com/meeshosupply/",
+      "paid_for_by": null,
+      "platforms": [
+        "facebook",
+        "instagram"
+      ],
+      "same_creative_ads": null,
+      "spend": null,
+      "start_date": "2026-09-02T07:00:00Z",
+      "title": "Beautiful Solid Dial Designer Metal Analog Women Watches for Girls",
+      "videos": []
+    }
+  ]
+}

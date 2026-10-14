@@ -1,0 +1,79 @@
+{
+  "pagination": {
+    "totalElements": 483,
+    "totalPages": 10,
+    "pageNumber": 1,
+    "previousElements": 0,
+    "pageSize": 50
+  },
+  "elements": [
+    {
+      "id": "1234567890",
+      "linkedinUrl": "https://example.com/synthetic-record",
+      "content": "Synthetic example",
+      "author": {
+        "id": "1234567890",
+        "universalName": "alex-example",
+        "publicIdentifier": null,
+        "type": "company",
+        "name": "Synthetic example",
+        "linkedinUrl": "https://example.com/synthetic-record",
+        "info": "Synthetic example",
+        "website": null,
+        "websiteLabel": null,
+        "avatar": {
+          "url": "https://example.com/synthetic-record",
+          "width": 400,
+          "height": 400
+        },
+        "urn": "Synthetic example",
+        "companyId": "1234567890"
+      },
+      "postedAt": {
+        "timestamp": 1788963141123,
+        "date": "2026-09-09T14:12:21.123Z",
+        "postedAgoShort": "Synthetic example",
+        "postedAgoText": "Synthetic example"
+      },
+      "socialContent": {
+        "hideCommentsCount": false,
+        "hideReactionsCount": false,
+        "hideSocialActivityCounts": false,
+        "hideShareAction": true,
+        "hideSendAction": true,
+        "hideRepostsCount": false,
+        "hideViewsCount": false,
+        "trustInterventionBanner": null,
+        "hideReactAction": false,
+        "hideCommentAction": false,
+        "shareUrl": "https://example.com/synthetic-record",
+        "showContributionExperience": false,
+        "showSocialDetail": true
+      },
+      "comments": [],
+      "header": {
+        "text": null
+      },
+      "shareUrn": "1234567890",
+      "shareLinkedinUrl": "https://example.com/synthetic-record",
+      "engagement": {
+        "id": "1234567890",
+        "likes": 348,
+        "comments": 16,
+        "shares": 1,
+        "reactions": [
+          {
+            "type": "LIKE",
+            "count": 337
+          }
+        ]
+      }
+    }
+  ],
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinPostSearch"
+  ],
+  "cost": 0.004
+}

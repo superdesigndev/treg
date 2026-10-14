@@ -1,0 +1,103 @@
+"""In-memory object storage for bootstrap injection; never opens a socket."""
+import asyncio
+import hashlib
+
+from treg.infra.object_store import ObjectInfo, ObjectStoreError
+
+
+class MemoryObjectStore:
+    def __init__(self):
+        self.objects = {}
+        self.put_calls = 0
+        self.get_calls = 0
+        self.fail_puts = 0
+        self.put_failures: list[int] = []
+        self.fail_gets = False
+        self.gate = None
+        self.entered = asyncio.Event()
+        self.check_io = lambda: None
+
+    async def put(self, body: bytes, *, content_hash=None) -> ObjectInfo:
+        self.check_io()
+        self.put_calls += 1
+        self.entered.set()
+        if self.gate is not None:
+            await self.gate.wait()
+        if self.put_failures:
+            status = self.put_failures.pop(0)
+            raise ObjectStoreError('rate_limited' if status == 429 else
+                                   'upstream_error' if 500 <= status < 600 else 'store_error')
+        if self.fail_puts:
+            self.fail_puts -= 1
+            raise ObjectStoreError('store_error')
+        key = content_hash or hashlib.sha256(body).hexdigest()
+        self.objects[key] = body
+        return ObjectInfo(key, len(body))
+
+    async def get(self, content_hash: str) -> bytes | None:
+        self.check_io()
+        self.get_calls += 1
+        if self.fail_gets:
+            raise ObjectStoreError('store_error')
+        body = self.objects.get(content_hash)
+        if body is not None and hashlib.sha256(body).hexdigest() != content_hash:
+            raise ObjectStoreError('hash_mismatch')
+        return body
+
+    async def head(self, content_hash: str) -> ObjectInfo | None:
+        self.check_io()
+        body = self.objects.get(content_hash)
+        return ObjectInfo(content_hash, len(body)) if body is not None else None
+
+    async def delete(self, content_hash: str) -> None:
+        self.check_io()
+        self.delete_calls = getattr(self, "delete_calls", 0) + 1
+        if getattr(self, "fail_deletes", False):
+            raise ObjectStoreError('store_error')
+        self.objects.pop(content_hash, None)
+
+    async def put_named(self, name: str, body: bytes) -> None:
+        self.check_io()
+        self.put_calls += 1
+        if self.fail_puts:
+            self.fail_puts -= 1
+            raise ObjectStoreError('store_error')
+        self.objects[name] = body
+
+    async def get_named(self, name: str) -> bytes | None:
+        self.check_io()
+        self.get_calls += 1
+        if self.fail_gets:
+            raise ObjectStoreError('store_error')
+        return self.objects.get(name)
+
+
+class MemoryObstoreSDK:
+    """The obstore methods used by our adapter, without Rust or network I/O."""
+    def __init__(self):
+        self.calls = []
+
+    class Result:
+        def __init__(self, body):
+            self.body = body
+            self.meta = {'size': len(body)}
+
+        async def bytes_async(self):
+            return self.body
+
+    async def put_async(self, path, body, *, attributes, use_multipart):
+        self.calls.append("put")
+        self.path, self.body, self.attributes = path, body, attributes
+        assert use_multipart is False
+
+    async def head_async(self, path):
+        self.calls.append('head')
+        return {'size': len(self.body)}
+
+    async def get_async(self, path):
+        self.calls.append('get')
+        return self.Result(self.body)
+
+    async def delete_async(self, path):
+        self.calls.append('delete')
+        self.body = None

@@ -1,0 +1,40 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "vIpNe2jAs_GQh_0M-EB04cnfzZgrhyoFIMNNzQoFH4fVmk7STm8tDXGh8pGtq1rc2cdNkNI9lahYLA4edQCFCMwz-qRgh885Bwt96YGwG2EW8uZzcCd3eBrWKG-lcGc98q7lWc93XuBRU7VZqX8vL8vvFPehM7FdqPtedRccEywItnqOFzzc2qs2nCPnHnQq6CZEZ7o6… [566 chars]",
+      "posts": [
+        {
+          "avatarUrl": "https://scontent-bru2-1.cdninstagram.com/v/t51.2885-19/385771502_697236721881086_114527115837207632_n.jpg?stp=dst-jpg_e0_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDY2LmMyIn0&_n… [561 chars]",
+          "caption": "My daily night routine❤️\n\nCleansing balm @elemis \nCleansing water @biodermame \nMoisturizer @lamer \nEye cream adore\nLip balm @loccitane \n\n#skincare #skincareroutine #skincareproducts #skingoals #nightr… [206 chars]",
+          "comments": 2,
+          "createdUtc": 1789738102,
+          "durationSeconds": 101.23699951171875,
+          "id": "3988934204600695667",
+          "likes": 329,
+          "media": [
+            "… {3 field(s) truncated}"
+          ],
+          "shortcode": "DdbioZZoTtz",
+          "url": "https://www.instagram.com/p/DdbioZZoTtz/",
+          "username": "juhiejahaan",
+          "verified": true,
+          "views": 19914
+        },
+        "… 29 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0015,
+  "items": 30,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-lynx",
+    "name": "Lynx",
+    "kind": "anonymous",
+    "artworkKey": "lynx"
+  },
+  "hint": "large_result: this response is ~127 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `j… [310 chars]",
+  "resultId": "1538c741-77f0-4614-b31e-e05d6688671d"
+}

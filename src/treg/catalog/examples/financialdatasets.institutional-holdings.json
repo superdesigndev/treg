@@ -1,0 +1,21 @@
+{
+  "institutional_holdings": [
+    {
+      "accession_number": "0000102909-26-000031",
+      "cusip": "037833100",
+      "filer_cik": "0000102909",
+      "filer_name": "VANGUARD GROUP INC",
+      "filing_date": "2026-01-29",
+      "form_type": "13F-HR",
+      "name_of_issuer": "APPLE INC",
+      "put_call": null,
+      "report_period": "2025-12-31",
+      "reported_price": 271.86,
+      "shares": 1279051701,
+      "ticker": "AAPL",
+      "title_of_class": "COM",
+      "value_usd": 347722995434
+    }
+  ],
+  "ticker": "AAPL"
+}

@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: youtube-comments: dQw4w9WgXcQ: 50 comments from 3 comment pages"
+    ]
+  },
+  "recipe": "youtube-comments",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 152,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "author": "[redacted]",
+      "comment_id": "Ugzge340dBgB75hWBm54AaABAg",
+      "hearted_by_creator": true,
+      "likes": 325000,
+      "pinned": true,
+      "published": "1 year ago",
+      "published_date": null,
+      "replies": 962,
+      "text": "can confirm: he never gave us up",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&lc=Ugzge340dBgB75hWBm54AaABAg",
+      "video_id": "dQw4w9WgXcQ"
+    },
+    {
+      "author": "[redacted]",
+      "comment_id": "UgyEnXfdC-umwvTt8JF4AaABAg",
+      "hearted_by_creator": false,
+      "likes": 568000,
+      "pinned": false,
+      "published": "6 years ago",
+      "published_date": null,
+      "replies": 711,
+      "text": "Gonna flag this for nudity so I can rick roll the YouTube staff",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&lc=UgyEnXfdC-umwvTt8JF4AaABAg",
+      "video_id": "dQw4w9WgXcQ"
+    }
+  ]
+}

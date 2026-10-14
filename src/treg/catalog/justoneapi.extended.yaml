@@ -19,6 +19,12 @@ source:
   spec_urls:
   - https://docs.justoneapi.com/en/sitemap.xml
   - https://docs.justoneapi.com/openapi/<platform>/<endpoint>-en.json
+# Provider-wide success rule. Just One API answers HTTP 200 for everything and puts the
+# business result in `code` (0 = success); only a code-0 response is billed, so a body
+# with any other code is a vendor-side failure that must not settle. Endpoints may still
+# override it; this is the default for those that do not state one.
+expect: {json_path: code, equals: 0}
+
 endpoints:
 - id: justoneapi.x.1688-get-item-detail-v1
   tier: extended
@@ -26,7 +32,7 @@ endpoints:
   platform: '1688'
   method: GET
   path: /api/1688/get-item-detail/v1
-  name: "Get 1688 product detail"
+  name: "1688 product details by item id"
   summary: Retrieves the public product detail for a 1688 wholesale listing by item ID.
   docs_url: https://docs.justoneapi.com/en/api/1688/product-details-v1
   cost:
@@ -53,6 +59,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.1688-get-item-detail-v1.json
 - id: justoneapi.x.1688-search-item-list-v1
   tier: extended
@@ -60,7 +67,7 @@ endpoints:
   platform: '1688'
   method: GET
   path: /api/1688/search-item-list/v1
-  name: "Search 1688 Products"
+  name: "Search 1688 wholesale products by keyword"
   summary: Searches 1688 wholesale product listings by keyword.
   docs_url: https://docs.justoneapi.com/en/api/1688/product-search-v1
   cost:
@@ -87,6 +94,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.1688-search-item-list-v1.json
 - id: justoneapi.x.amazon-get-best-sellers-v1
   tier: extended
@@ -94,7 +102,7 @@ endpoints:
   platform: amazon
   method: GET
   path: /api/amazon/get-best-sellers/v1
-  name: "List Amazon best sellers by category"
+  name: "Amazon Best Sellers by category and country"
   summary: Retrieves paginated Amazon Best Sellers for a category path in a selected country marketplace.
   docs_url: https://docs.justoneapi.com/en/api/amazon/best-sellers-v1
   cost:
@@ -158,13 +166,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.amazon-get-best-sellers-v1.json
 - id: justoneapi.x.amazon-get-category-products-v1
+  added: '2026-07-28'
   tier: extended
   platform: amazon
   method: GET
   path: /api/amazon/get-category-products/v1
-  name: "List Amazon products by category"
+  name: "Amazon products by category id and country"
   summary: Retrieves paginated Amazon products for a numeric category node in a selected country marketplace, with configurable result sorting.
   docs_url: https://docs.justoneapi.com/en/api/amazon/products-by-category-v1
   cost:
@@ -239,7 +249,7 @@ endpoints:
   platform: amazon
   method: GET
   path: /api/amazon/get-product-detail/v1
-  name: "Get Amazon product detail"
+  name: "Amazon product details by ASIN"
   summary: Retrieves details for an Amazon product identified by ASIN in a selected country marketplace.
   docs_url: https://docs.justoneapi.com/en/api/amazon/product-details-v1
   cost:
@@ -297,13 +307,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.amazon-get-product-detail-v1.json
 - id: justoneapi.x.amazon-get-product-top-reviews-v1
+  added: '2026-07-28'
   tier: extended
   platform: amazon
   method: GET
   path: /api/amazon/get-product-top-reviews/v1
-  name: "List top reviews for an Amazon product"
+  name: "Amazon product top reviews by ASIN"
   summary: Retrieves the top reviews for an Amazon product identified by ASIN in a selected country marketplace.
   docs_url: https://docs.justoneapi.com/en/api/amazon/product-top-reviews-v1
   cost:
@@ -364,7 +376,7 @@ endpoints:
   platform: amazon
   method: GET
   path: /api/amazon/search-products/v1
-  name: "Search Amazon products"
+  name: "Search Amazon products by keyword or ASIN"
   summary: Searches Amazon marketplace products by keyword or ASIN with country, sort, condition, Prime-only, deals, and page controls.
   docs_url: https://docs.justoneapi.com/en/api/amazon/product-search-v1
   cost:
@@ -469,14 +481,16 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.amazon-search-products-v1.json
 - id: justoneapi.x.beike-community-list-v1
+  added: '2026-07-28'
   tier: extended
   platform: beike
   method: GET
   path: /api/beike/community/list/v1
   cost: {type: per_success, value: null, currency: CNY, unit: call, source: inferred, checked: '2026-08-07', confidence: unknown, note: 'UNPRICED and unmeasurable from here. JustOneAPI publishes no rate-card API (the other rates came from a dashboard price export), exposes no balance endpoint, and returns no billing field in its responses — so a per-call price cannot be observed the way DataForSEO and Lusha were. The route is DEPRECATED upstream but still answers (400 for missing params, not 404), and it is the only endpoint in the catalog for this platform, so it is kept rather than dropped. To price it: re-export the JustOneAPI dashboard price list'}
-  name: "List Beike residential communities"
+  name: "Beike residential communities by city id"
   summary: Retrieves Beike residential communities for a city with optional condition filters and offset pagination.
   docs_url: https://docs.justoneapi.com/en/api/beike/community-list-v1-deprecated
   input:
@@ -502,12 +516,13 @@ endpoints:
   unverified: provider answers code 600 NO PERMISSION — this API is not enabled for the account used on 2026-07-28
   capability: beike.community.list
 - id: justoneapi.x.beike-ershoufang-detail-v1
+  added: '2026-07-28'
   tier: extended
   platform: beike
   method: GET
   path: /api/beike/ershoufang/detail/v1
   cost: {type: per_success, value: null, currency: CNY, unit: call, source: inferred, checked: '2026-08-07', confidence: unknown, note: 'UNPRICED and unmeasurable from here. JustOneAPI publishes no rate-card API (the other rates came from a dashboard price export), exposes no balance endpoint, and returns no billing field in its responses — so a per-call price cannot be observed the way DataForSEO and Lusha were. The route is DEPRECATED upstream but still answers (400 for missing params, not 404), and it is the only endpoint in the catalog for this platform, so it is kept rather than dropped. To price it: re-export the JustOneAPI dashboard price list'}
-  name: "Get Beike resale-housing listing detail"
+  name: "Beike resale housing listing by city id and house code"
   summary: Retrieves a Beike resale-housing listing by city ID and house code.
   docs_url: https://docs.justoneapi.com/en/api/beike/resale-housing-details-v1-deprecated
   input:
@@ -523,12 +538,13 @@ endpoints:
   untestable: no test value for required param(s) houseCode — none of the verified responses in this provider carries one
   capability: beike.listing.detail
 - id: justoneapi.x.beike-get-ershoufang-list-v1
+  added: '2026-07-28'
   tier: extended
   platform: beike
   method: GET
   path: /api/beike/get-ershoufang-list/v1
   cost: {type: per_success, value: null, currency: CNY, unit: call, source: inferred, checked: '2026-08-07', confidence: unknown, note: 'UNPRICED and unmeasurable from here. JustOneAPI publishes no rate-card API (the other rates came from a dashboard price export), exposes no balance endpoint, and returns no billing field in its responses — so a per-call price cannot be observed the way DataForSEO and Lusha were. The route is DEPRECATED upstream but still answers (400 for missing params, not 404), and it is the only endpoint in the catalog for this platform, so it is kept rather than dropped. To price it: re-export the JustOneAPI dashboard price list'}
-  name: "List Beike resale-housing listings"
+  name: "Beike resale housing listings by city id"
   summary: Retrieves Beike resale-housing listings for a city with optional condition filters and offset pagination.
   docs_url: https://docs.justoneapi.com/en/api/beike/resale-housing-list-v1-deprecated
   input:
@@ -559,7 +575,7 @@ endpoints:
   platform: bilibili
   method: GET
   path: /api/bilibili/get-user-detail/v2
-  name: "Get Bilibili User Profile"
+  name: "Bilibili user profile by user id"
   summary: Retrieves a Bilibili user profile identified by UID.
   docs_url: https://docs.justoneapi.com/en/api/bilibili/user-profile-v2
   cost:
@@ -586,6 +602,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.bilibili-get-user-detail-v2.json
 - id: justoneapi.x.bilibili-get-user-relation-stat-v1
   tier: extended
@@ -593,7 +610,7 @@ endpoints:
   platform: bilibili
   method: GET
   path: /api/bilibili/get-user-relation-stat/v1
-  name: "Get Bilibili user follower stats"
+  name: "Bilibili user follower stats by user id"
   summary: Retrieves relation statistics for a Bilibili user identified by WMID.
   docs_url: https://docs.justoneapi.com/en/api/bilibili/user-relation-stats-v1
   cost:
@@ -620,6 +637,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.bilibili-get-user-relation-stat-v1.json
 - id: justoneapi.x.bilibili-get-user-video-list-v2
   tier: extended
@@ -627,7 +645,7 @@ endpoints:
   platform: bilibili
   method: GET
   path: /api/bilibili/get-user-video-list/v2
-  name: "List videos from a Bilibili user"
+  name: "Bilibili user videos by user id"
   summary: Retrieves videos published by a Bilibili user identified by UID, with an optional continuation parameter from a prior response.
   docs_url: https://docs.justoneapi.com/en/api/bilibili/user-published-videos-v2
   cost:
@@ -658,6 +676,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.bilibili-get-user-video-list-v2.json
 - id: justoneapi.x.bilibili-get-video-caption-v2
   tier: extended
@@ -665,7 +684,7 @@ endpoints:
   platform: bilibili
   method: GET
   path: /api/bilibili/get-video-caption/v2
-  name: "Get Bilibili video captions"
+  name: "Bilibili video captions by video id"
   summary: Retrieves caption data for a Bilibili video segment identified by BVID, AID, and CID.
   docs_url: https://docs.justoneapi.com/en/api/bilibili/video-captions-v2
   cost:
@@ -702,6 +721,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.bilibili-get-video-caption-v2.json
 - id: justoneapi.x.bilibili-get-video-comment-v2
   tier: extended
@@ -709,7 +729,7 @@ endpoints:
   platform: bilibili
   method: GET
   path: /api/bilibili/get-video-comment/v2
-  name: "List comments on a Bilibili video"
+  name: "Bilibili video comments by video id"
   summary: Retrieves comments for a Bilibili video identified by AID, with optional cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/bilibili/video-comments-v2
   cost:
@@ -741,6 +761,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.bilibili-get-video-comment-v2.json
 - id: justoneapi.x.bilibili-get-video-danmu-v2
   tier: extended
@@ -748,7 +769,7 @@ endpoints:
   platform: bilibili
   method: GET
   path: /api/bilibili/get-video-danmu/v2
-  name: "Get Bilibili video danmaku comments"
+  name: "Bilibili video danmaku comments by video id"
   summary: Retrieves one page of danmaku comments for a Bilibili video segment identified by AID and CID.
   docs_url: https://docs.justoneapi.com/en/api/bilibili/video-danmaku-v2
   cost:
@@ -785,6 +806,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.bilibili-get-video-danmu-v2.json
 - id: justoneapi.x.bilibili-get-video-detail-v2
   tier: extended
@@ -792,7 +814,7 @@ endpoints:
   platform: bilibili
   method: GET
   path: /api/bilibili/get-video-detail/v2
-  name: "Get Bilibili video detail"
+  name: "Bilibili video details by video id"
   summary: Retrieves details for a Bilibili video identified by its BVID.
   docs_url: https://docs.justoneapi.com/en/api/bilibili/video-details-v2
   cost:
@@ -819,6 +841,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.bilibili-get-video-detail-v2.json
 - id: justoneapi.x.bilibili-search-video-v2
   tier: extended
@@ -826,7 +849,7 @@ endpoints:
   platform: bilibili
   method: GET
   path: /api/bilibili/search-video/v2
-  name: "Search Bilibili videos"
+  name: "Search Bilibili videos by keyword"
   summary: Searches Bilibili videos by keyword with page-based pagination and sorting by general ranking, play count, publish time, danmaku count, or favorites.
   docs_url: https://docs.justoneapi.com/en/api/bilibili/video-search-v2
   cost:
@@ -870,14 +893,16 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.bilibili-search-video-v2.json
 - id: justoneapi.x.bilibili-share-url-transfer-v1
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: bilibili
   method: GET
   path: /api/bilibili/share-url-transfer/v1
-  name: "Resolve a Bilibili short share link"
+  name: "Resolve a Bilibili short link to its video URL"
   summary: Resolve a supported Bilibili short share link that targets a video and return its public redirect URL.
   docs_url: https://docs.justoneapi.com/en/api/bilibili/share-link-resolution-v1
   cost:
@@ -902,12 +927,13 @@ endpoints:
       shareUrl: https://live.bilibili.com/173551?broadcast_type=0&is_room_feed=1
   unverified: needs a real short share link ('https://b23.tv/'); no such link appears in any verified response, so it cannot be generated from catalog data
 - id: justoneapi.x.dewu-search-item-list-v1
+  added: '2026-07-28'
   tier: extended
   platform: dewu
   method: GET
   path: /api/dewu/search-item-list/v1
   cost: {type: per_success, value: null, currency: CNY, unit: call, source: inferred, checked: '2026-08-07', confidence: unknown, note: 'UNPRICED and unmeasurable from here. JustOneAPI publishes no rate-card API (the other rates came from a dashboard price export), exposes no balance endpoint, and returns no billing field in its responses — so a per-call price cannot be observed the way DataForSEO and Lusha were. The route is DEPRECATED upstream but still answers (400 for missing params, not 404), and it is the only endpoint in the catalog for this platform, so it is kept rather than dropped. To price it: re-export the JustOneAPI dashboard price list'}
-  name: "Search Dewu (Poizon) products"
+  name: "Search Dewu (Poizon) products by keyword"
   summary: Searches Dewu (Poizon) products by keyword with page-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/dewu-poizon/product-search-v1-deprecated
   input:
@@ -932,7 +958,7 @@ endpoints:
   platform: douban
   method: GET
   path: /api/douban/get-movie-comments/v1
-  name: "List short comments for a Douban title"
+  name: "Douban short comments by movie or TV subject id"
   summary: Retrieves paginated Douban short comments for a movie or TV subject, ordered by time or newest rating.
   docs_url: https://docs.justoneapi.com/en/api/douban-movie/comments-v1
   cost:
@@ -974,6 +1000,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douban-get-movie-comments-v1.json
 - id: justoneapi.x.douban-get-movie-review-detail-v1
   tier: extended
@@ -981,7 +1008,7 @@ endpoints:
   platform: douban
   method: GET
   path: /api/douban/get-movie-review-detail/v1
-  name: "Get Douban Review Detail"
+  name: "Douban long-form review by review id"
   summary: Retrieves a single Douban long-form review by its review ID.
   docs_url: https://docs.justoneapi.com/en/api/douban-movie/review-details-v1
   cost:
@@ -1008,6 +1035,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douban-get-movie-review-detail-v1.json
 - id: justoneapi.x.douban-get-movie-reviews-v1
   tier: extended
@@ -1015,7 +1043,7 @@ endpoints:
   platform: douban
   method: GET
   path: /api/douban/get-movie-reviews/v1
-  name: "List long-form reviews for a Douban title"
+  name: "Douban long-form reviews by movie or TV subject id"
   summary: Retrieves paginated Douban long-form reviews for a movie or TV subject, ordered by time or popularity.
   docs_url: https://docs.justoneapi.com/en/api/douban-movie/movie-reviews-v1
   cost:
@@ -1057,6 +1085,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douban-get-movie-reviews-v1.json
 - id: justoneapi.x.douban-get-recent-hot-movie-v1
   tier: extended
@@ -1064,7 +1093,7 @@ endpoints:
   platform: douban
   method: GET
   path: /api/douban/get-recent-hot-movie/v1
-  name: "List recent hot Douban movies"
+  name: "Douban recent hot movies"
   summary: Retrieves a paginated list of movies currently featured in Douban's recent-hot collection.
   docs_url: https://docs.justoneapi.com/en/api/douban-movie/recent-hot-movie-v1
   cost:
@@ -1092,6 +1121,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douban-get-recent-hot-movie-v1.json
 - id: justoneapi.x.douban-get-recent-hot-tv-v1
   tier: extended
@@ -1099,7 +1129,7 @@ endpoints:
   platform: douban
   method: GET
   path: /api/douban/get-recent-hot-tv/v1
-  name: "List recent hot Douban TV shows"
+  name: "Douban recent hot TV shows"
   summary: Retrieves a paginated list of TV titles currently featured in Douban's recent-hot collection.
   docs_url: https://docs.justoneapi.com/en/api/douban-movie/recent-hot-tv-v1
   cost:
@@ -1127,6 +1157,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douban-get-recent-hot-tv-v1.json
 - id: justoneapi.x.douban-get-subject-detail-v1
   tier: extended
@@ -1134,7 +1165,7 @@ endpoints:
   platform: douban
   method: GET
   path: /api/douban/get-subject-detail/v1
-  name: "Get Douban movie or TV subject detail"
+  name: "Douban movie or TV details by subject id"
   summary: Retrieves the public detail page data for a Douban movie or TV subject by subject ID.
   docs_url: https://docs.justoneapi.com/en/api/douban-movie/subject-details-v1
   cost:
@@ -1161,14 +1192,16 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douban-get-subject-detail-v1.json
 - id: justoneapi.x.llm-doubao-answer-v1
+  added: '2026-07-28'
   tier: extended
   platform: ai-search
   method: GET
   path: /api/llm/doubao-answer/v1
   cost: {type: per_success, value: null, currency: CNY, unit: call, source: inferred, checked: '2026-08-07', confidence: unknown, note: 'UNPRICED and unmeasurable from here. JustOneAPI publishes no rate-card API (the other rates came from a dashboard price export), exposes no balance endpoint, and returns no billing field in its responses — so a per-call price cannot be observed the way DataForSEO and Lusha were. The route is DEPRECATED upstream but still answers (400 for missing params, not 404), and it is the only endpoint in the catalog for this platform, so it is kept rather than dropped. To price it: re-export the JustOneAPI dashboard price list'}
-  name: "Get a Doubao answer"
+  name: "Doubao web answer by question or keyword"
   summary: Requests a Doubao web answer for a submitted keyword or question.
   docs_url: https://docs.justoneapi.com/en/api/llm/doubao-answer-v1-deprecated
   input:
@@ -1183,11 +1216,12 @@ endpoints:
   unverified: provider answers code 600 NO PERMISSION — this API is not enabled for the account used on 2026-07-28
   capability: ai-search.doubao.answer
 - id: justoneapi.x.douyin-get-user-detail-v3
+  added: '2026-07-28'
   tier: extended
   platform: douyin
   method: GET
   path: /api/douyin/get-user-detail/v3
-  name: "Get Douyin User Profile"
+  name: "Douyin user profile by user id"
   summary: Retrieves a Douyin (TikTok China) user profile by secUid.
   docs_url: https://docs.justoneapi.com/en/api/douyin-tiktok-china/user-profile-v3
   cost:
@@ -1217,7 +1251,7 @@ endpoints:
   platform: douyin
   method: GET
   path: /api/douyin/get-user-video-list/v1
-  name: "List videos from a Douyin user"
+  name: "Douyin user videos by user id, newest or most popular"
   summary: Retrieves videos published by a Douyin (TikTok China) user, with cursor pagination and newest or most-popular sorting.
   docs_url: https://docs.justoneapi.com/en/api/douyin-tiktok-china/user-published-videos-v1
   cost:
@@ -1259,6 +1293,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-get-user-video-list-v1.json
 - id: justoneapi.x.douyin-get-user-video-list-v3
   tier: extended
@@ -1266,7 +1301,7 @@ endpoints:
   platform: douyin
   method: GET
   path: /api/douyin/get-user-video-list/v3
-  name: "List videos from a Douyin user (v3)"
+  name: "Douyin user videos by user id"
   summary: Retrieves videos published by a Douyin (TikTok China) user with cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/douyin-tiktok-china/user-published-videos-v3
   cost:
@@ -1299,6 +1334,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-get-user-video-list-v3.json
 - id: justoneapi.x.douyin-get-video-comment-v1
   tier: extended
@@ -1306,7 +1342,7 @@ endpoints:
   platform: douyin
   method: GET
   path: /api/douyin/get-video-comment/v1
-  name: "List comments on a Douyin video"
+  name: "Douyin video comments by video id"
   summary: Retrieves top-level comments for a Douyin (TikTok China) video by aweme ID with page-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/douyin-tiktok-china/video-comments-v1
   cost:
@@ -1339,6 +1375,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-get-video-comment-v1.json
 - id: justoneapi.x.douyin-get-video-detail-v2
   tier: extended
@@ -1346,7 +1383,7 @@ endpoints:
   platform: douyin
   method: GET
   path: /api/douyin/get-video-detail/v2
-  name: "Get Douyin video detail"
+  name: "Douyin video details by video id"
   summary: Retrieves details for a Douyin (TikTok China) video by video ID.
   docs_url: https://docs.justoneapi.com/en/api/douyin-tiktok-china/video-details-v2
   cost:
@@ -1373,6 +1410,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-get-video-detail-v2.json
 - id: justoneapi.x.douyin-get-video-sub-comment-v1
   tier: extended
@@ -1380,7 +1418,7 @@ endpoints:
   platform: douyin
   method: GET
   path: /api/douyin/get-video-sub-comment/v1
-  name: "List replies to a Douyin video comment"
+  name: "Douyin comment replies by comment id"
   summary: Retrieves replies to a top-level Douyin (TikTok China) video comment with page-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/douyin-tiktok-china/comment-replies-v1
   cost:
@@ -1413,6 +1451,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-get-video-sub-comment-v1.json
 - id: justoneapi.x.douyin-hot-search-v1
   tier: extended
@@ -1420,7 +1459,7 @@ endpoints:
   platform: douyin
   method: GET
   path: /api/douyin/hot-search/v1
-  name: "Search trending Douyin content"
+  name: "Douyin trending content search with engagement filters"
   summary: Searches Douyin (TikTok China) content with optional keyword, category, video-type, ranking, pagination, engagement, and creator-follower filters.
   docs_url: https://docs.justoneapi.com/en/api/douyin-tiktok-china/hot-search-v1
   cost:
@@ -1556,6 +1595,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-hot-search-v1.json
 - id: justoneapi.x.douyin-search-user-v2
   tier: extended
@@ -1563,7 +1603,7 @@ endpoints:
   platform: douyin
   method: GET
   path: /api/douyin/search-user/v2
-  name: "Search Douyin users"
+  name: "Search Douyin users by keyword"
   summary: Searches Douyin (TikTok China) users by keyword with page-based pagination and optional account-type filtering.
   docs_url: https://docs.justoneapi.com/en/api/douyin-tiktok-china/user-search-v2
   cost:
@@ -1604,6 +1644,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-search-user-v2.json
 - id: justoneapi.x.douyin-search-video-v4
   tier: extended
@@ -1611,7 +1652,7 @@ endpoints:
   platform: douyin
   method: GET
   path: /api/douyin/search-video/v4
-  name: "Search Douyin videos"
+  name: "Search Douyin videos by keyword"
   summary: Searches Douyin (TikTok China) videos by keyword with sort, publish-time, duration, and page filters; later pages require the previous search ID.
   docs_url: https://docs.justoneapi.com/en/api/douyin-tiktok-china/video-search-v4
   cost:
@@ -1680,14 +1721,16 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-search-video-v4.json
 - id: justoneapi.x.douyin-share-url-transfer-v1
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: douyin
   method: GET
   path: /api/douyin/share-url-transfer/v1
-  name: "Resolve a Douyin short share link"
+  name: "Resolve a Douyin short link to its video URL"
   summary: Resolve a supported Douyin (TikTok China) short share link that targets a video and return its public redirect URL.
   docs_url: https://docs.justoneapi.com/en/api/douyin-tiktok-china/share-link-resolution-v1
   cost:
@@ -1717,7 +1760,7 @@ endpoints:
   platform: douyin-shop
   method: GET
   path: /api/douyin-ec/get-item-comments/v1
-  name: "List comments for a Douyin shop product"
+  name: "Douyin Shop product comments by item id"
   summary: Retrieves paginated customer comments for a Douyin E-commerce product by item ID.
   docs_url: https://docs.justoneapi.com/en/api/douyin-e-commerce/item-comments-v1
   cost:
@@ -1749,6 +1792,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-ec-get-item-comments-v1.json
 - id: justoneapi.x.douyin-ec-get-item-detail-v2
   tier: extended
@@ -1756,7 +1800,7 @@ endpoints:
   platform: douyin-shop
   method: GET
   path: /api/douyin-ec/get-item-detail/v2
-  name: "Get Douyin Shop Product Detail"
+  name: "Douyin Shop product details by item id"
   summary: Retrieves Douyin E-commerce product details by item ID.
   docs_url: https://docs.justoneapi.com/en/api/douyin-e-commerce/item-details-v2
   cost:
@@ -1783,6 +1827,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-ec-get-item-detail-v2.json
 - id: justoneapi.x.douyin-ec-get-item-sku-info-v1
   tier: extended
@@ -1790,7 +1835,7 @@ endpoints:
   platform: douyin-shop
   method: GET
   path: /api/douyin-ec/get-item-sku-info/v1
-  name: "Get SKU info for a Douyin shop product"
+  name: "Douyin Shop product SKUs by item id"
   summary: Retrieves SKU information for a Douyin E-commerce product by item ID.
   docs_url: https://docs.justoneapi.com/en/api/douyin-e-commerce/product-sku-info-v1
   cost:
@@ -1817,6 +1862,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-ec-get-item-sku-info-v1.json
 - id: justoneapi.x.douyin-ec-get-shop-item-list-v1
   tier: extended
@@ -1824,7 +1870,7 @@ endpoints:
   platform: douyin-shop
   method: GET
   path: /api/douyin-ec/get-shop-item-list/v1
-  name: "List products in a Douyin shop"
+  name: "Douyin Shop products by shop id"
   summary: Retrieves a paginated product list for a Douyin E-commerce shop by shop ID.
   docs_url: https://docs.justoneapi.com/en/api/douyin-e-commerce/shop-product-list-v1
   cost:
@@ -1856,6 +1902,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-ec-get-shop-item-list-v1.json
 - id: justoneapi.x.douyin-ec-search-item-list-v1
   tier: extended
@@ -1863,7 +1910,7 @@ endpoints:
   platform: douyin-shop
   method: GET
   path: /api/douyin-ec/search-item-list/v1
-  name: "Search Douyin shop products"
+  name: "Search Douyin Shop products by keyword"
   summary: Searches Douyin E-commerce products by keyword with page and search-ID pagination.
   docs_url: https://docs.justoneapi.com/en/api/douyin-e-commerce/product-search-v1
   cost:
@@ -1900,6 +1947,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-ec-search-item-list-v1.json
 - id: justoneapi.x.douyin-xingtu-gwaggregator-get-author-commerce-seed-base-info-v1
   tier: extended
@@ -1907,7 +1955,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/aggregator/get_author_commerce_seed_base_info/v1
-  name: "Get Xingtu creator commerce-seeding baseline"
+  name: "Xingtu creator commerce seeding baseline by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) commerce-seeding baseline information for a creator over a selectable 30- or 90-day period.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/commerce-seeding-base-info-v1
   cost:
@@ -1943,6 +1991,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwaggregator-get-author-commerce-seed-base-info-v1.json
 - id: justoneapi.x.douyin-xingtu-gwaggregator-get-author-commerce-spread-info-v1
   tier: extended
@@ -1950,7 +1999,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/aggregator/get_author_commerce_spread_info/v1
-  name: "Get Xingtu creator commerce spread info"
+  name: "Xingtu creator commerce spread info by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) commerce spread information for a specified creator.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/creator-commerce-spread-info-v1
   cost:
@@ -1977,6 +2026,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwaggregator-get-author-commerce-spread-info-v1.json
 - id: justoneapi.x.douyin-xingtu-gwaggregator-get-author-contract-base-info
   tier: extended
@@ -1984,7 +2034,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/aggregator/get_author_contract_base_info
-  name: "Get Xingtu creator contract baseline"
+  name: "Xingtu creator contract baseline by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) contract-related baseline information for a creator over a selectable 30- or 90-day period.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/creator-contract-base-info
   cost:
@@ -2020,6 +2070,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwaggregator-get-author-contract-base-info.json
 - id: justoneapi.x.douyin-xingtu-gwaggregator-get-author-homepage-videos-v1
   tier: extended
@@ -2027,7 +2078,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/aggregator/get_author_homepage_videos/v1
-  name: "List Xingtu creator homepage videos"
+  name: "Xingtu creator homepage videos by creator id"
   summary: Lists a Douyin Creator Marketplace (Xingtu) creator's homepage videos with keyword, video-type, assignment, date, and page filters.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/creator-homepage-videos-v1
   cost:
@@ -2091,6 +2142,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwaggregator-get-author-homepage-videos-v1.json
 - id: justoneapi.x.douyin-xingtu-gwaggregator-get-author-live-statistics-v1
   tier: extended
@@ -2098,7 +2150,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/aggregator/get_author_live_statistics/v1
-  name: "Get Xingtu creator live-stream statistics"
+  name: "Xingtu creator live-stream stats by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) live-stream statistics for a creator, with live-room, period, marketplace-order, and flow filters.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/live-statistics-v1
   cost:
@@ -2160,6 +2212,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwaggregator-get-author-live-statistics-v1.json
 - id: justoneapi.x.douyin-xingtu-gwaggregator-get-author-live-watch-distribution-v1
   tier: extended
@@ -2167,7 +2220,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/aggregator/get_author_live_watch_distribution/v1
-  name: "Get Xingtu creator live watch distribution"
+  name: "Xingtu creator live watch distribution by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) live audience or follower watch-distribution data for a creator and selected live-room type.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/live-watch-distribution-v1
   cost:
@@ -2214,6 +2267,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwaggregator-get-author-live-watch-distribution-v1.json
 - id: justoneapi.x.douyin-xingtu-gwaggregator-get-author-order-experience-v1
   tier: extended
@@ -2221,7 +2275,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/aggregator/get_author_order_experience/v1
-  name: "Get Xingtu creator order experience"
+  name: "Xingtu creator order experience by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) creator order-experience information for the last 30 or 90 days.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/creator-order-experience-v1
   cost:
@@ -2257,6 +2311,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwaggregator-get-author-order-experience-v1.json
 - id: justoneapi.x.douyin-xingtu-gwaggregator-get-author-side-base-info-v1
   tier: extended
@@ -2264,7 +2319,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/aggregator/get_author_side_base_info/v1
-  name: "Get Xingtu creator side-card baseline"
+  name: "Xingtu creator side-card baseline by creator id"
   summary: Returns the Douyin Creator Marketplace (Xingtu) side-card baseline information for a specified creator.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/creator-side-base-info-v1
   cost:
@@ -2291,6 +2346,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwaggregator-get-author-side-base-info-v1.json
 - id: justoneapi.x.douyin-xingtu-gwaggregator-get-author-tags-v1
   tier: extended
@@ -2298,7 +2354,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/aggregator/get_author_tags/v1
-  name: "Get Xingtu creator tags"
+  name: "Xingtu creator tags by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) tags for a specified creator.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/creator-tags-v1
   cost:
@@ -2325,6 +2381,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwaggregator-get-author-tags-v1.json
 - id: justoneapi.x.douyin-xingtu-gwauthor-get-author-base-info-v1
   tier: extended
@@ -2332,7 +2389,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/author/get_author_base_info/v1
-  name: "Get Xingtu creator profile"
+  name: "Xingtu creator profile by creator id"
   summary: Returns the Douyin Creator Marketplace (Xingtu) profile for a specified creator and content channel.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/creator-profile-v1
   cost:
@@ -2370,6 +2427,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwauthor-get-author-base-info-v1.json
 - id: justoneapi.x.douyin-xingtu-gwauthor-get-author-marketing-info-v1
   tier: extended
@@ -2377,7 +2435,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/author/get_author_marketing_info/v1
-  name: "Get Xingtu creator marketing info"
+  name: "Xingtu creator marketing info by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) marketing information for a specified creator and content channel.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/marketing-metrics-v1
   cost:
@@ -2415,6 +2473,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwauthor-get-author-marketing-info-v1.json
 - id: justoneapi.x.douyin-xingtu-gwauthor-get-author-platform-channel-info-v2-v1
   tier: extended
@@ -2422,7 +2481,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/author/get_author_platform_channel_info_v2/v1
-  name: "Get Xingtu creator channel info"
+  name: "Xingtu creator channel info by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) channel information for a specified creator and content format.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/creator-channel-metrics-v1
   cost:
@@ -2460,6 +2519,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwauthor-get-author-platform-channel-info-v2-v1.json
 - id: justoneapi.x.douyin-xingtu-gwauthor-get-author-show-items-v2-v1
   tier: extended
@@ -2467,7 +2527,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/author/get_author_show_items_v2/v1
-  name: "List Xingtu creator showcase items"
+  name: "Xingtu creator showcase items by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) showcase items for a creator, with content-channel, assignment, and flow filters.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/showcase-items-v1
   cost:
@@ -2520,6 +2580,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwauthor-get-author-show-items-v2-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-get-author-hot-comment-tokens-v1
   tier: extended
@@ -2527,7 +2588,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data/get_author_hot_comment_tokens/v1
-  name: "Get Xingtu creator comment keyword analysis"
+  name: "Xingtu creator comment keyword analysis by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) comment keyword analysis for a specified creator.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/comment-keyword-analysis-v1
   cost:
@@ -2554,6 +2615,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-get-author-hot-comment-tokens-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-author-audience-distribution-v1
   tier: extended
@@ -2561,7 +2623,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/author_audience_distribution/v1
-  name: "Get Xingtu creator audience distribution"
+  name: "Xingtu creator audience distribution by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) audience-distribution data for a creator, content channel, and selected relationship stage.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/audience-distribution-v1
   cost:
@@ -2611,6 +2673,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-author-audience-distribution-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-author-cp-info-v1
   tier: extended
@@ -2618,7 +2681,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/author_cp_info/v1
-  name: "Get Xingtu creator cost-performance info"
+  name: "Xingtu creator cost-performance by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) cost-performance information for a specified creator and content channel.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/cost-performance-analysis-v1
   cost:
@@ -2656,6 +2719,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-author-cp-info-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-author-link-struct-v1
   tier: extended
@@ -2663,7 +2727,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/author_link_struct/v1
-  name: "Get Xingtu creator link structure data"
+  name: "Xingtu creator link structure by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) creator-link structure data for a specified creator and content channel.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/creator-link-structure-v1
   cost:
@@ -2701,6 +2765,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-author-link-struct-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-author-rec-videos-v2-v1
   tier: extended
@@ -2708,7 +2773,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/author_rec_videos_v2/v1
-  name: "List Xingtu creator recommended videos"
+  name: "Xingtu creator recommended videos by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) recommended videos for a specified creator and content channel.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/recommended-videos-v1
   cost:
@@ -2746,6 +2811,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-author-rec-videos-v2-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-author-touch-distribution-v1
   tier: extended
@@ -2753,7 +2819,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/author_touch_distribution/v1
-  name: "Get Xingtu creator audience touchpoint distribution"
+  name: "Xingtu creator touchpoint distribution by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) audience-touchpoint distribution data for a specified creator and content channel.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/audience-touchpoint-distribution-v1
   cost:
@@ -2791,6 +2857,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-author-touch-distribution-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-author-video-distribution-v1
   tier: extended
@@ -2798,7 +2865,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/author_video_distribution/v1
-  name: "Get Xingtu creator video distribution data"
+  name: "Xingtu creator video distribution by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) video-distribution data for a specified creator and content channel.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/video-distribution-v1
   cost:
@@ -2836,13 +2903,14 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-author-video-distribution-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-check-author-display-v1
   tier: extended
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/check_author_display/v1
-  name: "Check Xingtu creator display eligibility"
+  name: "Check Xingtu creator display eligibility by creator id"
   summary: Returns whether a specified creator can be displayed in Douyin Creator Marketplace (Xingtu) for the selected content channel.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/creator-visibility-status-v1
   cost:
@@ -2880,6 +2948,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-check-author-display-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-get-author-convert-ability-v1
   tier: extended
@@ -2887,7 +2956,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/get_author_convert_ability/v1
-  name: "Get Xingtu creator conversion analysis"
+  name: "Xingtu creator conversion analysis by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) conversion analysis for a creator, content channel, and 30- or 90-day period.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/conversion-analysis-v1
   cost:
@@ -2934,6 +3003,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-get-author-convert-ability-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-get-author-convert-videos-or-products-v1
   tier: extended
@@ -2941,7 +3011,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/get_author_convert_videos_or_products/v1
-  name: "List Xingtu creator conversion videos or products"
+  name: "Xingtu creator conversion videos or products by creator id"
   summary: Lists Douyin Creator Marketplace (Xingtu) conversion-related videos or products for a creator, with industry, period, resource-type, and page filters.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/conversion-resources-v1
   cost:
@@ -3048,6 +3118,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-get-author-convert-videos-or-products-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-get-author-daily-fans-v1
   tier: extended
@@ -3055,7 +3126,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/get_author_daily_fans/v1
-  name: "Get Xingtu creator daily follower trend"
+  name: "Xingtu creator daily follower trend by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) daily follower trend data for a specified creator and date range.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/follower-growth-trend-v1
   cost:
@@ -3092,6 +3163,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-get-author-daily-fans-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-get-author-fans-distribution-v1
   tier: extended
@@ -3099,7 +3171,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/get_author_fans_distribution/v1
-  name: "Get Xingtu creator follower distribution"
+  name: "Xingtu creator follower distribution by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) follower or loyal-follower distribution data for a specified creator.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/follower-distribution-v1
   cost:
@@ -3135,6 +3207,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-get-author-fans-distribution-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-get-author-link-info-v1
   tier: extended
@@ -3142,7 +3215,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/get_author_link_info/v1
-  name: "Get Xingtu creator link metrics"
+  name: "Xingtu creator link metrics by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) creator-link metrics for a specified creator, content channel, and industry category.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/creator-link-metrics-v1
   cost:
@@ -3225,6 +3298,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-get-author-link-info-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-get-author-spread-info-v1
   tier: extended
@@ -3232,7 +3306,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/get_author_spread_info/v1
-  name: "Get Xingtu creator spread metrics"
+  name: "Xingtu creator spread metrics by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) spread metrics for a creator, with channel, period, video-type, assignment, and flow filters.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/spread-metrics-v1
   cost:
@@ -3303,6 +3377,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-get-author-spread-info-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-item-report-detail-v1
   tier: extended
@@ -3310,7 +3385,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/item_report_detail/v1
-  name: "Get Xingtu video item report detail"
+  name: "Xingtu video report details by item id"
   summary: Returns Douyin Creator Marketplace (Xingtu) report details for a specified video item.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/video-details-v1
   cost:
@@ -3337,6 +3412,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-item-report-detail-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-item-report-th-analysis-v1
   tier: extended
@@ -3344,7 +3420,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/item_report_th_analysis/v1
-  name: "Get Xingtu video item report analysis"
+  name: "Xingtu video report analysis by item id"
   summary: Returns Douyin Creator Marketplace (Xingtu) report analysis for a specified video item.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/item-report-analysis-v1
   cost:
@@ -3371,6 +3447,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-item-report-th-analysis-v1.json
 - id: justoneapi.x.douyin-xingtu-gwdata-sp-item-report-trend-v1
   tier: extended
@@ -3378,7 +3455,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/data_sp/item_report_trend/v1
-  name: "Get Xingtu video item report trend"
+  name: "Xingtu video report trend by item id"
   summary: Returns Douyin Creator Marketplace (Xingtu) report trend data for a specified video item.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/item-report-trends-v1
   cost:
@@ -3405,6 +3482,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwdata-sp-item-report-trend-v1.json
 - id: justoneapi.x.douyin-xingtu-gwgauthor-author-get-business-card-info-v1
   tier: extended
@@ -3412,7 +3490,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/gauthor/author_get_business_card_info/v1
-  name: "Get Xingtu creator business-card profile"
+  name: "Xingtu creator business card by creator id"
   summary: Returns the Douyin Creator Marketplace (Xingtu) business-card profile for a specified creator.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/creator-business-card-v1
   cost:
@@ -3439,6 +3517,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwgauthor-author-get-business-card-info-v1.json
 - id: justoneapi.x.douyin-xingtu-gwgauthor-get-author-content-hot-keywords-v1
   tier: extended
@@ -3446,7 +3525,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/gauthor/get_author_content_hot_keywords/v1
-  name: "Get Xingtu creator content keyword analysis"
+  name: "Xingtu creator content keyword analysis by creator id"
   summary: Returns Douyin Creator Marketplace (Xingtu) content keyword analysis for a specified creator.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/content-keyword-analysis-v1
   cost:
@@ -3473,6 +3552,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwgauthor-get-author-content-hot-keywords-v1.json
 - id: justoneapi.x.douyin-xingtu-gwgsearch-search-for-author-square-v1
   tier: extended
@@ -3480,7 +3560,7 @@ endpoints:
   platform: douyin-xingtu
   method: GET
   path: /api/douyin-xingtu/gw/api/gsearch/search_for_author_square/v1
-  name: "Search Xingtu creators by filters"
+  name: "Search Xingtu creators by keyword, audience, and pricing"
   summary: Searches Douyin Creator Marketplace (Xingtu) creators by keyword and structured filters for audience, pricing, content, performance, and campaign fit.
   docs_url: https://docs.justoneapi.com/en/api/douyin-creator-marketplace-xingtu/creator-search-v1
   cost:
@@ -3684,6 +3764,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.douyin-xingtu-gwgsearch-search-for-author-square-v1.json
 # note: the call succeeds (code 0) but returned an EMPTY payload for this test target — route and credential are proven, the example shows no response shape
 - id: justoneapi.x.facebook-get-post-comments-v1
@@ -3692,7 +3773,7 @@ endpoints:
   platform: facebook
   method: GET
   path: /api/facebook/get-post-comments/v1
-  name: "List comments on a Facebook post"
+  name: "Facebook post comments by post id"
   summary: Retrieves comments for a Facebook post ID with cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/facebook/post-comments-v1
   cost:
@@ -3725,6 +3806,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.facebook-get-post-comments-v1.json
 - id: justoneapi.x.facebook-get-profile-id-v1
   kind: utility
@@ -3732,7 +3814,7 @@ endpoints:
   platform: facebook
   method: GET
   path: /api/facebook/get-profile-id/v1
-  name: "Resolve a Facebook profile ID"
+  name: "Resolve a Facebook profile URL to its profile id"
   summary: Resolves the Facebook profile ID associated with a submitted profile-path value.
   docs_url: https://docs.justoneapi.com/en/api/facebook/get-profile-id-v1
   cost:
@@ -3759,6 +3841,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.facebook-get-profile-id-v1.json
 # note: the call succeeds (code 0) but returned an EMPTY payload for this test target — route and credential are proven, the example shows no response shape
   capability: facebook.user.profile.id.resolve
@@ -3768,7 +3851,7 @@ endpoints:
   platform: facebook
   method: GET
   path: /api/facebook/get-profile-posts/v1
-  name: "List posts from a Facebook profile"
+  name: "Facebook profile posts by profile id"
   summary: Retrieves public posts for a Facebook profile ID with cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/facebook/get-profile-posts-v1
   cost:
@@ -3801,6 +3884,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.facebook-get-profile-posts-v1.json
 - id: justoneapi.x.facebook-search-post-v1
   tier: extended
@@ -3808,7 +3892,7 @@ endpoints:
   platform: facebook
   method: GET
   path: /api/facebook/search-post/v1
-  name: "Search public Facebook posts"
+  name: "Search public Facebook posts by keyword"
   summary: Searches public Facebook posts by keyword with optional inclusive date-range filters and cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/facebook/post-search-v1
   cost:
@@ -3849,6 +3933,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.facebook-search-post-v1.json
 - id: justoneapi.x.imdb-news-by-category-query-v1
   tier: extended
@@ -3856,7 +3941,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/news-by-category-query/v1
-  name: "List IMDb news by category"
+  name: "IMDb news by category (top, movie, TV, celebrity)"
   summary: Retrieves IMDb news for a selected top, movie, TV, or celebrity category using language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/news-by-category-v1
   cost:
@@ -3905,6 +3990,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-news-by-category-query-v1.json
 - id: justoneapi.x.imdb-streaming-picks-query-v1
   tier: extended
@@ -3912,7 +3998,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/streaming-picks-query/v1
-  name: "List IMDb Prime Video streaming picks"
+  name: "IMDb streaming picks for Prime Video"
   summary: Retrieves IMDb streaming picks for Prime Video using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/streaming-picks-v1
   cost:
@@ -3951,6 +4037,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-streaming-picks-query-v1.json
 - id: justoneapi.x.imdb-title-awards-summary-query-v1
   tier: extended
@@ -3958,7 +4045,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-awards-summary-query/v1
-  name: "Get IMDb title awards summary"
+  name: "IMDb title awards summary by title id"
   summary: Retrieves the IMDb awards summary for a title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/awards-summary-v1
   cost:
@@ -4002,6 +4089,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-awards-summary-query-v1.json
 - id: justoneapi.x.imdb-title-base-query-v1
   tier: extended
@@ -4009,7 +4097,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-base-query/v1
-  name: "Get IMDb title base info"
+  name: "IMDb title base info by title id"
   summary: Retrieves base IMDb information for a title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/base-info-v1
   cost:
@@ -4053,6 +4141,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-base-query-v1.json
 - id: justoneapi.x.imdb-title-box-office-summary-v1
   tier: extended
@@ -4060,7 +4149,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-box-office-summary/v1
-  name: "Get IMDb title box-office summary"
+  name: "IMDb title box office summary by title id"
   summary: Retrieves the IMDb box-office summary for a title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/box-office-summary-v1
   cost:
@@ -4104,6 +4193,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-box-office-summary-v1.json
 - id: justoneapi.x.imdb-title-chart-rankings-v1
   tier: extended
@@ -4111,7 +4201,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-chart-rankings/v1
-  name: "Get IMDb Top 250 chart rankings"
+  name: "IMDb Top 250 movie or TV chart by ranking type"
   summary: Retrieves the IMDb Top 250 movie or TV chart selected by ranking type using language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/chart-rankings-v1
   cost:
@@ -4158,13 +4248,14 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-chart-rankings-v1.json
 - id: justoneapi.x.imdb-title-contribution-questions-v1
   tier: extended
   platform: imdb
   method: GET
   path: /api/imdb/title-contribution-questions/v1
-  name: "Get IMDb title contribution questions"
+  name: "IMDb title contribution questions by title id"
   summary: Retrieves IMDb contribution questions associated with a title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/contribution-questions-v1
   cost:
@@ -4208,13 +4299,14 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-contribution-questions-v1.json
 - id: justoneapi.x.imdb-title-countries-of-origin-v1
   tier: extended
   platform: imdb
   method: GET
   path: /api/imdb/title-countries-of-origin/v1
-  name: "Get IMDb title countries of origin"
+  name: "IMDb title countries of origin by title id"
   summary: Retrieves countries of origin associated with an IMDb title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/countries-of-origin-v1
   cost:
@@ -4258,6 +4350,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-countries-of-origin-v1.json
 - id: justoneapi.x.imdb-title-critics-review-summary-query-v1
   tier: extended
@@ -4265,7 +4358,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-critics-review-summary-query/v1
-  name: "Get IMDb title critics-review summary"
+  name: "IMDb title critics review summary by title id"
   summary: Retrieves the IMDb critics-review summary for a title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/critics-review-summary-v1
   cost:
@@ -4309,6 +4402,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-critics-review-summary-query-v1.json
 - id: justoneapi.x.imdb-title-details-query-v1
   tier: extended
@@ -4316,7 +4410,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-details-query/v1
-  name: "Get IMDb title details"
+  name: "IMDb title details by title id"
   summary: Retrieves IMDb title details for a title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/details-v1
   cost:
@@ -4360,6 +4454,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-details-query-v1.json
 - id: justoneapi.x.imdb-title-did-you-know-query-v1
   tier: extended
@@ -4367,7 +4462,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-did-you-know-query/v1
-  name: "Get IMDb title 'Did You Know' info"
+  name: "IMDb title Did You Know info by title id"
   summary: Retrieves IMDb 'Did You Know' information for a title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/did-you-know-insights-v1
   cost:
@@ -4411,6 +4506,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-did-you-know-query-v1.json
 - id: justoneapi.x.imdb-title-extended-details-query-v1
   tier: extended
@@ -4418,7 +4514,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-extended-details-query/v1
-  name: "Get extended IMDb title details"
+  name: "IMDb title extended details by title id"
   summary: Retrieves extended IMDb details for a title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/extended-details-v1
   cost:
@@ -4462,6 +4558,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-extended-details-query-v1.json
 - id: justoneapi.x.imdb-title-more-like-this-query-v1
   tier: extended
@@ -4469,7 +4566,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-more-like-this-query/v1
-  name: "List IMDb titles similar to a title"
+  name: "IMDb similar titles by title id"
   summary: Retrieves IMDb titles similar to a specified title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/recommendations-v1
   cost:
@@ -4513,6 +4610,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-more-like-this-query-v1.json
 - id: justoneapi.x.imdb-title-plot-query-v1
   tier: extended
@@ -4520,7 +4618,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-plot-query/v1
-  name: "Get IMDb title plot"
+  name: "IMDb title plot by title id"
   summary: Retrieves IMDb plot information for a title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/plot-summary-v1
   cost:
@@ -4564,6 +4662,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-plot-query-v1.json
 - id: justoneapi.x.imdb-title-redux-overview-query-v1
   tier: extended
@@ -4571,7 +4670,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-redux-overview-query/v1
-  name: "Get IMDb title Redux overview"
+  name: "IMDb title Redux overview by title id"
   summary: Retrieves the IMDb Redux overview for a title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/redux-overview-v1
   cost:
@@ -4615,6 +4714,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-redux-overview-query-v1.json
 - id: justoneapi.x.imdb-title-release-expectation-query-v1
   tier: extended
@@ -4622,7 +4722,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-release-expectation-query/v1
-  name: "Get IMDb title release-expectation info"
+  name: "IMDb title release expectation by title id"
   summary: Retrieves IMDb release-expectation information for a title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/release-expectation-v1
   cost:
@@ -4666,6 +4766,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-release-expectation-query-v1.json
 - id: justoneapi.x.imdb-title-top-cast-and-crew-v1
   tier: extended
@@ -4673,7 +4774,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-top-cast-and-crew/v1
-  name: "Get IMDb title top cast and crew"
+  name: "IMDb title top cast and crew by title id"
   summary: Retrieves IMDb top cast and crew information for a title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/top-cast-and-crew-v1
   cost:
@@ -4717,6 +4818,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-top-cast-and-crew-v1.json
 - id: justoneapi.x.imdb-title-user-reviews-summary-query-v1
   tier: extended
@@ -4724,7 +4826,7 @@ endpoints:
   platform: imdb
   method: GET
   path: /api/imdb/title-user-reviews-summary-query/v1
-  name: "Get IMDb title user-reviews summary"
+  name: "IMDb title user reviews summary by title id"
   summary: Retrieves the IMDb user-reviews summary for a title ID using selected language and country preferences.
   docs_url: https://docs.justoneapi.com/en/api/imdb/user-reviews-summary-v1
   cost:
@@ -4768,6 +4870,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.imdb-title-user-reviews-summary-query-v1.json
 - id: justoneapi.x.instagram-get-comment-replies-v1
   tier: extended
@@ -4775,7 +4878,7 @@ endpoints:
   platform: instagram
   method: GET
   path: /api/instagram/get-comment-replies/v1
-  name: "List replies to an Instagram post comment"
+  name: "Instagram comment replies by media and comment id"
   summary: Retrieves replies to a specific Instagram post comment by media and comment IDs, with cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/instagram/comment-reply-list-v1
   cost:
@@ -4812,6 +4915,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.instagram-get-comment-replies-v1.json
 - id: justoneapi.x.instagram-get-post-comments-v1
   tier: extended
@@ -4819,7 +4923,7 @@ endpoints:
   platform: instagram
   method: GET
   path: /api/instagram/get-post-comments/v1
-  name: "List comments on an Instagram post"
+  name: "Instagram post comments by shortcode"
   summary: Retrieves top-level comments for an Instagram post by shortcode, with cursor pagination and popular or newest sorting.
   docs_url: https://docs.justoneapi.com/en/api/instagram/post-comment-list-v1
   cost:
@@ -4860,6 +4964,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.instagram-get-post-comments-v1.json
 - id: justoneapi.x.instagram-get-post-detail-v1
   tier: extended
@@ -4867,7 +4972,7 @@ endpoints:
   platform: instagram
   method: GET
   path: /api/instagram/get-post-detail/v1
-  name: "Get Instagram Post Detail"
+  name: "Instagram post details by shortcode"
   summary: Retrieves an Instagram post by its shortcode.
   docs_url: https://docs.justoneapi.com/en/api/instagram/post-details-v1
   cost:
@@ -4894,6 +4999,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.instagram-get-post-detail-v1.json
 - id: justoneapi.x.instagram-get-user-detail-v1
   tier: extended
@@ -4901,7 +5007,7 @@ endpoints:
   platform: instagram
   method: GET
   path: /api/instagram/get-user-detail/v1
-  name: "Get Instagram User Detail (v1)"
+  name: "Instagram user profile by username"
   summary: Retrieves an Instagram user profile by username.
   docs_url: https://docs.justoneapi.com/en/api/instagram/user-profile-v1
   cost:
@@ -4928,6 +5034,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.instagram-get-user-detail-v1.json
 - id: justoneapi.x.instagram-search-hashtag-posts-v1
   tier: extended
@@ -4935,7 +5042,7 @@ endpoints:
   platform: instagram
   method: GET
   path: /api/instagram/search-hashtag-posts/v1
-  name: "Search Instagram Hashtag Posts"
+  name: "Search Instagram posts by hashtag"
   summary: Searches Instagram posts by hashtag with cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/instagram/hashtag-posts-search-v1
   cost:
@@ -4968,6 +5075,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.instagram-search-hashtag-posts-v1.json
 - id: justoneapi.x.instagram-search-reels-v1
   tier: extended
@@ -4975,7 +5083,7 @@ endpoints:
   platform: instagram
   method: GET
   path: /api/instagram/search-reels/v1
-  name: "Search Instagram Reels"
+  name: "Search Instagram Reels by keyword or hashtag"
   summary: Searches Instagram Reels by keyword or hashtag with token-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/instagram/reels-search-v1
   cost:
@@ -5007,6 +5115,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.instagram-search-reels-v1.json
 - id: justoneapi.x.jd-get-item-comments-v1
   tier: extended
@@ -5014,7 +5123,7 @@ endpoints:
   platform: jd
   method: GET
   path: /api/jd/get-item-comments/v1
-  name: "List JD.com product comments"
+  name: "JD.com product comments by item id"
   summary: Retrieve paginated customer comments for a JD.com product identified by item ID.
   docs_url: https://docs.justoneapi.com/en/api/jdcom/product-comments-v1
   cost:
@@ -5046,6 +5155,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.jd-get-item-comments-v1.json
 - id: justoneapi.x.jd-get-item-comments-v2
   tier: extended
@@ -5053,7 +5163,7 @@ endpoints:
   platform: jd
   method: GET
   path: /api/jd/get-item-comments/v2
-  name: "List JD.com SKU comments"
+  name: "JD.com SKU-level product comments by item id"
   summary: Retrieve paginated JD.com product comments for a specific SKU.
   docs_url: https://docs.justoneapi.com/en/api/jdcom/product-comments-v2
   cost:
@@ -5085,6 +5195,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.jd-get-item-comments-v2.json
 - id: justoneapi.x.jd-get-item-detail-v1
   tier: extended
@@ -5092,7 +5203,7 @@ endpoints:
   platform: jd
   method: GET
   path: /api/jd/get-item-detail/v1
-  name: "Get JD Product Detail (v1)"
+  name: "JD.com product details by item id"
   summary: Retrieve JD.com product details for a known item ID.
   docs_url: https://docs.justoneapi.com/en/api/jdcom/product-details-v1
   cost:
@@ -5119,6 +5230,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.jd-get-item-detail-v1.json
 # note: the call succeeds (code 0) but returned an EMPTY payload for this test target — route and credential are proven, the example shows no response shape
 - id: justoneapi.x.jd-get-item-detail-v2
@@ -5126,7 +5238,7 @@ endpoints:
   platform: jd
   method: GET
   path: /api/jd/get-item-detail/v2
-  name: "Get JD.com product detail (async task)"
+  name: "JD.com product details by item id (async task)"
   summary: Access the asynchronous JD.com product detail workflow from the Just One API dashboard Task Management page.
   docs_url: https://docs.justoneapi.com/en/api/jdcom/product-details-v2
   input:
@@ -5142,13 +5254,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.jd-get-item-detail-v2.json
 - id: justoneapi.x.jd-get-item-detail-v3
+  added: '2026-07-28'
   tier: extended
   platform: jd
   method: GET
   path: /api/jd/get-item-detail/v3
-  name: "Get JD Product Detail (v3)"
+  name: "JD.com product details by item id"
   summary: Retrieves JD.com product details for a known item ID.
   docs_url: https://docs.justoneapi.com/en/api/jdcom/product-details-v3
   cost:
@@ -5178,7 +5292,7 @@ endpoints:
   platform: jd
   method: GET
   path: /api/jd/get-item-price/v1
-  name: "Get JD.com product price"
+  name: "JD.com current product price by item id"
   summary: Retrieve the current JD.com product price for a known item ID.
   docs_url: https://docs.justoneapi.com/en/api/jdcom/product-price-v1
   cost:
@@ -5205,13 +5319,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.jd-get-item-price-v1.json
 - id: justoneapi.x.jd-get-shop-item-list-v1
+  added: '2026-07-28'
   tier: extended
   platform: jd
   method: GET
   path: /api/jd/get-shop-item-list/v1
-  name: "List products from a JD.com shop"
+  name: "JD.com shop products by shop id"
   summary: Retrieve a page of products from a JD.com shop identified by shop ID.
   docs_url: https://docs.justoneapi.com/en/api/jdcom/shop-product-list-v1
   cost:
@@ -5246,7 +5362,7 @@ endpoints:
   platform: jd
   method: GET
   path: /api/jd/search-item-list/v1
-  name: "Search JD.com products"
+  name: "Search JD.com products by keyword"
   summary: Search JD.com products by keyword with page-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/jdcom/product-search-v1
   cost:
@@ -5278,6 +5394,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.jd-search-item-list-v1.json
 - id: justoneapi.x.jd-search-item-list-v2
   tier: extended
@@ -5285,7 +5402,7 @@ endpoints:
   platform: jd
   method: GET
   path: /api/jd/search-item-list/v2
-  name: "Search JD.com products by sales volume"
+  name: "Search JD.com products by keyword, sorted by sales"
   summary: Search JD.com products by keyword with page-based pagination and sales-volume ordering.
   docs_url: https://docs.justoneapi.com/en/api/jdcom/product-search-v2
   cost:
@@ -5317,6 +5434,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.jd-search-item-list-v2.json
 - id: justoneapi.x.kuaishou-get-user-detail-v1
   tier: extended
@@ -5324,7 +5442,7 @@ endpoints:
   platform: kuaishou
   method: GET
   path: /api/kuaishou/get-user-detail/v1
-  name: "Get Kuaishou user profile"
+  name: "Kuaishou user profile by user id"
   summary: Retrieve the public profile for a Kuaishou user identified by user ID.
   docs_url: https://docs.justoneapi.com/en/api/kuaishou/user-profile-v1
   cost:
@@ -5351,13 +5469,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.kuaishou-get-user-detail-v1.json
 - id: justoneapi.x.kuaishou-get-user-video-list-v2
+  added: '2026-07-28'
   tier: extended
   platform: kuaishou
   method: GET
   path: /api/kuaishou/get-user-video-list/v2
-  name: "List videos from a Kuaishou user"
+  name: "Kuaishou user videos by user id"
   summary: Retrieve public videos published by a Kuaishou user, with optional cursor-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/kuaishou/user-published-videos-v2
   cost:
@@ -5386,11 +5506,12 @@ endpoints:
       userId: '1159110565'
   unverified: upstream scrape fails (code 301 COLLECT FAILED) on every attempt — 6 passes on 2026-07-28, up to 6 retries each, the last two converting 1 endpoint apiece (convergence). Provider-s
 - id: justoneapi.x.kuaishou-get-video-comment-v1
+  added: '2026-07-28'
   tier: extended
   platform: kuaishou
   method: GET
   path: /api/kuaishou/get-video-comment/v1
-  name: "List comments on a Kuaishou video"
+  name: "Kuaishou video comments by video id"
   summary: Retrieve public comments for a Kuaishou video, with optional cursor-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/kuaishou/video-comments-v1
   cost:
@@ -5419,11 +5540,12 @@ endpoints:
       videoId: f9f22290943925f9
   unverified: upstream scrape fails (code 301 COLLECT FAILED) on every attempt — 6 passes on 2026-07-28, up to 6 retries each, the last two converting 1 endpoint apiece (convergence). Provider-s
 - id: justoneapi.x.kuaishou-get-video-detail-v2
+  added: '2026-07-28'
   tier: extended
   platform: kuaishou
   method: GET
   path: /api/kuaishou/get-video-detail/v2
-  name: "Get Kuaishou video detail"
+  name: "Kuaishou video details by video id"
   summary: Retrieve public details for a Kuaishou video identified by its video ID.
   docs_url: https://docs.justoneapi.com/en/api/kuaishou/video-details-v2
   cost:
@@ -5453,7 +5575,7 @@ endpoints:
   platform: kuaishou
   method: GET
   path: /api/kuaishou/search-user/v2
-  name: "Search Kuaishou users"
+  name: "Search Kuaishou users by keyword"
   summary: Search public Kuaishou user accounts by keyword with page-number pagination.
   docs_url: https://docs.justoneapi.com/en/api/kuaishou/user-search-v2
   cost:
@@ -5486,6 +5608,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.kuaishou-search-user-v2.json
 - id: justoneapi.x.kuaishou-search-video-v1
   tier: extended
@@ -5493,7 +5616,7 @@ endpoints:
   platform: kuaishou
   method: GET
   path: /api/kuaishou/search-video/v1
-  name: "Search Kuaishou videos (cursor pagination)"
+  name: "Search Kuaishou videos by keyword, cursor paginated"
   summary: Search public Kuaishou videos by keyword with cursor-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/kuaishou/video-search-v1
   cost:
@@ -5525,6 +5648,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.kuaishou-search-video-v1.json
 - id: justoneapi.x.kuaishou-search-video-v2
   tier: extended
@@ -5532,7 +5656,7 @@ endpoints:
   platform: kuaishou
   method: GET
   path: /api/kuaishou/search-video/v2
-  name: "Search Kuaishou videos (page pagination)"
+  name: "Search Kuaishou videos by keyword, page paginated"
   summary: Search public Kuaishou videos by keyword with page-number pagination.
   docs_url: https://docs.justoneapi.com/en/api/kuaishou/video-search-v2
   cost:
@@ -5565,14 +5689,16 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.kuaishou-search-video-v2.json
 - id: justoneapi.x.kuaishou-share-url-transfer-v1
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: kuaishou
   method: GET
   path: /api/kuaishou/share-url-transfer/v1
-  name: "Resolve a Kuaishou short share link"
+  name: "Resolve a Kuaishou short link to its public URL"
   summary: Resolve a supported Kuaishou short share link and return its public redirect URL.
   docs_url: https://docs.justoneapi.com/en/api/kuaishou/share-link-resolution-v1
   cost:
@@ -5602,7 +5728,7 @@ endpoints:
   platform: linkedin
   method: GET
   path: /api/linkedin/get-company-employees/v1
-  name: "List employees of a LinkedIn company"
+  name: "LinkedIn company employees by company id"
   summary: Retrieves a page of LinkedIn people associated with a company ID.
   docs_url: https://docs.justoneapi.com/en/api/linkedin/company-employees-v1
   cost:
@@ -5635,6 +5761,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.linkedin-get-company-employees-v1.json
 - id: justoneapi.x.linkedin-get-post-comments-v1
   tier: extended
@@ -5642,7 +5769,7 @@ endpoints:
   platform: linkedin
   method: GET
   path: /api/linkedin/get-post-comments/v1
-  name: "List comments on a LinkedIn post"
+  name: "LinkedIn post comments by post id"
   summary: Retrieves a page of LinkedIn comments for a post with relevance or recent sorting and activity or UGC post types.
   docs_url: https://docs.justoneapi.com/en/api/linkedin/post-comments-v1
   cost:
@@ -5693,6 +5820,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.linkedin-get-post-comments-v1.json
 - id: justoneapi.x.linkedin-get-post-reactions-v1
   tier: extended
@@ -5700,7 +5828,7 @@ endpoints:
   platform: linkedin
   method: GET
   path: /api/linkedin/get-post-reactions/v1
-  name: "List reactions on a LinkedIn post"
+  name: "LinkedIn post reactions by post id"
   summary: Retrieves LinkedIn reaction records for a post, optionally filtered by reaction type and page.
   docs_url: https://docs.justoneapi.com/en/api/linkedin/post-reactions-v1
   cost:
@@ -5746,6 +5874,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.linkedin-get-post-reactions-v1.json
 - id: justoneapi.x.linkedin-get-user-detail-v1
   tier: extended
@@ -5753,7 +5882,7 @@ endpoints:
   platform: linkedin
   method: GET
   path: /api/linkedin/get-user-detail/v1
-  name: "Get LinkedIn profile detail"
+  name: "LinkedIn user profile by username — name, headline"
   summary: Retrieves a LinkedIn profile by username, including documented core profile fields such as name and headline.
   docs_url: https://docs.justoneapi.com/en/api/linkedin/user-profile-v1
   cost:
@@ -5780,6 +5909,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.linkedin-get-user-detail-v1.json
 - id: justoneapi.x.linkedin-get-user-posts-v1
   tier: extended
@@ -5787,7 +5917,7 @@ endpoints:
   platform: linkedin
   method: GET
   path: /api/linkedin/get-user-posts/v1
-  name: "List posts from a LinkedIn user"
+  name: "LinkedIn user posts by user URN"
   summary: Retrieves posts published by a LinkedIn user URN with page and pagination-token support.
   docs_url: https://docs.justoneapi.com/en/api/linkedin/user-published-posts-v1
   cost:
@@ -5825,13 +5955,16 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.linkedin-get-user-posts-v1.json
 - id: justoneapi.x.linkedin-search-user-v1
+  added: '2026-07-28'
   tier: extended
+  capability: linkedin.search.people
   platform: linkedin
   method: GET
   path: /api/linkedin/search-user/v1
-  name: "Search LinkedIn people"
+  name: "Search LinkedIn people by name, title, or company"
   summary: Searches LinkedIn people by name, title, company, school, location, language, industry, or service category with page-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/linkedin/people-search-v1
   cost:
@@ -5920,7 +6053,7 @@ endpoints:
   platform: qq-huxuan
   method: GET
   path: /api/qq-huxuan/cgi-bin/advertiser/finder_publisher/detail/v1
-  name: "Get QQ Huxuan Video Account creator detail"
+  name: "Huxuan Video Account creator details by app id"
   summary: Retrieves QQ Huxuan Video Account creator details for a known creator app ID.
   docs_url: https://docs.justoneapi.com/en/api/qq-huxuan-creator-marketplace/video-account-creator-details-v1
   cost:
@@ -5947,6 +6080,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.qq-huxuan-cgi-bin-advertiser-finder-publisher-detail-v1.json
 - id: justoneapi.x.qq-huxuan-cgi-bin-advertiser-finder-publisher-get-finder-video-show-v1
   tier: extended
@@ -5954,7 +6088,7 @@ endpoints:
   platform: qq-huxuan
   method: GET
   path: /api/qq-huxuan/cgi-bin/advertiser/finder_publisher/get_finder_video_show/v1
-  name: "List QQ Huxuan Video Account creator videos"
+  name: "Huxuan Video Account creator videos by app id and dates"
   summary: Lists videos from a QQ Huxuan Video Account creator within a required date range, with a choice of all, Huxuan order, hot, or personal videos.
   docs_url: https://docs.justoneapi.com/en/api/qq-huxuan-creator-marketplace/video-account-recent-videos-v1
   cost:
@@ -6008,6 +6142,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.qq-huxuan-cgi-bin-advertiser-finder-publisher-get-finder-video-show-v1.json
 - id: justoneapi.x.qq-huxuan-cgi-bin-advertiser-finder-publisher-search-v1
   tier: extended
@@ -6015,7 +6150,7 @@ endpoints:
   platform: qq-huxuan
   method: GET
   path: /api/qq-huxuan/cgi-bin/advertiser/finder_publisher/search/v1
-  name: "Search QQ Huxuan Video Account creators"
+  name: "Search Huxuan Video Account creators by nickname"
   summary: Searches or browses QQ Huxuan Video Account creators by optional nickname keyword with page-number pagination.
   docs_url: https://docs.justoneapi.com/en/api/qq-huxuan-creator-marketplace/video-account-creator-search-v1
   cost:
@@ -6049,6 +6184,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.qq-huxuan-cgi-bin-advertiser-finder-publisher-search-v1.json
 # note: the call succeeds (code 0) but returned an EMPTY payload for this test target — route and credential are proven, the example shows no response shape
 - id: justoneapi.x.qq-huxuan-cgi-bin-advertiser-mp-publisher-detail-v1
@@ -6057,7 +6193,7 @@ endpoints:
   platform: qq-huxuan
   method: GET
   path: /api/qq-huxuan/cgi-bin/advertiser/mp_publisher/detail/v1
-  name: "Get QQ Huxuan Official Account creator detail"
+  name: "Huxuan Official Account creator details by app id"
   summary: Retrieves QQ Huxuan Official Account creator details for a known creator app ID.
   docs_url: https://docs.justoneapi.com/en/api/qq-huxuan-creator-marketplace/official-account-creator-details-v1
   cost:
@@ -6084,6 +6220,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.qq-huxuan-cgi-bin-advertiser-mp-publisher-detail-v1.json
 - id: justoneapi.x.qq-huxuan-cgi-bin-advertiser-mp-publisher-get-user-articles-v1
   tier: extended
@@ -6091,7 +6228,7 @@ endpoints:
   platform: qq-huxuan
   method: GET
   path: /api/qq-huxuan/cgi-bin/advertiser/mp_publisher/get_user_articles/v1
-  name: "List QQ Huxuan Official Account creator articles"
+  name: "Huxuan Official Account articles by app id and dates"
   summary: Lists articles from a QQ Huxuan Official Account creator within a required date range, with an optional title keyword and a choice between all articles and Huxuan order articles.
   docs_url: https://docs.justoneapi.com/en/api/qq-huxuan-creator-marketplace/official-account-article-list-v1
   cost:
@@ -6149,6 +6286,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.qq-huxuan-cgi-bin-advertiser-mp-publisher-get-user-articles-v1.json
 - id: justoneapi.x.qq-huxuan-cgi-bin-advertiser-mp-publisher-search-v1
   tier: extended
@@ -6156,7 +6294,7 @@ endpoints:
   platform: qq-huxuan
   method: GET
   path: /api/qq-huxuan/cgi-bin/advertiser/mp_publisher/search/v1
-  name: "Search QQ Huxuan Official Account creators"
+  name: "Search Huxuan Official Account creators by nickname"
   summary: Searches or browses QQ Huxuan Official Account creators by optional nickname or account keyword with page-number pagination.
   docs_url: https://docs.justoneapi.com/en/api/qq-huxuan-creator-marketplace/official-account-creator-search-v1
   cost:
@@ -6190,6 +6328,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.qq-huxuan-cgi-bin-advertiser-mp-publisher-search-v1.json
 # note: the call succeeds (code 0) but returned an EMPTY payload for this test target — route and credential are proven, the example shows no response shape
 - id: justoneapi.x.reddit-get-post-comments-v1
@@ -6198,7 +6337,7 @@ endpoints:
   platform: reddit
   method: GET
   path: /api/reddit/get-post-comments/v1
-  name: "List comments on a Reddit post"
+  name: "Reddit post comments by post id"
   summary: Retrieves comments for a Reddit post with pagination-token support.
   docs_url: https://docs.justoneapi.com/en/api/reddit/post-comments-v1
   cost:
@@ -6231,6 +6370,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.reddit-get-post-comments-v1.json
 # note: the call succeeds (code 0) but returned an EMPTY payload for this test target — route and credential are proven, the example shows no response shape
 - id: justoneapi.x.reddit-get-post-detail-v1
@@ -6239,7 +6379,7 @@ endpoints:
   platform: reddit
   method: GET
   path: /api/reddit/get-post-detail/v1
-  name: "Get Reddit post detail"
+  name: "Reddit post details by post id"
   summary: Retrieves details for a Reddit post identified by its full post ID.
   docs_url: https://docs.justoneapi.com/en/api/reddit/post-details-v1
   cost:
@@ -6266,6 +6406,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.reddit-get-post-detail-v1.json
 - id: justoneapi.x.reddit-search-v1
   tier: extended
@@ -6273,7 +6414,7 @@ endpoints:
   platform: reddit
   method: GET
   path: /api/reddit/search/v1
-  name: "Search Reddit posts"
+  name: "Search Reddit posts by keyword"
   summary: Searches Reddit posts by keyword with an optional continuation token.
   docs_url: https://docs.justoneapi.com/en/api/reddit/keyword-search-v1
   cost:
@@ -6305,13 +6446,14 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.reddit-search-v1.json
 - id: justoneapi.x.taobao-get-item-comment-v3
   tier: extended
   platform: taobao
   method: GET
   path: /api/taobao/get-item-comment/v3
-  name: "List Taobao or Tmall product reviews"
+  name: "Taobao and Tmall product reviews by item id"
   summary: Retrieves Taobao and Tmall product reviews by item ID with page-based pagination, configurable sorting, and optional exclusion of default positive reviews.
   docs_url: https://docs.justoneapi.com/en/api/taobao-and-tmall/product-reviews-v3
   cost:
@@ -6362,6 +6504,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.taobao-get-item-comment-v3.json
 - id: justoneapi.x.taobao-get-item-detail-v1
   tier: extended
@@ -6369,7 +6512,7 @@ endpoints:
   platform: taobao
   method: GET
   path: /api/taobao/get-item-detail/v1
-  name: "Get Taobao or Tmall product detail (v1)"
+  name: "Taobao and Tmall product details by item id"
   summary: Retrieves Taobao or Tmall product details by item ID through the V1 endpoint.
   docs_url: https://docs.justoneapi.com/en/api/taobao-and-tmall/product-details-v1
   cost:
@@ -6396,6 +6539,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.taobao-get-item-detail-v1.json
 # note: the call succeeds (code 0) but returned an EMPTY payload for this test target — route and credential are proven, the example shows no response shape
 - id: justoneapi.x.taobao-get-item-detail-v2
@@ -6404,7 +6548,7 @@ endpoints:
   platform: taobao
   method: GET
   path: /api/taobao/get-item-detail/v2
-  name: "Get Taobao or Tmall product detail (async task)"
+  name: "Taobao and Tmall product details by item id (async task)"
   summary: Access the asynchronous Taobao and Tmall product detail workflow from the Just One API dashboard Task Management page.
   docs_url: https://docs.justoneapi.com/en/api/taobao-and-tmall/product-details-v2
   cost:
@@ -6431,6 +6575,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.taobao-get-item-detail-v2.json
 - id: justoneapi.x.taobao-get-item-detail-v4
   tier: extended
@@ -6438,7 +6583,7 @@ endpoints:
   platform: taobao
   method: GET
   path: /api/taobao/get-item-detail/v4
-  name: "Get Taobao or Tmall product detail (v4)"
+  name: "Taobao and Tmall product details by item id"
   summary: Retrieves Taobao or Tmall product details by item ID through the V4 endpoint.
   docs_url: https://docs.justoneapi.com/en/api/taobao-and-tmall/product-details-v4
   cost:
@@ -6465,6 +6610,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.taobao-get-item-detail-v4.json
 - id: justoneapi.x.taobao-get-item-detail-v5
   tier: extended
@@ -6472,7 +6618,7 @@ endpoints:
   platform: taobao
   method: GET
   path: /api/taobao/get-item-detail/v5
-  name: "Get Taobao or Tmall product detail (v5)"
+  name: "Taobao and Tmall product details by item id"
   summary: Retrieves Taobao or Tmall product details by item ID through the V5 endpoint.
   docs_url: https://docs.justoneapi.com/en/api/taobao-and-tmall/product-details-v5
   cost:
@@ -6499,6 +6645,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.taobao-get-item-detail-v5.json
 - id: justoneapi.x.taobao-get-item-detail-v9
   tier: extended
@@ -6506,7 +6653,7 @@ endpoints:
   platform: taobao
   method: GET
   path: /api/taobao/get-item-detail/v9
-  name: "Get Taobao or Tmall product detail (v9)"
+  name: "Taobao and Tmall product details by item id"
   summary: Retrieves Taobao or Tmall product details by item ID through the V9 endpoint.
   docs_url: https://docs.justoneapi.com/en/api/taobao-and-tmall/product-details-v9
   cost:
@@ -6533,14 +6680,16 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.taobao-get-item-detail-v9.json
 - id: justoneapi.x.taobao-get-item-sale-v1
+  added: '2026-07-28'
   tier: extended
   platform: taobao
   method: GET
   path: /api/taobao/get-item-sale/v1
   cost: {type: per_success, value: null, currency: CNY, unit: call, source: inferred, checked: '2026-08-07', confidence: unknown, note: 'UNPRICED and unmeasurable from here. JustOneAPI publishes no rate-card API (the other rates came from a dashboard price export), exposes no balance endpoint, and returns no billing field in its responses — so a per-call price cannot be observed the way DataForSEO and Lusha were. The route is DEPRECATED upstream but still answers (400 for missing params, not 404), and it is the only endpoint in the catalog for this platform, so it is kept rather than dropped. To price it: re-export the JustOneAPI dashboard price list'}
-  name: "Get 30-day sales count for a Taobao product"
+  name: "Taobao product 30-day sales count by item id"
   summary: Retrieves the 30-day sales count for a Taobao or Tmall product by item ID.
   docs_url: https://docs.justoneapi.com/en/api/taobao-and-tmall/product-sales-v1-deprecated
   input:
@@ -6559,7 +6708,7 @@ endpoints:
   platform: taobao
   method: GET
   path: /api/taobao/get-shop-item-list/v1
-  name: "List products from a Taobao or Tmall shop (v1)"
+  name: "Taobao and Tmall shop products by seller id"
   summary: Retrieves products from a Taobao or Tmall shop by seller or user ID, with page-based pagination and default or sales sorting.
   docs_url: https://docs.justoneapi.com/en/api/taobao-and-tmall/shop-product-list-v1
   cost:
@@ -6601,6 +6750,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.taobao-get-shop-item-list-v1.json
 - id: justoneapi.x.taobao-get-shop-item-list-v2
   tier: extended
@@ -6608,7 +6758,7 @@ endpoints:
   platform: taobao
   method: GET
   path: /api/taobao/get-shop-item-list/v2
-  name: "List products from a Taobao or Tmall shop (v2)"
+  name: "Taobao and Tmall shop products by seller and shop id"
   summary: Retrieves products from a Taobao or Tmall shop using both seller or user ID and shop ID, with page-based pagination and configurable sorting.
   docs_url: https://docs.justoneapi.com/en/api/taobao-and-tmall/shop-product-list-v2
   cost:
@@ -6658,13 +6808,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.taobao-get-shop-item-list-v2.json
 - id: justoneapi.x.taobao-get-shop-item-list-v4
+  added: '2026-07-28'
   tier: extended
   platform: taobao
   method: GET
   path: /api/taobao/get-shop-item-list/v4
-  name: "List products from a Taobao or Tmall shop (v4)"
+  name: "Taobao and Tmall shop products by seller id"
   summary: Retrieves products from a Taobao or Tmall shop by seller ID with page-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/taobao-and-tmall/shop-product-list-v4
   cost:
@@ -6700,7 +6852,7 @@ endpoints:
   platform: taobao
   method: GET
   path: /api/taobao/get-social-feed/v1
-  name: "Get social feed for a Taobao product"
+  name: "Taobao product social feed by item id"
   summary: Retrieves the Taobao or Tmall product social feed by item ID with page-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/taobao-and-tmall/product-questions-v1
   cost:
@@ -6733,6 +6885,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.taobao-get-social-feed-v1.json
 - id: justoneapi.x.taobao-search-item-list-v1
   tier: extended
@@ -6740,7 +6893,7 @@ endpoints:
   platform: taobao
   method: GET
   path: /api/taobao/search-item-list/v1
-  name: "Search Taobao and Tmall products"
+  name: "Search Taobao and Tmall products by keyword"
   summary: Searches Taobao and Tmall products by keyword with page, sort, optional Tmall-only, and inclusive price-range filters.
   docs_url: https://docs.justoneapi.com/en/api/taobao-and-tmall/product-search-v1
   cost:
@@ -6798,6 +6951,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.taobao-search-item-list-v1.json
 - id: justoneapi.x.tiktok-get-post-sub-comment-v1
   tier: extended
@@ -6805,7 +6959,7 @@ endpoints:
   platform: tiktok
   method: GET
   path: /api/tiktok/get-post-sub-comment/v1
-  name: "List replies to a TikTok post comment"
+  name: "TikTok comment replies by post and comment id"
   summary: Retrieves replies to a specific comment on a TikTok post with cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/tiktok/comment-replies-v1
   cost:
@@ -6843,6 +6997,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.tiktok-get-post-sub-comment-v1.json
 - id: justoneapi.x.tiktok-search-user-v1
   tier: extended
@@ -6850,7 +7005,7 @@ endpoints:
   platform: tiktok
   method: GET
   path: /api/tiktok/search-user/v1
-  name: "Search TikTok users"
+  name: "Search TikTok users by keyword"
   summary: Searches TikTok users by keyword with cursor pagination and search-session continuity.
   docs_url: https://docs.justoneapi.com/en/api/tiktok/user-search-v1
   cost:
@@ -6888,6 +7043,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.tiktok-search-user-v1.json
 - id: justoneapi.x.tiktok-shop-get-product-detail-v1
   tier: extended
@@ -6895,7 +7051,7 @@ endpoints:
   platform: tiktok-shop
   method: GET
   path: /api/tiktok-shop/get-product-detail/v1
-  name: "Get TikTok Shop product detail"
+  name: "TikTok Shop product details by product id"
   summary: Retrieves the public TikTok Shop product detail for a product ID in a selected region.
   docs_url: https://docs.justoneapi.com/en/api/tiktok-shop/product-details-v1
   cost:
@@ -6938,6 +7094,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.tiktok-shop-get-product-detail-v1.json
 - id: justoneapi.x.tiktok-shop-search-products-v1
   tier: extended
@@ -6945,7 +7102,7 @@ endpoints:
   platform: tiktok-shop
   method: GET
   path: /api/tiktok-shop/search-products/v1
-  name: "Search TikTok Shop products"
+  name: "Search TikTok Shop products by keyword"
   summary: Searches TikTok Shop products by keyword within a selected region, with offset and page-token pagination.
   docs_url: https://docs.justoneapi.com/en/api/tiktok-shop/product-search-v1
   cost:
@@ -6998,13 +7155,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.tiktok-shop-search-products-v1.json
 - id: justoneapi.x.toutiao-get-article-detail-v1
+  added: '2026-07-28'
   tier: extended
   platform: toutiao
   method: GET
   path: /api/toutiao/get-article-detail/v1
-  name: "Get Toutiao article detail"
+  name: "Toutiao article details by article id"
   summary: Retrieves details for a Toutiao article identified by its article ID.
   docs_url: https://docs.justoneapi.com/en/api/toutiao/article-details-v1
   cost:
@@ -7026,11 +7185,12 @@ endpoints:
         note: The unique identifier of the Toutiao article.
   untestable: no test value for required param(s) id — none of the verified responses in this provider carries one
 - id: justoneapi.x.toutiao-get-user-detail-v1
+  added: '2026-07-28'
   tier: extended
   platform: toutiao
   method: GET
   path: /api/toutiao/get-user-detail/v1
-  name: "Get Toutiao User Profile"
+  name: "Toutiao user profile by user id"
   summary: Retrieves a Toutiao user profile identified by user ID.
   docs_url: https://docs.justoneapi.com/en/api/toutiao/user-profile-v1
   cost:
@@ -7052,12 +7212,13 @@ endpoints:
         note: The unique identifier of the Toutiao user.
   untestable: no test value for required param(s) userId — none of the verified responses in this provider carries one
 - id: justoneapi.x.toutiao-get-user-id-v1
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: toutiao
   method: GET
   path: /api/toutiao/get-user-id/v1
-  name: "Resolve Toutiao User ID"
+  name: "Resolve a Toutiao profile URL to its user id"
   summary: Resolves the user ID associated with a Toutiao profile URL.
   docs_url: https://docs.justoneapi.com/en/api/toutiao/user-id-v1
   cost:
@@ -7084,7 +7245,7 @@ endpoints:
   platform: toutiao
   method: GET
   path: /api/toutiao/search/v2
-  name: "Search Toutiao Articles"
+  name: "Search Toutiao articles by keyword"
   summary: Searches Toutiao web articles by keyword.
   docs_url: https://docs.justoneapi.com/en/api/toutiao/web-keyword-search-v2
   cost:
@@ -7111,13 +7272,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.toutiao-search-v2.json
 - id: justoneapi.x.search-v1
+  added: '2026-07-28'
   tier: extended
   platform: web
   method: GET
   path: /api/search/v1
-  name: "Search across news, Weibo, WeChat, and more"
+  name: "Search Chinese news and social"
   summary: Searches recent content across news, Weibo, WeChat, Zhihu, Douyin, Xiaohongshu, Bilibili, and Kuaishou with source and time filters.
   docs_url: https://docs.justoneapi.com/en/api/social-media/cross-platform-search-v1
   cost:
@@ -7175,7 +7338,7 @@ endpoints:
   platform: wechat-channels
   method: GET
   path: /api/weixin-channels/convert-export-id/v1
-  name: "Convert a WeChat Channels export ID"
+  name: "Convert a WeChat Channels export id to a video id"
   summary: Converts an encrypted WeChat Channels export ID from search results into a usable video object identity.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/export-id-conversion-v1
   cost:
@@ -7202,6 +7365,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-channels-convert-export-id-v1.json
 - id: justoneapi.x.weixin-channels-get-account-videos-v1
   tier: extended
@@ -7209,7 +7373,7 @@ endpoints:
   platform: wechat-channels
   method: POST
   path: /api/weixin-channels/get-account-videos/v1
-  name: "List videos from a WeChat Channels account"
+  name: "WeChat Channels account videos by account id"
   summary: Retrieves a paginated WeChat Channels account feed by v2Name with continuation-buffer support.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/account-videos-v1
   cost:
@@ -7243,13 +7407,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-channels-get-account-videos-v1.json
 - id: justoneapi.x.weixin-channels-get-bound-channel-v1
+  added: '2026-07-28'
   tier: extended
   platform: wechat-channels
   method: GET
   path: /api/weixin-channels/get-bound-channel/v1
-  name: "Find the WeChat Channels account bound to an account"
+  name: "WeChat Channels account bound to an Official Account"
   summary: Finds the WeChat Channels account bound to a WeChat Official Account using either its original ID or an article URL.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/get-bound-channel-v1
   cost:
@@ -7277,11 +7443,12 @@ endpoints:
         example: ''
   skipped: skipped to conserve balance (¥1.0/call); requires a ghid/url pair for a Channels-bound account, which no verified response returned
 - id: justoneapi.x.weixin-channels-get-video-basic-info-v1
+  added: '2026-07-28'
   tier: extended
   platform: wechat-channels
   method: GET
   path: /api/weixin-channels/get-video-basic-info/v1
-  name: "Get basic info for a WeChat Channels video"
+  name: "WeChat Channels video basic info by link or feed id"
   summary: Resolves a copied WeChat Channels video link, preview URL, or short feed ID to basic video information.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/video-basic-info-v1
   cost:
@@ -7308,7 +7475,7 @@ endpoints:
   platform: wechat-channels
   method: POST
   path: /api/weixin-channels/get-video-comment/v1
-  name: "List comments on a WeChat Channels video"
+  name: "WeChat Channels video comments by object id"
   summary: Retrieves first-level comments for a WeChat Channels video by object ID with continuation-buffer pagination.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/video-comments-v1
   cost:
@@ -7347,6 +7514,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-channels-get-video-comment-v1.json
 - id: justoneapi.x.weixin-channels-get-video-download-url-v1
   tier: extended
@@ -7354,7 +7522,7 @@ endpoints:
   platform: wechat-channels
   method: GET
   path: /api/weixin-channels/get-video-download-url/v1
-  name: "Get a WeChat Channels video download URL"
+  name: "WeChat Channels video download URL by object id"
   summary: Retrieves a downloadable media URL for a WeChat Channels video by object ID and optional nonce ID.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/video-download-url-v1
   cost:
@@ -7386,6 +7554,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-channels-get-video-download-url-v1.json
 - id: justoneapi.x.weixin-channels-get-video-metrics-v1
   tier: extended
@@ -7393,7 +7562,7 @@ endpoints:
   platform: wechat-channels
   method: POST
   path: /api/weixin-channels/get-video-metrics/v1
-  name: "Get interaction metrics for a WeChat Channels video"
+  name: "WeChat Channels video interaction metrics by object id"
   summary: Retrieves interaction metrics for a WeChat Channels video by object ID with optional continuation-buffer input.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/video-metrics-v1
   cost:
@@ -7432,6 +7601,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-channels-get-video-metrics-v1.json
 - id: justoneapi.x.weixin-channels-get-video-sub-comment-v1
   tier: extended
@@ -7439,7 +7609,7 @@ endpoints:
   platform: wechat-channels
   method: POST
   path: /api/weixin-channels/get-video-sub-comment/v1
-  name: "List replies to a WeChat Channels video comment"
+  name: "WeChat Channels comment replies by video and comment id"
   summary: Retrieves replies under a first-level WeChat Channels video comment using the video and root-comment IDs.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/video-sub-comments-v1
   cost:
@@ -7479,6 +7649,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-channels-get-video-sub-comment-v1.json
 - id: justoneapi.x.weixin-channels-get-video-title-v1
   tier: extended
@@ -7486,7 +7657,7 @@ endpoints:
   platform: wechat-channels
   method: GET
   path: /api/weixin-channels/get-video-title/v1
-  name: "Get title info for a WeChat Channels video"
+  name: "WeChat Channels video title by object id"
   summary: Retrieves lightweight title information for a WeChat Channels video by object ID and optional nonce ID.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/video-title-v1
   cost:
@@ -7518,13 +7689,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-channels-get-video-title-v1.json
 - id: justoneapi.x.weixin-channels-search-account-v1
+  added: '2026-07-28'
   tier: extended
   platform: wechat-channels
   method: POST
   path: /api/weixin-channels/search-account/v1
-  name: "Search WeChat Channels accounts (v1)"
+  name: "Search WeChat Channels accounts by keyword"
   summary: Searches the WeChat Channels account category by keyword with page, offset, and continuation-state controls.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/account-search-v1
   cost:
@@ -7567,7 +7740,7 @@ endpoints:
   platform: wechat-channels
   method: POST
   path: /api/weixin-channels/search-account/v2
-  name: "Search WeChat Channels accounts (v2)"
+  name: "Search WeChat Channels accounts by keyword"
   summary: Searches WeChat Channels account-related records by keyword using the direct Channels lookup.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/account-search-v2
   cost:
@@ -7594,6 +7767,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-channels-search-account-v2.json
 # note: the call succeeds (code 0) but returned an EMPTY payload for this test target — route and credential are proven, the example shows no response shape
 - id: justoneapi.x.weixin-channels-search-account-v3
@@ -7602,7 +7776,7 @@ endpoints:
   platform: wechat-channels
   method: POST
   path: /api/weixin-channels/search-account/v3
-  name: "Look up a WeChat Channels account identity"
+  name: "Look up a WeChat Channels account id by keyword"
   summary: Looks up a specific WeChat Channels account identity by keyword.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/account-search-v3
   cost:
@@ -7629,6 +7803,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-channels-search-account-v3.json
 - id: justoneapi.x.weixin-channels-search-video-v1
   tier: extended
@@ -7636,7 +7811,7 @@ endpoints:
   platform: wechat-channels
   method: POST
   path: /api/weixin-channels/search-video/v1
-  name: "Search WeChat Channels videos (v1)"
+  name: "Search WeChat Channels videos by keyword"
   summary: Searches WeChat Channels videos by keyword with publish-time, sort, page, offset, and continuation-state controls.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/video-search-v1
   cost:
@@ -7703,13 +7878,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-channels-search-video-v1.json
 - id: justoneapi.x.weixin-channels-search-video-v2
+  added: '2026-07-28'
   tier: extended
   platform: wechat-channels
   method: POST
   path: /api/weixin-channels/search-video/v2
-  name: "Search WeChat Channels videos (v2)"
+  name: "Search WeChat Channels videos by keyword"
   summary: Searches the WeChat Channels video category by keyword with page, offset, and continuation-state controls.
   docs_url: https://docs.justoneapi.com/en/api/wechat-channels/video-search-v2
   cost:
@@ -7753,7 +7930,7 @@ endpoints:
   platform: wechat-mp
   method: GET
   path: /api/weixin/convert-article-link/v1
-  name: "Expand a WeChat article link"
+  name: "Expand a WeChat article short link to its full URL"
   summary: Expands a WeChat Official Account article link to its resolved long-form destination.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/article-link-conversion-v1
   cost:
@@ -7780,6 +7957,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-convert-article-link-v1.json
 - id: justoneapi.x.weixin-get-account-basic-info-v1
   tier: extended
@@ -7787,7 +7965,7 @@ endpoints:
   platform: wechat-mp
   method: GET
   path: /api/weixin/get-account-basic-info/v1
-  name: "Get basic info for a WeChat Official Account"
+  name: "WeChat Official Account profile by account name"
   summary: Retrieves basic profile information for a WeChat Official Account by account name.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/account-basic-info-v1
   cost:
@@ -7814,6 +7992,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-get-account-basic-info-v1.json
 - id: justoneapi.x.weixin-get-account-history-articles-v1
   tier: extended
@@ -7821,7 +8000,7 @@ endpoints:
   platform: wechat-mp
   method: POST
   path: /api/weixin/get-account-history-articles/v1
-  name: "List historical articles for a WeChat account (v1)"
+  name: "WeChat Official Account past articles by id, URL, or name"
   summary: Retrieves page-number-paginated historical articles for a WeChat Official Account identified by biz ID, article URL, account name, or wxid.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/account-historical-articles-v1
   cost:
@@ -7865,6 +8044,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-get-account-history-articles-v1.json
 - id: justoneapi.x.weixin-get-account-history-articles-v2
   tier: extended
@@ -7872,7 +8052,7 @@ endpoints:
   platform: wechat-mp
   method: POST
   path: /api/weixin/get-account-history-articles/v2
-  name: "List historical articles for a WeChat account (v2)"
+  name: "WeChat Official Account past articles by id or URL"
   summary: Retrieves historical articles for a WeChat Official Account identified by ghid or article URL, with an offset cursor from the previous page.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/account-historical-articles-v2
   cost:
@@ -7914,13 +8094,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-get-account-history-articles-v2.json
 - id: justoneapi.x.weixin-get-account-original-count-v1
+  added: '2026-07-28'
   tier: extended
   platform: wechat-mp
   method: GET
   path: /api/weixin/get-account-original-count/v1
-  name: "Get original-article count for a WeChat account"
+  name: "WeChat Official Account original article count by id or URL"
   summary: Retrieves the original-article count for a WeChat Official Account identified by ghid or article URL.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/account-original-article-count-v1
   cost:
@@ -7948,11 +8130,12 @@ endpoints:
         example: ''
   skipped: skipped to conserve balance (¥1.5/call); WeChat account-info family verified via justoneapi.x.weixin-get-account-basic-info-v1
 - id: justoneapi.x.weixin-get-account-principal-info-v1
+  added: '2026-07-28'
   tier: extended
   platform: wechat-mp
   method: GET
   path: /api/weixin/get-account-principal-info/v1
-  name: "Get principal info for a WeChat Official Account"
+  name: "WeChat Official Account principal info by id or URL"
   summary: Retrieves principal information for a WeChat Official Account identified by biz ID, article URL, or wxid.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/account-principal-info-v1
   cost:
@@ -7990,7 +8173,7 @@ endpoints:
   platform: wechat-mp
   method: GET
   path: /api/weixin/get-account-today-articles/v1
-  name: "List today's articles for a WeChat account"
+  name: "WeChat Official Account today's articles by id or name"
   summary: Retrieves articles published today by a WeChat Official Account identified by biz ID, article URL, account name, or wxid.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/account-today-articles-v1
   cost:
@@ -8028,6 +8211,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-get-account-today-articles-v1.json
 - id: justoneapi.x.weixin-get-article-comment-v1
   tier: extended
@@ -8035,7 +8219,7 @@ endpoints:
   platform: wechat-mp
   method: POST
   path: /api/weixin/get-article-comment/v1
-  name: "List comments on a WeChat article"
+  name: "WeChat article comments by article URL"
   summary: Retrieves top-level comments for a WeChat Official Account article by URL, with an optional buffer cursor for pagination.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/article-comments-v1
   cost:
@@ -8069,6 +8253,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-get-article-comment-v1.json
 - id: justoneapi.x.weixin-get-article-detail-v1
   tier: extended
@@ -8076,7 +8261,7 @@ endpoints:
   platform: wechat-mp
   method: GET
   path: /api/weixin/get-article-detail/v1
-  name: "Get WeChat article detail (text or rich text)"
+  name: "WeChat article content by article URL — plain or rich text"
   summary: Retrieves a WeChat Official Account article by URL with selectable plain-text or rich-text content mode.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/article-details-v1
   cost:
@@ -8112,6 +8297,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-get-article-detail-v1.json
 - id: justoneapi.x.weixin-get-article-detail-v2
   tier: extended
@@ -8119,7 +8305,7 @@ endpoints:
   platform: wechat-mp
   method: GET
   path: /api/weixin/get-article-detail/v2
-  name: "Get structured WeChat article detail"
+  name: "WeChat article structured details by article URL"
   summary: Retrieves structured details for a WeChat Official Account article by URL.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/article-details-v2
   cost:
@@ -8146,6 +8332,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-get-article-detail-v2.json
 - id: justoneapi.x.weixin-get-article-detail-v3
   tier: extended
@@ -8153,7 +8340,7 @@ endpoints:
   platform: wechat-mp
   method: GET
   path: /api/weixin/get-article-detail/v3
-  name: "Get WeChat article detail with video content"
+  name: "WeChat article details with video content by article URL"
   summary: Retrieves details for a WeChat Official Account article that may include video content, with selectable plain-text or rich-text mode.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/article-details-v3
   cost:
@@ -8189,6 +8376,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-get-article-detail-v3.json
 - id: justoneapi.x.weixin-get-article-detail-v4
   tier: extended
@@ -8196,7 +8384,7 @@ endpoints:
   platform: wechat-mp
   method: GET
   path: /api/weixin/get-article-detail/v4
-  name: "Get WeChat article as HTML"
+  name: "WeChat article HTML by article URL"
   summary: Retrieves an HTML representation of a WeChat Official Account article by URL.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/article-details-v4
   cost:
@@ -8223,6 +8411,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-get-article-detail-v4.json
 - id: justoneapi.x.weixin-get-article-detail-v5
   tier: extended
@@ -8230,7 +8419,7 @@ endpoints:
   platform: wechat-mp
   method: GET
   path: /api/weixin/get-article-detail/v5
-  name: "Get lightweight WeChat article info"
+  name: "WeChat article lightweight info by article URL"
   summary: Retrieves lightweight information for a WeChat Official Account article by URL.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/article-details-v5
   cost:
@@ -8257,6 +8446,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-get-article-detail-v5.json
 - id: justoneapi.x.weixin-get-article-metrics-v1
   tier: extended
@@ -8264,7 +8454,7 @@ endpoints:
   platform: wechat-mp
   method: GET
   path: /api/weixin/get-article-metrics/v1
-  name: "Get basic interaction metrics for a WeChat article"
+  name: "WeChat article basic interaction metrics by article URL"
   summary: 'Retrieves basic interaction metrics for a WeChat Official Account article URL that ends with #rd or #wechat_redirect.'
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/article-metrics-v1
   cost:
@@ -8291,6 +8481,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-get-article-metrics-v1.json
 - id: justoneapi.x.weixin-get-article-metrics-v2
   tier: extended
@@ -8298,7 +8489,7 @@ endpoints:
   platform: wechat-mp
   method: GET
   path: /api/weixin/get-article-metrics/v2
-  name: "Get extended interaction metrics for a WeChat article"
+  name: "WeChat article extended interaction metrics by article URL"
   summary: Retrieves extended interaction metrics for a WeChat Official Account article by URL.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/article-metrics-v2
   cost:
@@ -8325,6 +8516,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-get-article-metrics-v2.json
 # note: the call succeeds (code 0) but returned an EMPTY payload for this test target — route and credential are proven, the example shows no response shape
 - id: justoneapi.x.weixin-get-article-sub-comment-v1
@@ -8333,7 +8525,7 @@ endpoints:
   platform: wechat-mp
   method: GET
   path: /api/weixin/get-article-sub-comment/v1
-  name: "List replies to a WeChat article comment"
+  name: "WeChat article comment replies by URL and comment id"
   summary: Retrieves replies under a top-level comment for a WeChat Official Account article, identified by article URL and contentId.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/article-comment-replies-v1
   cost:
@@ -8365,6 +8557,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-get-article-sub-comment-v1.json
 - id: justoneapi.x.weixin-search-account-v1
   tier: extended
@@ -8372,7 +8565,7 @@ endpoints:
   platform: wechat-mp
   method: POST
   path: /api/weixin/search-account/v1
-  name: "Search WeChat Official Accounts (v1)"
+  name: "Search WeChat Official Accounts by keyword"
   summary: Searches WeChat Official Accounts by keyword with page-number pagination and one result per page.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/account-search-v1
   cost:
@@ -8405,13 +8598,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-search-account-v1.json
 - id: justoneapi.x.weixin-search-account-v2
+  added: '2026-07-28'
   tier: extended
   platform: wechat-mp
   method: POST
   path: /api/weixin/search-account/v2
-  name: "Search WeChat Official Accounts (v2)"
+  name: "Search WeChat Official Accounts by keyword"
   summary: Searches WeChat Official Accounts by keyword with page, offset, and continuation-state pagination.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/account-search-v2
   cost:
@@ -8454,7 +8649,7 @@ endpoints:
   platform: wechat-mp
   method: GET
   path: /api/weixin/search-article-hot/v1
-  name: "Search hot WeChat articles by date range"
+  name: "Search hot WeChat articles by date range and keyword"
   summary: Searches hot WeChat Official Account articles within a required date range, with optional keyword plus publication-format, category, and page filters.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/hot-article-search-v1
   cost:
@@ -8549,6 +8744,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-search-article-hot-v1.json
 - id: justoneapi.x.weixin-search-article-v1
   tier: extended
@@ -8556,7 +8752,7 @@ endpoints:
   platform: wechat-mp
   method: POST
   path: /api/weixin/search-article/v1
-  name: "Search WeChat articles (v1)"
+  name: "Search WeChat articles by keyword"
   summary: Searches WeChat Official Account articles by keyword with publish-time and sort filters plus page, offset, and continuation-state pagination.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/article-search-v1
   cost:
@@ -8623,6 +8819,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-search-article-v1.json
 - id: justoneapi.x.weixin-search-article-v2
   tier: extended
@@ -8630,7 +8827,7 @@ endpoints:
   platform: wechat-mp
   method: POST
   path: /api/weixin/search-article/v2
-  name: "Search WeChat articles by category"
+  name: "Search WeChat articles by keyword and category"
   summary: Searches WeChat Official Account articles by keyword within a selected category such as followed accounts, latest, recently read, or hot, with continuation pagination.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/article-search-v2
   cost:
@@ -8688,6 +8885,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-search-article-v2.json
 - id: justoneapi.x.weixin-search-miniprogram-v1
   tier: extended
@@ -8695,7 +8893,7 @@ endpoints:
   platform: wechat-search
   method: POST
   path: /api/weixin/search-miniprogram/v1
-  name: "Search WeChat Mini Programs"
+  name: "Search WeChat Mini Programs by keyword"
   summary: Searches WeChat Mini Programs by keyword with page, offset, and continuation-state pagination.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/mini-program-search-v1
   cost:
@@ -8741,6 +8939,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-search-miniprogram-v1.json
 - id: justoneapi.x.weixin-search-suggestions-v1
   tier: extended
@@ -8748,7 +8947,7 @@ endpoints:
   platform: wechat-search
   method: GET
   path: /api/weixin/search-suggestions/v1
-  name: "Get WeChat search suggestions"
+  name: "WeChat search suggestions by keyword"
   summary: Retrieves WeChat search suggestions for a keyword, optionally scoped by a supported business type.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/search-suggestions-v1
   cost:
@@ -8795,6 +8994,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-search-suggestions-v1.json
 - id: justoneapi.x.weixin-search-wechat-index-v1
   tier: extended
@@ -8802,7 +9002,7 @@ endpoints:
   platform: wechat-search
   method: GET
   path: /api/weixin/search-wechat-index/v1
-  name: "Get WeChat Index for Keyword"
+  name: "WeChat Index trend by keyword"
   summary: Queries WeChat Index for a keyword.
   docs_url: https://docs.justoneapi.com/en/api/wechat-official-accounts/wechat-index-search-v1
   cost:
@@ -8829,6 +9029,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weixin-search-wechat-index-v1.json
 - id: justoneapi.x.weibo-get-fans-v1
   tier: extended
@@ -8836,7 +9037,7 @@ endpoints:
   platform: weibo
   method: GET
   path: /api/weibo/get-fans/v1
-  name: "List a Weibo user's fans"
+  name: "Weibo user followers by user id"
   summary: Retrieves a page of fan accounts that follow a Weibo user identified by UID.
   docs_url: https://docs.justoneapi.com/en/api/weibo/user-fans-v1
   cost:
@@ -8869,6 +9070,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weibo-get-fans-v1.json
 - id: justoneapi.x.weibo-get-followers-v1
   tier: extended
@@ -8876,7 +9078,7 @@ endpoints:
   platform: weibo
   method: GET
   path: /api/weibo/get-followers/v1
-  name: "List accounts a Weibo user follows"
+  name: "Weibo accounts a user follows by user id"
   summary: Retrieves a page of accounts followed by a Weibo user identified by UID.
   docs_url: https://docs.justoneapi.com/en/api/weibo/user-followers-v1
   cost:
@@ -8909,6 +9111,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weibo-get-followers-v1.json
 - id: justoneapi.x.weibo-get-post-comments-v1
   tier: extended
@@ -8916,7 +9119,7 @@ endpoints:
   platform: weibo
   method: GET
   path: /api/weibo/get-post-comments/v1
-  name: "List comments on a Weibo post"
+  name: "Weibo post comments by post id"
   summary: Retrieves comments for a Weibo post identified by MID, with optional maxId cursor pagination and time or hot sorting.
   docs_url: https://docs.justoneapi.com/en/api/weibo/post-comments-v1
   cost:
@@ -8956,6 +9159,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weibo-get-post-comments-v1.json
 - id: justoneapi.x.weibo-get-user-post-v1
   tier: extended
@@ -8963,7 +9167,7 @@ endpoints:
   platform: weibo
   method: GET
   path: /api/weibo/get-user-post/v1
-  name: "List posts from a Weibo user"
+  name: "Weibo user posts by user id"
   summary: Retrieves posts published by a Weibo user identified by UID, using page numbers and a required sinceId cursor after the first page.
   docs_url: https://docs.justoneapi.com/en/api/weibo/user-published-posts-v1
   cost:
@@ -9000,6 +9204,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weibo-get-user-post-v1.json
 - id: justoneapi.x.weibo-get-user-video-list-v1
   tier: extended
@@ -9007,7 +9212,7 @@ endpoints:
   platform: weibo
   method: GET
   path: /api/weibo/get-user-video-list/v1
-  name: "List a Weibo user's video feed"
+  name: "Weibo user video feed by user id"
   summary: Retrieves a Weibo user's video waterfall feed by UID, with an optional cursor from a prior response.
   docs_url: https://docs.justoneapi.com/en/api/weibo/user-video-list-v1
   cost:
@@ -9039,6 +9244,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weibo-get-user-video-list-v1.json
 - id: justoneapi.x.weibo-get-weibo-detail-v1
   tier: extended
@@ -9046,7 +9252,7 @@ endpoints:
   platform: weibo
   method: GET
   path: /api/weibo/get-weibo-detail/v1
-  name: "Get Weibo post detail"
+  name: "Weibo post details by post id"
   summary: Retrieves details for a Weibo post identified by its post ID.
   docs_url: https://docs.justoneapi.com/en/api/weibo/post-details-v1
   cost:
@@ -9073,6 +9279,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weibo-get-weibo-detail-v1.json
 - id: justoneapi.x.weibo-hot-search-v1
   tier: extended
@@ -9080,7 +9287,7 @@ endpoints:
   platform: weibo
   method: GET
   path: /api/weibo/hot-search/v1
-  name: "Get Weibo Hot Search Ranking"
+  name: "Weibo current hot search ranking"
   summary: Retrieves the current Weibo hot-search ranking.
   docs_url: https://docs.justoneapi.com/en/api/weibo/hot-search-v1
   cost:
@@ -9100,6 +9307,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weibo-hot-search-v1.json
 - id: justoneapi.x.weibo-search-all-v2
   tier: extended
@@ -9107,7 +9315,7 @@ endpoints:
   platform: weibo
   method: GET
   path: /api/weibo/search-all/v2
-  name: "Search Weibo posts"
+  name: "Search Weibo posts by keyword and time range"
   summary: Searches Weibo posts by keyword within a required day-and-hour time range, with page-based pagination, hot or time sorting, and filters for pictures, video, music, or links.
   docs_url: https://docs.justoneapi.com/en/api/weibo/keyword-search-v2
   cost:
@@ -9178,6 +9386,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weibo-search-all-v2.json
 - id: justoneapi.x.weibo-search-profile-v1
   tier: extended
@@ -9185,7 +9394,7 @@ endpoints:
   platform: weibo
   method: GET
   path: /api/weibo/search-profile/v1
-  name: "Search posts from a specific Weibo user"
+  name: "Search a Weibo user's posts by user id and keyword"
   summary: Searches posts published by a specific Weibo user, using a keyword, optional date range, and page-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/weibo/search-user-published-posts-v1
   cost:
@@ -9233,13 +9442,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.weibo-search-profile-v1.json
 - id: justoneapi.x.weibo-tv-component-v1
+  added: '2026-07-28'
   tier: extended
   platform: weibo
   method: GET
   path: /api/weibo/tv-component/v1
-  name: "Get Weibo TV video detail"
+  name: "Weibo TV video details by object id"
   summary: Retrieves Weibo TV video details for a colon-delimited object ID (OID).
   docs_url: https://docs.justoneapi.com/en/api/weibo/tv-video-details-v1
   cost:
@@ -9269,7 +9480,7 @@ endpoints:
   platform: x
   method: GET
   path: /api/twitter/get-post-comments/v1
-  name: "List comments on an X post"
+  name: "X (Twitter) post comments by tweet id"
   summary: Retrieves the latest comments for an X (Twitter) post identified by tweet ID, with cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/twitter/post-comments-v1
   cost:
@@ -9302,6 +9513,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.twitter-get-post-comments-v1.json
 - id: justoneapi.x.twitter-get-user-detail-v1
   tier: extended
@@ -9309,7 +9521,7 @@ endpoints:
   platform: x
   method: GET
   path: /api/twitter/get-user-detail/v1
-  name: "Get X (Twitter) user profile"
+  name: "X (Twitter) user profile by numeric user id"
   summary: Retrieves an X (Twitter) user profile identified by its numeric Rest ID.
   docs_url: https://docs.justoneapi.com/en/api/twitter/user-profile-v1
   cost:
@@ -9336,6 +9548,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.twitter-get-user-detail-v1.json
 - id: justoneapi.x.twitter-get-user-posts-v1
   tier: extended
@@ -9343,7 +9556,7 @@ endpoints:
   platform: x
   method: GET
   path: /api/twitter/get-user-posts/v1
-  name: "List posts from an X (Twitter) user"
+  name: "X (Twitter) user posts by numeric user id"
   summary: Retrieves posts published by an X (Twitter) user identified by Rest ID, with cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/twitter/user-published-posts-v1
   cost:
@@ -9376,6 +9589,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.twitter-get-user-posts-v1.json
 - id: justoneapi.x.twitter-search-v1
   tier: extended
@@ -9383,7 +9597,7 @@ endpoints:
   platform: x
   method: GET
   path: /api/twitter/search/v1
-  name: "Search X (Twitter)"
+  name: "Search X (Twitter) by keyword — top, latest, media, people"
   summary: Searches X (Twitter) by keyword across top, latest, media, people, or list result modes with cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/twitter/search-timeline-v1
   cost:
@@ -9428,6 +9642,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.twitter-search-v1.json
 - id: justoneapi.x.xianyu-get-item-detail-v1
   tier: extended
@@ -9435,7 +9650,7 @@ endpoints:
   platform: xianyu
   method: GET
   path: /api/xianyu/get-item-detail/v1
-  name: "Get Xianyu listing detail"
+  name: "Xianyu second-hand listing details by item id"
   summary: Retrieves the public detail for a Xianyu (GooFish) second-hand listing by item ID.
   docs_url: https://docs.justoneapi.com/en/api/xianyu-goofish/product-details-v1
   cost:
@@ -9462,6 +9677,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xianyu-get-item-detail-v1.json
 - id: justoneapi.x.xianyu-search-item-list-v1
   tier: extended
@@ -9469,7 +9685,7 @@ endpoints:
   platform: xianyu
   method: GET
   path: /api/xianyu/search-item-list/v1
-  name: "Search Xianyu listings"
+  name: "Search Xianyu second-hand listings by keyword"
   summary: Searches Xianyu (GooFish) second-hand listings by keyword with page and sort controls.
   docs_url: https://docs.justoneapi.com/en/api/xianyu-goofish/product-search-v1
   cost:
@@ -9515,6 +9731,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xianyu-search-item-list-v1.json
 - id: justoneapi.x.xiaohongshu-get-note-comment-v2
   tier: extended
@@ -9522,7 +9739,7 @@ endpoints:
   platform: xiaohongshu
   method: GET
   path: /api/xiaohongshu/get-note-comment/v2
-  name: "List comments on a Xiaohongshu note"
+  name: "Xiaohongshu note comments by note id"
   summary: Retrieves comments for a Xiaohongshu (RedNote) note with cursor pagination and normal, latest, or like-count sorting.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/note-comments-v2
   cost:
@@ -9563,6 +9780,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-get-note-comment-v2.json
 - id: justoneapi.x.xiaohongshu-get-note-detail-v6
   tier: extended
@@ -9570,7 +9788,7 @@ endpoints:
   platform: xiaohongshu
   method: GET
   path: /api/xiaohongshu/get-note-detail/v6
-  name: "Get Xiaohongshu video-note detail"
+  name: "Xiaohongshu video note details by note id"
   summary: Retrieves Xiaohongshu (RedNote) video-note details by note ID.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/note-details-v6
   cost:
@@ -9597,6 +9815,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-get-note-detail-v6.json
 # note: the call succeeds (code 0) but returned an EMPTY payload for this test target — route and credential are proven, the example shows no response shape
 - id: justoneapi.x.xiaohongshu-get-note-sub-comment-v2
@@ -9605,7 +9824,7 @@ endpoints:
   platform: xiaohongshu
   method: GET
   path: /api/xiaohongshu/get-note-sub-comment/v2
-  name: "List replies to a Xiaohongshu note comment"
+  name: "Xiaohongshu comment replies by note and comment id"
   summary: Retrieves replies to a specific Xiaohongshu (RedNote) note comment with cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/comment-replies-v2
   cost:
@@ -9641,6 +9860,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-get-note-sub-comment-v2.json
 - id: justoneapi.x.xiaohongshu-get-topic-note-list-v1
   tier: extended
@@ -9648,7 +9868,7 @@ endpoints:
   platform: xiaohongshu
   method: GET
   path: /api/xiaohongshu/get-topic-note-list/v1
-  name: "List Xiaohongshu notes for a topic"
+  name: "Xiaohongshu topic notes by topic id"
   summary: Retrieves Xiaohongshu (RedNote) notes associated with a topic ID, with hot or latest sorting and cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/topic-note-list-v1
   cost:
@@ -9689,6 +9909,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-get-topic-note-list-v1.json
 - id: justoneapi.x.xiaohongshu-get-user-v3
   tier: extended
@@ -9696,7 +9917,7 @@ endpoints:
   platform: xiaohongshu
   method: GET
   path: /api/xiaohongshu/get-user/v3
-  name: "Get Xiaohongshu user profile"
+  name: "Xiaohongshu user profile by user id or URL"
   summary: Retrieves a Xiaohongshu (RedNote) user profile from a user ID or supported profile URL.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/user-profile-v3
   cost:
@@ -9723,6 +9944,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-get-user-v3.json
 - id: justoneapi.x.xiaohongshu-hot-list-v1
   tier: extended
@@ -9730,7 +9952,7 @@ endpoints:
   platform: xiaohongshu
   method: GET
   path: /api/xiaohongshu/hot-list/v1
-  name: "Get the current Xiaohongshu hot list"
+  name: "Xiaohongshu current hot list"
   summary: Retrieves the current Xiaohongshu (RedNote) hot list for platform trend monitoring and content research.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/hot-list-v1
   cost:
@@ -9750,6 +9972,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-hot-list-v1.json
 - id: justoneapi.x.xiaohongshu-hot-search-v1
   tier: extended
@@ -9757,7 +9980,7 @@ endpoints:
   platform: xiaohongshu
   method: GET
   path: /api/xiaohongshu/hot-search/v1
-  name: "Search Xiaohongshu hot content"
+  name: "Search Xiaohongshu hot content by keyword"
   summary: Searches Xiaohongshu (RedNote) hot-content entries with optional keyword, pagination, ranking metric, and time-range controls.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/hot-search-v1
   cost:
@@ -9817,6 +10040,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-hot-search-v1.json
 - id: justoneapi.x.xiaohongshu-search-note-v2
   tier: extended
@@ -9824,7 +10048,7 @@ endpoints:
   platform: xiaohongshu
   method: GET
   path: /api/xiaohongshu/search-note/v2
-  name: "Search Xiaohongshu notes"
+  name: "Search Xiaohongshu notes by keyword"
   summary: Searches Xiaohongshu (RedNote) notes by keyword with pagination plus sort, note-type, and publish-time filters.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/note-search-v2
   cost:
@@ -9887,6 +10111,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-search-note-v2.json
 - id: justoneapi.x.xiaohongshu-search-recommend-v1
   tier: extended
@@ -9894,7 +10119,7 @@ endpoints:
   platform: xiaohongshu
   method: GET
   path: /api/xiaohongshu/search-recommend/v1
-  name: "Get Xiaohongshu search keyword suggestions"
+  name: "Xiaohongshu keyword suggestions by seed term"
   summary: Returns Xiaohongshu (RedNote) search keyword suggestions for a submitted seed term.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/keyword-suggestions-v1
   cost:
@@ -9921,6 +10146,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-search-recommend-v1.json
 - id: justoneapi.x.xiaohongshu-search-user-v2
   tier: extended
@@ -9928,7 +10154,7 @@ endpoints:
   platform: xiaohongshu
   method: GET
   path: /api/xiaohongshu/search-user/v2
-  name: "Search Xiaohongshu users"
+  name: "Search Xiaohongshu users by keyword"
   summary: Searches Xiaohongshu (RedNote) users by keyword with page-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/user-search-v2
   cost:
@@ -9961,14 +10187,16 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-search-user-v2.json
 - id: justoneapi.x.xiaohongshu-share-url-transfer-v1
+  added: '2026-07-28'
   kind: utility
   tier: extended
   platform: xiaohongshu
   method: GET
   path: /api/xiaohongshu/share-url-transfer/v1
-  name: "Resolve a Xiaohongshu short share link"
+  name: "Resolve a Xiaohongshu short link to its public URL"
   summary: Resolve a supported Xiaohongshu (RedNote) short share link and return its public redirect URL.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-rednote/share-link-resolution-v1
   cost:
@@ -9998,7 +10226,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/pgy/content_square/search_note_v2/v1
-  name: "Search Xiaohongshu Pugongying Content Square notes"
+  name: "Search Pugongying Content Square notes by keyword"
   summary: Search Xiaohongshu Pugongying Content Square notes by keyword or browse all notes, with business-category, ranking, time-window, and page controls.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/content-square-notes-v1
   cost:
@@ -10073,6 +10301,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgypgy-content-square-search-note-v2-v1.json
 - id: justoneapi.x.xiaohongshu-pgypgy-kol-data-core-data-v1
   tier: extended
@@ -10080,7 +10309,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/pgy/kol/data/core_data/v1
-  name: "Get Xiaohongshu Pugongying creator core data"
+  name: "Pugongying creator core data by creator id"
   summary: Retrieves Xiaohongshu Pugongying core data for a creator with business, note-type, date-range, and advertisement filters.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/creator-core-metrics-v1
   cost:
@@ -10144,6 +10373,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgypgy-kol-data-core-data-v1.json
 - id: justoneapi.x.xiaohongshu-pgysolar-cooperator-blogger-v2-v1
   tier: extended
@@ -10151,7 +10381,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/solar/cooperator/blogger/v2/v1
-  name: "Search Xiaohongshu Pugongying creators by filters"
+  name: "Search Pugongying creators by keyword, audience, and price"
   summary: Search Xiaohongshu Pugongying creators with keyword, audience, location, content, pricing, performance, cooperation, live, and similarity filters.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/creator-search-v1
   cost:
@@ -10478,6 +10708,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgysolar-cooperator-blogger-v2-v1.json
 - id: justoneapi.x.xiaohongshu-pgysolar-cooperator-user-blogger-userid-v1
   tier: extended
@@ -10485,7 +10716,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/solar/cooperator/user/blogger/userId/v1
-  name: "Get Xiaohongshu Pugongying creator profile and quote"
+  name: "Pugongying creator profile and quote by creator id"
   summary: Retrieve a Xiaohongshu Pugongying creator profile and cooperation quote information for a known user ID.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/creator-profile-v1
   cost:
@@ -10512,6 +10743,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgysolar-cooperator-user-blogger-userid-v1.json
 - id: justoneapi.x.xiaohongshu-pgysolar-kol-data-userid-fans-overall-new-history-v1
   tier: extended
@@ -10519,7 +10751,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/solar/kol/data/userId/fans_overall_new_history/v1
-  name: "Get Xiaohongshu Pugongying creator follower history"
+  name: "Pugongying creator follower history by creator id"
   summary: Retrieve Xiaohongshu Pugongying follower history for a creator over the selected 30- or 90-day period.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/follower-growth-history-v1
   cost:
@@ -10564,6 +10796,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgysolar-kol-data-userid-fans-overall-new-history-v1.json
 - id: justoneapi.x.xiaohongshu-pgysolar-kol-data-userid-fans-profile-v1
   tier: extended
@@ -10571,7 +10804,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/solar/kol/data/userId/fans_profile/v1
-  name: "Get Xiaohongshu Pugongying creator follower profile"
+  name: "Pugongying creator follower profile by creator id"
   summary: Retrieves Xiaohongshu Pugongying follower profile data for a known creator.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/follower-distribution-v1
   cost:
@@ -10598,6 +10831,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgysolar-kol-data-userid-fans-profile-v1.json
 - id: justoneapi.x.xiaohongshu-pgysolar-kol-datav2-costeffective-v1
   tier: extended
@@ -10605,7 +10839,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/solar/kol/dataV2/costEffective/v1
-  name: "Get Xiaohongshu Pugongying creator cost-effectiveness"
+  name: "Pugongying creator cost-effectiveness by creator id"
   summary: Retrieve the Xiaohongshu Pugongying cost-effectiveness analysis for a known creator.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/cost-effectiveness-analysis-v1
   cost:
@@ -10632,6 +10866,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgysolar-kol-datav2-costeffective-v1.json
 - id: justoneapi.x.xiaohongshu-pgysolar-kol-datav2-kolcontenttags-v1
   tier: extended
@@ -10639,7 +10874,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/solar/kol/dataV2/kolContentTags/v1
-  name: "Get Xiaohongshu Pugongying creator content tags"
+  name: "Pugongying creator content tags by creator id"
   summary: Retrieve Xiaohongshu Pugongying content category tags associated with a known creator.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/creator-content-tags-v1
   cost:
@@ -10666,6 +10901,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgysolar-kol-datav2-kolcontenttags-v1.json
 - id: justoneapi.x.xiaohongshu-pgysolar-kol-datav2-kolfeaturetags-v1
   tier: extended
@@ -10673,7 +10909,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/solar/kol/dataV2/kolFeatureTags/v1
-  name: "Get Xiaohongshu Pugongying creator feature tags"
+  name: "Pugongying creator feature tags by creator id"
   summary: Retrieve Xiaohongshu Pugongying feature tags assigned to a known creator.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/creator-feature-tags-v1
   cost:
@@ -10700,6 +10936,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgysolar-kol-datav2-kolfeaturetags-v1.json
 - id: justoneapi.x.xiaohongshu-pgysolar-kol-datav2-notesdetail-v1
   tier: extended
@@ -10707,7 +10944,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/solar/kol/dataV2/notesDetail/v1
-  name: "List Xiaohongshu Pugongying creator notes"
+  name: "Pugongying creator notes by creator id"
   summary: Retrieve a paginated Xiaohongshu Pugongying creator note list with advertisement, sort-order, note-type, and third-platform filters.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/creator-note-list-v1
   cost:
@@ -10779,6 +11016,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgysolar-kol-datav2-notesdetail-v1.json
 - id: justoneapi.x.xiaohongshu-pgysolar-kol-datav3-datasummary-v1
   tier: extended
@@ -10786,7 +11024,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/solar/kol/dataV3/dataSummary/v1
-  name: "Get Xiaohongshu Pugongying creator data summary"
+  name: "Pugongying creator data summary by creator id"
   summary: Retrieve the Xiaohongshu Pugongying data summary for a creator's daily or cooperation notes.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/data-summary-v1
   cost:
@@ -10822,6 +11060,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgysolar-kol-datav3-datasummary-v1.json
 - id: justoneapi.x.xiaohongshu-pgysolar-kol-datav3-fanssummary-v1
   tier: extended
@@ -10829,7 +11068,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/solar/kol/dataV3/fansSummary/v1
-  name: "Get Xiaohongshu Pugongying creator follower summary"
+  name: "Pugongying creator follower summary by creator id"
   summary: Retrieve the Xiaohongshu Pugongying follower summary for a known creator.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/follower-summary-v1
   cost:
@@ -10856,6 +11095,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgysolar-kol-datav3-fanssummary-v1.json
 - id: justoneapi.x.xiaohongshu-pgysolar-kol-datav3-notesrate-v1
   tier: extended
@@ -10863,7 +11103,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/solar/kol/dataV3/notesRate/v1
-  name: "Get Xiaohongshu Pugongying note performance metrics"
+  name: "Pugongying note performance metrics by creator id"
   summary: Retrieve Xiaohongshu Pugongying aggregate note performance metrics for a creator with business, note-type, date-range, and advertisement filters.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/note-performance-metrics-v1
   cost:
@@ -10927,6 +11167,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgysolar-kol-datav3-notesrate-v1.json
 - id: justoneapi.x.xiaohongshu-pgysolar-kol-get-similar-kol-v1
   tier: extended
@@ -10934,7 +11175,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/solar/kol/get_similar_kol/v1
-  name: "List similar Xiaohongshu Pugongying creators"
+  name: "Similar Pugongying creators by creator id"
   summary: Retrieve paginated Xiaohongshu Pugongying creators similar to a known creator.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/similar-creators-v1
   cost:
@@ -10967,6 +11208,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgysolar-kol-get-similar-kol-v1.json
 - id: justoneapi.x.xiaohongshu-pgysolar-note-noteid-detail-v1
   tier: extended
@@ -10974,7 +11216,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/api/solar/note/noteId/detail/v1
-  name: "Get Xiaohongshu Pugongying note detail"
+  name: "Pugongying note details by note id"
   summary: Retrieves Xiaohongshu Pugongying details for a known note ID.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/note-details-v1
   cost:
@@ -11001,6 +11243,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgysolar-note-noteid-detail-v1.json
 - id: justoneapi.x.xiaohongshu-pgy-get-kol-note-list-v1
   tier: extended
@@ -11008,7 +11251,7 @@ endpoints:
   platform: xiaohongshu-pugongying
   method: GET
   path: /api/xiaohongshu-pgy/get-kol-note-list/v1
-  name: "List Xiaohongshu Pugongying creator notes (basic)"
+  name: "Pugongying creator notes by creator id"
   summary: Retrieve a paginated Xiaohongshu Pugongying creator note list with advertisement, sort-order, and note-type controls.
   docs_url: https://docs.justoneapi.com/en/api/xiaohongshu-creator-marketplace-pugongying/creator-note-list-pro-v1
   cost:
@@ -11069,6 +11312,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.xiaohongshu-pgy-get-kol-note-list-v1.json
 - id: justoneapi.x.youku-get-user-detail-v1
   tier: extended
@@ -11076,7 +11320,7 @@ endpoints:
   platform: youku
   method: GET
   path: /api/youku/get-user-detail/v1
-  name: "Get Youku User Profile"
+  name: "Youku user profile by user id"
   summary: Retrieves a Youku user profile identified by UID.
   docs_url: https://docs.justoneapi.com/en/api/youku/user-profile-v1
   cost:
@@ -11103,6 +11347,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.youku-get-user-detail-v1.json
 - id: justoneapi.x.youku-get-video-detail-v1
   tier: extended
@@ -11110,7 +11355,7 @@ endpoints:
   platform: youku
   method: GET
   path: /api/youku/get-video-detail/v1
-  name: "Get Youku Video Detail"
+  name: "Youku video details by video id"
   summary: Retrieves details for a Youku video identified by video ID.
   docs_url: https://docs.justoneapi.com/en/api/youku/video-details-v1
   cost:
@@ -11137,6 +11382,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.youku-get-video-detail-v1.json
 - id: justoneapi.x.youku-search-video-v1
   tier: extended
@@ -11144,7 +11390,7 @@ endpoints:
   platform: youku
   method: GET
   path: /api/youku/search-video/v1
-  name: "Search Youku Videos"
+  name: "Search Youku videos by keyword"
   summary: Searches Youku videos by keyword with page-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/youku/video-search-v1
   cost:
@@ -11177,6 +11423,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.youku-search-video-v1.json
 # note: the call succeeds (code 0) but returned an EMPTY payload for this test target — route and credential are proven, the example shows no response shape
 - id: justoneapi.x.youtube-get-channel-videos-v1
@@ -11185,7 +11432,7 @@ endpoints:
   platform: youtube
   method: GET
   path: /api/youtube/get-channel-videos/v1
-  name: "List videos from a YouTube channel"
+  name: "YouTube channel videos by channel id"
   summary: Retrieve public videos from a YouTube channel, with optional cursor-based pagination.
   docs_url: https://docs.justoneapi.com/en/api/youtube/channel-videos-v1
   cost:
@@ -11217,13 +11464,15 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.youtube-get-channel-videos-v1.json
 - id: justoneapi.x.youtube-get-video-captions-v1
+  added: '2026-07-28'
   tier: extended
   platform: youtube
   method: GET
   path: /api/youtube/get-video-captions/v1
-  name: "Get YouTube video captions"
+  name: "YouTube video captions by video id — SRT, XML, JSON3, text"
   summary: Retrieve available caption tracks for a YouTube video or request captions in SRT, XML, JSON3, or plain-text format.
   docs_url: https://docs.justoneapi.com/en/api/youtube/video-captions-v1
   cost:
@@ -11270,7 +11519,7 @@ endpoints:
   platform: youtube
   method: GET
   path: /api/youtube/get-video-comment/v1
-  name: "List top-level comments on a YouTube video"
+  name: "YouTube video comments by video id"
   summary: Retrieve first-level comments for a YouTube video with sorting, locale options, and cursor pagination.
   docs_url: https://docs.justoneapi.com/en/api/youtube/video-comment-list-v1
   cost:
@@ -11324,6 +11573,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.youtube-get-video-comment-v1.json
 # note: the call succeeds (code 0) but returned an EMPTY payload for this test target — route and credential are proven, the example shows no response shape
 - id: justoneapi.x.youtube-get-video-sub-comment-v1
@@ -11332,7 +11582,7 @@ endpoints:
   platform: youtube
   method: GET
   path: /api/youtube/get-video-sub-comment/v1
-  name: "List replies to a YouTube comment"
+  name: "YouTube comment replies by reply cursor"
   summary: Retrieve replies associated with a YouTube comment continuation cursor, with optional locale settings.
   docs_url: https://docs.justoneapi.com/en/api/youtube/video-sub-comment-list-v1
   cost:
@@ -11371,6 +11621,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.youtube-get-video-sub-comment-v1.json
 - id: justoneapi.x.youtube-search-v1
   tier: extended
@@ -11378,7 +11629,7 @@ endpoints:
   platform: youtube
   method: GET
   path: /api/youtube/search/v1
-  name: "Search YouTube"
+  name: "Search YouTube by keyword"
   summary: Search YouTube by keyword with optional type, upload-date, duration, feature, and sort filters, or continue with a token.
   docs_url: https://docs.justoneapi.com/en/api/youtube/general-search-v1
   cost:
@@ -11461,6 +11712,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.youtube-search-v1.json
 - id: justoneapi.x.zhihu-get-answer-comments-v1
   tier: extended
@@ -11468,7 +11720,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/get-answer-comments/v1
-  name: "List comments on a Zhihu answer"
+  name: "Zhihu answer comments by answer id"
   summary: Retrieve comments for a Zhihu answer with hottest or latest sorting and offset pagination.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/answer-comments-v1
   cost:
@@ -11510,6 +11762,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-answer-comments-v1.json
 - id: justoneapi.x.zhihu-get-answer-list-v1
   tier: extended
@@ -11517,7 +11770,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/get-answer-list/v1
-  name: "List answers to a Zhihu question"
+  name: "Zhihu question answers by question id"
   summary: Retrieve answers for a Zhihu question with sorting and pagination controls.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/answer-list-v1
   cost:
@@ -11570,6 +11823,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-answer-list-v1.json
 - id: justoneapi.x.zhihu-get-column-article-detail-v1
   tier: extended
@@ -11577,7 +11831,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/get-column-article-detail/v1
-  name: "Get Zhihu column article detail"
+  name: "Zhihu column article details by article id"
   summary: Retrieve details for a Zhihu column article identified by article ID.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/column-article-details-v1
   cost:
@@ -11604,6 +11858,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-column-article-detail-v1.json
 - id: justoneapi.x.zhihu-get-column-article-list-v1
   tier: extended
@@ -11611,7 +11866,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/get-column-article-list/v1
-  name: "List articles in a Zhihu column"
+  name: "Zhihu column articles by column id"
   summary: Retrieve articles from a Zhihu column with offset pagination.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/column-article-list-v1
   cost:
@@ -11644,6 +11899,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-column-article-list-v1.json
 - id: justoneapi.x.zhihu-get-comment-replies-v1
   tier: extended
@@ -11651,7 +11907,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/get-comment-replies/v1
-  name: "List replies to a Zhihu comment"
+  name: "Zhihu comment replies by comment id"
   summary: Retrieve replies to a Zhihu comment with hottest or latest sorting and offset pagination.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/comment-replies-v1
   cost:
@@ -11693,6 +11949,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-comment-replies-v1.json
 - id: justoneapi.x.zhihu-get-user-articles-v1
   tier: extended
@@ -11700,7 +11957,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/get-user-articles/v1
-  name: "List articles by a Zhihu user"
+  name: "Zhihu user articles by profile URL token"
   summary: Retrieve articles published by a Zhihu user with offset pagination and publish-time or upvote sorting.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/user-articles-v1
   cost:
@@ -11742,6 +11999,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-user-articles-v1.json
 - id: justoneapi.x.zhihu-get-user-follow-collections-v1
   tier: extended
@@ -11749,7 +12007,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/get-user-follow-collections/v1
-  name: "List collections a Zhihu user follows"
+  name: "Zhihu collections a user follows by profile URL token"
   summary: Retrieve Zhihu collections followed by a user, with offset pagination.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/user-follow-collections-v1
   cost:
@@ -11782,6 +12040,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-user-follow-collections-v1.json
 - id: justoneapi.x.zhihu-get-user-follow-columns-v1
   tier: extended
@@ -11789,7 +12048,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/get-user-follow-columns/v1
-  name: "List columns a Zhihu user follows"
+  name: "Zhihu columns a user follows by profile URL token"
   summary: Retrieve Zhihu columns followed by a user, with offset pagination.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/user-follow-columns-v1
   cost:
@@ -11822,6 +12081,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-user-follow-columns-v1.json
 - id: justoneapi.x.zhihu-get-user-follow-questions-v1
   tier: extended
@@ -11829,7 +12089,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/get-user-follow-questions/v1
-  name: "List questions a Zhihu user follows"
+  name: "Zhihu questions a user follows by profile URL token"
   summary: Retrieve Zhihu questions followed by a user, with offset pagination.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/user-follow-questions-v1
   cost:
@@ -11862,6 +12122,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-user-follow-questions-v1.json
 - id: justoneapi.x.zhihu-get-user-follow-topics-v1
   tier: extended
@@ -11869,7 +12130,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/get-user-follow-topics/v1
-  name: "List topics a Zhihu user follows"
+  name: "Zhihu topics a user follows by profile URL token"
   summary: Retrieve Zhihu topics followed by a user, with offset pagination.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/user-follow-topics-v1
   cost:
@@ -11902,6 +12163,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-user-follow-topics-v1.json
 - id: justoneapi.x.zhihu-get-user-followees-v1
   tier: extended
@@ -11909,7 +12171,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/get-user-followees/v1
-  name: "List accounts a Zhihu user follows"
+  name: "Zhihu accounts a user follows by profile URL token"
   summary: Retrieve accounts followed by a Zhihu user, with offset pagination.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/user-followees-v1
   cost:
@@ -11942,6 +12204,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-user-followees-v1.json
 - id: justoneapi.x.zhihu-get-user-followers-v1
   tier: extended
@@ -11949,7 +12212,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/get-user-followers/v1
-  name: "List a Zhihu user's followers"
+  name: "Zhihu user followers by profile URL token"
   summary: Retrieve accounts that follow a Zhihu user, with offset pagination.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/user-followers-v1
   cost:
@@ -11982,13 +12245,14 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-user-followers-v1.json
 - id: justoneapi.x.zhihu-get-user-included-articles-v1
   tier: extended
   platform: zhihu
   method: GET
   path: /api/zhihu/get-user-included-articles/v1
-  name: "List a Zhihu user's included articles"
+  name: "Zhihu user included articles by profile URL token"
   summary: Retrieve the included-article records exposed for a Zhihu user, with offset pagination.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/user-included-articles-v1
   cost:
@@ -12021,6 +12285,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-user-included-articles-v1.json
 - id: justoneapi.x.zhihu-get-user-info-v1
   tier: extended
@@ -12028,7 +12293,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/get-user-info/v1
-  name: "Get Zhihu user profile"
+  name: "Zhihu user profile by profile URL token"
   summary: Retrieve the public profile for a Zhihu user identified by URL token.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/user-info-v1
   cost:
@@ -12055,6 +12320,7 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-get-user-info-v1.json
 - id: justoneapi.x.zhihu-search-v1
   tier: extended
@@ -12062,7 +12328,7 @@ endpoints:
   platform: zhihu
   method: GET
   path: /api/zhihu/search/v1
-  name: "Search Zhihu"
+  name: "Search Zhihu by keyword"
   summary: Search Zhihu by keyword with optional result-type, sort, time-interval, topic-display, and offset controls.
   docs_url: https://docs.justoneapi.com/en/api/zhihu/keyword-search-v1
   cost:
@@ -12130,4 +12396,5 @@ endpoints:
     json_path: code
     equals: 0
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/justoneapi.x.zhihu-search-v1.json

@@ -1,0 +1,37 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "GZ0RTTZiWh9pZSas-nG1Mtn_uBh92wK4Od3jtnoPltIf8IK0qox6jY1sHrRff2MZNcjZRV7FEhRP6rOY6c7IBQ-KPuHKIrNxAgbnEOGT6rb6Yl8MoX93K_aoTDNwMP0W5u5Au8N6E1NBzi_0Kes3M_qGMmkaaqNHV_8y_nKlr3OK4jgrBHjN-Z_baKv5Ecom9vlmi1fm… [1068 chars]",
+      "users": [
+        {
+          "avatarUrl": "https://pbs.twimg.com/profile_images/1878814517825572864/CjL1QsNr_400x400.jpg",
+          "bio": "The first #AIAgent web3 solution for Gaming & Engagement 🎮\n\nPlay #Gamety app: https://t.co/bfzJmdBnnD\n\nCA - 0xD51827754A56860F04acD1D2699B049b026A5925",
+          "createdUtc": 1707211049,
+          "followers": 171456,
+          "following": 106,
+          "id": "1754796337399316480",
+          "location": "",
+          "name": "G-AGENTS AI💎",
+          "posts": 1032,
+          "profileUrl": "https://x.com/gametyio",
+          "username": "gametyio",
+          "verified": false
+        },
+        "… 19 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00075,
+  "items": 20,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-capybara",
+    "name": "Capybara",
+    "kind": "anonymous",
+    "artworkKey": "capybara"
+  },
+  "hint": "large_result: this response is ~10 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "968f2f49-de75-4d4b-a7f9-daa373e0ba59"
+}

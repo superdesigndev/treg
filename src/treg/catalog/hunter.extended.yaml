@@ -13,7 +13,7 @@ endpoints:
   capability: companies.search
   method: POST
   path: /discover
-  name: Discover companies matching criteria
+  name: "Discover companies by criteria or plain-language query"
   summary: Identifies companies matching specified criteria; returns up to 100 companies per request
   input:
     body:
@@ -57,6 +57,7 @@ endpoints:
     note: Discover does not consume search or verification credits
   docs_url: https://hunter.io/api-documentation/v2#discover
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.discover-companies.json
   observed_time: 2.11
 - id: hunter.x.discover-people
@@ -65,7 +66,7 @@ endpoints:
   capability: companies.search
   method: GET
   path: /discover/people
-  name: "Discover companies with email counts (people activity)"
+  name: "Discover companies with their email counts"
   summary: Returns companies matching Discover filters together with their personal/generic email counts
   input:
     queryParams:
@@ -93,6 +94,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api-documentation/v2#discover
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.discover-people.json
   observed_time: 1.25
 - id: hunter.x.discover-views-list
@@ -114,9 +116,11 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api-documentation/v2#discover
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.discover-views-list.json
   observed_time: 1.21
 - id: hunter.x.discover-views-get
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: companies
@@ -138,6 +142,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api-documentation/v2#discover
 - id: hunter.x.discover-views-create
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: companies
@@ -163,6 +168,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api-documentation/v2#discover
 - id: hunter.x.discover-views-delete
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: companies
@@ -183,11 +189,12 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api-documentation/v2#discover
 - id: hunter.x.domain-finder
-  tier: extended
+  capability: companies.domain.find
   platform: companies
+  tier: extended
   method: GET
   path: /domain-finder
-  name: "Find company domain"
+  name: "Find a company's domain from its name"
   summary: Returns the most likely domain name(s) for a given company name
   input:
     queryParams:
@@ -217,6 +224,7 @@ endpoints:
     note: does not consume credits
   docs_url: https://hunter.io/api-documentation/v2#domain-finder
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.domain-finder.json
   observed_time: 5.83
 - id: hunter.x.email-count
@@ -224,7 +232,7 @@ endpoints:
   platform: people
   method: GET
   path: /email-count
-  name: Count known emails for a domain
+  name: "Count known emails for a domain, by department"
   summary: Returns the number of email addresses Hunter has for a domain or company, broken down by department and seniority
   input:
     queryParams:
@@ -251,51 +259,109 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api-documentation/v2#email-count
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.email-count.json
   observed_time: 0.02
 - id: hunter.x.multi-domain-search
+  added: '2026-07-28'
   tier: extended
   platform: people
   method: POST
   path: /multi-domain-search
-  name: Search emails across multiple companies
-  summary: Searches across multiple companies at once; returns masked results with reveal handles
+  name: Search emails across companies matching filters
+  summary: Searches every company matching your filters in one request; returns masked rows with reveal handles
   input:
-    body:
-      companies:
-        type: array
-        required: true
-        note: list of {domain} or {company} objects to search
+    queryParams:
+      company_name:
+        type: string
+        required: false
+        note: company name to match
+        example: Stripe
+      location:
+        type: string
+        required: false
+        note: ISO 3166-1 alpha-2 country codes, comma-separated
+        example: US
+      industry:
+        type: string
+        required: false
+        note: numeric IDs from Hunter's industries.json catalog, comma-separated
+      headcount:
+        type: string
+        required: false
+        note: 'one of 1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10001+'
+      company_type:
+        type: string
+        required: false
+        note: 'educational, educational institution, government agency, non profit, partnership, privately held, public company, self employed, self owned, sole proprietorship'
+      founded_year:
+        type: integer
+        required: false
+        note: four-digit year from 1000 up to next year
+      technology:
+        type: string
+        required: false
+        note: exact slugs from Hunter's technologies.json catalog, comma-separated
+      department:
+        type: string
+        required: false
+        note: 'executive, it, finance, management, sales, legal, support, hr, marketing, communication, education, design, health, operations, product, research, consulting, administrative, procurement'
+        example: executive
+      seniority:
+        type: string
+        required: false
+        note: junior, senior, executive - comma-separate to combine
       type:
         type: string
         required: false
-        note: 'personal | generic — live-verified required: companies alone gets "Provide at least one filter to search across domains"'
+        note: personal | generic
+      decision_maker:
+        type: boolean
+        required: false
+        note: filters only when truthy; a false value is ignored on this endpoint
+      verification_status:
+        type: string
+        required: false
+        note: valid, accept_all, unknown
+      required_field:
+        type: string
+        required: false
+        note: comma-separated fields a result must have - full_name, position, phone_number
+      min_confidence:
+        type: integer
+        required: false
+        note: integer from 2 to 100
       limit:
         type: integer
         required: false
-      per_domain:
-        type: integer
+        note: rows per page, default and maximum 100
+        example: 1
+      search_after:
+        type: string
         required: false
-    bodyType: json
-    note: results are masked; addresses are unlocked via hunter.x.multi-domain-search-reveal
+        note: pagination cursor from meta.next_search_after; this endpoint rejects offset
+      per_domain:
+        type: boolean
+        required: false
+        note: when true, include a per-domain email-count breakdown in meta
+    note: 'at least one company or email filter is required (Hunter 400 otherwise). This POST takes filters as query parameters, matching Hunter''s documented request - not a JSON body, and there is no companies array. Cheap probe: queryParams {location: "US", department: "executive", limit: 1}. Results are masked; unlock addresses via hunter.x.multi-domain-search-reveal. Beta: parameters may change.'
   test_request:
-    body:
-      companies:
-      - domain: stripe.com
-      type: personal
-    bodyType: json
+    queryParams:
+      location: US
+      department: executive
+      limit: 1
   cost:
     type: free
     value: 0
     currency: USD
     unit: call
-    note: searching is free; credits are charged only on reveal
+    note: 'search is free; credits are charged only on hunter.x.multi-domain-search-reveal. Beta: parameters may change'
   docs_url: https://hunter.io/api-documentation/v2#multi-domain-search
-  verified: '2026-07-28'
+  unverified: 'request rewritten 2026-09-13 from Hunter Multi-Domain Search Beta docs (query filters; official example POST ?location=US&department=executive). The 2026-07-28 stamp attested a companies body Hunter now rejects with wrong_params / Unknown parameter: companies.'
   example_response: examples/hunter.x.multi-domain-search.json
-  observed_time: 1.08
   capability: people.search
 - id: hunter.x.multi-domain-search-reveal
+  added: '2026-07-28'
   tier: extended
   platform: people
   method: POST
@@ -328,7 +394,7 @@ endpoints:
   platform: people
   method: GET
   path: /combined/find
-  name: "Enrich person and company by email"
+  name: "Enrich a person and their company by email"
   summary: Retrieves person and company information from a single email address
   input:
     queryParams:
@@ -354,8 +420,12 @@ endpoints:
     checked: '2026-07-28'
     confidence: documented
     note: 0.2 credits, billed conditionally (only when the combined record comes back complete); a 404 or partial record is free — same rate as the /people/find and /companies/find enrichment routes
+  miss:
+    status: 404
+    means: "no record for that email — an expected outcome (and free, per the cost note), not an API failure; do not retry"
   docs_url: https://hunter.io/api-documentation/v2#email-enrichment
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.combined-find.json
   observed_time: 1.46
   capability: people.enrich
@@ -399,9 +469,11 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.leads-list.json
   observed_time: 1.03
 - id: hunter.x.leads-get
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -422,6 +494,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-create
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -483,6 +556,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-update
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -517,6 +591,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-delete
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -564,9 +639,11 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.leads-lists-list.json
   observed_time: 0.51
 - id: hunter.x.leads-lists-get
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -587,6 +664,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-lists-create
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -612,6 +690,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-lists-update
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -640,6 +719,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.leads-lists-delete
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -660,6 +740,7 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api/leads
 - id: hunter.x.custom-attributes-list
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -685,6 +766,7 @@ endpoints:
     family below is kept only because Hunter''s help article still documents it; treat all four as
     retired until Hunter republishes a working path.'
 - id: hunter.x.custom-attributes-create
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -707,6 +789,7 @@ endpoints:
     unit: call
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
 - id: hunter.x.custom-attributes-update
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -732,6 +815,7 @@ endpoints:
     unit: call
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
 - id: hunter.x.custom-attributes-delete
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -779,9 +863,11 @@ endpoints:
     unit: call
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
   verified: '2026-07-28'
+  added: '2026-07-28'
   example_response: examples/hunter.x.campaigns-list.json
   observed_time: 2.46
 - id: hunter.x.campaigns-recipients-list
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -802,6 +888,7 @@ endpoints:
     unit: call
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
 - id: hunter.x.campaigns-recipients-add
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people
@@ -833,6 +920,7 @@ endpoints:
     note: no search/verification credit charged; consumes the account's sending quota instead
   docs_url: https://help.hunter.io/en/articles/1970956-hunter-api
 - id: hunter.x.campaigns-recipients-remove
+  added: '2026-07-28'
   kind: account
   tier: extended
   platform: people

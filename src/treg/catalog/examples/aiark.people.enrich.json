@@ -1,0 +1,7 @@
+{
+  "id": "00000000-0000-0000-0000-000000000001",
+  "profile": {"first_name": "Jane", "last_name": "Example", "full_name": "Jane Example", "title": "Founder"},
+  "link": {"linkedin": "https://www.linkedin.com/in/example"},
+  "location": {"default": "Example City, United States", "city": "Example City", "country": "United States"},
+  "company": {"summary": {"name": "Example"}, "link": {"domain": "example.com"}}
+}

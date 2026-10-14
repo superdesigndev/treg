@@ -1,0 +1,51 @@
+{
+  "success": true,
+  "domain": "docs.context.dev",
+  "urls": [
+    {
+      "url": "https://docs.context.dev/account/api-keys",
+      "title": "API keys - Context.dev",
+      "description": "Create restricted credentials, inspect usage, and rotate access safely.",
+      "language": "en"
+    },
+    {
+      "url": "https://docs.context.dev/account/billing"
+    },
+    {
+      "url": "https://docs.context.dev/account/credits"
+    },
+    {
+      "url": "https://docs.context.dev/account/team"
+    },
+    {
+      "url": "https://docs.context.dev/agent-quickstart",
+      "title": "Agent Quickstart - Context.dev",
+      "description": "Give your agent one prompt to choose the right setup, connect Context.dev, and verify a first result.",
+      "language": "en"
+    },
+    {
+      "url": "https://docs.context.dev/answers/answer-shape"
+    },
+    {
+      "url": "https://docs.context.dev/answers/overview"
+    },
+    {
+      "url": "https://docs.context.dev/answers/sources-and-deadlines"
+    },
+    {
+      "url": "https://docs.context.dev/api-reference/batches/cancel",
+      "title": "Cancel a Batch - Context.dev",
+      "description": "Stop a batch from starting new pages. In-progress pages finish, and unused credits are refunded.",
+      "language": "en"
+    },
+    {
+      "url": "https://docs.context.dev/api-reference/batches/delete",
+      "title": "Delete a Batch - Context.dev",
+      "description": "Permanently delete a finished batch and its stored results. Active batches must settle first.",
+      "language": "en"
+    }
+  ],
+  "key_metadata": {
+    "credits_consumed": 1
+  }
+}

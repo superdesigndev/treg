@@ -1,0 +1,41 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "firstName": "Theresa",
+          "handle": "theresa-hagel-819ba826",
+          "image": "https://media.licdn.com/dms/image/v2/C5603AQHg_lqxDjZQXg/profile-displayphoto-shrink_400_400/profile-displayphoto-shrink_400_400/0/1568829524691?e=1791417600&v=beta&t=8T2AaGgbFhFQGTwlpOfbvPGbcZOw2OET3RlFVeGcFZA",
+          "jobTitle": "Operations at Stripe",
+          "lastName": "Hagel",
+          "location": "San Francisco Bay Area",
+          "name": "Theresa Hagel",
+          "url": "https://linkedin.com/in/theresa-hagel-819ba826"
+        },
+        {
+          "firstName": "George",
+          "handle": "george-gilbert-0828b52b",
+          "image": "",
+          "jobTitle": "AI GTM at Stripe",
+          "lastName": "Gilbert",
+          "location": "United States",
+          "name": "George Gilbert",
+          "url": "https://linkedin.com/in/george-gilbert-0828b52b"
+        },
+        "… 1 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.033,
+  "items": 3,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-octopus",
+    "name": "Octopus",
+    "kind": "anonymous",
+    "artworkKey": "octopus"
+  },
+  "resultId": "e81e3505-1b95-427c-911a-279e23681040"
+}

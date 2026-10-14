@@ -1,0 +1,36 @@
+{
+  "search_metadata": {
+    "id": "6be979d353e6cace3518028e",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/duckduckgo/search?q=coffee+shops+Austin&safe=-1&search_assist=True&start=0&m=50",
+    "created_at": "2026-09-29 13:58:45 UTC",
+    "processed_at": "2026-09-29 13:58:45 UTC",
+    "provider_url": "https://duckduckgo.com/?q=coffee+shops+Austin",
+    "total_time_taken": 1.379
+  },
+  "search_parameters": {
+    "q": "coffee shops Austin",
+    "safe": "-1",
+    "search_assist": true,
+    "start": 0,
+    "m": 50
+  },
+  "organic_results": [
+    {
+      "position": 1,
+      "title": "The Best Coffee Shops In Austin",
+      "link": "https://www.theinfatuation.com/austin/guides/best-coffee-shops-austin",
+      "snippet": "The best coffee shops in Austin for espresso, cold brew, cappuccino, and everything in between.",
+      "displayed_link": "www.theinfatuation.com/austin/guides/best-coffee-shops-austin",
+      "favicon": "https://external-content.duckduckgo.com/ip3/www.theinfatuation.com.ico"
+    },
+    {
+      "position": 2,
+      "title": "Best Coffee in Austin Coffee Shops | Eater Austin",
+      "link": "https://austin.eater.com/maps/best-coffee-austin-cafes-espressos-lattes",
+      "snippet": "Where to find coffee in Austin at the best cafes and best coffee shops like Patika, Desnudo, Flitch, Caffe Medici, and Mercado Sin Nombre.",
+      "displayed_link": "austin.eater.com/maps/best-coffee-austin-cafes-espressos-lattes",
+      "favicon": "https://external-content.duckduckgo.com/ip3/austin.eater.com.ico"
+    }
+  ]
+}

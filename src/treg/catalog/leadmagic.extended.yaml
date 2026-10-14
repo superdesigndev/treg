@@ -9,19 +9,20 @@
 #
 # Billing pattern holds across this tier too: most routes charge only on a definitive hit and are
 # free on a miss/no-match. The three ad-search routes and jobs/company-search v3 charge PER ITEM
-# returned instead (no free floor on the base call), and b2b-ads-search additionally reserves a
-# base charge plus one credit per ad (1-51 credits for a single call) — flag this to a verifier
-# before it runs unbounded.
+# returned instead (no free floor on the base call). b2b-ads-search was VERIFIED 2026-08-13: it
+# charges ~0.2 credit per ad plus a ~0.2 base (= 0.2 x (ads+1)), so a full ~24-ad page is ~5
+# credits, NOT the 1-credit-per-ad / up-to-51 once feared. google-ads-search and meta-ads-search
+# share the per-item shape but their rate is still unconfirmed.
 #
 # VERIFIED 2026-07-28 — 11 of 15 entries called live with a real credential under a 30-credit
 # budget (observed spend ~9.3 credits total, core+extended combined): 10 passed and 1
 # (competitors-search) 401s with invalid_api_key on this key, the same plan-gate shape as core's
 # /v3/people/search — a different /v3 route (companies/search) on the SAME key succeeds, so it
-# reads as a route-level feature gate rather than a broken key. The 3 ad-search routes
-# (google-ads-search, meta-ads-search, b2b-ads-search) are `skipped`: none of them document a
-# `limit` param, so a single call's cost is unbounded (b2b-ads-search alone can reach 51 credits)
-# and none could be safely bounded within the 30-credit cap — they need a topped-up budget and
-# the response's own X-Credits-Max-Cost header checked before a real run, not investigation.
+# reads as a route-level feature gate rather than a broken key. b2b-ads-search has since been run
+# and verified (2026-08-13): its per-call cost is bounded (~5 credits for a full ~24-ad page), so
+# it is no longer `skipped`. google-ads-search and meta-ads-search remain `skipped`: neither
+# documents a `limit` param and neither was run, so their per-call cost is still unconfirmed —
+# check the response's own X-Credits-Max-Cost header before a real run.
 
 provider: leadmagic
 source:
@@ -52,7 +53,7 @@ endpoints:
     platform: people
     method: POST
     path: /v1/people/b2b-profile
-    name: "Find profile URL from email"
+    name: "Reverse email lookup — the person's profile URL"
     summary: "Performs reverse email lookup to identify professional profile URLs associated with work or personal email addresses"
     input:
       bodyType: json
@@ -69,12 +70,13 @@ endpoints:
       currency: credit
       per: 1
       unit: call
-      source: docs
+      source: observed
       source_url: https://leadmagic.io/pricing
-      checked: '2026-07-28'
-      confidence: documented
-      note: 10 credits if a profile is found; free if not found
+      checked: '2026-08-16'
+      confidence: verified
+      note: "VERIFIED live 2026-08-16 by LeadMagic's own echo: a hit answered credits_consumed: 10 (charged $0.25 exactly), a miss credits_consumed: 0 (charged $0). The 'b2b overstatement' suspicion from the August sweep was checked and REFUTED for this endpoint — the over-billing it was blamed for was the settle bug fixed in d458ee5"
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.b2b-profile.json
     docs_url: https://leadmagic.io/docs/api-reference/email-to-profile
     capability: people.identity.resolve
@@ -101,12 +103,13 @@ endpoints:
       currency: credit
       per: 1
       unit: call
-      source: docs
+      source: observed
       source_url: https://leadmagic.io/pricing
-      checked: '2026-07-28'
-      confidence: documented
-      note: 5 credits if an email is found; free if not found
+      checked: '2026-08-16'
+      confidence: verified
+      note: "VERIFIED live 2026-08-16 by LeadMagic's own echo: credits_consumed: 5, charged $0.125 exactly. The August-sweep value was correct"
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.b2b-profile-email.json
     docs_url: https://leadmagic.io/docs/api-reference/profile-to-email
 
@@ -117,7 +120,7 @@ endpoints:
     method: POST
     path: /v1/people/personal-email-finder
     name: "Find a personal email from a profile URL"
-    summary: "Locates personal email addresses associated with a professional profile URL, serving as a fallback when work email is unavailable or undeliverable"
+    summary: "Locates personal email addresses associated with a professional profile URL, serving as a fallback when work email is unavailable or undeliverable. ACCURACY WARNING: a 'found' answer is unverified and can belong to someone else entirely — live 2026-09-06, 3 of 5 hits on one team's batch were addresses whose local part did not match the person's name (e.g. a Dennis returned rajasingh…@gmail.com). Verify with people.email.verify before outreach, and do not re-call for the same profile_url: every hit bills 2 credits, including repeats."
     input:
       bodyType: json
       body:
@@ -137,6 +140,7 @@ endpoints:
       confidence: documented
       note: 2 credits if found; free if not found
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.personal-email-finder.json
     docs_url: https://leadmagic.io/docs/api-reference/personal-email-finder
     capability: people.email.find
@@ -148,7 +152,7 @@ endpoints:
     platform: people
     method: POST
     path: /v1/people/role-finder
-    name: "Find one person by job title"
+    name: "Find one person at a company by job title"
     summary: "Locates a person at a company based on their job title, enabling targeted outreach for account-based marketing campaigns and other role-specific needs"
     input:
       bodyType: json
@@ -172,6 +176,7 @@ endpoints:
       confidence: documented
       note: 2 credits when found; free on no match
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.role-finder.json
     docs_url: https://leadmagic.io/docs/reference/role-finder
 
@@ -182,7 +187,7 @@ endpoints:
     platform: people
     method: POST
     path: /v1/people/employee-finder
-    name: "List employees at a company"
+    name: "List employees at a company by domain or name"
     summary: "Retrieves a list of employees from a company using either domain or company name"
     input:
       bodyType: json
@@ -206,6 +211,7 @@ endpoints:
       confidence: documented
       note: 0.05 credits per employee returned (20 employees = 1 credit); free if no results
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.employee-finder.json
     docs_url: https://leadmagic.io/docs/api-reference/employee-finder
 
@@ -215,7 +221,7 @@ endpoints:
     platform: people
     method: POST
     path: /v1/people/job-change-detector
-    name: "Detect if a person changed jobs"
+    name: "Detect a job change from a profile URL and last company"
     summary: "Detects whether a professional has changed jobs by comparing their current employment against a previously known company"
     input:
       bodyType: json
@@ -239,17 +245,19 @@ endpoints:
       confidence: documented
       note: 3 credits per call, regardless of outcome
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.job-change-detector.json
     docs_url: https://leadmagic.io/docs/api-reference/job-change-detector
     capability: people.signals
 
   - id: leadmagic.x.competitors-search
+    added: '2026-07-28'
     domain: companies
     tier: extended
     platform: companies
     method: POST
     path: /v1/companies/competitors-search
-    name: "Find a company's competitors"
+    name: "Find a company's competitors by domain or name"
     summary: "Retrieves a comprehensive list of competing companies based on a target company identifier — domains, employee counts, industries and descriptions"
     input:
       bodyType: json
@@ -281,7 +289,7 @@ endpoints:
     platform: companies
     method: POST
     path: /v1/companies/company-funding
-    name: "Get a company's funding history"
+    name: "A company's funding history by domain or name — investors"
     summary: "Retrieves comprehensive funding information for a company, including funding history, investor details, and leadership data"
     input:
       bodyType: json
@@ -304,6 +312,7 @@ endpoints:
       confidence: documented
       note: 4 credits if funding data is found; free if none found
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.company-funding.json
     docs_url: https://leadmagic.io/docs/api-reference/company-funding
 
@@ -313,7 +322,7 @@ endpoints:
     platform: companies
     method: POST
     path: /v1/companies/technographics
-    name: "Get a company's tech stack"
+    name: "Detect a company's tech stack by domain"
     summary: "Analyzes a company's website to identify their technology stack, including marketing tools, analytics platforms, hosting providers, CRM systems, and more"
     input:
       bodyType: json
@@ -334,6 +343,7 @@ endpoints:
       confidence: documented
       note: 1 credit if technologies are detected; free if none found
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.technographics.json
     docs_url: https://leadmagic.io/docs/api-reference/technographics
 
@@ -344,7 +354,7 @@ endpoints:
     platform: companies
     method: POST
     path: /v3/companies/search
-    name: "Search companies by firmographics, tech, funding"
+    name: "Search companies by firmographics, tech stack or funding"
     summary: "The canonical company discovery endpoint supporting both single-company lookups and broad criteria-based discovery — domain, website, name, profile URL, and extensive firmographic/technographic/funding filters with cursor pagination"
     input:
       bodyType: json
@@ -376,16 +386,18 @@ endpoints:
       confidence: documented
       note: 1 credit per company returned; free if zero matches. Rate limit 100 req/min, ~2 req/s burst
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.companies-search-v3.json
     docs_url: https://leadmagic.io/docs/api-reference/company-search-v3
 
   - id: leadmagic.x.jobs-search-v3
+    capability: companies.jobs.search
+    platform: companies
     domain: companies
     tier: extended
-    platform: companies
     method: POST
     path: /v3/jobs/search
-    name: "Search open job postings and hiring signals"
+    name: "Search job postings — titles, companies, hiring signals"
     summary: "Discovers open job postings with hiring signal data including titles, companies, locations, tags, and occupation taxonomy — resolves company domains, country codes, tags and occupation values into normalized filter IDs before executing a bounded query. Searches job postings, not people"
     input:
       bodyType: json
@@ -415,6 +427,7 @@ endpoints:
       confidence: documented
       note: 1 credit per returned job/signal; free when no jobs are returned. Rate limit 300 req/min, ~5 req/s burst
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.jobs-search-v3.json
     docs_url: https://leadmagic.io/docs/api-reference/job-search
 
@@ -424,7 +437,7 @@ endpoints:
     platform: companies
     method: POST
     path: /v1/jobs/jobs-finder
-    name: "Search job listings (basic)"
+    name: "Search job postings by company, location or date (basic)"
     summary: "Search for job listings filtered by company, job details, location, and posting date. Returns paginated results with company information and job descriptions"
     input:
       bodyType: json
@@ -455,15 +468,17 @@ endpoints:
       confidence: documented
       note: 1 credit per job returned; free if no jobs found
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/leadmagic.x.jobs-finder.json
     docs_url: https://leadmagic.io/docs/api-reference/jobs-finder
 
   - id: leadmagic.x.google-ads-search
+    added: '2026-07-28'
     tier: extended
     platform: google-ads
     method: POST
     path: /v1/ads/google-ads-search
-    name: "Search a company's Google Ads"
+    name: "A company's Google Ads by domain or name"
     summary: "Retrieves Google Ads data for a specified company, enabling competitive intelligence and ad strategy analysis"
     input:
       bodyType: json
@@ -489,11 +504,12 @@ endpoints:
     docs_url: https://leadmagic.io/docs/api-reference/google-ads-search
 
   - id: leadmagic.x.meta-ads-search
+    added: '2026-07-28'
     tier: extended
     platform: meta-ads
     method: POST
     path: /v1/ads/meta-ads-search
-    name: "Search a company's Meta (Facebook/Instagram) ads"
+    name: "A company's Meta (Facebook/Instagram) ads by domain"
     summary: "Retrieves Meta (Facebook/Instagram) advertisements for a specified company using their domain or name"
     input:
       bodyType: json
@@ -524,27 +540,32 @@ endpoints:
     platform: companies
     method: POST
     path: /v1/ads/b2b-ads-search
-    name: "Search a company's LinkedIn ads"
+    name: "A company's LinkedIn ads by domain or name — creatives"
     summary: "Retrieves B2B advertisements for a company, returning ad creatives with metadata including headlines, CTAs, landing pages, and performance metrics"
     input:
       bodyType: json
       body:
         company_domain: {type: string, required: false, example: "leadmagic.io"}
         company_name: {type: string, required: false}
-      note: "at least one of company_domain | company_name is required. UNBOUNDED PER-CALL COST: base 1 credit plus 1 credit per ad, 0-50 ads (1-51 credits total, no limit param documented) — the response header X-Credits-Max-Cost shows the reserved amount before committing"
+      note: "at least one of company_domain | company_name is required. Cost VERIFIED 2026-08-13 as 0.2 credit per ad + a 0.2 base (= 0.2 x (ads+1)): a 5-ad response cost 1.20 credits, a 24-ad response 5.00. Responses appear to cap near 24 ads, so a full page is ~5 credits. The response header X-Credits-Max-Cost shows the reserved amount before committing"
     test_request:
       bodyType: json
       body: {company_domain: "leadmagic.io"}
+    # The route-level stamp PR #118 verified the cost with but forgot to write. The example was
+    # captured live 2026-08-14 (5 ads, 1.2 credits consumed — an exact fit to the verified
+    # 0.2 x (ads+1) formula, a fourth confirmation of it), redaction-scanned, $0.03 charged.
+    verified: 2026-08-14
+    added: '2026-07-28'
+    example_response: examples/leadmagic.x.b2b-ads-search.json
     cost:
       type: per_call
-      value: 1
+      value: 5
       currency: credit
       per: 1
       unit: call
-      source: docs
+      source: observed
       source_url: https://leadmagic.io/pricing
-      checked: '2026-07-28'
-      confidence: inferred
-      note: 1 credit base + 1 credit per ad returned; range 1-51 credits per call (0-50 ads max) — a 24-ad response costs 25 credits total
-    skipped: "unbounded per-call cost (1-51 credits, no limit param) — a single call could alone exhaust the entire 30-credit test budget; clears with a topped-up budget and X-Credits-Max-Cost checked first, not investigation"
+      checked: '2026-08-13'
+      confidence: verified
+      note: 'VERIFIED live 2026-08-13 across three calls (credit-balance deltas): 5 ads = 1.20 credits, 24 ads = 5.00, 24 ads = 5.00 — an exact fit to 0.2 credit per ad + 0.2 base (= 0.2 x (ads+1)). The old "1 credit per ad, up to 51" was wrong. Responses appear to cap around 24 ads, so value is the ~5-credit full-page cost as a per-call upper bound; a small company returning few ads costs less (e.g. 1.20 for 5 ads). The response header X-Credits-Max-Cost shows the exact reserved amount before committing.'
     docs_url: https://leadmagic.io/docs/api-reference/b2b-ads-search

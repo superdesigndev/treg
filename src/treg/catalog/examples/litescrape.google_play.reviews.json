@@ -1,0 +1,49 @@
+{
+  "search_metadata": {
+    "id": "724df77c5f1816c71585f0fe",
+    "status": "Success",
+    "created_at": "2026-09-29T13:58:57.204348+00:00",
+    "processed_at": "2026-09-29T13:58:57.925303+00:00",
+    "json_endpoint": "https://api.litescrape.com/api/google/play/reviews?hl=en&gl=us&product_id=com.duolingo&store=apps&platform=phone&sort_by=1&num=5",
+    "google_play_url": "https://play.google.com/_/PlayStoreUi/data/batchexecute?rpcids=oCPfdb&hl=en&gl=us",
+    "total_time_taken": 0.721
+  },
+  "search_parameters": {
+    "hl": "en",
+    "gl": "us",
+    "product_id": "com.duolingo",
+    "store": "apps",
+    "platform": "phone",
+    "sort_by": 1,
+    "num": 5
+  },
+  "reviews": [
+    {
+      "id": "7d0465c3-ff61-4a92-8ba6-780b41e3fb5d",
+      "title": "Rebekah Hicks",
+      "avatar": "https://play-lh.googleusercontent.com/a-/ALV-UjVnVkVpNCo7UR6KCkR3wNgDdC1BEr9x73LSZl1K2qC2nZ8zQgJN",
+      "rating": 3,
+      "snippet": "I used to really love this app, but with each new \"improvement/update\" it's gotten helpful and more frustrating. I am a broke college student and can no longer …",
+      "likes": 63,
+      "date": "2026-04-20T12:50:20Z",
+      "iso_date": "2026-04-20T12:50:20Z",
+      "version": "6.75.7"
+    },
+    {
+      "id": "1872015a-2d3e-47cf-b130-59b6acbc1f48",
+      "title": "Paul Szydlowski",
+      "avatar": "https://play-lh.googleusercontent.com/a-/ALV-UjVUUD3aWnXgkd6EKydhvDxRVoPKG40c52kogYBWzFWOgURY6p0qOQ",
+      "rating": 1,
+      "snippet": "The app has become extremely buggy. I constantly have to close and reopen it to update my progress after finishing a lesson. Sometimes, it will erase two or thr…",
+      "likes": 771,
+      "date": "2024-11-07T11:47:50Z",
+      "iso_date": "2024-11-07T11:47:50Z",
+      "version": "6.6.6"
+    }
+  ],
+  "litescrape_pagination": {
+    "current": "https://api.litescrape.com/api/google/play/reviews?hl=en&gl=us&product_id=com.duolingo&store=apps&platform=phone&sort_by=1&num=5",
+    "next_page_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJyZXZpZXdzIiwiY29udGV4dCI6eyJobCI6ImVuIiwiZ2wiOiJ1cyIsInByb2R1Y3RfaWQiOiJjb20uZHVvbGluZ28iLCJzdG9yZSI6ImFwcHMiLCJwbGF0Zm9ybSI6InBob25l…",
+    "next": "https://api.litescrape.com/api/google/play/reviews?hl=en&gl=us&product_id=com.duolingo&store=apps&platform=phone&sort_by=1&num=5&next_page_token=eyJ2IjoxLCJvcGV…"
+  }
+}

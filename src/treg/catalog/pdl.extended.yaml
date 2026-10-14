@@ -24,12 +24,13 @@ source:
 
 endpoints:
   - id: pdl.x.person-enrich-preview
+    added: '2026-07-28'
     domain: contacts
     tier: extended
     platform: people
     method: GET
     path: /person/enrich/preview
-    name: "Preview person enrich"
+    name: "Preview a person enrichment by email, name or phone"
     summary: "Enrich a person record on a variety of fields and receive a preview record in return"
     input:
       queryParams:
@@ -68,7 +69,7 @@ endpoints:
     platform: people
     method: GET
     path: /person/identify
-    name: "Recover all related profiles for an identity"
+    name: "Recover all profiles for one identity by email or name"
     summary: "Recover all related profiles for an identity"
     input:
       queryParams:
@@ -100,16 +101,18 @@ endpoints:
     cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: 'https://www.peopledatalabs.com/pricing', checked: '2026-07-28', confidence: documented, note: flat 1 credit per call regardless of profiles returned; PDL does not publish a flat $/credit}
     docs_url: https://docs.peopledatalabs.com/docs/reference-identify-api
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.person-identify.json
     capability: people.identity.resolve
 
   - id: pdl.x.person-retrieve-by-id
+    added: '2026-07-28'
     domain: contacts
     tier: extended
     platform: people
     method: GET
     path: /person/retrieve/{person_id}
-    name: "Retrieve a person by PDL ID"
+    name: "A person record by PDL id"
     summary: "Retrieves a person based on a PDL ID."
     input:
       pathParams:
@@ -124,12 +127,13 @@ endpoints:
     capability: people.enrich
 
   - id: pdl.x.person-retrieve-bulk
+    added: '2026-07-28'
     domain: contacts
     tier: extended
     platform: people
     method: POST
     path: /person/retrieve/bulk
-    name: "Retrieve up to 100 people by PDL ID"
+    name: "Up to 100 person records by PDL id in one call"
     summary: "Retrieves up to 100 person records based on a PDL ID."
     input:
       queryParams:
@@ -169,6 +173,7 @@ endpoints:
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: 'https://www.peopledatalabs.com/pricing', checked: '2026-07-28', confidence: documented, note: 1 credit PER RECORD in the data array; a size=1000 call costs 1000 credits}
     docs_url: https://docs.peopledatalabs.com/docs/reference-person-search-api
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.person-search-post.json
 
   - id: pdl.x.company-search-post
@@ -195,6 +200,7 @@ endpoints:
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: 'https://www.peopledatalabs.com/pricing', checked: '2026-07-28', confidence: documented, note: 1 credit PER RECORD returned}
     docs_url: https://docs.peopledatalabs.com/docs/reference-company-search-api
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.company-search-post.json
 
   - id: pdl.x.job-title-enrich
@@ -214,6 +220,7 @@ endpoints:
     cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: 'https://www.peopledatalabs.com/pricing', checked: '2026-07-28', confidence: documented, note: billed like other enrich routes — 1 credit per matched title; NOT free despite looking like a lookup utility}
     docs_url: https://docs.peopledatalabs.com/docs/reference-job-title-enrichment-api
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.job-title-enrich.json
     capability: people.title.enrich
 
@@ -222,7 +229,7 @@ endpoints:
     platform: web
     method: GET
     path: /ip/enrich
-    name: "Enrich an IP address"
+    name: "IP location and company"
     summary: "Enrich data on an IP by performing a one-to-one match of this IP with the nearly 2 Billion IPs hosted in our dataset, returning location, company, and metadata"
     input:
       queryParams:
@@ -239,6 +246,7 @@ endpoints:
     cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: 'https://www.peopledatalabs.com/pricing', checked: '2026-07-28', confidence: documented, note: charged per match on HTTP 200; a 404 is free — 1 credit per successful lookup}
     docs_url: https://docs.peopledatalabs.com/docs/reference-ip-enrichment-api
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.ip-enrich.json
 
   - id: pdl.x.company-clean
@@ -261,6 +269,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'free — 10 requests/minute, 10,000/month'}
     docs_url: https://docs.peopledatalabs.com/docs/cleaner-apis-reference
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.company-clean.json
 
   - id: pdl.x.location-clean
@@ -280,6 +289,7 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'free — 10 requests/minute, 10,000/month'}
     docs_url: https://docs.peopledatalabs.com/docs/cleaner-apis-reference
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.location-clean.json
 
   - id: pdl.x.school-clean
@@ -302,10 +312,12 @@ endpoints:
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'free — 10 requests/minute, 10,000/month'}
     docs_url: https://docs.peopledatalabs.com/docs/cleaner-apis-reference
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/pdl.x.school-clean.json
     capability: people.school.clean
 
   - id: pdl.x.subscription-list
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -323,6 +335,7 @@ endpoints:
     docs_url: https://docs.peopledatalabs.com/docs/reference-subscriptions-api
 
   - id: pdl.x.subscription-create
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -334,6 +347,7 @@ endpoints:
     docs_url: https://docs.peopledatalabs.com/docs/reference-subscriptions-api
 
   - id: pdl.x.subscription-get
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -348,6 +362,7 @@ endpoints:
     docs_url: https://docs.peopledatalabs.com/docs/reference-subscriptions-api
 
   - id: pdl.x.subscription-update
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -362,6 +377,7 @@ endpoints:
     docs_url: https://docs.peopledatalabs.com/docs/reference-subscriptions-api
 
   - id: pdl.x.subscription-delete
+    added: '2026-07-28'
     kind: account
     tier: extended
     platform: account
@@ -376,6 +392,7 @@ endpoints:
     docs_url: https://docs.peopledatalabs.com/docs/reference-subscriptions-api
 
   - id: pdl.x.person-subjectrequest
+    added: '2026-07-28'
     kind: utility
     tier: extended
     platform: people

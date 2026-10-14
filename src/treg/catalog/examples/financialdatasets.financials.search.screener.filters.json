@@ -1,0 +1,22 @@
+{
+  "metrics": {
+    "income_statement": ["revenue", "net_income"],
+    "balance_sheet": ["total_assets", "total_debt"],
+    "cash_flow_statement": ["free_cash_flow"],
+    "financial_metrics": ["market_cap", "pe_ratio"],
+    "company": {
+      "sector": ["Information Technology"],
+      "industry": ["Software"]
+    }
+  },
+  "aliases": {"pe_ratio":"price_to_earnings_ratio"},
+  "company_filters": {
+    "fields": ["industry", "sector"],
+    "operators": ["eq", "in"],
+    "values": {
+      "sector": ["Information Technology"],
+      "industry": ["Software"]
+    }
+  },
+  "operators": ["gt", "lt", "gte", "lte", "eq", "in"]
+}

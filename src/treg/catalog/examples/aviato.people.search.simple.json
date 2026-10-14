@@ -1,0 +1,20 @@
+{
+  "count": {
+    "value": "136908",
+    "isEstimate": false
+  },
+  "items": [
+    {
+      "id": "EGm0dLYOh9cL60lrDMqarXRObEtU6mX",
+      "fullName": "Satya Nadella",
+      "location": "Redmond, Washington, United States",
+      "entityType": "person",
+      "URLs": {
+        "twitter": "twitter.com/satyanadella",
+        "linkedin": "linkedin.com/in/satyanadella"
+      }
+    }
+  ],
+  "pages": 136908,
+  "totalResults": 136908
+}

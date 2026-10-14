@@ -1,0 +1,1030 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from scripts import catalog_validate as validator
+from treg.domain.catalog import store as catalog_store
+from treg.application.call import resolve
+from treg.application.call.types import ResolutionFailed
+
+
+def test_catalog_body_optional_arrays_are_optional_and_validate_each_item():
+    endpoint = {
+        "id": "example.items",
+        "method": "POST",
+        "body_allowlist": True,
+        "input": {"body": {
+            "name": {"type": "string", "required": True},
+            "formats": {
+                "type": "array[string]", "required": False,
+                "minItems": 1, "maxItems": 2, "enum": ["html", "markdown"],
+            },
+        }},
+    }
+
+    for body in ({"name": "example"}, {"name": "example", "formats": ["markdown"]}):
+        resolve._enforce_catalog_body(endpoint, json.dumps(body).encode())
+
+    for formats in ([], ["markdown", "text"], "markdown", None):
+        with pytest.raises(ResolutionFailed) as exc:
+            resolve._enforce_catalog_body(
+                endpoint, json.dumps({"name": "example", "formats": formats}).encode(),
+            )
+        assert exc.value.status_code == 400
+        assert exc.value.detail["parameter"] == "body.formats"
+
+
+def test_catalog_body_required_arrays_remain_required():
+    endpoint = {
+        "id": "example.items",
+        "method": "POST",
+        "strict_body": True,
+        "input": {"body": {
+            "items": {"type": "array[object]", "required": True, "min": 1, "max": 2},
+        }},
+    }
+
+    with pytest.raises(ResolutionFailed) as exc:
+        resolve._enforce_catalog_body(endpoint, b"{}")
+    assert exc.value.status_code == 400
+    assert exc.value.detail["parameter"] == "body.items"
+
+
+def test_cost_modifiers_accept_only_supported_declarative_credit_rules():
+    base = {
+        "type": "per_success", "value": 5, "currency": "credit", "per": 1,
+        "unit": "call", "source": "docs", "source_url": "https://example.com/pricing",
+        "checked": "2026-08-25", "confidence": "documented",
+    }
+    errors: list[str] = []
+    validator.check_cost(base | {"settle": "modifiers", "modifiers": {
+        "preview": {"location": "query", "when": "truthy", "set_credits": 0},
+        "email": {"location": "lookups", "when": "present", "add_credits": 3,
+                  "reserve_only": True},
+        "enrich": {"location": "query", "when": "truthy", "add_credits_per_result": 1},
+    }}, "catalog:test", errors, [])
+    assert errors == []
+
+    broken: list[str] = []
+    validator.check_cost(base | {"modifiers": {
+        "preview": {"location": "headers", "set_credits": 1},
+        "email": {"add_credits": -1, "add_credits_per_result": 2},
+        "rescrape": {"add_credits": 2, "reserve_only": "yes"},
+        "enrich": {"add_credits_per_result": 1, "reserve_only": True},
+    }}, "catalog:test", broken, [])
+    assert any("location must be query, body, or lookups" in error for error in broken)
+    assert any("set_credits currently supports only the free value 0" in error for error in broken)
+    assert any("needs exactly one credit effect" in error for error in broken)
+    assert any("add_credits must be a non-negative number" in error for error in broken)
+    assert any("reserve_only must be a boolean" in error for error in broken)
+    assert any("reserve_only currently supports only add_credits" in error for error in broken)
+
+    bad_settle: list[str] = []
+    validator.check_cost(base | {"settle": "estimate"}, "catalog:test", bad_settle, [])
+    assert any("cost.settle currently supports only 'base', 'modifiers' or 'usage'" in error for error in bad_settle)
+
+
+def test_status_marker_references_must_exist_and_end_at_a_live_endpoint():
+    statuses = {"provider.old": "retired", "provider.live": "", "provider.dead": "broken"}
+
+    errors: list[str] = []
+    validator.check_status_marker(
+        {"id": "provider.old", "status": "retired", "status_note": "moved",
+         "superseded_by": "provider.live"},
+        "catalog:provider.old", statuses, errors,
+    )
+    assert errors == []
+
+    broken: list[str] = []
+    validator.check_status_marker(
+        {"id": "provider.old", "status": "retired", "status_note": "",
+         "superseded_by": "provider.missing"},
+        "catalog:provider.old", statuses, broken,
+    )
+    validator.check_status_marker(
+        {"id": "provider.old", "status": "retired", "status_note": "moved",
+         "superseded_by": "provider.dead"},
+        "catalog:provider.old", statuses, broken,
+    )
+    validator.check_status_marker(
+        {"id": "provider.old", "status": "Retired", "status_note": "wrong spelling"},
+        "catalog:provider.old", statuses, broken,
+    )
+    assert any("requires a non-empty status_note" in error for error in broken)
+    assert any("is not a catalog endpoint id" in error for error in broken)
+    assert any("is itself broken" in error for error in broken)
+    assert any("status 'Retired' not one of" in error for error in broken)
+
+
+def _valid_async():
+    return {
+        "id_from": "task_id",
+        "poll": {"endpoint": "demo.video-gen.status",
+                 "param": {"in": "pathParams", "name": "task_id"}},
+        "status": {"path": "task.status", "success": ["succeeded"],
+                   "failure": ["failed", "cancelled"]},
+        "result": {"path": "task.content.url", "ttl_note": "9h"},
+        "interval": 10,
+    }
+
+
+def _async_errors(descriptor, cost=None, endpoint_index=None):
+    errors: list[str] = []
+    default_index = {
+        "demo.video-gen.status": {
+            "provider": "demo", "kind": "utility", "method": "GET", "path": "/tasks/{task_id}",
+            "input": {"pathParams": {"task_id": {"type": "string", "required": True}}},
+        },
+        "demo.video-gen.content": {
+            "provider": "demo", "kind": "utility", "method": "GET", "path": "/content/{video_id}",
+            "input": {"pathParams": {"video_id": {"type": "string", "required": True}}},
+        },
+        "other.video-gen.status": {
+            "provider": "other", "kind": "utility", "method": "GET", "path": "/tasks/{task_id}",
+            "input": {"pathParams": {"task_id": {"type": "string", "required": True}}},
+        },
+    }
+    validator.check_async_descriptor(
+        descriptor, "demo.yaml:submit", "demo", endpoint_index or default_index,
+        cost or {"type": "per_success"}, errors,
+    )
+    return errors
+
+
+def test_async_descriptor_accepts_both_poll_and_result_modes():
+    assert _async_errors(_valid_async()) == []
+    dynamic = _valid_async()
+    dynamic["poll"] = {"url_from": "urls.get", "url_hosts": ["api.example.com"]}
+    dynamic["result"] = {
+        "fetch": "demo.video-gen.content",
+        "fetch_param": {"in": "pathParams", "name": "video_id", "value_from": "id"}}
+    assert _async_errors(dynamic) == []
+
+
+@pytest.mark.parametrize(("mutate", "message"), [
+    (lambda d: d.update(id_from=""), "async.id_from must be a dotted JSON path"),
+    (lambda d: d.update(poll=[]), "async.poll must be a mapping"),
+    (lambda d: d.update(poll={}), "async.poll needs exactly one"),
+    (lambda d: d.update(poll={"endpoint": "demo.video-gen.status", "url_from": "url",
+                              "param": {"in": "pathParams", "name": "task_id"},
+                              "url_hosts": ["api.example.com"]}),
+     "async.poll needs exactly one"),
+    (lambda d: d.update(poll={"endpoint": "other.video-gen.status",
+                              "param": {"in": "pathParams", "name": "task_id"}}),
+     "existing same-provider catalog id"),
+    (lambda d: d.update(poll={"endpoint": "demo.video-gen.status"}),
+     "requires exactly in, name"),
+    (lambda d: d.update(poll={"endpoint": "demo.video-gen.status",
+                              "param": {"in": "headers", "name": "task_id"}}),
+     "must name an input field in pathParams or queryParams"),
+    (lambda d: d.update(poll={"endpoint": "demo.video-gen.status",
+                              "param": {"in": "pathParams", "name": "missing"}}),
+     "target does not declare input field"),
+    (lambda d: d.update(poll={"endpoint": "demo.video-gen.status",
+                              "param": {"in": "pathParams", "name": "task_id"},
+                              "url_hosts": ["api.example.com"]}),
+     "endpoint mode allows only endpoint and param"),
+    (lambda d: d.update(poll={"url_from": "url"}), "requires non-empty url_hosts"),
+    (lambda d: d.update(poll={"url_from": "url", "url_hosts": [""]}),
+     "requires non-empty url_hosts"),
+    (lambda d: d.update(poll={"url_from": "url", "url_hosts": ["https://api.example.com"]}),
+     "requires non-empty url_hosts"),
+    (lambda d: d.update(poll={"url_from": "url", "url_hosts": ["api.example.com"],
+                              "param": {"in": "queryParams", "name": "id"}}),
+     "url_from mode allows only url_from and url_hosts"),
+    (lambda d: d.update(status=[]), "async.status must be a mapping"),
+    (lambda d: d["status"].update(path=""), "async.status.path must be a dotted JSON path"),
+    (lambda d: d["status"].update(success=[]), "async.status.success must be a non-empty list"),
+    (lambda d: d["status"].update(failure=[]), "needs failure or billed_failure terminal values"),
+    (lambda d: d["status"].update(failure=["succeeded"]), "must not overlap"),
+    (lambda d: d["status"].update(success=[{"done": True}]),
+     "values must be non-empty strings or numbers"),
+    (lambda d: d.update(result=[]), "async.result must be a mapping"),
+    (lambda d: d.update(result={}), "async.result needs exactly one"),
+    (lambda d: d.update(result={"path": "url", "fetch": "demo.video-gen.content"}),
+     "async.result needs exactly one"),
+    (lambda d: d.update(result={"fetch": "other.video-gen.status",
+                                "fetch_param": {"in": "pathParams", "name": "task_id",
+                                                "value_from": "id"}}),
+     "existing same-provider catalog id"),
+    (lambda d: d.update(result={"fetch": "demo.video-gen.content"}),
+     "requires exactly in, name and value_from"),
+    (lambda d: d.update(result={"path": "url", "fetch_param": {
+        "in": "pathParams", "name": "video_id", "value_from": "id"}}),
+     "path mode allows only path and ttl_note"),
+    (lambda d: d.update(result={"path": "url", "ttl_note": ""}),
+     "ttl_note must be non-empty"),
+    (lambda d: d.update(interval=0), "async.interval must be a positive finite number"),
+])
+def test_async_descriptor_rejects_each_invalid_contract_shape(mutate, message):
+    descriptor = _valid_async()
+    mutate(descriptor)
+    errors = _async_errors(descriptor)
+    assert any(message in error for error in errors), errors
+
+
+def test_async_descriptor_must_be_a_mapping():
+    assert any("async must be a mapping" in error for error in _async_errors([]))
+
+
+def test_async_descriptor_requires_per_success_or_per_call_cost():
+    assert _async_errors(_valid_async(), {"type": "per_call"}) == []
+    errors = _async_errors(_valid_async(), {"type": "per_result"})
+    assert any("cost.type per_success or per_call" in error for error in errors)
+
+
+def test_async_descriptor_bounded_by_max_age_may_have_no_failure_word():
+    descriptor = _valid_async()
+    del descriptor["status"]["failure"]
+    assert any("failure (optional with max_age)" in error for error in _async_errors(descriptor))
+    descriptor.update(max_age=300, terminal_on_submission=True)
+    assert _async_errors(descriptor) == []
+
+
+@pytest.mark.parametrize(("key", "value", "message"), [
+    ("max_age", 0, "async.max_age must be a positive number"),
+    ("max_age", 86401, "async.max_age must be a positive number"),
+    ("max_age", True, "async.max_age must be a positive number"),
+    ("terminal_on_submission", False, "terminal_on_submission must be true"),
+])
+def test_async_descriptor_rejects_invalid_bounds(key, value, message):
+    descriptor = _valid_async()
+    descriptor[key] = value
+    assert any(message in error for error in _async_errors(descriptor))
+
+
+def test_async_descriptor_rejects_non_get_or_non_utility_targets():
+    target = {
+        "demo.video-gen.status": {
+            "provider": "demo", "kind": "data", "method": "POST",
+            "input": {"pathParams": {"task_id": {"type": "string", "required": True}}},
+        },
+    }
+    errors = _async_errors(_valid_async(), endpoint_index=target)
+    assert any("must have kind utility" in error for error in errors)
+    assert any("must use GET" in error for error in errors)
+
+
+def test_async_descriptor_rejects_unknown_keys_and_invalid_json_paths():
+    descriptor = _valid_async()
+    descriptor["webhook"] = "https://example.com"
+    descriptor["result"] = {
+        "fetch": "demo.video-gen.content",
+        "fetch_param": {"in": "pathParams", "name": "video_id", "value_from": "bad..path"},
+    }
+    errors = _async_errors(descriptor)
+    assert any("async has unknown keys" in error for error in errors)
+    assert any("value_from must be a dotted" in error for error in errors)
+
+
+def test_resource_ownership_contract_validates_ids_and_declared_parameters():
+    errors: list[str] = []
+    validator.check_resource_ownership(
+        {"requires": {"kind": "job", "param": "job_id"},
+         "produces": [{"kind": "result", "path": "data.result_id"}]},
+        "demo.yaml:status", {"pathParams": {"job_id": {"type": "string"}}}, errors,
+    )
+    assert errors == []
+    validator.check_resource_ownership(
+        {"requires": {"kind": "", "param": "missing"},
+         "produces": [{"kind": "result", "path": "bad..path"}]},
+        "demo.yaml:status", {}, errors,
+    )
+    assert any("requires needs exactly" in error for error in errors)
+    assert any("produces item needs exactly" in error for error in errors)
+
+
+def test_managed_public_lookup_is_read_only_bounded_and_use_only():
+    schema = {"body": {"reference_id": {"type": "string"}}}
+    valid = {
+        "operation": "use", "kind": "voice",
+        "id": {"in": "body", "path": "reference_id"},
+        "public_lookup": {
+            "method": "GET", "path": "/model/{id}",
+            "requires": {"visibility": "public", "licensed": True},
+        },
+    }
+    errors: list[str] = []
+    validator.check_managed_resource(valid, "catalog:test", schema, errors)
+    assert errors == []
+
+    broken: list[str] = []
+    validator.check_managed_resource(
+        valid | {"operation": "update", "public_lookup": {
+            "method": "POST", "path": "/model", "requires": {},
+        }},
+        "catalog:test", schema, broken,
+    )
+    assert any("public_lookup is use-only" in error for error in broken)
+    assert any("public_lookup needs GET path" in error for error in broken)
+
+
+def test_platform_async_object_reads_cannot_silently_omit_ownership_metadata():
+    """A new/edited shared-account task reader must fail CI instead of becoming fail-open."""
+    catalog = catalog_store.load()
+    missing = []
+    for endpoint in catalog.endpoints:
+        capability = str(endpoint.get("capability") or "")
+        inputs = endpoint.get("input") or {}
+        path_ids = [name for name, spec in (inputs.get("pathParams") or {}).items()
+                    if isinstance(spec, dict) and spec.get("required")
+                    and name.lower().endswith(("id", "_id"))]
+        query_ids = [name for name, spec in (inputs.get("queryParams") or {}).items()
+                     if isinstance(spec, dict) and spec.get("required")
+                     and name.lower().endswith(("id", "_id"))]
+        looks_like_object_read = (
+            endpoint.get("method") == "GET"
+            and capability.endswith((".status", ".results"))
+            and (path_ids or (endpoint.get("kind") == "utility" and query_ids))
+        )
+        if (catalog.platform_eligible(endpoint) and looks_like_object_read
+                and not (endpoint.get("resource_ownership") or {}).get("requires")):
+            missing.append(endpoint["id"])
+    assert missing == []
+
+
+def test_untracked_extended_async_consumers_are_explicitly_byok_only():
+    catalog = catalog_store.load()
+    ids = {
+        "akta.x.request-status",
+        "tikhub.x.youtube-web-v2-get-video-captions-result",
+        "dataforseo.x.serp-ai-summary",
+        "dataforseo.x.serp-screenshot",
+        "dataforseo.x.on-page-content-parsing",
+        "dataforseo.x.on-page-duplicate-content",
+        "dataforseo.x.on-page-duplicate-tags",
+        "dataforseo.x.on-page-keyword-density",
+        "dataforseo.x.on-page-links",
+        "dataforseo.x.on-page-non-indexable",
+        "dataforseo.x.on-page-pages",
+        "dataforseo.x.on-page-pages-by-resource",
+        "dataforseo.x.on-page-raw-html",
+        "dataforseo.x.on-page-redirect-chains",
+        "dataforseo.x.on-page-resources",
+        "dataforseo.x.on-page-uncrawlable-resources",
+        "dataforseo.x.on-page-waterfall",
+        "dataforseo.x.on-page-summary-id",
+    }
+    for endpoint_id in ids:
+        endpoint = catalog.by_id[endpoint_id]
+        assert endpoint["platform_blocked"]
+        assert not catalog.platform_eligible(endpoint)
+
+
+def _valid_table():
+    return {
+        "type": "per_success",
+        "table": [
+            {"when": {"body.model": "Hailuo", "body.duration": 6}, "value": 0.3},
+            {"when": {"body.model": "H3"}, "value": 0.13, "times": "body.duration"},
+        ],
+        "fallback": {"value": 2.0, "note": "most expensive supported combination"},
+        "currency": "USD",
+        "settle": "table",
+        "source": "docs",
+        "source_url": "https://example.com/pricing",
+        "checked": "2026-09-01",
+        "confidence": "documented",
+    }
+
+
+def _valid_input():
+    return {"body": {
+        "model": {"type": "string", "required": True},
+        "duration": {"type": "integer", "required": False, "default": 6, "max": 10},
+    }}
+
+
+def _table_errors(cost, input_schema=None):
+    errors: list[str] = []
+    validator.check_cost(cost, "demo.yaml:submit", errors, [], input_schema or _valid_input())
+    return errors
+
+
+def test_cost_table_accepts_subset_rows_times_bounds_and_usage_settlement():
+    assert _table_errors(_valid_table()) == []
+    usage = _valid_table() | {
+        "settle": "usage", "usage": {"path": "usage.cost", "unit": "usd"}}
+    assert _table_errors(usage) == []
+    # A credit meter is only billable when fx.yaml prices that provider's credit.
+    credit = _valid_table() | {
+        "settle": "usage", "usage": {"path": "usage.credits", "unit": "credit"}}
+    errors: list[str] = []
+    validator.check_cost(credit, "demo.yaml:submit", errors, [], _valid_input(), "reapi")
+    assert errors == []
+    validator.check_cost(credit, "demo.yaml:submit", errors, [], _valid_input(), "no-such-provider")
+    assert any("needs a numeric fx.yaml credit_rates_usd entry" in e for e in errors)
+
+
+@pytest.mark.parametrize(("mutate", "message"), [
+    (lambda c: c.update(table=[]), "cost.table must be a non-empty list"),
+    (lambda c: c.update(table=["row"]), "table row must be a mapping"),
+    (lambda c: c["table"][0].update(when={}), "when must be a non-empty mapping"),
+    (lambda c: c["table"][0].update(when={"body.unknown": "x"}), "is not declared in input"),
+    (lambda c: c["table"][0].update(value=-1), "value must be a finite non-negative number"),
+    (lambda c: c["table"][1].update(times="body.frames"), "times field 'body.frames' is not declared"),
+    (lambda c: c["table"][1].update(times=""), "times must name an input field"),
+    (lambda c: c.pop("fallback"), "requires a fallback mapping"),
+    (lambda c: c["fallback"].update(value=-1), "fallback.value must be a finite non-negative number"),
+    (lambda c: c["fallback"].update(note=""), "fallback.note must explain"),
+    (lambda c: c["fallback"].update(value=1.0), "must be at least every table row"),
+    (lambda c: c.update(settle="later"), "settle must be 'table' or 'usage'"),
+    (lambda c: c.update(settle="usage"), "requires usage.path and usage.unit"),
+    (lambda c: c.update(usage={"path": "usage.cost", "unit": "usd"}),
+     "usage is only valid with settle: usage"),
+    (lambda c: c.update(currency="points"), "cost.table currency must be one of"),
+])
+def test_cost_table_rejects_each_invalid_contract_shape(mutate, message):
+    cost = _valid_table()
+    mutate(cost)
+    errors = _table_errors(cost)
+    assert any(message in error for error in errors), errors
+
+
+def test_cost_table_when_fields_need_required_or_default_and_times_needs_max():
+    optional = _valid_input()
+    optional["body"]["duration"].pop("default")
+    errors = _table_errors(_valid_table(), optional)
+    assert any("must be required or declare a default" in error for error in errors)
+
+    no_max = _valid_input()
+    no_max["body"]["duration"].pop("max")
+    errors = _table_errors(_valid_table(), no_max)
+    assert any("must declare a positive input max" in error for error in errors)
+
+
+def test_cost_table_rejects_shadowed_rows_and_ambiguous_or_non_finite_values():
+    cost = _valid_table()
+    cost["table"] = [
+        {"when": {"body.model": "Hailuo"}, "value": 0.3},
+        {"when": {"body.model": "Hailuo", "body.duration": 6}, "value": 0.4},
+    ]
+    cost["fallback"]["value"] = float("inf")
+    cost["value"] = 1
+    cost["table"][0]["unexpected"] = True
+    errors = _table_errors(cost)
+    assert any("unknown table row keys" in error for error in errors)
+    assert any("shadowed by an earlier subset row" in error for error in errors)
+    assert any("finite non-negative" in error for error in errors)
+    assert any("cost.value and cost.table are mutually exclusive" in error for error in errors)
+
+
+def test_cost_table_checks_enum_bounds_numeric_times_and_usage_shape():
+    input_schema = _valid_input()
+    input_schema["body"]["model"]["enum"] = ["Hailuo", "H3"]
+    input_schema["body"]["duration"]["min"] = 2
+    input_schema["body"]["label"] = {
+        "type": "string", "required": False, "default": "short", "max": 10,
+    }
+    cost = _valid_table()
+    cost["table"][0]["when"]["body.model"] = "Unknown"
+    cost["table"][0]["when"]["body.duration"] = 20
+    cost["table"][1]["times"] = "body.label"
+    errors = _table_errors(cost, input_schema)
+    assert any("not in input enum" in error for error in errors)
+    assert any("above input max" in error for error in errors)
+    assert any("must be numeric" in error for error in errors)
+
+    usage = _valid_table() | {
+        "settle": "usage", "usage": {"path": "usage..cost", "unit": "credits", "extra": True},
+    }
+    assert any("requires usage.path and usage.unit" in error for error in _table_errors(usage))
+
+
+def test_validator_checks_the_endpoint_descriptor_that_replaces_the_provider_default(tmp_path, monkeypatch, capsys):
+    (tmp_path / "capabilities.yaml").write_text(
+        "platforms: {video-gen: Video}\n"
+        "capabilities: {video-gen.from_text: Generate}\n")
+    (tmp_path / "fx.yaml").write_text("credit_rates_usd: {}\n")
+    (tmp_path / "tikhub.yaml").write_text(
+        "provider: tikhub\n"
+        "source: {docs: https://example.com/docs}\n"
+        "async:\n"
+        "  id_from: task_id\n"
+        "  poll: {url_from: urls.get, url_hosts: [api.example.com]}\n"
+        "  status: {path: status, success: [done], failure: [failed]}\n"
+        "  result: {path: output.url}\n"
+        "  interval: 10\n"
+        "endpoints:\n"
+        "  - id: tikhub.video-gen.from-text\n"
+        "    capability: video-gen.from_text\n"
+        "    platform: video-gen\n"
+        "    method: POST\n"
+        "    path: /generate\n"
+        "    summary: Generate a video\n"
+        "    added: '2026-09-01'\n"
+        "    input:\n"
+        "      body:\n"
+        "        model: {type: string, required: true}\n"
+        "        duration: {type: integer, required: false, default: 6, max: 10}\n"
+        "    async:\n"
+        "      id_from: task_id\n"
+        "      poll: {url_from: urls.get, url_hosts: [api.example.com]}\n"
+        "      status: {path: status, success: [succeeded], failure: [failed]}\n"
+        "      result: {path: output.url}\n"
+        "      interval: 10\n"
+        "    cost:\n"
+        "      type: per_success\n"
+        "      table: [{when: {body.model: H3}, value: 0.13, times: body.duration}]\n"
+        "      fallback: {value: 1.3, note: Maximum duration}\n"
+        "      currency: USD\n"
+        "      source: docs\n"
+        "      source_url: https://example.com/pricing\n"
+        "      checked: 2026-09-01\n"
+        "      confidence: documented\n")
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+
+    assert validator.main(["tikhub"]) == 0
+    assert "0 error(s)" in capsys.readouterr().out
+
+
+def test_async_param_location_must_agree_with_the_target_path(tmp_path, monkeypatch, capsys):
+    """The worker substitutes by declared location: a pathParams id needs exactly one placeholder."""
+    (tmp_path / "capabilities.yaml").write_text(
+        "platforms: {video-gen: Video}\ncapabilities: {video-gen.from_text: Generate, video-gen.task.status: Poll}\n")
+    (tmp_path / "fx.yaml").write_text("credit_rates_usd: {}\n")
+    (tmp_path / "tikhub.yaml").write_text(
+        "provider: tikhub\n"
+        "source: {docs: https://example.com/docs}\n"
+        "endpoints:\n"
+        "  - id: tikhub.video-gen.from-text\n"
+        "    capability: video-gen.from_text\n    platform: video-gen\n"
+        "    method: POST\n    path: /generate\n    summary: Generate a video\n"
+        "    input: {body: {prompt: {type: string, required: true}}}\n"
+        "    async:\n"
+        "      id_from: id\n"
+        "      poll: {endpoint: tikhub.video-gen.task.status, param: {in: pathParams, name: id}}\n"
+        "      status: {path: status, success: [done], failure: [failed]}\n"
+        "      result: {path: url}\n"
+        "      interval: 10\n"
+        "    cost: {type: per_success, table: [{when: {body.prompt: a}, value: 0.1}],\n"
+        "           fallback: {value: 0.1, note: flat}, currency: USD, settle: usage,\n"
+        "           usage: {path: usage.cost, unit: usd}, source: docs,\n"
+        "           source_url: https://example.com/pricing, checked: 2026-09-01, confidence: documented}\n"
+        "  - id: tikhub.video-gen.task.status\n"
+        "    kind: utility\n    capability: video-gen.task.status\n    platform: video-gen\n"
+        "    method: GET\n    path: /tasks\n    summary: Poll\n"
+        "    input: {pathParams: {id: {type: string, required: true}}}\n"
+        "    cost: {type: free, value: 0, currency: USD, unit: call}\n")
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    assert validator.main(["tikhub"]) != 0
+    out = capsys.readouterr().out
+    assert "needs exactly one {id} in the target path" in out
+
+
+def _flat_usage_cost() -> dict:
+    return {"type": "per_call", "value": 0.0005, "currency": "USD", "per": 1, "unit": "call",
+            "fallback": {"value": 0.0005, "note": "small ceiling; the reported cost settles"},
+            "settle": "usage", "usage": {"path": "usage.cost", "unit": "usd"},
+            "source": "docs", "source_url": "https://example.com/pricing",
+            "checked": "2026-09-23", "confidence": "documented"}
+
+
+def test_flat_price_usage_settlement_is_accepted():
+    """A synchronous per-call price may settle the reply's own charge (`_platform_settle` hands
+    the buffered body to the usage basis), so no async descriptor or table is required."""
+    errors: list[str] = []
+    validator.check_cost(_flat_usage_cost(), "x", errors, [], provider="openrouter")
+    assert errors == []
+
+
+@pytest.mark.parametrize(("mutate", "message"), [
+    (lambda c: c.pop("fallback"), "requires a fallback mapping"),
+    (lambda c: c.update(fallback={"value": 0.0005}), "fallback.note must explain"),
+    (lambda c: c.update(fallback={"value": float("inf"), "note": "x"}), "finite non-negative"),
+    (lambda c: c.pop("usage"), "requires usage.path and usage.unit"),
+    (lambda c: c.update(usage={"path": "usage..cost", "unit": "usd"}),
+     "requires usage.path and usage.unit"),
+    (lambda c: c.update(usage={"path": "usage.cost", "unit": "tokens"}),
+     "needs a numeric fx.yaml unit_rates_usd entry"),
+    (lambda c: c.update(settle="base"), "usage is only valid with settle: usage"),
+    (lambda c: c.update(settle="later"), "supports only 'base', 'modifiers' or 'usage'"),
+])
+def test_flat_price_usage_settlement_rejects_bad_shapes(mutate, message):
+    cost = _flat_usage_cost()
+    mutate(cost)
+    errors: list[str] = []
+    validator.check_cost(cost, "x", errors, [], provider="openrouter")
+    assert any(message in e for e in errors), errors
+
+
+def test_usage_settlement_block_and_finite_interval():
+    cost = _valid_table()
+    cost.update(settle="usage", usage={"path": "usage.cost", "unit": "usd"})
+    errors: list[str] = []
+    validator.check_cost_table(cost, _valid_input(), "x", errors)
+    assert errors == []
+    descriptor = _valid_async()
+    descriptor["interval"] = float("nan")
+    errors = []
+    validator.check_async_descriptor(descriptor, "x", "demo", {}, {"type": "per_success"}, errors)
+    assert any("finite" in e for e in errors)
+
+
+def test_async_descriptor_rejects_a_retired_or_broken_poll_target():
+    errors: list[str] = []
+    index = {"demo.video-gen.status": {
+        "provider": "demo", "kind": "utility", "method": "GET", "path": "/tasks/{task_id}",
+        "status": "retired",
+        "input": {"pathParams": {"task_id": {"type": "string", "required": True}}}}}
+    validator.check_async_descriptor(_valid_async(), "demo.yaml:submit", "demo", index,
+                                     {"type": "per_success"}, errors)
+    assert any("marked 'retired'" in e for e in errors)
+
+
+@pytest.mark.parametrize('rule', [
+    {'path': 'billing.charge', 'unit': 'usd'},
+    {'path': 'billing.charge', 'unit': 'credit'},
+    {'path': 'billing.charge', 'unit': 'credits'},
+    {'path': '', 'unit': 'usd'},
+    {'path': 'billing.charge', 'unit': 'usd', 'scale': 2},
+])
+def test_reported_charge_requires_supported_units_and_path(rule):
+    cost = dict(catalog_store.load().by_id['trykitt.people.email.find']['cost'])
+    cost['reported_charge'] = rule
+    errors = []
+    validator.check_cost(cost, 'test', errors, [], provider='serper')
+    assert bool(errors) is (rule not in (
+        {'path': 'billing.charge', 'unit': 'usd'},
+        {'path': 'billing.charge', 'unit': 'credit'},
+    ))
+
+
+def test_reported_credit_charge_requires_a_provider_fx_rate():
+    cost = dict(catalog_store.load().by_id['trykitt.people.email.find']['cost'])
+    cost['reported_charge'] = {'path': 'billing.charge', 'unit': 'credit'}
+    errors = []
+    validator.check_cost(cost, 'test', errors, [], provider='no-such-provider')
+    assert any('needs a numeric fx.yaml credit_rates_usd entry' in error for error in errors)
+
+
+@pytest.mark.parametrize('rule,valid', [
+    ({'body.realtime': True}, True),
+    ({'body.realtime': 1}, False),
+    ({'body.realtime': False}, False),
+    ({'body.missing': True}, False),
+    ({'queryParams.realtime': True}, False),
+    ({'queryParams.memory': 1024}, True),
+    ({'queryParams.memory': '1024'}, False),
+    ({}, False),
+])
+def test_platform_request_requires_declared_fixed_body_value(rule, valid):
+    errors = []
+    validator.check_platform_request(rule, {'body': {
+        'realtime': {'type': 'boolean', 'enum': [True]},
+    }, 'queryParams': {'memory': {'type': 'integer', 'enum': [1024]}}}, 'test', errors)
+    assert (not errors) is valid
+
+
+def test_tavily_rates_require_complete_positive_finite_endpoint_tables():
+    cat = catalog_store.load()
+    for endpoint_id, expected in validator.TAVILY_RATE_KEYS.items():
+        cost = cat.by_id[endpoint_id]["cost"]
+        errors = []
+        validator.check_tavily_rates(endpoint_id, cost, endpoint_id, errors)
+        assert errors == []
+        assert set(cost["tavily_rates"]) == expected
+
+    valid = cat.by_id["tavily.web.search"]["cost"]["tavily_rates"]
+    broken = [
+        None,
+        {},
+        {key: value for key, value in valid.items() if key != "advanced"},
+        valid | {"typo": 1},
+        valid | {"basic": 0},
+        valid | {"basic": -1},
+        valid | {"basic": True},
+        valid | {"basic": "1"},
+        valid | {"basic": float("nan")},
+        valid | {"basic": float("inf")},
+    ]
+    for rates in broken:
+        errors = []
+        validator.check_tavily_rates(
+            "tavily.web.search", {"tavily_rates": rates}, "test", errors)
+        assert errors
+
+
+def test_octen_rate_table_matches_displayed_base_and_requires_every_meter():
+    base = {"currency": "USD", "value": 5, "per": 1000,
+            "octen_rates": {"call": 0.005, "full_content_extra": 0.0005}}
+    errors = []
+    validator.check_octen_rates("octen.web.search", base, "test", errors)
+    assert errors == []
+    for cost in (base | {"octen_rates": {"call": 0.005}},
+                 base | {"octen_rates": {"call": 0.005, "full_content_extra": -0.0005}},
+                 base | {"value": 1}):
+        errors = []
+        validator.check_octen_rates("octen.web.search", cost, "test", errors)
+        assert errors
+
+
+def test_enrichlayer_result_rule_requires_bounded_declared_credit_price():
+    schema = {"queryParams": {"page_size": {"type": "string"},
+                              "use_cache": {"type": "string"}}}
+    base = {"type": "per_result", "currency": "credit", "value": 3, "per": 1,
+            "enrichlayer": {"field": "results", "max_page": 10,
+                            "extra_per_result": {"use_cache": {"if-recent": 2}}}}
+    errors = []
+    validator.check_enrichlayer_rule(base, schema, "test", errors)
+    assert errors == []
+    for broken in (
+        {**base, "enrichlayer": {"field": "results", "max_page": 0}},
+        {**base, "enrichlayer": {"field": "results", "max_page": 11}},
+        {**base, "enrichlayer": {"field": "wrong", "max_page": 10}},
+        {**base, "enrichlayer": {"field": "results", "max_page": 10,
+                                  "extra_per_result": {"missing": {"on": 2}}}},
+        {**base, "enrichlayer": {"field": "results", "max_page": 10,
+                                  "extra_per_result": {"use_cache": {"if-recent": -1}}}},
+    ):
+        errors = []
+        validator.check_enrichlayer_rule(broken, schema, "test", errors)
+        assert errors
+
+
+# ---- ContactOut ----
+
+
+def test_contactout_person_routes_cannot_recapture_pii():
+    import yaml
+    path = Path(__file__).parents[1] / "src" / "treg" / "catalog" / "contactout.yaml"
+    endpoints = yaml.safe_load(path.read_text())["endpoints"]
+    safe = {"contactout.people.count", "contactout.people.email.verify",
+            "contactout.companies.search", "contactout.companies.enrich"}
+    structural = {"contactout.people.contact.work", "contactout.people.contact.phone"}
+    for ep in endpoints:
+        if ep["id"] in safe:
+            continue
+        assert ep["untestable"]
+        assert not any(key in ep for key in ("test_request", "verified"))
+        example = path.parent / "examples" / (ep["id"] + ".json")
+        if ep["id"] in structural:
+            assert ep["example_response"] == "examples/" + example.name
+            payload = example.read_text()
+            assert "example.invalid" in payload or "+10000000000" in payload
+        else:
+            assert "example_response" not in ep
+            assert not example.exists()
+    work = next(ep for ep in endpoints if ep["id"] == "contactout.people.enrich.work_email")
+    assert work["cost"]["value"] == 0.17
+
+
+@pytest.mark.parametrize('display,valid', [
+    ({'unit':'records','grouped':True,'round_up':True}, True),
+    ({'unit':'item','variable':True}, True),
+    ({'unit':'call','maximum':True}, True),
+    ({'unit':'call','maximum':'yes'}, False),
+    ({'unit':'records','round_up':True}, False),
+    ({'unit':'item','variable':'yes'}, False),
+    ({'unit':''}, False),
+    ({'unit':'item','provider':'sumble'}, False),
+])
+def test_generic_price_display_metadata(display, valid):
+    cost = {'type':'per_result','value':1,'currency':'USD','per':25,'unit':'record',
+            'source':'docs','source_url':'https://example.com','checked':'2026-09-09',
+            'confidence':'documented','display':display}
+    errors = []
+    validator.check_cost(cost, 'test', errors, [])
+    assert (not errors) == valid
+
+
+def test_price_table_may_disclose_its_validated_maximum_only():
+    base = {'type':'per_success', 'table':[{'when':{'body.mode':'basic'}, 'value':1}],
+            'fallback':{'value':2, 'note':'documented upper bound'}, 'currency':'USD', 'unit':'call',
+            'source':'docs', 'source_url':'https://example.com', 'checked':'2026-09-21',
+            'confidence':'documented'}
+    input_schema = {'body': {'mode': {'type':'string', 'required':True, 'enum':['basic']}}}
+    errors = []
+    validator.check_cost(base | {'display':{'unit':'call', 'maximum':True}}, 'test', errors, [], input_schema)
+    assert not errors
+    errors = []
+    validator.check_cost(base | {'display':{'unit':'call'}}, 'test', errors, [], input_schema)
+    assert any('table maximum' in error for error in errors)
+
+
+@pytest.mark.parametrize('patch,valid', [
+    ({}, True), ({'strict_query': 'yes'}, False), ({'method': 'POST'}, False),
+    ({'path': '/{id}'}, False),
+    ({'input': {'queryParams': {'mode': {'enum': [True]}}}}, False),
+])
+def test_strict_query_contract_validation(patch, valid):
+    ep = {'strict_query': True, 'method': 'GET', 'path': '/lookup',
+          'input': {'queryParams': {'mode': {'type': 'string', 'enum': ['true']}}}}
+    errors = []
+    validator.check_strict_query(ep | patch, 'example', errors)
+    assert bool(errors) is not valid
+
+
+@pytest.mark.parametrize('patch,valid', [
+    ({}, True),
+    ({'strict_body': 'yes'}, False),
+    ({'method': 'GET'}, False),
+    ({'input': {'body': {'items': {'type': 'array[object]', 'min': 2, 'max': 1}}}}, False),
+])
+def test_strict_body_contract_validation(patch, valid):
+    ep = {'strict_body': True, 'method': 'POST', 'path': '/lookup',
+          'input': {'body': {'items': {'type': 'array[object]', 'min': 1, 'max': 1}}}}
+    errors = []
+    validator.check_strict_body(ep | patch, 'example', errors)
+    assert bool(errors) is not valid
+
+
+@pytest.mark.parametrize('patch,valid', [
+    ({}, True),
+    ({'body_allowlist': 'yes'}, False),
+    ({'method': 'GET'}, False),
+    ({'input': {'body': {}}}, False),
+])
+def test_body_allowlist_contract_validation(patch, valid):
+    ep = {'body_allowlist': True, 'method': 'POST', 'path': '/lookup',
+          'input': {'body': {'domain': {'type': 'string', 'required': True}}}}
+    errors = []
+    validator.check_body_allowlist(ep | patch, 'example', errors)
+    assert bool(errors) is not valid
+
+
+@pytest.mark.parametrize('patch,valid', [
+    ({}, True),
+    ({'platform_auth': 'provider'}, False),
+    ({'method': 'POST'}, False),
+    ({'cost': {'type': 'per_success', 'value': 0.02}}, False),
+    ({'verified': ''}, False),
+    ({'scope': 'own_account'}, False),
+    ({'authorization_method': 'oauth'}, False),
+    ({'async': {'poll': {}}}, False),
+])
+def test_anonymous_platform_auth_is_a_verified_free_read_only_contract(patch, valid):
+    ep = {
+        'id': 'example.public.values',
+        'platform_auth': 'anonymous',
+        'method': 'GET',
+        'scope': 'any_account',
+        'cost': {'type': 'free', 'value': 0, 'currency': 'USD', 'unit': 'call'},
+        'verified': '2026-09-15',
+    }
+    errors = []
+    validator.check_platform_auth(ep | patch, 'example', errors)
+    assert (not errors) is valid
+
+
+def test_missing_platform_auth_normalizes_as_absent():
+    normalized = catalog_store._normalize({
+        'id': 'example.public.values',
+        'method': 'GET',
+        'path': '/values',
+    }, 'example', Path('.'))
+    assert normalized['platform_auth'] is None
+
+
+def _proposal_findings(taxonomy, docs):
+    errors: list[str] = []
+    warnings: list[str] = []
+    validator.check_proposed_capabilities(taxonomy, docs, errors, warnings)
+    return errors, warnings
+
+
+def _provider(name, proposed=None, used=()):
+    return (f"{name}.yaml", {"provider": name, "proposed_capabilities": proposed or {},
+                             "endpoints": [{"id": f"{name}.{cap}", "capability": cap} for cap in used]})
+
+
+def test_proposed_capability_already_in_the_taxonomy_is_an_error():
+    errors, _ = _proposal_findings(
+        {"web.search": "Search the open web"},
+        [_provider("exa", {"web.search": "Search the web by meaning"}, used=["web.search"])],
+    )
+    assert errors == ["proposed_capabilities web.search: already in capabilities.yaml; "
+                      "delete the proposal from ['exa.yaml']"]
+
+
+def test_one_proposed_id_with_two_descriptions_is_an_error_but_punctuation_is_not():
+    errors, _ = _proposal_findings({}, [
+        _provider("tomba", {"people.phone.verify": "Validate & format a phone number"}),
+        _provider("trestleiq", {"people.phone.verify": "Validate and format a phone number"}),
+    ])
+    assert len(errors) == 1 and "different descriptions" in errors[0]
+
+    errors, _ = _proposal_findings({}, [
+        _provider("a", {"web.crawl.results": "List the pages produced by a website crawl"}),
+        _provider("b", {"web.crawl.results": "List the pages produced by a website crawl."}),
+    ])
+    assert errors == []
+
+
+def test_a_proposal_two_providers_use_warns_to_promote_it():
+    _, warnings = _proposal_findings({}, [
+        _provider("exa", {"web.answer": "Answer a question from the web"}, used=["web.answer"]),
+        _provider("olostep", used=["web.answer"]),
+    ])
+    assert warnings == ["proposed_capabilities web.answer: used by ['exa', 'olostep']; "
+                        "promote it to capabilities.yaml"]
+
+    # one provider using it from both tiers is still one provider
+    _, warnings = _proposal_findings({}, [
+        _provider("exa", {"web.answer": "Answer a question from the web"}, used=["web.answer"]),
+        ("exa.extended.yaml", {"provider": "exa", "endpoints": [{"id": "exa.x", "capability": "web.answer"}]}),
+    ])
+    assert warnings == []
+
+
+def test_two_ids_of_one_platform_with_one_description_warn_across_taxonomy_and_proposals():
+    _, warnings = _proposal_findings(
+        {"companies.similar": "Find companies similar to a seed company",
+         "people.lookalike": "Find companies similar to a seed company"},
+        [_provider("findymail", {"companies.lookalike": "Find companies similar to a seed company!"})],
+    )
+    assert warnings == ["capabilities ['companies.lookalike', 'companies.similar'] share the description "
+                        "'find companies similar to a seed company'; unify them on one id or tell the jobs apart"]
+
+
+
+_TERMS = [{"path": "usageMetadata.promptTokenCount", "rate": 0.000002},
+          {"path": "usageMetadata.candidatesTokensDetails[modality=IMAGE].tokenCount",
+           "rate": 0.000108}]
+
+
+def test_usage_terms_are_accepted_for_a_multi_meter_response():
+    cost = _flat_usage_cost()
+    cost["usage"] = {"terms": _TERMS, "unit": "usd"}
+    errors: list[str] = []
+    validator.check_cost(cost, "x", errors, [], provider="google-ai")
+    assert errors == []
+
+
+@pytest.mark.parametrize(("usage", "message"), [
+    ({"terms": [], "unit": "usd"}, "usage.terms must be"),
+    ({"terms": [{"path": "a.b"}], "unit": "usd"}, "usage.terms must be"),
+    ({"terms": [{"path": "a..b", "rate": 1}], "unit": "usd"}, "usage.terms must be"),
+    ({"terms": [{"path": "a[b]", "rate": 1}], "unit": "usd"}, "usage.terms must be"),
+    # The runtime splits on dots before reading a selector, so a dotted value would read as zero.
+    ({"terms": [{"path": "a[version=v1.2].b", "rate": 1}], "unit": "usd"}, "usage.terms must be"),
+    ({"terms": [{"path": "a.b", "rate": 0}], "unit": "usd"}, "usage.terms must be"),
+    ({"terms": [{"path": "a.b", "rate": float("nan")}], "unit": "usd"}, "usage.terms must be"),
+    ({"terms": [{"path": "a.b", "rate": 1}], "unit": "credit"}, "usage.unit must be 'usd'"),
+    ({"terms": [{"path": "a.b", "rate": 1}], "path": "a.b", "unit": "usd"},
+     "or usage.terms and unit 'usd'"),
+])
+def test_usage_terms_reject_bad_shapes(usage, message):
+    cost = _flat_usage_cost()
+    cost["usage"] = usage
+    errors: list[str] = []
+    validator.check_cost(cost, "x", errors, [], provider="google-ai")
+    assert any(message in e for e in errors), errors
+
+
+
+def _spooled_endpoint() -> dict:
+    cost = _flat_usage_cost()
+    cost["usage"] = {"terms": _TERMS, "unit": "usd"}
+    return {"id": "google-ai.image-gen.demo", "cost": cost, "spooled_response": True}
+
+
+def test_spooled_response_settles_from_reported_usage():
+    errors: list[str] = []
+    validator.check_spooled_response(_spooled_endpoint(), None, "x", errors)
+    assert errors == []
+
+
+@pytest.mark.parametrize(("mutate", "is_async", "message"), [
+    (lambda ep: ep.update(spooled_response={"evidence": ["usageMetadata"]}), False, "must be true"),
+    (lambda ep: ep.update(spooled_response=False), False, "must be true"),
+    (lambda ep: ep.update(resource_ownership={"requires": {}}), False, "cannot be combined"),
+    (lambda ep: None, True, "cannot be combined"),
+    (lambda ep: ep["cost"].update(settle="base"), False, "settle: usage or an expect success rule"),
+])
+def test_spooled_response_rejects_bodies_something_else_must_read(mutate, is_async, message):
+    ep = _spooled_endpoint()
+    mutate(ep)
+    errors: list[str] = []
+    validator.check_spooled_response(ep, {"id_from": "id"} if is_async else None, "x", errors)
+    assert any(message in e for e in errors), errors
+
+
+def test_a_fixed_price_spools_when_its_success_rule_is_declared():
+    """A per-song price has no meters: the `expect` leaf is the evidence a spooled answer keeps."""
+    ep = _spooled_endpoint()
+    ep["cost"].update(settle="base")
+    ep["cost"].pop("usage")
+    ep["expect"] = {"json_path": "candidates.0.finishReason", "equals": "STOP"}
+    errors: list[str] = []
+    validator.check_spooled_response(ep, None, "x", errors)
+    assert errors == []
+
+
+def test_the_fast_catalog_loader_reads_every_file_like_the_pure_python_one():
+    """`store._Loader` uses libyaml's C parser when it is installed; every shipped catalog file must
+    parse to the same document as with the pure-Python SafeLoader, timestamps kept as strings."""
+    import yaml
+    from treg.domain.catalog import store
+
+    class Pure(yaml.SafeLoader):
+        pass
+    Pure.yaml_implicit_resolvers = store._Loader.yaml_implicit_resolvers
+    if not getattr(yaml, "__with_libyaml__", False):
+        pytest.skip("libyaml not installed")
+    assert issubclass(store._Loader, yaml.CSafeLoader)
+    for path in sorted(store.CATALOG_DIR.rglob("*.yaml")):
+        text = path.read_text(encoding="utf-8")
+        assert yaml.load(text, Loader=store._Loader) == yaml.load(text, Loader=Pure), path.name  # noqa: S506
+    assert yaml.load("checked: 2026-09-01", Loader=store._Loader) == {"checked": "2026-09-01"}  # noqa: S506

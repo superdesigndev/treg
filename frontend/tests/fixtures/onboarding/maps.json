@@ -1,0 +1,70 @@
+[
+ {
+  "output": {
+   "places": [
+    {
+     "name": "Mozart's Coffee Roasters",
+     "rating": 4.5,
+     "review_count": 10935,
+     "categories": [
+      "coffee_shop",
+      "bakery",
+      "cafe",
+      "event_venue",
+      "tourist_attraction"
+     ],
+     "website": "https://mozartscoffee.com"
+    },
+    {
+     "name": "Flora Coffee & Culture",
+     "rating": 4.9,
+     "review_count": 410,
+     "categories": [
+      "coffee_shop"
+     ],
+     "website": "https://floracoffee.co"
+    },
+    {
+     "name": "Hometown Coffee - East Austin",
+     "rating": 4.9,
+     "review_count": 85,
+     "categories": [
+      "coffee_shop"
+     ],
+     "website": "https://hometowncoffeecompany.com"
+    },
+    {
+     "name": "Jo's Coffee – South Congress",
+     "rating": 4.4,
+     "review_count": 1998,
+     "categories": [
+      "coffee_shop",
+      "cafe",
+      "meal_takeaway",
+      "sandwich_shop"
+     ],
+     "website": "https://joscoffee.com"
+    },
+    {
+     "name": "Terrible Love",
+     "rating": 4.9,
+     "review_count": 432,
+     "categories": [
+      "coffee_shop",
+      "coffee_stand"
+     ],
+     "website": "https://terriblelovecoffee.com"
+    },
+    {
+     "name": "UFO Coffee & Tea",
+     "rating": 4.9,
+     "review_count": 50,
+     "categories": [
+      "coffee_shop"
+     ],
+     "website": "https://ufo-coffee.com"
+    }
+   ]
+  }
+ }
+]

@@ -1,10 +1,10 @@
 [project]
 name = "tools-registry"
-version = "0.9.0"
+version = "0.25.0"
 description = "A remote registry that turns team skills into shareable, callable tools via a credential-injecting proxy."
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12,<3.14"  # keep in sync with PYREQ in src/treg/web/install.sh
 authors = [
     { name = "Unclecode", email = "unclecode@superdesign.dev" },
     { name = "SuperDesign" },
@@ -26,6 +26,7 @@ classifiers = [
 # fast. Everything needed to RUN a registry server lives in the `[server]` extra below.
 dependencies = [
     "httpx>=0.27",
+    "posthog>=7.47.3",
     "questionary>=2.0",
 ]
 
@@ -33,18 +34,23 @@ dependencies = [
 # The registry SERVER — host your own. The FastAPI app, the DB drivers, and encryption. Not needed to
 # USE the CLI against a hosted registry, only to RUN one. Install with: pip install "tools-registry[server]"
 server = [
+    "alembic>=1.16.5",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
-    "sqlmodel>=0.0.22",
-    "sqlalchemy[asyncio]>=2.0",
+    "sqlmodel>=0.0.22,<0.0.45",
+    "sqlalchemy[asyncio]>=2.0.42",
     "aiosqlite>=0.20",
     "asyncpg>=0.30",
     "cryptography>=43",
     "pydantic-settings>=2.5",
     "pyyaml>=6",   # the endpoint catalog's data files (src/treg/catalog/*.yaml) — server-side only
-    "stripe>=12",  # balance top-ups (src/treg/billing.py) — the payment rail, server-side only
+    "stripe>=12",  # balance top-ups (src/treg/infra/stripe.py) — the payment rail, server-side only
     "mcp>=2",      # the MCP front door (src/treg/mcp.py) — server-side only; pulls httpx2 ALONGSIDE
-                   # httpx (they coexist), so the light CLI's dependency set is untouched
+    "quickjs>=1.19.4",  # the hub's script sandbox engine (src/treg/hub_sandbox.py) — server-side only
+    # httpx (they coexist), so the light CLI's dependency set is untouched
+    "redis>=5",    # the shared key-value store (src/treg/infra/kv.py) — server-side only
+    "obstore>=0.11,<0.12",
+    "numpy>=2.1",  # find's card vectors: one matrix product per query (application/find_index.py)
 ]
 # The LOCAL PROXY (`treg shell` catching the agent's own outgoing calls). It needs to generate a
 # certificate authority on the machine, and `cryptography` is a compiled package — putting it in the
@@ -57,29 +63,284 @@ proxy = [
 
 [project.scripts]
 treg = "treg.cli:main"
+# Scheduled maintainer commands (worker profile) — needs the [server] extra; Render cron calls this.
+treg-worker = "treg.worker:main"
 
 [project.urls]
-Homepage = "https://treg.superdesign.dev"
+Homepage = "https://treg.to"
 Repository = "https://github.com/superdesigndev/treg"
 Issues = "https://github.com/superdesigndev/treg/issues"
 
 [dependency-groups]
 dev = [
+    "import-linter>=2.13",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "tools-registry[server]",   # the test suite imports the server (api, models, …), so dev pulls it in
 ]
+test = [
+    "playwright>=1.62.0",
+]
+
+[tool.uv]
+# uv.lock is `revision = 3`; uv < 0.8.4 silently rewrites it to revision 2 (a ~650-line diff
+# that changes no versions). Refuse to run on an old uv rather than teach everyone to avoid `uv lock`.
+required-version = ">=0.12"
+
+[tool.importlinter]
+root_package = "treg"
+include_external_packages = true
+exclude_type_checking_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Lightweight CLI modules do not import server dependencies"
+type = "forbidden"
+source_modules = [
+    "treg.cli",
+    "treg.convert",
+    "treg.skills",
+    "treg.providers",
+    "treg.localrun",
+    "treg.shell",
+    "treg.agents",
+    "treg.egress",
+    "treg.fsjail",
+]
+forbidden_modules = [
+    "obstore",
+    "aiosqlite",
+    "alembic",
+    "asyncpg",
+    "cryptography",
+    "fastapi",
+    "mcp",
+    "pydantic",
+    "pydantic_core",
+    "pydantic_settings",
+    "redis",
+    "sqlalchemy",
+    "sqlmodel",
+    "starlette",
+    "stripe",
+    "uvicorn",
+    "yaml",
+]
+ignore_imports = [
+    # ensure_proxy_dependency imports this only after the user invokes the optional proxy feature.
+    "treg.cli -> cryptography",
+    # render_grant is a server-only path and imports SQLModel only when the server calls it.
+    "treg.localrun -> sqlmodel",
+]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "error"
+as_packages = false
+
+[[tool.importlinter.contracts]]
+name = "Money domain does not depend on best-effort audit"
+type = "forbidden"
+source_modules = ["treg.domain.money"]
+forbidden_modules = ["treg.audit"]
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Routers do not depend on the legacy API module"
+type = "forbidden"
+source_modules = ["treg.routers"]
+forbidden_modules = ["treg.api"]
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Identity domain does not depend on outer layers"
+type = "forbidden"
+source_modules = ["treg.domain.identity"]
+forbidden_modules = ["treg.api", "treg.routers", "treg.application", "treg.domain.governance"]
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Governance domain does not depend on outer layers"
+type = "forbidden"
+source_modules = ["treg.domain.governance"]
+forbidden_modules = ["treg.api", "treg.routers", "treg.application"]
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Governance policies do not import web frameworks"
+type = "forbidden"
+source_modules = ["treg.domain.governance"]
+forbidden_modules = ["fastapi", "starlette"]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Call application does not depend on HTTP adapters"
+type = "forbidden"
+source_modules = ["treg.application.call"]
+forbidden_modules = ["treg.api", "treg.bootstrap", "treg.routers", "fastapi", "starlette"]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Connections domain does not depend on outer layers"
+type = "forbidden"
+source_modules = ["treg.domain.connections"]
+forbidden_modules = [
+    "treg.api",
+    "treg.bootstrap",
+    "treg.routers",
+    "treg.application",
+    "fastapi",
+    "starlette",
+]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Catalog domain is a leaf: no outer layers, no sibling domains"
+type = "forbidden"
+source_modules = ["treg.domain.catalog"]
+forbidden_modules = [
+    "treg.api",
+    "treg.bootstrap",
+    "treg.routers",
+    "treg.application",
+    "treg.domain.connections",
+    "treg.domain.governance",
+    "treg.domain.identity",
+    "treg.domain.money",
+    "fastapi",
+    "starlette",
+]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Tools domain does not depend on outer layers or unsanctioned domains"
+type = "forbidden"
+source_modules = ["treg.domain.tools"]
+# tools → connections is the one sanctioned intra-domain edge, so it is absent here.
+forbidden_modules = [
+    "treg.api",
+    "treg.bootstrap",
+    "treg.routers",
+    "treg.application",
+    "treg.domain.catalog",
+    "treg.domain.governance",
+    "treg.domain.identity",
+    "treg.domain.money",
+    "fastapi",
+    "starlette",
+]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Upstream infrastructure does not depend on HTTP adapters"
+type = "forbidden"
+source_modules = ["treg.infra.upstream"]
+forbidden_modules = ["treg.api", "treg.bootstrap", "treg.routers", "fastapi", "starlette"]
+allow_indirect_imports = true
+as_packages = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# asyncpg connections are bound to the event loop that created them. The test engine is module-level,
+# so keep async tests and fixtures on one loop per pytest process instead of returning pooled Postgres
+# connections to a new function-scoped loop. xdist workers remain isolated processes with their own loop.
+asyncio_default_test_loop_scope = "session"
+asyncio_default_fixture_loop_scope = "session"
+# `scripts/` is standalone tooling, not part of the shipped package (the wheel is `src/treg` only),
+# but tests import from it — `from scripts import catalog_drift`. Only `python -m pytest` puts the
+# working directory on sys.path; CI runs plain `uv run pytest`, where that import is a
+# ModuleNotFoundError at collection. Say it here so both invocations agree, rather than adding
+# `scripts/__init__.py` and changing what the sdist thinks it contains.
+pythonpath = ["."]
+# Each OpenAPI operation needs its own id; bootstrap splits multi-method routes for the schema.
+filterwarnings = ["error:Duplicate Operation ID:UserWarning"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.build.targets.sdist]
+# The sdist is PUBLISHED — everything it carries becomes public on PyPI. Hatchling's default is
+# "every file git does not ignore", and `.git/info/exclude` is LOCAL-ONLY, so working material kept
+# out of git that way (plan docs, evidence, probe dumps) still lands in the tarball. Caught on the
+# 0.13.0 build: `docs/evidence/overflow-map-2026-08-26` — 127 MB of aggregator catalogs and probe
+# request/response dumps — would have shipped, naming partners we deliberately do not name in
+# public. The 0.11.0 release hit the same class of bug with `.codegraph/`. So the dangerous paths
+# are excluded HERE, in a committed file, rather than trusted to anyone's local ignore rules.
+exclude = [
+  "docs/evidence",          # working evidence for a plan — never public
+  "docs/*-PLAN.md",         # ditto: plan docs live locally
+  "/*-PLAN.md", "/*-TODO.md", "/*-plan.html",  # root-level working plans and previews
+  ".worktrees",             # local linked checkouts may contain private or stale material
+  ".import_linter_cache",   # build cache (nested .gitignore hides it from git, not from hatchling)
+  ".codegraph",
+  ".lavish",                # local visual review artifacts, not distributable product assets
+  "frontend/node_modules", "frontend/test-results", "frontend/playwright-report",
+  "videos",                 # git-excluded marketing renders
+  "/src/treg/web/media/**/*.mp4",  # hosted-page demos stay in Git deployments, not PyPI
+  "*.db", "*.sqlite3", "scratch*", "body.json",   # stray local artifacts
+  ".env", ".env.*",         # belt and braces: a credential file must never reach a tarball
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/treg"]
+exclude = [
+  "/src/treg/web/media/**/*.mp4",  # the light CLI must not carry hosted-page demo videos
+]
 # The web/ dir lives inside the treg package, so `packages` already ships every asset
-# (favicon.svg, index.html, tutorial.*, tour/, llms.txt, install.sh) — hatchling includes
+# needed at runtime (favicon.svg, index.html, tutorial.*, tour/, llms.txt, install.sh) — hatchling includes
 # non-.py data files under a package by default. A force-include here would add each a SECOND
 # time and break the wheel build (`A second file is being added ... at the same path`).
+
+[[tool.importlinter.contracts]]
+name = "Async task domain is a stdlib leaf shared with the light CLI"
+type = "forbidden"
+source_modules = ["treg.domain.asynctasks"]
+forbidden_modules = ["treg.api", "treg.routers", "treg.application", "treg.bootstrap", "treg.audit", "treg.models", "treg.infra", "treg.config", "fastapi", "starlette", "sqlmodel", "sqlalchemy", "pydantic", "pydantic_settings", "yaml", "httpx"]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Table domain is a pure stdlib leaf: an answer in, rows and columns out"
+type = "forbidden"
+source_modules = ["treg.domain.table"]
+forbidden_modules = ["treg.api", "treg.routers", "treg.application", "treg.bootstrap", "treg.audit", "treg.models", "treg.infra", "treg.config", "treg.domain.identity", "treg.domain.governance", "treg.domain.connections", "treg.domain.tools", "treg.domain.catalog", "treg.domain.capacity", "treg.domain.money", "treg.domain.asynctasks", "treg.domain.hub", "fastapi", "starlette", "sqlmodel", "sqlalchemy", "pydantic", "pydantic_settings", "yaml", "httpx"]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Capacity domain does not depend on outer layers"
+type = "forbidden"
+source_modules = ["treg.domain.capacity"]
+forbidden_modules = ["treg.api", "treg.routers", "treg.application", "treg.bootstrap", "fastapi", "starlette", "treg.audit"]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Feedback domain does not depend on outer layers or sibling domains"
+type = "forbidden"
+source_modules = ["treg.domain.feedback"]
+forbidden_modules = [
+    "treg.api",
+    "treg.bootstrap",
+    "treg.routers",
+    "treg.application",
+    "treg.audit",
+    "treg.domain.identity",
+    "treg.domain.governance",
+    "treg.domain.connections",
+    "treg.domain.tools",
+    "treg.domain.catalog",
+    "treg.domain.capacity",
+    "treg.domain.money",
+    "treg.domain.asynctasks",
+    "fastapi",
+    "starlette",
+]
+allow_indirect_imports = true
+as_packages = true

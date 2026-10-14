@@ -1,0 +1,25 @@
+{
+  "createdAt": "2026-09-29T00:00:00.000Z",
+  "error": null,
+  "id": "00000000-0000-4000-8000-000000000001",
+  "status": "completed",
+  "updatedAt": "2026-09-29T00:01:00.000Z",
+  "input": {
+    "q": "What is example.com used for?",
+    "outputType": "sourcedAnswer",
+    "reasoningDepth": "S",
+    "mode": "answer"
+  },
+  "output": {
+    "answer": "IANA maintains example.com for use in documentation examples.",
+    "sources": [
+      {
+        "name": "Example Domains",
+        "url": "https://www.iana.org/help/example-domains",
+        "favicon": "",
+        "snippet": "Example domains are intended for use in documentation."
+      }
+    ]
+  },
+  "type": "research"
+}

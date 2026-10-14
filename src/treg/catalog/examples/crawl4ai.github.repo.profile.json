@@ -1,0 +1,90 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 1380,
+    "from_cache": false,
+    "llm_calls": 0,
+    "pages_fetched": 2,
+    "partial": false,
+    "warnings": [
+      "module: github-repo: unclecode/crawl4ai · 85172 stars · 5 releases"
+    ]
+  },
+  "recipe": "github-repo",
+  "usage": {
+    "boxes": [
+      "gate",
+      "recipe"
+    ],
+    "cache": "miss",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      },
+      {
+        "attempts": 1,
+        "cache": "api",
+        "call": "scrape",
+        "engine": "api",
+        "proxy": "none",
+        "units": 1,
+        "url": "https://api.github.com/…"
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 195,
+      "search": 3000
+    },
+    "units": 3
+  },
+  "version": 1,
+  "rows": [
+    {
+      "archived": false,
+      "created": "2024-05-09T09:48:50Z",
+      "description": "Open-source web crawler and scraper for LLMs and AI agents: any website into clean, LLM-ready Markdown. Run it yourself, or use Crawl4AI Cloud with one key.",
+      "forks": 8836,
+      "homepage": "https://crawl4ai.com",
+      "kind": "repo",
+      "language": "Python",
+      "license": "Apache-2.0",
+      "name": "unclecode/crawl4ai",
+      "notes": null,
+      "open_issues": 237,
+      "published": null,
+      "pushed": "2026-10-05T11:26:42Z",
+      "stars": 85172,
+      "tag": null,
+      "topics": "ai, ai-agents, crawler, data-extraction, llm, markdown, mcp, open-source, playwright, python, rag, scraper, web-crawler, web-crawling, web-scraping",
+      "url": "https://github.com/unclecode/crawl4ai"
+    },
+    {
+      "archived": null,
+      "created": null,
+      "description": null,
+      "forks": null,
+      "homepage": null,
+      "kind": "release",
+      "language": null,
+      "license": null,
+      "name": "Release v0.9.4",
+      "notes": "## 🎉 Crawl4AI v0.9.4 Released!\n\n### 📦 Installation\n\n**PyPI:**\n```bash\npip install crawl4ai==0.9.4\n```\n\n**Docker:**\n```bash\ndocker pull unclecode/crawl4ai:0.9.4\ndocker pull unclecode/crawl4ai:latest\n```\n\n**Note:** Docker images are being built and will be available shortly.\nCheck the [Docker Release …",
+      "open_issues": null,
+      "published": "2026-09-23T12:14:55Z",
+      "pushed": null,
+      "stars": null,
+      "tag": "v0.9.4",
+      "topics": null,
+      "url": "https://github.com/unclecode/crawl4ai/releases/tag/v0.9.4"
+    }
+  ]
+}

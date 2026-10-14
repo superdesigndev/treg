@@ -57,7 +57,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /v3/contacts/search-and-enrich
-    name: "Find and enrich a person's contact info"
+    name: "Find a person's work email and phone by LinkedIn or name"
     summary: "Enrich a person — work email, direct dial and mobile — from email, LinkedIn or name"
     input:
       bodyType: json
@@ -70,23 +70,65 @@ endpoints:
       body: {contacts: [{firstName: "Jane", lastName: "Doe", companyDomain: "lusha.com"}], reveal: ["emails"]}
     cost:
       type: per_result
-      value: 1
+      value: 2
       currency: credit
       per: 1
       unit: result
       source: rate_card_api
       source_url: https://www.lusha.com/pricing/
-      checked: '2026-07-31'
-      confidence: inferred
-      note: 'billed per revealed datapoint (email and phone are separate charges), not per call; a
-        contact Lusha cannot match is free — OBSERVED 2026-07-31, an unmatched contact reported
-        billing.creditsCharged 0. `value` is the REVEAL half only, from the live rate card
-        (GET /v3/account/usage.pricing: revealEmail 1 per 1, revealPhone 5 per 1), which is why this
-        is inferred rather than verified: the companies sibling of this same search-and-enrich shape
-        was observed charging 2 for one result (a search charge PLUS a reveal charge), so budget
-        1 search + 1 per email + 5 per phone per matched contact until a live match confirms it.'
-    verified: 2026-07-31
+      checked: '2026-08-13'
+      confidence: verified
+      note: 'VERIFIED live 2026-08-13. The live rate card (GET /v3/account/usage.pricing) prices
+        contactSearch at 1 credit per 25 results and revealEmail at 1 per 1, so a fresh single-contact
+        email enrich = 1 search + 1 reveal = 2 credits — confirmed by a fresh match reporting
+        billing.creditsCharged 2 (resultsReturned 1). A phone reveal is +5 (revealPhone 5 per 1), an
+        email +1. A contact Lusha cannot match is free (billing.creditsCharged 0, re-observed
+        2026-08-13). CAVEAT: re-revealing a contact already revealed to this account recently is
+        discounted (an immediate repeat charged 1, not 2); value 2 is the fresh/upper-bound cost.'
+    verified: 2026-08-13
+    added: '2026-07-28'
     example_response: examples/lusha.people.enrich.json
+    docs_url: https://docs.lusha.com/apis/openapi/enrichment
+
+  - id: lusha.people.phone.find
+    domain: contacts
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v3/contacts/search-and-enrich
+    name: "Find a person's phone by LinkedIn URL, email or name"
+    summary: "Reveal a person's direct-dial or mobile from a LinkedIn URL, email, or name + company domain — Lusha's native phone data"
+    input:
+      bodyType: json
+      body:
+        contacts: {type: "array[object]", required: true, note: "ONE person to look up, identified by linkedinUrl, email, or firstName + lastName + companyDomain", example: [{"linkedinUrl": "https://www.linkedin.com/in/example"}]}
+        reveal: {type: "array[string]", required: true, note: "always [\"phones\"] on this route — the phone-only view of lusha.people.enrich, so the router can bill and rank it as a phone finder", example: ["phones"]}
+      note: "the same search-and-enrich call as lusha.people.enrich with `reveal: [\"phones\"]`. THREE OUTCOMES, each with its own bill (live 2026-09-04): not found → `results[0].error.code == NOT_FOUND`, 0 credits; found but Lusha holds no number → a profile with no `phones` key, 1 credit (the contact search) and a top-level `status: partial`; found with a number → `phones: [{number, type, doNotCall, countryIso2}]`, 1 + 5 credits. Honour `doNotCall`. treg's account has Lusha's third-party phone waterfall NOT connected (`statusReason: WATERFALL_NOT_CONFIGURED`), so this answers from Lusha's native data only"
+    test_request:
+      body: {contacts: [{firstName: "Jane", lastName: "Doe", companyDomain: "lusha.com"}], reveal: ["phones"]}
+    miss:
+      status: 200
+      means: "`results[0].error.code == NOT_FOUND` (0 credits) or a matched profile with no `phones` key (1 credit) — Lusha has no number; do not retry the same identifier"
+    cost:
+      type: per_success
+      value: 6
+      currency: credit
+      per: 1
+      unit: result
+      source: rate_card_api
+      source_url: https://www.lusha.com/pricing/
+      checked: '2026-09-04'
+      confidence: verified
+      note: 'The live rate card (GET /v3/account/usage.pricing, read 2026-09-04) prices contactSearch at
+        1 credit per 25 results and revealPhone at 5 per 1, so a found number = 1 + 5 = 6 credits —
+        the reveal half confirmed live by a contacts/enrich reveal reporting billing.creditsCharged 5.
+        A contact Lusha cannot match is free (creditsCharged 0, observed 2026-09-04); a matched contact
+        with no number still costs the 1-credit search (creditsCharged 1, observed 2026-09-04 twice).
+        Every response carries `billing.creditsCharged`, which is what treg settles on.'
+    verified: 2026-09-04
+    added: '2026-09-04'
+    example_response: examples/lusha.people.phone.find.json
     docs_url: https://docs.lusha.com/apis/openapi/enrichment
 
   - id: lusha.people.search
@@ -96,7 +138,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /v3/contacts/prospecting
-    name: "Search contacts by role and company"
+    name: "Search people by title, company or intent (free preview)"
     summary: "Search Lusha's contacts by title, seniority, company, location or intent (free preview)"
     input:
       bodyType: json
@@ -108,6 +150,7 @@ endpoints:
       body: {pagination: {page: 0, size: 10}, filters: {contacts: {include: {jobTitles: ["Head of Marketing"]}}}}
     cost: {type: per_result, value: 1, currency: credit, per: 25, unit: result, source: observed, checked: '2026-07-31', confidence: verified, note: 'OBSERVED live 2026-07-28: billing.creditsCharged 1 for 10 results — 1 credit per up to 25 results (pricing.contactSearch), NOT free as the prose on this endpoint''s docs page claims. Re-confirmed 2026-07-31 against the live rate card (contactSearch: {credits: 1, perQuantity: 25}). Verify against GET /v3/account/usage.pricing before trusting the docs text on any Lusha endpoint'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.people.search.json
     docs_url: https://docs.lusha.com/apis/openapi/prospecting-search-and-enrich
 
@@ -118,7 +161,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /v3/contacts/enrich
-    name: "Reveal contacts' emails and phone numbers"
+    name: "Reveal emails and phone numbers for found contact ids"
     summary: "Reveal emails and phone numbers for contacts you already found in a prospecting search"
     input:
       bodyType: json
@@ -147,6 +190,7 @@ endpoints:
         a 100-id batch is a 500-credit call. Unlike the search-and-enrich routes this one charges
         the reveal only, because the search was already paid for by the prospecting call.'
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.people.contacts.enrich.json
     docs_url: https://docs.lusha.com/apis/openapi/enrichment
 
@@ -157,7 +201,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /v3/companies/search-and-enrich
-    name: "Find and enrich a company's details"
+    name: "Enrich a company by domain or name — headcount, funding"
     summary: "Enrich a company from domain or name — industry, headcount, revenue, funding, tech"
     input:
       bodyType: json
@@ -183,6 +227,7 @@ endpoints:
         POST /v3/companies/enrich on the ids you keep) is the cheaper one when you already hold ids.
         A no-match is free, as on the contact side.'
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/lusha.companies.enrich.json
     docs_url: https://docs.lusha.com/apis/openapi/company-search-and-enrich
 
@@ -193,7 +238,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /v3/companies/prospecting
-    name: "Search companies by industry and size"
+    name: "Search companies by industry or tech (free preview)"
     summary: "Search Lusha's companies by industry, headcount, revenue or tech (free preview)"
     input:
       bodyType: json
@@ -205,6 +250,7 @@ endpoints:
       body: {pagination: {page: 0, size: 10}, filters: {companies: {include: {domains: ["lusha.com"]}}}}
     cost: {type: per_result, value: 1, currency: credit, per: 25, unit: result, source: observed, checked: '2026-07-31', confidence: verified, note: 'OBSERVED live 2026-07-28: billing.creditsCharged 1 for 1 result — 1 credit per up to 25 results (pricing.companySearch), not free as the docs prose claims. Re-confirmed 2026-07-31 against the live rate card (companySearch: {credits: 1, perQuantity: 25}), so a size=10 page and a size=25 page cost the same: page in 25s'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/lusha.companies.search.json
     docs_url: https://docs.lusha.com/apis/openapi/prospecting-search-and-enrich/searchprospectingcompanies
 
@@ -222,5 +268,6 @@ endpoints:
     test_request: {queryParams: {}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'explicitly free — consumes no credits (observed: the balance was unchanged across calls on 2026-07-31). Rate limit 5 req/min'}
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/lusha.account.usage.json
     docs_url: https://docs.lusha.com/apis/openapi/account-usage-api/get-account-usage

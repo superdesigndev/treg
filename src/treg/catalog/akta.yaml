@@ -47,7 +47,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/company/enrichment/
-    name: "Enrich a company from its website"
+    name: "Company enrichment by website — firmographics, tech stack"
     summary: "Enrich a company from its website — firmographics, financials, tech stack, management"
     input:
       queryParams:
@@ -68,6 +68,7 @@ endpoints:
       confidence: documented
       note: 'Priced PER SECTION requested, all rates documented on the rate card: 2 credits each for firmographic, business_model, company_assessment, product_offering and technology; 1.5 for management_profile and strategic_signal; 1 for customer_profile and industry; 0.5 for trust_signal, company_hierarchy, digital_presence, financial_estimate and location; 3 for the Enterprise-only funding_detail and 5 for mna_and_investment. value is the UPPER BOUND — every standard (non-Enterprise) section at once = 17.5 credits; it sizes the hold and the displayed price, while the settle charges the actual `credits_consumed` the response reports (see api._observed_cost_micro), so a sections=location call costs the documented 0.5 credits, not 17.5. OBSERVED 2026-07-31: the test_request (sections=location) reported credits_consumed 0.50, exactly the rate card''s figure. Credits are $0.05 pay-as-you-go, $0.04 on subscription.'
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/akta.companies.enrich.json
     docs_url: https://docs.akta.pro/api-reference/company-data
 
@@ -78,7 +79,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/company/search/
-    name: "Look up a company's Akta id"
+    name: "Company name or domain to Akta id — free lookup"
     summary: "Look up a company by name or domain for its Akta id (free — costs 0 credits)"
     input:
       queryParams:
@@ -88,6 +89,7 @@ endpoints:
       queryParams: {query: "canva.com"}
     cost: {type: free, value: 0, currency: USD, unit: call, confidence: verified, note: 'documented free, and OBSERVED free 2026-07-28 and again 2026-07-31 — the response reports credits_consumed 0.00'}
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/akta.companies.search.json
     docs_url: https://docs.akta.pro/api-reference/supporting-apis/company-search
 
@@ -98,7 +100,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/news/
-    name: "Get recent company or industry news"
+    name: "Recent company or industry news, scored for sentiment"
     summary: "Get recent news about a company or industry, scored for sentiment and significance"
     input:
       queryParams:
@@ -132,17 +134,19 @@ endpoints:
       confidence: documented
       note: 'the rate card documents the formula exactly: 0.1 credit base fee per call PLUS 0.01 credit per article returned, so `limit` is the dial — limit=1 is 0.11 credits, the max 1,000 is 10.1. value here is the DEFAULT page (10 articles = 0.2 credits); it sizes the hold and the displayed price, while the settle charges the actual `credits_consumed` the response reports (see api._observed_cost_micro). OBSERVED live 2026-07-31: a limit=1 call reported credits_consumed 0.11, confirming the formula.'
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/akta.companies.news.json
     docs_url: https://docs.akta.pro/api-reference/news-signals
 
   - id: akta.companies.headcount_trend
+    added: '2026-07-28'
     domain: other
     capability: companies.headcount_trend
     platform: companies
     scope: any_account
     method: GET
     path: /v1/company/headcount-trends/
-    name: "Get company headcount trends by department"
+    name: "Company headcount trend by website — department split"
     summary: "See how a company's headcount has moved over time and how staff split across departments"
     input:
       queryParams:
@@ -152,16 +156,18 @@ endpoints:
       queryParams: {company: "canva.com"}
     cost: {type: per_success, value: 2.5, currency: credit, per: 1, unit: call, source: docs, source_url: 'https://docs.akta.pro/getting-started/pricing', checked: '2026-07-28', confidence: documented, note: 2.5 Akta credits per request}
     unverified: "http 403 {\"detail\": \"Your current subscription does not include access to this endpoint.\"} — re-probed 2026-07-31, identical response, so the plan gate has not moved. An account-tier gap, not a call error: every /company/{jobs,posts,website-traffic,employee-reviews,headcount-trends,product-reviews-with-products} route on this key returns the same message, and a 403 consumes no credits"
+    platform_blocked: "upstream 403 'Your current subscription does not include access to this endpoint' on treg's shared Akta key (alternative-data tier; re-probed 2026-07-31). Works with your own Akta key on a plan that includes Alternative Signals."
     docs_url: https://docs.akta.pro/api-reference/alternative-data/headcount-trends
 
   - id: akta.companies.reviews
+    added: '2026-07-28'
     domain: other
     capability: companies.reviews
     platform: companies
     scope: any_account
     method: GET
     path: /v1/company/employee-reviews/
-    name: "Get company employee reviews"
+    name: "Employee reviews and ratings for a company by website"
     summary: "Read employee reviews and ratings for a company"
     input:
       queryParams:
@@ -173,6 +179,7 @@ endpoints:
       queryParams: {company: "canva.com", limit: 1}
     cost: {type: per_result, value: 1.5, currency: credit, per: 50, unit: review, source: docs, source_url: 'https://docs.akta.pro/getting-started/pricing', checked: '2026-07-28', confidence: documented, note: 1.5 Akta credits per 50 reviews returned}
     unverified: "http 403 {\"detail\": \"Your current subscription does not include access to this endpoint.\"} — re-probed 2026-07-31, unchanged. Account-tier gap, same message as the other alternative-data routes; the 403 is free, so re-probing costs nothing"
+    platform_blocked: "upstream 403 'Your current subscription does not include access to this endpoint' on treg's shared Akta key (alternative-data tier; re-probed 2026-07-31). Works with your own Akta key on a plan that includes Alternative Signals."
     docs_url: https://docs.akta.pro/api-reference/alternative-data/employee-reviews
 
   - id: akta.companies.industry.resolve
@@ -182,7 +189,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/industry/search/
-    name: "Resolve industry text to Akta codes"
+    name: "Resolve industry text to Akta industry codes — free"
     summary: "Turn a free-text industry description into Akta's standard industry codes (free)"
     input:
       queryParams:
@@ -192,5 +199,6 @@ endpoints:
       queryParams: {query: "graphic design software"}
     cost: {type: free, value: 0, currency: USD, unit: call, confidence: verified, note: 'the endpoint page documents it as free (0 credits) and Akta''s rate card carries no line item for it either way; OBSERVED credits_consumed 0.00 on live calls 2026-07-28 and 2026-07-31, so free is measured here, not just documented'}
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/akta.companies.industry.resolve.json
     docs_url: https://docs.akta.pro/api-reference/supporting-apis/industry-search

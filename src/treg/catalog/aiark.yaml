@@ -1,0 +1,270 @@
+# AI Ark documents 21 callable operations. treg exposes the V2 single-email and mobile routes and
+# omits their duplicate V1 forms. The free credit route is internal to connection verification and
+# capacity collection. Stateful lists remain BYOK-only; both asynchronous job families are omitted.
+provider: aiark
+source:
+  docs: https://docs.ai-ark.com/
+  openapi: https://docs.ai-ark.com/llms.txt
+  curated: '2026-09-17'
+pricing_url: https://ai-ark.com/pricing
+limits: 'Default 5 requests/second per token. Search pages hold 1-100 rows and stop at 10,000. Async services allow 500 queued jobs per token and process 10 at once.'
+proposed_capabilities:
+  people.preview: Preview masked people-search results for a flat page price
+  people.personality.analyze: Generate DISC, OCEAN and outreach guidance for a profile
+  people.lists.upsert: Create or update a temporary exclusion list
+endpoints:
+  - id: aiark.people.search
+    capability: people.search
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /v1/people
+    name: Search people
+    summary: Search people by company, role, location, skills, education and profile filters.
+    input: &people_search_input
+      bodyType: json
+      body:
+        account: {type: object, required: false, example: {domain: {any: {include: [example.com]}}}, note: Native company filters from the AI Ark schema.}
+        contact: {type: object, required: false, example: {seniority: {any: {include: [founder]}}}, note: Native person, role, location, skill and education filters.}
+        lists: {type: object, required: false, note: Exclude temporary people_id lists created with aiark.lists.upsert.}
+        page: {type: integer, required: true, min: 0, example: 0}
+        size: {type: integer, required: true, min: 1, max: 100, enum: [1], example: 1}
+      note: page is zero-based. treg calls are fixed at one result; use the upstream API directly with your own key for larger pages. A successful response includes a single-use trackId that expires after six hours.
+    platform_request: {body.size: 1}
+    test_request: {body: {account: {domain: {any: {include: [example.com]}}}, page: 0, size: 1}}
+    cost: &half_credit_hit
+      type: per_success
+      value: 0.5
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.ai-ark.com/reference/people-search-1
+      checked: '2026-09-17'
+      confidence: verified
+      note: Platform fixes size to one. A returned person costs 0.5 credit; an empty page is free. Live one-row pages reported X-Credit -0.5 and reduced the balance by 0.5.
+    docs_url: https://docs.ai-ark.com/reference/people-search-1
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/aiark.people.search.json
+
+  - id: aiark.people.preview
+    capability: people.preview
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /v1/people/preview
+    name: Preview a people search
+    summary: Preview one masked people-search result before a full search or export.
+    input: *people_search_input
+    platform_request: {body.size: 1}
+    test_request: {body: {account: {domain: {any: {include: [example.com]}}}, page: 0, size: 1}}
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: page
+      source: observed
+      source_url: https://docs.ai-ark.com/reference/people-preview
+      checked: '2026-09-17'
+      confidence: verified
+      note: One credit per served page. A live one-row page reported X-Credit -1.0 and reduced the balance by one credit; rejected input was free.
+    docs_url: https://docs.ai-ark.com/reference/people-preview
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/aiark.people.preview.json
+
+  - id: aiark.companies.search
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    domain: companies
+    method: POST
+    path: /v1/companies
+    name: Search companies
+    summary: Search company profiles, including lookalike, firmographic, funding and technology filters.
+    input:
+      bodyType: json
+      body:
+        lookalikeDomains: {type: "array[string]", required: false, max: 5, example: [example.com]}
+        account: {type: object, required: false, example: {domain: {any: {include: [example.com]}}}, note: Native company filters from the AI Ark schema.}
+        lists: {type: object, required: false, note: Exclude temporary company_id lists created with aiark.lists.upsert.}
+        page: {type: integer, required: true, min: 0, example: 0}
+        size: {type: integer, required: true, min: 1, max: 100, enum: [1], example: 1}
+      note: page is zero-based. treg calls are fixed at one result; use the upstream API directly with your own key for larger pages.
+    platform_request: {body.size: 1}
+    test_request: {body: {account: {domain: {any: {include: [example.com]}}}, page: 0, size: 1}}
+    cost:
+      type: per_success
+      value: 0.1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.ai-ark.com/reference/company-search-1
+      checked: '2026-09-17'
+      confidence: verified
+      note: Platform fixes size to one. A returned company costs 0.1 credit; an empty page is free. A live result reported X-Credit -0.1 and reduced the balance by 0.1.
+    docs_url: https://docs.ai-ark.com/reference/company-search-1
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/aiark.companies.search.json
+
+  - id: aiark.people.email.find
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /v2/people/export/single
+    name: Find a verified work email
+    summary: Enrich one AI Ark or LinkedIn profile and return a real-time verified email.
+    input:
+      bodyType: json
+      body:
+        id: {type: string, required: false, note: AI Ark person id from search or preview.}
+        url: {type: string, required: false, format: uri, example: https://www.linkedin.com/in/example}
+      note: Provide id or url. V2 returns data null with HTTP 200 on a miss.
+    test_request: {body: {url: https://www.linkedin.com/in/example}}
+    cost: &one_credit_hit
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.ai-ark.com/reference/people-export-single-v2
+      checked: '2026-09-17'
+      confidence: verified
+      note: One credit when a profile and valid email are returned; a data-null miss is free. Live hit and miss deltas were 1 and 0.
+    docs_url: https://docs.ai-ark.com/reference/people-export-single-v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/aiark.people.email.find.json
+
+  - id: aiark.people.phone.find
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /v2/people/mobile-phone-finder
+    name: Find a mobile phone number
+    summary: Find a mobile from a LinkedIn profile or a full name and company domain.
+    input:
+      bodyType: json
+      body:
+        linkedin: {type: string, required: false, format: uri, example: https://www.linkedin.com/in/example}
+        domain: {type: string, required: false, example: example.com}
+        name: {type: string, required: false, example: Jane Doe}
+      note: Provide linkedin alone, or provide domain and name together. V2 returns data null with HTTP 200 on a miss.
+    test_request: {body: {linkedin: https://www.linkedin.com/in/example}}
+    cost:
+      type: per_success
+      value: 5
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.ai-ark.com/reference/people-mobile-phone-finder-v2
+      checked: '2026-09-17'
+      confidence: verified
+      note: Five credits when a mobile is returned; a data-null miss is free. Live hit and miss deltas were 5 and 0.
+    docs_url: https://docs.ai-ark.com/reference/people-mobile-phone-finder-v2
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/aiark.people.phone.find.json
+
+  - id: aiark.people.enrich
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /v1/people/reverse-lookup
+    name: Reverse lookup a person
+    miss:
+      status: 404
+      when: "error == 'data not found'"
+      means: "no person on record for this email (404 with error 'data not found') — a normal, free outcome. Its rare HTML 404 page is a real routing error."
+    summary: Enrich a person profile from an email address.
+    input:
+      bodyType: json
+      body:
+        search: {type: string, required: true, format: email, example: jane@example.com}
+    test_request: {body: {search: jane@example.com}}
+    cost:
+      type: per_success
+      value: 0.5
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.ai-ark.com/reference/people-reverse-lookup
+      checked: '2026-09-17'
+      confidence: verified
+      note: The docs say 0.5 credit per request, but a live 404 miss reduced the balance by zero. treg charges only a successful profile response.
+    docs_url: https://docs.ai-ark.com/reference/people-reverse-lookup
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/aiark.people.enrich.json
+
+  - id: aiark.people.personality.analyze
+    capability: people.personality.analyze
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /v1/people/analysis
+    name: Analyze a person's outreach style
+    summary: Generate DISC, OCEAN, sales and hiring communication guidance from a LinkedIn profile.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: https://www.linkedin.com/in/example}
+    test_request: {body: {url: https://www.linkedin.com/in/example}}
+    expect: {json_path: success, equals: true}
+    cost:
+      type: per_success
+      value: 4
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.ai-ark.com/reference/people-analysis
+      checked: '2026-09-17'
+      confidence: verified
+      note: Four credits for a successful analysis. The live response reported X-Credit -4.0 and reduced the balance by four credits.
+    docs_url: https://docs.ai-ark.com/reference/people-analysis
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/aiark.people.personality.analyze.json
+
+  - id: aiark.lists.upsert
+    capability: people.lists.upsert
+    platform: people
+    scope: own_account
+    domain: contacts
+    method: POST
+    path: /v1/lists
+    name: Create or update an exclusion list
+    summary: Create, append to or replace a temporary list of people or company ids.
+    platform_blocked: Lists are mutable account-scoped resources. Connect your own AI Ark key.
+    input:
+      bodyType: json
+      body:
+        id: {type: string, required: false, note: Existing list id. Omit to create a list.}
+        type: {type: string, required: false, enum: [people_id, company_id], note: Required when creating a list.}
+        values: {type: "array[string]", required: true, min: 1, max: 10000}
+        mode: {type: string, required: false, default: APPEND, enum: [APPEND, REPLACE]}
+      note: Lists expire after 24 hours. An account can keep up to 50 lists per day.
+    cost: &free_cost {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://docs.ai-ark.com/reference/save-list, checked: '2026-09-17', confidence: verified, note: A live list create returned 200 with no balance change.}
+    docs_url: https://docs.ai-ark.com/reference/save-list
+    test_request: {body: {type: people_id, values: [00000000-0000-0000-0000-000000000000]}}
+    verified: '2026-09-17'
+    added: '2026-09-17'
+    example_response: examples/aiark.lists.upsert.json
+    cache: forbidden

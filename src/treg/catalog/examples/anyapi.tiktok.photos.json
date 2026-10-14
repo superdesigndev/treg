@@ -1,0 +1,29 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "id": "7479916555602513174",
+      "images": [
+        {
+          "height": 1919,
+          "image": "https://p16-common-sign.tiktokcdn-us.com/tos-no1a-i-photomode-no/470310afedf94b2194b96e41edb4e94f~tplv-photomode-shrink-v1:1080:0:q80.heic?dr=10956&refresh_token=102eb31e&x-expires=1791104400&x-signat… [343 chars]",
+          "watermarkedImage": "https://p16-common-sign.tiktokcdn-us.com/tos-no1a-i-photomode-no/470310afedf94b2194b96e41edb4e94f~tplv-photomode-ow-skinny:Zm9vZGJ5ZnJhbmNoaQ==.webp?dr=8823&refresh_token=7f73d723&x-expires=1791104400… [356 chars]",
+          "width": 1080
+        },
+        "… 20 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 21,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-tiger",
+    "name": "Tiger",
+    "kind": "anonymous",
+    "artworkKey": "tiger"
+  },
+  "hint": "large_result: this response is ~18 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "df4539d9-9a84-4df6-8187-d5400af481fd"
+}

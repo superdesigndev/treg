@@ -1,0 +1,30 @@
+{
+  "output": {
+    "data": {
+      "comments": [
+        {
+          "author": "frau.pom",
+          "avatarUrl": "https://instagram.ffcm1-1.fna.fbcdn.net/v/t51.2885-19/106036945_317567719266309_5754344499595707643_n.jpg?stp=dst-jpg_e0_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xMDgwLmMyIn0&_n… [495 chars]",
+          "createdUtc": 1723278872,
+          "id": "18345120157141050",
+          "text": "@lektorat.schreibwege Das klingt ja toll. Wie bist du an den Job gekommen?",
+          "verified": false
+        },
+        "… 2 more item(s) truncated"
+      ],
+      "nextCursor": null
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 3,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "9af4b817-88f3-4bf7-98bc-72070e01ade0"
+}

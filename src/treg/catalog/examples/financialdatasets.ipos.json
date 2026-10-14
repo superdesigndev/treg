@@ -1,0 +1,24 @@
+{
+  "ipos": [
+    {
+      "accepted_datetime": "2026-07-14T01:18:24Z",
+      "accession_number": "0001193125-26-302144",
+      "cik": "0001718728",
+      "classification": "ipo",
+      "company_name": "Syntiant Corp.",
+      "exchange": null,
+      "expected_offering_price": null,
+      "filing_date": null,
+      "filing_url": "https://www.sec.gov/Archives/edgar/data/1718728/0001193125-26-302144-index.html",
+      "financials": null,
+      "form_type": "S-1/A",
+      "has_financial_statements": true,
+      "has_price_on_cover": false,
+      "is_ipo_grade": true,
+      "price_range_high": null,
+      "price_range_low": null,
+      "status": "SKIPPED",
+      "ticker": null
+    }
+  ]
+}

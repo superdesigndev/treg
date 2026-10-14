@@ -1,0 +1,48 @@
+{
+  "output": {
+    "data": {
+      "items": [
+        {
+          "author": "pabloreelsfunny",
+          "caption": "videos humor videos humor videos graciosos videos funny 2026 #humor #viralvideo #funny #fyp #viraltiktok ",
+          "comments": 4,
+          "contentType": "",
+          "createdUtc": 1788717975,
+          "id": "7682485177838210325",
+          "likes": 49,
+          "saves": 3,
+          "shares": 21,
+          "url": "https://www.tiktok.com/@pabloreelsfunny/video/7682485177838210325",
+          "views": 2378
+        },
+        {
+          "author": "funny_channel200",
+          "caption": "Funny video #funny #funnyvideo #fyp ",
+          "comments": 6,
+          "contentType": "",
+          "createdUtc": 1788387968,
+          "id": "7681067781114170646",
+          "likes": 139,
+          "saves": 14,
+          "shares": 0,
+          "url": "https://www.tiktok.com/@funny_channel200/video/7681067781114170646",
+          "views": 3506
+        },
+        "… 18 more item(s) truncated"
+      ],
+      "nextCursor": "_4NR4UOz2fhr2dEktQWLahwMnX-PfBK5jwAEH6HC5U7gpaOnBATsq9aa230rAN2OeLzqJIdaJnO9wkpy4-Ru5M268nriP9OBA505U-YA9DiqXiIIfiIUSFsvUc-ha2UfB4JJJDo4IgqjZebB"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0009,
+  "items": 20,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-bison-cb2f8f3c",
+    "name": "Bison",
+    "kind": "anonymous",
+    "artworkKey": "bison"
+  },
+  "resultId": "393bff1e-1126-447d-9125-a56874d22622"
+}

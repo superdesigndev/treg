@@ -1,0 +1,8 @@
+{
+  "linkedin_profile_url": "https://example.com/profile/example",
+  "twitter_profile_url": null,
+  "facebook_profile_url": null,
+  "url": "https://example.com/profile/example",
+  "similarity_score": 1,
+  "backwards_compatibility_notes": "example"
+}

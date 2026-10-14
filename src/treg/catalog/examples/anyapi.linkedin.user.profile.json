@@ -1,0 +1,48 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "about": "Chair of the Gates Foundation. Founder of Breakthrough Energy. Co-founder of Microsoft. Voracious reader. Avid traveler. Active blogger.",
+      "articles": null,
+      "avatarUrl": "https://media.licdn.com/dms/image/v2/D5603AQF-RYZP55jmXA/profile-displayphoto-shrink_200_200/B56ZRi8g.aGsAY-/0/1736826818802?e=2147483647&v=beta&t=bKWfN6UwwtiCqFWsG7rBELbd48qJOAMLdxhBzzkJV0k",
+      "education": [
+        {
+          "endDate": "1975",
+          "school": "Harvard University",
+          "schoolUrl": "https://www.linkedin.com/school/harvard-university/",
+          "startDate": "1973"
+        }
+      ],
+      "experience": [
+        {
+          "company": "Gates Foundation",
+          "companyUrl": "https://www.linkedin.com/company/gates-foundation",
+          "endDate": "",
+          "startDate": "2000"
+        },
+        {
+          "company": "Breakthrough Energy ",
+          "companyUrl": "https://www.linkedin.com/company/breakthrough-energy",
+          "endDate": "",
+          "startDate": "2015"
+        },
+        "… 1 more item(s) truncated"
+      ],
+      "followers": 40663153,
+      "location": "Seattle, Washington, United States",
+      "name": "Bill Gates",
+      "recentPosts": null
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0008,
+  "items": 3,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "resultId": "f22af920-b9f9-4e76-8444-127760314cca"
+}

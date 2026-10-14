@@ -1,0 +1,17 @@
+{
+  "cronId": "4fb39384-b6f3-4980-9a71-0063ff6c4bef",
+  "scheduleId": "scd_5Bqm8ptZYwoaiGCwtmkCuxVRaGhG",
+  "interval": "0 */6 * * *",
+  "status": "active",
+  "reason": null,
+  "consecutiveFailures": 0,
+  "config": {
+    "url": "https://example.com",
+    "name": "treg live verification",
+    "formats": [{"mode": "normal", "type": "markdown"}],
+    "interval": "0 */6 * * *",
+    "fetchConfig": {"mode": "auto", "wait": 0, "scrolls": 0, "stealth": false, "timeout": 60000, "shadowDom": true}
+  },
+  "createdAt": "2026-09-24T14:31:30.109Z",
+  "updatedAt": "2026-09-24T14:32:24.434Z"
+}

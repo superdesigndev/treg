@@ -1,0 +1,30 @@
+{
+  "output": {
+    "data": {
+      "communities": [
+        {
+          "id": "1724390935406981529",
+          "memberCount": 17006,
+          "name": "Artificial Intelligence + Tech",
+          "nsfw": false,
+          "topic": "Artificial Intelligence",
+          "url": "https://x.com/i/communities/1724390935406981529"
+        },
+        "… 9 more item(s) truncated"
+      ],
+      "nextCursor": "iT-BLNqc2lE_QFkAeEjYP1nydz2xW6OkWJs89v0sV0LsIZ74VCBmTYAs5rzpVZHMjbnVi5DBp9UzqUFkOOOCEGY1uJXd7qBq69rPQaaubpfqLt4pUdam0jgtiW0ZzOs2cngnGJPoh73838OtPKuKir5bLWMRrU4mRxPBLk_kJ3xBc2W1vTbEOi2RIds2AQVW8PgKatx0… [464 chars]"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0011,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "resultId": "cfcc7215-6453-4a5c-8089-9c1aa0762ca1"
+}

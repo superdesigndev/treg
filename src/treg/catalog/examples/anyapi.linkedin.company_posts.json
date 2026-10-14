@@ -1,0 +1,33 @@
+{
+  "output": {
+    "data": {
+      "items": [
+        {
+          "author": "… {4 field(s) truncated}",
+          "contentAttributes": "… [3 item(s) truncated]",
+          "createdUtc": 1789680260,
+          "engagement": "… {4 field(s) truncated}",
+          "id": "7506463076334899201",
+          "postImages": "… [0 item(s) truncated]",
+          "postVideo": "… {2 field(s) truncated}",
+          "text": "What do we mean when we say Stripe is building the economic infrastructure for AI?\n\nI sat down with Nate B. Jones and we went into:\n- How to establish trust in the agentic economy \n- Why Patrick Colli… [572 chars]",
+          "url": "https://www.linkedin.com/posts/egsands_what-do-we-mean-when-we-say-stripe-is-building-ugcPost-7506430436034658304-H0k0"
+        },
+        "… 9 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.005,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-hedgehog-338ce087",
+    "name": "Hedgehog",
+    "kind": "anonymous",
+    "artworkKey": "hedgehog"
+  },
+  "hint": "large_result: this response is ~15 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "b619e500-538e-4a41-8140-587eb959b24d"
+}

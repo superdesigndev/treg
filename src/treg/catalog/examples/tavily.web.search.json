@@ -1,0 +1,19 @@
+{
+  "query": "Tavily API documentation",
+  "follow_up_questions": null,
+  "answer": null,
+  "images": [],
+  "results": [
+    {
+      "url": "https://docs.tavily.com/documentation/api-reference/introduction",
+      "title": "Introduction - Tavily Docs",
+      "content": "You can optionally include session and anonymized user identifiers in your API requests as HTTP headers. Tavily uses these identifiers for attribution and analytics across multi-step user interactions and agent workflows. [...] All Tavily endpoints are authenticated using API keys…",
+      "score": 0.87166095,
+      "raw_content": null,
+      "id": "537fca-00"
+    }
+  ],
+  "response_time": 0.0,
+  "usage": {"credits": 1},
+  "request_id": "redacted-live-request-id"
+}

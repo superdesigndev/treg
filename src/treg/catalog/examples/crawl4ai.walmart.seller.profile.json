@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "walmart-seller",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 169,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "about": "- Major distributor of world's leading clutch manufacturers since 1999 including FX Racing ACT, Exedy, Valeo, Sachs, LuK, Fidanza and Seco.\n- Industry leading customer service. All inquiries responded within 24 hours.\n- Gripforce stocks over $2,000,000 of top quality products.\n- Offers industry's be…",
+      "address": {
+        "city": "Brea",
+        "country": "US",
+        "state": "CA",
+        "street": "1350 West Lambert Road Suite B",
+        "zip": "92821"
+      },
+      "display_name": "Gripforce, Inc.",
+      "email": "[email]",
+      "has_badge": false,
+      "is_active": true,
+      "logo": "https://i5.walmartimages.com/asr/180b8cfb-3a83-43c5-a392-3406c59d8733_1.2e901f28e4c9a74b39450e8a3d065009.jpeg",
+      "name": "Gripforce, Inc.",
+      "phone": "9497010655",
+      "rating": 3.31,
+      "review_count": 26,
+      "reviews_with_text": 11,
+      "seller_id": "101011072",
+      "seller_type": "EXTERNAL",
+      "url": "https://www.walmart.com/seller/101011072"
+    }
+  ]
+}

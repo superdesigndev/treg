@@ -12,9 +12,15 @@ source:
 # House rules for this provider (they apply to EVERY endpoint below, so they are stated once here
 # rather than repeated in each `input.note`):
 #
-#  1. Every data endpoint is POST and its body is an ARRAY of task objects. One array element = one
-#     billable task; the fields documented under `input.body` are the fields of a single element.
-#     Sending `{...}` instead of `[{...}]` yields status_code 40501 "Invalid Field".
+#  1. Every data endpoint is POST and its body is an ARRAY of task objects. The fields documented
+#     under `input.body` are the fields of a single element. Sending `{...}` instead of `[{...}]`
+#     yields status_code 40501 "Invalid Field".
+#     Live routes in this file accept exactly ONE task per request (vendor: "each Live API call
+#     can contain only one task"). Extra array elements get per-task status 40000
+#     "You can set only one task at a time" and $0 — do not batch domains as multiple tasks.
+#     Multi-target work goes on a bulk_* live route (many targets inside one task), not a
+#     multi-element array. The "up to 100 tasks" batch is Standard /task_post, which this
+#     core file does not list.
 #  2. The HTTP status is 200 even when the call failed. Two status codes matter:
 #       - the envelope `status_code` (20000 = OK)
 #       - the per-task `tasks[0].status_code` (20000 = OK; 40501/40400/... = this task failed)
@@ -60,7 +66,7 @@ source:
 # ============================================================================================
 
 
-limits: "2000 requests/min; up to 100 tasks per POST array"
+limits: "2000 requests/min; Live routes (every core endpoint here): exactly one task per POST — extra tasks return status 40000. Standard /task_post (extended catalog only) batches up to 100."
 pricing_url: https://dataforseo.com/pricing  # A billable 'SERP' is 10 results, not a whole page. Credits never expire; pay-as-you-go after the minimum top-up. Live mode is ~3x Standard.; free tier: 1 USD trial credit on si
 endpoints:
   # --- Backlinks (the Moz overlap group) --------------------------------------------------------
@@ -71,7 +77,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /backlinks/summary/live
-    name: "Get backlink summary for a domain"
+    name: "Backlink profile of a domain — counts, rank, spam score"
     summary: "Aggregate backlink profile of a domain or URL — counts, rank, spam score, breakdowns"
     input:
       bodyType: json
@@ -84,13 +90,14 @@ endpoints:
         internal_list_limit: {type: integer, required: false, note: "max elements per internal breakdown array, 10-1000; default 10", example: 10}
         rank_scale: {type: string, required: false, note: "one_hundred | one_thousand; default one_thousand"}
         backlinks_filters: {type: array, required: false, note: "narrow the backlink set the aggregates are computed over"}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is a JSON array that must contain exactly one task object. This live route rejects extra elements with per-task status 40000 \"You can set only one task at a time\" ($0 on the rejected tasks) — one domain per call. For many targets in one request use dataforseo.web.url.metrics (/backlinks/bulk_ranks/live), which takes up to 1000 targets inside a single task."
     test_request:
       body:
         - {target: "moz.com", internal_list_limit: 10}
     expect: {json_path: tasks.0.status_code, equals: 20000}
     cost: {type: per_call, value: 0.024, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.024 per request + $0.000036 per returned row; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.backlinks.summary.json
     docs_url: https://docs.dataforseo.com/v3/backlinks/summary/live/
 
@@ -101,7 +108,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /backlinks/backlinks/live
-    name: "List backlinks for a domain"
+    name: "Backlinks pointing to a domain or URL — anchor, rank"
     summary: "Individual backlinks — source page, anchor, follow status, first seen, page/domain rank"
     input:
       bodyType: json
@@ -115,13 +122,14 @@ endpoints:
         exclude_internal_backlinks: {type: boolean, required: false, note: "default true"}
         filters: {type: array, required: false, note: "max 8 conditions"}
         order_by: {type: array, required: false, note: "max 3 rules, e.g. [\"rank,desc\"]"}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
         - {target: "moz.com", limit: 2, mode: "one_per_domain"}
     expect: {json_path: tasks.0.status_code, equals: 20000}
     cost: {type: per_call, value: 0.024, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.024 per request + $0.000036 per returned row; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.backlinks.list.json
     docs_url: https://docs.dataforseo.com/v3/backlinks/backlinks/live/
 
@@ -132,7 +140,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /backlinks/referring_domains/live
-    name: "List referring domains for a target"
+    name: "Referring domains for a domain or URL — counts, rank"
     summary: "Referring domains linking to a target, with backlink counts, rank and first/last seen"
     input:
       bodyType: json
@@ -146,13 +154,14 @@ endpoints:
         exclude_internal_backlinks: {type: boolean, required: false, note: "default true"}
         filters: {type: array, required: false}
         order_by: {type: array, required: false}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
         - {target: "moz.com", limit: 2}
     expect: {json_path: tasks.0.status_code, equals: 20000}
     cost: {type: per_call, value: 0.024, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.024 per request + $0.000036 per returned row; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.linking_domains.list.json
     docs_url: https://docs.dataforseo.com/v3/backlinks/referring_domains/live/
 
@@ -163,7 +172,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /backlinks/anchors/live
-    name: "List anchor text distribution"
+    name: "Anchor text distribution of backlinks for a domain"
     summary: "Anchor-text distribution — backlink and referring-domain counts per anchor"
     input:
       bodyType: json
@@ -176,13 +185,14 @@ endpoints:
         include_subdomains: {type: boolean, required: false, note: "default true"}
         filters: {type: array, required: false}
         order_by: {type: array, required: false}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
         - {target: "moz.com", limit: 2}
     expect: {json_path: tasks.0.status_code, equals: 20000}
     cost: {type: per_call, value: 0.024, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.024 per request + $0.000036 per returned row; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.anchors.list.json
     docs_url: https://docs.dataforseo.com/v3/backlinks/anchors/live/
 
@@ -198,20 +208,21 @@ endpoints:
     scope: any_account
     method: POST
     path: /backlinks/bulk_ranks/live
-    name: "Get bulk backlink rank scores"
+    name: "Backlink authority rank for up to 1000 domains or URLs"
     summary: "Backlink-derived authority rank (0-1000) for up to 1000 domains or pages per call"
     input:
       bodyType: json
       body:
         targets: {type: array, required: true, note: "up to 1000 domains/subdomains (no scheme, no www) or full page URLs", example: ["moz.com"]}
         rank_scale: {type: string, required: false, note: "one_hundred (0-100, comparable to Moz DA) | one_thousand (default)"}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
         - {targets: ["moz.com"], rank_scale: "one_hundred"}
     expect: {json_path: tasks.0.status_code, equals: 20000}
     cost: {type: per_call, value: 0.024, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.024 per request + $0.000036 per returned row; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.url.metrics.json
     docs_url: https://docs.dataforseo.com/v3/backlinks/bulk_ranks/live/
 
@@ -222,7 +233,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /backlinks/competitors/live
-    name: "Find backlink competitors for a domain"
+    name: "Domains sharing backlink sources with a domain"
     summary: "Domains sharing referring domains with the target, ranked by overlap"
     input:
       bodyType: json
@@ -234,13 +245,14 @@ endpoints:
         main_domain: {type: boolean, required: false, note: "return main domains only; default false"}
         filters: {type: array, required: false}
         order_by: {type: array, required: false}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
         - {target: "moz.com", limit: 2}
     expect: {json_path: tasks.0.status_code, equals: 20000}
     cost: {type: per_call, value: 0.024, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.024 per request + $0.000036 per returned row; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). The endpoint itself is unverified, but this price is not a guess'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.backlinks.competitors.json
     docs_url: https://docs.dataforseo.com/v3/backlinks/competitors/live/
 
@@ -252,7 +264,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /serp/google/organic/live/regular
-    name: "Get live Google search results"
+    name: "Google organic search results for a keyword, live"
     summary: "Live Google organic results for a keyword — rank, title, URL, snippet — by location"
     input:
       bodyType: json
@@ -265,7 +277,7 @@ endpoints:
         device: {type: string, required: false, note: "desktop (default) | mobile"}
         os: {type: string, required: false, note: "windows/macos for desktop, android/ios for mobile"}
       note: |
-        POST body is an array of these task objects; one element = one billable task.
+        POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays).
         `/live/regular` is the cheap variant used here: plain organic + a few SERP feature types.
         `/live/advanced` costs more and adds the full set of SERP features (people_also_ask,
         AI overview, images, videos, …) — switch paths if you need those elements.
@@ -277,6 +289,7 @@ endpoints:
     # trailing slash deliberately omitted: with it, the path is a 40-char run of [A-Za-z0-9/] and
     # catalog_validate.py's credential-leak regex false-positives on it. Both forms serve HTTP 200.
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.google.serp.organic.json
     docs_url: https://docs.dataforseo.com/v3/serp/google/organic/live/regular
 
@@ -287,7 +300,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /keywords_data/google_ads/search_volume/live
-    name: "Get keyword search volume and CPC"
+    name: "Google search volume and CPC for up to 1000 keywords"
     summary: "Google Ads search volume, CPC, competition and 12-month trend for up to 1000 keywords"
     input:
       bodyType: json
@@ -300,13 +313,14 @@ endpoints:
         date_to: {type: string, required: false, note: "yyyy-mm-dd, cannot be later than last month"}
         include_adult_keywords: {type: boolean, required: false, note: "default false"}
         sort_by: {type: string, required: false, note: "relevance (default) | search_volume | competition_index | low_top_of_page_bid | high_top_of_page_bid"}
-      note: "POST body is an array of these task objects; one task is billed as one call regardless of keyword count, so batch keywords rather than looping"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays); the task is billed as one call regardless of keyword count, so batch keywords within a single task"
     test_request:
       body:
         - {keywords: ["coffee"], location_code: 2840, language_code: "en"}
     expect: {json_path: tasks.0.status_code, equals: 20000}
     cost: {type: per_call, value: 0.09, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.09 flat per Live request, confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). Note this is HIGHER than the $0.075 quoted on the public pricing page — trust the rate card. The price covers 1 or 1000 keywords alike, so always batch'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.google.keywords.volume.json
     docs_url: https://docs.dataforseo.com/v3/keywords_data/google_ads/search_volume/live/
 
@@ -317,7 +331,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /dataforseo_labs/google/related_keywords/live
-    name: "Get related keyword ideas"
+    name: "Related keyword ideas for a seed — volume, CPC, difficulty"
     summary: "Related keyword ideas from Google's related-searches graph, with volume, CPC, difficulty"
     input:
       bodyType: json
@@ -332,15 +346,14 @@ endpoints:
         include_serp_info: {type: boolean, required: false, note: "attach SERP data per keyword; default false"}
         include_clickstream_data: {type: boolean, required: false, note: "DOUBLES the cost; default false"}
         ignore_synonyms: {type: boolean, required: false, note: "drop near-duplicate keywords; default false"}
-        filters: {type: array, required: false, note: "max 8 conditions"}
-        order_by: {type: array, required: false, note: "max 3 rules"}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays). Sorting and filtering are unsupported on this route — do not send order_by or filters (live API returns 40501 Invalid Field even though the vendor docs list them)."
     test_request:
       body:
         - {keyword: "coffee", location_code: 2840, language_code: "en", depth: 1, limit: 2}
     expect: {json_path: tasks.0.status_code, equals: 20000}
     cost: {type: per_call, value: 0.012, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.012 per request + $0.00012 per returned keyword; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). include_clickstream_data doubles it'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.google.keywords.ideas.json
     docs_url: https://docs.dataforseo.com/v3/dataforseo_labs/google/related_keywords/live/
 
@@ -351,28 +364,29 @@ endpoints:
     scope: any_account
     method: POST
     path: /dataforseo_labs/google/ranked_keywords/live
-    name: "List keywords a domain ranks for"
+    name: "Keywords a domain ranks for in Google — position, volume"
     summary: "Keywords a domain or URL ranks for in Google, with position, volume and SERP element"
     input:
       bodyType: json
       body:
         target: {type: string, required: true, note: "domain without scheme or www, or a full page URL", example: "moz.com"}
-        location_code: {type: integer, required: true, note: "one of location_code | location_name; 2840 = United States", example: 2840}
-        language_code: {type: string, required: true, note: "one of language_code | language_name", example: "en"}
+        location_code: {type: integer, required: true, note: "one of location_code | location_name; codes from the Labs locations list (GET /v3/dataforseo_labs/locations_and_languages, free). 2840 = United States. 2076 is Brazil (not Morocco); Morocco is 2504", example: 2840}
+        language_code: {type: string, required: true, note: "one of language_code | language_name; must be a language available for that location (pair from GET /v3/dataforseo_labs/locations_and_languages, free). Invalid Field language_code usually means an unsupported pair — e.g. 2076+fr fails (Brazil is pt); Morocco French is 2504+fr (also ar)", example: "en"}
         limit: {type: integer, required: false, note: "1-1000; default 100", example: 2}
         offset: {type: integer, required: false, note: "default 0"}
         item_types: {type: array, required: false, note: "SERP element types to count as ranking, e.g. [\"organic\",\"paid\",\"featured_snippet\"]"}
         historical_serp_mode: {type: string, required: false, note: "live (default) | lost | all"}
         load_rank_absolute: {type: boolean, required: false, note: "include absolute SERP position; default false"}
         filters: {type: array, required: false, note: "max 8 conditions"}
-        order_by: {type: array, required: false, note: "max 3 rules"}
-      note: "POST body is an array of these task objects; one element = one billable task"
+        order_by: {type: array, required: false, note: "max 3 rules. Flat array of comma-separated \"field,direction\" strings (asc or desc). Field names match filters. Nested [[\"field\",\"desc\"]] (the filters-array shape) returns 40501 Invalid Field: 'order_by'.", example: ["keyword_data.keyword_info.search_volume,desc"]}
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays). Supported location+language pairs: https://docs.dataforseo.com/v3/dataforseo_labs/locations_and_languages/"
     test_request:
       body:
         - {target: "moz.com", location_code: 2840, language_code: "en", limit: 2}
     expect: {json_path: tasks.0.status_code, equals: 20000}
     cost: {type: per_call, value: 0.012, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.012 per request + $0.00012 per returned keyword; confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price)'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.google.domain.ranked_keywords.json
     docs_url: https://docs.dataforseo.com/v3/dataforseo_labs/google/ranked_keywords/live/
 
@@ -384,25 +398,26 @@ endpoints:
     scope: any_account
     method: POST
     path: /on_page/instant_pages
-    name: "Audit a single page on demand"
+    name: "On-page audit"
     summary: "Crawl one URL on demand — status code, load timings, on-page score, meta and content"
     input:
       bodyType: json
       body:
         url: {type: string, required: true, note: "FULL absolute URL including scheme — unlike the backlinks endpoints", example: "https://moz.com/"}
         custom_user_agent: {type: string, required: false}
-        browser_preset: {type: string, required: false, note: "desktop | mobile | tablet"}
-        enable_javascript: {type: boolean, required: false, note: "render JS; costs more; default false"}
-        enable_browser_rendering: {type: boolean, required: false, note: "measure Core Web Vitals; implies enable_javascript; costs more; default false"}
+        browser_preset: {type: string, required: false, note: "desktop | mobile | tablet; requires enable_browser_rendering=true — live API returns 40501 without it. Omit this field if you only need enable_javascript."}
+        enable_javascript: {type: boolean, required: false, note: "render JS; costs more; default false. Not sufficient for browser_preset."}
+        enable_browser_rendering: {type: boolean, required: false, note: "measure Core Web Vitals; implies enable_javascript; required for browser_preset; costs more; default false"}
         accept_language: {type: string, required: false}
         check_spell: {type: boolean, required: false, note: "default false"}
-      note: "POST body is an array of these task objects; one element = one billable task (one page crawled)"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays; one page crawled per task). Do not send browser_preset without enable_browser_rendering=true (live API returns 40501)."
     test_request:
       body:
         - {url: "https://moz.com/"}
     expect: {json_path: tasks.0.status_code, equals: 20000}
     cost: {type: per_result, value: 0.00015, currency: USD, per: 1, unit: page, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-07-28', confidence: verified, note: '$0.00015 per crawled PAGE (the rate card lists it as per_result, not per_request); confirmed against the account''s own machine-readable rate card (GET /appendix/user_data -> result[0].price). enable_javascript raises it to ~$0.0015 (10x) and enable_browser_rendering to ~$0.0051 (34x)'}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.web.page.audit.json
     docs_url: https://docs.dataforseo.com/v3/on_page/instant_pages/
 
@@ -418,7 +433,7 @@ endpoints:
     scope: own_account
     method: GET
     path: /appendix/user_data
-    name: "Get account usage and limits"
+    name: "DataForSEO account balance and rate limits"
     summary: "Your own DataForSEO account — remaining balance, plan limits and per-API rate limits"
     input:
       note: "no parameters; GET with HTTP Basic auth only. Unlike every other endpoint here it is GET, takes no task array, and costs nothing (`cost: 0`)"
@@ -426,5 +441,6 @@ endpoints:
     expect: {json_path: tasks.0.status_code, equals: 20000}
     cost: {type: free, value: 0, currency: USD, unit: call, note: free — the response's own `cost` field is 0}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/dataforseo.account.usage.json
     docs_url: https://docs.dataforseo.com/v3/appendix/user_data/

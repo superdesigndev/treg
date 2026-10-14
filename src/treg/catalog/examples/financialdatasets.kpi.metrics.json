@@ -1,0 +1,18 @@
+{
+  "kpi_metrics": [
+    {
+      "ticker": "DAL",
+      "metric_name": "load_factor",
+      "value": 84.0,
+      "unit": "%",
+      "period": "Q2 2026",
+      "period_type": "quarterly",
+      "segment": null,
+      "yoy_value": 83.0,
+      "yoy_change_pct": 1.205,
+      "source_text": "Passenger load factor",
+      "source_url": "https://www.sec.gov/"
+    }
+  ],
+  "next_page_url": null
+}

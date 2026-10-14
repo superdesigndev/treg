@@ -41,7 +41,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /person/enrich
-    name: "Enrich a person from email or name"
+    name: "Enrich a person by email, LinkedIn or name + company"
     summary: "Enrich a person from email, LinkedIn or name + company — job history, skills, contact"
     input:
       queryParams:
@@ -75,7 +75,11 @@ endpoints:
       checked: '2026-07-31'
       confidence: verified
       note: '1 PDL credit per person returned (HTTP 200); a 404 is free. OBSERVED live 2026-07-31 - the response carried x-call-credits-spent 1 and x-call-credits-type enrich. Enriching the same person twice costs 2 credits, PDL does not de-duplicate. cost.usd stays null because there is no public $/credit - the rate is plan-negotiated - so this is a verified CREDIT count, not a verified dollar figure.'
+    miss:
+      status: 404
+      means: "no person matched (or none above min_likelihood) — an expected outcome (and free, per the cost note), not an API failure; do not retry the same identifiers"
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/pdl.people.enrich.json
     docs_url: https://docs.peopledatalabs.com/docs/reference-person-enrichment-api
 
@@ -86,7 +90,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /person/search
-    name: "Search people by title, company, skills"
+    name: "Search people by title, company, skills or location"
     summary: "Search PDL people by title, company, seniority, skills or location — pays per record"
     input:
       queryParams:
@@ -112,6 +116,7 @@ endpoints:
       confidence: documented
       note: 1 PDL credit PER RECORD in the data array — a size=100 call costs 100 credits, a size=1000 POST costs 1000. A query matching nothing is free.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/pdl.people.search.json
     docs_url: https://docs.peopledatalabs.com/docs/reference-person-search-api
 
@@ -122,7 +127,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /company/enrich
-    name: "Enrich a company from website or name"
+    name: "Enrich a company by website, name or ticker"
     summary: "Enrich a company from website, name or ticker — industry, size, founded, location"
     input:
       queryParams:
@@ -153,6 +158,7 @@ endpoints:
       confidence: documented
       note: 1 PDL credit per company returned; a 404 is free.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/pdl.companies.enrich.json
     docs_url: https://docs.peopledatalabs.com/docs/reference-company-enrichment-api
 
@@ -163,7 +169,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /company/search
-    name: "Search companies by industry, size, location"
+    name: "Search companies by industry, headcount or location"
     summary: "Search PDL companies by industry, headcount, location or tags — pays per record"
     input:
       queryParams:
@@ -188,6 +194,7 @@ endpoints:
       confidence: verified
       note: '1 PDL credit PER RECORD returned; `size` is the cost dial. OBSERVED live 2026-07-31 - a size=1 call returning 1 record carried x-call-credits-spent 1, x-call-credits-type search_company, and left the enrich allowance (x-totallimit-remaining) untouched: search bills a different meter.'
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/pdl.companies.search.json
     docs_url: https://docs.peopledatalabs.com/docs/reference-company-search-api
 
@@ -198,7 +205,7 @@ endpoints:
     scope: own_account
     method: GET
     path: /autocomplete
-    name: "Get autocomplete suggestions for filter fields"
+    name: "Autocomplete filter values (free key check)"
     summary: "Check the key works and get suggested values for a filter field (free — 0 credits)"
     input:
       queryParams:
@@ -212,5 +219,6 @@ endpoints:
       queryParams: {field: "title", text: "data", size: 5}
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'free — PDL states all active keys have free access to Autocomplete, and a live call 2026-07-31 returned no x-call-credits-spent header at all, only the rate-limit ones. Rate-limited to 60/min and 1,000/day. The Cleaner APIs (/company/clean, /location/clean, /school/clean) are likewise free, 10,000/month'}
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/pdl.account.usage.json
     docs_url: https://docs.peopledatalabs.com/docs/reference-autocomplete-api

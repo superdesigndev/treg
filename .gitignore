@@ -2,6 +2,12 @@
 __pycache__/
 *.pyc
 *.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite*-wal
+*.sqlite*-shm
 *.bak
 .env
 .env.*
@@ -43,6 +49,9 @@ skills-lock.json
 
 # Local planning / handoffs — private, never committed.
 .context/
+# Agent-skill specs and plans default to docs/superpowers/; they are working notes, not the design
+# record, and belong in .context/ like any other plan.
+docs/superpowers/
 
 # Working docs that are plans/audits, not the shipped design record — they go stale the day
 # after they are written and read as commitments they are not.
@@ -51,3 +60,48 @@ docs/context/interface/*-plan.md
 docs/context/interface/*-audit-*.md
 docs/assets/restyle-*.png
 docs/context/interface/*-proposal.md
+.codegraph/
+
+# e2e harness scratch (see e2e-server.sh) — the DB is disposable, never commit it.
+e2e.db*
+
+# Generated usage dashboards — regenerate with scripts/usage_report.py, never commit.
+/reports/
+
+# Review scratch: a prompt handed to an external reviewer, and its runner. Useful while a branch is
+# in review, meaningless after it merges.
+/.codex-review-prompt.md
+/.codex-review.sh
+
+# Scratch file used to compose commit messages (heredocs are blocked in this harness).
+/.git-commit-msg
+
+# Loopany loop specs and run records live on the machines that run the loops,
+# not in the product repo (Jason, 2026-08-25).
+/loopany/
+.DS_Store
+
+# Never in git, never in the sdist (see [tool.hatch.build.targets.sdist])
+docs/evidence/
+.import_linter_cache/
+body.json
+
+# Test screenshots — regenerated on demand, not versioned.
+tests/screenshots/
+
+# ArcTerm session boards and carry files (private, per machine)
+.arcterm/
+# Arena production statistics belong in the database, never a bundled snapshot.
+/src/treg/web/enrich-arena/insights.json
+
+# ArcTerm writes this local backup beside CLAUDE.md; it is not project content.
+CLAUDE.md.arcterm-bak
+# Frontend dependencies, build output and browser test artifacts.
+node_modules
+/src/treg/web/dashboard/
+/frontend/test-results/
+/frontend/playwright-report/
+
+# Global Vue runtime copied from the npm lockfile during the frontend build.
+/src/treg/web/vendor/*.js
+/src/treg/web/vendor/LICENSE

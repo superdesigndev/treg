@@ -1,0 +1,179 @@
+provider: spidercloud
+source:
+  docs: https://spider.cloud/docs/api/
+  openapi: https://spider.cloud/openapi.yaml
+  curated: '2026-09-29'
+pricing_url: https://spider.cloud/pricing/
+limits: "Spider documents 10,000 core API requests/minute per account. The shared key is smoothed at 100/minute. The pay-as-you-go balance is USD; the API expresses it as 10,000 credits per dollar."
+cache: forbidden
+proposed_capabilities:
+  web.unblock: Fetch a page behind bot protection
+
+endpoints:
+  - id: spidercloud.web.scrape
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /scrape
+    body_allowlist: true
+    platform_blocked: Spider's bandwidth and compute charge varies with the target, and its API credit cap was not verified as a spending bound; connect your own Spider key.
+    name: Scrape a web page
+    summary: Fetch a specified page as Markdown, text, or raw HTML.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        return_format: {type: string, required: false, enum: [markdown, text, raw], example: markdown}
+        request: {type: string, required: false, enum: [http, smart, browser], example: http}
+        max_size: {type: integer, required: false, min: 1, max: 1000000}
+        cache: {type: boolean, required: false}
+    test_request: {body: {url: "https://example.com", return_format: markdown, request: http}}
+    cost: &variable_cost
+      type: per_success
+      value: null
+      currency: USD
+      unit: call
+      source: observed
+      source_url: https://spider.cloud/pricing/
+      checked: '2026-09-29'
+      confidence: unknown
+      note: "Spider bills variable bandwidth and compute and reports each page's USD total in costs.total_cost. The API budget fields did not establish a safe shared-key reserve. BYOK calls are unmetered by treg."
+    verified: '2026-09-29'
+    added: '2026-09-29'
+    docs_url: https://spider.cloud/docs/api/scrape/
+    example_response: examples/spidercloud.web.scrape.json
+
+  - id: spidercloud.web.crawl
+    capability: web.crawl
+    platform: web
+    domain: crawl
+    scope: any_account
+    method: POST
+    path: /crawl
+    body_allowlist: true
+    platform_blocked: Per-page bandwidth and compute are unknown before a crawl, and the API credit cap was not verified as a spending bound; connect your own Spider key.
+    name: Crawl a website
+    summary: Follow links from a starting URL and return a bounded set of pages.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        limit: {type: integer, required: true, min: 1, max: 100, example: 5}
+        depth: {type: integer, required: false, min: 1, max: 10}
+        return_format: {type: string, required: false, enum: [markdown, text, raw], example: markdown}
+        request: {type: string, required: false, enum: [http, smart, browser], example: http}
+        max_size: {type: integer, required: false, min: 1, max: 1000000}
+        respect_robots: {type: boolean, required: false, enum: [true]}
+    test_request: {body: {url: "https://example.com", limit: 1, depth: 1, return_format: markdown, request: http}}
+    cost: *variable_cost
+    verified: '2026-09-29'
+    added: '2026-09-29'
+    docs_url: https://spider.cloud/docs/api/crawl/
+    example_response: examples/spidercloud.web.crawl.json
+
+  - id: spidercloud.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search
+    body_allowlist: true
+    name: Search the open web
+    summary: Return ranked web results without fetching their full pages.
+    input:
+      bodyType: json
+      body:
+        search: {type: string, required: true, example: "IANA example domains"}
+        search_limit: {type: integer, required: true, min: 1, max: 10, example: 2}
+        fetch_page_content: {type: boolean, required: true, enum: [false]}
+      note: "Spider charged ten API credits for live listing searches, including an effective two-result limit. The response has no costs object. Fetching result pages through the raw BYOK tool has variable cost and can produce a very large answer."
+    test_request: {body: {search: "IANA example domains", search_limit: 2, fetch_page_content: false}}
+    cost:
+      type: per_success
+      value: 0.001
+      currency: USD
+      unit: call
+      source: observed
+      source_url: https://spider.cloud/docs/api/search/
+      checked: '2026-09-29'
+      confidence: verified
+      note: "Four live listing searches each reduced the balance by ten credits ($0.001), including one with search_limit=2. The documented num field did not limit live results. This row forbids page-content fetching, which has variable cost."
+    verified: '2026-09-29'
+    added: '2026-09-29'
+    docs_url: https://spider.cloud/docs/api/search/
+    example_response: examples/spidercloud.web.search.json
+
+  - id: spidercloud.web.links
+    capability: web.map
+    platform: web
+    domain: map
+    scope: any_account
+    method: POST
+    path: /links
+    body_allowlist: true
+    platform_blocked: Discovered-page bandwidth and compute vary by target, and the API credit cap was not verified as a spending bound; connect your own Spider key.
+    name: Discover website links
+    summary: Find URLs on a website without returning full page bodies.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        limit: {type: integer, required: true, min: 1, max: 1000, example: 10}
+        request: {type: string, required: false, enum: [http, smart, browser], example: http}
+    test_request: {body: {url: "https://example.com", limit: 1, request: http}}
+    cost: *variable_cost
+    verified: '2026-09-29'
+    added: '2026-09-29'
+    docs_url: https://spider.cloud/docs/api/links/
+    example_response: examples/spidercloud.web.links.json
+
+  - id: spidercloud.web.unblock
+    capability: web.unblock
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /unblocker
+    body_allowlist: true
+    platform_blocked: A live standard Unblocker call reported an additional AI charge and exceeded a one-credit request cap; connect your own Spider key.
+    name: Unblock and fetch a page
+    summary: Fetch content from a page that resists ordinary scraping.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        return_format: {type: string, required: false, enum: [markdown, text, raw], example: markdown}
+    test_request: {body: {url: "https://example.com", return_format: markdown}}
+    cost: *variable_cost
+    verified: '2026-09-29'
+    added: '2026-09-29'
+    docs_url: https://spider.cloud/docs/api/unblocker/
+    example_response: examples/spidercloud.web.unblock.json
+
+  - id: spidercloud.web.screenshot
+    capability: web.screenshot
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /screenshot
+    body_allowlist: true
+    platform_blocked: Browser compute and image size vary by target, and the API credit cap was not verified as a spending bound; connect your own Spider key.
+    name: Capture a web page screenshot
+    summary: Render a page and return a base64 PNG screenshot.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        full_page: {type: boolean, required: false, default: false}
+        binary: {type: boolean, required: true, enum: [false]}
+        block_images: {type: boolean, required: false, default: false}
+    test_request: {body: {url: "https://example.com", full_page: false, binary: false}}
+    cost: *variable_cost
+    verified: '2026-09-29'
+    added: '2026-09-29'
+    docs_url: https://spider.cloud/docs/api/screenshot/
+    example_response: examples/spidercloud.web.screenshot.json

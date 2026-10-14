@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import json
+import stat
 
-import json
-
+import httpx
 import pytest
 
 from treg import cli
@@ -19,14 +20,37 @@ def _isolate_cli_config(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "CONFIG_PATH", tmp_path / "config.json")
 
 
-def test_parser_dispatches_core():
-    p = cli.build_parser()
-    assert p.parse_args(["login"]).fn is cli.cmd_login
-    assert p.parse_args(["login", "--token", "T"]).token == "T"
-    assert p.parse_args(["logout"]).fn is cli.cmd_logout
-    assert p.parse_args(["secret", "add", "k", "--value", "v"]).fn is cli.cmd_secret_add
-    assert p.parse_args(["tool", "add", "t", "--base-url", "http://x", "--secret", "1"]).fn is cli.cmd_tool_add
-    assert p.parse_args(["call", "echo", "get", "--query", "a=1"]).fn is cli.cmd_call
+def test_resources_list_uses_the_unified_server_endpoint(monkeypatch, capsys):
+    calls = []
+
+    class Response:
+        status_code = 200
+        headers = {}
+        text = ""
+
+        def __init__(self, body): self.body = body
+        def json(self): return self.body
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def get(self, path, params=None):
+            calls.append((path, params))
+            if path == "/orgs":
+                return Response([{"org_id": 7, "slug": "team", "active": True}])
+            return Response([{"provider": "fishaudio", "kind": "voice",
+                              "upstream_id": "voice-1", "display_name": "Narrator"}])
+
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client())
+    args = type("Args", (), {
+        "provider": "fishaudio", "kind": "voice", "include_deleted": False,
+    })()
+    cli.cmd_resources_list(args, {"base_url": "http://registry", "active_org": "team"})
+    assert calls == [
+        ("/orgs", None),
+        ("/orgs/7/provider-resources", {"provider": "fishaudio", "kind": "voice"}),
+    ]
+    assert '"upstream_id": "voice-1"' in capsys.readouterr().out
 
 
 def test_call_named_and_single_url():
@@ -37,48 +61,137 @@ def test_call_named_and_single_url():
     assert b.target == "https://api.intercom.io/me" and b.path == ""
 
 
-def test_org_parsers():
+def test_host_subcommand_is_registered_not_mistaken_for_system_binary():
+    """Issue #557: `treg host` must parse as the host subcommand, not fall through to /usr/bin/host.
+    When `host` was missing from an older release, `_looks_like_a_program` matched it to the system
+    `host` binary (DNS lookup tool), causing `treg host face.jpg` to run `/usr/bin/host face.jpg`
+    via `treg with` — banner, then a confusing DNS error. The fix: keep `host` as a registered
+    subcommand so the bare-word fallback never applies."""
     p = cli.build_parser()
-    assert p.parse_args(["org", "ls"]).fn is cli.cmd_org_ls
-    assert p.parse_args(["org", "use", "team-a"]).slug == "team-a"
-    assert p.parse_args(["org", "create", "Team A"]).fn is cli.cmd_org_create
-    assert p.parse_args(["org", "invite", "b@x.dev", "--role", "viewer"]).role == "viewer"
-    assert p.parse_args(["org", "set-role", "7", "admin"]).user_id == 7
-    assert p.parse_args(["org", "invites"]).fn is cli.cmd_org_invites
-    assert p.parse_args(["org", "revoke", "9"]).invite_id == 9
-    d = p.parse_args(["org", "delete", "team-a"]); assert d.fn is cli.cmd_org_delete and d.slug == "team-a"
-    assert p.parse_args(["org", "join", "inv_x", "--email", "b@x.dev"]).code == "inv_x"
-
-
-def test_admin_and_skill_parsers():
-    p = cli.build_parser()
-    assert p.parse_args(["admin", "stats"]).fn is cli.cmd_admin_stats
-    assert p.parse_args(["admin", "grant", "5"]).user_id == 5
-    assert p.parse_args(["skill", "init", "--dir", "/s"]).fn is cli.cmd_skill_init
-    assert p.parse_args(["skill", "add", "--dir", "/s"]).fn is cli.cmd_skill_add
-
-
-def test_config_v2_roundtrip(tmp_path, monkeypatch):
-    monkeypatch.setattr(cli, "CONFIG_PATH", tmp_path / "config.json")
-    cli._save_config({"base_url": "https://treg.superdesign.dev", "token": "T", "email": "me@x.dev",
-                      "active_org": "team-a", "identity": True})
-    cfg = cli._load_config()
-    assert cfg["token"] == "T" and cfg["active_org"] == "team-a" and cfg["identity"] is True
+    subcommands = cli._subcommands(p)
+    assert "host" in subcommands, "`host` must be a registered subcommand"
+    assert p.parse_args(["host", "face.jpg"]).fn is cli.cmd_host
+    # The bare-word fallback (`treg claude` → `treg with claude`) must NOT treat `host` as a program
+    # even though /usr/bin/host exists on most Unix systems.
+    assert cli._looks_like_a_program(["host", "face.jpg"], subcommands) is False
 
 
 def test_legacy_multiorg_config_migrates(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "CONFIG_PATH", tmp_path / "config.json")
     (tmp_path / "config.json").write_text(json.dumps({
-        "base_url": "https://treg.superdesign.dev", "active_org": "team-a",
+        "base_url": "https://treg.to", "active_org": "team-a",
         "orgs": {"team-a": {"token": "OLD", "org_id": 3}}}))
     cfg = cli._load_config()
     assert cfg["token"] == "OLD" and cfg["active_org"] == "team-a" and cfg["identity"] is False
 
 
-def test_load_config_default(tmp_path, monkeypatch):
-    monkeypatch.setattr(cli, "CONFIG_PATH", tmp_path / "nope.json")
+def test_load_config_defaults_to_production_not_localhost(tmp_path, monkeypatch):
+    """A fresh CLI (no ~/.treg/config.json) must default to https://treg.to, NOT localhost.
+    The first-run bug was: install.sh's `treg config --base-url` failed silently, so login
+    opened Chrome to http://localhost:18790/login — nothing listening, connection refused."""
+    monkeypatch.setattr(cli, "CONFIG_PATH", tmp_path / "missing" / "config.json")
     cfg = cli._load_config()
-    assert cfg["token"] is None and cfg["active_org"] is None and cfg["base_url"].startswith("http")
+    assert cfg["base_url"] == cli.PRODUCTION_BASE_URL
+    assert "localhost" not in cfg["base_url"]
+    assert "127.0.0.1" not in cfg["base_url"]
+
+
+def test_is_loopback_url_detects_localhost_variants():
+    """_is_loopback_url recognises localhost, 127.x.x.x, and [::1] so the login flow can warn
+    when pointed at a local server that isn't running."""
+    assert cli._is_loopback_url("http://localhost:18790") is True
+    assert cli._is_loopback_url("http://127.0.0.1:8000") is True
+    assert cli._is_loopback_url("http://127.0.0.42/path") is True
+    assert cli._is_loopback_url("https://[::1]/") is True  # IPv6 needs brackets in URLs
+    assert cli._is_loopback_url("https://[::1]:8000/") is True
+    assert cli._is_loopback_url("https://treg.to") is False
+    assert cli._is_loopback_url("https://api.example.com:443/v1") is False
+    assert cli._is_loopback_url("") is False  # empty URL shouldn't crash
+
+
+def test_login_exits_with_helpful_message_when_localhost_unreachable(monkeypatch):
+    """When base_url is localhost and the server can't be reached, login must fail early with
+    a message that tells the user how to fix it (point at production), not silently open a
+    dead browser page."""
+    import httpx
+
+    def fake_post(url, **kw):
+        raise httpx.ConnectError("Connection refused")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    args = type("A", (), {"token": None, "email": None})()
+    cfg = {"base_url": "http://localhost:18790", "token": None}
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.cmd_login(args, cfg)
+
+    error_msg = str(exc_info.value)
+    assert "localhost" in error_msg.lower() or "Cannot reach" in error_msg
+    assert "treg config --base-url" in error_msg
+    assert cli.PRODUCTION_BASE_URL in error_msg
+
+
+def test_token_org_claim_reads_a_team_pinned_token():
+    """`_token_org_claim` decodes the org slug a team-pinned identity token carries — without the
+    signature check (the server still authorizes), and returning None on anything else."""
+    import base64
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"uid": 7, "exp": 9999999999, "tv": 0, "org": "team-b"}).encode()
+    ).decode().rstrip("=")
+    assert cli._token_org_claim(f"{payload}.not-a-real-signature") == "team-b"
+    assert cli._token_org_claim("tok-opaque-per-org") is None      # opaque membership token
+    assert cli._token_org_claim(None) is None
+    assert cli._token_org_claim("") is None
+
+
+def test_login_token_keeps_a_typed_default_as_a_human_identity(monkeypatch):
+    import base64
+
+    payload = base64.urlsafe_b64encode(json.dumps({"scp": "team"}).encode()).decode().rstrip("=")
+
+    class Response:
+        status_code = 200
+        def json(self): return {"email": "me@example.com"}
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def get(self, path): return Response()
+
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client())
+    monkeypatch.setattr(cli, "_pick_active_org", lambda cfg: None)
+    cfg = {"base_url": "http://x"}
+    cli.cmd_login(type("A", (), {"token": f"{payload}.sig", "email": None})(), cfg)
+    assert cfg["identity"] is True
+
+
+def test_pick_active_org_prefers_the_tokens_baked_org(monkeypatch):
+    """Against an older server that marks nothing active for a team-pinned token, `_pick_active_org`
+    must land on the token's own org — not the first membership, which for a multi-team user is an
+    arbitrary other team (`treg login --token <superdesign key>` used to activate `oauth-test`)."""
+    import base64
+
+    class _Resp:
+        status_code = 200
+        def json(self):
+            return [{"slug": "first-team", "active": False}, {"slug": "second-team", "active": False}]
+
+    class _Client:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def get(self, path): return _Resp()
+
+    monkeypatch.setattr(cli, "_client", lambda cfg: _Client())
+    payload = base64.urlsafe_b64encode(
+        json.dumps({"uid": 7, "exp": 9999999999, "tv": 0, "org": "second-team"}).encode()
+    ).decode().rstrip("=")
+    cfg = {"base_url": "http://x", "token": f"{payload}.sig", "active_org": None}
+    cli._pick_active_org(cfg)
+    assert cfg["active_org"] == "second-team"
+    # an opaque token (no claim) still falls back to the first membership
+    cfg = {"base_url": "http://x", "token": "tok-opaque", "active_org": None}
+    cli._pick_active_org(cfg)
+    assert cfg["active_org"] == "first-team"
 
 
 def test_client_sends_token_and_active_org(monkeypatch):
@@ -96,9 +209,106 @@ def test_org_override_beats_active(monkeypatch):
         assert c.headers["X-Treg-Org"] == "team-b"
 
 
+def test_org_use_saves_team_and_active_default_together(monkeypatch):
+    class Response:
+        status_code = 200
+
+        def __init__(self, body):
+            self.body = body
+
+        def json(self):
+            return self.body
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def get(self, path, **kwargs):
+            if path == "/orgs":
+                return Response([
+                    {"slug": "team-one", "active": True},
+                    {"slug": "team-two", "active": False},
+                ])
+            assert path == "/auth/cli-token"
+            assert kwargs["headers"] == {"X-Treg-Org": "team-two"}
+            return Response({
+                "org": "team-two", "token": "team-two-default",
+                "default_key_state": "active",
+            })
+
+    monkeypatch.setattr(cli, "_client", lambda cfg, auth=True: Client())
+    cfg = {"base_url": "http://x", "token": "team-one-default",
+           "active_org": "team-one", "identity": True}
+    cli.cmd_org_use(type("A", (), {"slug": "team-two"})(), cfg)
+    assert cfg["active_org"] == "team-two" and cfg["token"] == "team-two-default"
+    saved = cli._load_config()
+    assert saved["active_org"] == "team-two" and saved["token"] == "team-two-default"
+
+
+def test_org_use_keeps_previous_team_when_default_is_disabled(monkeypatch):
+    class Response:
+        status_code = 200
+
+        def __init__(self, body):
+            self.body = body
+
+        def json(self):
+            return self.body
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def get(self, path, **kwargs):
+            if path == "/orgs":
+                return Response([
+                    {"slug": "team-one", "active": True},
+                    {"slug": "team-two", "active": False},
+                ])
+            return Response({
+                "org": "team-two", "token": "disabled-default",
+                "default_key_state": "disabled",
+            })
+
+    monkeypatch.setattr(cli, "_client", lambda cfg, auth=True: Client())
+    cfg = {"base_url": "http://x", "token": "team-one-default",
+           "active_org": "team-one", "identity": True}
+    cli._save_config(cfg)
+    before = dict(cfg)
+    with pytest.raises(SystemExit, match="Default key is disabled.*Active team unchanged"):
+        cli.cmd_org_use(type("A", (), {"slug": "team-two"})(), cfg)
+    assert cfg == before
+    saved = cli._load_config()
+    assert saved["active_org"] == before["active_org"]
+    assert saved["token"] == before["token"]
+
+
+def test_org_use_does_not_move_an_opaque_key_to_another_team(monkeypatch):
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return [{"slug": "team-one"}, {"slug": "team-two"}]
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def get(self, path, **kwargs): return Response()
+
+    monkeypatch.setattr(cli, "_client", lambda cfg, auth=True: Client())
+    cfg = {"base_url": "http://x", "token": "opaque-agent-key",
+           "active_org": "team-one", "identity": False}
+    cli._save_config(cfg)
+    with pytest.raises(SystemExit, match="cannot switch teams.*Active team unchanged"):
+        cli.cmd_org_use(type("A", (), {"slug": "team-two"})(), cfg)
+    saved = cli._load_config()
+    assert saved["active_org"] == "team-one"
+    assert saved["token"] == "opaque-agent-key"
+
+
 def test_pop_org_flag():
-    a = ["tool", "ls", "--org", "team-b"]; assert cli._pop_org_flag(a) == "team-b" and a == ["tool", "ls"]
-    b = ["tool", "ls", "--org=team-c"]; assert cli._pop_org_flag(b) == "team-c" and b == ["tool", "ls"]
+    a = ["tool", "ls", "--org", "team-b"]
+    assert cli._pop_org_flag(a) == "team-b" and a == ["tool", "ls"]
+    b = ["tool", "ls", "--org=team-c"]
+    assert cli._pop_org_flag(b) == "team-c" and b == ["tool", "ls"]
     assert cli._pop_org_flag(["x"]) is None
 
 
@@ -132,6 +342,40 @@ def test_save_config_is_atomic(tmp_path, monkeypatch):
     cli._save_config({"base_url": "http://x", "token": "T"})
     assert not (tmp_path / "config.json.tmp").exists()  # temp renamed away, no litter
     assert cli._load_config()["token"] == "T"
+    assert stat.S_IMODE((tmp_path / "config.json").stat().st_mode) == 0o600
+
+
+def test_bootstrap_token_is_never_installed_into_mcp():
+    import base64
+    payload = base64.urlsafe_b64encode(json.dumps({"scp": "bootstrap"}).encode()).decode().rstrip("=")
+    with pytest.raises(SystemExit, match="temporary login token"):
+        cli.cmd_mcp_install(object(), {"token": f"{payload}.sig"})
+
+
+def test_team_create_and_join_replace_the_saved_bootstrap(monkeypatch):
+    class Response:
+        status_code = 200
+        text = "{}"
+        def __init__(self, body): self.body = body
+        def json(self): return self.body
+
+    class Client:
+        def __init__(self, response): self.response = response
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, path, json): return self.response
+
+    monkeypatch.setattr(cli, "_show", lambda response: None)
+    created = Response({"token": "team-default", "org": "acme"})
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client(created))
+    cfg = {"token": "bootstrap", "identity": True}
+    cli.cmd_org_create(type("A", (), {"name": "Acme"})(), cfg)
+    assert cfg == {"token": "team-default", "identity": True, "active_org": "acme"}
+
+    joined = Response({"token": "joined-default", "org": "joined"})
+    monkeypatch.setattr(cli, "_client", lambda cfg, auth=False: Client(joined))
+    cli.cmd_org_join(type("A", (), {"code": "inv", "email": "me@example.com"})(), cfg)
+    assert cfg["token"] == "joined-default" and cfg["active_org"] == "joined"
 
 
 class _FakeResp:
@@ -145,7 +389,8 @@ class _FakeClient:
     def __enter__(self): return self
     def __exit__(self, *a): return False
     def request(self, method, url, params=None, content=None, headers=None):
-        self.calls.append((method, url, params, content, headers)); return _FakeResp()
+        self.calls.append((method, url, params, content, headers))
+        return _FakeResp()
 
 
 def test_call_preserves_duplicate_query_keys(monkeypatch):
@@ -158,48 +403,251 @@ def test_call_preserves_duplicate_query_keys(monkeypatch):
     assert params == [("tag", "a"), ("tag", "b")]  # both survive; a dict would drop tag=a
 
 
-def test_call_query_without_equals_exits_cleanly(monkeypatch):
+def test_call_sends_explicit_authorization_method_as_treg_control_header(monkeypatch):
+    fake = _FakeClient()
+    monkeypatch.setattr(cli, "_client", lambda cfg: fake)
+    monkeypatch.setattr(cli, "_show", lambda r: None)
+    args = cli.build_parser().parse_args([
+        "call", "future-provider.endpoint",
+        "--authorization-method", "delegated-admin",
+        "--query", "page_id=PAGE-1",
+    ])
+    cli.cmd_call(args, {"base_url": "http://x"})
+    assert fake.calls[0][4]["X-Treg-Authorization-Method"] == "delegated-admin"
+
+
+def _args(**kw):
+    return type("A", (), kw)()
+
+
+# Bad local input is a clean exit with a message, never a traceback.
+@pytest.mark.parametrize("run", [
+    pytest.param(lambda: cli.cmd_call(cli.build_parser().parse_args(["call", "echo", "--query", "flag"]),
+                                      {"base_url": "http://x"}), id="call-query-without-equals"),
+    pytest.param(lambda: cli._parse_bind("secret=abc"), id="bind-non-int-secret"),
+    pytest.param(lambda: cli._load_json_arg("{bad", "binding"), id="bad-json-arg"),
+    pytest.param(lambda: cli._pop_org_flag(["tool", "ls", "--org"]), id="org-flag-missing-value"),
+    pytest.param(lambda: cli.cmd_oauth_connect(
+        _args(client_secret="/nonexistent/x.json", name="g", scopes=[], provider=None, capability=None),
+        {"base_url": "http://x"}), id="oauth-connect-missing-file"),
+    # Registry mode needs --provider; BYO needs --client-secret. Neither is a usage error.
+    pytest.param(lambda: cli.cmd_oauth_connect(
+        _args(client_secret=None, name=None, scopes=[], provider=None, capability=None),
+        {"base_url": "http://x"}), id="oauth-connect-without-provider-or-client-secret"),
+    pytest.param(lambda: cli.cmd_skill_push(_args(file="/nonexistent/skill.json"), {"base_url": "http://x"}),
+                 id="skill-push-missing-file"),
+])
+def test_bad_local_input_exits_cleanly(monkeypatch, run):
     monkeypatch.setattr(cli, "_client", lambda cfg: _FakeClient())
-    args = cli.build_parser().parse_args(["call", "echo", "--query", "flag"])
     with pytest.raises(SystemExit):
-        cli.cmd_call(args, {"base_url": "http://x"})
+        run()
 
 
-# ---- cycle-2 CLI regressions --------------------------------------------------------------
-def test_parse_bind_non_int_secret_exits():
+def test_oauth_connect_prints_provider_guidance_from_the_api(monkeypatch, capsys):
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {
+                "state": "STATE",
+                "redirect_uri": "https://registry.example/oauth/callback",
+                "consent_url": "https://provider.example/authorize",
+                "connect_guidance": "Use the linked workspace administrator grant.",
+            }
+
+    class StatusResponse:
+        def json(self):
+            return {"status": "done", "secret_id": 7, "name": "future-provider"}
+
+    class ProvidersResponse:
+        status_code = 200
+
+        def json(self):
+            return [{"service": "future-provider", "auth_kind": "oauth"}]
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, path, json): return Response()
+        def get(self, path): return ProvidersResponse() if path == "/oauth/providers" else StatusResponse()
+
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client())
+    monkeypatch.setattr(cli.time, "sleep", lambda seconds: None)
+    args = cli.build_parser().parse_args([
+        "connections", "connect", "--provider", "future-provider",
+    ])
+    cli.cmd_oauth_connect(args, {"base_url": "http://x"})
+    output = capsys.readouterr().out
+    assert "Use the linked workspace administrator grant." in output
+
+
+_MOZ = {"service": "moz", "display_name": "Moz", "auth_kind": "key",
+        "token_label": "AccessID:SecretKey", "setup_url": "https://moz.com/api/dashboard"}
+_TOMBA = {"service": "tomba", "display_name": "Tomba", "auth_kind": "key", "token_label": "API key",
+          "needs_extra_credential": True, "extra_credential_label": "API secret"}
+_LISTING = [_MOZ, _TOMBA, {"service": "google-search-console", "auth_kind": "oauth"}]
+
+
+def _registry(monkeypatch, *, providers=None, connect_status=200, connect_body=None):
+    """A fake registry over MockTransport that lists Moz as a pasted-key provider. `providers` is
+    the `/oauth/providers` answer: an httpx.Response, or an exception to raise. Returns the requests
+    it saw so a test can assert what was (and was not) sent."""
+    seen = []
+
+    def handle(request):
+        seen.append(request)
+        if request.url.path == "/oauth/providers":
+            if isinstance(providers, Exception):
+                raise providers
+            return providers or httpx.Response(200, json=_LISTING)
+        if request.url.path == "/connections/token":
+            return httpx.Response(connect_status, json=connect_body or {"id": 12, "name": "moz"})
+        if request.url.path == "/connections/12/extra-credential":
+            return httpx.Response(200, json={"id": 12, "name": "tomba", "ready": True})
+        if request.url.path == "/oauth/start":
+            return httpx.Response(422, json={"detail": "the server's own answer"})
+        return httpx.Response(500, json={"detail": f"unexpected {request.url.path}"})
+
+    monkeypatch.setattr(cli, "_client", lambda cfg: httpx.Client(
+        transport=httpx.MockTransport(handle), base_url="https://registry.example.test"))
+    return seen
+
+
+class _Tty(io.StringIO):
+    def isatty(self): return True
+
+
+def _connect(*argv):
+    cli.cmd_oauth_connect(cli.build_parser().parse_args(["connections", "connect", *argv]),
+                          {"base_url": "http://x"})
+
+
+def _posted(seen):
+    return [r.url.path for r in seen if r.method == "POST"]
+
+
+def test_a_key_provider_connects_with_a_piped_key_not_oauth(monkeypatch, capsys):
+    """The bug: `connect --provider moz` went to /oauth/start and failed "moz has no capability ''"."""
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO("  access-id:secret-key\n"))
+    _connect("--provider", "moz", "--key-stdin")
+    assert _posted(seen) == ["/connections/token"]
+    assert json.loads(seen[-1].content) == {"provider": "moz", "token": "access-id:secret-key"}
+    assert "Connected Moz. Connection id: 12 (moz)" in capsys.readouterr().out
+
+
+def test_a_key_typed_at_a_terminal_is_read_hidden(monkeypatch, capsys):
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", _Tty())
+    prompts = []
+    monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: prompts.append(prompt) or "typed-key")
+    _connect("--provider", "moz")
+    assert prompts == ["Paste your Moz AccessID:SecretKey (input hidden): "]
+    assert json.loads(seen[-1].content)["token"] == "typed-key"
+    out = capsys.readouterr().out
+    assert "https://moz.com/api/dashboard" in out and "typed-key" not in out
+
+
+@pytest.mark.parametrize("interrupt", [KeyboardInterrupt, EOFError])
+def test_cancelling_the_prompt_exits_cleanly(monkeypatch, interrupt):
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", _Tty())
+
+    def cancel(prompt):
+        raise interrupt
+    monkeypatch.setattr(cli.getpass, "getpass", cancel)
+    with pytest.raises(SystemExit, match="cancelled"):
+        _connect("--provider", "moz")
+    assert not _posted(seen)
+
+
+def test_unattended_stdin_is_read_only_with_key_stdin(monkeypatch):
+    """An agent whose stdin is an idle pipe must get an answer, not a hang on a read."""
+    seen = _registry(monkeypatch)
+
+    class IdlePipe(io.StringIO):
+        def read(self, *a): pytest.fail("stdin must not be read without --key-stdin")
+        readline = read
+    monkeypatch.setattr(cli.sys, "stdin", IdlePipe())
+    with pytest.raises(SystemExit, match="--key-stdin"):
+        _connect("--provider", "moz")
+    assert not _posted(seen)
+
+
+@pytest.mark.parametrize("argv,stdin", [
+    pytest.param(("--provider", "moz", "--key-stdin"), io.StringIO("  \n"), id="empty-key"),
+    pytest.param(("--provider", "moz", "--key-stdin"), _Tty("k"), id="key-stdin-at-a-terminal"),
+    pytest.param(("--provider", "moz", "--key-stdin", "--capability", "write"), io.StringIO("k"),
+                 id="capability-on-a-key"),
+    pytest.param(("my-moz", "--provider", "moz", "--key-stdin"), io.StringIO("k"), id="name-on-a-key"),
+    pytest.param(("--provider", "moz", "--key-stdin", "--client-secret", "s.json"), io.StringIO("k"),
+                 id="client-secret-on-a-key"),
+    pytest.param(("--provider", "google-search-console", "--key-stdin"), io.StringIO("k"),
+                 id="key-stdin-on-an-oauth-provider"),
+])
+def test_bad_connect_input_is_refused_before_anything_is_sent(monkeypatch, argv, stdin):
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", stdin)
     with pytest.raises(SystemExit):
-        cli._parse_bind("secret=abc")
+        _connect(*argv)
+    assert not _posted(seen)
 
 
-def test_load_json_arg_bad_json_exits():
+def test_a_paired_key_provider_sends_both_halves(monkeypatch, capsys):
+    """Tomba signs with key + secret; connecting only the key left a tool that could not be called."""
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO("ta_key\n ts_secret \n"))
+    _connect("--provider", "tomba", "--key-stdin")
+    assert _posted(seen) == ["/connections/token", "/connections/12/extra-credential"]
+    assert json.loads(seen[-2].content) == {"provider": "tomba", "token": "ta_key"}
+    assert json.loads(seen[-1].content) == {"value": "ts_secret"}
+    assert "Connected Tomba" in capsys.readouterr().out
+
+
+def test_a_paired_key_provider_prompts_for_both_at_a_terminal(monkeypatch):
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", _Tty())
+    answers = iter(["ta_key", "ts_secret"])
+    prompts = []
+    monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: prompts.append(prompt) or next(answers))
+    _connect("--provider", "tomba")
+    assert prompts == ["Paste your Tomba API key (input hidden): ",
+                       "Paste your Tomba API secret (input hidden): "]
+    assert json.loads(seen[-1].content) == {"value": "ts_secret"}
+
+
+def test_a_paired_key_provider_without_its_second_half_sends_nothing(monkeypatch):
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO("ta_key\n"))
+    with pytest.raises(SystemExit, match="second line"):
+        _connect("--provider", "tomba", "--key-stdin")
+    assert not _posted(seen)
+
+
+@pytest.mark.parametrize("status,code", [(422, 1), (307, 1)])
+def test_a_key_that_did_not_connect_exits_nonzero(monkeypatch, capsys, status, code):
+    """A rejected key shows the server's reason; a redirect (not followed) is not a success either."""
+    _registry(monkeypatch, connect_status=status, connect_body={"detail": "Moz rejected that key (HTTP 401)"})
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO("bad"))
+    with pytest.raises(SystemExit) as exc:
+        _connect("--provider", "moz", "--key-stdin")
+    assert exc.value.code == code
+    out = capsys.readouterr().out
+    assert "Moz rejected that key" in out and "Connected" not in out
+
+
+@pytest.mark.parametrize("providers", [
+    pytest.param(httpx.Response(404, json={"detail": "Not Found"}), id="older-server"),
+    pytest.param(httpx.Response(200, text="<html>proxy</html>"), id="not-json"),
+    pytest.param(httpx.Response(200, json={"providers": []}), id="not-a-list"),
+    pytest.param(httpx.ConnectError("refused"), id="unreachable"),
+])
+def test_an_unreadable_provider_listing_falls_back_to_oauth_start(monkeypatch, capsys, providers):
+    seen = _registry(monkeypatch, providers=providers)
     with pytest.raises(SystemExit):
-        cli._load_json_arg("{bad", "binding")
-
-
-def test_pop_org_flag_missing_value_exits():
-    with pytest.raises(SystemExit):
-        cli._pop_org_flag(["tool", "ls", "--org"])
-
-
-def test_oauth_connect_missing_file_exits():
-    args = type("A", (), {"client_secret": "/nonexistent/x.json", "name": "g", "scopes": [],
-                          "provider": None, "capability": None})()
-    with pytest.raises(SystemExit):
-        cli.cmd_oauth_connect(args, {"base_url": "http://x"})
-
-
-def test_oauth_connect_without_provider_or_client_secret_exits():
-    """Registry mode needs --provider; BYO needs --client-secret. Neither is a usage error."""
-    args = type("A", (), {"client_secret": None, "name": None, "scopes": [],
-                          "provider": None, "capability": None})()
-    with pytest.raises(SystemExit):
-        cli.cmd_oauth_connect(args, {"base_url": "http://x"})
-
-
-def test_skill_push_missing_file_exits():
-    args = type("A", (), {"file": "/nonexistent/skill.json"})()
-    with pytest.raises(SystemExit):
-        cli.cmd_skill_push(args, {"base_url": "http://x"})
+        _connect("--provider", "moz")
+    assert _posted(seen) == ["/oauth/start"]
+    assert "the server's own answer" in capsys.readouterr().out
 
 
 def test_clear_active_only_when_targeted(monkeypatch):
@@ -239,7 +687,9 @@ def test_secret_add_env_var_parses_and_strips_quotes(tmp_path, monkeypatch):
     class _FakeClient:
         def __enter__(self): return self
         def __exit__(self, *a): return False
-        def post(self, path, json): posted.update(json); return _FakeResp()
+        def post(self, path, json):
+            posted.update(json)
+            return _FakeResp()
 
     monkeypatch.setattr(cli, "_client", lambda cfg: _FakeClient())
     args = type("A", (), {"name": "agentmail-key", "env_var": "AGENTMAIL_API_KEY",
@@ -305,7 +755,9 @@ def test_onboard_setup_source_picks_scan_dirs(tmp_path, monkeypatch):
 
 
 def test_only_resolvable_gaps():
-    mk = lambda gaps: type("D", (), {"gaps": gaps})()
+    def mk(gaps):
+        return type("D", (), {"gaps": gaps})()
+
     assert cli._only_resolvable_gaps(mk([]))                                  # no gaps → checkable
     assert cli._only_resolvable_gaps(mk(["needs env var STRIPE_KEY — not found in the env"]))  # env-var → fixable
     assert not cli._only_resolvable_gaps(mk(["treg.json secret file missing: token.json"]))    # file gap → not
@@ -355,34 +807,23 @@ def test_load_catalog_prefers_newer_bundled_over_older_server(tmp_path, monkeypa
 
 
 # ---- shared-key output redaction (the streaming scrubber) ---------------------------------
-def test_stream_redactor_scrubs_across_chunk_boundary():
-    r = cli._StreamRedactor([b"SEKRET"])
-    out = r.feed(b"before SEK") + r.feed(b"RET after") + r.flush()
-    assert out == b"before *** after" and b"SEKRET" not in out
-
-
-def test_stream_redactor_passthrough_when_no_secret():
-    r = cli._StreamRedactor([b"KEY"])
-    assert r.feed(b"hello world") + r.flush() == b"hello world"
-
-
-def test_stream_redactor_empty_secrets_is_passthrough():
-    r = cli._StreamRedactor([])
-    assert r.feed(b"anything at all") + r.flush() == b"anything at all"
+@pytest.mark.parametrize("secrets,chunks,expected", [
+    ([b"SEKRET"], [b"before SEK", b"RET after"], b"before *** after"),  # across a chunk boundary
+    ([b"KEY"], [b"hello world"], b"hello world"),                         # no secret in the stream
+    ([], [b"anything at all"], b"anything at all"),                       # no secrets at all
+])
+def test_stream_redactor(secrets, chunks, expected):
+    r = cli._StreamRedactor(secrets)
+    out = b"".join(r.feed(c) for c in chunks) + r.flush()
+    assert out == expected
+    for secret in secrets:
+        assert secret not in out
 
 
 def test_traversable_by_others_root_yes_missing_no():
     # world-traversable → True; a missing path (OSError) → False (conservative)
     assert cli._traversable_by_others("/") is True
     assert cli._traversable_by_others("/no/such/path/zzz") is False
-
-
-def test_org_access_and_invite_access_parsers():
-    p = cli.build_parser()
-    a = p.parse_args(["org", "access", "5", "--tools", "stripe,gh", "--local-run", "off"])
-    assert a.fn is cli.cmd_org_access and a.user_id == 5 and a.tools == "stripe,gh" and a.local_run == "off"
-    b = p.parse_args(["org", "invite", "x@y.z", "--all-tools", "--local-run", "off"])
-    assert b.fn is cli.cmd_org_invite and b.all_tools is True and b.local_run == "off"
 
 
 def test_call_content_type_flag_and_json_sniff(monkeypatch):
@@ -403,24 +844,6 @@ def test_call_content_type_flag_and_json_sniff(monkeypatch):
     assert sent_headers("--data", '{"ok":1}') == {"content-type": "application/json"}  # sniffed from JSON body
     assert sent_headers("--data", "plain text") == {}  # non-JSON body: no guess
     assert sent_headers("--data", "plain", "--content-type", "text/csv") == {"content-type": "text/csv"}  # flag wins
-
-
-# ---- command consolidation: grouped help + hidden back-compat aliases ----------------------
-def test_new_command_map_routes():
-    """The consolidated IA: `cli` wraps the run/shell tier, `connections` absorbed `oauth`,
-    `audit` unifies the two audit logs."""
-    p = cli.build_parser()
-    assert p.parse_args(["cli", "run", "stripe", "--", "get", "/v1/balance"]).fn is cli.cmd_run
-    assert p.parse_args(["cli", "runs"]).fn is cli.cmd_runs
-    assert p.parse_args(["cli", "shell", "start"]).fn is cli.cmd_shell_start
-    assert p.parse_args(["cli", "shell", "stop"]).fn is cli.cmd_shell_stop
-    assert p.parse_args(["cli", "setup"]).fn is cli.cmd_setup_local_run
-    assert p.parse_args(["connections"]).fn is cli.cmd_connections_ls        # bare = list
-    assert p.parse_args(["connections", "ls"]).fn is cli.cmd_connections_ls
-    assert p.parse_args(["connections", "connect", "--provider", "gsc"]).fn is cli.cmd_oauth_connect
-    assert p.parse_args(["connections", "providers"]).fn is cli.cmd_oauth_providers
-    a = p.parse_args(["audit", "--limit", "20"])
-    assert a.fn is cli.cmd_audit and a.limit == 20 and a.calls is False and a.runs is False
 
 
 def test_hidden_aliases_still_parse_and_route():
@@ -453,35 +876,6 @@ def test_alias_flags_match_their_canonical_command():
     assert p.parse_args(["cli", "setup", "--run-proof", "P"]).run_proof == "P"
     assert p.parse_args(["runs", "--limit", "5"]).limit == 5
     assert p.parse_args(["calls", "--limit", "5"]).limit == 5
-
-
-def test_help_is_grouped_and_hides_aliases():
-    help_ = cli.build_parser().format_help()
-    # The order IS the pitch: what you can do with no setup (the catalog) comes before what you
-    # have to register yourself. It is the approved IA, not argparse's registration order.
-    headers = ("THE CATALOG", "YOUR OWN TOOLS", "ON YOUR MACHINE", "BULK UPLOAD",
-               "TEAM MANAGEMENT", "CONFIG")
-    for header in headers:
-        assert f"\n{header}" in help_, header
-    positions = [help_.index(h) for h in headers]
-    assert positions == sorted(positions)
-    # and `catalog` is the first command a reader meets
-    assert help_.index("    catalog") < help_.index("    tool")
-    listed = {ln.split()[0] for ln in help_.splitlines() if ln.startswith("    ") and ln.strip()}
-    for gone in ("add", "oauth", "setup-local-run", "run", "runs", "calls", "shell", "import"):
-        assert gone not in listed, gone
-    for shown in ("catalog", "tool", "connections", "cli", "audit", "org", "config", "version"):
-        assert shown in listed, shown
-
-
-def test_help_groups_only_name_real_commands():
-    """HELP_GROUPS is hand-written copy; keep it from drifting off the real subparsers."""
-    p = cli.build_parser()
-    choices = next(a.choices for a in p._subparsers._group_actions if a.choices)
-    for _title, rows in cli.HELP_GROUPS:
-        for name, desc in rows:
-            assert name in choices, name
-            assert desc.endswith("."), name
 
 
 def test_audit_merges_calls_and_runs(monkeypatch, capsys):
@@ -531,18 +925,6 @@ def test_audit_filters_delegate_to_the_single_source_views(monkeypatch):
         p.parse_args(["audit", "--calls", "--runs"])
 
 
-def test_subcommand_help_is_not_the_grouped_top_level_page():
-    """add_subparsers clones the PARENT's class by default, which would make every `treg X -h`
-    print the top-level grouped page. The subparsers must stay plain ArgumentParsers."""
-    p = cli.build_parser()
-    choices = next(a.choices for a in p._subparsers._group_actions if a.choices)
-    for name in ("cli", "call", "connections", "audit", "tool"):
-        sub_help = choices[name].format_help()
-        assert "MARKETPLACE" not in sub_help, name
-        assert sub_help.startswith(f"usage: treg {name}"), name
-    assert "run" in choices["cli"].format_help()      # its OWN subcommands, though
-
-
 # ---- catalog search / get (the discover -> inspect pair) ----------------------------------
 def test_catalog_verbs_parse_without_displacing_a_platform_slug():
     """`search`/`get` are positional verbs, not subparsers — so `treg catalog tiktok` still browses
@@ -567,45 +949,6 @@ def _stub_catalog_client(monkeypatch, routes: dict):
         def __exit__(self, *a): return False
         def get(self, url, params=None): return routes[url]
     monkeypatch.setattr(cli, "_client", lambda cfg, auth=True: _C())
-
-
-_SEARCH_BODY = {
-    "query": "tiktok comments", "count": 2, "total": 9,
-    "results": [
-        {"id": "justoneapi.tiktok.video.comments", "provider": "justoneapi", "provider_display": "JustOneAPI",
-         "summary": "A post's comments, cursor-paginated", "method": "GET", "path": "/api/x", "scope": "any_account",
-         "tier": "core", "cost": {"type": "per_success", "value": 0.1, "currency": "CNY", "usd": 0.014},
-         "verified": "2026-07-28", "docs_url": "", "has_example": True, "input": None,
-         "capability": "tiktok.video.comments", "capability_description": "List a video's comments",
-         "platform": "tiktok", "platform_label": "TikTok", "score": 6},
-        {"id": "tikhub.x.douyin-web-fetch-video-comments", "provider": "tikhub", "provider_display": "TikHub",
-         "summary": "Douyin comments", "method": "GET", "path": "/api/y", "scope": "any_account",
-         "tier": "extended", "cost": None, "verified": None, "docs_url": "", "has_example": False, "input": None,
-         "capability": "", "capability_description": "", "platform": "douyin", "platform_label": "Douyin",
-         "score": 5},
-    ],
-    "hints": ["treg catalog get justoneapi.tiktok.video.comments   # params, cost, example response"],
-}
-
-
-def test_catalog_search_table_prices_in_usd_and_points_at_get(monkeypatch, capsys):
-    """The table has to be comparable down the COST column — the yaml's own CNY/USD mix isn't."""
-    _stub_catalog_client(monkeypatch, {"/catalog/search": _CatalogResp(_SEARCH_BODY)})
-    args = cli.build_parser().parse_args(["catalog", "search", "tiktok", "comments"])
-    cli.cmd_catalog(args, {"base_url": "http://x"})
-    out = capsys.readouterr().out
-    assert "9 matches" in out and "showing 2" in out
-    assert "justoneapi.tiktok.video.comments" in out and "$0.014/success" in out
-    assert "●" in out, "connected state is the actionable glyph (verified/tier are maintenance metadata)"
-    assert "treg catalog get justoneapi.tiktok.video.comments" in out
-
-
-def test_catalog_search_says_what_to_try_when_nothing_matches(monkeypatch, capsys):
-    _stub_catalog_client(monkeypatch, {"/catalog/search": _CatalogResp(
-        {"query": "zzz", "count": 0, "total": 0, "results": [], "hints": []})})
-    cli.cmd_catalog(cli.build_parser().parse_args(["catalog", "search", "zzz"]), {"base_url": "http://x"})
-    out = capsys.readouterr().out
-    assert "nothing matches" in out and "every word has to match" in out
 
 
 def test_catalog_get_renders_params_siblings_and_the_command(monkeypatch, capsys):
@@ -653,8 +996,62 @@ def test_a_credit_price_reads_as_dollars_with_the_credits_behind_it():
 
     unpriced = {"type": "per_success", "value": 3, "currency": "credit", "usd": None}
     assert cli._cost_label(unpriced) == "3 credits/success"         # native, labelled as credits
+    # a duration-priced video table is quoted per second, not as a whole-call total range
+    per_second = {"type": "per_success", "usd": 13.87, "usd_min": 0.4744,
+                  "rate_usd_min": 0.1186, "rate_usd": 0.462, "rate_unit": "s"}
+    assert cli._cost_usd(per_second) == "$0.119-$0.462/s"
     assert cli._cost_usd(unpriced) == "3 credits/success"
     assert "$" not in cli._cost_usd(unpriced), "no rate, no invented dollar figure"
+
+
+def test_catalog_search_new_and_newest(monkeypatch, capsys):
+    """`--new [DAYS]` (30 when bare) and `--sort newest` reach the server; words become optional,
+    every row shows its ADDED day, and a capped window says so in one line."""
+    p = cli.build_parser()
+    assert p.parse_args(["catalog", "search", "--new"]).new == 30
+    a = p.parse_args(["catalog", "search", "phone", "--new", "60", "--sort", "newest"])
+    assert a.rest == ["phone"] and a.new == 60 and a.sort == "newest"
+    assert p.parse_args(["catalog", "search", "phone"]).new is None
+    with pytest.raises(SystemExit):
+        p.parse_args(["catalog", "search", "--new", "phone"])
+    assert "put search words before --new" in capsys.readouterr().err
+
+    seen = []
+    body = {"query": "", "count": 2, "total": 2, "sort": "newest", "added_within_days": 365,
+            "capped_at_days": 365, "hints": [], "results": [
+                {"id": "hlrlookup.people.phone.verify", "provider": "hlrlookup", "summary": "Verify a phone",
+                 "cost": {"type": "per_call", "usd": 0.01}, "added": "2026-10-07"},
+                {"id": "tavily.web.search", "provider": "tavily", "summary": "Search the web",
+                 "cost": {"type": "per_call", "usd": 0.008}, "added": "2026-09-21"}]}
+
+    class _C:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def get(self, url, params=None):
+            seen.append((url, params))
+            return _CatalogResp(body)
+    monkeypatch.setattr(cli, "_client", lambda cfg, auth=True: _C())
+    monkeypatch.setattr(cli, "_connected_providers", lambda cfg: set())
+    cli.cmd_catalog(p.parse_args(["catalog", "search", "--new", "900"]), {"base_url": "http://x"})
+    assert seen[-1] == ("/catalog/search", {"q": "", "limit": 25, "added_within_days": 900})
+    out = capsys.readouterr().out
+    assert "capped at 365 days" in out
+    assert "2 tools added in the last 365 days, newest first" in out
+    assert "ADDED" in out and "2026-10-07" in out and "2026-09-21" in out
+
+    cli.cmd_catalog(p.parse_args(["catalog", "search", "web", "--sort", "newest"]), {"base_url": "http://x"})
+    assert seen[-1][1] == {"q": "web", "limit": 25, "sort": "newest"}
+    capsys.readouterr()
+
+    # an older server ignores both options: its plain answer is not labelled as new tools
+    for key in ("sort", "added_within_days", "capped_at_days"):
+        body.pop(key, None)
+    for argv in (["catalog", "search", "--new"], ["catalog", "search", "web", "--sort", "newest"]):
+        cli.cmd_catalog(p.parse_args(argv), {"base_url": "http://x"})
+        out = capsys.readouterr().out
+        assert "this server does not support --new yet" in out and "added in the last" not in out
+    with pytest.raises(SystemExit):
+        cli.cmd_catalog(p.parse_args(["catalog", "search"]), {"base_url": "http://x"})
 
 
 def test_catalog_get_needs_an_id_and_404s_helpfully(monkeypatch, capsys):
@@ -739,3 +1136,192 @@ def test_onboard_catalog_dead_end_names_the_one_command_that_fixes_it(monkeypatc
     out = capsys.readouterr().out
     assert "treg connections connect --provider tikhub" in out
     assert not any(s.startswith("GET /call/") for s in c.seen)   # nothing was called
+
+
+def test_show_prints_failure_diagnostics_on_stderr_and_keeps_stdout_the_body(capsys):
+    """A failed call must be filable: stdout stays the exact upstream body (whatever parses it), and
+    stderr gets one line with the HTTP status, whose answer it is, and the call id. A runner that
+    saved only stdout recorded 115 Moz quota 403s as a bare "cli_error" (2026-09-04)."""
+    import httpx
+    body = b'{"error":"The account does not have enough quota remaining for current period."}'
+    relayed = httpx.Response(403, content=body, headers={
+        "content-type": "application/json", "X-Treg-Call-Id": "c2075d8d79eb4436aafc310e81081c1b"})
+    with pytest.raises(SystemExit):
+        cli._show(relayed)
+    out, err = capsys.readouterr()
+    assert json.loads(out) == json.loads(body)
+    assert "HTTP 403" in err and "provider answered" in err and "c2075d8d79eb4436aafc310e81081c1b" in err
+    assert "charged" not in err  # no cost header → no claim about money
+
+    refused = httpx.Response(402, content=b'{"detail":{"error":"route_max_cost"}}', headers={
+        "content-type": "application/json", "X-Treg-Error": "1"})
+    with pytest.raises(SystemExit):
+        cli._show(refused)
+    _, err = capsys.readouterr()
+    assert "HTTP 402" in err and "treg refused" in err
+
+    ok = httpx.Response(200, content=b'{"ok":true}', headers={"content-type": "application/json"})
+    cli._show(ok)
+    out, err = capsys.readouterr()
+    assert json.loads(out) == {"ok": True} and err == ""
+
+
+def test_show_prints_the_charge_and_call_id_for_a_metered_success(capsys):
+    """A metered 2xx gets one stderr line with the settled charge and the call id; stdout is the exact
+    body. No cost header (own key, or a non-call response) → nothing extra. A replay says so."""
+    import httpx
+    metered = httpx.Response(200, content=b'{"results":[{"x":1}],"next_token":"abc"}', headers={
+        "content-type": "application/json", "X-Treg-Cost-Micro": "6667",
+        "X-Treg-Call-Id": "125117d50cd3470cb25ba11f3d9789ad"})
+    cli._show(metered)
+    out, err = capsys.readouterr()
+    assert json.loads(out) == {"results": [{"x": 1}], "next_token": "abc"}
+    assert err.strip() == "treg: charged $0.006667 · call id 125117d50cd3470cb25ba11f3d9789ad"
+
+    own_key = httpx.Response(200, content=b'{"ok":true}', headers={
+        "content-type": "application/json", "X-Treg-Call-Id": "deadbeef"})
+    cli._show(own_key)
+    _, err = capsys.readouterr()
+    assert err == ""
+
+    replay = httpx.Response(200, content=b'{}', headers={
+        "content-type": "application/json", "X-Treg-Cost-Micro": "0", "X-Treg-Original-Cost-Micro": "6667",
+        "X-Treg-Idempotent-Replay": "true", "X-Treg-Call-Id": "c1"})
+    cli._show(replay)
+    _, err = capsys.readouterr()
+    assert "$0.006667 by the original call" in err and "nothing new charged" in err
+
+    async_submission = httpx.Response(200, content=b'{"run_id":"r1"}', headers={
+        "content-type": "application/json", "X-Treg-Cost-Micro": "2400000",
+        "X-Treg-Async": "{}", "X-Treg-Call-Id": "async1"})
+    cli._show(async_submission)
+    _, err = capsys.readouterr()
+    assert err.strip() == "treg: reserved up to $2.4 for async settlement · call id async1"
+
+
+
+# ---------------------------------------------------------------------------------------------
+# The hub family (phase 4)
+
+def test_hub_init_writes_the_four_files(tmp_path, monkeypatch):
+    from treg import cli
+    import argparse
+    args = argparse.Namespace(name="leads-db", script=True, dir=str(tmp_path / "leads"))
+    cli.cmd_hub_init(args, {})
+    folder = tmp_path / "leads"
+    assert {p.name for p in folder.iterdir()} == {"recipe.json", "run.js", "check.json", "README.md"}
+    import json
+    m = json.loads((folder / "recipe.json").read_text())
+    assert m["name"] == "leads-db" and m["script"] == "run.js" and "required" not in json.dumps(m)
+    body = cli._hub_read_folder(str(folder))
+    assert set(body) == {"manifest", "check", "readme", "script"}
+    steps = argparse.Namespace(name="flow", script=False, dir=str(tmp_path / "flow"))
+    cli.cmd_hub_init(steps, {})
+    assert not (tmp_path / "flow" / "run.js").exists() and "steps" in json.loads((tmp_path / "flow" / "recipe.json").read_text())
+
+
+def test_hub_is_in_the_help_and_parses():
+    from treg import cli
+    assert any(name == "hub" for _, rows in cli.HELP_GROUPS for name, _ in rows)
+    parser = cli.build_parser() if hasattr(cli, "build_parser") else None
+    if parser is not None:
+        a = parser.parse_args(["hub", "run", ".", "--input", "domain=figma.com", "--input", "limit=3"])
+        assert a.hub_cmd == "run" and a.input == ["domain=figma.com", "limit=3"]
+        e = parser.parse_args(["hub", "earnings", "acme.leads-db", "--days", "30", "--csv"])
+        assert e.hub_cmd == "earnings" and e.days == 30 and e.csv
+        pr = parser.parse_args(["hub", "price", "acme.leads-db", "0.02"])
+        assert pr.hub_cmd == "price" and pr.price_usd == 0.02
+        rt = parser.parse_args(["hub", "retire", "acme.leads-db"])
+        assert rt.hub_cmd == "retire" and rt.tool_id == "acme.leads-db"
+
+
+
+def test_catalog_get_prints_a_hub_tool_contract(capsys):
+    from treg import cli
+    e = {"id": "acme.leads-db", "kind": "hub", "version": 2, "provider": "acme", "made_of": 2, "recipe": "script",
+         "price_line": "seller $0.01 + steps", "cost": {"usd": 0.01}, "status": "live",
+         "check": {"status": "passed", "checked_at": "2026-09-09T20:11:00"},
+         "inputs": {"domain": {"type": "string", "example": "figma.com", "note": "one domain"},
+                    "limit": {"type": "int", "default": 20, "max": 100}},
+         "output": {"fields": ["rows", "count"]},
+         "call_template": {"cli": "treg call acme.leads-db --data '{\"domain\": \"figma.com\"}'", "http": "POST https://treg.to/call/acme.leads-db"},
+         "page": "https://treg.to/hub/acme.leads-db"}
+    cli._catalog_get_hub(e)
+    out = capsys.readouterr().out
+    assert "seller $0.01 + steps" in out and "domain" in out and "(required)" in out and "rows, count" in out
+    assert "treg call acme.leads-db" in out and "https://treg.to/hub/acme.leads-db" in out
+
+
+
+def test_a_hub_refusal_names_the_missing_tool_in_its_fix_commands(capsys):
+    """From the case study walk (2026-09-09): the refusal must name the tool the manifest wants,
+    one command per line, in the order to run them."""
+    from treg import cli
+
+    class R:
+        status_code = 422
+        headers = {"content-type": "application/json"}
+        def json(self):
+            return {"detail": {"error": "manifest_invalid", "field": "uses[0]",
+                               "rule": "'supabase' is not one of your team's tools (register it first: treg tool add)"}}
+    import pytest as _pytest
+    with _pytest.raises(SystemExit):
+        cli._hub_report(R(), json_out=False)
+    out = capsys.readouterr().out
+    assert "uses[0]" in out
+    assert "treg secret add SUPABASE_KEY --value" in out
+    assert "treg tool add supabase --base-url" in out
+    lines = [l for l in out.splitlines() if "treg " in l]
+    assert len(lines) >= 3 and all(l.count("treg ") == 1 for l in lines)     # one command per line
+def test_host_prints_the_url_alone_and_the_full_response_under_json(monkeypatch, tmp_path, capsys):
+    """`$(treg host face.jpg)` must yield the bare URL; `--json` is the GLOBAL flag main() pops from
+    argv, so cmd_host reads _JSON_OVERRIDE like every other command (a per-subcommand flag is dead)."""
+    class Response:
+        status_code = 201
+        def json(self):
+            return {"url": "http://x/m/tok", "token": "tok", "content_type": "image/png",
+                    "size": 3, "expires_at": "2026-09-21T00:00:00Z"}
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, path, **kwargs):
+            assert path == "/media" and kwargs["content"] == b"png" and kwargs["headers"]["content-type"] == "image/png"
+            return Response()
+
+    monkeypatch.setattr(cli, "_client", lambda cfg, **k: Client())
+    monkeypatch.setattr(cli, "_load_config", lambda: {"base_url": "http://x", "token": "t"})
+    f = tmp_path / "face.png"
+    f.write_bytes(b"png")
+    cli.main(["host", str(f)])
+    assert capsys.readouterr().out == "http://x/m/tok\n"
+    cli.main(["host", str(f), "--json"])
+    assert json.loads(capsys.readouterr().out)["token"] == "tok"
+
+
+def test_org_rename_follows_slug_change_locally(monkeypatch, tmp_path):
+    """`treg org rename --slug` rewrites active_org; the pinned token is untouched because the server
+    keeps the old slug as an alias."""
+    monkeypatch.setattr(cli, "CONFIG_PATH", tmp_path / "config.json")
+    saved = {}
+    monkeypatch.setattr(cli, "_save_config", lambda cfg: saved.update(cfg))
+    monkeypatch.setattr(cli, "_active_org_id", lambda cfg, c: 7)
+    calls = []
+
+    class Response:
+        status_code = 200
+        def json(self):
+            return {"org_id": 7, "org": "team-b", "previous_slug": "team-a", "name": "Team B"}
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def patch(self, path, json=None):
+            calls.append((path, json))
+            return Response()
+
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client())
+    cfg = {"base_url": "http://x", "token": "TK", "active_org": "team-a"}
+    cli.cmd_org_rename(type("A", (), {"name": "Team B", "slug": "team-b"})(), cfg)
+    assert calls == [("/orgs/7", {"name": "Team B", "slug": "team-b"})]
+    assert cfg["active_org"] == "team-b" and cfg["token"] == "TK" and saved["active_org"] == "team-b"

@@ -2,7 +2,7 @@
 
 `treg` is the command-line client for **tools-registry**: call shared team tools without holding
 their credentials, and turn your local skills into shareable tools. It's a thin client over the
-API (`https://treg.superdesign.dev`); the API is the only brain.
+API (`https://treg.to`); the API is the only brain.
 
 Every command reads `~/.treg/config.json` for the endpoint + your token. Get per-command detail
 with `treg <command> --help` (e.g. `treg secret --help`, not `treg "secret add"`).
@@ -48,13 +48,13 @@ present a per-org token directly.
 |---|---|---|
 | `treg config` | `--base-url URL` | show or set the endpoint (prints base URL, email, active org, logged-in) — use `treg org ls` for the full org list |
 | `treg login` | _(none)_ | GitHub browser sign-in (register-or-login), stores one identity token |
-| `treg login` | `--email EMAIL` | email one-time-code sign-in (register-or-login); prompts for the code |
+| `treg login` | `--email EMAIL` | email one-time-code sign-in (register-or-login); prompts for the code. A server that requires a browser check finishes the sign-in in the browser instead |
 | `treg login` | `--token TOKEN` | agents/CI: use a per-org token directly |
 | `treg logout` | — | clear your stored credentials |
 | `treg onboard` | `--mode guided\|quick` · `--name N` · `--yes` · `--reset` | colourful guided first-run — pick **guided build** (you create the team + invite a teammate, step by step) or **quick demo** (we seed a full demo team + tool + activity), ending on a no-key call. Offered `[Y/n]` after your first login; `--reset` removes demo teammates |
 
 ```bash
-treg config --base-url https://treg.superdesign.dev
+treg config --base-url https://treg.to
 treg login                                 # GitHub; or:
 treg login --email you@example.com        # emailed 6-digit code (register-or-login)
 ```
@@ -72,6 +72,7 @@ only what they created; admin/owner manage anything in the org; admin+ can invit
 | `treg org create` | `"NAME"` | create a new org; you become its owner (new token, auto-active) |
 | `treg org ls` | — | list your orgs (marks the active one) |
 | `treg org use` | `SLUG` | switch the active org |
+| `treg org rename` | `--name "NAME"`, `--slug SLUG` | (admin+) rename the active org and/or change its slug; existing keys keep working |
 | `treg org invite` | `EMAIL`, `--role member\|admin` | (admin+) create a one-time invite **code** to share |
 | `treg org members` | — | (admin+) list members + roles |
 | `treg org join` | `CODE`, `--email EMAIL` | redeem a code: registers you if new, joins, saves the org token |
@@ -82,7 +83,7 @@ treg org create "Team A"                       # active org is now team-a
 treg org invite bob@company.com --role member  # prints e.g. inv_7Kd9x2LmQpR4 — send it to Bob
 
 # Bob's side (no email is sent; he gets the code over Slack/DM)
-treg config --base-url https://treg.superdesign.dev
+treg config --base-url https://treg.to
 treg org join inv_7Kd9x2LmQpR4 --email bob@company.com   # joins + mints HIS own token
 treg tool ls            # sees only Team A's tools
 treg org use team-a     # switch orgs anytime; one token per org, never mixed
@@ -133,15 +134,50 @@ treg tool add google-ads --base-url https://googleads.googleapis.com \
 
 | Command | Options | What it does |
 |---|---|---|
-| `treg catalog search` | `"what you want to do"` | find endpoints by capability |
+| `treg catalog search` | `"what you want to do"`, `--new [DAYS]`, `--sort newest` | find endpoints by capability; `--new` keeps tools added in the last DAYS days (30 when bare, max 365), `--sort newest` lists newest first; with either, the words are optional |
 | `treg catalog get` | `ENDPOINT_ID` | docs, parameters, **the price**, and how you would be served |
 | `treg call ENDPOINT_ID` | `--query K=V`, `--data STR` | call it |
+| `treg --json call ENDPOINT_ID` | same | for scripts: one JSON line `{"result": <body>, "_treg": {http_status, call_id, charged_micro}}` on stdout, nothing on stderr |
+| `treg call ENDPOINT_ID --await` | `--timeout N` (default 900) | a generation call (video/image): submit, poll the provider, print the final response |
+| `treg host FILE` | `--content-type T`, `--json` | host a reference image/audio/video at a public URL a vendor can fetch (30 MB, 7-day TTL, free); prints the URL for `image_urls` / `audio_urls` |
+| `treg catalog request` | `"what's missing"` | searched, not there? file it — requests steer what gets added next |
+| `treg resources list` | `--provider fishaudio --kind voice` | list Fish-account voices with BYOK, otherwise platform-created voices for the active team |
 
 ```bash
 treg catalog search "instagram profile"
+treg catalog search --new                            # tools added in the last 30 days, newest first
+treg catalog search phone --new 60                   # phone tools added in the last 60 days
 treg catalog get tikhub.tiktok.user.profile          # shows the price BEFORE you spend
 treg call tikhub.tiktok.user.profile --query uniqueId=tiktok
 ```
+
+**Video and image generation** (`video-gen` / `image-gen` platforms) are async tasks: the call returns
+a task id, and `--await` polls until it finishes. Stdout is the final response only; stderr gets the
+task id, a resumable `treg call …` command, progress and the result URL. Exit 0 = done, 2 = the
+provider failed the task, 3 = timed out (resume with the printed command). Money is reserved at
+submission and charged only on success; a failed task refunds the hold. Result URLs are time-limited
+(download promptly; treg never stores media). From a coding agent, raise the shell tool's timeout or
+run the call in the background - a video takes 1-5 minutes. `treg audit` shows each task's state.
+
+Fish Audio TTS is synchronous and returns audio bytes. Keep stdout clean and redirect it:
+
+```bash
+treg call fishaudio.tts.s2-1-pro --method POST --header model=s2.1-pro \
+  --data '{"text":"Hello","format":"mp3"}' > speech.mp3
+```
+
+Create a voice with repeated `--upload voices=@clip.wav` parts and the fixed private fields shown by
+`treg catalog get fishaudio.voices.create`; then use its id as TTS `reference_id`. Platform-created
+voices appear in `treg resources list --provider fishaudio --kind voice`. With BYOK the same command
+lists the connected Fish account instead. Curl callers use
+`GET /orgs/{org_id}/provider-resources?provider=fishaudio&kind=voice`; it returns the same normalized
+rows with `X-Treg-Resource-Source: byok|platform`. BYOK users may also call Fish's raw account-wide
+list directly. To choose a reusable Fish-supplied voice, call
+`fishaudio.voices.discover` with `self=false` and an explicit `licensed=true|false`, then pass a
+returned `_id` as the TTS `reference_id`. `licensed=true` selects Fish's rights-secured subset;
+`false` includes the broader public/community catalog. On the platform key, treg verifies that
+non-team ids remain public before synthesis. `treg catalog get fishaudio.tts.s2-1-pro` lists the
+supported generation, prosody, output-format, bitrate, sample-rate, latency, and chunking controls.
 
 **How a catalogued call is served — the credential ladder, in order:**
 
@@ -152,6 +188,25 @@ treg call tikhub.tiktok.user.profile --query uniqueId=tiktok
 Rung 3 only applies where treg has both a key and a published price for that endpoint; anything
 unpriced is refused rather than served, and you are told to connect your own key. Your own key is
 never billed to the balance.
+
+## Review a catalog call
+
+`treg review <call_id> <useful|partly|not_useful|not_sure> [--reason "text"]` rates a catalog
+call after you have used the result. Phase 1 invites only direct catalog calls served on treg's
+own platform key; sampled calls print an invitation on stderr. Routed and own-key catalog calls
+can still be reviewed uninvited. `not_sure` is fine when you cannot tell. The optional reason is
+1-200 characters after trimming. Omit private data and raw payloads. Use `feedback` for anything confusing or wrong, then keep going
+with the task. The receipt contains `review_id` and `status` (`received` or `already_reviewed`).
+If the call record is not written yet, retry shortly with the same call ID.
+
+## Feedback
+
+`treg feedback submit <quality|pricing|friction|other> "message"` submits a problem or suggestion to the
+configured registry, under the active team. Add `--call-id ID` (repeatable) or `--endpoint-id ID`
+when available. Message `-` reads a prepared, sanitized description from stdin. The command
+returns a `feedback_id`. Omit private information and raw requests, responses or logs.
+Retrieve a report with `treg feedback get <feedback_id>`.
+See `treg feedback --help` and your registry's `/feedback.md` for details.
 
 ## Balance & top-up
 
@@ -164,6 +219,7 @@ tools, vendor CLIs — is free of it.
 | `treg topup` | | add funds, or set up automatic top-ups |
 
 ```bash
+treg whoami                  # the account, the active team and your role, the server
 treg balance                 # every new team starts with $1.00 of free credit
 treg balance --json          # integer micro-USD (1e-6 USD) — the unit the ledger uses
 treg topup
@@ -172,6 +228,68 @@ treg topup
 Out of balance is an HTTP **402** carrying `balance_micro`, `estimated_cost_micro` and a `topup_url`,
 so an agent can act on it without reading prose. There is also a per-day ceiling on spend against
 treg's keys, so a runaway agent has a bounded blast radius.
+
+If treg's **own** account for a provider is out, a metered call is refused with HTTP **503**
+`provider_capacity_unavailable` before anything is reserved — nothing is charged, the body names
+`resets_at` when known and `alternatives` (other providers for the same capability). Your own key
+for the provider is never affected, and treg does not switch providers on your behalf. treg
+re-checks the provider about once a minute, so a retry after a minute can succeed.
+
+Where the deployment has the overflow relay on, treg may instead serve the **same endpoint** through a
+treg-owned aggregator account — same request, same response shape, the relay's real price (0% markup),
+`X-Treg-Served-Via: overflow:<name>` on the response. `treg org overflow off` opts your team out (calls
+then get the 503 above); `treg org overflow` shows the setting. Own keys are never relayed.
+
+`treg org archive off` takes your team out of treg's archive of answers: no new call of yours is
+answered from a stored answer or recorded into one, so metered calls lose the repeat price (own keys
+stay free as always). `treg org archive` shows the setting; `treg org archive on` opts back in.
+Answers already stored for the team are erased when the team is deleted, or on request; call records
+and async-task completion evidence are kept as before.
+
+### Routed endpoints — let treg choose the provider
+
+`treg.<capability>` endpoints (today `treg.people.email.find`) are generated from the providers of one
+capability whose adapters passed verification. Call one like any endpoint:
+
+```bash
+treg call treg.people.email.find --body '{"full_name": "Patrick Collison", "domain": "stripe.com"}'
+treg call treg.people.email.find --body '{"linkedin_url": "https://www.linkedin.com/in/patrickcollison"}' \
+  --header "X-Treg-Route-Max-Cost: 0.05"     # cap the per-call spend (default ceiling $1)
+treg catalog get treg.people.email.find      # the ranked plan with prices — spends nothing
+```
+
+treg runs the best child — your own keys first, then the cheapest expected cost per hit — and
+returns `{output, raw, _treg: {served_by, tried, charged_micro}}` plus `X-Treg-Served-By` and
+`X-Treg-Providers-Tried`. A provider error falls back to the next candidate (at most two extra); a
+vendor 4xx is your request's fault and stops. A **miss** tries the next provider too (the waterfall,
+on by default), cheapest first, within `X-Treg-Route-Max-Cost` (default $1 per call); every
+attempt settles at its real price and misses on per-success providers are free. `X-Treg-Route-Waterfall: 0`
+stops at the first miss. `X-Treg-Route-Prefer` / `X-Treg-Route-Exclude` name providers. A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` (and `_treg.ignored_filters`); `X-Treg-Route-Strict-Filters: 1` refuses such a call with a 422 (unbilled) instead. Vendor endpoints are still relayed verbatim; only `treg.*` rows model an API.
+
+`X-Treg-Route-Verify: true` on `treg.people.email.find` checks a hit with `treg.people.email.verify`
+in the same call: your own verifier key first, then BounceBan, then the usual order. The check is
+its own call with its own charge, inside the same `X-Treg-Route-Max-Cost`; `X-Treg-Cost-Micro` is
+find plus check. The answer adds `_treg.verification: {verdict, checked, served_by, cost_micro}`
+(`valid` / `invalid` / `catch_all` / `risky` / `unknown`). `checked: false` and a `reason`
+(`no_hit`, `over_cost_limit`, `checker_failed`, `no_checker`, `not_allowed`, `spend_limit`) mean
+no check ran and it cost nothing. A miss is never checked: its reason is `no_hit`. Other routed tools refuse the header (422, unbilled).
+
+On `treg.people.phone.find` the same header checks the line with HLR Lookup's live network lookup
+(`hlrlookup.people.phone.verify`): your own HLR key first, `usa_status` only for `+1` numbers, no
+cache reads. The verdict is `live` / `dead` / `unknown`; a live line is not proof the number is
+this person's (`trestleiq.people.contact.verify` checks a US name). A number not written
+internationally is never sent, because HLR would read its first digits as a country code: reason
+`not_international`, nothing charged.
+
+```bash
+treg call treg.people.email.find --body '{"full_name": "Patrick Collison", "domain": "stripe.com"}' \
+  --header "X-Treg-Route-Verify: true"
+```
+
+When a routed child is asynchronous, treg submits and polls it internally for up to 60 seconds. If
+it is still processing, the route returns HTTP 202 with `_treg.outcome: "pending"`, the child call
+reference and poll descriptor, `reserved_micro`, and `charged_micro: null`. That attempt stops the
+waterfall; it is not safe to start another billable provider while the first may still complete.
 
 ## Calling
 
@@ -188,7 +306,7 @@ treg call posthog api/projects --method POST --data '{"name":"x"}'
 **Agent-native (raw HTTP) form** — build the real upstream URL and prefix it; no CLI needed:
 
 ```
-GET https://treg.superdesign.dev/call/https://api.intercom.io/conversations?per_page=5
+GET https://treg.to/call/https://api.intercom.io/conversations?per_page=5
     + header:  X-Treg-Token: <your token>
 ```
 
@@ -373,10 +491,11 @@ Idempotent — re-run any time (skips what's registered; `--replace` updates). N
 | Command | Options | What it does |
 |---|---|---|
 | `treg oauth connect NAME` | `--client-secret PATH`, `--scopes S1 S2 …` | browser consent → treg captures the first token and stores it as an oauth secret |
+| `treg connections connect --provider P` | `--key-stdin` | a key-based provider (Moz, Hunter, …): prompts for the key with input hidden, or reads it from stdin with `--key-stdin`; treg verifies it with the provider before storing it |
 | `treg health` | `--run` | show every credential's status; `--run` re-checks now (refresh oauth, probe tools, alert owners) |
 
 ```bash
-# one-time: add https://treg.superdesign.dev/oauth/callback to your OAuth app's redirect URIs
+# one-time: add https://treg.to/oauth/callback to your OAuth app's redirect URIs
 treg oauth connect gads --client-secret ./client_secret.json \
   --scopes https://www.googleapis.com/auth/adwords
 treg health --run
@@ -400,3 +519,74 @@ credential that stops working and webhooks the owner (if a `webhook_url` was set
 - `secret_file` — a JSON token file; pull `secret_field`
 - `oauth` — a JSON OAuth token; pull `secret_field` (auto-refreshed if refreshable)
 - `cli_auth` — material lifted from a CLI's keychain (placed like a string)
+
+## `treg hub` — publish a tool made of tools (behind `TREG_HUB_ENABLED`)
+
+A hub tool is one your team publishes for other people's agents: a JSON steps recipe, or a
+script in a sandbox. Every step runs through your own tools and keys; a caller pays the metered
+steps plus the price you set, and the price lands on your balance as credit. Callable the moment
+it is published, by id `<team-slug>.<name>`; shared by the page `/hub/<id>`. A new tool is not in
+search until you list it.
+
+```
+treg hub init <name> [--script] [--dir D]   write the files: recipe.json, run.js (scripts), check.json, README.md
+treg hub run <dir> --input k=v …            run the folder for real on your token; nothing stored; read the trace
+treg hub publish <dir>                      validate, run check.json once on your balance, live on pass (a new version)
+treg hub ls                                 your team's hub tools, every version, with health and 30-day numbers
+treg hub earnings <id> [--days N] [--csv]   what one tool earned, per day (sales only; never who called)
+treg hub price <id> <usd>                   change the price for later runs; no version bump; 0 = free
+treg hub retire <id>                        every version off the call road; history and earnings stay readable
+treg hub list <id> · treg hub unlist <id>   ask for a place in catalog search (treg approves), or take it out
+treg hub log <id> --public on|off           show or hide the run log on the share page (default on)
+```
+
+**Listing and the public run log.** Neither bumps the version. `list` is a request: once treg
+approves it, the tool is in `treg catalog search` and `catalog_search`, marked `hub` with your team,
+the price label and the 30-day success rate, ranked by relevance with no boost. A rejection comes
+with a reason (`treg hub ls`, and the dashboard's Listing tab); listing again asks again. An
+listing belongs to the tool; `unlist` withdraws it. Add
+`"capability": "<a catalog capability id>"` to recipe.json to name the job your tool does: once
+approved, `treg catalog get` on any provider of that job shows your tool beside them. A new tool's
+success rate starts at 90%, counted as 5 runs, and real runs by other teams replace that estimate.
+Once a tool is listed, every new version and every `treg hub price` waits for treg's review: the
+publish answers `review`, callers keep the approved version and price, and you can call the new
+version yourself as `<id>@N`. A rejected update keeps the approved one and tells you why. This
+stays true after `unlist`: once treg has approved a tool, it stays under review, and `list` puts it
+back in search with no new review. A team name that reads as treg, as official or verified, or as a
+catalog provider (look-alike letters included) cannot publish. A tool treg rejects can be called only
+by its maker's team. check.json may hold `{"cases": [...]}`, up to 5 samples, all run at publish. An answer with every output field empty pays no seller price. Unlisted,
+unapproved, failed and retired tools never appear. The share page's run log shows the last 20 runs and runs per
+day for 30 days: time, outcome, duration, steps, units and the price paid, and never who called,
+the inputs, or the output. The dashboard has the same two switches under Hub → a tool → Listing.
+
+The folder may carry a fifth file, `data.csv` (≤ 50 MB): the script reads it as `ctx.data`. A
+script gets `ctx.inputs`, `ctx.call(target, {method, query, body, headers})`, `ctx.charge(usd, note)`,
+`ctx.csv(text)`, `ctx.data`, `ctx.log(text)`; `target` is a catalog id, one of your own tools as `<tool>/<path>`,
+or a full URL under such a tool's base URL. Never paste a credential into a script: register it
+first (`treg secret add`, `treg tool add`), list the tool in `uses`, name it in `ctx.call`.
+Callers run it with `treg call <id> --data '{…}'`; read its contract with `treg catalog get <id>`.
+
+**Pricing.** It is your price only: the provider fees (the catalog steps) are billed to the caller
+on top, and a failed run charges nothing.
+
+| kind | recipe.json | you earn per successful run |
+|---|---|---|
+| steps recipe | `"pricing": {"price_usd": 0.02}` | a fixed price |
+| script | `"pricing": {"max_price_usd": 0.05}` | the sum of the `ctx.charge(usd, note)` lines in run.js, never above the cap |
+
+A script's lines can be a fee (`ctx.charge(0.01, "fee")`), per result (`rows.length * 0.002`), a
+margin on a catalog call (`r.cost_usd * 0.2`) or your own vendor's cost. The caller sees the cap
+before the run. Every surface shows callers what recent successful runs cost, low to high, fees and
+your price together. `treg hub price <id> <usd>` sets a recipe's price, or a script's cap, for later
+runs.
+## Anonymous usage analytics
+
+When using treg.to, the CLI sends basic usage through PostHog: command name, success/exit code,
+duration, CLI version and OS, linked to a random local installation ID. It does not send command
+arguments, credentials, request/response content, email or team identifiers. Help and argument
+parsing errors are not tracked. Analytics adds at most 1 second of waiting at command exit;
+slow or offline delivery may be dropped.
+
+Disable it with `export TREG_TELEMETRY=0` (or `DO_NOT_TRACK=1`). Self-hosted registries default to
+no analytics; set `TREG_CLI_POSTHOG_KEY` and optionally `TREG_CLI_POSTHOG_HOST` to use your own
+PostHog project. The random ID is stored in `analytics-id` beside the CLI config file.

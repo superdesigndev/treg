@@ -1,0 +1,35 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "items": [
+        {
+          "address": "Blue Bottle Coffee, 115 Sansome St, San Francisco, CA 94104",
+          "category": "Coffee shop",
+          "image": "https://lh3.googleusercontent.com/gps-cs-s/AHRPTWmLGxfdtV0Hozce99l85XRy0KB0dADBBNUjinRGbxODq6tPWkP1yRqUU5qQpMyVQQIBwAAasjUDuIHTAXVofjeV8Hg4xwstMT9cuVps-E0hwuQMn10GYodFEpnp_m_MRdM5Zsv4=w203-h152-k-no",
+          "latitude": 37.791306399999996,
+          "longitude": -122.4009679,
+          "name": "Blue Bottle Coffee",
+          "permanentlyClosed": false,
+          "phone": "+15106613510",
+          "placeId": "ChIJ3UFdD2KAhYARYOHf4j7DshM",
+          "rating": 4.4,
+          "reviewsCount": 1295,
+          "url": "https://www.google.com/maps/place/data=!3m1!4b1!4m2!3m1!1s0x808580620f5d41dd:0x13b2c33ee2dfe160",
+          "website": "https://bluebottlecoffee.com/us/eng/northern-california-cafes"
+        }
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00175,
+  "items": 1,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-lynx",
+    "name": "Lynx",
+    "kind": "anonymous",
+    "artworkKey": "lynx"
+  },
+  "resultId": "f693d37c-da42-4a27-8141-ae417dbf0ee7"
+}

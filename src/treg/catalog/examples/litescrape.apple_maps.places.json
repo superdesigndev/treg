@@ -1,0 +1,79 @@
+{
+  "search_metadata": {
+    "id": "bd3248c5844c8a229c45c6af",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/apple/maps/places?muid=4372355869446211302&locale=en-US",
+    "created_at": "2026-09-29 13:58:47 UTC",
+    "processed_at": "2026-09-29 13:58:49 UTC",
+    "total_time_taken": 2.651,
+    "apple_maps_urls": [
+      "https://maps.apple.com/place?place-id=I3CADBA7F5DEF86E6&lang=en-US"
+    ],
+    "apple_maps_url": "https://maps.apple.com/place?place-id=I3CADBA7F5DEF86E6&lang=en-US"
+  },
+  "search_parameters": {
+    "muid": "4372355869446211302",
+    "locale": "en-US"
+  },
+  "place_results": [
+    {
+      "position": 1,
+      "position_in_page": 1,
+      "place_id": "I3CADBA7F5DEF86E6",
+      "muid": "4372355869446211302",
+      "provider_id": "9902",
+      "link": "https://maps.apple.com/place?auid=4372355869446211302&_provider=9902",
+      "title": "Barrett's Coffee",
+      "gps_coordinates": {
+        "latitude": 30.3389633,
+        "longitude": -97.7174932
+      },
+      "ratings": {
+        "attribution": {
+          "vendor_id": "com.apple",
+          "name": "Apple",
+          "external_item_id": "76611795487"
+        },
+        "values": [
+          {
+            "type": null,
+            "rating": null,
+            "max_rating": null,
+            "reviews": null
+          },
+          {
+            "type": null,
+            "rating": null,
+            "max_rating": null,
+            "reviews": null,
+            "category": null
+          }
+        ]
+      },
+      "address": "713 W St Johns Ave, Austin, TX 78752, United States",
+      "structured_address": {
+        "short": "713 W St Johns Ave, Austin",
+        "formatted_lines": [
+          "713 W St Johns Ave",
+          "Austin, TX 78752"
+        ],
+        "city_and_above": "Austin, TX United States",
+        "country": "United States",
+        "dependent_locality": [
+          "Highland"
+        ],
+        "country_code": "US",
+        "administrative_area": "Texas",
+        "sub_administrative_area": "Travis County",
+        "locality": "Austin",
+        "post_code": "78752",
+        "sub_locality": "Highland",
+        "thoroughfare": "W St Johns Ave",
+        "full_thoroughfare": "713 W St Johns Ave"
+      },
+      "phone": "+15126777667",
+      "phone_formatted": "+1 (512) 677-7667",
+      "website": "http://barrettscoffee.com"
+    }
+  ]
+}

@@ -15,7 +15,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/account/credit-balance
-    name: "Get account credit balance"
+    name: "Check credit balance"
     summary: "Returns the number of API credits remaining on your Scrape Creators account."
     input:
       queryParams: {}
@@ -23,6 +23,7 @@ endpoints:
       queryParams: {}
     cost: {type: free, value: 0, currency: USD, unit: call}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.account.usage.json
     docs_url: https://docs.scrapecreators.com/account/credit-balance
 
@@ -33,7 +34,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/tiktok/profile
-    name: "Get TikTok profile"
+    name: "TikTok user profile by username or id — bio, stats"
     summary: "Fetches public profile data for a TikTok user by their handle or user_id — useful for looking up a creator's identity, bio, and account stats."
     input:
       queryParams:
@@ -44,6 +45,7 @@ endpoints:
       queryParams: {handle: "stoolpresidente"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.tiktok.user.profile.json
     docs_url: https://docs.scrapecreators.com/tiktok/profile
 
@@ -53,7 +55,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v2/tiktok/video
-    name: "Get TikTok video info"
+    name: "TikTok video by URL — engagement stats, transcript"
     summary: "Fetches detailed data for a single TikTok video by URL, including its metadata, engagement stats, and optionally its transcript/captions."
     input:
       queryParams:
@@ -63,6 +65,7 @@ endpoints:
       queryParams: {url: "https://www.tiktok.com/@randomspamvideos25/video/7251387037834595630"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.tiktok.video.detail.json
     docs_url: https://docs.scrapecreators.com/tiktok/video
 
@@ -72,7 +75,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/tiktok/video/comments
-    name: "List TikTok comments"
+    name: "TikTok video comments by URL — replies, engagement"
     summary: "Fetches comments on a TikTok video by URL — useful for reading audience reactions, replies, and engagement."
     input:
       queryParams:
@@ -82,6 +85,7 @@ endpoints:
       queryParams: {url: "https://www.tiktok.com/@randomspamvideos25/video/7251387037834595630"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.tiktok.video.comments.json
     docs_url: https://docs.scrapecreators.com/tiktok/video/comments
 
@@ -91,16 +95,21 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/tiktok/search/keyword
-    name: "Search TikTok by keyword"
+    name: "Search TikTok videos by keyword"
     summary: "Searches for TikTok videos by keyword or phrase — the general video search across all of TikTok."
     input:
       queryParams:
         query: {type: string, required: true, note: "Keyword to search for", example: "ai"}
-        date_posted: {type: string, required: false, note: "Time frame", example: "all-time"}
+        date_posted: {type: string, required: false, enum: [yesterday, this-week, this-month, last-3-months, last-6-months, all-time], note: "Time frame", example: "all-time"}
+        sort_by: {type: string, required: false, enum: [relevance, most-liked, date-posted], note: "Sort by", example: "relevance"}
+        region: {type: string, required: false, note: "Does NOT filter results to that region only — it places the proxy there (use for geo-restricted posts). 2-letter codes like US, GB, FR"}
+        cursor: {type: number, required: false, note: "Pagination cursor from previous response cursor field", example: 10}
+        trim: {type: boolean, required: false, note: "Set to true for a trimmed response"}
     test_request:
       queryParams: {query: "ai", date_posted: "all-time"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.tiktok.search.videos.json
     docs_url: https://docs.scrapecreators.com/tiktok/search/keyword
 
@@ -111,7 +120,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/instagram/profile
-    name: "Get Instagram profile"
+    name: "Instagram profile by username — bio, followers, links"
     summary: "Retrieves comprehensive public Instagram profile information including biography, bio links, follower and following counts, verification status, and profile picture URLs."
     input:
       queryParams:
@@ -120,6 +129,7 @@ endpoints:
       queryParams: {handle: "natgeo"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.instagram.user.profile.json
     docs_url: https://docs.scrapecreators.com/instagram/profile
 
@@ -129,7 +139,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v2/instagram/user/posts
-    name: "List Instagram posts"
+    name: "Instagram user posts by username — reels, photos, videos"
     summary: "Returns a paginated feed of a user's public Instagram posts, including reels, photos, videos, and carousels."
     input:
       queryParams:
@@ -139,6 +149,7 @@ endpoints:
       queryParams: {handle: "natgeo"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.instagram.user.posts.json
     docs_url: https://docs.scrapecreators.com/instagram/user/posts
 
@@ -148,7 +159,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v2/instagram/post/comments
-    name: "List Instagram comments"
+    name: "Instagram post or reel comments by URL"
     summary: "Retrieves comments on a public Instagram post or reel."
     input:
       queryParams:
@@ -158,6 +169,7 @@ endpoints:
       queryParams: {url: "https://www.instagram.com/reel/DOq6eV6iIgD"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.instagram.post.comments.json
     docs_url: https://docs.scrapecreators.com/instagram/post/comments
 
@@ -168,7 +180,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/youtube/channel
-    name: "Get YouTube channel details"
+    name: "YouTube channel profile by id or username — subscribers"
     summary: "Retrieves comprehensive YouTube channel profile data including name, avatar images, subscriber count, total video and view counts, join date, tags, and linked social accounts."
     input:
       queryParams:
@@ -180,6 +192,7 @@ endpoints:
       queryParams: {channelId: "UC-9-kyTW8ZkZNDHQJ6FgpwQ"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.youtube.channel.profile.json
     docs_url: https://docs.scrapecreators.com/youtube/channel
 
@@ -189,7 +202,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/youtube/video
-    name: "Get YouTube video/short details"
+    name: "YouTube video or short by URL — views, chapters, captions"
     summary: "Fetches full details for a YouTube video or short, including title, description, thumbnail, view/like/comment counts, publish date, duration, chapters and caption tracks."
     input:
       queryParams:
@@ -198,6 +211,7 @@ endpoints:
       queryParams: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.youtube.video.detail.json
     docs_url: https://docs.scrapecreators.com/youtube/video
 
@@ -207,7 +221,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/youtube/video/comments
-    name: "List YouTube comments"
+    name: "YouTube video comments by URL — replies, likes, authors"
     summary: "Fetches comments and replies from a YouTube video, including each comment's text, author details, like count, reply count, and publish date."
     input:
       queryParams:
@@ -217,6 +231,7 @@ endpoints:
       queryParams: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.youtube.video.comments.json
     docs_url: https://docs.scrapecreators.com/youtube/video/comments
 
@@ -227,7 +242,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/twitter/profile
-    name: "Get Twitter profile"
+    name: "X (Twitter) profile by username — account stats"
     summary: "Retrieves a Twitter user's profile by handle, including account metadata and statistics."
     input:
       queryParams:
@@ -236,6 +251,7 @@ endpoints:
       queryParams: {handle: "levelsio"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.x.user.profile.json
     docs_url: https://docs.scrapecreators.com/twitter/profile
 
@@ -245,7 +261,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/twitter/user-tweets
-    name: "List Twitter user tweets"
+    name: "X (Twitter) user tweets by username"
     summary: "Fetches tweets from a Twitter user's profile by handle."
     input:
       queryParams:
@@ -254,17 +270,21 @@ endpoints:
       queryParams: {handle: "levelsio"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.x.user.posts.json
     docs_url: https://docs.scrapecreators.com/twitter/user-tweets
 
   # --- LinkedIn -----------------------------------------------------------------------------------
   - id: scrapecreators.linkedin.user.profile
     capability: linkedin.user.profile
+    miss:
+      status: 404
+      means: "profile is private or not public (`error: not_found`, `credits_charged: 0`) — an expected outcome and free; do not retry the same handle"
     platform: linkedin
     scope: any_account
     method: GET
     path: /v1/linkedin/profile
-    name: "Get LinkedIn person's profile"
+    name: "LinkedIn person profile by URL — experience, education"
     summary: "Retrieves a person's public LinkedIn profile data, including their name, photo, location, follower count, about/bio summary, recent posts, work experience and education."
     input:
       queryParams:
@@ -273,6 +293,7 @@ endpoints:
       queryParams: {url: "https://www.linkedin.com/in/parrsam/"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.linkedin.user.profile.json
     docs_url: https://docs.scrapecreators.com/linkedin/profile
 
@@ -283,7 +304,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/reddit/subreddit
-    name: "List subreddit posts"
+    name: "Subreddit posts by name — sorted feed"
     summary: "Fetches posts from a subreddit with sorting and filtering options."
     input:
       queryParams:
@@ -293,6 +314,7 @@ endpoints:
       queryParams: {subreddit: "news"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.reddit.subreddit.posts.json
     docs_url: https://docs.scrapecreators.com/reddit/subreddit
 
@@ -302,15 +324,49 @@ endpoints:
     scope: any_account
     method: GET
     path: /v1/reddit/search
-    name: "Search Reddit"
+    name: "Search Reddit posts by keyword"
     summary: "Searches across all of Reddit for posts matching a query."
     input:
       queryParams:
         query: {type: string, required: true, note: "Search query", example: "ai"}
-        sort: {type: string, required: false, note: "Sort by", example: "relevance"}
+        sort:
+          type: string
+          required: false
+          enum: [relevance, new, top, comment_count]
+          note: "Prefer relevance when you want posts matching the query. One of: relevance | new | top | comment_count. sort=new is chronological newest-first and often returns weakly related or unrelated sitewide posts (not \"recent posts about X\"). Brand/token queries may also match colloquial substrings under new. Comment search supports relevance, new, and top; comment_count is for post search only."
+          example: relevance
+        filter: {type: string, required: false, enum: [posts, comments], note: "Search posts or comments. Default posts.", example: "posts"}
+        timeframe: {type: string, required: false, enum: [all, day, week, month, year], note: "Post search timeframe. One of: all | day | week | month | year.", example: "all"}
+        after: {type: string, required: false, note: "Pagination token from the previous response (after) to get the next page"}
+        trim: {type: boolean, required: false, note: "Set to true for a trimmed down version of the response", example: false}
+      note: "Prefer sort=relevance for posts matching the query. sort=new is chronological newest-first and often returns weakly related or unrelated sitewide posts — not \"recent posts about X\". Brand/token queries may also match colloquial substrings under new."
     test_request:
       queryParams: {query: "ai", sort: "relevance"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}
     verified: '2026-07-28'
+    added: '2026-07-28'
     example_response: examples/scrapecreators.reddit.search.posts.json
     docs_url: https://docs.scrapecreators.com/reddit/search
+
+  # --- Cross-platform ---------------------------------------------------------------------------
+  - id: scrapecreators.creators.socials.connected
+    capability: creators.socials.connected
+    platform: creators
+    scope: any_account
+    method: GET
+    path: /v1/find-social-profiles
+    name: "Find a creator's other social profiles from one handle"
+    summary: "Give one handle on Instagram, TikTok, YouTube, X or Facebook and get back the creator's verified profiles on the other platforms, with a confidence score and the evidence for each link (bio links, link-in-bio pages, shared website, reciprocal links, verified Google candidates). Deterministic, no AI; handles only, not URLs. Same-handle guesses that could not be corroborated are returned separately in same_handle_candidate_urls."
+    input:
+      queryParams:
+        platform: {type: string, required: true, note: "Source platform: instagram | tiktok | youtube | x | twitter | facebook", example: "x"}
+        handle: {type: string, required: true, note: "Creator handle, no URL; leading @ optional. YouTube also accepts 24-char channel ids.", example: "adrian_horning_"}
+        cache_max_age: {type: string, required: false, note: "Return a cached result if one is at most this old (0 credits): 1d | 3d | 7d | 14d | 30d", example: "7d"}
+    test_request:
+      queryParams: {platform: "x", handle: "adrian_horning_"}
+    cost: {type: per_call, value: 10, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-08-27', confidence: verified}
+    call_note: "Uncharged 503 when every declared link-in-bio page fails and nothing else resolves — retry later rather than treating it as a miss."
+    verified: '2026-08-27'
+    added: '2026-08-26'
+    example_response: examples/scrapecreators.creators.socials.connected.json
+    docs_url: https://docs.scrapecreators.com/v1/find-social-profiles

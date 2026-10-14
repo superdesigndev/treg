@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "message": "Phone found",
+  "code": 200,
+  "data": {
+    "first_name": "Example",
+    "last_name": "Person",
+    "employee_phone": "+15550101000",
+    "employee_phone_type": "mobile",
+    "country_code": "US"
+  },
+  "meta": {
+    "credits_used": 1
+  }
+}

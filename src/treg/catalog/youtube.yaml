@@ -32,7 +32,7 @@ endpoints:
     scope: own_account
     method: GET
     path: /youtube/v3/channels
-    name: "Get your channel's profile and stats"
+    name: "Your YouTube channel profile — subscribers, views"
     summary: "Get your YouTube channel's profile and lifetime stats (subscribers, views, video count)"
     input:
       queryParams:
@@ -45,6 +45,7 @@ endpoints:
     test_request:
       queryParams: {part: "snippet,statistics", id: "UCBR8-60-B28hp2BmDPdntcQ"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/youtube.youtube.channel.profile.json
     docs_url: https://developers.google.com/youtube/v3/docs/channels/list
 
@@ -54,7 +55,7 @@ endpoints:
     scope: own_account
     method: GET
     path: /youtube/v3/search
-    name: "List your channel's videos, newest first"
+    name: "List your YouTube videos, private and unlisted included"
     summary: "List your own channel's videos, newest first (includes private and unlisted ones)"
     # forMine is the only search filter that reaches a creator's non-public uploads, which is the
     # whole reason to use the OAuth route over a scraper. It costs 100 units — a hundredth of the
@@ -71,6 +72,7 @@ endpoints:
     test_request:
       queryParams: {part: "snippet", channelId: "UCBR8-60-B28hp2BmDPdntcQ", type: "video", maxResults: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/youtube.youtube.channel.videos.json
     docs_url: https://developers.google.com/youtube/v3/docs/search/list
 
@@ -83,7 +85,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /youtube/v3/playlistItems
-    name: "List channel uploads via playlist (low cost)"
+    name: "List a channel's videos via its uploads playlist id"
     summary: "List a channel's uploaded videos cheaply, via its uploads playlist"
     input:
       queryParams:
@@ -96,6 +98,7 @@ endpoints:
     test_request:
       queryParams: {part: "snippet", playlistId: "UUBR8-60-B28hp2BmDPdntcQ", maxResults: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/youtube.youtube.channel.videos.uploads.json
     docs_url: https://developers.google.com/youtube/v3/docs/playlistItems/list
 
@@ -107,7 +110,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /youtube/v3/videos
-    name: "Get a video's details and stats"
+    name: "YouTube video stats by video id — views, likes, duration"
     summary: "Get a YouTube video's metadata and stats (views, likes, comments, duration)"
     input:
       queryParams:
@@ -118,6 +121,7 @@ endpoints:
     test_request:
       queryParams: {part: "snippet,statistics", id: "dQw4w9WgXcQ"}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/youtube.youtube.video.detail.json
     docs_url: https://developers.google.com/youtube/v3/docs/videos/list
 
@@ -127,7 +131,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /youtube/v3/commentThreads
-    name: "List comments on a video"
+    name: "List comments on a YouTube video by video id"
     summary: "List the comments on a YouTube video (any public video, not just your own)"
     input:
       queryParams:
@@ -142,6 +146,7 @@ endpoints:
     test_request:
       queryParams: {part: "snippet", videoId: "dQw4w9WgXcQ", maxResults: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/youtube.youtube.video.comments.json
     docs_url: https://developers.google.com/youtube/v3/docs/commentThreads/list
 
@@ -151,7 +156,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /youtube/v3/search
-    name: "Search videos by keyword"
+    name: "Search YouTube videos by keyword"
     summary: "Search YouTube videos by keyword"
     input:
       queryParams:
@@ -167,6 +172,7 @@ endpoints:
     test_request:
       queryParams: {part: "snippet", q: "design tutorial", type: "video", maxResults: 2}
     verified: 2026-07-28
+    added: '2026-07-28'
     example_response: examples/youtube.youtube.search.videos.json
     docs_url: https://developers.google.com/youtube/v3/docs/search/list
 
@@ -182,13 +188,14 @@ endpoints:
   # privacyStatus is set. That is not an error the response reports; the video simply stays
   # private. See the note on oauth_providers._YOUTUBE_READ.
   - id: youtube.youtube.video.upload
+    added: '2026-07-28'
     kind: action
     capability: youtube.video.upload
     platform: youtube
     scope: own_account
     method: POST
     path: /upload/youtube/v3/videos
-    name: "Upload a video"
+    name: "Upload a video to your YouTube channel"
     summary: "Upload a video to your own YouTube channel"
     input:
       queryParams:
@@ -205,13 +212,14 @@ endpoints:
     docs_url: https://developers.google.com/youtube/v3/docs/videos/insert
 
   - id: youtube.youtube.video.thumbnail.set
+    added: '2026-07-28'
     kind: action
     capability: youtube.video.thumbnail.set
     platform: youtube
     scope: own_account
     method: POST
     path: /upload/youtube/v3/thumbnails/set
-    name: "Set video thumbnail"
+    name: "Set a custom thumbnail on your YouTube video"
     summary: "Set the custom thumbnail on one of your YouTube videos"
     input:
       queryParams:

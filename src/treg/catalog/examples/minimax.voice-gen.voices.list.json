@@ -1,0 +1,24 @@
+{
+  "system_voice": [
+    {
+      "voice_id": "English_expressive_narrator",
+      "description": [
+        "An expressive adult male voice with a British accent, perfect for engaging audiobook narration."
+      ],
+      "voice_name": "Expressive Narrator",
+      "created_time": "2025-01-01"
+    },
+    {
+      "voice_id": "English_radiant_girl",
+      "description": [
+        "A radiant and lively young adult female voice with a general American accent, full of energy and brightness."
+      ],
+      "voice_name": "Radiant Girl",
+      "created_time": "2025-01-01"
+    }
+  ],
+  "base_resp": {
+    "status_code": 0,
+    "status_msg": "success"
+  }
+}

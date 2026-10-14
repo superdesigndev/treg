@@ -1,0 +1,26 @@
+[
+  {
+    "content": null,
+    "costs": {
+      "ai_cost": 0.0,
+      "ai_cost_formatted": "0",
+      "bytes_transferred_cost": 3.015e-08,
+      "bytes_transferred_cost_formatted": "0.0000000301500000000000014377",
+      "compute_cost": 3.333333333333334e-09,
+      "compute_cost_formatted": "0.0000000033333333333333334931",
+      "file_cost": 1.0695e-06,
+      "file_cost_formatted": "0.0000010695000000000000079520",
+      "total_cost": 1.1029833333333334e-06,
+      "total_cost_formatted": "0.0000011029833333333333428827",
+      "transform_cost": 0.0,
+      "transform_cost_formatted": "0"
+    },
+    "duration_elasped_ms": 2,
+    "error": null,
+    "links": [
+      "https://iana.org/help/example-domains"
+    ],
+    "status": 200,
+    "url": "https://example.com/"
+  }
+]

@@ -1,0 +1,25 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "createdUtc": 1748073622,
+      "creatorHandle": "carsonrmccann",
+      "description": "This community is for creators and builders who are growing to their first 1,000 followers. Give insights, build your brand, and grow a loyal audience.",
+      "id": "1926186499399139650",
+      "joinPolicy": "Open",
+      "memberCount": 5629,
+      "name": "The First Thousand"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0001,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "resultId": "820d2ce6-85fb-4e2c-b0ed-7a02aef296e4"
+}

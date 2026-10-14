@@ -1,0 +1,1 @@
+{"ok":true,"contacts":[{"first_name":"Jane","last_name":"Doe","job_title":"Example Manager","company_name":"Example Industries","email":"jane.doe@example.com","email_status":"VALID","linkedin_url":"https://www.linkedin.com/in/jane-example"}],"returned":1,"total_available":1,"limit":1,"offset":0,"has_more":false,"next_offset":null,"query_credits_used":1}

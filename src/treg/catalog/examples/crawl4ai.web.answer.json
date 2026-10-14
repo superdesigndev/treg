@@ -1,0 +1,24 @@
+{
+  "answer": {
+    "source": "crawl4ai",
+    "sources": [
+      {
+        "title": "Ollama — Inference Engine",
+        "url": "https://www.local-llm.net/tools/ollama/"
+      },
+      {
+        "title": "The Complete Guide to Ollama: Local LLM Inference Made ...",
+        "url": "https://read.theaimerge.com/p/the-complete-guide-to-ollama-local"
+      }
+    ],
+    "text": "Ollama is an open-source inference framework and command-line tool designed to simplify running large language models (LLMs) locally on macOS, Linux, and Windows. It functions as a user-friendly wrapper that uses `llama.cpp` under the hood to manage model weights, configurations, and hardware acceleration.\n\nKey features and characteristics include:\n\n*   **Simplified Management:** It uses a single command-line interface to pull, run, and manage a library of pre-quantized models.\n*   **Hardware Integration:** It automatically detects and utilizes NVIDIA, AMD, and Apple Silicon GPUs, falling back to CPU inference when necessary.\n*   **API Compatibility:** It exposes a REST API on port 11434 that mirrors the OpenAI chat completions format, allowing it to integrate with tools like Open WebUI, LangChain, and LlamaIndex.\n*   **Customization:** The \"Modelfile\" system allows users to create custom model variants with specific system prompts, temperature settings, and adapter layers.\n*   **Deployment:** It supports Docker-native deployment, making it suitable for home servers, Kubernetes clusters, and CI/CD pipelines.\n\nWhile Ollama is ideal for low-friction local development and hobbyist use, it is generally recommended to use engines like vLLM for production environments that require high-concurrency serving."
+  },
+  "answered": true,
+  "cached": false,
+  "experimental": true,
+  "ms": 4233,
+  "query": "what is the Ollama inference engine",
+  "usage": {
+    "units": 1
+  }
+}

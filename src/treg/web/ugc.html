@@ -1,0 +1,910 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI UGC Videos for $0.67 a Clip — The Full Workflow | treg</title>
+<meta name="description" content="Generate TikTok-style UGC videos end to end with your coding agent: pull trending hooks, design a character with a JSON prompt, make it talk on Seedance 2.5, clone the voice, stitch the demo. 4 clips for $2.67 instead of $20–50 each.">
+<link rel="canonical" href="https://treg.to/ugc"/>
+<meta property="og:title" content="AI UGC Videos for $0.67 a Clip — The Full Workflow | treg"/>
+<meta property="og:description" content="Pull trending hooks, design a character with a JSON prompt, make it talk on Seedance 2.5, clone the voice, stitch the demo. 4 clips for $2.67."/>
+<meta property="og:url" content="https://treg.to/ugc"/>
+<meta property="og:type" content="website"/>
+<meta property="og:image" content="https://treg.to/media/ugc/character.jpg"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:image" content="https://treg.to/media/ugc/character.jpg"/>
+<link rel="icon" href="favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #FDFCFB; --card: #F5F4F1; --ink: #101010; --muted: #8A8885; --line: #E9E7E2;
+    --green: #118453; --green-soft: rgba(17,132,83,.12); --red: #C0362F;
+    --display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+    --text: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--text); font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  ::selection { background: rgba(17,132,83,.22); }
+  a { color: inherit; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); text-decoration: none; cursor: pointer; font-family: var(--text); }
+  .pill:hover { background: var(--card); }
+  .pill.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .pill.dark:hover { background: #2b2b2a; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: var(--green); background: var(--green-soft); border: 1px solid rgba(17,132,83,.3); padding: 6px 14px; border-radius: 999px; }
+  .eyebrow .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+
+  /* nav */
+  .nav { position: fixed; inset: 0 0 auto 0; z-index: 90; display: flex; align-items: center; justify-content: space-between; padding: 14px 28px; background: transparent; border-bottom: 1px solid transparent; transition: border-color .3s, background .3s; }
+  .nav.scrolled { background: rgba(253,252,251,.85); backdrop-filter: blur(12px); }
+  .wordmark { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 15px; }
+  .wordmark svg { width: 22px; height: 22px; border-radius: 6px; }
+  .nav-links { display: flex; gap: 22px; align-items: center; margin-right: 10px; }
+  .nav-links a { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 500; color: #43413E; text-decoration: none; }
+  .nav-links a:hover { color: var(--ink); }
+  @media (max-width: 900px) { .nav-links { display: none; } }
+
+  /* hero: centered copy with generated clips floating around it */
+  .hero { position: relative; padding: 170px 24px 200px; text-align: center; overflow: hidden; min-height: 940px; display: grid; place-items: center; }
+  .hero::before, .hero::after { content: ""; position: absolute; border-radius: 50%; filter: blur(90px); opacity: .35; pointer-events: none; }
+  .hero::before { width: 420px; height: 420px; left: -80px; top: 40px; background: #E9E3D6; }
+  .hero::after { width: 480px; height: 480px; right: -120px; bottom: -80px; background: #E3E6E0; }
+  .hero-in { position: relative; z-index: 2; max-width: 760px; }
+  .hero h1 { font-family: var(--display); font-weight: 500; letter-spacing: -.03em; font-size: clamp(38px, 5.4vw, 64px); line-height: 1.06; margin: 22px 0 18px; text-wrap: balance; }
+  .hero-agents { display: inline-flex; align-items: center; gap: .14em; vertical-align: -.1em; margin-left: .1em; }
+  .hero-agents img { width: .82em; height: .82em; border-radius: .2em; box-shadow: 0 1px 0 rgba(0,0,0,.06); }
+  .hero p.sub { max-width: 54ch; color: var(--muted); font-size: 18px; margin: 0 auto 28px; text-wrap: pretty; }
+  .hero p.sub strong { color: var(--ink); font-weight: 500; }
+  .ctas { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .float { position: absolute; z-index: 1; width: 160px; aspect-ratio: 9/16; border-radius: 16px; overflow: hidden; background: #000; box-shadow: 0 30px 70px -30px rgba(20,18,12,.45), 0 0 0 1px rgba(0,0,0,.06); left: 50%; top: 50%; margin: -142px 0 0 -80px; opacity: 0; transform: translate(0,0) rotate(0) scale(.6); will-change: transform, opacity; }
+  .float video, .float img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* final resting offsets from centre (the intro animates from the centre out to these) */
+  .f1 { --tx: -560px; --ty: -230px; --r: -3deg; }
+  .f2 { --tx: -470px; --ty: 210px; --r: 3deg; }
+  .f3 { --tx: 520px; --ty: -260px; --r: 5deg; }
+  .f4 { --tx: 430px; --ty: 200px; --r: -2deg; }
+  .f5 { --tx: -20px; --ty: -470px; --r: -1deg; }
+  .f6 { --tx: 40px; --ty: 440px; --r: 0deg; }
+  .hero.in .float { animation: fan .9s cubic-bezier(.2,.8,.2,1) forwards; }
+  .hero.in .f1 { animation-delay: .05s } .hero.in .f2 { animation-delay: .15s } .hero.in .f3 { animation-delay: .1s }
+  .hero.in .f4 { animation-delay: .2s } .hero.in .f5 { animation-delay: .25s } .hero.in .f6 { animation-delay: .3s }
+  @keyframes fan { to { opacity: 1; transform: translate(var(--tx), var(--ty)) rotate(var(--r)) scale(1); } }
+  .hero.in.settled .float { animation: none; opacity: 1; transform: translate(var(--tx), calc(var(--ty) + var(--py, 0px))) rotate(var(--r)); }
+  .hero-in .eyebrow, .hero-in h1, .hero-in .sub, .hero-in .ctas { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s cubic-bezier(.2,.8,.2,1); }
+  .hero.in .hero-in .eyebrow, .hero.in .hero-in h1, .hero.in .hero-in .sub, .hero.in .hero-in .ctas { opacity: 1; transform: none; }
+  .hero.in .hero-in h1 { transition-delay: .08s } .hero.in .hero-in .sub { transition-delay: .16s } .hero.in .hero-in .ctas { transition-delay: .24s }
+  @media (max-width: 1240px) { .f1 { --tx: -500px } .f2 { --tx: -430px } .f3 { --tx: 470px } .f4 { --tx: 400px } }
+  @media (max-width: 1060px) { .f1 { --tx: -440px; --ty: -250px } .f2 { --tx: -400px; --ty: 230px } .f3 { --tx: 420px; --ty: -280px } .f4 { --tx: 380px; --ty: 220px } .f5, .f6 { display: none } }
+  @media (max-width: 860px) { .hero { min-height: 0; padding: 100px 24px 30px; } .float, .hero.in.settled .float { display: none; } .hero-row { display: flex; gap: 10px; justify-content: center; margin-top: 30px; } .hero-row .float, .hero.in.settled .hero-row .float { display: block; position: static; margin: 0; opacity: 1; transform: none; animation: none; width: 30%; max-width: 150px; } .hero-row .f4, .hero-row .f5, .hero-row .f6 { display: none !important; } }
+  @media (min-width: 861px) { .hero-row { display: contents; } }
+  @media (prefers-reduced-motion: reduce) { .hero .float, .hero.in .float { animation: none; opacity: 1; transform: translate(var(--tx), var(--ty)) rotate(var(--r)); } .hero-in .eyebrow, .hero-in h1, .hero-in .sub, .hero-in .ctas { opacity: 1; transform: none; transition: none; } }
+
+  /* sections fade up as they enter */
+  .rv { opacity: 0; transform: translateY(22px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.8,.2,1); }
+  .rv.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } }
+
+  /* phone */
+  .phone { position: relative; width: 100%; max-width: 300px; margin: 0 auto; aspect-ratio: 9/16; border-radius: 34px; background: #111; padding: 9px; box-shadow: 0 40px 100px -40px rgba(20,18,12,.45), 0 0 0 1px rgba(0,0,0,.06); }
+  .phone video, .phone img.pv { width: 100%; height: 100%; object-fit: cover; border-radius: 26px; display: block; background: #000; }
+  .phone .notch { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); width: 84px; height: 24px; background: #111; border-radius: 999px; z-index: 2; }
+  .phone .play { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; border: 0; background: transparent; cursor: pointer; }
+  .phone .play span { width: 62px; height: 62px; border-radius: 50%; background: rgba(255,255,255,.92); display: grid; place-items: center; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+  .phone .play.hide { display: none; }
+  .phone .tag { position: absolute; top: 100%; margin-top: 12px; left: 50%; transform: translateX(-50%); font: 500 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .phone { margin-bottom: 36px; }
+
+  /* cost strip */
+  .cost { max-width: 1080px; margin: 40px auto 0; padding: 0 24px; }
+  .cost-in { border: 1px solid var(--line); border-radius: 20px; background: #fff; display: grid; grid-template-columns: 1fr 1fr 1fr; overflow: hidden; }
+  .cost-in > div { padding: 24px 26px; border-right: 1px solid var(--line); }
+  .cost-in > div:last-child { border-right: 0; }
+  .cost .k { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .cost .v { font-family: var(--display); font-weight: 600; font-size: 34px; letter-spacing: -.03em; line-height: 1; }
+  .cost .v.g { color: var(--green); }
+  .cost .v s { color: var(--muted); font-weight: 400; }
+  .cost .d { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  @media (max-width: 720px) { .cost-in { grid-template-columns: 1fr; } .cost-in > div { border-right: 0; border-bottom: 1px solid var(--line); } }
+
+  /* section heads */
+  .sec { padding: 90px 24px 0; }
+  .tut .wrap { text-align: center; }
+  .tut-sub { color: var(--muted); max-width: 560px; margin: 0 auto 26px; }
+  .tut-frame { border-radius: 20px; overflow: hidden; background: #111; aspect-ratio: 16/9; box-shadow: 0 40px 100px -40px rgba(20,18,12,.45), 0 0 0 1px rgba(0,0,0,.06); }
+  .tut-frame video { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .sec h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.03em; font-size: clamp(30px, 4vw, 44px); line-height: 1.08; margin: 14px 0 12px; text-wrap: balance; }
+  .sec .lede { color: var(--muted); font-size: 17px; max-width: 60ch; margin: 0; }
+
+  /* reference video grid */
+  .vgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .vgrid div { position: relative; aspect-ratio: 9/16; border-radius: 12px; overflow: hidden; background: #000; }
+  .vgrid video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .vgrid span { position: absolute; left: 8px; bottom: 8px; font: 500 10px var(--mono); color: #fff; background: rgba(0,0,0,.5); padding: 3px 7px; border-radius: 999px; }
+
+  .zoomed { position: fixed; inset: 0; z-index: 300; background: rgba(16,16,16,.92); display: none; place-items: center; padding: 20px; cursor: zoom-out; }
+  .zoomed.open { display: grid; }
+  .zoomed .lbl { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); color: #fff; font: 500 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+  .zoomed img { max-height: 100%; max-width: 100%; border-radius: 12px; }
+
+  /* the model board: one prompt, five models, one winner */
+  .board { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 14px; }
+  .board-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: #43413E; padding: 2px 4px 12px; }
+  .board-h .arr { color: var(--muted); }
+  .board-h .tpill { color: #fff; background: #1B1B1A; border-color: #1B1B1A; font-size: 12px; }
+  .mgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  @media (max-width: 420px) { .mgrid { grid-template-columns: repeat(2, 1fr); } }
+  .mt { margin: 0; position: relative; border-radius: 12px; overflow: hidden; background: #000; cursor: zoom-in; }
+  .mt > img { width: 100%; height: auto; aspect-ratio: 3/4; object-fit: cover; object-position: 50% 15%; display: block; }
+  .mt figcaption { position: absolute; left: 0; right: 0; bottom: 0; padding: 34px 10px 10px; display: flex; align-items: center; gap: 7px; color: #fff; background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.72)); }
+  .mt figcaption .lg { width: 16px; height: 16px; border-radius: 4px; object-fit: contain; background: #fff; padding: 1px; }
+  .mt figcaption b { font-size: 12.5px; font-weight: 600; letter-spacing: -.01em; line-height: 1.2; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+  .mt.reference { outline: 1.5px dashed rgba(16,16,16,.35); outline-offset: -1.5px; }
+  .mt.reference figcaption b { color: rgba(255,255,255,.8); }
+  .mt.win { box-shadow: 0 0 0 3px var(--green); }
+  .mt .tag { position: absolute; top: 8px; left: 8px; z-index: 1; font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #fff; background: rgba(16,16,16,.7); padding: 4px 8px; border-radius: 999px; }
+  .mt.win .tag { background: var(--green); }
+
+  /* real image → character showcase */
+  .pairs { display: grid; gap: 10px; margin-top: 10px; }
+  .pair { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 12px; display: grid; grid-template-columns: 1fr 28px 1fr; gap: 8px; align-items: center; }
+  .pair figure { margin: 0; position: relative; border-radius: 12px; overflow: hidden; background: #000; cursor: zoom-in; }
+  .pair img { width: 100%; height: auto; aspect-ratio: 4/5; object-fit: cover; display: block; }
+  .pair figcaption { position: absolute; left: 8px; top: 8px; font: 600 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #fff; background: rgba(16,16,16,.7); padding: 4px 8px; border-radius: 999px; }
+  .pair figure.g figcaption { background: var(--green); }
+  .pair .arr { text-align: center; color: var(--muted); font-size: 18px; }
+  .pairs-h { font-size: 13px; font-weight: 500; color: #43413E; padding: 12px 4px 0; display: flex; align-items: center; gap: 8px; }
+
+  /* expanders */
+  details.more { border: 1px solid var(--line); border-radius: 14px; background: #fff; margin-top: 14px; }
+  details.more summary { cursor: pointer; padding: 12px 16px; font-size: 14px; font-weight: 500; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  details.more summary::-webkit-details-marker { display: none; }
+  details.more summary::after { content: "+"; color: var(--muted); font-family: var(--mono); }
+  details.more[open] summary::after { content: "–"; }
+  details.more .body { padding: 0 16px 14px; font-size: 14.5px; color: #43413E; }
+  details.more .body p { margin: 0 0 10px; }
+  details.more .body p:last-child { margin-bottom: 0; }
+
+  /* screenshot card */
+  .shot-card { background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .shot-card img { width: 100%; height: auto; display: block; }
+  .shot-card .cap { padding: 10px 14px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--line); }
+
+  /* steps */
+  .steps { max-width: 1080px; margin: 0 auto; }
+  .step { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; padding: 72px 0; border-top: 1px solid var(--line); }
+  .step:first-child { border-top: 0; }
+  .step .txt { position: sticky; top: 90px; }
+  .step .num { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 12px; }
+  .step .num .n { width: 40px; height: 40px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; font: 600 17px var(--display); letter-spacing: 0; flex: none; box-shadow: 0 8px 20px -8px rgba(17,132,83,.6); }
+  .step h3 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; font-size: clamp(26px, 3vw, 34px); line-height: 1.12; margin: 14px 0 14px; text-wrap: balance; }
+  .step p { color: #43413E; font-size: 15.5px; margin: 0 0 14px; }
+  .step p strong { color: var(--ink); font-weight: 500; }
+  .step .vis { display: grid; gap: 14px; }
+  @media (max-width: 860px) { .step { grid-template-columns: 1fr; gap: 28px; padding: 52px 0; } .step .txt { position: static; } }
+
+  /* desktop: one pinned left panel that crossfades between steps while the right column scrolls */
+  @media (min-width: 861px) {
+    .steps.pinned { display: grid; grid-template-columns: 1fr 1fr; column-gap: 56px; align-items: start; }
+    .steps.pinned .pin { grid-column: 1; grid-row: 1 / span 5; position: sticky; top: 72px; height: calc(100vh - 72px); display: grid; align-content: center; }
+    .steps.pinned .pin .txt { max-height: calc(100vh - 110px); overflow: hidden; }
+    .steps.pinned .pin .txt { grid-area: 1 / 1; position: static; opacity: 0; visibility: hidden; transform: translateY(28px) scale(.985); filter: blur(2px); transition: opacity .5s ease, transform .6s cubic-bezier(.2,.8,.2,1), filter .5s ease, visibility 0s linear .5s; pointer-events: none; }
+    .steps.pinned .pin .txt.active { opacity: 1; visibility: visible; transform: none; filter: none; transition-delay: 0s; pointer-events: auto; }
+    .steps.pinned .step { display: contents; }
+    .steps.pinned .pin { display: grid; grid-template-columns: 1fr; gap: 0; padding: 0; border: 0; }
+    .steps.pinned .vis { grid-column: 2; padding: 72px 0; border-top: 1px solid var(--line); }
+    .steps.pinned .step:nth-child(2) .vis { border-top: 0; padding-top: 0; }
+    .steps.pinned .pin .txt h3 { margin-top: 14px; }
+    .steps.pinned .pin .txt .sess { animation: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .steps.pinned .pin .txt { transition: none; filter: none; } }
+
+  /* vendor chips (which tools a step pulls through treg) */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .chips .lab { width: 100%; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+  .chips .lab svg { width: 16px; height: 16px; border-radius: 4px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px 6px 7px; border: 1px solid var(--line); background: #fff; border-radius: 999px; font-size: 13px; font-weight: 500; text-decoration: none; color: inherit; }
+  .chip:hover { background: var(--card); }
+  .chip img { width: 18px; height: 18px; border-radius: 5px; object-fit: contain; }
+  .chip s { text-decoration: none; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .skill-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; padding: 8px 14px; border-radius: 999px; background: var(--ink); color: #fff; text-decoration: none; font-size: 13.5px; font-weight: 500; }
+  .skill-link:hover { background: #2b2b2a; }
+  .skill-link code { font-family: var(--mono); font-size: 12.5px; }
+
+  /* the Claude Code session card that opens every step (the /fable terminal, compact) */
+  .sess { background: #1B1B1A; color: #E8E6E1; border-radius: 14px; padding: 16px 18px 18px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; box-shadow: 0 30px 60px -30px rgba(0,0,0,.35); margin-top: 18px; }
+  .sess .dots { display: flex; gap: 6px; margin-bottom: 12px; }
+  .sess .dots i { width: 8px; height: 8px; border-radius: 50%; background: #3A3A37; }
+  .sess .who { display: flex; align-items: center; gap: 8px; color: #B8B6B0; font-size: 12px; margin-bottom: 12px; }
+  .sess .who img { width: 16px; height: 16px; border-radius: 4px; }
+  .sess .dim { color: #8B8985; }
+  .tpill { display: inline-flex; align-items: center; gap: 5px; background: #2E2E2C; border: 1px solid #3F3F3C; border-radius: 6px; padding: 1px 7px 1px 4px; color: #F3F1EC; font-family: var(--mono); font-size: .9em; vertical-align: -.1em; white-space: nowrap; }
+  .tpill svg { width: 14px; height: 14px; border-radius: 4px; }
+  .sess .st { margin-left: auto; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: #8B8985; display: inline-flex; align-items: center; gap: 6px; }
+  .sess .st i { width: 6px; height: 6px; border-radius: 50%; background: #6E6E6A; }
+  .sess.run .st i { background: #7FC48C; animation: blink 1s steps(1) infinite; }
+  .sess.done .st i { background: #7FC48C; animation: none; }
+  @keyframes blink { 50% { opacity: .2; } }
+  .ln { display: grid; grid-template-columns: 16px 1fr; gap: 8px; align-items: start; opacity: 0; transform: translateY(4px); transition: opacity .35s ease, transform .35s ease; margin-top: 7px; }
+  .sess.run .ln.on, .sess.done .ln { opacity: 1; transform: none; }
+  .ln .g { color: #8B8985; text-align: center; }
+  .ln .g:empty::before { content: "◌"; }
+  .ln.ask { font-family: var(--text); font-size: 15.5px; line-height: 1.45; color: #F3F1EC; margin: 0 0 8px; }
+  .ln.ask .p { color: #E8846B; font-family: var(--mono); font-weight: 600; }
+  .ln.tool img { width: 15px; height: 15px; border-radius: 4px; vertical-align: -3px; margin-right: 6px; }
+  .ln.tool .id { color: #E8E6E1; }
+  .ln.tool .m { color: #8B8985; }
+  .ln.tool.skill .g::before, .ln.tool.think .g::before { content: "✦"; color: #A78BFA; }
+  .ln.tool.own .g::before { content: "🔑"; font-size: 10px; }
+  .ln.tool.local .g::before { content: "$"; color: #8B8985; }
+  .ln.ok { color: #E8E6E1; margin-top: 12px; font-family: var(--text); font-size: 13.5px; }
+  .ln.ok .g { color: #7FC48C; }
+  .ln.ok b { color: #7FC48C; font-weight: 600; }
+  .ln.cur .g::after { content: "▍"; color: #E8846B; animation: blink 1s steps(1) infinite; }
+  .step .txt details.seo { margin-top: 14px; }
+  @media (prefers-reduced-motion: reduce) { .ln { opacity: 1; transform: none; transition: none; } .sess .st i { animation: none !important; } }
+
+  /* tables */
+  .hooks { background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .hooks table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  .hooks th { background: #F8F7F5; color: var(--muted); font-weight: 500; font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; text-align: left; padding: 9px 14px; }
+  .hooks td { padding: 10px 14px; border-top: 1px solid var(--line); vertical-align: top; }
+  .hooks td.n { font-family: var(--mono); white-space: nowrap; color: var(--green); font-weight: 500; }
+  .hooks .cap { padding: 10px 14px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); font-family: var(--mono); }
+
+  /* code card */
+  .code { background: #1B1B1A; color: #D6D6D2; border-radius: 16px; padding: 18px 20px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto; white-space: pre-wrap; position: relative; }
+  .code .c { color: #6E6E6A; }
+  .code .k { color: #6FCDF0; }
+  .code .s { color: #45E39E; }
+  .code .head { color: #9A9A9A; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 10px; display: block; }
+
+  /* step 5: hook variants side by side */
+  .variants { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .variant { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 12px; }
+  .variant.pick { border-color: rgba(17,132,83,.45); box-shadow: 0 0 0 3px var(--green-soft); }
+  .variant .phone { border-radius: 22px; padding: 6px; }
+  .variant .phone video { border-radius: 17px; }
+  .variant .phone .notch { top: 12px; width: 60px; height: 16px; }
+  .vcap { margin-top: 12px; font-size: 13px; line-height: 1.45; color: #43413E; }
+  .vcap .k { display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .variant.pick .vcap .k { color: var(--green); }
+  @media (max-width: 420px) { .variants { grid-template-columns: 1fr; } }
+
+  /* the bill */
+  .bill { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 4px 18px; font-size: 14px; }
+  .bill div { display: flex; justify-content: space-between; padding: 11px 0; border-top: 1px solid var(--line); gap: 12px; }
+  .bill div:first-child { border-top: 0; }
+  .bill .m { font-family: var(--mono); white-space: nowrap; }
+  .bill .tot { font-weight: 600; }
+  .bill .tot .m { color: var(--green); }
+  .bill small { color: var(--muted); display: block; font-size: 12px; }
+
+  /* pricing: the bill against subscriptions */
+  .section { padding: 110px 24px 0; }
+  .section h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; line-height: 1.12; font-size: clamp(30px, 4.6vw, 46px); text-align: center; margin: 0 0 14px; text-wrap: balance; }
+  .section .lede { text-align: center; color: var(--muted); max-width: 56ch; margin: 0 auto 48px; font-size: 17px; text-wrap: balance; }
+  .hl2 { color: var(--green); font-weight: 600; }
+  .fineprint { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 34px; }
+  .bill2 { max-width: 900px; margin: 0 auto; display: flex; gap: 44px; align-items: center; justify-content: center; }
+  .bill-left { display: flex; flex-direction: column; gap: 9px; min-width: 330px; }
+  .b-row { display: flex; align-items: center; gap: 12px; font-size: 15px; }
+  .b-row .lg { width: 30px; height: 30px; border-radius: 8px; flex: none; background: #FBFAF7; border: 1px solid rgba(0,0,0,.06); display: grid; place-items: center; font: 600 12px var(--display); color: #43413E; overflow: hidden; }
+  .b-row .lg img { width: 100%; height: 100%; object-fit: cover; }
+  .b-row b { font-weight: 600; }
+  .b-row em { font-style: normal; color: var(--muted); font-size: 12.5px; }
+  .b-row s { margin-left: auto; text-decoration: none; color: var(--muted); position: relative; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .b-row .strike { position: absolute; left: -5px; right: -5px; top: 50%; margin-top: -2px; height: 4px; background: var(--red); border-radius: 2px; transform: scaleX(0); transform-origin: left center; transition: transform .35s cubic-bezier(.3,.7,.3,1); }
+  .seen .b-row .strike { transform: scaleX(1); }
+  .seen .b-row:nth-child(1) .strike { transition-delay: .15s; } .seen .b-row:nth-child(2) .strike { transition-delay: .27s; }
+  .seen .b-row:nth-child(3) .strike { transition-delay: .39s; } .seen .b-row:nth-child(4) .strike { transition-delay: .51s; }
+  .seen .b-row:nth-child(5) .strike { transition-delay: .63s; }
+  .bill-divider { width: 1px; align-self: stretch; background: var(--line); }
+  .bill-right { display: flex; flex-direction: column; gap: 12px; }
+  .bill-right .bk { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 15px; color: var(--muted); }
+  .bill-right .bk svg { width: 22px; height: 22px; border-radius: 6px; }
+  .bill-right .bb { font-family: var(--display); font-weight: 600; font-size: clamp(52px, 7vw, 84px); line-height: 1.02; letter-spacing: -.03em; color: var(--green); opacity: 0; transform: translateY(12px); transition: opacity .6s ease .9s, transform .65s cubic-bezier(.3,.7,.3,1) .9s; font-variant-numeric: tabular-nums; }
+  .seen .bill-right .bb { opacity: 1; transform: none; }
+  .bill-right .bb small { display: block; font-family: var(--text); font-weight: 500; font-size: 16px; letter-spacing: 0; color: var(--ink); margin-top: 8px; }
+  .bill-right .bnote { font-family: var(--mono); font-size: 12.5px; color: var(--muted); max-width: 30ch; }
+  @media (max-width: 760px) { .bill2 { flex-direction: column; gap: 28px; } .bill-left { min-width: 0; width: 100%; } .bill-divider { display: none; } }
+
+  /* one token: the catalog grid */
+  .catwrap { max-width: 1000px; margin: 0 auto; }
+  .pgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .pcard { border-radius: 14px; padding: 13px 14px; background: #fff; box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 4px 14px -6px rgba(20,18,12,.08); display: flex; align-items: center; gap: 12px; transition: box-shadow .24s ease; }
+  .pcard:hover { box-shadow: 0 2px 4px rgba(20,18,12,.06), 0 14px 30px -10px rgba(20,18,12,.16); }
+  .pcard .ph { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 11px; background: #FBFAF7; border: 1px solid rgba(0,0,0,.07); }
+  .pcard .ph img { width: 23px; height: 23px; border-radius: 5px; object-fit: contain; }
+  .pcard .pt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .pcard .pt b { font-weight: 600; font-size: 13.5px; line-height: 1.25; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pcard .pt s { font-family: var(--mono); font-size: 10.5px; color: var(--muted); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pcard .pt s.was { text-decoration: line-through; text-decoration-color: rgba(192,54,47,.55); text-decoration-thickness: 1.5px; }
+  .morewrap { margin-top: 10px; pointer-events: none; -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.55) 0%, transparent 92%); mask-image: linear-gradient(180deg, rgba(0,0,0,.55) 0%, transparent 92%); }
+  .moreline { text-align: center; margin-top: -8px; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  @media (max-width: 880px) { .pgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  /* final CTA */
+  .final { max-width: 1080px; margin: 100px auto 0; padding: 0 24px; }
+  .final-in { background: #1B1B1A; color: #fff; border-radius: 24px; padding: 60px 40px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 26px; }
+  .final h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.03em; font-size: clamp(32px, 4.6vw, 52px); line-height: 1.08; margin: 0; }
+  .final h2 .hero-agents img { background: rgba(255,255,255,.08); box-shadow: 0 0 0 1px rgba(255,255,255,.12); padding: .06em; }
+  .final h2 .hero-agents img[alt="Hermes"] { background: #fff; }
+  .final .pill { border-color: rgba(255,255,255,.2); background: transparent; color: #fff; }
+  .final .pill.light { background: #fff; color: var(--ink); border-color: #fff; }
+  .final .pill.light:hover { background: #ECEAE5; }
+  .copybox { background: #0F0F0E; border: 1px solid rgba(255,255,255,.12); border-radius: 16px; padding: 16px 18px; font-family: var(--mono); font-size: 13px; color: #D6D6D2; width: min(560px, 100%); text-align: left; }
+  .copybox .h { color: #9A9A9A; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 10px; }
+  .copybox .line { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+  .copybox .line span { color: #45E39E; word-break: break-all; }
+  .copybox button { flex: none; border: 1px solid rgba(255,255,255,.2); background: transparent; color: #fff; border-radius: 999px; padding: 6px 12px; font: 500 12px var(--text); cursor: pointer; }
+  .copybox button:hover { background: rgba(255,255,255,.08); }
+  .copybox .then { margin-top: 12px; color: #B5B5B0; }
+  @media (max-width: 860px) { .final-in { padding: 40px 22px; } }
+
+  /* footer */
+  .bigfoot { border-top: 1px solid var(--line); margin-top: 100px; padding: 46px 24px 40px; background: #FBFAF8; }
+  .bigfoot-in { max-width: 1020px; margin: 0 auto; display: flex; gap: 44px; justify-content: space-between; flex-wrap: wrap; }
+  .bf-brand .bfb { display: inline-flex; align-items: center; gap: 9px; font-family: var(--display); font-weight: 600; font-size: 16px; }
+  .bf-brand .bfb svg { width: 20px; height: 20px; }
+  .bf-brand .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .bf-cols { display: flex; gap: 48px; flex-wrap: wrap; }
+  .bf-col { display: flex; flex-direction: column; gap: 8px; }
+  .bf-col .lab { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .bf-col a { color: var(--ink); text-decoration: none; font-size: 13.5px; }
+  .bf-col a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .bf-tag { max-width: 1020px; margin: 36px auto 0; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+
+  /* sign-in modal */
+  .scrim { position: fixed; inset: 0; background: rgba(26,26,26,.55); display: none; place-items: center; z-index: 200; padding: 20px; backdrop-filter: blur(6px); }
+  .scrim.open { display: grid; }
+  .smodal { width: min(400px, 94vw); background: #fff; border-radius: 20px; padding: 30px 28px; text-align: center; position: relative; box-shadow: 0 30px 90px -38px rgba(20,18,12,.4); }
+  .smodal .cls { position: absolute; top: 12px; right: 15px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+  .smodal h3 { font-family: var(--display); font-weight: 600; font-size: 22px; margin: 4px 0 6px; letter-spacing: -.015em; }
+  .smodal p { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 0 0 18px; }
+  .smodal .pill { width: 100%; justify-content: center; margin-top: 9px; }
+  .smodal .div { display: flex; align-items: center; gap: 10px; margin: 16px 0 6px; color: var(--muted); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
+  .smodal .div::before, .smodal .div::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .smodal input { width: 100%; margin-top: 9px; background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 11px 13px; font-family: var(--mono); font-size: 13px; outline: none; }
+  .smodal input:focus { border-color: var(--ink); }
+  .smodal .err { color: var(--red); font-size: 11.5px; margin-top: 10px; min-height: 14px; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+<script src="/captcha.js" defer></script>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <span class="wordmark"><a href="/" style="display:inline-flex;align-items:center;gap:10px;color:inherit;text-decoration:none" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</a> <span style="color:var(--muted);font-weight:400">/</span> <span style="font-weight:500">UGC</span></span>
+  <span style="display:flex;gap:8px">
+    <span class="nav-links"><a href="#steps">The workflow</a><a href="#step-2">The character</a><a href="#pricing">Pricing</a><a href="#tools">Tools</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a><a href="https://x.com/treg_ai" target="_blank" rel="noopener" aria-label="treg on X"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a></span>
+    <a class="pill dark" href="/app?ref=ugc" id="ctaNav">Set up treg</a>
+  </span>
+</nav>
+
+<header class="hero">
+  <div class="hero-in">
+    <span class="eyebrow"><span class="dot"></span> Seedance 2.5 · Gemini 3 Pro · GPT Image 2.5 · one token</span>
+    <h1>Create hyper realistic AI UGC in <span class="hero-agents"><img src="media/people-search/claude-code.png" alt="Claude Code"><img src="media/people-search/codex.png" alt="Codex"><img src="media/people-search/openclaw.png" alt="OpenClaw"><img src="media/people-search/hermes.png" alt="Hermes"></span></h1>
+    <p class="sub">Brands pay creators <strong>$20 to $50 a video</strong> for content that looks like a real person sharing an app they just found. This is the workflow that replaces the creator, run from your coding agent through treg: <strong>4 finished clips for $2.67.</strong></p>
+    <div class="ctas">
+      <a class="pill dark" href="/app?ref=ugc" id="ctaHero">Set up treg</a>
+      <a class="pill" href="#steps">Step by step guide ↓</a>
+    </div>
+  </div>
+  <div class="hero-row">
+    <div class="float f1" data-p="-0.18"><video src="media/ugc/hero/h1.mp4" poster="media/ugc/hero/h1.jpg" muted loop playsinline autoplay preload="metadata"></video></div>
+    <div class="float f2" data-p="0.12"><video src="media/ugc/hero/h2.mp4" poster="media/ugc/hero/h2.jpg" muted loop playsinline autoplay preload="metadata"></video></div>
+    <div class="float f3" data-p="-0.1"><video src="media/ugc/hero/h3.mp4" poster="media/ugc/hero/h3.jpg" muted loop playsinline autoplay preload="metadata"></video></div>
+    <div class="float f4" data-p="0.16"><video src="media/ugc/hero/h4.mp4" poster="media/ugc/hero/h4.jpg" muted loop playsinline autoplay preload="metadata"></video></div>
+    <div class="float f5" data-p="-0.25"><video src="media/ugc/hero/h5.mp4" poster="media/ugc/hero/h5.jpg" muted loop playsinline autoplay preload="metadata"></video></div>
+    <div class="float f6" data-p="0.2"><video src="media/ugc/hero/h6.mp4" poster="media/ugc/hero/h6.jpg" muted loop playsinline autoplay preload="metadata"></video></div>
+  </div>
+</header>
+
+<section class="rv cost">
+  <div class="cost-in">
+    <div><div class="k">Human UGC creator</div><div class="v"><s>$20–50</s></div><div class="d">per video, plus briefing, revisions and a week of waiting</div></div>
+    <div><div class="k">This workflow</div><div class="v g">$0.67</div><div class="d">per clip: 4 hook variants on Seedance 2.5 cost $2.67 total</div></div>
+    <div><div class="k">Markup on treg</div><div class="v">0%</div><div class="d">Seedance, Gemini, GPT Image, Seedream at the vendor's price, one token, no subscriptions</div></div>
+  </div>
+</section>
+
+<section class="sec tut rv" id="tutorial">
+  <div class="wrap">
+    <h2>Watch the whole workflow, start to finish</h2>
+    <p class="tut-sub">Four minutes: trend pull, character, script, Seedance take, captions. The written steps below follow the same order.</p>
+    <div class="tut-frame">
+      <video id="v-tutorial" src="media/ugc/tutorial.mp4" poster="media/ugc/tutorial-poster.jpg" controls playsinline preload="none"></video>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="steps">
+  <div class="wrap">
+    <h2>Step by step guide for AI UGC</h2>
+  </div>
+
+  <div class="steps wrap">
+    <!-- STEP 1 -->
+    <article class="step rv" id="step-1">
+      <div class="txt">
+        <div class="num"><span class="n">1</span>Step 1</div>
+        <h3>Find what's trending.</h3>
+        <div class="sess">
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div class="who"><img src="media/people-search/claude-code.png" alt="">Claude Code <span class="dim">·</span> <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span><span class="st"><i></i> <span class="stt">working</span></span></div>
+          <div class="ln ask"><span class="p">&gt;</span><span>Pull the trending TikTok and Instagram videos in our vertical: AI agents, lead gen, outreach. First line of each, views, and who is on camera. <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="logos/tikhub.svg" alt=""><span class="id">tikhub.tiktok.search.videos ×6</span> <span class="m">117 videos · $0.02</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="logos/scrapecreators.svg" alt=""><span class="id">scrapecreators.tiktok.video.detail ×15</span> <span class="m">transcripts · $0.02</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="logos/meta-ad-library.svg" alt=""><span class="id">meta ad library</span> <span class="m">ads the brands are scaling</span></span></div>
+          <div class="ln ok"><span class="g">●</span><span>Read 15 transcripts. A stunt with a number in the first 3s; the tool shows up at ~0:30 as the "how". 9 to study for <b>$0.04</b> with <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+        </div>
+        <div class="chips">
+          <span class="lab">the tools this step pulls through treg</span>
+          <a class="chip" href="/catalog?q=tiktok"><img src="logos/tikhub.svg" alt="">TikTok search <s>TikHub</s></a>
+          <a class="chip" href="/catalog?q=transcript"><img src="logos/scrapecreators.svg" alt="">Transcripts <s>ScrapeCreators</s></a>
+          <a class="chip" href="/catalog?q=meta%20ad%20library"><img src="logos/meta-ad-library.svg" alt="">Meta ad library</a>
+          <a class="chip" href="/catalog?q=instagram"><img src="logos/instagram.svg" alt="">Instagram reels</a>
+          <a class="chip" href="/catalog?q=youtube"><img src="logos/youtube.svg" alt="">YouTube</a>
+          <a class="chip" href="/catalog?q=x"><img src="logos/x.svg" alt="">X</a>
+        </div><details class="more seo"><summary>Why start here</summary><div class="body"><p>Before generating anything, pull the trending videos in your niche and study two things: how the hooks are built, and which faces resonate. Same script, different person, completely different impression.</p><p>One prompt to the agent. A minute later you have the list, transcripts you can read, and characters you can look at.</p><p><strong>What the data said:</strong> in this niche a stunt with a number beats tutorial framing 10 to 50x. The tool is never the hook. It is the "how" answer that comes after the result.</p></div></details>
+      </div>
+      <div class="vis">
+        <div class="vgrid" aria-label="Trending UGC ads pulled from the ad library"><div><video src="media/ugc/refs/r1.mp4" poster="media/ugc/refs/r1.jpg" muted loop playsinline autoplay preload="metadata"></video></div><div><video src="media/ugc/refs/r2.mp4" poster="media/ugc/refs/r2.jpg" muted loop playsinline autoplay preload="metadata"></video></div><div><video src="media/ugc/refs/r3.mp4" poster="media/ugc/refs/r3.jpg" muted loop playsinline autoplay preload="metadata"></video></div><div><video src="media/ugc/refs/r4.mp4" poster="media/ugc/refs/r4.jpg" muted loop playsinline autoplay preload="metadata"></video></div><div><video src="media/ugc/refs/r5.mp4" poster="media/ugc/refs/r5.jpg" muted loop playsinline autoplay preload="metadata"></video></div><div><video src="media/ugc/refs/r6.mp4" poster="media/ugc/refs/r6.jpg" muted loop playsinline autoplay preload="metadata"></video></div><div><video src="media/ugc/refs/r7.mp4" poster="media/ugc/refs/r7.jpg" muted loop playsinline autoplay preload="metadata"></video></div><div><video src="media/ugc/refs/r8.mp4" poster="media/ugc/refs/r8.jpg" muted loop playsinline autoplay preload="metadata"></video></div><div><video src="media/ugc/refs/r9.mp4" poster="media/ugc/refs/r9.jpg" muted loop playsinline autoplay preload="metadata"></video></div></div>
+        <div class="hooks"><div class="cap" style="border-top:0">What we read off them: absurd stunt + big number in the first 3s, product revealed at ~0:30 as the "how", close on "follow for part 2". Stunt + number beat tutorial framing 10 to 50x.</div></div>
+      </div>
+    </article>
+    <!-- STEP 2 -->
+    <article class="step rv" id="step-2">
+      <div class="txt">
+        <div class="num"><span class="n">2</span>Step 2 · the hard part</div>
+        <h3>Create an AI character.</h3>
+        <div class="sess">
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div class="who"><img src="media/people-search/claude-code.png" alt="">Claude Code <span class="dim">·</span> <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span><span class="st"><i></i> <span class="stt">working</span></span></div>
+          <div class="ln ask"><span class="p">&gt;</span><span>Use the portrait-clone skill on this screenshot. Generate the character on Gemini 3 Pro, GPT Image 2.5 and Seedream so I can compare. <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+          <div class="ln tool skill"><span class="g"></span><span><span class="id">skill · portrait-clone</span> <span class="m">→ character-prompt.json · 14 pinned constraints</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="media/ugc/logos/gemini.svg" alt=""><span class="id">reapi.image-gen.gemini-3-pro-image</span> <span class="m">9:16 · 2K · $0.03</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="media/ugc/logos/openai.png" alt=""><span class="id">reapi.image-gen.gpt-image-2-5 ×2</span> <span class="m">flare + sunburst · $0.03</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="media/ugc/logos/seed.png" alt=""><span class="id">replicate · seedream-4.5 · 5-lite</span> <span class="m">your Replicate key</span></span></div>
+          <div class="ln ok"><span class="g">●</span><span>5 portraits. Gemini keeps the pores and the imperfect teeth; both GPT runs keep the doll eyes for <b>$0.06</b> with <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+        </div>
+        <p><a class="skill-link" href="https://github.com/agentara/skills/blob/main/skills/aigc/portrait-clone/SKILL.md" target="_blank" rel="noopener"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg><code>portrait-clone</code> skill ↗</a></p>
+        <details class="more seo"><summary>The JSON prompt (excerpt)</summary><div class="body"><div class="code">{
+  <span class="k">"critical_constraints"</span>: [
+    <span class="s">"EYES: narrow almond eyes with a low 1 mm crease, iris 60% visible;
+      not large, not round, not doll-like"</span>,
+    <span class="s">"AGE: apparent age 30, smooth firm skin, no crow's feet;
+      not a teenager, not 40"</span>,
+    <span class="s">"SKIN: faint pore texture on the nose, one 2 mm mole 15 mm lateral
+      to the left nostril; not airbrushed plastic"</span>,
+    <span class="s">"HAIR: straight, fine, flat at the crown, warm chestnut with copper
+      highlights, 4 flyaways; not voluminous, not glossy waves"</span>,
+    <span class="s">"CAMERA: selfie phone front camera 30 cm from the face, 24 mm
+      equivalent, 8 cm below eye level tilted 6° up; wide-angle stretch"</span>,
+    <span class="s">"LIGHT: soft daylight from a window at frame right, high-key,
+      the cream wall reads slightly overexposed"</span>,
+    <span class="c">…face, body, top, pose, expression, scene: every default pinned</span>
+  ]
+}</div></div></details><details class="more seo"><summary>Why JSON, and why the model still matters</summary><div class="body"><p>GPT Image 2.5 and Gemini 3 Pro on a plain prompt both looked wrong: eyes slightly too big, a doll-ish face, that over-sharpened HDR look that screams AI. Every image model has defaults it falls back to. A JSON prompt that pins face structure, skin texture, lighting, camera, expression, clothing and background leaves it no room to revert to them.</p><p>Same JSON across five models still gives five different answers. GPT Image 2.5 keeps the doll pattern in the eyes. Gemini 3 Pro gave the most realistic result. Pick the winner by looking, not by benchmark.</p></div></details>
+      </div>
+      <div class="vis">
+        <div class="board">
+          <div class="board-h"><span>Same JSON prompt</span><span class="arr">→</span><span>5 image models, one call each</span><span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></div>
+          <div class="mgrid">
+            <figure class="mt reference" data-zoom="media/ugc/reference.jpg" data-lbl="Reference"><img src="media/ugc/reference.jpg" alt="Reference"><figcaption><b>Reference</b></figcaption></figure>
+            <figure class="mt win" data-zoom="media/ugc/m-gemini.jpg" data-lbl="Gemini 3 Pro Image"><span class="tag">Winner</span><img src="media/ugc/m-gemini.jpg" alt="Gemini 3 Pro Image"><figcaption><img class="lg" src="media/ugc/logos/gemini.svg" alt=""><b>Gemini 3 Pro Image</b></figcaption></figure>
+            <figure class="mt " data-zoom="media/ugc/m-gpt-flare.jpg" data-lbl="GPT Image 2.5 flare"><span class="tag">Runner-up</span><img src="media/ugc/m-gpt-flare.jpg" alt="GPT Image 2.5 flare"><figcaption><img class="lg" src="media/ugc/logos/openai.png" alt=""><b>GPT Image 2.5 flare</b></figcaption></figure>
+            <figure class="mt " data-zoom="media/ugc/m-gpt-sunburst.jpg" data-lbl="GPT Image 2.5 sunburst"><img src="media/ugc/m-gpt-sunburst.jpg" alt="GPT Image 2.5 sunburst"><figcaption><img class="lg" src="media/ugc/logos/openai.png" alt=""><b>GPT Image 2.5 sunburst</b></figcaption></figure>
+            <figure class="mt " data-zoom="media/ugc/m-seedream45.jpg" data-lbl="Seedream 4.5"><img src="media/ugc/m-seedream45.jpg" alt="Seedream 4.5"><figcaption><img class="lg" src="media/ugc/logos/seed.png" alt=""><b>Seedream 4.5</b></figcaption></figure>
+            <figure class="mt " data-zoom="media/ugc/m-seedream5.jpg" data-lbl="Seedream 5 lite"><img src="media/ugc/m-seedream5.jpg" alt="Seedream 5 lite"><figcaption><img class="lg" src="media/ugc/logos/seed.png" alt=""><b>Seedream 5 lite</b></figcaption></figure>
+          </div>
+        <div class="pairs-h">More: a real presenter in, a new person with the same vibe out</div>
+        <div class="pairs">
+          <div class="pair">
+            <figure data-zoom="media/ugc/showcase/s1-ref.jpg" data-lbl="Reference · a YouTube frame"><img src="media/ugc/showcase/s1-ref.jpg" alt="Reference frame from a public talk"><figcaption>Reference</figcaption></figure>
+            <span class="arr">→</span>
+            <figure class="g" data-zoom="media/ugc/showcase/s1-gen.jpg" data-lbl="Generated · Gemini 3 Pro Image"><img src="media/ugc/showcase/s1-gen.jpg" alt="Generated character with the same vibe"><figcaption>Generated</figcaption></figure>
+          </div>
+          <div class="pair">
+            <figure data-zoom="media/ugc/showcase/s2-ref.jpg" data-lbl="Reference · a tech vlogger"><img src="media/ugc/showcase/s2-ref.jpg" alt="Reference: a tech vlogger"><figcaption>Reference</figcaption></figure>
+            <span class="arr">→</span>
+            <figure class="g" data-zoom="media/ugc/showcase/s2-gen.jpg" data-lbl="Generated · Gemini 3 Pro Image"><img src="media/ugc/showcase/s2-gen.jpg" alt="Generated character with the same vibe"><figcaption>Generated</figcaption></figure>
+          </div>
+          <div class="pair">
+            <figure data-zoom="media/ugc/showcase/s3-ref.jpg" data-lbl="Reference · a podcaster"><img src="media/ugc/showcase/s3-ref.jpg" alt="Reference: a podcaster"><figcaption>Reference</figcaption></figure>
+            <span class="arr">→</span>
+            <figure class="g" data-zoom="media/ugc/showcase/s3-gen.jpg" data-lbl="Generated · Gemini 3 Pro Image"><img src="media/ugc/showcase/s3-gen.jpg" alt="Generated character with the same vibe"><figcaption>Generated</figcaption></figure>
+          </div>
+        </div>
+        </div>
+      </div>
+    </article>
+    <!-- STEP 3 -->
+    <article class="step rv" id="step-3">
+      <div class="txt">
+        <div class="num"><span class="n">3</span>Step 3</div>
+        <h3>Generate UGC hooks.</h3>
+        <div class="sess">
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div class="who"><img src="media/people-search/claude-code.png" alt="">Claude Code <span class="dim">·</span> <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span><span class="st"><i></i> <span class="stt">working</span></span></div>
+          <div class="ln ask"><span class="p">&gt;</span><span>Make her say the recruiter hook. Use voice-reference.mp3 as the rhythm reference. 18s, 9:16, 720p. <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><span class="id">treg host character.jpg voice-reference.mp3</span> <span class="m">→ 2 public URLs</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="media/ugc/logos/seed.png" alt=""><span class="id">reapi.video-gen.seedance-2-5.unrestricted</span> <span class="m">content_filter: false · @image1 @audio1</span></span></div>
+          <div class="ln tool poll"><span class="g"></span><span><span class="id">polling task 7f3a…</span> <span class="m">42s · rendering</span></span></div>
+          <div class="ln ok"><span class="g">●</span><span>Take 6: 18s, lips synced to every word, her rhythm from the clip. Billed per second of output, refunded on failure</span></div>
+        </div>
+        <p><a class="skill-link" href="https://github.com/superdesigndev/treg/tree/main/.agents/skills/ugc-talking-head-video" target="_blank" rel="noopener"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg><code>ugc-talking-head-video</code> skill ↗</a></p>
+        <details class="more seo"><summary>Seedance 2.5 less restriction mode</summary><div class="body"><p>Feed the character image to Seedance 2.5 as an image reference, give it the script and a short audio clip for the rhythm. One image in, a talking head out: lip sync, blinks, hand gestures.</p><p>Seedance refuses hyper-realistic reference images to stop people impersonating real humans. Aggregators expose a bypass and charge double or triple for it. The proper way is BytePlus's advanced creation rights: upload the image, register it as a digital character, generate from it. Several hurdles to get approved. On treg that whole process is wrapped: the Seedance 2.5 less-restricted endpoint takes your image, registers it as a character asset, and generates. Same price as buying from BytePlus directly.</p></div></details><details class="more seo"><summary>The voice trick</summary><div class="body"><p>The default voice is off in rhythm, not fake exactly. Clip the audio from the trending video you liked and pass it as an audio reference. Too many details in speech to describe in text, so let the model copy them.</p></div></details>
+      </div>
+      <div class="vis">
+        <div class="phone" data-video="hook-recruiter">
+          <div class="notch"></div>
+          <span class="tag">Seedance 2.5 · one image in</span>
+          <video id="v-hook-recruiter" src="media/ugc/hook-recruiter.mp4" poster="media/ugc/hook-recruiter-poster.jpg" playsinline preload="none"></video>
+          <button class="play" type="button" data-play="v-hook-recruiter" aria-label="Play"><span><svg width="22" height="22" viewBox="0 0 24 24" fill="#101010"><path d="M8 5v14l11-7z"/></svg></span></button>
+        </div>
+      </div>
+    </article>
+    <!-- STEP 4 -->
+    <article class="step rv" id="step-4">
+      <div class="txt">
+        <div class="num"><span class="n">4</span>Step 4</div>
+        <h3>Demo clip with voice over.</h3>
+        <div class="sess">
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div class="who"><img src="media/people-search/claude-code.png" alt="">Claude Code <span class="dim">·</span> <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span><span class="st"><i></i> <span class="stt">working</span></span></div>
+          <div class="ln ask"><span class="p">&gt;</span><span>Clone the voice from voice-reference.mp3 on Fish Audio, read the demo script with it, then stitch it over demo.mov with captions. <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+          <div class="ln tool own"><span class="g"></span><span><img src="media/ugc/logos/fish.png" alt=""><span class="id">fish-audio · voice.clone</span> <span class="m">→ model 2b9de8b7… · your key</span></span></div>
+          <div class="ln tool own"><span class="g"></span><span><img src="media/ugc/logos/fish.png" alt=""><span class="id">fish-audio · tts</span> <span class="m">11.5s · 4 lines</span></span></div>
+          <div class="ln tool local"><span class="g"></span><span><span class="id">ffmpeg demo.mov + vo.mp3 + captions.srt</span> <span class="m">→ demo_captioned.mp4</span></span></div>
+          <div class="ln ok"><span class="g">●</span><span>Demo clip ready: 10.8s, phone recording, cloned voice, word-timed captions. Reused under every hook</span></div>
+        </div>
+        <details class="more seo"><summary>Why the character is not in the demo</summary><div class="body"><p>To cut cost, the demo section never shows the character. Record the product on your phone. Here it is treg getting an agent to do GTM work: find leads, research them, send outreach from Gmail.</p><p>Then clone a voice on Fish Audio from the same audio clip, generate the voiceover, and stitch it with the screen recording plus captions. That is one demo clip. Now pair it with hooks.</p></div></details>
+      </div>
+      <div class="vis">
+        <div class="phone" data-video="demo">
+          <div class="notch"></div>
+          <span class="tag">Phone recording + cloned voice</span>
+          <video id="v-demo" src="media/ugc/demo.mp4" poster="media/ugc/demo-poster.jpg" playsinline preload="none"></video>
+          <button class="play" type="button" data-play="v-demo" aria-label="Play"><span><svg width="22" height="22" viewBox="0 0 24 24" fill="#101010"><path d="M8 5v14l11-7z"/></svg></span></button>
+        </div>
+        <div class="shot-card"><img src="media/ugc/fish-audio.jpg" alt="Fish Audio voice cloning: original recording on the left, clone on the right" width="2336" height="890"><div class="cap">fish.audio · voice cloning from the same audio clip used as the Seedance reference</div></div>
+        <div class="code"><span class="head">voiceover script · 11.5s</span><span class="c">0.0–2.0  </span>First, go to ChatGPT.
+<span class="c">2.0–4.0  </span>Search for the treg plugin.
+<span class="c">4.0–6.0  </span>Then just tell it who you're looking for.
+<span class="c">6.0–11.5 </span>It researches every lead, writes each one a
+         personalised email, and sends it from my Gmail.</div>
+      </div>
+    </article>
+    <!-- STEP 5 -->
+    <article class="step rv" id="step-5">
+      <div class="txt">
+        <div class="num"><span class="n">5</span>Step 5</div>
+        <h3>Put together with variations.</h3>
+        <div class="sess">
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div class="who"><img src="media/people-search/claude-code.png" alt="">Claude Code <span class="dim">·</span> <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span><span class="st"><i></i> <span class="stt">working</span></span></div>
+          <div class="ln ask"><span class="p">&gt;</span><span>Pull the top videos from these three accounts, extract the hooks, brainstorm 10 in the same pattern, then generate the best 4 with the ugc-talking-head-video skill. <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="logos/tikhub.svg" alt=""><span class="id">tikhub.tiktok.user.posts ×3 · video.detail ×12</span> <span class="m">transcripts · $0.03</span></span></div>
+          <div class="ln tool think"><span class="g"></span><span><span class="id">10 hooks drafted</span> <span class="m">stunt → number → result → "here's how"</span></span></div>
+          <div class="ln tool skill"><span class="g"></span><span><span class="id">skill · ugc-talking-head-video ×4</span> <span class="m">script · duration · voice ref · Seedance prompt · captions</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="media/ugc/logos/seed.png" alt=""><span class="id">reapi.video-gen.seedance-2-5.unrestricted ×4</span> <span class="m">10–18s · 720p · $2.67</span></span></div>
+          <div class="ln ok"><span class="g">●</span><span>4 captioned clips on the demo. Per finished UGC clip: $0.67 for <b>$2.67</b> with <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+        </div>
+        <details class="more seo"><summary>How the hooks are found</summary><div class="body"><p>Give the agent a few reference accounts doing this well, ask it to pull their top videos and extract the hooks. Models are good at reading transcripts now. The pattern in this niche: a stunning claim, a specific number, and a result.</p><p>Ask it to brainstorm in that pattern, pick the lines you like, then one prompt per hook: Seedance 2.5, the character image, the audio reference. The ugc-talking-head-video skill does the whole pass: takes the request, writes the script and sets the duration, grabs the voice reference, writes the Seedance prompt, adds captions and headers, and outputs the final video.</p></div></details>
+      </div>
+      <div class="vis">
+        <div class="variants">
+          <div class="variant pick">
+            <div class="phone" data-video="3am" style="max-width:none;margin-bottom:0">
+              <div class="notch"></div>
+              <video id="v-3am" src="media/ugc/hook-3am.mp4" poster="media/ugc/hook-3am-poster.jpg" playsinline preload="none"></video>
+              <button class="play" type="button" data-play="v-3am" aria-label="Play"><span><svg width="22" height="22" viewBox="0 0 24 24" fill="#101010"><path d="M8 5v14l11-7z"/></svg></span></button>
+            </div>
+            <div class="vcap"><span class="k">picked</span>"3 AM last night, my agent was researching hundreds of customers and emailing each of them to book meetings for me…"</div>
+          </div>
+          <div class="variant">
+            <div class="phone" data-video="recruiter2" style="max-width:none;margin-bottom:0">
+              <div class="notch"></div>
+              <video id="v-recruiter2" src="media/ugc/hook-recruiter.mp4" poster="media/ugc/hook-recruiter-poster.jpg" playsinline preload="none"></video>
+              <button class="play" type="button" data-play="v-recruiter2" aria-label="Play"><span><svg width="22" height="22" viewBox="0 0 24 24" fill="#101010"><path d="M8 5v14l11-7z"/></svg></span></button>
+            </div>
+            <div class="vcap"><span class="k">variant</span>"Recruiters charge companies $20,000 to fill one job, and I just did the exact same thing from my couch…"</div>
+          </div>
+        </div>
+        <div class="bill">
+          <div><span>4 × Seedance 2.5 talking-head clips, 10–18s, 720p<small>character image + audio reference, less-restricted endpoint</small></span><span class="m">$2.67</span></div>
+          <div><span>Trend pull: 117 videos + 15 transcripts</span><span class="m">$0.04</span></div>
+          <div><span>Character: 5 image models, one run each</span><span class="m">&lt; $1</span></div>
+          <div class="tot"><span>Per finished UGC clip</span><span class="m">≈ $0.67</span></div>
+        </div>
+      </div>
+    </article>
+  </div>
+</section>
+
+
+<section class="section bill-sec rv" id="pricing">
+  <h2>No subscription. No contract.<br><span class="hl2">Pays for results only.</span></h2>
+  <p class="lede">Every generation is metered at the provider's own rate from a prepaid balance. 0% markup, no plan, no credits that expire at month end.</p>
+  <div class="bill2">
+    <div class="bill-left">
+      <div class="b-row"><span class="lg"><img src="media/ugc/logos/higgsfield.png" alt=""></span><b>Higgsfield</b><em>Seedance 2.5 from the $49 plan</em><s>$49/mo<i class="strike"></i></s></div>
+      <div class="b-row"><span class="lg"><img src="media/ugc/logos/arcads.png" alt=""></span><b>Arcads</b><em>8,000 credits</em><s>$110/mo<i class="strike"></i></s></div>
+      <div class="b-row"><span class="lg"><img src="media/ugc/logos/creatify.png" alt=""></span><b>Creatify</b><em>Starter</em><s>$39/mo<i class="strike"></i></s></div>
+      <div class="b-row"><span class="lg"><img src="media/ugc/logos/heygen.png" alt=""></span><b>HeyGen</b><em>Creator</em><s>$29/mo<i class="strike"></i></s></div>
+      <div class="b-row"><span class="lg">👤</span><b>A human UGC creator</b><em>per video</em><s>$20–50<i class="strike"></i></s></div>
+    </div>
+    <div class="bill-divider" aria-hidden="true"></div>
+    <div class="bill-right">
+      <div class="bk">with <svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</div>
+      <div class="bb">$0.27<small>per second of Seedance 2.5 at 720p</small></div>
+      <div class="bnote">an 8s clip: $2.13 on treg vs $2.55 in Higgsfield credits · our 4 hooks: $2.67</div>
+    </div>
+  </div>
+  <p class="fineprint">Current catalog rates, verified live 2026-09-14. Subscription prices as published by each vendor in 2026. New teams start with $1.00 free.</p>
+</section>
+
+<section class="section tools-sec rv" id="tools">
+  <h2>One token. {ENDPOINTS} data &amp; tools.</h2>
+  <p class="lede">UGC is one aisle. The same token reaches the trend data, the image models, the video models and the scrapers, and your own keys always win over treg's.</p>
+  <div class="catwrap">
+    <div class="pgrid">
+      <div class="pcard"><span class="ph"><img src="media/ugc/logos/seed.png" alt=""></span><span class="pt"><b>Seedance 2.5 · talking head</b><s>reAPI · $0.27 / s at 720p</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/ugc/logos/seed.png" alt=""></span><span class="pt"><b>Seedance 2.5 · less restricted</b><s>real faces accepted · same price</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/ugc/logos/gemini.svg" alt=""></span><span class="pt"><b>Gemini 3 Pro Image</b><s>reAPI · $0.03 / image</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/ugc/logos/openai.png" alt=""></span><span class="pt"><b>GPT Image 2.5</b><s>reAPI · $0.017 / image</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/ugc/logos/seed.png" alt=""></span><span class="pt"><b>Seedream 4.5 / 5 lite</b><s>Replicate · your key</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/ugc/logos/fish.png" alt=""></span><span class="pt"><b>Voice clone &amp; TTS</b><s>Fish Audio</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/tikhub.svg" alt=""></span><span class="pt"><b>TikTok trending search</b><s>TikHub</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/scrapecreators.svg" alt=""></span><span class="pt"><b>Video transcripts</b><s>ScrapeCreators</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/meta-ad-library.svg" alt=""></span><span class="pt"><b>Meta ad library</b><s>competitor UGC ads</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/instagram.svg" alt=""></span><span class="pt"><b>Instagram reels</b><s>API: app review</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/youtube.svg" alt=""></span><span class="pt"><b>YouTube stats</b><s>quota-capped</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/x.svg" alt=""></span><span class="pt"><b>X posts &amp; profiles</b><s class="was">X API · $200/mo</s></span></div>
+    </div>
+    <div class="morewrap" aria-hidden="true">
+      <div class="pgrid">
+        <div class="pcard"><span class="ph"><img src="logos/exa.svg" alt=""></span><span class="pt"><b>Web search</b><s>Exa · $0.010 / query</s></span></div>
+        <div class="pcard"><span class="ph"><img src="logos/apify.svg" alt=""></span><span class="pt"><b>Web scraping</b><s>Apify actors</s></span></div>
+        <div class="pcard"><span class="ph"><img src="logos/dataforseo.svg" alt=""></span><span class="pt"><b>Keyword volume</b><s>DataForSEO</s></span></div>
+        <div class="pcard"><span class="ph"><img src="logos/apollo.svg" alt=""></span><span class="pt"><b>Match + work email</b><s>Apollo · $0.026 / contact</s></span></div>
+        <div class="pcard"><span class="ph"><img src="logos/tomba.svg" alt=""></span><span class="pt"><b>Email finder</b><s>Tomba · $0.0089 / find</s></span></div>
+        <div class="pcard"><span class="ph"><img src="logos/brightdata.svg" alt=""></span><span class="pt"><b>Proxy scraping</b><s>Bright Data</s></span></div>
+        <div class="pcard"><span class="ph"><img src="logos/linkedin.svg" alt=""></span><span class="pt"><b>LinkedIn profiles</b><s>no official API</s></span></div>
+        <div class="pcard"><span class="ph"><img src="logos/crunchbase.svg" alt=""></span><span class="pt"><b>Funding rounds</b><s class="was">Crunchbase · $99/mo</s></span></div>
+      </div>
+    </div>
+    <div class="moreline">+ many more across {PROVIDERS} providers</div>
+    <div class="ctas" style="justify-content:center;margin-top:20px"><a class="pill dark" href="/catalog">Browse the catalog →</a></div>
+  </div>
+</section>
+
+<section class="rv final">
+  <div class="final-in">
+    <h2>Create UGC in <span class="hero-agents"><img src="media/people-search/claude-code.png" alt="Claude Code"><img src="media/people-search/codex.png" alt="Codex"><img src="media/people-search/openclaw.png" alt="OpenClaw"><img src="media/people-search/hermes.png" alt="Hermes"></span></h2>
+    <div class="copybox">
+      <div class="h">paste this into your agent</div>
+      <div class="line"><span id="llmsUrl">https://treg.to/llms.txt</span><button type="button" id="copyLlms">Copy</button></div>
+      <div class="then">then: "Follow <a href="/skills/ugc/SKILL.md" target="_blank" rel="noopener" style="color:#8FD4F2;text-decoration:none">treg.to/skills/ugc/SKILL.md</a> to make UGC videos for my product."</div>
+    </div>
+    <div class="ctas">
+      <a class="pill light" href="/app?ref=ugc" id="ctaFinal">Set up treg</a>
+      <a class="pill" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a>
+    </div>
+  </div>
+</section>
+
+<footer class="bigfoot">
+  <div class="bigfoot-in">
+    <div class="bf-brand">
+      <span class="bfb"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+      <div class="note">100% open source</div>
+    </div>
+    <nav class="bf-cols" aria-label="Site">
+      <div class="bf-col"><div class="lab">Explore</div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/blog">Launches</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><a href="/agents/claude-code">Agents</a></div>
+      <div class="bf-col"><div class="lab">Build</div>
+        <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
+      <div class="bf-col"><div class="lab">Company</div>
+        <a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </nav>
+  </div>
+  <div class="bf-tag">© 2026 treg — OpenRouter for agent tools. The generated character in this guide does not exist.</div>
+</footer>
+
+<div class="zoomed" id="zoomed"><span class="lbl" id="zoomLbl"></span><img id="zoomImg" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="></div>
+
+<div class="scrim" id="signin-scrim">
+  <div class="smodal" role="dialog" aria-label="Sign in">
+    <button class="cls" id="signinClose" aria-label="Close">✕</button>
+    <h3>Sign in to treg</h3>
+    <p>first sign-in creates your account</p>
+    <a class="pill dark" href="/auth/github" style="text-decoration:none">Continue with GitHub</a>
+    <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
+    <div class="div">or email a code</div>
+    <div id="em-step1">
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
+      <button class="pill" id="em-btn1">Email me a sign-in code</button>
+    </div>
+    <div id="em-step2" style="display:none">
+      <input id="em-code" inputmode="numeric" placeholder="6-digit code"/>
+      <button class="pill dark" id="em-btn2">Sign in</button>
+    </div>
+    <div class="err" id="em-err"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* hero intro: cards fan out from the centre, then settle into a light scroll parallax */
+  var heroEl = document.querySelector('.hero');
+  requestAnimationFrame(function () { requestAnimationFrame(function () { heroEl.classList.add('in'); }); });
+  setTimeout(function () { heroEl.classList.add('settled'); }, 1400);
+  var floats = Array.prototype.slice.call(document.querySelectorAll('.float[data-p]'));
+  function parallax() {
+    if (reduced || !heroEl.classList.contains('settled')) return;
+    var y = scrollY;
+    if (y > 1200) return;
+    floats.forEach(function (f) { f.style.setProperty('--py', (y * parseFloat(f.getAttribute('data-p'))).toFixed(1) + 'px'); });
+  }
+  addEventListener('scroll', parallax, { passive: true });
+
+  /* pinned left panel (desktop): move every step's text column into one sticky stack and
+     crossfade it as the matching artifact column scrolls through the middle of the viewport */
+  var stepsEl = document.querySelector('.steps');
+  var started = {};
+  function startSession(card) {
+    if (!card || started[card.dataset.k]) return; started[card.dataset.k] = 1;
+    var lines = Array.prototype.slice.call(card.querySelectorAll('.ln')), stt = card.querySelector('.stt');
+    if (reduced) { card.classList.add('done'); stt.textContent = 'done'; return; }
+    card.classList.add('run');
+    lines.forEach(function (ln, i) {
+      setTimeout(function () {
+        lines.forEach(function (o) { o.classList.remove('cur'); });
+        ln.classList.add('on'); if (i < lines.length - 1) ln.classList.add('cur');
+        if (i === lines.length - 1) { card.classList.add('done'); stt.textContent = 'done'; }
+      }, 350 + i * 650);
+    });
+  }
+  document.querySelectorAll('.sess').forEach(function (c, i) { c.dataset.k = i; });
+  if (stepsEl && matchMedia('(min-width: 861px)').matches && 'IntersectionObserver' in window) {
+    var pin = document.createElement('div'); pin.className = 'pin step';
+    var txts = Array.prototype.slice.call(stepsEl.querySelectorAll('.step .txt'));
+    var viss = Array.prototype.slice.call(stepsEl.querySelectorAll('.step .vis'));
+    txts.forEach(function (t) { pin.appendChild(t); });
+    stepsEl.insertBefore(pin, stepsEl.firstChild); stepsEl.classList.add('pinned');
+    var active = -1;
+    function setActive(i) {
+      if (i === active) return; active = i;
+      txts.forEach(function (t, k) { t.classList.toggle('active', k === i); });
+      startSession(txts[i].querySelector('.sess'));
+    }
+    setActive(0);
+    /* the pin centres its panel in the viewport; before it sticks, the first artifact column
+       starts where that centred panel starts, so the two line up at the top of the section */
+    function alignFirst() {
+      viss[0].style.paddingTop = '0px';
+      var pad = txts[0].querySelector('.num').getBoundingClientRect().top - pin.getBoundingClientRect().top;
+      viss[0].style.paddingTop = Math.max(0, Math.round(pad)) + 'px';
+    }
+    alignFirst(); setTimeout(alignFirst, 400); addEventListener('resize', alignFirst);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(alignFirst);
+    var mid = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) setActive(viss.indexOf(e.target)); });
+    }, { rootMargin: '-40% 0px -40% 0px', threshold: 0 });
+    viss.forEach(function (v) { mid.observe(v); });
+    /* the first step activates on load; its typing starts when the section first scrolls into view */
+  } else {
+    /* stacked layout: each session types in as it scrolls into view */
+    if ('IntersectionObserver' in window) {
+      var sio = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { sio.unobserve(e.target); startSession(e.target); } }); }, { threshold: .5 });
+      document.querySelectorAll('.sess').forEach(function (el) { sio.observe(el); });
+    } else { document.querySelectorAll('.sess').forEach(startSession); }
+  }
+
+  /* reveal on scroll */
+  if ('IntersectionObserver' in window && !reduced) {
+    var ro = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); ro.unobserve(e.target); } }); }, { rootMargin: '0px 0px -10% 0px' });
+    document.querySelectorAll('.rv').forEach(function (el) { ro.observe(el); });
+    var so = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) e.target.classList.add('seen'); }); }, { threshold: .3 });
+    document.querySelectorAll('.bill-sec').forEach(function (el) { so.observe(el); });
+  } else { document.querySelectorAll('.rv').forEach(function (el) { el.classList.add('in'); }); document.querySelectorAll('.bill-sec').forEach(function (el) { el.classList.add('seen'); }); }
+
+  var nav = $('nav');
+  addEventListener('scroll', function () { nav.classList.toggle('scrolled', scrollY > 8); }, { passive: true });
+
+  /* videos: one plays at a time; click-to-play phones; sound toggle on the hero */
+  var vids = Array.prototype.slice.call(document.querySelectorAll('.phone video, #v-tutorial'));
+  $('v-tutorial').addEventListener('play', function () { pauseOthers(this); });
+  function pauseOthers(keep) { vids.forEach(function (v) { if (v !== keep) { v.pause(); if (!v.hasAttribute('autoplay')) v.currentTime = 0; } }); }
+  document.querySelectorAll('[data-play]').forEach(function (btn) {
+    var v = $(btn.getAttribute('data-play'));
+    btn.addEventListener('click', function () { pauseOthers(v); v.play(); });
+    v.addEventListener('play', function () { btn.classList.add('hide'); });
+    v.addEventListener('pause', function () { btn.classList.remove('hide'); });
+    v.addEventListener('ended', function () { btn.classList.remove('hide'); v.currentTime = 0; });
+    v.addEventListener('click', function () { if (!v.paused) v.pause(); });
+  });
+  /* zoom the comparison shots */
+  var zoomed = $('zoomed');
+  document.querySelectorAll('[data-zoom]').forEach(function (f) {
+    f.addEventListener('click', function () {
+      $('zoomImg').src = f.getAttribute('data-zoom'); $('zoomLbl').textContent = f.getAttribute('data-lbl');
+      zoomed.classList.add('open');
+    });
+  });
+  zoomed.addEventListener('click', function () { zoomed.classList.remove('open'); });
+
+  /* copy llms.txt */
+  $('copyLlms').addEventListener('click', function () {
+    var b = this, txt = $('llmsUrl').textContent;
+    function done() { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1600); }
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(done, function () {
+      var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy'); document.body.removeChild(ta); done();
+    });
+  });
+
+  /* Setup CTAs: signed in → the app; signed out → the sign-in modal */
+  var scrim = $('signin-scrim');
+  function openSignin() { scrim.classList.add('open'); $('em-input').focus(); }
+  function closeSignin() { scrim.classList.remove('open'); }
+  $('signinClose').addEventListener('click', closeSignin);
+  scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSignin(); });
+  addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeSignin(); zoomed.classList.remove('open'); } });
+  ['ctaNav', 'ctaHero', 'ctaFinal'].forEach(function (id) {
+    var el = $(id);
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+      e.preventDefault();
+      fetch('/auth/me', { credentials: 'same-origin' }).then(function (r) {
+        if (r.ok) location.href = '/app'; else openSignin();
+      }).catch(openSignin);
+    });
+  });
+  $('em-btn1').addEventListener('click', emailStart);
+  $('em-input').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailStart(); });
+  $('em-btn2').addEventListener('click', emailVerify);
+  $('em-code').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailVerify(); });
+  function emailStart() {
+    var em = $('em-input').value.trim(), err = $('em-err');
+    if (!em) { err.textContent = 'Enter your email address.'; return; }
+    if ($('em-btn1').disabled) return; $('em-btn1').disabled = true; $('em-btn1').textContent = 'Sending…'; err.textContent = '';
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.detail || 'could not send the code'); return d; }); })
+      .then(function (d) {
+        $('em-step1').style.display = 'none'; $('em-step2').style.display = 'block';
+        if (d.dev_code) { $('em-code').value = d.dev_code; err.style.color = 'var(--green)'; err.textContent = 'dev mode — your code: ' + d.dev_code; }
+        else { err.style.color = ''; }
+        $('em-code').focus();
+      })
+      .catch(function (e2) { err.textContent = e2.message; $('em-btn1').disabled = false; $('em-btn1').textContent = 'Email me a sign-in code'; });
+  }
+  function emailVerify() {
+    var em = $('em-input').value.trim(), code = $('em-code').value.trim(), err = $('em-err');
+    if (!code) return;
+    $('em-btn2').textContent = 'Verifying…'; err.textContent = '';
+    fetch('/auth/email/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, code: code }) })
+      .then(function (r) { if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.detail || "that code didn't work"); }); location.href = '/app'; })
+      .catch(function (e2) { err.textContent = e2.message; $('em-btn2').textContent = 'Sign in'; });
+  }
+})();
+</script>
+<script src="/sitetrack.js"></script>
+<script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
+</body>
+</html>
+

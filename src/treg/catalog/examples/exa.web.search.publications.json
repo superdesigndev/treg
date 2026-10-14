@@ -1,0 +1,26 @@
+{
+  "requestId": "ebb125edce6185c3967a7767aeb0a7ed",
+  "resolvedSearchType": "",
+  "results": [
+    {
+      "id": "https://exa.ai/library/publication/v0rzqcj5p6t",
+      "title": "A Comparative Study of HNSW Implementations for Scalable Approximate Nearest Neighbor Search",
+      "url": "https://exa.ai/library/publication/v0rzqcj5p6t",
+      "author": "Exa"
+    },
+    {
+      "id": "https://exa.ai/library/publication/zbmp4bqptgm",
+      "title": "AQR-HNSW: Accelerating Approximate Nearest Neighbor Search via Density-aware Quantization and Multi-stage Re-ranking",
+      "url": "https://exa.ai/library/publication/zbmp4bqptgm",
+      "author": "Exa"
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "searchTime": 353.1,
+  "costDollars": {
+    "total": 0.007,
+    "search": {
+      "neural": 0.007
+    }
+  }
+}

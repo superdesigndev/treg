@@ -1,0 +1,79 @@
+{
+  "results": [
+    {
+      "urn": "urn:li:ugcPost:7496332962049933312",
+      "actor": {
+        "linkedinURL": "https://www.linkedin.com/company/stripe",
+        "name": "Stripe",
+        "image": "https://media.licdn.com/dms/image/v2/D560BAQE2ZfJyfn-VCg/company-logo_400_400/B56ZlyKwpUKIAY-/0/1758557047806/stripe_logo?e=1788998400&v=beta&t=MdjZEN3mePpuFFNHw-ussLRc45A-BhDQUwrHt43nh-E",
+        "entityType": "company",
+        "linkedinID": "stripe"
+      },
+      "postRange": {
+        "earliest": "2026-08-20T21:37:18.601Z",
+        "latest": "2026-08-21T21:37:18.600Z"
+      },
+      "postAge": "3 days ago",
+      "socialActivityCounts": {
+        "commentsCount": 6,
+        "sharesCount": 8,
+        "reactionsCount": 100,
+        "reactionTypeCounts": [
+          {
+            "count": 91,
+            "reactionType": "LIKE"
+          },
+          {
+            "count": 4,
+            "reactionType": "EMPATHY"
+          },
+          "… 3 more item(s) truncated"
+        ]
+      },
+      "images": [],
+      "resharedPost": {
+        "urn": "urn:li:ugcPost:7495571415828619265",
+        "actor": {
+          "linkedinURL": "https://www.linkedin.com/company/krakenfx",
+          "name": "Kraken",
+          "image": "https://media.licdn.com/dms/image/v2/D4E0BAQFm8yg0gGJN1A/company-logo_400_400/company-logo_400_400/0/1697458897774/krakenfx_logo?e=1788998400&v=beta&t=8jgK_C1bhslQD0kQLLogykRGXhl05ZqOJ_YIsbxfNv0",
+          "entityType": "company",
+          "linkedinID": "krakenfx"
+        },
+        "postRange": {
+          "earliest": "2026-08-17T21:37:18.601Z",
+          "latest": "2026-08-18T21:37:18.600Z"
+        },
+        "postAge": "6 days ago",
+        "socialActivityCounts": {
+          "commentsCount": 11,
+          "sharesCount": 37,
+          "reactionsCount": 188,
+          "reactionTypeCounts": [
+            {
+              "count": 159,
+              "reactionType": "LIKE"
+            },
+            {
+              "count": 14,
+              "reactionType": "EMPATHY"
+            },
+            "… 3 more item(s) truncated"
+          ]
+        },
+        "images": [],
+        "video": {
+          "url": "https://dms.licdn.com/playlist/vid/dynamic/D4D10AQEYTINSXvv4Jw/CeJxzMnFJdAxPM_Qr9Mp3dNTVcQLxQxJNgyw9Ap1hfJB8qXu5oyeafDkaPxuNn4_Kd7LQBQDaLR8H?e=1788213600&v=beta&t=QH6oP1nB08iPJjk-CSaMv8XC0cgXnsD7iEPUnpuQytg",
+          "thumbnail": "https://media.licdn.com/dms/image/v2/D4D10AQEYTINSXvv4Jw/videocover-high/B4DaATa5R9HQAo-/0/1787032214152?e=1788213600&v=beta&t=0LwKHdpUabqGZT10GuKjGNKKbKd6-yrf0dEqrWqVf2I"
+        },
+        "commentary": "Krak Card has landed in the U.S. 🇺🇸\n\nMost cards force a trade-off: earn rewards and carry debt, or skip rewards and stay debt-free. We think that trade-off is outdated and so is the idea that your money needs to sit in one currency to be spendable.\n\nThe data backs this up:\n📊 63% of Americans feel financially behind where they expected to be\n📊 30% don't own a credit card — and of those who do, 42% worry about their monthly balance\n📊 60% say they'd switch to a debit card that rewards them without … [1177 chars total]",
+        "url": "https://www.linkedin.com/posts/krakenfx_krak-card-has-landed-in-the-us-most-activity-7495571417493704704-8EPO?utm_source=social_share_send&utm_medium=android_app&rcm=ACoAAG0HgNIBzAWFsjEsN69HK7GFMb4APA29yhw"
+      },
+      "commentary": "Kraken is launching Krak Cards in the US, powered by Stripe Issuing. Spend crypto anywhere Visa is accepted.",
+      "url": "https://www.linkedin.com/posts/stripe_krak-card-has-landed-in-the-us-most-activity-7496332962540589056-lVmi?utm_source=social_share_send&utm_medium=android_app&rcm=ACoAAG0HgNIBzAWFsjEsN69HK7GFMb4APA29yhw"
+    }
+  ],
+  "page": 1,
+  "pages": 187,
+  "totalResults": 187
+}

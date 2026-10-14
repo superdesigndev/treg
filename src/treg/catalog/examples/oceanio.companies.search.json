@@ -1,0 +1,46 @@
+{
+  "detail": "OK",
+  "total": 1,
+  "searchAfter": "NoZgdADANARAzgFwE4EsAOBTMBjA9gWxgF0g",
+  "creditsUsed": 0.2,
+  "companies": [
+    {
+      "company": {
+        "domain": "stripe.com",
+        "primaryCountry": "us",
+        "industries": [
+          "Payments",
+          "Financial Services",
+          "FinTech",
+          "Mobile Payments"
+        ],
+        "employeeCountOcean": 14348,
+        "description": "Stripe is a financial services platform that helps all types of businesses accept payments, build flexible billing models, and manage money movement.",
+        "technologies": [
+          "Stripe",
+          "PayPal",
+          "Afterpay",
+          "Next.js",
+          "Cart Functionality",
+          "Sentry"
+        ],
+        "webTraffic": {
+          "visits": 117011212,
+          "pageViews": 386920974,
+          "pagesPerVisit": 3.3066999912261963,
+          "bounceRate": 0.5483
+        },
+        "name": "Stripe",
+        "headcountGrowth": {
+          "threeMonths": -155,
+          "threeMonthsPercentage": -0.011,
+          "sixMonths": 617,
+          "sixMonthsPercentage": 0.047,
+          "twelveMonths": 1817,
+          "twelveMonthsPercentage": 0.152
+        }
+      }
+    }
+  ],
+  "_truncated": "includeDomains filter for stripe.com: 1 of 1 match; lists shortened"
+}

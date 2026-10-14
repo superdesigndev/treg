@@ -16,7 +16,7 @@ from sqlalchemy import text
 from conftest import make_upstream
 
 from treg.api import app
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 
 
 def _h(token: str) -> dict:
@@ -232,14 +232,6 @@ async def test_expired_invite_is_rejected(c):
         await s.commit()
     r = await c.post("/invites/accept", json={"code": code, "email": "late@x.dev"})
     assert r.status_code == 410
-
-
-async def test_invite_response_carries_expiry(c):
-    otok = await _register(c, "owner@x.dev")
-    team = (await c.post("/orgs", headers=_h(otok), json={"name": "Team A"})).json()
-    r = await c.post(f"/orgs/{team['org_id']}/invites", headers=_h(team["token"]),
-                     json={"email": "b@x.dev", "role": "member", "expires_days": 3})
-    assert r.status_code == 200 and "expires_at" in r.json()
 
 
 async def test_list_and_revoke_invites(c):

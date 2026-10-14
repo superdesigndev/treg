@@ -1,0 +1,37 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "nextCursor": "t3_1wk65n7",
+      "posts": [
+        {
+          "author": "RememberTooSmile",
+          "createdUtc": 1789773232,
+          "id": "1wk5kv1",
+          "isArchived": false,
+          "isLocked": false,
+          "numComments": 5045,
+          "permalink": "/r/news/comments/1wk5kv1/gemini_hacked_three_companies_in_first_known/",
+          "score": 17313,
+          "selftext": "",
+          "subreddit": "news",
+          "title": "Gemini hacked three companies in first known breakout by Google's AI, WSJ reports",
+          "url": "https://www.reuters.com/business/gemini-hacked-three-companies-first-known-breakout-by-google-ai-wsj-reports-2026-09-18/"
+        },
+        "… 24 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0002,
+  "items": 25,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-badger",
+    "name": "Badger",
+    "kind": "anonymous",
+    "artworkKey": "badger"
+  },
+  "hint": "large_result: this response is ~9 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq`… [308 chars]",
+  "resultId": "8c6be633-b051-41c3-8934-e5b3bddd3b1f"
+}

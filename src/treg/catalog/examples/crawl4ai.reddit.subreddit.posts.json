@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: reddit-subreddit: r/rust hot · 25 posts"
+    ]
+  },
+  "recipe": "reddit-subreddit",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 189,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 2,
+  "rows": [
+    {
+      "author": "matthieum",
+      "comments": 226,
+      "created": "2026-09-19T13:59:48Z",
+      "flair": "📢 announcement",
+      "id": "1wkmzun",
+      "link": "https://www.reddit.com/r/rust/comments/1wkmzun/no_more_code_dumps/",
+      "score": 1635,
+      "subreddit": "rust",
+      "text": "### TL;DR\n\n**Code Dumps, ie links to code repositories, are no longer welcome on r/rust.**\n\nIf you are excited about a project you built, and just wish to share it, consider posting a casual top-level comment in the weekly [What's Everyone Working on this Week?](https://new.reddit.com/r/rust/?f=flai",
+      "title": "No More Code Dumps",
+      "url": "https://www.reddit.com/r/rust/comments/1wkmzun/no_more_code_dumps/"
+    },
+    {
+      "author": "llogiq",
+      "comments": 5,
+      "created": "2026-10-06T15:57:52Z",
+      "flair": "🙋 questions megathread",
+      "id": "1wz6a3m",
+      "link": "https://www.reddit.com/r/rust/comments/1wz6a3m/hey_rustaceans_got_a_question_ask_here_412026/",
+      "score": 12,
+      "subreddit": "rust",
+      "text": "Mystified about strings? Borrow checker has you in a headlock? Seek help here! There are no stupid questions, only docs that haven't been written yet. Please note that if you include code examples to e.g. show a compiler error or surprising result, linking a [playground](https://play.rust-lang.org/)",
+      "title": "Hey Rustaceans! Got a question? Ask here (41/2026)!",
+      "url": "https://www.reddit.com/r/rust/comments/1wz6a3m/hey_rustaceans_got_a_question_ask_here_412026/"
+    }
+  ]
+}

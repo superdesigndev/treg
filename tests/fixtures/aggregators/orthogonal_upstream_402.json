@@ -1,0 +1,21 @@
+{
+ "status": 402,
+ "body": {
+  "success": false,
+  "error": "API request failed with status 402",
+  "data": {
+   "detail": "Insufficient credits"
+  },
+  "_orthogonal": {
+   "error": "orthogonal_endpoint_contract",
+   "message": "The upstream API rejected this request. Compare your request to expected_schema and retry.",
+   "endpoint": "POST /v3/search/people"
+  },
+  "requestId": "run_phone:2556fb7953_8n2mvlbe3ol"
+ },
+ "expect": {
+  "upstream_status": null,
+  "price": null,
+  "ok": false
+ }
+}

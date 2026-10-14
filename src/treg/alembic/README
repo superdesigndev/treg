@@ -1,0 +1,4 @@
+Alembic migrations for the tools-registry server schema.
+
+This directory ships inside the wheel. treg.maintenance runs Alembic before release tasks.
+Application and worker startup only verify the stamped revision and never write schema.

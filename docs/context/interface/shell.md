@@ -61,6 +61,12 @@ catches an HTTPS call the **agent makes on its own**, from a script that never h
 the first thing here that can break an agent's own calls (a certificate-pinned client), and a surprise is
 worse than a flag.
 
+Before touching the CA, `_start_proxy_handle` calls `ensure_proxy_dependency()`: the proxy needs the
+`cryptography` package (the `[proxy]` extra, deliberately not in the base install), and if it is
+missing, `_proxy_install_hint` probes the running environment (pipx, then pip, then uv) and offers to
+install it with the one command that actually works for *this* copy of treg, rather than printing
+generic advice that silently does nothing in a uv-tool or pipx install.
+
 `cmd_shell_start` → `_start_local_proxy` (in `cli.py`) generates/loads the CA, seeds the allow-list from
 the tool listing **already fetched for the shims** (every registered host, including tools with no CLI, so
 no second request), starts the proxy and hands `start_session` two things: `extra_env` (the proxy URL +

@@ -1,0 +1,20 @@
+[
+  {
+    "person": {
+      "id": "EGm0dLYOh9cL60lrDMqarXRObEtU6mX",
+      "fullName": "Satya Nadella",
+      "URLs": {
+        "golden": "golden.com/wiki/Satya_Nadella-RJ9YY6",
+        "twitter": "twitter.com/satyanadella",
+        "facebook": "www.facebook.com/NadellaSatya",
+        "linkedin": "linkedin.com/in/satyanadella",
+        "signalNFX": "signal.nfx.com/investors/satya-nadella",
+        "crunchbase": "www.crunchbase.com/person/satya-nadella"
+      },
+      "emailAvailable": true,
+      "personalEmailAvailable": true,
+      "workEmailAvailable": true
+    },
+    "lookupSuccessful": true
+  }
+]

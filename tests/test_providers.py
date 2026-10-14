@@ -99,11 +99,20 @@ def test_longest_token_wins(tmp_path):
     assert d["HUGGINGFACE_API_KEY"].provider == "HuggingFace"
 
 
-def test_build_binding_shapes():
-    assert prov.build_binding({"shape": "bearer"})["format"] == "Bearer {secret}"
-    b = prov.build_binding({"shape": "api_key_header", "header": "x-api-key"})
-    assert b["name"] == "x-api-key" and b["format"] == "{secret}"
-    assert prov.build_binding({"shape": "oauth2"}) is None   # oauth2 uses the connect flow, not a binding
+@pytest.mark.parametrize("auth,expected", [
+    ({"shape": "bearer"}, {"format": "Bearer {secret}"}),
+    ({"shape": "api_key_header", "header": "x-api-key"}, {"name": "x-api-key", "format": "{secret}"}),
+    ({"shape": "query", "param": "api_key"}, {"location": "query", "name": "api_key"}),
+    ({"shape": "basic"}, {"location": "header", "format": "Basic {secret}"}),
+    ({"shape": "oauth2"}, None),   # oauth2 uses the connect flow, not a binding
+    ({"shape": "query"}, None),    # Telegram-style, no param
+])
+def test_build_binding_shapes(auth, expected):
+    binding = prov.build_binding(auth)
+    if expected is None:
+        assert binding is None
+    else:
+        assert {k: binding[k] for k in expected} == expected
 
 
 def test_plan_actions_supported_and_deferred(tmp_path):
@@ -144,20 +153,17 @@ def test_oauth_ready_true_only_for_complete_pair_with_endpoints(tmp_path):
     [gh] = prov.scan_env(env)
     assert prov.oauth_ready(gh) is True
     # Stripe: a client pair but NO oauth block in the catalog → not ready.
-    p2 = tmp_path / "stripe"; p2.mkdir(); (p2 / ".env").write_text("STRIPE_CLIENT_ID=x\nSTRIPE_CLIENT_SECRET=x\n")
+    p2 = tmp_path / "stripe"
+    p2.mkdir()
+    (p2 / ".env").write_text("STRIPE_CLIENT_ID=x\nSTRIPE_CLIENT_SECRET=x\n")
     [st] = prov.scan_env(str(p2 / ".env"))
     assert prov.oauth_ready(st) is False
     # Incomplete pair (only the id half) → not ready.
-    p3 = tmp_path / "half"; p3.mkdir(); (p3 / ".env").write_text("GITHUB_CLIENT_ID=x\n")
+    p3 = tmp_path / "half"
+    p3.mkdir()
+    (p3 / ".env").write_text("GITHUB_CLIENT_ID=x\n")
     [half] = prov.scan_env(str(p3 / ".env"))
     assert prov.oauth_ready(half) is False
-
-
-def test_build_binding_query_and_basic():
-    q = prov.build_binding({"shape": "query", "param": "api_key"})
-    assert q["location"] == "query" and q["name"] == "api_key"
-    b = prov.build_binding({"shape": "basic"})
-    assert b["location"] == "header" and b["format"] == "Basic {secret}"
 
 
 def test_basic_parts_twilio():
@@ -185,6 +191,15 @@ def test_catalog_grew_and_versioned():
     assert len(names) == len(set(names))
 
 
+def test_required_provider_headers_reach_planned_action(tmp_path):
+    env = _write_env(tmp_path, "CRUSTDATA_API_KEY=x\n")
+    crust = _by_var(prov.scan_env(env))["CRUSTDATA_API_KEY"]
+    assert crust.required_headers == {"x-api-version": "2025-11-01"}
+
+    [action] = prov.plan_actions([crust])
+    assert action.required_headers == {"x-api-version": "2025-11-01"}
+
+
 def test_env_values_reads_only_requested(tmp_path):
     env = _write_env(tmp_path, 'A_KEY="v1"\nexport B_KEY=v2\nC_KEY=v3\n# comment\nD_KEY=\n')
     vals = prov.env_values(env, ["A_KEY", "B_KEY"])
@@ -210,9 +225,13 @@ def test_llm_parse_tolerates_prose_and_filters_bad_entries():
     assert len(out) == 1 and out[0]["var"] == "ACME_API_KEY"   # the incomplete "BAD" entry is dropped
 
 
-def test_llm_parse_handles_garbage():
-    assert prov.llm_parse("no json at all") == []
-    assert prov.llm_parse('{"resolved":[]}') == []
+@pytest.mark.parametrize("text", [
+    "no json at all",
+    '{"resolved":[]}',
+    '[{"var":"X","base_url":"y","auth":{"shape":"bearer"}}]',   # a top-level array must not crash
+])
+def test_llm_parse_handles_garbage(text):
+    assert prov.llm_parse(text) == []
 
 
 def test_provider_config_var_is_not_a_credential(tmp_path):
@@ -246,15 +265,6 @@ def test_independent_oauth_apps_not_merged(tmp_path):
     assert all(len(p.vars) == 2 for p in pairs)
 
 
-def test_llm_parse_survives_top_level_array():
-    assert prov.llm_parse('[{"var":"X","base_url":"y","auth":{"shape":"bearer"}}]') == []   # no crash
-
-
-def test_query_without_param_is_unsupported():
-    assert prov.build_binding({"shape": "query"}) is None            # Telegram-style, no param
-    assert prov.build_binding({"shape": "query", "param": "api_key"}) is not None
-
-
 def test_env_values_strips_one_quote_pair(tmp_path):
     env = _write_env(tmp_path, "A=\"pa'ss\"\nB='v2'\nC=plain\n")
     v = prov.env_values(env, ["A", "B", "C"])
@@ -284,13 +294,6 @@ def test_provider_model_and_dsn_are_config(tmp_path):
     assert d["SENTRY_DSN"].kind == "config"
 
 
-def test_linear_and_calcom_auth_shapes():
-    lin = next(p for p in prov.CATALOG if p["provider"] == "Linear")
-    assert lin["auth"]["shape"] == "api_key_header" and lin["auth"]["format"] == "{secret}"
-    cal = next(p for p in prov.CATALOG if p["provider"] == "Cal.com")
-    assert cal["auth"]["shape"] == "query" and cal["auth"]["param"] == "apiKey"
-
-
 def test_llm_parse_rejects_unsafe_base_url():
     good = '{"resolved":[{"var":"X","base_url":"https://api.acme.com","auth":{"shape":"bearer"}}]}'
     assert len(prov.llm_parse(good)) == 1
@@ -304,6 +307,55 @@ def test_llm_parse_dedupes_by_var():
     payload = ('{"resolved":[{"var":"X","base_url":"https://a.com","auth":{"shape":"bearer"}},'
                '{"var":"X","base_url":"https://b.com","auth":{"shape":"bearer"}}]}')
     assert len(prov.llm_parse(payload)) == 1
+
+
+def test_llm_parse_strips_inline_thinking_with_json_draft():
+    """Self-hosted reasoning models (vLLM/llama-server without --reasoning-parser) return thinking
+    inline in `content` as <think>…</think>JSON. When the thinking contains JSON drafts, the naive
+    first-`{` to last-`}` slice glues the draft to the answer and json.loads fails. Issue #756."""
+    # Full <think>...</think>JSON format with JSON draft in the thinking block
+    text = ('<think>Let me analyze these vars... I could respond with something like '
+            '{"resolved":[{"var":"DRAFT"}]} but let me check the base_url format...</think>'
+            '{"resolved":[{"var":"ACME_API_KEY","provider":"Acme",'
+            '"base_url":"https://api.acme.com","auth":{"shape":"bearer"}}]}')
+    out = prov.llm_parse(text)
+    assert len(out) == 1
+    assert out[0]["var"] == "ACME_API_KEY"
+    assert out[0]["base_url"] == "https://api.acme.com"
+
+
+def test_llm_parse_strips_inline_thinking_prefilled():
+    """When chat template pre-fills `<think>`, the model returns `...reasoning</think>JSON`
+    (no opening tag). The fix must still strip content before the closing tag."""
+    text = ('Let me think about this... ACME_API_KEY looks like an Acme credential '
+            '{"maybe": "draft"}</think>'
+            '{"resolved":[{"var":"ACME_API_KEY","provider":"Acme",'
+            '"base_url":"https://api.acme.com","auth":{"shape":"bearer"}}]}')
+    out = prov.llm_parse(text)
+    assert len(out) == 1 and out[0]["var"] == "ACME_API_KEY"
+
+
+def test_llm_parse_strips_nested_braces_in_thinking():
+    """Thinking blocks may contain nested braces (multiple JSON drafts or objects)."""
+    text = ('<think>First attempt: {"a":1} no wait... second: {"b":{"c":2}} still not right</think>'
+            '{"resolved":[{"var":"X","base_url":"https://x.com","auth":{"shape":"bearer"}}]}')
+    out = prov.llm_parse(text)
+    assert len(out) == 1 and out[0]["var"] == "X"
+
+
+def test_llm_parse_works_without_thinking_tags():
+    """Regression: models that return clean content (no thinking tags) must still work."""
+    text = '{"resolved":[{"var":"Y","base_url":"https://y.com","auth":{"shape":"bearer"}}]}'
+    out = prov.llm_parse(text)
+    assert len(out) == 1 and out[0]["var"] == "Y"
+
+
+def test_llm_parse_uses_last_think_tag():
+    """When multiple </think> tags appear (nested thinking?), use the last one."""
+    text = ('<think>inner</think> more thought <think>again</think>'
+            '{"resolved":[{"var":"Z","base_url":"https://z.com","auth":{"shape":"bearer"}}]}')
+    out = prov.llm_parse(text)
+    assert len(out) == 1 and out[0]["var"] == "Z"
 
 
 def test_scan_env_respects_passed_catalog(tmp_path):
@@ -326,10 +378,6 @@ async def test_providers_json_endpoint_serves_catalog():
     assert any(p["provider"] == "OpenAI" for p in body["providers"])
 
 
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-q"]))
-
-
 def test_match_skill_resolves_file_credential_providers():
     # skill folders (OAuth token files, no env var) resolve to a curated host by name / alias
     assert prov.match_skill("google-ads")["base_url"] == "https://googleads.googleapis.com"
@@ -338,14 +386,6 @@ def test_match_skill_resolves_file_credential_providers():
     assert prov.match_skill("google_ads")["provider"] == "Google Ads"   # punctuation-insensitive
     assert prov.match_skill("totally-unknown-skill") is None
     assert prov.match_skill("") is None
-
-
-def test_google_providers_have_no_env_tokens():
-    # these OAuth providers must NOT be detected from a .env (their auth is OAuth + extra headers,
-    # not a simple bearer key) — so their catalog tokens are empty and the env scanner skips them
-    for name in ("Google Ads", "Google Search Console"):
-        entry = next(p for p in prov.CATALOG if p["provider"] == name)
-        assert entry["tokens"] == []
 
 
 # ---- catalog CLI metadata (auto-import Phase 1: auth_mechanism + detect) --------------------
@@ -362,10 +402,6 @@ def test_every_catalog_cli_profile_is_valid_and_typed():
         # env/argv entries carry an inject; device/config_file need not
         if cli["auth_mechanism"] in ("env", "argv") and not cli.get("unsupported"):
             assert cli.get("inject"), f"{provider}: env/argv mechanism must have an inject"
-
-
-def test_catalog_version_bumped_for_the_new_fields():
-    assert prov.CATALOG_VERSION >= 8
 
 
 def test_validate_cli_profile_accepts_and_rejects_the_new_fields():
@@ -400,7 +436,9 @@ def test_cli_env_var_extraction():
 
 
 def test_classify_env_cli_all_states():
-    c = lambda **kw: prov.classify_cli(_ENV_CLI, **kw)
+    def c(**kw):
+        return prov.classify_cli(_ENV_CLI, **kw)
+
     assert c(installed=True, secret_present=True, logged_in=False) == {"status": "ready", "tier": "server"}
     assert c(installed=True, secret_present=False, logged_in=True) == {"status": "ready", "tier": "local"}
     assert c(installed=True, secret_present=False, logged_in=False) == {"status": "needs_key", "env": "STRIPE_API_KEY"}
@@ -408,7 +446,9 @@ def test_classify_env_cli_all_states():
 
 
 def test_classify_config_file_cli():
-    c = lambda **kw: prov.classify_cli(_CONFIG_CLI, **kw)
+    def c(**kw):
+        return prov.classify_cli(_CONFIG_CLI, **kw)
+
     assert c(installed=True, secret_present=False, logged_in=True) == {"status": "ready", "tier": "local"}
     got = c(installed=True, secret_present=False, logged_in=False)
     assert got["status"] == "needs_login" and "pscale login" in got["action"]

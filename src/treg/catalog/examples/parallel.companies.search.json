@@ -1,0 +1,30 @@
+{
+  "entity_set_id": "entity_set_279334bbfdbb4c03b2c279397321d03d",
+  "entities": [
+    {
+      "name": "Vector Database Cloud",
+      "url": "https://uk.linkedin.com/company/vectordbcloud",
+      "description": "4 open-source vector engines (hosted). Who we serve Banks, insurers, pharma, government, and high-growth SaaS"
+    },
+    {
+      "name": "Zilliz",
+      "url": "https://www.linkedin.com/company/zilliz",
+      "description": "Zilliz is a leading vector database company for enterprise-grade AI. Founded by the engineers behind Milvus, the world's most widely-adopted open-source vector"
+    },
+    {
+      "name": "Zilliz",
+      "url": "https://ru.linkedin.com/company/zilliz?trk=similar-companies_org_image",
+      "description": "Zilliz is a leading vector database company for enterprise-grade AI. Founded by the engineers behind Milvus, the world's most widely-adopted open-source vector"
+    },
+    {
+      "name": "Milvus, created by Zilliz",
+      "url": "https://www.linkedin.com/company/the-milvus-project",
+      "description": "Milvus is a highly flexible, reliable, and blazing-fast cloud-native, open-source vector database. It powers embedding similarity search and AI applications."
+    },
+    {
+      "name": "SuperDuperDB",
+      "url": "https://linkedin.com/company/superduperdb",
+      "description": "Short Description: Open source based vector database for AI app development | Detailed Description: Open source based vector database for AI app development. It provides python framework that …"
+    }
+  ]
+}

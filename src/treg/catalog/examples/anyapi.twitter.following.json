@@ -1,0 +1,31 @@
+{
+  "output": {
+    "data": {
+      "items": [
+        {
+          "avatarUrl": "https://pbs.twimg.com/profile_images/3468011581/efb985f24af0a814a722457a768f3cc5_normal.jpeg",
+          "bio": "The official X account for the NASA Hubble Space Telescope, managed and operated by NASA's Goddard Space Flight Center.",
+          "followers": 8902425,
+          "following": 44,
+          "name": "Hubble",
+          "username": "NASAHubble"
+        },
+        "… 66 more item(s) truncated"
+      ],
+      "nextCursor": "zLdqVEmHTTPjeP464HL5a4CJPkUDKjEJP5Haj9lWUlpu0lP5QFuANh7bScWbTFrz5ezPsMoZWLyU4nZtB2dH61Gjcs5iCh_8sQqfeIpBh1Ew6ynJ9LH_V4zUBUi93c8znGAFMD6v7lBJjKKzQBs-Z2kmW8hXLAnCFmawLUzL8QKZzeihQXsnENxnknZQpRM-fj7pk7pN… [1646 chars]"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0005,
+  "items": 67,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-lynx",
+    "name": "Lynx",
+    "kind": "anonymous",
+    "artworkKey": "lynx"
+  },
+  "hint": "large_result: this response is ~23 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "d6b2bb62-4ebc-4a0d-b8da-3c5dff1e25a5"
+}

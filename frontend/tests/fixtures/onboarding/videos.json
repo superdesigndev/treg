@@ -1,0 +1,152 @@
+[
+ {
+  "output": {
+   "videos": [
+    {
+     "aweme_info": {
+      "desc": "Example video 1 about productivity apps",
+      "author": {
+       "unique_id": "creator1"
+      },
+      "statistics": {
+       "play_count": 165764
+      },
+      "video": {
+       "cover": {
+        "url_list": [
+         "https://example.com/cover1.jpg"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "aweme_info": {
+      "desc": "Example video 2 about productivity apps",
+      "author": {
+       "unique_id": "creator2"
+      },
+      "statistics": {
+       "play_count": 12400425
+      },
+      "video": {
+       "cover": {
+        "url_list": [
+         "https://example.com/cover2.jpg"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "aweme_info": {
+      "desc": "Example video 3 about productivity apps",
+      "author": {
+       "unique_id": "creator3"
+      },
+      "statistics": {
+       "play_count": 1275
+      },
+      "video": {
+       "cover": {
+        "url_list": [
+         "https://example.com/cover3.jpg"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "aweme_info": {
+      "desc": "Example video 4 about productivity apps",
+      "author": {
+       "unique_id": "creator4"
+      },
+      "statistics": {
+       "play_count": 4279
+      },
+      "video": {
+       "cover": {
+        "url_list": [
+         "https://example.com/cover4.jpg"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "aweme_info": {
+      "desc": "Example video 5 about productivity apps",
+      "author": {
+       "unique_id": "creator5"
+      },
+      "statistics": {
+       "play_count": 681
+      },
+      "video": {
+       "cover": {
+        "url_list": [
+         "https://example.com/cover5.jpg"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "aweme_info": {
+      "desc": "Example video 6 about productivity apps",
+      "author": {
+       "unique_id": "creator6"
+      },
+      "statistics": {
+       "play_count": 139368
+      },
+      "video": {
+       "cover": {
+        "url_list": [
+         "https://example.com/cover6.jpg"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "aweme_info": {
+      "desc": "Example video 7 about productivity apps",
+      "author": {
+       "unique_id": "creator7"
+      },
+      "statistics": {
+       "play_count": 18190
+      },
+      "video": {
+       "cover": {
+        "url_list": [
+         "https://example.com/cover7.jpg"
+        ]
+       }
+      }
+     }
+    },
+    {
+     "aweme_info": {
+      "desc": "Example video 8 about productivity apps",
+      "author": {
+       "unique_id": "creator8"
+      },
+      "statistics": {
+       "play_count": 6879
+      },
+      "video": {
+       "cover": {
+        "url_list": [
+         "https://example.com/cover8.jpg"
+        ]
+       }
+      }
+     }
+    }
+   ]
+  }
+ }
+]

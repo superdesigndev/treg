@@ -1,0 +1,34 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "nXbHY4qZChyrwdfCIVaWJND8j4-qqPp0GeNhAVpfMWRRxeL6pKCsXLOX-OpLZzoDK9Q58eQ9B3PmaBkDIY_iabCUiw0uV1aG4KuQGdnYgOJkm-ylPJ1WPSksHr20ip5R45cggLu_1X068woUjgM8arKxYCZMkT3VZ-0VoA3Dpp6jgVcUqRnXmdugTpesARpzqZM",
+      "posts": [
+        {
+          "author": "mareek",
+          "createdUtc": 1789770763,
+          "id": "1wk4lod",
+          "numComments": 63,
+          "permalink": "/r/programming/comments/1wk4lod/the_main_purpose_of_unit_tests_is_keeping_your/",
+          "score": 336,
+          "selftext": "",
+          "subreddit": "programming",
+          "title": "\"the main purpose of unit tests is keeping your code from being violently sh*t on by others\"",
+          "url": "https://www.reddit.com/r/programming/comments/1wk4lod/the_main_purpose_of_unit_tests_is_keeping_your/"
+        },
+        "… 4 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00038,
+  "items": 5,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-bison-9321fc54",
+    "name": "Bison",
+    "kind": "anonymous",
+    "artworkKey": "bison"
+  },
+  "resultId": "9423817b-78af-4026-9511-a1a47d9b9231"
+}

@@ -1,0 +1,42 @@
+# Synthetic find-bench cases for CI's recall tier (scripts/find_bench.py). Written by hand to the
+# shapes people type into the Catalog box - a described job, a short job, a bare name, a typing
+# fragment, something treg does not do - and never taken from a log.
+#
+# `gold` is a regex matched against a unit's id and its capability id; `expect` lists the acceptable
+# verdicts, `|`-separated; `target` is what a name verdict must name. `stratum` groups the report.
+cases:
+  # ---- a described job ---------------------------------------------------------------------------
+  - {q: "find the work email of the head of marketing at a shoe brand", stratum: strong, gold: '^people\.email\.find', expect: strong}
+  - {q: "check whether an email address will bounce before I send", stratum: strong, gold: '^people\.email\.verify', expect: strong}
+  - {q: "list product managers at fintech companies in Toronto", stratum: strong, gold: '^people\.search', expect: strong}
+  - {q: "which websites link to my competitor's domain", stratum: strong, gold: '^web\.(backlinks|linking_domains)', expect: strong}
+  - {q: "monthly search volume for a list of keywords", stratum: strong, gold: '^google\.keywords\.volume', expect: strong}
+  - {q: "get the transcript of a youtube video", stratum: strong, gold: 'youtube.*(captions|transcript)', expect: strong}
+  - {q: "search reddit for posts about standing desks", stratum: strong, gold: '^reddit\.search\.posts', expect: strong|closest}
+  - {q: "generate a product photo of a ceramic mug on a wooden table", stratum: strong, gold: 'image-gen|stable-diffusion|flux|text-to-image', expect: strong}
+  - {q: "turn a short script into a spoken voiceover", stratum: strong, gold: '^voice-gen', expect: strong|closest}
+  - {q: "what software and frameworks does a company's website run on", stratum: strong, gold: '^companies\.tech_stack', expect: strong|closest}
+  - {q: "see the ads a brand is running on facebook and instagram", stratum: strong, gold: '^meta-ads\.library', expect: strong}
+  - {q: "does perplexity mention my brand when people ask about project management tools", stratum: strong, gold: '^ai-search', expect: strong|closest}
+  - {q: "daily closing prices of a stock over the last year", stratum: strong, gold: '^stocks\.', expect: strong}
+  - {q: "fill in a person's profile from their linkedin url", stratum: strong, gold: '^people\.enrich', expect: strong}
+  - {q: "phone number for a sales director at a logistics company", stratum: strong, gold: '^people\.phone\.find', expect: strong|closest}
+  - {q: "reviews of a bakery on yelp", stratum: strong, gold: '^yelp\.business\.reviews', expect: strong|closest}
+  # ---- a short job ---------------------------------------------------------------------------------
+  - {q: "organic google results", stratum: closest, gold: '^google\.serp\.organic', expect: strong|closest}
+  - {q: "company enrichment", stratum: closest, gold: '^companies\.enrich', expect: strong|closest}
+  - {q: "tiktok video comments", stratum: closest, gold: '^tiktok\.video\.comments', expect: strong|closest}
+  - {q: "website screenshot", stratum: closest, gold: 'screenshot', expect: strong|closest}
+  - {q: "bitcoin price", stratum: closest, gold: '^crypto\.price', expect: strong|closest}
+  # ---- a bare name ---------------------------------------------------------------------------------
+  - {q: "tiktok shop", stratum: name, gold: null, expect: name, target: "platform:tiktok-shop"}
+  - {q: "pinterest ads", stratum: name, gold: null, expect: name, target: "platform:pinterest-ads"}
+  - {q: "leadmagic", stratum: name, gold: null, expect: name, target: "provider:leadmagic"}
+  - {q: "semrush", stratum: name, gold: null, expect: name, target: "provider:semrush"}
+  # ---- a typing fragment ---------------------------------------------------------------------------
+  - {q: "pinter", stratum: prefix, gold: null, expect: name|none, target: "platform:pinterest"}
+  - {q: "yout", stratum: prefix, gold: null, expect: name|none, target: "platform:youtube"}
+  # ---- nothing treg does ---------------------------------------------------------------------------
+  - {q: "book a table for two at an italian restaurant tonight", stratum: none, gold: null, expect: none}
+  - {q: "file my quarterly sales tax return", stratum: none, gold: null, expect: none}
+  - {q: "how do I rotate my treg token", stratum: none, gold: null, expect: none}

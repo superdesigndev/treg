@@ -1,0 +1,44 @@
+{
+  "success": true,
+  "message": "Contacts fetched",
+  "code": 200,
+  "data": [
+    {
+      "emp_id": 218751005,
+      "first_name": "Example",
+      "last_name": "Person",
+      "title": "SEO Lead",
+      "employee_linkedin": "https://linkedin.com/in/example-person",
+      "has_email": true,
+      "has_phone": true,
+      "has_linkedin": true,
+      "company_url": "stripe.com",
+      "company_name": "Stripe",
+      "email_domain": "stripe.com",
+      "home_page_email": "N/A",
+      "company_linked": "http://www.linkedin.com/company/stripe",
+      "company_phone": "+15550101001",
+      "industry": "Technology, Information and Internet",
+      "revenue": ">1 Billion",
+      "employee_count": ">10000",
+      "address1": "354 Oyster Point Blvd",
+      "address2": "N/A",
+      "city": "South San Francisco",
+      "region_code": "CA",
+      "zip": "00000",
+      "locality": "Example locality",
+      "country_code": "US"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "per_page": 1,
+    "total": 4922,
+    "last_page": 5,
+    "credits_used": 0,
+    "next_cursor": "WzIyMy4xMjE1LDE3ODQ2MjI4MjQ4MTYsInFlX2VtcF8yMTg3NTEwMDUiXQ",
+    "has_more": true,
+    "max_pages": 5,
+    "remaining_credits": 300
+  }
+}

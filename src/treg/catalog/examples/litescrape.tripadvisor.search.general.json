@@ -1,0 +1,79 @@
+{
+  "search_metadata": {
+    "id": "a3b38c0ba16718bb4b6b5961",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/tripadvisor/search?q=hotels+in+Austin+Texas&tripadvisor_domain=www.tripadvisor.com&locale=en-US&place_type=all&start=0&num=30",
+    "created_at": "2026-09-29 13:58:50 UTC",
+    "processed_at": "2026-09-29 13:58:50 UTC",
+    "provider_url": "https://www.tripadvisor.com/data/graphql/ids",
+    "total_time_taken": 1.593
+  },
+  "search_parameters": {
+    "q": "hotels in Austin Texas",
+    "tripadvisor_domain": "www.tripadvisor.com",
+    "locale": "en-US",
+    "place_type": "all",
+    "start": 0,
+    "num": 30
+  },
+  "search_information": {
+    "total_results": 2000,
+    "results_on_page": 30
+  },
+  "search_results": [
+    {
+      "position": 1,
+      "position_in_page": 1,
+      "place_id": "18941405",
+      "link": "https://www.tripadvisor.com/Hotel_Review-g30196-d18941405-Reviews-Austin_Proper_Hotel-Austin_Texas.html",
+      "title": "Austin Proper Hotel",
+      "description": "Located in Downtown Austin's vibrant Second Street District, Austin Proper Hotel and Residences brings together Kelly Wearstler's layered interiors, elevated we…",
+      "location": "Austin, Texas",
+      "type": "ACCOMMODATION",
+      "detail_type": "Hotel",
+      "rating": 4.6,
+      "max_rating": 5,
+      "reviews": 1021,
+      "snippet": "in Austin, Texas, in late October, a few weeks ago.",
+      "highlighted_spans": [
+        {
+          "length": 6,
+          "offset": 3
+        },
+        {
+          "length": 5,
+          "offset": 11
+        }
+      ]
+    },
+    {
+      "position": 2,
+      "position_in_page": 2,
+      "place_id": "111395",
+      "link": "https://www.tripadvisor.com/Hotel_Review-g30196-d111395-Reviews-Austin_Southpark_Hotel-Austin_Texas.html",
+      "title": "Austin Southpark Hotel",
+      "description": "Daily Mandatory Charge includes: Austin Tourism Public Improvement District Fee At the junction of Interstate 35 and State Highway 71, our hotel is a short driv…",
+      "location": "Austin, Texas",
+      "type": "ACCOMMODATION",
+      "detail_type": "Hotel",
+      "rating": 4.2,
+      "max_rating": 5,
+      "reviews": 2232,
+      "snippet": "on a Friday night in Austin, Texas.",
+      "highlighted_spans": [
+        {
+          "length": 6,
+          "offset": 21
+        },
+        {
+          "length": 6,
+          "offset": 29
+        }
+      ]
+    }
+  ],
+  "map_previews": [],
+  "pagination": {
+    "next": "https://api.litescrape.com/api/tripadvisor/search?q=hotels+in+Austin+Texas&tripadvisor_domain=www.tripadvisor.com&locale=en-US&place_type=all&start=30&num=30"
+  }
+}

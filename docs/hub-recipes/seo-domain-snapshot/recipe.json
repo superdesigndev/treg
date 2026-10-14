@@ -1,0 +1,30 @@
+{
+  "name": "seo-domain-snapshot",
+  "summary": "One call for a domain's SEO picture: organic traffic, keyword counts by position, paid keywords, traffic value, backlinks and referring domains.",
+  "inputs": {
+    "domain": {"type": "string", "example": "linear.app", "note": "a bare domain, no scheme"},
+    "source": {"type": "string", "default": "us", "note": "the Google database: us, uk, de, fr, au, ca, in…"}
+  },
+  "uses": ["seranking.google.domain.overview", "treg.web.backlinks.summary"],
+  "steps": [
+    {"name": "overview", "call": "seranking.google.domain.overview", "input": {"domain": "$input.domain", "source": "$input.source"}},
+    {"name": "links", "call": "treg.web.backlinks.summary", "input": {"target": "$input.domain"}}
+  ],
+  "output": {
+    "domain": "$input.domain",
+    "organic_traffic": "$overview.organic.traffic_sum",
+    "organic_traffic_value_usd": "$overview.organic.price_sum",
+    "organic_keywords": "$overview.organic.keywords_count",
+    "keywords_top_1_5": "$overview.organic.top1_5",
+    "keywords_top_6_10": "$overview.organic.top6_10",
+    "keywords_top_11_20": "$overview.organic.top11_20",
+    "keywords_new": "$overview.organic.keywords_new_count",
+    "keywords_lost": "$overview.organic.keywords_lost_count",
+    "paid_keywords": "$overview.adv.keywords_count",
+    "paid_traffic": "$overview.adv.traffic_sum",
+    "backlinks": "$links.output.backlinks",
+    "referring_domains": "$links.output.referring_domains",
+    "backlinks_source": "$links._treg.served_by"
+  },
+  "pricing": {"price_usd": 0.01}
+}

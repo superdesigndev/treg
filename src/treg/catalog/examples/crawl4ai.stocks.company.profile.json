@@ -1,0 +1,85 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: yahoo-company: AAPL · 10 officers"
+    ]
+  },
+  "recipe": "yahoo-company",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 182,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "audit_risk": 2,
+      "board_risk": 3,
+      "city": "Cupertino",
+      "compensation_risk": 6,
+      "country": "United States",
+      "currency": "USD",
+      "description": "Apple Inc. designs, manufactures, and markets smartphones, personal computers, tablets, wearables, and accessories worldwide. The company offers iPhone, a line of smartphones; Mac, a line of personal computers; iPad, a line of multi-purpose tablets; and wearables, home, and accessories comprising Ai…",
+      "employees": 150000,
+      "exchange": "NasdaqGS",
+      "industry": "Consumer Electronics",
+      "market_cap": 4912984883200,
+      "name": "Apple Inc.",
+      "officers": [
+        {
+          "age": 64,
+          "fiscal_year": 2025,
+          "name": "Mr. Timothy D. Cook",
+          "title": "Executive Chairman of the Board",
+          "total_pay": 16759518,
+          "year_born": 1961
+        },
+        {
+          "age": 53,
+          "fiscal_year": 2025,
+          "name": "Mr. Kevan Parekh",
+          "title": "Senior VP & CFO",
+          "total_pay": 4034174,
+          "year_born": 1972
+        }
+      ],
+      "overall_risk": 1,
+      "phone": "(408) 996-1010",
+      "risk_scores_as_of": "2026-10-01T00:00:00Z",
+      "sector": "Technology",
+      "shareholder_rights_risk": 1,
+      "state": "CA",
+      "street": "One Apple Park Way",
+      "symbol": "AAPL",
+      "url": "https://finance.yahoo.com/quote/AAPL/profile/",
+      "website": "https://www.apple.com",
+      "zip": "95014"
+    }
+  ]
+}

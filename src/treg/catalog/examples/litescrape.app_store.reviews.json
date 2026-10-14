@@ -1,0 +1,53 @@
+{
+  "search_metadata": {
+    "id": "4c10f821e6e0aa1885b20e36",
+    "status": "Success",
+    "created_at": "2026-09-29T13:58:59.166296+00:00",
+    "processed_at": "2026-09-29T13:59:00.144508+00:00",
+    "json_endpoint": "https://api.litescrape.com/api/apple/app-store/reviews?country=us&product_id=570060128&sort=mostrecent&page=1",
+    "apple_app_store_url": "https://itunes.apple.com/WebObjects/MZStore.woa/wa/viewContentsUserReviews?pageNumber=0&id=570060128&sortOrdering=0&type=Purple+Software",
+    "total_time_taken": 0.978
+  },
+  "search_parameters": {
+    "country": "us",
+    "product_id": "570060128",
+    "sort": "mostrecent",
+    "page": 1
+  },
+  "search_information": {
+    "total_page_count": 15773,
+    "results_count": 25
+  },
+  "reviews": [
+    {
+      "position": 1,
+      "title": "Не нравиться",
+      "text": "Птица это зеленая, задолбала уже, сделайте из нее курочку гриль.",
+      "id": "14602365124",
+      "rating": 1,
+      "author": {
+        "name": "Akyladerden",
+        "author_id": "1773998278"
+      },
+      "reviewed_version": "Version 7.141.1",
+      "review_date": "Sep 28, 2026"
+    },
+    {
+      "position": 2,
+      "title": "W lingo",
+      "text": "Good for school and chess",
+      "id": "14602315332",
+      "rating": 5,
+      "author": {
+        "name": "Beansssssssssssssss s",
+        "author_id": "1662958800"
+      },
+      "reviewed_version": "Version 7.141.1",
+      "review_date": "Sep 28, 2026"
+    }
+  ],
+  "litescrape_pagination": {
+    "current": "https://api.litescrape.com/api/apple/app-store/reviews?country=us&product_id=570060128&sort=mostrecent&page=1",
+    "next": "https://api.litescrape.com/api/apple/app-store/reviews?country=us&product_id=570060128&sort=mostrecent&page=2"
+  }
+}

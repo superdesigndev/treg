@@ -1,0 +1,62 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "step stories: 1 null fields across 30 items"
+    ]
+  },
+  "recipe": "hackernews-front",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 184,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "age": "2026-10-11T00:46:48",
+      "author": "TheWaffleHax",
+      "comments": 85,
+      "rank": 1,
+      "score": 195,
+      "site": "wallhop.io",
+      "title": "WallHop – 12ft.io is gone, so I built a replacement",
+      "url": "https://wallhop.io/"
+    },
+    {
+      "age": "2026-10-10T22:50:10",
+      "author": "softwaredoug",
+      "comments": 38,
+      "rank": 2,
+      "score": 189,
+      "site": "nishtahir.com",
+      "title": "Build your own decision model",
+      "url": "https://nishtahir.com/build-your-own-decision-model/"
+    }
+  ]
+}

@@ -39,13 +39,15 @@ limits: "monthly credit pool; 429 once exhausted"
 pricing_url: https://hunter.io/pricing  # Finding an email costs 1 credit; verifying costs 0.5. Annual billing ~30% cheaper.; free tier: 50 credits/month
 endpoints:
   - id: hunter.people.email.find
+    cache:
+      ignore_paths: ["data.verification.date"]
     domain: contacts
     capability: people.email.find
     platform: people
     scope: any_account
     method: GET
     path: /email-finder
-    name: "Find a person's work email"
+    name: "Find a person's work email by name and company domain"
     summary: "Find someone's work email address from their name and their company's domain"
     input:
       queryParams:
@@ -71,6 +73,7 @@ endpoints:
       confidence: documented
       note: 1 SEARCH credit, charged only when an email is found; a miss is free.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/hunter.people.email.find.json
     docs_url: https://hunter.io/api-documentation/v2#email-finder
 
@@ -81,7 +84,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /email-verifier
-    name: "Verify an email address"
+    name: "Verify email — catch-all, disposable and SMTP checks"
     summary: "Check an email is real, deliverable and not a catch-all or disposable inbox"
     input:
       queryParams:
@@ -101,18 +104,21 @@ endpoints:
       confidence: documented
       note: 0.5 VERIFICATION credits per call — half a credit, a separate pool from search credits. Re-verifying the same address within the plan period is not re-charged.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/hunter.people.email.verify.json
     docs_url: https://hunter.io/api-documentation/v2#email-verifier
 
   - id: hunter.companies.emails
+    cache:
+      ignore_paths: ["data.emails[*].verification.date"]
     domain: contacts
     capability: people.search
     platform: people
     scope: any_account
     method: GET
     path: /domain-search
-    name: "Find email addresses at a company"
-    summary: "People and email addresses Hunter knows at a company, with roles and confidence"
+    name: "Find email addresses at a company domain, with roles"
+    summary: "People and email addresses Hunter knows at a company, with roles and confidence. DELIVERABILITY WARNING: this is a directory listing, not a verified list — each row's `verification.status` is null unless Hunter has checked that mailbox, and `confidence` below ~50 is a pattern guess. Live 2026-09-08, a team that mailed generic rows (info@, sales@) straight from this endpoint bounced on 73 of 79; a hunter.people.email.verify call per address ($0.012, or leadmagic.people.email.verify at $0.006) would have caught all 73. Verify before outreach, and never invent info@ for a domain this returned nothing for."
     input:
       queryParams:
         domain: {type: string, required: false, note: "the company's domain — preferred over company", example: "stripe.com"}
@@ -142,25 +148,31 @@ endpoints:
       checked: '2026-07-31'
       confidence: verified
       note: '1 SEARCH credit per 10 emails returned (rounded up); a domain with no results is free. OBSERVED 2026-07-31 — a `limit` of 1 on a domain never queried on this key returned 1 email and moved requests.credits.used by exactly 1.000, confirming the per-10 rounding — one email costs the same whole credit as ten, so a limit below 10 buys nothing.'
+      # Reserve still uses the per-email slice; catalog_get / usd_per_call quote one SEARCH credit.
+      display: {unit: emails, grouped: true, round_up: true}
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/hunter.companies.emails.json
     docs_url: https://hunter.io/api-documentation/v2#domain-search
 
   - id: hunter.people.enrich
     domain: contacts
     capability: people.enrich
+    miss:
+      status: 404
+      means: "no person on record for this identifier — an expected outcome and free (the cost note: a 404 is never billed); do not retry the same identifier"
     platform: people
     scope: any_account
     method: GET
     path: /people/find
-    name: "Enrich a person by email"
+    name: "Enrich a person by email — name, role, social profiles"
     summary: "Enrich a person from their email — name, role, seniority, location, social profiles"
     input:
       queryParams:
-        email: {type: string, required: true, note: "the person's email address", example: "steli@close.io"}
-        linkedin_handle: {type: string, required: false, note: "alternative identifier when you have no email"}
+        email: {type: string, required: false, note: "the person's email address — or pass linkedin_handle instead", example: "steli@close.io"}
+        linkedin_handle: {type: string, required: false, note: "alternative identifier when you have no email, e.g. 'stelieffendy' from linkedin.com/in/stelieffendy"}
         clearbit_format: {type: boolean, required: false, note: "return the payload in Clearbit's response shape, for drop-in migration"}
-      note: "one of email | linkedin_handle. To go the other way (name → email) use hunter.people.email.find, which costs a full search credit. GET /combined/find?email=… returns the person AND their company in one call at the same 0.2 rate"
+      note: "one of email | linkedin_handle is required (Hunter answers 400 when neither is sent; treg does not pre-check this). To go the other way (name → email) use hunter.people.email.find, which costs a full search credit. GET /combined/find?email=… returns the person AND their company in one call at the same 0.2 rate"
     test_request:
       queryParams: {email: "steli@close.io"}
     cost:
@@ -175,17 +187,23 @@ endpoints:
       confidence: documented
       note: 0.2 credits, billed CONDITIONALLY — charged only when email, full name AND position all come back. A 404 or a partial record is free.
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/hunter.people.enrich.json
     docs_url: https://hunter.io/api-documentation/v2#people-enrichment
 
   - id: hunter.companies.enrich
+    cache:
+      ignore_paths: ["data.indexedAt"]
     domain: companies
     capability: companies.enrich
+    miss:
+      status: 404
+      means: "no company on record for this domain — an expected outcome and free (the cost note: a 404 is never billed); do not retry the same domain"
     platform: companies
     scope: any_account
     method: GET
     path: /companies/find
-    name: "Enrich a company by domain"
+    name: "Enrich a company by domain — headcount, revenue, tech"
     summary: "Enrich a company from its domain — industry, headcount, revenue, location, tech stack"
     input:
       queryParams:
@@ -206,6 +224,7 @@ endpoints:
       confidence: verified
       note: 0.2 credits, billed CONDITIONALLY — charged only when company name, category/description/tags, location or country code AND company size all come back. A 404 or a partial record is free. Still the cheapest companies.enrich in this catalog. OBSERVED 2026-07-31 — a call on a domain never queried on this key moved GET /account's requests.credits.used by exactly 0.200; the same call repeated on an already-queried domain moved it by 0.000 (cached, not free).
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/hunter.companies.enrich.json
     docs_url: https://hunter.io/api-documentation/v2#company-enrichment
 
@@ -223,5 +242,6 @@ endpoints:
     test_request: {queryParams: {}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: free — consumes no search or verification credits; this is the registry's health probe}
     verified: 2026-07-31
+    added: '2026-07-28'
     example_response: examples/hunter.account.usage.json
     docs_url: https://hunter.io/api-documentation/v2#account

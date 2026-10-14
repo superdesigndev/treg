@@ -1,0 +1,126 @@
+{
+  "search_metadata": {
+    "id": "4a87cbc1b73f716eac9cfe04",
+    "status": "Success",
+    "json_endpoint": "https://api.litescrape.com/api/duckduckgo/maps?q=coffee+shops&bbox=30.30%2C-97.80%2C30.20%2C-97.70&strict_bbox=True",
+    "created_at": "2026-09-29 13:58:47 UTC",
+    "processed_at": "2026-09-29 13:58:47 UTC",
+    "provider_url": "https://duckduckgo.com/local.js?q=coffee+shops+Austin%2C+TX++78704%2C+United+States&vqd=4-216821655578642954804649313046295839543&tg=maps_places&rt=D&mkexp=b&wiki_info=1&is_requery=1",
+    "total_time_taken": 1.055
+  },
+  "search_parameters": {
+    "q": "coffee shops",
+    "bbox": "30.30,-97.80,30.20,-97.70",
+    "strict_bbox": true
+  },
+  "local_results": [
+    {
+      "position": 1,
+      "title": "Mañana",
+      "place_id": "mañana-austin-3",
+      "source": [
+        {
+          "name": "Apple Maps",
+          "place_id": "2802724385935568610"
+        },
+        {
+          "name": "Yelp",
+          "place_id": "mañana-austin-3"
+        }
+      ],
+      "gps_coordinates": {
+        "latitude": 30.2476587,
+        "longitude": -97.7498406
+      },
+      "rating": 4.5,
+      "reviews": 413,
+      "review_details": [
+        {
+          "snippet": "I looooooved the matcha here\n\nI tried the mango sticky rice - amazing!! \n\nBlended so perfectly and around 8.50 but it is a larger size \n\nI also tried the kouignn Amin pastry and also loved...",
+          "rating": 5,
+          "date": "2026-08-17",
+          "id": "QIC7lxCgkKoABEDASVU5CQ",
+          "user": {
+            "name": null,
+            "thumbnail": null,
+            "id": null
+          }
+        },
+        {
+          "snippet": "I really wanted to like this place because of the great reviews, but it was just okay. The seating area is a little awkward. I ordered the almond brown sugar latte, and it tasted watered down,...",
+          "rating": 2,
+          "date": "2026-06-16",
+          "id": "IuMeBq1l9x6yFnVuGO6dvw",
+          "user": {
+            "name": null,
+            "thumbnail": null,
+            "id": null
+          }
+        }
+      ],
+      "price": "$$",
+      "price_score": 2,
+      "type": "Coffee & tea",
+      "address": "1603 S Congress Ave, Austin, TX 78704",
+      "address_lines": [
+        "1603 S Congress Ave",
+        "Austin, TX 78704"
+      ],
+      "city": "Austin"
+    },
+    {
+      "position": 2,
+      "title": "Proud Mary",
+      "place_id": "proud-mary-austin",
+      "source": [
+        {
+          "name": "Apple Maps",
+          "place_id": "994057644462772470"
+        },
+        {
+          "name": "Yelp",
+          "place_id": "proud-mary-austin"
+        }
+      ],
+      "gps_coordinates": {
+        "latitude": 30.248306,
+        "longitude": -97.769348
+      },
+      "rating": 4.5,
+      "reviews": 367,
+      "review_details": [
+        {
+          "snippet": "Pleasantly surprised how much I liked proud Mary! \n\nFood was good and creative, coffee was solid and the service was pleasant! Will be back!",
+          "rating": 5,
+          "date": "2026-08-17",
+          "id": "K97oprLep-lsLFpkhR-5Yw",
+          "user": {
+            "name": null,
+            "thumbnail": null,
+            "id": null
+          }
+        },
+        {
+          "snippet": "The vibe was fun!  It was busy at 1.  Our server Blake was fantastic.  Helpful, adorable, and knowledgeable.  I ordered a Mont Blanc coffee which was amazing.\n\nMy only complaint was the AC wasn't...",
+          "rating": 4,
+          "date": "2026-09-03",
+          "id": "mf4lL90EJ9tyZQKULZyCrw",
+          "user": {
+            "name": null,
+            "thumbnail": null,
+            "id": null
+          }
+        }
+      ],
+      "price": "$$",
+      "price_score": 2,
+      "type": "Breakfast & brunch",
+      "address": "2043 S Lamar Blvd, Austin, TX 78704",
+      "address_lines": [
+        "2043 S Lamar Blvd",
+        "Austin, TX 78704"
+      ],
+      "city": "Austin"
+    }
+  ]
+}

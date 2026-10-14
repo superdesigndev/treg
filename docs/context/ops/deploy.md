@@ -2,171 +2,522 @@
 title: Running & deploying the server
 status: shipped
 sources:
+  - pyproject.toml
+  - hatch_build.py
+  - scripts/build-dashboard.sh
+  - scripts/build-web.sh
+  - scripts/frontend-e2e-server.sh
   - src/treg/__main__.py
+  - src/treg/maintenance.py
+  - src/treg/alembic/env.py
+  - src/treg/alembic/versions/0034_managed_api_keys.py
+  - src/treg/alembic/versions/0035_default_key_generation.py
+  - src/treg/alembic/versions/0036_activity_key_indexes.py
+  - src/treg/worker.py
   - src/treg/web/selfhost.sh
   - src/treg/config.py
-  - src/treg/db.py
+  - src/treg/infra/db.py
+  - src/treg/infra/money_admission.py
+  - scripts/bench_money_admission.py
   - src/treg/email.py
   - src/treg/audit.py
-  - render.yaml
+  - scripts/dev-local.sh
+  - deploy/render.example.yaml
 related:
+  - ops/capacity.md
   - architecture/data-model.md
+  - architecture/ads-conversions.md
   - foundation/charter.md
 ---
 
 # Running & deploying
 
+This fragment documents behavior every operator needs to run or self-host a registry. It does not
+describe the private topology, live settings, account funding, incidents or rollout state of the
+hosted treg.to service. Superdesign operators use the private
+[treg.to deployment runbook](https://github.com/superdesigndev/treg-internal/blob/main/docs/production/deploy.md).
+
+Fish Audio shared-key capacity monitoring requires both `TREG_PLATFORM_KEY_FISHAUDIO` and
+`TREG_PLATFORM_FISHAUDIO_WORKSPACE_ID`. The latter is the Fish workspace selector used only by the
+free API-credit probe; without it, capacity remains unknown rather than reading the unrelated
+personal wallet.
+
 ## Entry point (`__main__.py`)
-`python -m treg` → `main()` → `uvicorn.run("treg.api:app", host="0.0.0.0", port=int($PORT or 18790))`
-(`--reload` optional). It honors `$PORT` (Render/Heroku route + health-check that port). `python -m treg
-keygen` prints a Fernet key for `TREG_SECRET_KEY`.
 
-## Startup safety (`db.py init_db`)
-- **Fails loud on a missing key + real DB:** if `TREG_SECRET_KEY` is empty and `database_url` isn't
-  SQLite, `init_db` raises (an ephemeral key would make every stored secret undecryptable after a
-  restart — silent total loss). On SQLite dev it only logs a warning.
-- **Postgres pool hygiene:** for non-SQLite URLs the async engine adds `pool_pre_ping=True`,
-  `pool_recycle=300`, and sizing (`pool_size=20`, `max_overflow=40`) — avoids post-idle dropped-connection
-  500s and pool starvation against the relay's 200-concurrency client.
+`python -m treg upgrade` runs the explicit release phase. `maintenance._upgrade_schema()` runs
+`alembic upgrade head` for an empty or stamped database. A non-empty unstamped database is refused
+without writes: adoption ended with 0.14.x, so the operator must install
+`tools-registry[server]==0.14.*`, run `python -m treg upgrade` there once, then continue onward. A
+database stamped at a revision this build does not know is also refused because explicit upgrade may
+not cross the rollback floor. The ordered, idempotent release-task registry runs only after schema
+success and never provisions a local user.
 
-## Config (`config.py`)
-`Settings` (pydantic-settings, env prefix `TREG_`, reads `.env`), cached via `get_settings()`:
-- `database_url` — default `sqlite+aiosqlite:///./treg.db` (SQLite dev, Postgres on Render, same code).
-  A `field_validator` rewrites a bare `postgres://` / `postgresql://` URL → `postgresql+asyncpg://`, so
-  Render's `fromDatabase`-injected URL works unedited (the async engine needs the asyncpg driver).
-- `secret_key` — the Fernet key; empty → an ephemeral key is minted at startup (secrets won't survive a
-  restart). See [auth-secrets](../architecture/auth-secrets.md).
-- `public_url` — default `https://treg.superdesign.dev` (the reference deployment); self-hosters set
-  `TREG_PUBLIC_URL`. Used to build the OAuth callback URI.
-- `api_token` — a bootstrap caller token (MVP leftover; per-user tokens are the real auth).
-- `admin_token` — the cross-tenant **super-admin** bearer (`TREG_ADMIN_TOKEN`); empty disables the env
-  path (only `is_superadmin` users reach `/admin`). Keep it long + secret. See
-  [super-admin](../architecture/super-admin.md).
-- **Registry OAuth-marketplace apps** — treg's OWN approved OAuth clients, so a member can connect a
-  provider without registering an app themselves. `google_client_id`/`_secret` backs both Google login
-  AND the Google registry connects (Search Console / Analytics / Business Profile) via `/oauth/callback`
-  — register both redirect URIs. Google **Ads** is special: `google_ads_client_id`/`_secret` is a
-  DEDICATED client in its own Cloud project (a developer token is welded to one project), plus
-  `google_ads_developer_token` (treg's token from OUR approved manager account, injected on every Ads
-  call as a **platform binding** — see [proxy-model](../architecture/proxy-model.md)). The other
-  providers each take a `<name>_client_id`/`_secret` pair: `linkedin_*`, `slack_*`, `x_*`, `tiktok_*`
-  (separate sandbox vs prod app), `meta_*` (ONE Meta app backs both facebook + instagram), and the
-  Advertising OAuth platforms `microsoft_ads_*`, `snapchat_ads_*`, `tiktok_ads_*`, `pinterest_*` (all
-  unset by default, so those providers ship **unconfigured** until a deployment registers a dev app).
-  Empty for a provider ⇒ it lists as **unconfigured** rather than failing part-way through a consent.
-- **Landing live-wire (optional):** `demo_stripe_key` (`TREG_DEMO_STRIPE_KEY`, a Stripe **sandbox
-  restricted** key) powers the landing sandbox's ONE real upstream call — a sandbox call to the exact
-  seeded `stripe` tool relays for real with this key injected; the key exists in no sandbox org. Empty ⇒
-  every sandbox call synthesizes, exactly as before the wire existed. `demo_stripe_webhook_secret`
-  (`TREG_DEMO_STRIPE_WEBHOOK_SECRET`, `whsec_…`) signs the landing payments feed; empty ⇒ `POST
-  /stripe/webhook` is off (`404`, so a deploy without it exposes no unauthenticated POST surface). See
-  [api](../interface/api.md).
-- **Frictionless local mode** (`single_user`, `single_user_token_file`): `curl {BASE}/selfhost.sh | sh`
-  brings up a registry on the caller's own machine that they are **already signed into** — no account,
-  email or password. `lifespan` calls `_bootstrap_single_user()`, which idempotently creates the
-  `you@local.treg` owner + `personal` team and writes the token (0600) for the installer to hand to the
-  CLI; the token is **stable across restarts** (re-minted only if the file is deleted), and `dashboard()`
-  attaches a session when there is none. It adopts an org **only through a membership this identity
-  already has** — never by looking one up by the slug `personal`. On a database that is not fresh (a
-  restored dump, a hosted registry run locally) that lookup joined a team belonging to someone else **as
-  owner**, and an owner is exempt from every ACL (round-4 finding #5). A new team therefore takes a free
-  slug via `_unique_slug` (`personal-2`, …) instead of colliding; a fresh box still gets the clean name.
-  Gated by **`single_user_ok`**, which mirrors `expose_dev_code`:
-  it demands a **local sqlite** DB **and** a **loopback `public_url`**, so a stray `TREG_SINGLE_USER=true`
-  on a real deploy does nothing. A no-login dashboard on a public host would hand over the whole registry.
-- `github_client_id` / `github_client_secret` / `session_secret` — GitHub OAuth login for the dashboard
-  (`TREG_GITHUB_*`, `TREG_SESSION_SECRET`); empty hides the GitHub button. Callback must be
-  `<public_url>/auth/github/callback`. See [dashboard](../interface/dashboard.md).
-- `email_dev_mode` — default **False** (returning the OTP in the response is an unauth account-takeover
-  vector in prod). When true, `/auth/email/start` returns + logs the 6-digit code so dummy emails are
-  testable without a mail sender; when false, the code is **emailed via Resend** (see below). Enable it
-  **only** on a trusted dev box (`TREG_EMAIL_DEV_MODE=true`); real deploys must not. **Double guard:** the
-  code is exposed only through `Settings.expose_dev_code`, which requires `email_dev_mode` **and** a
-  **local sqlite** `database_url` — so even a stray `TREG_EMAIL_DEV_MODE=true` on Postgres (a real deploy)
-  can never leak a login code.
-- `run_proof` (`TREG_RUN_PROOF`) — the **isolated-runner proof** for `treg run --local`. A local run whose
-  grant would return a secret the caller does **not** own (a shared-key tool a member may run but not read)
-  must present this value in the `X-Treg-Run-Proof` header — a value held **only** by the root-installed
-  `treg-run` runner, never by the member. Empty = shared-key local runs are refused (runs against a
-  secret the caller owns still work). To enable shared local runs, set it on the server **and** install it
-  via `treg setup-local-run --run-proof`. See [local-run](../architecture/local-run.md).
-- `run_allowed_bins` (`TREG_RUN_ALLOWED_BINS`) — the **command allow-list** for `treg run --server`. The
-  server executes an entrypoint only if it is a catalog-known CLI (stripe/gh/vercel/…) **or** named in this
-  comma-separated list — so a member cannot ask the server to run `bash`/`python` and execute arbitrary
-  code as the server user. Extend it as new CLIs are approved.
-- `run_rlimits` (`TREG_RUN_RLIMITS`, default **true**) + `run_cpu_seconds` (`TREG_RUN_CPU_SECONDS`,
-  default 300) + `run_fsize_mb` (`TREG_RUN_FSIZE_MB`, default 100) — the **resource-limit sandbox** for
-  `treg run --server` (`runner._rlimit_preexec`): every run's child gets a CPU-seconds cap, a max-file-size
-  cap, and core dumps disabled, so a runaway/hostile CLI can't exhaust the host. A no-op where the POSIX
-  `resource` module is unavailable. No address-space/process-count cap (would break Go CLIs / is per-uid).
-  This is the **DoS** half of the sandbox; full filesystem/network isolation needs a **container deploy**
-  (a planned follow-up — the current Render runtime is the native Python one, which can't run it).
-- `proxy_ssrf_check` (`TREG_PROXY_SSRF_CHECK`) — the **call-time SSRF guard** on the proxy: resolve the
-  upstream host and refuse an internal/private target. **On by default**; only the test suite disables it
-  (its upstream is an in-process ASGI transport, not real DNS).
-- `resend_api_key` / `email_from` — transactional email via **Resend** (`src/treg/email.py`): the OTP
-  sign-in code + team invitations. Empty key = no real send (dev mode still returns the code; prod
-  without a key silently skips — best-effort, never breaks the flow). `email_from` **must** be a
-  Resend-verified domain — `treg.superdesign.dev` is **verified** (DKIM `resend._domainkey.treg`, SPF
-  MX+TXT on `send.treg`), so the default is `no-reply@treg.superdesign.dev`. **On Render:** set
-  `TREG_RESEND_API_KEY`, optionally `TREG_EMAIL_FROM`, and leave `TREG_EMAIL_DEV_MODE` false.
+The default `python -m treg` serve path runs the same upgrade phase, calls
+`api._bootstrap_single_user()`, disposes the async engine inside the pre-serve event loop, and then
+calls `uvicorn.run("treg.api:app", host="0.0.0.0", port=int($PORT or 18790))`. `--reload` is optional.
+It honors `$PORT` for platforms that route and health-check an injected port. `python -m treg keygen`
+prints a Fernet key for `TREG_SECRET_KEY` without importing the server maintenance stack.
+`treg.api:app` is `bootstrap.create_app(role="all")`.
 
-## Web dashboard
-`GET /` serves the single-file dashboard (`src/treg/web/index.html`) same-origin; the whole `web/` dir
-(incl. `tutorial.js` at `/tutorial.js` and `tutorial.html` at `/tutorial`) ships in the wheel because it
-lives inside the `treg` package (the `packages` inclusion covers non-.py assets). See
-[dashboard](../interface/dashboard.md).
+The FastAPI lifespan calls read-only `verify_db()`. It refuses an unstamped database or a known
+revision behind head and directs raw-ASGI operators to `python -m treg upgrade`. An unknown newer
+revision means the code is older than the schema: startup warns and serves because additive revisions
+tolerate rollback. A revision marked `contract = True` is the documented hard rollback floor. Every
+role startup manifest is schema-write-free.
 
-## Current hosting (shipped)
-Deployed on **Render** at `https://treg.superdesign.dev` via the Blueprint below (one web service + a
-managed Postgres). The Fernet key lives only in the service's environment — **back it up**; losing it
-makes every stored secret unrecoverable. For local dev, `scripts/dev-local.sh up` runs the server with
-its own sqlite DB and email dev mode.
+Both pre-Uvicorn entry paths dispose the engine before their `asyncio.run()` loop closes. The next
+event loop therefore creates fresh pooled connections instead of receiving connections bound to a
+closed maintenance loop. Calling `maintenance.upgrade()` directly does not dispose the engine.
 
-## Render (Blueprint)
-`render.yaml` at the repo root deploys the whole thing as **one web service + a managed Postgres**
-(region `oregon`): `buildCommand: pip install ".[server]"` — the base install is the **CLI only**, so the
-server deploy needs the `[server]` extra (FastAPI/DB/crypto); the wheel ships every web asset via the package.
-`startCommand: python -m treg`, health check on `/meta`. The DB URL is auto-wired via `fromDatabase`
-(config's validator adds the asyncpg driver). Secrets are **dashboard-managed** (`sync: false` — the
-Fernet key, session/admin tokens, GitHub OAuth pair, Resend key, and the optional landing live-wire pair
-`TREG_DEMO_STRIPE_KEY` + `TREG_DEMO_STRIPE_WEBHOOK_SECRET`); `TREG_PUBLIC_URL`,
-`TREG_EMAIL_DEV_MODE=false`, and `TREG_EMAIL_FROM` are set inline. `asyncpg` is a dependency (Postgres
-async driver, alongside `aiosqlite`).
+## Schema upgrade safety
+- **Managed-key rollback floor:** revision `0034` adds key controls, audit rows, Activity snapshots,
+  and a hash-only backfill for existing membership credentials. It is marked `contract = True`
+  because old code cannot enforce newly stored disable or revoke state. The migration is additive
+  and uses SQL that works on SQLite and Postgres.
+- **Alembic is authoritative:** migration scripts ship inside `src/treg/alembic/` in the wheel.
+  `maintenance._alembic_config()` resolves that installed package resource, supplies the escaped
+  configured URL, and runs Alembic in a worker thread.
+- **The adoption floor is final.** An unstamped existing database must pass through release 0.14.x.
+  Current code does not inspect, repair or stamp it.
+- **Startup is read-only.** `verify_db()` checks the stamped revision through packaged Alembic
+  metadata. It never creates tables, stamps versions or runs release tasks. Worker commands use the
+  same check.
+- **Schema changes are revision-only.** An autogenerate drift guard requires Alembic head and
+  `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
+  schema and stamps it directly at head.
+- **A missing encryption key fails loudly on a real database.** If `TREG_SECRET_KEY` is empty and
+  `database_url` is not SQLite, `verify_db()` raises. On SQLite development it logs a warning.
 
-**Fresh-Postgres verified:** `init_db`'s `create_all` + the guarded `_migrate_to_orgs` no-op cleanly on
-a fresh Postgres (all tables/columns present, idempotent on re-run) — the migration's SQLite-flavoured
-raw SQL only fires on a legacy/missing-column DB. **Timestamps must be naive UTC:** the datetime columns
-are `TIMESTAMP WITHOUT TIME ZONE`, and asyncpg rejects tz-aware values, so `models._now()` returns naive
-UTC (SQLite is lax and hid this; it only bites on Postgres — the deploy target).
+For PostgreSQL, migrations set bounded lock and statement timeouts. A contended ordinary DDL
+migration must fail cleanly rather than queue production traffic behind an exclusive lock: while an
+`ALTER TABLE` waits for its `ACCESS EXCLUSIVE` lock, every later query on that table queues behind
+it, so the 5 s `lock_timeout` is the longest stall a deploy may inflict and no revision may raise it
+for an `ALTER`. A deploy waits longer by retrying instead: `maintenance` re-runs `alembic upgrade
+head` up to `LOCK_RETRY_ATTEMPTS` times after a lock timeout, pausing a jittered few seconds between
+attempts so the table's short transactions can drain, and `env.py` commits each revision on its own
+(`transaction_per_migration`) so a retry resumes at the revision that timed out. Any other error
+fails the deploy at once. Concurrent index creation or removal may use longer bounded timeouts in
+its own revision: its lock permits ordinary reads and writes, although it conflicts with other
+maintenance. Such a revision restores the caller's timeouts and handles interruption: invalid builds
+must be rebuilt, and a partially completed removal must be retryable. Revision `0061` removes only
+ordinary indexes with verified unique-constraint replacements; its rollback recreates those indexes
+concurrently and requires enough disk space for them. Revision `0072` builds
+`ix_callrecord_call_ref` where a database stamped at the baseline never got it; a build on a large
+table outlasts any fixed statement timeout, so it lifts `statement_timeout` for that one statement
+(the lock timeout stays bounded) and the deploy's own pre-deploy limit bounds it. Deploy such a
+revision in a quiet window: the build reads the whole table while traffic keeps writing.
 
-**Migration portability (Postgres-safe additive columns).** The additive `ALTER TABLE … ADD COLUMN`
-steps in `_migrate_to_orgs` run on **every** startup and are idempotent (guarded by a column-existence
-check), so they must be written in SQL that both SQLite and Postgres accept. The rules the code follows:
-use `TIMESTAMP` (not `DATETIME` — Postgres has no `DATETIME` type); declare booleans as
-`BOOLEAN … DEFAULT false` (not `DEFAULT 0` — Postgres rejects an integer default on a boolean column);
-and write boolean literals as `true` / `false` (not `0` / `1`) in any `INSERT`. SQLite accepts all of
-these too, so the same statements work on both databases. `_ensure_bool_col` centralizes the boolean case.
-Also **quote a reserved-word table name**: the `token_version` step is `ALTER TABLE "user" ADD COLUMN …`
-(`user` is reserved in Postgres, where this ALTER runs in-place on the live DB — an existing table isn't
-touched by `create_all`, only by the migration). The usage-metering columns (A10 `membership.daily_call_cap
-INTEGER DEFAULT -1`, A11 `callrecord.kind VARCHAR DEFAULT 'call'`) follow the same rules but need no
-quoting (neither table name is reserved); the legacy owner-Membership backfill `INSERT` supplies
-`daily_call_cap` explicitly, since a `create_all` column is NOT NULL with no server default. The later
-additive steps follow the same rules: **A15** `org.public_demo BOOLEAN` (via `_ensure_bool_col`, the
-publishable call-only token; the legacy-org backfill `INSERT` now lists it explicitly); **A16** the
-connection metadata on `secret` (`provider`, `granted_scopes`, `resource_ref`, `resource_name`,
-`expires_at`/`last_refresh_at TIMESTAMP`, `last_error`) so the OAuth marketplace can attribute, scope,
-and expire a credential; **A17–A20** the per-provider auth quirks on `pendingoauth` carried through the
-redirect (`provider`, `code_verifier`, `auth_params`, `token_endpoint_auth_method`, `client_id_param`,
-`scope_separator`, `long_lived_exchange BOOLEAN DEFAULT false`, `replaces_secret_id INTEGER`) so the
-callback exchanges the code exactly as the consent URL was built.
+Hot-table ALTERs stay cheap to retry when they sit in their own revision, add only nullable columns
+without defaults (metadata-only in PostgreSQL) and leave backfills and `NOT NULL` to later steps.
 
-**Audit back-pressure (`audit.py`).** Audit rows are written off the request path (fire-and-forget), and
-each write opens a DB connection from the small pool **shared** with real requests. Two limits keep
-best-effort logging from starving that pool: a loop-bound semaphore caps concurrent audit writes at
-`_MAX_CONCURRENT_WRITES`, and under an extreme burst the writer **sheds** load — it drops any audit row
-past `_MAX_PENDING` rather than let the pending set grow without bound. Audit must never OOM or wedge the
-server.
+Deploy schema changes before starting application or worker code that expects the new revision. A
+platform whose scheduled workers update independently must sequence them accordingly.
 
-The proxy is thin and IO-bound (a relay, low CPU/memory), so cheap machines scale it.
+## Database pools
+
+`POOL_SPECS` in `infra/db.py` defines three PostgreSQL pools:
+
+| pool | maker | serves |
+|---|---|---|
+| `api` | `session_maker` | request handlers |
+| `admin` | `admin_session_maker` | `/admin/*` handlers |
+| `background` | `background_session_maker` | audit, archive and other background work |
+
+Each class can exhaust only its own slots. Minor pools deliberately have no overflow because an
+unbounded escape hatch defeats the bulkhead. A new class of work gets an appropriate pool, not only
+a module-local semaphore. `tests/test_db_pool_isolation.py` pins the routing.
+
+Every process opens its own pools and runs its own in-process background tasks. Calculate the full
+connection peak from pool capacities, process count and the maximum number of overlapping instances
+during a rolling deployment. Keep that peak below the database connection ceiling with headroom.
+
+`TREG_DB_POOL_OVERRIDES` accepts entries such as
+`"admin.pool_size=4,background.pool_size=12"` and patches `POOL_SPECS` at startup. Unknown pools,
+unknown field names, non-integers and out-of-range values are logged and skipped. In particular,
+SQLAlchemy treats some zero and negative values as unlimited, so the parser must not pass them
+through. Live values and production sizing belong in the private operator runbook.
+
+`bootstrap.pool_gauge` samples `infra/db.pool_snapshot()` and emits per-pool peak, capacity and
+headroom. Resize from measurements, one pool at a time. A larger pool does not repair a slow scan,
+lock queue, disk-bound database or missing index.
+
+Web roles and worker commands also run local money-transaction diagnostics independently of the
+PostHog key. Verify fresh `money_trace_gauge` records for each deployed build and process, including
+tracking counts, sample age and drop counters. `money_txn_slow` and `money_txn_end` correlate backend
+PIDs with application transaction IDs and stages; join within their timestamp intervals because
+connections are reused. Read the coverage and loss limitations in
+[data-model](../architecture/data-model.md#product-analytics-writer-analyticspy) before interpreting
+missing records. Deployment requires no schema migration or new database privileges.
+
+All pools use `pool_pre_ping=True`, `pool_recycle=300` and `pool_timeout=5`. A request that gets no
+slot in time receives `503 {"treg_saturated": true}` with `Retry-After: 2` through
+`bootstrap_handlers._pool_saturated`. A `/call/` holds no connection during the upstream round trip.
+
+SQLite aliases all three makers to one engine. It has no pool to protect and file-level write locks
+it cannot share, so separate engines would only manufacture lock failures. Tests pin routing rather
+than SQLite isolation.
+
+### Optional read replica
+
+`TREG_READ_DATABASE_URL` adds a datasource exposed as `read_session_maker`. Its supported drivers
+match the project's SQLite / PostgreSQL support: `sqlite+aiosqlite` and `postgresql+asyncpg`.
+Bare `postgres://` and `postgresql://` URLs normalize to `postgresql+asyncpg`, as for the primary;
+other read URL drivers fail settings validation. This does not add support for MySQL or other
+SQLAlchemy dialects. When empty, the read maker aliases `session_maker`, with the primary's existing
+transaction behavior (including writes) and no additional pool. Connections are opened only when used.
+
+A configured URL always gets an independent engine, even when it names the primary database:
+
+- PostgreSQL uses a `read` pool defaulting to two connections with no overflow;
+  `TREG_DB_POOL_OVERRIDES` accepts `read.pool_size` and `read.max_overflow`. Each connection sets
+  `default_transaction_read_only=on` through asyncpg's `server_settings`.
+- SQLite retains the driver's default pool behavior and sets `PRAGMA query_only=ON` on every new
+  read connection, including after reconnection. The primary's connections remain writable. For an
+  existing file, `sqlite+aiosqlite:///file:replica.db?mode=ro&uri=true` additionally opens the file
+  read-only and fails if it is missing. A plain SQLite URL retains SQLite's usual file-opening
+  behavior, including creating a missing file; `query_only` guards SQL changes, not file creation.
+  A separate in-memory SQLite URL starts empty and cannot serve as a copy of the primary.
+
+These connection settings guard accidental writes; they are not an authorization boundary and can
+be disabled by deliberate SQL. Use a physical replica/read-only database role or filesystem access
+controls as appropriate. Connection/query failures propagate without primary fallback.
+
+`/admin/errors` uses this datasource for evidence and org names. Authorization stays on the admin
+primary pool and releases its connection before the report begins. With no read URL configured,
+`get_admin_read_session` preserves the original admin pool rather than using the general reader's
+API-pool fallback. Configured reader failures never retry on the primary.
+Before enabling a hosted cutover, verify the running process has the intended read URL, the target
+is a readable replica with the required table grants, and replication lag is acceptable. Configuring
+a URL does not migrate any other report. Removing it returns this report to the admin primary pool.
+
+`pool_snapshot()` includes a separate `read` entry for a configured PostgreSQL datasource; SQLite
+engines are omitted as for the primary. `connection_budget()` describes only the primary pools;
+budget the read pool against its target database, including process count and deployment overlap.
+If both URLs target the same server, add both budgets against that server's limit.
+`dispose_engine()` also disposes the read engine. Schema upgrades, startup verification and test
+schema resets continue to target the primary.
+
+This datasource is opt-in infrastructure; `/admin/errors` is its first report consumer.
+Further callers must tolerate replica lag and keep writes, cursor advancement and concurrency
+control on the primary. Operators must provision and synchronize a compatible schema and data;
+setting a URL does not establish replication, translate dialect-specific queries, or migrate any
+Cron job's workload. Configure it in a private local `.env` or the hosting service's environment;
+`.env.example` contains no secrets.
+
+## Configuration (`config.py`)
+
+`Settings` uses the `TREG_` prefix, reads `.env`, and is cached by `get_settings()`.
+
+- `database_url` defaults to local SQLite. A validator rewrites bare `postgres://` and
+  `postgresql://` URLs to `postgresql+asyncpg://`.
+- `secret_key` is the Fernet key. An empty value creates an ephemeral key suitable only for local
+  development.
+- `public_url` builds OAuth callbacks and public links. Self-hosters must set it to their canonical
+  external URL.
+- `admin_token` is the cross-tenant super-admin bearer. Empty disables this environment path. Keep
+  it long and secret.
+- OAuth provider clients use `<provider>_client_id` and `<provider>_client_secret` settings. Empty
+  credentials make that provider unconfigured instead of failing halfway through consent.
+- `oauth_review_pending` is a comma-separated set of provider-registry review keys. Its hosted value
+  is operational state and is maintained privately.
+- `paused_providers` is a comma-separated set of provider service ids this deployment cannot serve
+  right now, for example because its own app lost upstream access. Empty (the default) pauses
+  nothing. `paused_provider_messages` is an optional JSON object `{service: message}`; malformed
+  JSON fails at boot. Removing an id restores the provider with no reconnect. Its hosted value is
+  operational state and is maintained privately. See `interface/api.md` § `503 provider_paused`.
+- `promo_grant_micro` controls the once-per-verified-user signup grant. Zero pauses new automatic
+  grants without changing existing balances.
+- `blocked_email_domains` is the complete comma-separated blocklist. Empty blocks no domains. It is
+  a sign-in and team-creation speed bump, not a substitute for suspending an existing abusive user.
+- `run_proof` gates release of a shared key to the root-installed local runner. Empty refuses shared
+  local runs while leaving owner-key runs available.
+- `run_allowed_bins` is the command allowlist for server-side CLI execution.
+- `run_rlimits`, `run_cpu_seconds` and `run_fsize_mb` bound server-run resource use where POSIX
+  resource limits are available.
+- `proxy_ssrf_check` enables the call-time SSRF guard and is on by default.
+- `claude_connector_enabled` gates the catalog-only connector at `/mcp/v2/`.
+- `connect_demo_enabled` gates the developer OAuth test page. Leave it off on public deployments.
+- `intercom_app_id` and `intercom_secret` enable optional support chat. Empty disables it.
+- `resend_api_key` and `email_from` enable transactional email. The sender must use a domain verified
+  with the operator's mail provider.
+
+Registry-owned OAuth applications, advertising conversion credentials and platform provider keys are
+optional deployment capabilities. Their names and binding behavior are documented with their owning
+subsystems. Credentials must stay in the deployment secret store. `TREG_PLATFORM_PROVIDERS` is the
+shared-serving allow-list. Most providers also require a configured platform key. A live-verified
+free endpoint declared `platform_auth: anonymous` needs only the allow-list because treg injects no
+provider credential.
+
+## Optional money admission
+
+Root Web requests have a separate, default-disabled [Org concurrency guard](../architecture/org-concurrency.md).
+Its per-Org map and exemptions are environment configuration; enabling requires an explicit Redis
+outage policy and shared Redis. See that fragment for placeholder configuration, lease-loss limits,
+and rollback by disabling. It does not change the money admission or financial cleanup below.
+
+`TREG_MONEY_ADMISSION_ENABLED` defaults to `false`. Enabling it requires a shared Redis-compatible
+store at `TREG_KV_URL`; all participating web and money-worker processes must use the same store
+and rollout settings. No database migration or additional database privileges are required.
+
+- `TREG_MONEY_ADMISSION_ORG_IDS` is a JSON array of positive Org IDs. A non-empty array enables
+  admission only for those orgs; `[]` covers all orgs when the feature is enabled.
+- `TREG_MONEY_ADMISSION_WAIT_S` accepts values greater than 0 through 120 seconds, defaults to
+  5 seconds, and bounds the complete local/Redis acquisition attempt. Local-lock waiting uses
+  the same budget as Redis waiting. Cleanup is separately bounded by the KV operations. Exhausting this
+  budget falls back to the existing database path; it does not reject or discard settlement.
+  `reserve` and `release` use that same wait and key-value fallback. A missing or non-positive
+  org on those operations refuses before checkout, and that refusal is not an HTTP 429.
+- `TREG_MONEY_ADMISSION_LEASE_S` defaults to 15 seconds. The owner renews while acquiring or using
+  its leases and deletes only leases with its token. Expiry, lost renewal or a Redis outage can
+  admit overlapping database transactions, so existing database locks remain authoritative.
+  The lease starts on acquisition and renews at TTL/3; it need not exceed the pre-acquisition wait.
+
+Allowing a 90–120 second admission wait does not guarantee an end-to-end request can wait that
+long. It changes no default or running configuration. Budget for earlier request stages, every
+admission scope (reserve and settle can each wait), upstream work, database execution, retries,
+and cancellation/lease cleanup. Longer queues retain more pending requests and can increase
+latency or client retries without increasing a hot org's transaction throughput.
+
+Before opting into a longer wait, review these independent limits:
+
+| Boundary | Existing behavior and compatibility |
+|---|---|
+| Redis commands and renewal | `infra.kv` keeps 1-second socket timeouts, 1.5-second lease attempts, and a 2.5-second per-key renewal/release retry budget. Renewal is also bounded by the earliest confirmed lease expiry. Optional counters/health probes retain their dedicated 200 ms deadline. None scales with the queue wait. |
+| Plain call / upstream | `bootstrap._lifespan` configures `call_timeout_s` (default 180 seconds) on the upstream HTTP client. This is an HTTP I/O timeout, not a total request deadline or a budget for admission plus execution. |
+| Hold age | `domain.money.hold_ttl_s` remains `call_timeout_s + hold_grace_s` (defaults: 180 + 60 = 240 seconds). Pre-reserve admission precedes hold creation, but later admission consumes hold age. A slow upstream plus 90–120 seconds of settlement waiting can exceed the stale-hold cutoff and race a reaper; pending async-task holds are excluded. Review hold lifetime before enabling longer waits. |
+| CLI / local proxy | `cli._client` has a 190-second read timeout; `localproxy.treg_client` defaults to 120 seconds. A full 120-second queue leaves no local-proxy execution headroom; even the CLI can time out across reserve, upstream, and settlement waits. |
+| MCP | `mcp._api` declares a 120-second HTTPX timeout, but its in-process `ASGITransport` does not enforce a network read deadline. This is not an end-to-end guarantee: the external MCP client and hosting path have independent limits. |
+| Async settlement worker | `application.asynctasks.settle_due` has a 30-second processing deadline that starts before the claim and provider poll, including admission and settlement; its separate task-claim lease is 60 seconds. It cannot spend 90–120 seconds in admission within that deadline. Expanding it would require coordinating claim ownership and execution headroom. |
+| Hub / other bounded callers | Hub recipe wall deadlines and per-call script limits include earlier execution; browser onboarding aborts after 60 seconds, and Arena applies its own run/attempt deadlines. They can cancel before the admission budget expires. |
+| Rate limiter | `infra.upstream.limiter.DEFAULT_MAX_WAIT_MS` remains 2,000 ms, independent of money admission. |
+| Render / edge / external clients | Their effective request, idle, and cancellation limits are outside this setting. Verify the actual hosting path and caller budget with execution headroom before rollout; accepting 120 in Settings does not certify a 120-second request through them. |
+
+Deploy compatible code first with admission disabled to collect the same eligible-operation
+baseline, then opt in a small Org set. Compare `money_admission_gauge` wait and end-to-end durations,
+fallback/lease-loss counters, and the existing pool, money-operation and database-failure signals
+under comparable load before expanding. Whole-session serialization can reduce hot-org throughput
+even when it improves connection occupancy, so reduced lock-wait time alone is not rollout
+acceptance. Defaults are acquisition bounds, not workload sizing recommendations. Disable the
+feature to restore the original database admission path; mixed
+settings or old writers weaken isolation but do not remove accounting's database protection.
+There is no global money concurrency cap, and unrelated orgs can still collectively fill a pool.
+See [money](../architecture/money.md#optional-admission-before-the-settlement-session) for exact
+operation coverage and [data-model](../architecture/data-model.md#product-analytics-writer-analyticspy)
+for aggregate boundaries and interpretation.
+
+`tests/test_money_admission_postgres.py` uses real disposable loopback PostgreSQL and Redis via
+`TREG_TEST_DB_URL` and `TREG_TEST_KV_URL`; without these it skips instead of contacting a service.
+The PostgreSQL CI job supplies both services. `scripts/bench_money_admission.py` compares disabled
+and enabled synthetic settlement workloads using the same variables, with database names required
+to start with `treg_admission_test`. It resets that disposable schema. Its timings are local
+synthetic evidence, not a production replay or a guarantee of deployed throughput. Benchmark
+clients use separate Redis connections and local mutex maps within one event loop; this exercises
+Redis contention without a shared local mutex hiding it, but is not an operating-system
+multi-process load or failure test.
+
+## Safe local mode
+
+`single_user` and `single_user_token_file` support `curl {BASE}/selfhost.sh | sh`. The default serve
+pre-phase idempotently creates the local identity and personal team and writes a stable token with
+mode 0600. The token is re-minted only if its file is deleted.
+
+This behavior is gated by `single_user_ok`, which requires both a local SQLite database and a
+loopback `public_url`. A stray `TREG_SINGLE_USER=true` on a public PostgreSQL deployment therefore
+does nothing.
+
+`email_dev_mode` is similarly guarded. A login code is exposed only when the flag is true and the
+database is local SQLite. Hosted deployments must still leave it false.
+
+## Web service and generic Render example
+
+The redesigned homepage ships to all homepage visitors; its rollback, like the Dashboard's, is a
+code revert or a deploy of the previous build.
+
+`GET /app`, the catalog pages and shared links all serve the Vite-built Vue application. There is
+no frontend switch to configure; a Dashboard rollback is a deploy of the previous build. See
+`frontend/README.md`.
+The frontend is authored in `frontend/` within the same repository. `GET /` retains the existing
+landing behavior. Dashboard assets, tutorials, agent files and installer assets ship with the wheel.
+Hosted-page MP4 demos remain in Git checkout deployments but are excluded from published wheels and
+source archives; a server installed from PyPI serves the product surfaces without those optional
+marketing videos.
+
+Run `bash scripts/build-dashboard.sh` before building a distributable Python package. Hatch's
+build hook rejects a wheel or sdist without the dashboard entry and includes the generated assets;
+editable installs remain Python-only. Node and npm are build tools, not runtime services.
+`TREG_FRONTEND_DEV=true` serves the authored entry with Vite scripts on local port 5173 and is
+accepted only with SQLite and a loopback public URL. `scripts/dev-local.sh up` manages both processes.
+For browser previews from another device, build the dashboard and start or restart the local stack
+with `TREG_FRONTEND_DEV=false`; compiled assets then use the same origin on port 18790.
+The browser tests' server (`scripts/frontend-e2e-server.sh`) runs on `TREG_E2E_PORT`, which
+`frontend/playwright.config.ts` sets to a port the OS reports free at the start of each run, so runs
+in parallel worktrees or beside a `treg serve` proxy (default 18791) never share a port.
+
+A feature flag set in the calling shell (`TREG_HUB_ENABLED=1 scripts/dev-local.sh up`) does not
+reach the server on its own: the script starts the server inside a tmux session, and a tmux session
+inherits the **tmux server's** environment, not the calling client's — the server would start and
+answer every hub route `404` with no error. `dev-local.sh` expands a fixed passthrough list
+(the hub, table and onboarding flags) in its own process and bakes the value into the command string
+tmux runs; add a flag to that list to pass another one through. Keys never go through that list:
+they go in `scripts/.dev-home/dev-keys.env`, which the server sources. The script's own three env vars
+(`TREG_EMAIL_DEV_MODE`, `TREG_CONNECT_DEMO_ENABLED`, `TREG_DATABASE_URL`) are appended last so they
+always win over anything passed through.
+
+Per-IP limits need a client address the client cannot write. Behind Cloudflare set
+`TREG_CLIENT_IP_HEADER=cf-connecting-ip`; behind other proxies set `TREG_TRUSTED_PROXY_HOPS` to the
+number of proxies that append to `X-Forwarded-For` (default 1; 0 when clients connect directly). Each
+process logs `event=client_ip_sources` once with the address headers its proxies deliver (names
+and counts only), and `event=client_ip_header_missing` when the configured header does not arrive.
+See [multi-tenancy](../architecture/multi-tenancy.md), "Client address".
+
+A deployment that installs a policy extension into the server environment (an extra `pip install`
+after the build) should set `TREG_REQUIRED_EXTENSIONS` to its entry-point name, so a build that
+lost it fails to start instead of serving without it. See
+[policy extensions](../architecture/policy-extensions.md).
+
+[`deploy/render.example.yaml`](../../../deploy/render.example.yaml) is a generic self-hosting example.
+It creates one web service and one PostgreSQL database, builds with
+`bash scripts/build-web.sh` (frontend build followed by the locked Python install), runs
+`python -m treg upgrade` before serving,
+starts `python -m treg`, and checks `/meta`. Copy it into the operator's own deployment repository and
+change resource names, region, plans, public URL and integrations.
+
+### Build from the lock file
+
+A deployment built from a checkout must install the dependency set `uv.lock` records, which is the
+set CI tests (`uv sync --locked` in `.github/workflows/ci.yml`). `pip install ".[server]"` does not
+read the lock: it resolves every open range in `pyproject.toml` afresh, so a build made after a
+dependency publishes a breaking release ships that release with no commit in this repository, and
+the suite that passed on the lock proves nothing about it. `--locked` refuses a stale lock instead
+of resolving, which makes a forgotten `uv lock` a failed build rather than a silent drift; `--no-dev`
+leaves the test tooling out; `--active` installs into the virtual environment the platform already
+activated for the start command. Every process that shares a database (web service and scheduled
+workers) must build the same way, or they run different dependency sets against one schema.
+
+Render adds `uv` to its Python runtime when `uv.lock` is present at the service root, but at an
+older version than `[tool.uv] required-version` accepts; set `UV_VERSION` on the service to a
+version that satisfies it. Upgrading a dependency is a `uv lock --upgrade-package <name>` (or
+`uv lock --upgrade`) commit that CI tests before it can reach a build.
+
+Installing the published wheel (`pip install "tools-registry[server]"`) is a different path: a wheel
+carries no lock, so that operator pins versions in their own requirements file.
+
+The published source archive is built by Hatchling from the checkout. The Hatch target exclusions in
+`pyproject.toml` keep local linked worktrees, root-level working plans and previews, evidence,
+databases, environment files and hosted-page MP4 demos out of public artifacts. Release validation
+inspects both archive contents; a clean Git diff alone is not sufficient.
+
+The example is deliberately not the treg.to production Blueprint. The hosted topology and settings
+are private operational state.
+
+## Audit and archive back-pressure
+
+`audit.record_call` enqueues rows off the request path. One batching writer per process drains them
+through the background pool. `_MAX_PENDING` bounds queued rows; overload sheds audit work instead of
+growing memory without limit. A rejected batch retries row by row so one malformed row costs only
+that row. Unknown model fields are dropped with an error log rather than silently discarding the
+whole record.
+
+Archive recording has independent task-count and byte limits. `_MAX_PENDING_BYTES` bounds bodies
+retained for database writes, and `archive_r2_max_pending_bytes` separately bounds object-store work.
+These are admission budgets, not an RSS ceiling: SDK buffers, compression and mandatory terminal
+evidence require additional memory headroom.
+
+Spooled settlement evidence (`spooled_response`, proxy-model.md) writes large metered answers to
+the process temp directory, not RAM. `TREG_SPOOL_BUDGET_BYTES` (default 512 MiB per process) bounds
+that disk use, `TREG_SPOOL_MAX_BYTES` (64 MiB) one answer, `TREG_SPOOL_PARSE_CONCURRENCY` (2) the
+transient parse memory (up to about three times the body each), and `TREG_SPOOL_DIR` overrides the directory.
+Size the budget against the host's ephemeral disk: a platform that evicts an instance over its
+local-storage allowance turns an oversized budget into a restart. Production observations and incident history live in
+the private [database-capacity runbook](https://github.com/superdesigndev/treg-internal/blob/main/docs/production/database-capacity.md).
+
+## Hosted feature switches
+
+Several settings alter optional shared-service behavior without changing the underlying public
+contract:
+
+- `TREG_PLATFORM_DAILY_CAP_USD` is the default per-UTC-day shared-provider spend limit for a team
+  that has not set its own; 0 (the default) is no limit. A team's own setting wins in either
+  direction.
+- `TREG_OAUTH_BILLED_PROVIDERS` names OAuth providers whose upstream bill lands on the registry
+  operator. Own-app connections are never metered by this switch.
+- `TREG_ROUTED_DISCOVERY` controls whether discovery leads callers to routed capability tools. It
+  does not delete or make existing endpoint IDs uncallable.
+- `TREG_PLATFORM_PROVIDERS` enables use of configured platform credentials.
+- `TREG_OVERFLOW_MODE` and `TREG_OVERFLOW_DAILY_BUDGET_USD` control same-vendor overflow. See
+  [capacity](capacity.md).
+- `TREG_SEARCH_EXPERIMENT` (`off` | `shadow` | `interleave`) runs the
+  [discovery experiment](../architecture/search-experiment.md) on the MCP search tools; it is also
+  its kill switch. Needs `TREG_TYPESAFE_API_KEY`; `TREG_TYPESAFE_TIMEOUT_S` bounds what the judge
+  may add to a search. Off by default, and off whenever the key is empty.
+- `TREG_FIND_ENGINE` (`v1` | `v2` | `shadow`) picks what `/catalog/find` answers with (see
+  [find](../architecture/find.md)); `shadow` serves v1 and logs v2 beside it, at a second judge
+  request per find. Rolling back is setting it to `v1`.
+- `TREG_FIND_EMBED_API_KEY` turns on v2's semantic channel; with the default OpenRouter
+  `TREG_FIND_EMBED_URL` an empty value uses `TREG_PLATFORM_KEY_OPENROUTER`. Card vectors are cached in
+  the archive's object store when archive R2 is on, else rebuilt by each process.
+
+Exact treg.to values, funded accounts and rollout instructions live in the private
+[provider-capacity runbook](https://github.com/superdesigndev/treg-internal/blob/main/docs/production/provider-capacity.md).
+
+## Worker commands
+
+`treg-worker` is a console script in the `[server]` extra. It hosts scheduled maintainer commands
+without importing the heavy database stack into the light `treg` CLI.
+
+- `treg-worker capacity sweep` collects provider capacity and writes snapshots.
+- `treg-worker overflow verify` obtains route evidence and spends real money when configured.
+- `treg-worker overflow sync` derives enabled overflow routes from current evidence.
+- `treg-worker asynctasks settle` completes durable holds for asynchronous upstream operations.
+- `treg-worker arena insights` folds new audit rows into the rolling Arena aggregate
+  (`--max-seconds`, default 110, bounds one pass; schedule it every two minutes).
+  It requires the archive object-store settings when R2 reads are enabled, opens the same client
+  lifecycle as the web service, and flushes read analytics before exiting. The same scheduled
+  command refreshes Web Arena's saved Battle totals when Web Arena is enabled and its reviewed
+  benchmark is published; that full refresh is gated to once every 30 minutes.
+- `treg-worker catalog stats` folds new audit rows into per-endpoint, per-day reliability buckets
+  (`--max-rows`, default 500,000, bounds one pass; schedule it every few minutes). The catalog keeps
+  computing observations live until this command has caught up once, so it can be scheduled after
+  the application deploys, and a self-hosted registry that never schedules it loses nothing.
+- `treg-worker spend rollup` folds new ledger settle entries into per-key, per-tool, per-day spend
+  (`--max-rows`, default 50,000, bounds one pass; schedule it every few minutes, after the web
+  service runs a build with revision 0070). It reads the primary database in small batches, and
+  its first run backfills 31 days over as many runs as `--max-rows` needs. The Team page's "Spent"
+  column and the Usage page's spend chart say spend history is being prepared until it has caught up once.
+- `treg-worker jev xboost` runs the `/jev` launch-radar demo once a day: it calls treg's own `/call/` API
+  with `TREG_JEV_TREG_TOKEN` (a member token of the demo team, so the spend is an ordinary bill) and jev
+  through the Vercel AI Gateway (`TREG_AI_GATEWAY_API_KEY`), and stores the run under Ephemeral for the page.
+  Both variables also belong on the web service, which needs them for the visitor judge endpoint.
+  The first-run onboarding (`TREG_ONBOARDING_V2`, or `TREG_ONBOARDING_V2_EMAILS` for a list, or
+  `TREG_ONBOARDING_V2_EXPERIMENT` for addresses on a domain of their own, in the PostHog experiment `onboarding-v2`) runs
+  on the web service and reads `TREG_ONBOARDING_TREG_TOKEN` (a member token of the team its setup
+  lookups bill), `TREG_ONBOARDING_GITHUB_TOKEN` and `TREG_AI_GATEWAY_API_KEY`; each is optional, and a
+  missing one skips its step.
+- `treg-worker admin purge-evidence` blanks failed-call evidence past the 14-day retention window
+  (`--batch-size`, default 5000, rows per transaction; schedule it daily). `GET /admin/errors` is
+  read-only and already withholds evidence past the window, so an unscheduled purge keeps the old
+  bytes in the database but never shows them.
+- `treg-worker hub check [--only <tool_id>] [--json]` runs every live [hub](../architecture/hub.md)
+  tool's `check.json` once, as its maker (spends the maker's balance at step prices); a no-op with
+  exit 0 when `hub_enabled` is off. Schedule it every 6 hours; health is derived from the last three
+  runs.
+
+The two analytics commands exist so that no web process aggregates the audit table beside the
+money path; `callrecord` is read only through the persisted cursors they own. Workers call
+read-only `verify_db()` before work and must run against a compatible schema. They need only the
+credentials and configuration required by their job (the two analytics commands need only the
+database URL). Hosting schedules, service wiring and manual production procedures belong in the
+private deployment runbook.
+
+
+Managed-key rollout uses revisions `0034` through `0036`. Apply the key controls and generation
+before the separate concurrent Activity index build. The index migration allows 180 seconds for
+lock waits and 600 seconds per statement, then restores 5/120 seconds. A failed concurrent build
+can leave an invalid index; retrying `0036` removes and rebuilds only that invalid index.
+Do not deploy server code older than `0034` after key disable or revoke state has been recorded.
+The package version follows current main; this branch does not publish a release.
+
+For hosted rollout, release and verify the compatible CLI before deploying the managed-key server.
+The served installer installs from PyPI, so changing the server alone does not make `treg update`
+install the new client. Old browser login and saved-token calls remain usable; affected email and
+team-change requests receive an update instruction before their local state can be replaced.

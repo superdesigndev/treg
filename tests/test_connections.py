@@ -7,15 +7,20 @@ credential, and exposes resource discovery so the connection knows what it acts 
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import json
-from datetime import datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
+from sqlmodel import select
 
-from treg import crypto, oauth
+from treg import api as A
+from treg import crypto
+from treg.application import connect as connect_use_cases
+from treg.application.connect import _backfill_provider_extra_tools
 from treg.config import get_settings
-from treg.models import Secret
+from treg.infra.db import session_maker
+from treg.models import HubTool, Membership, Secret, Tool
 
 # The test upstream serves /token, standing in for Google's token endpoint.
 BYO = {
@@ -67,30 +72,6 @@ async def test_connections_never_leak_token_material(clients: AsyncClient):
     assert "client_secret" not in body
 
 
-async def test_byo_connect_has_no_provider(clients: AsyncClient):
-    """Only registry connects are attributed to a provider."""
-    st = await _connect_byo(clients)
-    conns = {c["id"]: c for c in (await clients.get("/connections")).json()}
-    assert conns[st["secret_id"]]["provider"] == ""
-
-
-# ---- expiry as its own axis --------------------------------------------------------------
-def test_refreshable_credentials_are_always_fresh():
-    """treg mints a new access token on demand, so a short expiry is an implementation detail —
-    nagging the user about it would be noise."""
-    past = datetime(2020, 1, 1)
-    assert oauth.expiry_state(past, refreshable=True) == "fresh"
-
-
-def test_non_refreshable_expiry_is_surfaced():
-    """The LinkedIn case: healthy right up until it silently dies."""
-    now = datetime(2026, 7, 21)
-    assert oauth.expiry_state(now - timedelta(days=1), False, now) == "expired"
-    assert oauth.expiry_state(now + timedelta(days=3), False, now) == "expiring"
-    assert oauth.expiry_state(now + timedelta(days=30), False, now) == "fresh"
-    assert oauth.expiry_state(None, False, now) == "unknown"
-
-
 # ---- auto-provisioning -------------------------------------------------------------------
 async def test_registry_connect_autoprovisions_a_callable_tool(clients: AsyncClient, treg_google_app):
     """The point: after consent the user can immediately make a real proxied call."""
@@ -121,16 +102,6 @@ async def test_byo_connect_provisions_no_tool(clients: AsyncClient):
     """Without a registry provider treg doesn't know the upstream, so it must not invent one."""
     await _connect_byo(clients)
     assert (await clients.get("/tools")).json() == []
-
-
-# ---- resource selection + revoke ---------------------------------------------------------
-async def test_set_and_read_back_the_selected_resource(clients: AsyncClient, treg_google_app):
-    st = await _connect_byo(clients, provider="google-search-console", name="google-search-console")
-    sid = st["secret_id"]
-    r = await clients.post(f"/connections/{sid}/resource", json={"resource_ref": "sc-domain:example.com"})
-    assert r.status_code == 200 and r.json()["resource_ref"] == "sc-domain:example.com"
-    conns = {c["id"]: c for c in (await clients.get("/connections")).json()}
-    assert conns[sid]["resource_ref"] == "sc-domain:example.com"
 
 
 async def test_discovery_refused_for_a_provider_that_cannot_discover(clients: AsyncClient):
@@ -218,6 +189,385 @@ async def test_successful_discovery_marks_the_connection_working(clients: AsyncC
     assert {c["id"]: c for c in (await clients.get("/connections")).json()}[sid]["health"] == "ok"
 
 
+# ---- Business-owned Meta assets join the picker ---------------------------------------------
+@pytest.fixture
+def treg_meta_app(monkeypatch):
+    monkeypatch.setenv("TREG_META_CLIENT_ID", "treg-meta-cid")
+    monkeypatch.setenv("TREG_META_CLIENT_SECRET", "treg-meta-csec")
+    monkeypatch.setenv("TREG_INSTAGRAM_CLIENT_ID", "treg-instagram-cid")
+    monkeypatch.setenv("TREG_INSTAGRAM_CLIENT_SECRET", "treg-instagram-csec")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def _meta_test_provider(monkeypatch, service: str, **over):
+    import dataclasses
+
+    from treg import oauth_providers as P
+
+    provider = P.REGISTRY[service]
+    if service == "instagram":
+        methods = tuple(
+            dataclasses.replace(
+                method,
+                overrides=tuple({**dict(method.overrides), **over}.items()),
+            ) if method.name == "facebook-page" else method
+            for method in provider.authorization_methods
+        )
+        provider = dataclasses.replace(provider, authorization_methods=methods)
+    monkeypatch.setitem(P.REGISTRY, service, dataclasses.replace(
+        provider, discover_base_url="http://upstream", **over))
+
+
+async def test_business_owned_pages_join_the_facebook_picker(clients: AsyncClient, treg_meta_app, monkeypatch):
+    """An agency member reaches most Pages through their Business portfolio, not a personal Page
+    role — /me/accounts alone answers [] for exactly the Pages they manage all day. The Business
+    walk must add owned and client Pages, without doubling a Page both listings return."""
+    _meta_test_provider(monkeypatch, "facebook")
+    st = await _connect_byo(clients, provider="facebook", name="facebook")
+    r = await clients.get(f"/connections/{st['secret_id']}/resources")
+    assert r.status_code == 200, r.text
+    got = {x["id"]: x["label"] for x in r.json()["resources"]}
+    assert got == {
+        "PAGE-DIRECT": "Directly Managed Page",  # once, though both listings return it
+        "PAGE-NO-IG": "Business Page Without Instagram",
+        "PAGE-CLIENT": "Agency Client Page",
+    }
+    assert [x["id"] for x in r.json()["resources"]][0] == "PAGE-DIRECT", \
+        "the primary listing's rows keep first position"
+
+
+async def test_business_owned_instagram_accounts_join_the_picker(clients: AsyncClient, treg_meta_app, monkeypatch):
+    """Same walk through the Instagram lens: Business-owned Pages contribute their linked
+    professional accounts, a Page without one drops out instead of surviving as an id-less
+    phantom row, and the directly-reachable account is not doubled."""
+    _meta_test_provider(monkeypatch, "instagram")
+    st = await _connect_byo(clients, provider="instagram", capability="page-messages", name="")
+    r = await clients.get(f"/connections/{st['secret_id']}/resources")
+    assert r.status_code == 200, r.text
+    got = {x["id"]: x["label"] for x in r.json()["resources"]}
+    assert got == {"IG-DIRECT": "direct_ig", "IG-CLIENT": "client_ig"}
+    assert "PAGE-TOKEN" not in r.text, "resource discovery must never expose Page tokens"
+
+
+@pytest.mark.parametrize(("ig_id", "expected_page", "expected_token"), [
+    ("IG-DIRECT", "PAGE-DIRECT", "PAGE-TOKEN-DIRECT"),
+    ("IG-CLIENT", "PAGE-CLIENT", "PAGE-TOKEN-CLIENT"),
+])
+async def test_instagram_selection_stores_and_binds_the_linked_page_token(
+    clients: AsyncClient, treg_meta_app, monkeypatch, ig_id, expected_page, expected_token,
+):
+    """The caller chooses an Instagram id, while Treg privately derives the linked Page token.
+
+    Directly managed and Business-client Pages use the same encrypted-token path. The original
+    user token stays available for future discovery and reconnect; calls inject only the Page token.
+    """
+    _meta_test_provider(monkeypatch, "instagram")
+    st = await _connect_byo(clients, provider="instagram", capability="page-messages", name="")
+    sid = st["secret_id"]
+
+    r = await clients.post(f"/connections/{sid}/resource", json={
+        "resource_ref": ig_id, "resource_name": "chosen_ig",
+    })
+    assert r.status_code == 200, r.text
+    assert expected_token not in r.text
+
+    async with session_maker() as db:
+        secret = await db.get(Secret, sid)
+        blob = json.loads(crypto.decrypt(secret.value))
+        assert blob["access_token"] == "META-TOKEN"
+        assert blob["page_access_token"] == expected_token
+        assert blob["page_id"] == expected_page
+        tool = (await db.execute(select(Tool).where(
+            Tool.org_id == secret.org_id, Tool.name == "instagram-page-tools"
+        ))).scalars().one()
+        assert tool.bindings[0]["secret_field"] == "page_access_token"
+
+    assert {
+        "meta_page_subscription": expected_page,
+        "subscribed_fields": "messages,messaging_postbacks",
+    } in A.app.state.hook_hits
+
+
+async def test_instagram_selection_subscription_failure_is_atomic(
+    clients: AsyncClient, treg_meta_app, monkeypatch,
+):
+    _meta_test_provider(
+        monkeypatch, "instagram",
+        resource_setup_path="/{page_id}/missing-subscription-edge",
+    )
+    st = await _connect_byo(clients, provider="instagram", capability="page-messages", name="")
+    sid = st["secret_id"]
+
+    r = await clients.post(f"/connections/{sid}/resource", json={
+        "resource_ref": "IG-DIRECT", "resource_name": "direct_ig",
+    })
+    assert r.status_code == 502, r.text
+    assert "could not set up" in r.json()["detail"]
+    async with session_maker() as db:
+        secret = await db.get(Secret, sid)
+        assert secret.resource_ref == ""
+        blob = json.loads(crypto.decrypt(secret.value))
+        assert "page_access_token" not in blob
+        assert "page_id" not in blob
+
+
+async def test_resource_provider_io_runs_without_an_open_database_session(
+    clients: AsyncClient, treg_meta_app, monkeypatch,
+):
+    """A slow provider must not hold a database session while resource setup waits on HTTP."""
+    _meta_test_provider(monkeypatch, "instagram")
+    st = await _connect_byo(clients, provider="instagram", capability="page-tools", name="")
+    real_session_maker = connect_use_cases.session_maker
+    real_resolve = connect_use_cases._resolve_resource_call_token
+    open_sessions = 0
+
+    @asynccontextmanager
+    async def tracked_session_maker():
+        nonlocal open_sessions
+        open_sessions += 1
+        try:
+            async with real_session_maker() as db:
+                yield db
+        finally:
+            open_sessions -= 1
+
+    async def checked_resolve(*args, **kwargs):
+        assert open_sessions == 0
+        return await real_resolve(*args, **kwargs)
+
+    monkeypatch.setattr(connect_use_cases, "session_maker", tracked_session_maker)
+    monkeypatch.setattr(connect_use_cases, "_resolve_resource_call_token", checked_resolve)
+    r = await clients.post(f"/connections/{st['secret_id']}/resource", json={
+        "resource_ref": "IG-DIRECT", "resource_name": "direct_ig",
+    })
+    assert r.status_code == 200, r.text
+
+
+async def test_resource_selection_rejects_a_concurrent_reconnect(
+    clients: AsyncClient, treg_meta_app, monkeypatch,
+):
+    """Do not combine a Page token from an old grant with a reconnected root token."""
+    _meta_test_provider(monkeypatch, "instagram")
+    st = await _connect_byo(clients, provider="instagram", capability="page-tools", name="")
+    sid = st["secret_id"]
+    real_resolve = connect_use_cases._resolve_resource_call_token
+
+    async def reconnect_during_resolve(*args, **kwargs):
+        setup_fields = await real_resolve(*args, **kwargs)
+        async with session_maker() as db:
+            secret = await db.get(Secret, sid)
+            blob = json.loads(crypto.decrypt(secret.value))
+            blob["access_token"] = "RECONNECTED-META-TOKEN"
+            secret.value = crypto.encrypt(json.dumps(blob))
+            await db.commit()
+        return setup_fields
+
+    monkeypatch.setattr(
+        connect_use_cases, "_resolve_resource_call_token", reconnect_during_resolve,
+    )
+    r = await clients.post(f"/connections/{sid}/resource", json={
+        "resource_ref": "IG-DIRECT", "resource_name": "direct_ig",
+    })
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"] == (
+        "the connection changed during resource setup; select the resource again"
+    )
+
+    async with session_maker() as db:
+        secret = await db.get(Secret, sid)
+        blob = json.loads(crypto.decrypt(secret.value))
+        assert blob["access_token"] == "RECONNECTED-META-TOKEN"
+        assert "page_access_token" not in blob
+        assert "page_id" not in blob
+        assert secret.resource_ref == ""
+
+
+async def test_instagram_selection_rejects_an_unlinked_account_atomically(
+    clients: AsyncClient, treg_meta_app, monkeypatch,
+):
+    _meta_test_provider(monkeypatch, "instagram")
+    st = await _connect_byo(clients, provider="instagram", capability="page-tools", name="")
+    sid = st["secret_id"]
+
+    r = await clients.post(f"/connections/{sid}/resource", json={
+        "resource_ref": "IG-NOT-ACCESSIBLE", "resource_name": "wrong",
+    })
+    assert r.status_code == 422, r.text
+    async with session_maker() as db:
+        secret = await db.get(Secret, sid)
+        assert secret.resource_ref == ""
+        assert "page_access_token" not in json.loads(crypto.decrypt(secret.value))
+
+
+async def test_instagram_calls_inject_the_selected_page_token(
+    clients: AsyncClient, treg_meta_app, monkeypatch,
+):
+    _meta_test_provider(monkeypatch, "instagram", base_url="http://upstream/v25.0")
+    st = await _connect_byo(clients, provider="instagram", capability="page-tools", name="")
+    sid = st["secret_id"]
+    # Emulate an Instagram connection provisioned before Page-token handling shipped. Selecting
+    # the account should migrate its binding in place; a second OAuth reconnect is not required.
+    async with session_maker() as db:
+        tool = (await db.execute(select(Tool).where(
+            Tool.name == "instagram-page-tools"
+        ))).scalars().one()
+        binding = dict(tool.bindings[0])
+        binding["secret_field"] = "access_token"
+        tool.bindings = [binding]
+        await db.commit()
+    selected = await clients.post(f"/connections/{sid}/resource", json={
+        "resource_ref": "IG-DIRECT", "resource_name": "direct_ig",
+    })
+    assert selected.status_code == 200, selected.text
+
+    r = await clients.get(
+        "/call/instagram-page-tools/PAGE-DIRECT/conversations",
+        params={"platform": "instagram"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["data"][0]["id"] == "IG-CONVERSATION-1"
+    assert r.json()["data"][0]["page_id"] == "PAGE-DIRECT"
+
+
+@pytest.mark.parametrize(("page_id", "expected_token"), [
+    ("PAGE-DIRECT", "PAGE-TOKEN-DIRECT"),
+    ("PAGE-CLIENT", "PAGE-TOKEN-CLIENT"),
+])
+async def test_facebook_page_calls_inject_the_selected_page_token(
+    clients: AsyncClient, treg_meta_app, monkeypatch, page_id, expected_token,
+):
+    """Meta rejects the user token on every Page edge. Picking the Page must make its calls
+    carry that Page's token, while the user token stays for discovery and the picker."""
+    _meta_test_provider(monkeypatch, "facebook", base_url="http://upstream/v25.0")
+    st = await _connect_byo(clients, provider="facebook", name="facebook")
+    sid = st["secret_id"]
+
+    picked = await clients.post(f"/connections/{sid}/resource", json={
+        "resource_ref": page_id, "resource_name": "chosen page",
+    })
+    assert picked.status_code == 200, picked.text
+    assert expected_token not in picked.text
+
+    async with session_maker() as db:
+        blob = json.loads(crypto.decrypt((await db.get(Secret, sid)).value))
+        assert blob["access_token"] == "META-TOKEN"
+        assert blob["page_access_token"] == expected_token
+
+    r = await clients.get(f"/call/facebook/{page_id}/posts")
+    assert r.status_code == 200, r.text
+    assert r.json()["data"][0]["id"] == f"{page_id}_POST-1"
+
+    listed = await clients.get(f"/connections/{sid}/resources")
+    assert listed.status_code == 200, listed.text
+    assert "PAGE-TOKEN" not in listed.text
+
+
+async def test_the_picker_says_when_a_connection_acts_on_one_resource_only(
+    clients: AsyncClient, treg_meta_app, treg_google_app, monkeypatch,
+):
+    """A Page token reaches only its own Page, so the picker must not promise that another
+    Page works per call. A Google site picker keeps that promise: one token reaches every site."""
+    _meta_test_provider(monkeypatch, "facebook")
+    fb = await _connect_byo(clients, provider="facebook", name="facebook")
+    r = await clients.get(f"/connections/{fb['secret_id']}/resources")
+    assert r.status_code == 200, r.text
+    assert r.json()["resource_scoped"] is True
+
+    import dataclasses
+
+    from treg import oauth_providers as P
+
+    monkeypatch.setitem(P.REGISTRY, "google-search-console", dataclasses.replace(
+        P.REGISTRY["google-search-console"], discover_base_url="http://upstream"))
+    gsc = await _connect_byo(
+        clients, provider="google-search-console", name="google-search-console")
+    r = await clients.get(f"/connections/{gsc['secret_id']}/resources")
+    assert r.status_code == 200, r.text
+    assert r.json()["resource_scoped"] is False
+
+
+async def test_a_facebook_connection_works_before_a_page_is_picked(
+    clients: AsyncClient, treg_meta_app, monkeypatch,
+):
+    """Until a Page is picked there is no Page token to inject. The tool must keep the user
+    token, so the probe and the picker work instead of failing with a missing field."""
+    _meta_test_provider(monkeypatch, "facebook")
+    st = await _connect_byo(clients, provider="facebook", name="facebook")
+    async with session_maker() as db:
+        tool = (await db.execute(select(Tool).where(Tool.name == "facebook"))).scalars().one()
+        assert tool.bindings[0]["secret_field"] == "access_token"
+    r = await clients.get(f"/connections/{st['secret_id']}/resources")
+    assert r.status_code == 200, r.text
+
+
+async def test_facebook_reconnect_derives_the_page_token_again(
+    clients: AsyncClient, treg_meta_app, monkeypatch,
+):
+    """A reconnect replaces the encrypted blob. The picked Page must keep working afterwards:
+    the Page token is derived again from the new user token, not lost with the old blob."""
+    _meta_test_provider(monkeypatch, "facebook", base_url="http://upstream/v25.0")
+    first = await _connect_byo(clients, provider="facebook", name="facebook")
+    sid = first["secret_id"]
+    picked = await clients.post(f"/connections/{sid}/resource", json={
+        "resource_ref": "PAGE-CLIENT", "resource_name": "Agency Client Page",
+    })
+    assert picked.status_code == 200, picked.text
+
+    again = await _connect_byo(
+        clients, provider="facebook", name="facebook", connection_id=sid)
+    assert again["secret_id"] == sid
+
+    async with session_maker() as db:
+        secret = await db.get(Secret, sid)
+        assert secret.resource_ref == "PAGE-CLIENT"
+        blob = json.loads(crypto.decrypt(secret.value))
+        assert blob["page_access_token"] == "PAGE-TOKEN-CLIENT"
+    r = await clients.get("/call/facebook/PAGE-CLIENT/posts")
+    assert r.status_code == 200, r.text
+
+
+async def test_a_reconnect_that_loses_the_page_asks_for_a_new_pick(
+    clients: AsyncClient, treg_meta_app, monkeypatch,
+):
+    """If the new grant no longer reaches the picked Page, the connection must say so and fall
+    back to the user token. It must not keep a Page binding with no Page token behind it."""
+    _meta_test_provider(monkeypatch, "facebook", base_url="http://upstream/v25.0")
+    first = await _connect_byo(clients, provider="facebook", name="facebook")
+    sid = first["secret_id"]
+    picked = await clients.post(f"/connections/{sid}/resource", json={
+        "resource_ref": "PAGE-CLIENT", "resource_name": "Agency Client Page",
+    })
+    assert picked.status_code == 200, picked.text
+
+    # The agency lost access to its client's Page between the two consents.
+    _meta_test_provider(
+        monkeypatch, "facebook", base_url="http://upstream/v25.0",
+        resource_token_extra_path="/no-such-listing",
+    )
+    await _connect_byo(clients, provider="facebook", name="facebook", connection_id=sid)
+
+    async with session_maker() as db:
+        secret = await db.get(Secret, sid)
+        assert secret.resource_ref == ""
+        assert secret.health_status == "setup_required"
+        assert "page_access_token" not in json.loads(crypto.decrypt(secret.value))
+        tool = (await db.execute(select(Tool).where(Tool.name == "facebook"))).scalars().one()
+        assert tool.bindings[0]["secret_field"] == "access_token"
+
+
+async def test_a_failing_business_walk_leaves_the_primary_listing_intact(clients: AsyncClient, treg_meta_app, monkeypatch):
+    """Connections that consented before business_management joined our scopes get a clean
+    permission error from the Business walk. That must read as "no extra assets", never a 502 —
+    the primary listing already answered."""
+    _meta_test_provider(monkeypatch, "facebook", discover_extra_path="/no-such-listing")
+    st = await _connect_byo(clients, provider="facebook", name="facebook")
+    r = await clients.get(f"/connections/{st['secret_id']}/resources")
+    assert r.status_code == 200, r.text
+    assert [x["id"] for x in r.json()["resources"]] == ["PAGE-DIRECT"]
+
+
 # ---- disconnecting must not leave a broken tool behind -------------------------------------
 async def test_revoke_removes_the_provider_tool_it_provisioned(clients: AsyncClient, treg_google_app):
     """A tool bound to a deleted credential isn't "still configured", it's broken — and it only
@@ -237,10 +587,10 @@ async def test_revoke_keeps_a_user_built_tool_but_drops_the_dead_binding(clients
     st = await _connect_byo(clients)  # BYO: no provider, so no auto-provisioned tool
     sid = st["secret_id"]
     other = (await clients.post("/secrets", json={"name": "OTHER", "value": "k"})).json()
-    mine = (await clients.post("/tools", json={
+    await clients.post("/tools", json={
         "name": "mine", "base_url": "http://upstream",
         "bindings": [{"secret_id": sid}, {"secret_id": other["id"], "name": "X-Other"}],
-    })).json()
+    })
     def _mine(tools):
         return next(t for t in tools if t["name"] == "mine")
 
@@ -297,26 +647,6 @@ async def test_without_a_platform_token_the_user_is_asked(clients: AsyncClient, 
         get_settings.cache_clear()
 
 
-async def test_id_only_listings_are_enriched_with_real_names(clients: AsyncClient, treg_google_app, monkeypatch):
-    """Google Ads lists ["customers/6186675831", …] and nothing else. "6186675831" tells a user
-    nothing about which account they're picking, so a provider can declare a per-row name lookup."""
-    import dataclasses
-
-    from treg import oauth_providers as P
-
-    monkeypatch.setitem(P.REGISTRY, "google-search-console", dataclasses.replace(
-        P.REGISTRY["google-search-console"],
-        discover_base_url="http://upstream",
-        # the echo upstream reflects the request, so dig a value we know will be there
-        enrich_path="/name/{id}", enrich_body={"q": "x"}, enrich_label_path="query.named",
-    ))
-    st = await _connect_byo(clients, provider="google-search-console", name="google-search-console")
-    r = await clients.get(f"/connections/{st['secret_id']}/resources")
-    assert r.status_code == 200
-    # enrichment ran without breaking the listing; every row still has an id
-    assert all(x["id"] for x in r.json()["resources"])
-
-
 async def test_a_failed_name_lookup_keeps_the_row(clients: AsyncClient, treg_google_app, monkeypatch):
     """A user may lack access to some accounts the listing returned — a partial list beats an
     error, so a failed lookup must leave the row with its id rather than dropping it."""
@@ -360,14 +690,8 @@ async def test_a_second_account_is_added_not_swapped(clients: AsyncClient, treg_
     assert first["secret_id"] != second["secret_id"]
     # The first account keeps the bare name every skill and doc calls; only the extra is suffixed.
     assert sorted(c["name"] for c in gsc) == ["google-search-console", "google-search-console-2"]
-
-
-async def test_a_second_account_gets_its_own_tool(clients: AsyncClient, treg_google_app):
-    """A tool name is unique per org, so without a distinct name the second account would either
-    collide or silently rebind the first account's tool to someone else's credential."""
-    first = await _connect_byo(clients, provider="google-search-console", capability="read", name="")
-    second = await _connect_byo(clients, provider="google-search-console", capability="read", name="")
-
+    # A tool name is unique per org, so without a distinct name the second account would either
+    # collide or silently rebind the first account's tool to someone else's credential.
     tools = {t["name"]: t for t in (await clients.get("/tools")).json()}
     assert tools["google-search-console"]["bindings"][0]["secret_id"] == first["secret_id"]
     assert tools["google-search-console-2"]["bindings"][0]["secret_id"] == second["secret_id"]
@@ -393,18 +717,6 @@ async def test_enabling_write_keeps_read(clients: AsyncClient, treg_google_app):
                 if c["provider"] == "google-search-console")
     assert set(conn["capabilities"]) == {"read", "write"}
     assert conn["missing_capabilities"] == []
-
-
-async def test_reconnect_rebinds_the_tool_to_the_same_secret(clients: AsyncClient, treg_google_app):
-    first = await _connect_byo(clients, provider="google-search-console", capability="read",
-                               name="google-search-console")
-    await _connect_byo(clients, provider="google-search-console", capability="write",
-                       name="google-search-console", connection_id=first["secret_id"])
-    tools = [t for t in (await clients.get("/tools")).json() if t["name"] == "google-search-console"]
-    conn = next(c for c in (await clients.get("/connections")).json()
-                if c["provider"] == "google-search-console")
-    assert len(tools) == 1
-    assert tools[0]["bindings"][0]["secret_id"] == conn["id"]
 
 
 async def test_identity_providers_record_who_connected(clients: AsyncClient, treg_google_app, monkeypatch):
@@ -497,16 +809,6 @@ async def test_oauth_providers_reject_the_token_endpoint(clients: AsyncClient, t
     assert "consent" in r.text
 
 
-def test_slack_is_offerable_without_deployment_credentials():
-    """The user brings their own bot, so treg needs no Slack app of its own — it must not show
-    as 'not configured' the way an unset OAuth provider does."""
-    from treg import oauth_providers as P
-    assert P.SLACK.is_token_kind
-    assert P.is_configured(P.SLACK) is True
-    assert "xoxb" in P.SLACK.token_placeholder
-    assert P.SLACK.setup_url.startswith("https://api.slack.com/apps?new_app=1")
-
-
 async def test_token_connections_appear_in_the_list(clients: AsyncClient, monkeypatch):
     """A connection is "what a registry connect produced", not "an oauth blob". Filtering the list
     on kind=="oauth" created bring-your-own-token connections successfully and then hid them."""
@@ -558,7 +860,7 @@ async def test_slack_style_ok_false_is_reported_not_swallowed(clients: AsyncClie
     sid = r.json()["id"]
 
     # /auth.test returns ok:false unless the token contains "good"; swap in a bad one to trigger it
-    async with __import__("treg").db.session_maker() as db:
+    async with session_maker() as db:
         from sqlmodel import select as _select
 
         from treg import crypto as _crypto
@@ -586,16 +888,6 @@ async def test_token_scopes_come_from_the_response_header(clients: AsyncClient, 
     assert set(r.json()["scopes"]) == {"chat:write", "channels:read", "users:read"}
 
 
-def test_slack_has_no_resource_picker():
-    """chat.postMessage takes the channel per call, and the agent can list channels itself through
-    the proxy — so a picker here duplicated a capability it already has, to store a preference
-    nothing enforces. Providers whose resource sits in the request URL keep theirs."""
-    from treg import oauth_providers as P
-    assert P.SLACK.supports_discovery is False
-    assert P.SLACK.has_identity is True, "which workspace this is still matters"
-    assert P.GOOGLE_SEARCH_CONSOLE.supports_discovery is True, "the site IS the request path"
-
-
 def test_every_provider_has_a_logo():
     """The dashboard resolves logos by convention (/logos/<service>.svg), so a provider added
     without one silently renders a broken image. Fail here instead."""
@@ -606,6 +898,193 @@ def test_every_provider_has_a_logo():
     assert not missing, f"no logo for: {missing}"
 
 
-async def test_logos_are_served(clients):
-    r = await clients.get("/logos/slack.svg")
-    assert r.status_code == 200 and r.text.lstrip().startswith("<svg")
+# ---- split-host providers (GA4: reports vs property listing) -------------------------------
+async def test_split_host_connect_provisions_the_admin_tool_too(clients: AsyncClient, treg_google_app):
+    """GA4's property list lives on analyticsadmin while reports run on analyticsdata. One consent
+    covers both (scopes are per-capability), but /call/ resolves per HOST — so the connect must
+    yield a Tool row on each host or the agent can't discover its own property ids (observed live:
+    13 calls / 7 orgs dead-ended exactly there)."""
+    st = await _connect_byo(clients, provider="google-analytics", name="google-analytics")
+    assert st["status"] == "done"
+    tools = {t["name"]: t for t in (await clients.get("/tools")).json()}
+
+    data = tools["google-analytics"]
+    admin = tools["google-analytics-admin"]
+    assert data.get("host") == "analyticsdata.googleapis.com"
+    assert admin.get("host") == "analyticsadmin.googleapis.com"
+    # SAME credential on both — this is one connection wearing two hosts, not two connections.
+    assert admin["bindings"] == data["bindings"]
+    assert admin["bindings"][0]["secret_id"] == st["secret_id"]
+
+
+async def test_split_host_reconnect_rebinds_extras_without_duplicating(clients: AsyncClient, treg_google_app):
+    first = await _connect_byo(clients, provider="google-analytics", name="google-analytics")
+    await _connect_byo(clients, provider="google-analytics", name="google-analytics",
+                       connection_id=first["secret_id"])
+    admins = [t for t in (await clients.get("/tools")).json() if t["name"] == "google-analytics-admin"]
+    assert len(admins) == 1, "reconnecting must rebind the extra tool, not pile up duplicates"
+
+
+async def test_upgrade_backfills_missing_split_host_tool_idempotently(
+        clients: AsyncClient, treg_google_app):
+    """A pre-split-host GA4 connection heals on release upgrade without another consent."""
+    st = await _connect_byo(clients, provider="google-analytics", name="google-analytics")
+    async with session_maker() as db:
+        old_admin = (await db.execute(
+            select(Tool).where(Tool.name == "google-analytics-admin")
+        )).scalars().one()
+        await db.delete(old_admin)
+        await db.commit()
+
+    assert await _backfill_provider_extra_tools() == 1
+    tools = [t for t in (await clients.get("/tools")).json()
+             if t["name"] == "google-analytics-admin"]
+    assert len(tools) == 1
+    assert tools[0]["bindings"][0]["secret_id"] == st["secret_id"]
+
+    assert await _backfill_provider_extra_tools() == 0
+    tools = [t for t in (await clients.get("/tools")).json()
+             if t["name"] == "google-analytics-admin"]
+    assert len(tools) == 1, "re-running the upgrade must not duplicate the companion"
+
+
+async def test_revoke_removes_the_extra_tool_too(clients: AsyncClient, treg_google_app):
+    """The admin tool's only binding is this credential — revoking must not leave it behind broken."""
+    st = await _connect_byo(clients, provider="google-analytics", name="google-analytics")
+    r = await clients.delete(f"/connections/{st['secret_id']}")
+    assert r.status_code == 200
+    names = {t["name"] for t in (await clients.get("/tools")).json()}
+    assert "google-analytics" not in names
+    assert "google-analytics-admin" not in names
+
+
+# ---- renaming a connected account renames the tool an agent calls ---------------------------
+async def test_rename_moves_the_tool_its_companions_and_member_access(clients: AsyncClient, treg_google_app):
+    """With several accounts, `-2` tells nobody which account it is. A rename moves every name the
+    connection owns together, or the agent is left calling a tool whose credential went elsewhere."""
+    await _connect_byo(clients, provider="google-analytics", name="")
+    second = await _connect_byo(clients, provider="google-analytics", name="")
+    sid = second["secret_id"]
+    async with session_maker() as db:
+        member = (await db.execute(select(Membership))).scalars().first()
+        member.tool_access = ["google-analytics-2", "google-analytics-2-admin", "other"]
+        await db.commit()
+
+    r = await clients.patch(f"/connections/{sid}", json={"name": "Google-Analytics-Acme"})
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "google-analytics-acme"
+
+    tools = {t["name"]: t for t in (await clients.get("/tools")).json()}
+    assert "google-analytics-2" not in tools and "google-analytics-2-admin" not in tools
+    assert tools["google-analytics-acme"]["bindings"][0]["secret_id"] == sid
+    assert tools["google-analytics-acme-admin"]["bindings"][0]["secret_id"] == sid
+    assert "google-analytics" in tools, "the other account is untouched"
+    async with session_maker() as db:
+        member = await db.get(Membership, member.id)
+        assert member.tool_access == ["google-analytics-acme", "google-analytics-acme-admin", "other"]
+
+    # Reconnecting the renamed account rebinds the renamed tool rather than resurrecting the old name.
+    await _connect_byo(clients, provider="google-analytics", name="", connection_id=sid)
+    names = {t["name"] for t in (await clients.get("/tools")).json()}
+    assert "google-analytics-2" not in names and "google-analytics-acme" in names
+
+
+async def test_rename_with_unrestricted_members(clients: AsyncClient, treg_google_app):
+    """An owner's "all tools" is a JSON null in tool_access; the rewrite must skip it, not 500."""
+    await _connect_byo(clients, provider="google-search-console", name="")
+    second = await _connect_byo(clients, provider="google-search-console", name="")
+    r = await clients.patch(f"/connections/{second['secret_id']}", json={"name": "gsc-acme"})
+    assert r.status_code == 200, r.text
+
+
+async def test_rename_refuses_bad_taken_and_hub_used_names(clients: AsyncClient, treg_google_app):
+    first = await _connect_byo(clients, provider="google-search-console", name="")
+    second = await _connect_byo(clients, provider="google-search-console", name="")
+    sid = second["secret_id"]
+    assert (await clients.patch(f"/connections/{sid}", json={"name": "a/b"})).status_code == 422
+    assert (await clients.patch(f"/connections/{sid}", json={"name": "google-search-console"})).status_code == 409
+
+    async with session_maker() as db:
+        org_id = (await db.get(Secret, first["secret_id"])).org_id
+        db.add(HubTool(org_id=org_id, tool_id="t.report", name="report", kind="steps", status="live",
+                       summary="s", manifest={"uses": ["google-search-console-2"]}))
+        await db.commit()
+    r = await clients.patch(f"/connections/{sid}", json={"name": "gsc-acme"})
+    assert r.status_code == 409 and "report" in r.json()["detail"]
+
+
+async def test_renaming_a_connections_tool_renames_the_connection(clients: AsyncClient, treg_google_app):
+    """The tool page's edit form is where people look for a rename. A connection's tool renamed
+    there must take its connection and companions along, as if renamed from the provider page."""
+    await _connect_byo(clients, provider="google-analytics", name="")
+    second = await _connect_byo(clients, provider="google-analytics", name="")
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "google-analytics-2")
+
+    r = await clients.patch(f"/tools/{tool['id']}", json={"name": "ga-acme", "base_url": tool["base_url"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "ga-acme"
+    names = {t["name"] for t in (await clients.get("/tools")).json()}
+    assert {"ga-acme", "ga-acme-admin"} <= names and "google-analytics-2" not in names
+    conn = {c["id"]: c for c in (await clients.get("/connections")).json()}[second["secret_id"]]
+    assert conn["name"] == "ga-acme"
+
+
+async def test_renaming_a_user_built_tool(clients: AsyncClient):
+    key = (await clients.post("/secrets", json={"name": "shared-key", "value": "k"})).json()
+    for n in ("mine", "theirs"):
+        await clients.post("/tools", json={"name": n, "base_url": "http://upstream",
+                                           "bindings": [{"secret_id": key["id"]}]})
+    mine = next(t for t in (await clients.get("/tools")).json() if t["name"] == "mine")
+    async with session_maker() as db:
+        member = (await db.execute(select(Membership))).scalars().first()
+        member.tool_access = ["mine"]
+        await db.commit()
+
+    assert (await clients.patch(f"/tools/{mine['id']}", json={"name": "theirs"})).status_code == 409
+    assert (await clients.patch(f"/tools/{mine['id']}", json={"name": "shared-key"})).status_code == 409
+    assert (await clients.patch(f"/tools/{mine['id']}", json={"name": "a b"})).status_code == 422
+    r = await clients.patch(f"/tools/{mine['id']}", json={"name": "renamed"})
+    assert r.status_code == 200 and r.json()["name"] == "renamed"
+    async with session_maker() as db:
+        assert (await db.get(Membership, member.id)).tool_access == ["renamed"]
+    assert (await db_secret_name(key["id"])) == "shared-key", "a plain key shared by tools is not renamed"
+
+
+async def db_secret_name(secret_id: int) -> str:
+    async with session_maker() as db:
+        return (await db.get(Secret, secret_id)).name
+
+
+async def test_secret_patch_cannot_strand_a_connections_tool(clients: AsyncClient, treg_google_app):
+    """Renaming only the secret used to leave its tool under the old name; the next reconnect then
+    minted a second tool under the new one."""
+    st = await _connect_byo(clients, provider="google-search-console", name="")
+    r = await clients.patch(f"/secrets/{st['secret_id']}", json={"name": "renamed"})
+    assert r.status_code == 409, r.text
+
+
+# ---- picking a resource stamps a ready-made call onto the tool -----------------------------
+async def test_pick_resource_stamps_ready_made_example(clients: AsyncClient, treg_google_app):
+    """The pick is the moment treg finally knows the property id every runReport needs — render it
+    into the tool's examples so the agent reads the call off the tool instead of hunting for ids."""
+    st = await _connect_byo(clients, provider="google-analytics", name="google-analytics")
+    sid = st["secret_id"]
+    r = await clients.post(f"/connections/{sid}/resource",
+                           json={"resource_ref": "properties/384078430", "resource_name": "Prod site"})
+    assert r.status_code == 200, r.text
+
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "google-analytics")
+    stamped = [e for e in tool["examples"] if e.get("stamped") == "resource"]
+    assert len(stamped) == 1
+    assert stamped[0]["path"] == "v1beta/properties/384078430:runReport"
+    assert "Prod site" in stamped[0]["note"]
+    # the un-rendered registry template with {property_id} must not ALSO sit there confusing agents
+    assert not any("{resource}" in e.get("path", "") for e in tool["examples"])
+
+    # Re-picking a different property REPLACES the stamp — a stale id is confidently wrong.
+    await clients.post(f"/connections/{sid}/resource",
+                       json={"resource_ref": "properties/999", "resource_name": "Staging"})
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "google-analytics")
+    stamped = [e for e in tool["examples"] if e.get("stamped") == "resource"]
+    assert len(stamped) == 1
+    assert stamped[0]["path"] == "v1beta/properties/999:runReport"

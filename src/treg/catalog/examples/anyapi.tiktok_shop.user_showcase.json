@@ -1,0 +1,35 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "yCf-Rccsy3PH2oWi-rN-IfIBEFKbuy8hW1ELJnpn5V9tTRZupSpoGWw1rwyno0pi--urBpTSgdw18miOmE3eWvphvhC2YVD_fEJbpYgLLAReAJJQS0GHAmbVoiH7Y7MgK0fPlsv-3tLde5iQQgaNQysx_XmvKjF3nskRzhEiGO3pzQQ2NCjp5mblOdBwiTibtVVdCZHp… [1019 chars]",
+      "products": [
+        {
+          "currency": "USD",
+          "imageUrl": "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/8d1f118bea8544ef87b77db4bfc05ba2~tplv-fhlh96nyum-crop-webp:500:500.webp?dr=12190&t=555f072d&ps=933b5bde&shp=4ee6669e&shcp=9b759… [231 chars]",
+          "originalPrice": "30",
+          "price": "15",
+          "productId": "1729401442164511030",
+          "rating": 4.4,
+          "reviewCount": 35509,
+          "soldCount": 529349,
+          "title": "BASED Hair Texture Powder | Instant Volume & Texture | Lightweight, Matte Finish | Simple, Effective, BASED.",
+          "url": "https://www.tiktok.com/shop/pdp/1729401442164511030"
+        },
+        "… 19 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 20,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "hint": "large_result: this response is ~13 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "c19488c6-b5e9-4a38-a2a0-34d33dda2d02"
+}

@@ -1,0 +1,8 @@
+{
+  "id": "<task-id>",
+  "status": "completed",
+  "usage": {
+    "cost": 0.2125,
+    "is_byok": false
+  }
+}

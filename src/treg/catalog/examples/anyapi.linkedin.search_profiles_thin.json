@@ -1,0 +1,31 @@
+{
+  "output": {
+    "data": {
+      "items": [
+        {
+          "handle": "michaelsperber2",
+          "headline": "Talent Acquisition/Recruiter | Strategic Sourcing Specialist | Talent Advisor",
+          "id": "ACoAAACRpcoBMrZKZvY8asJ8bv7ODdYAA-BrYW8",
+          "image": "https://media.licdn.com/dms/image/v2/D4E03AQF164VCGPAhMg/profile-displayphoto-scale_100_100/B4EZ2ahmyMH0Ag-/0/1776413995160?e=1791417600&v=beta&t=fkamm8wLPXO3ZKaC7qc8WaFjQ3Sgdv3uHG2bokKfqUk",
+          "location": "Greater Tampa Bay Area",
+          "name": "Michael Sperber",
+          "url": "https://www.linkedin.com/in/michaelsperber2"
+        },
+        "… 9 more item(s) truncated"
+      ],
+      "nextCursor": "tdxJaI_0Huc703a_raG9QwnbTN-SsBkxQAeS9m0slM_TNQ-6tDRhNv0p-CiMm3jcM-ily3qmzFsS7M2IaICqUH1WQhQzDL1KlI5oA82FNgqkeBQzU7-BpfVJaRAZqQiWzybmoQnSnL8Jl8kVogUMVB5ePtdukME5xQmrqnFshhokrF0MCM-FOCB2dOwzjHylXhHIJzO3… [283 chars]"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.036,
+  "items": 10,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-fox",
+    "name": "Fox",
+    "kind": "anonymous",
+    "artworkKey": "fox"
+  },
+  "resultId": "9a50dee2-730f-4ada-977a-6f8fd795f238"
+}

@@ -1,0 +1,51 @@
+{
+  "results": [
+    {
+      "urn": "urn:li:share:example",
+      "actor": {
+        "linkedinURL": "https://www.linkedin.com/in/example-person",
+        "name": "Example Person",
+        "image": "https://example.com/avatar.jpg",
+        "entityType": "PERSON",
+        "linkedinID": "example-person"
+      },
+      "postRange": {
+        "earliest": "2026-01-01T00:00:00Z",
+        "latest": "2026-01-01T00:00:00Z"
+      },
+      "postAge": "1d",
+      "socialActivityCounts": {
+        "commentsCount": 0,
+        "sharesCount": 0,
+        "reactionsCount": 0,
+        "reactionTypeCounts": []
+      },
+      "images": [],
+      "resharedPost": {
+        "urn": "urn:li:ugcPost:example",
+        "actor": {
+          "linkedinURL": "https://www.linkedin.com/company/example-company",
+          "name": "Example Company",
+          "image": "https://example.com/company.jpg",
+          "entityType": "COMPANY",
+          "linkedinID": "example-company"
+        },
+        "commentary": "Example original post",
+        "url": "https://www.linkedin.com/feed/update/urn:li:ugcPost:example"
+      },
+      "commentary": "Example reshare commentary",
+      "header": "Example Person reshared this",
+      "headerEntity": {
+        "entityType": "PERSON",
+        "linkedinURL": "https://www.linkedin.com/in/example-person",
+        "linkedinID": "example-person",
+        "name": "Example Person"
+      },
+      "url": "https://www.linkedin.com/feed/update/urn:li:share:example"
+    }
+  ],
+  "totalResults": 9,
+  "pages": 9,
+  "paginationToken": "example-token",
+  "_note": "Live response returned one reshare on this page; all identity and content values are placeholders."
+}

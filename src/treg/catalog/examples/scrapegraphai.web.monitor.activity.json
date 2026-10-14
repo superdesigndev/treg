@@ -1,0 +1,13 @@
+{
+  "ticks": [
+    {
+      "id": "dda047e3-0e92-4cde-915f-b21bb6ee77b9",
+      "status": "completed",
+      "createdAt": "2026-09-24T14:31:30.169Z",
+      "elapsedMs": 120,
+      "changed": true,
+      "diffs": {}
+    }
+  ],
+  "nextCursor": null
+}

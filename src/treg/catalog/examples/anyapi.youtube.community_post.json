@@ -1,0 +1,23 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "channelHandle": "MrBeast",
+      "channelTitle": "MrBeast",
+      "content": "All the YouTube Play Buttons",
+      "id": "Ugkx1LonSRBBUqASv-J8j9_FesxwlMAhT3_e",
+      "publishedTime": "3 months ago"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "8ae0898d-d10b-4785-a81b-0dd7d24b0bf0"
+}

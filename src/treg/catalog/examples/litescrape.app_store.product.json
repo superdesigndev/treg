@@ -1,0 +1,37 @@
+{
+  "search_metadata": {
+    "id": "201d2c8d4182cca446ddc899",
+    "status": "Success",
+    "created_at": "2026-09-29T13:59:00.025783+00:00",
+    "processed_at": "2026-09-29T13:59:01.690507+00:00",
+    "json_endpoint": "https://api.litescrape.com/api/apple/app-store/product?country=us&product_id=570060128&type=app",
+    "apple_app_store_url": "https://apps.apple.com/us/app/duolingo-language-lessons/id570060128",
+    "total_time_taken": 1.665
+  },
+  "search_parameters": {
+    "country": "us",
+    "product_id": "570060128",
+    "type": "app"
+  },
+  "title": "Duolingo: Language Lessons",
+  "id": "570060128",
+  "snippet": "Languages, Math, Music & Chess",
+  "rating": 4.7,
+  "logo": "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/70/64/53/7064538e-5e02-6151-76cd-b55e3534073b/Placeholder.mill/1024x1024bb.jpeg",
+  "developer": {
+    "name": "Duolingo",
+    "link": "https://apps.apple.com/us/developer/duolingo/id570060151"
+  },
+  "price": "Get",
+  "in_app_purchases": "In‑App Purchases",
+  "description": "Learn a new language, chess & more with the world's most downloaded education app! Duolingo is the fun, free app for learning 40+ languages through quick, bite-…",
+  "rating_count": "5.5M Ratings",
+  "iphone_screenshots": [
+    "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/6e/ef/30/6eef3023-de04-3b29-21f8-a993245b9abd/iPhone6.5_-_Default_-_first_screen_adapt_Var_2_01.jpg/1242x2688bb.jpeg",
+    "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/cb/ee/31/cbee31c9-a814-b59b-db16-3136ce60d20d/V2_iOS6.5_02.jpg/1242x2688bb.jpeg"
+  ],
+  "ipad_screenshots": [
+    "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource221/v4/76/6d/5b/766d5b1d-c08b-34c8-f9e9-f6dbb42783a1/Tablet_-_Default_-_first_screen_adapt_Var_2_01.jpg/2048x2732bb.jpeg",
+    "https://is1-ssl.mzstatic.com/image/thumb/PurpleSource211/v4/5c/55/8c/5c558c1e-5299-8ecb-4887-9e3439130ca1/V2_Tablet_02.jpg/2048x2732bb.jpeg"
+  ]
+}

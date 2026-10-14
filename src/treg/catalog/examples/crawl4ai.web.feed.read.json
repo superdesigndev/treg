@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: rss-feed: 10 items from https://blog.rust-lang.org/feed.xml"
+    ]
+  },
+  "recipe": "rss-feed",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 167,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "author": "Mateusz Mikuła, Ralf Jung",
+      "id": "https://blog.rust-lang.org/2026/10/02/demoting-i686-windows-targets-to-std-only/",
+      "link": "https://blog.rust-lang.org/2026/10/02/demoting-i686-windows-targets-to-std-only/",
+      "published": "2026-10-02T00:00:00+00:00",
+      "summary": "<p>With Rust 1.100.0, the following changes to 32-bit Windows targets will happen:</p> <ul> <li><code>i686-pc-windows-msvc</code> Tier 1 <em>with</em> host tools target will be demoted to Tier 1 <em>without</em> host tools.</li> <li><code>i686-pc-windows-gnu</code> Tier 2 <em>with</em> host tools ta…",
+      "title": "Demoting i686 Windows targets to std-only"
+    },
+    {
+      "author": "The Rust Release Team",
+      "id": "https://blog.rust-lang.org/2026/10/01/Rust-1.99.0/",
+      "link": "https://blog.rust-lang.org/2026/10/01/Rust-1.99.0/",
+      "published": "2026-10-01T00:00:00+00:00",
+      "summary": "<p>The Rust team is happy to announce a new version of Rust, 1.99.0. Rust is a programming language empowering everyone to build reliable and efficient software.</p> <p>If you have a previous version of Rust installed via <code>rustup</code>, you can get 1.99.0 with:</p> <pre class&#x3D;\"giallo z-co…",
+      "title": "Announcing Rust 1.99.0"
+    }
+  ]
+}

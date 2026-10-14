@@ -1,0 +1,50 @@
+[
+ {
+  "output": {
+   "people": [
+    {
+     "first_name": "Person1",
+     "last_name": "Example",
+     "title": "Head of Product Design",
+     "locality": "Spokane, United States"
+    },
+    {
+     "first_name": "Person2",
+     "last_name": "Example",
+     "title": "Senior Product Support and Operations",
+     "locality": "Truckee, California, United States"
+    },
+    {
+     "first_name": "Person3",
+     "last_name": "Example",
+     "title": "Product Engineer",
+     "locality": "Salt Lake City, Utah, United States"
+    },
+    {
+     "first_name": "Person4",
+     "last_name": "Example",
+     "title": "Chief Operating Officer",
+     "locality": "San Francisco, California, United States"
+    },
+    {
+     "first_name": "Person5",
+     "last_name": "Example",
+     "title": "Design",
+     "locality": "San Francisco, California, United States"
+    },
+    {
+     "first_name": "Person6",
+     "last_name": "Example",
+     "title": "Enterprise Marketing",
+     "locality": "Los Angeles Metropolitan Area, United States"
+    }
+   ],
+   "count": 6
+  },
+  "raw": {
+   "meta": {
+    "total": 114
+   }
+  }
+ }
+]

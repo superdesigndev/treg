@@ -1,0 +1,1 @@
+{"ok":true,"results":[{"input":{"first_name":"Jane","last_name":"Doe","email_domain":"example.com"},"success":true,"data":{"first_name":"Jane","last_name":"Doe","email":"jane.doe@example.com","company_name":"Example Industries"}}]}

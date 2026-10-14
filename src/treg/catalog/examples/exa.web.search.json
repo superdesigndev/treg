@@ -1,0 +1,24 @@
+{
+  "requestId": "b959ac906bdcd6aef3e1ec423a4d2544",
+  "resolvedSearchType": "",
+  "results": [
+    {
+      "id": "https://github.com/qdrant/qdrant",
+      "title": "GitHub - qdrant/qdrant: Qdrant - High-performance ...",
+      "url": "https://github.com/qdrant/qdrant"
+    },
+    {
+      "id": "https://qdrant.tech/",
+      "title": "Qdrant - Vector Search Engine",
+      "url": "https://qdrant.tech/"
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "searchTime": 1464,
+  "costDollars": {
+    "total": 0.007,
+    "search": {
+      "neural": 0.007
+    }
+  }
+}

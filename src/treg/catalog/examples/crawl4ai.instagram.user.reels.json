@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: instagram-reels: @nasa · 12 reels · 2 fetch(es) · public"
+    ]
+  },
+  "recipe": "instagram-reels",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 177,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 3,
+  "rows": [
+    {
+      "code": "DeTUk4sDSp-",
+      "comments": 3878,
+      "id": "4004634989362489982",
+      "likes": 430497,
+      "plays": 5957300,
+      "thumbnail": "https://scontent-lax3-2.cdninstagram.com/v/t51.82787-15/842191580_18656578867049152_4200499629839780998_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=1&ig_cache_key=NDAwNDYzNDk4OTM2MjQ4OTk4MjE4NjU2NTc4ODYxMDQ5MTUy.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjEwNzQuc2RyLnZpZGVvX2RlZm…",
+      "url": "https://www.instagram.com/reel/DeTUk4sDSp-/"
+    },
+    {
+      "code": "DeSM5CYPDfd",
+      "comments": 510,
+      "id": "4004319714808182749",
+      "likes": 41461,
+      "plays": 2363699,
+      "thumbnail": "https://scontent-lax3-2.cdninstagram.com/v/t51.71878-15/841645067_1830934458061010_4874407720196038177_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=103&ig_cache_key=NDAwNDMxOTcxNDgwODE4Mjc0OQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjY0MC5zZHIudmlkZW9fZGVmYXVsdF9jb3Zlcl9mc…",
+      "url": "https://www.instagram.com/reel/DeSM5CYPDfd/"
+    }
+  ]
+}

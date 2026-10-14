@@ -1,0 +1,22 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "suggestions": [
+        "ashwagandha gummies for women",
+        "… 19 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 20,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-tiger",
+    "name": "Tiger",
+    "kind": "anonymous",
+    "artworkKey": "tiger"
+  },
+  "resultId": "38bdc613-8d99-446b-82e4-eab60f29f7e6"
+}

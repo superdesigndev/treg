@@ -1,0 +1,21 @@
+{
+  "requestId": "f6dfa04f1e1766b5127dd1f54dfb7083",
+  "answer": "The HNSW algorithm paper, titled Efficient and Robust Approximate Nearest Neighbor Search Using Hierarchical Navigable Small World Graphs, was authored by Yu. A. Malkov and D. A. Yashunin [1][2][3]. It was first published as a preprint in 2016 [4][5][6], with the peer-reviewed journal version appearing in IEEE Transactions on Pattern Analysis and Machine Intelligence in 2018 [1][7][8].",
+  "citations": [
+    {
+      "id": "https://users.cs.utah.edu/~pandey/courses/cs6530/fall24/papers/vectordb/HNSW.pdf",
+      "title": "Efficient and Robust Approximate Nearest Neighbor Search Using Hierarchical Navigable Small World Graphs",
+      "url": "https://users.cs.utah.edu/~pandey/courses/cs6530/fall24/papers/vectordb/HNSW.pdf"
+    },
+    {
+      "id": "https://arxiv.gg/abs/1603.09320",
+      "title": "Efficient and robust approximate nearest neighbor search using Hierarchical Navigable Small World graphs - arXiv.gg",
+      "url": "https://arxiv.gg/abs/1603.09320",
+      "publishedDate": "2018-08-14T11:38:29.000Z"
+    },
+    "… 6 more item(s) truncated"
+  ],
+  "costDollars": {
+    "total": 0.005
+  }
+}

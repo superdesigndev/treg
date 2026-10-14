@@ -1,0 +1,7 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Music generation">
+  <!-- Not a brand: generated music, drawn as a beamed pair of eighth notes with the AI sparkle (see image-gen.svg). -->
+  <g fill="#D9730D">
+    <path d="M7.2 6.4 17.4 3.6v11.9a2.9 2.4 0 1 1-2-2.3V8.1l-6.2 1.7v7.9a2.9 2.4 0 1 1-2-2.3z"/>
+  </g>
+  <path fill="#D9730D" opacity=".55" d="M20.4 15.6l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/>
+</svg>

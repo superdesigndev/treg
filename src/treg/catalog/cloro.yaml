@@ -1,0 +1,418 @@
+provider: cloro
+source:
+  docs: https://cloro.dev/docs/api-reference/introduction
+  openapi: https://cloro.dev/docs/api-reference/openapi.json
+  llms: https://cloro.dev/docs/llms.txt
+  curated: '2026-09-05'
+limits: "billed per credit from a monthly plan allowance; free plan grants 500 credits/month. Credits are charged only on a successful extraction — a failed request costs nothing. Every billed response carries the exact charge in an X-Credits-Charged header and the running balance in X-Credits-Remaining, so a caller can reconcile per call without a second request. Rate and concurrency limits are per plan and reported in X-RateLimit-* response headers."
+pricing_url: https://cloro.dev/pricing
+
+endpoints:
+  # --- Account ------------------------------------------------------------------------------
+  - id: cloro.account.usage
+    kind: account
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/credits
+    name: "Check credit balance"
+    summary: "Returns the credits remaining on your cloro organization and the current billing cycle."
+    input:
+      queryParams: {}
+    test_request:
+      queryParams: {}
+    verified: '2026-09-07'
+    added: '2026-09-07'
+    example_response: examples/cloro.account.usage.json
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/get-credits
+
+  - id: cloro.account.coverage.countries
+    kind: utility
+    domain: account
+    capability: account.coverage.countries
+    platform: account
+    scope: any_account
+    method: GET
+    path: /v1/countries
+    name: "List supported countries"
+    summary: "Lists the ISO 3166-1 alpha-2 country codes cloro can run a prompt from, optionally narrowed to one provider — each provider blocks a different set, so this is how you learn a country is refused before spending a credit on it."
+    input:
+      queryParams:
+        model: {type: string, required: false, note: "narrow the list to one provider", example: "CHATGPT"}
+    test_request:
+      queryParams: {model: "CHATGPT"}
+    verified: '2026-09-07'
+    added: '2026-09-07'
+    example_response: examples/cloro.account.coverage.countries.json
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/countries
+
+  - id: cloro.account.coverage.regions
+    kind: utility
+    domain: account
+    capability: account.coverage.regions
+    platform: account
+    scope: any_account
+    method: GET
+    path: /v1/states
+    name: "List supported US states"
+    summary: "Lists the US states available for state-level geo-targeting on the ChatGPT, Copilot, Perplexity, Gemini and Grok endpoints. Only US is supported; any other country returns an empty array."
+    input:
+      queryParams:
+        country: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code", example: "US"}
+    test_request:
+      queryParams: {country: "US"}
+    verified: '2026-09-07'
+    added: '2026-09-07'
+    example_response: examples/cloro.account.coverage.regions.json
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/states
+
+  # --- AI answer engines ----------------------------------------------------------------------
+  - id: cloro.ai-search.chatgpt.scrape
+    domain: chatgpt
+    capability: ai-search.chatgpt.scrape
+    platform: ai-search
+    scope: any_account
+    method: POST
+    path: /v1/monitor/chatgpt
+    name: "ChatGPT answer — text, sources, ads, shopping"
+    summary: "Runs a prompt through the live ChatGPT web interface from a chosen country and returns the answer text with its cited sources, citation pills, brand entities, shopping cards and sponsored ads as structured fields."
+    input:
+      body:
+        prompt: {type: string, required: true, note: "1-10,000 characters", example: "best running shoes for flat feet"}
+        country: {type: string, required: true, note: "ISO 3166-1 alpha-2. CN, CZ, HK, IR, MO, RU and VE are refused.", example: "US"}
+        state: {type: string, required: false, note: "US state code for state-level targeting; adds 2 credits", example: "CA"}
+        legacy: {type: boolean, required: false, note: "serve the desktop UI, where ads and shopping render; free. Defaults to the mobile-web UI."}
+        disableWebSearch: {type: boolean, required: false, note: "answer from the model alone, without a web search"}
+        include:
+          type: object
+          required: false
+          note: "any of markdown, html, rawResponse, searchQueries, ads, shopping. markdown and html are free; setting any of rawResponse / searchQueries / ads / shopping adds 2 credits once, however many of the four are set."
+      bodyType: json
+    test_request:
+      body:
+        prompt: "what is a stock split"
+        country: "US"
+        include: {markdown: true, html: true, rawResponse: true, searchQueries: true, ads: true, shopping: true}
+      bodyType: json
+    verified: '2026-09-07'
+    added: '2026-09-07'
+    example_response: examples/cloro.ai-search.chatgpt.scrape.json
+    cost:
+      type: per_call
+      value: 9
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: 'https://cloro.dev/docs/guides/providers'
+      checked: '2026-09-05'
+      confidence: documented
+      modifiers:
+        state: {location: body, when: present, add_credits: 2}
+      note: "9 = 5 base + 2 for the include.rawResponse / searchQueries / ads / shopping family (charged once, however many of the four are set) + the 2-credit sync surcharge every /v1/monitor/* call carries. A plain call with none of those four flags is 7. `state` adds 2 more. Setting the ads/shopping flags is what is billed; whether those blocks actually render is a separate matter — they appear on the desktop UI, which `legacy: true` (free) selects. A failed extraction is not charged."
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-chatgpt
+
+  - id: cloro.ai-search.copilot.scrape
+    domain: copilot
+    capability: ai-search.copilot.scrape
+    platform: ai-search
+    scope: any_account
+    method: POST
+    path: /v1/monitor/copilot
+    name: "Copilot answer — text, sources, shopping, places"
+    summary: "Runs a prompt through the live Microsoft Copilot interface from a chosen country and returns the answer text with its cited sources, citation pills, shopping cards and map entries."
+    input:
+      body:
+        prompt: {type: string, required: true, note: "1-10,000 characters", example: "best crm for a small agency"}
+        country: {type: string, required: true, note: "ISO 3166-1 alpha-2. BY, CN, RU, SY and VE are refused.", example: "US"}
+        state: {type: string, required: false, note: "US state code for state-level targeting; adds 2 credits", example: "CA"}
+        include:
+          type: object
+          required: false
+          note: "any of markdown, html, rawResponse. All three are free on this endpoint."
+      bodyType: json
+    test_request:
+      body:
+        prompt: "what is a stock split"
+        country: "US"
+        include: {markdown: true, html: true, rawResponse: true}
+      bodyType: json
+    verified: '2026-09-07'
+    added: '2026-09-07'
+    example_response: examples/cloro.ai-search.copilot.scrape.json
+    cost:
+      type: per_call
+      value: 7
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: 'https://cloro.dev/docs/guides/providers'
+      checked: '2026-09-05'
+      confidence: documented
+      modifiers:
+        state: {location: body, when: present, add_credits: 2}
+      note: "5 base + the 2-credit sync surcharge. Every include flag on this endpoint is free — only `state` moves the price, by 2. A failed extraction is not charged."
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-copilot
+
+  - id: cloro.ai-search.perplexity.answer
+    domain: perplexity
+    capability: ai-search.perplexity.answer
+    platform: ai-search
+    scope: any_account
+    method: POST
+    path: /v1/monitor/perplexity
+    name: "Perplexity answer — text, sources, media, shopping"
+    summary: "Runs a prompt through the live Perplexity interface from a chosen country and returns the answer text with its cited sources, citation pills, shopping cards, media results and travel/place cards."
+    input:
+      body:
+        prompt: {type: string, required: true, note: "1-10,000 characters", example: "best noise cancelling headphones"}
+        country: {type: string, required: true, note: "ISO 3166-1 alpha-2. CN is refused.", example: "US"}
+        state: {type: string, required: false, note: "US state code for state-level targeting; adds 2 credits", example: "CA"}
+        include:
+          type: object
+          required: false
+          note: "any of markdown, html, rawResponse. All three are free on this endpoint."
+      bodyType: json
+    test_request:
+      body:
+        prompt: "what is a stock split"
+        country: "US"
+        include: {markdown: true, html: true, rawResponse: true}
+      bodyType: json
+    verified: '2026-09-07'
+    added: '2026-09-07'
+    example_response: examples/cloro.ai-search.perplexity.answer.json
+    cost:
+      type: per_call
+      value: 6
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: 'https://cloro.dev/docs/guides/providers'
+      checked: '2026-09-05'
+      confidence: documented
+      modifiers:
+        state: {location: body, when: present, add_credits: 2}
+      note: "4 base + the 2-credit sync surcharge. Every include flag on this endpoint is free — only `state` moves the price, by 2. A failed extraction is not charged."
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-perplexity
+
+  - id: cloro.ai-search.gemini.scrape
+    domain: gemini
+    capability: ai-search.gemini.scrape
+    platform: ai-search
+    scope: any_account
+    method: POST
+    path: /v1/monitor/gemini
+    name: "Google Gemini answer — text and sources"
+    summary: "Runs a prompt through the live Google Gemini interface from a chosen country and returns the generated answer with its cited sources and citation pills, optionally as Markdown or HTML."
+    input:
+      body:
+        prompt: {type: string, required: true, note: "1-10,000 characters", example: "how does a heat pump work"}
+        country: {type: string, required: true, note: "ISO 3166-1 alpha-2. BY, CN and RU are refused.", example: "US"}
+        state: {type: string, required: false, note: "US state code for state-level targeting; adds 2 credits", example: "CA"}
+        include:
+          type: object
+          required: false
+          note: "any of markdown, html, rawResponse. All three are free on this endpoint."
+      bodyType: json
+    test_request:
+      body:
+        prompt: "what is a stock split"
+        country: "US"
+        include: {markdown: true, html: true, rawResponse: true}
+      bodyType: json
+    verified: '2026-09-07'
+    added: '2026-09-07'
+    example_response: examples/cloro.ai-search.gemini.scrape.json
+    cost:
+      type: per_call
+      value: 6
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: 'https://cloro.dev/docs/guides/providers'
+      checked: '2026-09-05'
+      confidence: documented
+      modifiers:
+        state: {location: body, when: present, add_credits: 2}
+      note: "4 base + the 2-credit sync surcharge. Every include flag on this endpoint is free — only `state` moves the price, by 2. A failed extraction is not charged."
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-gemini
+
+  # --- Google -----------------------------------------------------------------------------------
+  - id: cloro.google.serp.ai_mode
+    domain: serp
+    capability: google.serp.ai_mode
+    platform: google
+    scope: any_account
+    method: POST
+    path: /v1/monitor/aimode
+    name: "Google AI Mode answer — text, sources, products, places"
+    summary: "Runs a prompt through Google AI Mode from a chosen country and returns the answer with its cited sources, citation pills, inline products, shopping cards, place cards, videos and sponsored ads."
+    input:
+      body:
+        prompt: {type: string, required: true, note: "1-10,000 characters", example: "best electric suv under 50k"}
+        gl: {type: string, required: true, note: "result geography, ISO 3166-1 alpha-2, from AI Mode's own supported-country list. `country` is a deprecated alias.", example: "US"}
+        hl: {type: string, required: false, note: "interface language override", example: "en"}
+        location: {type: string, required: false, note: "free-text location; mutually exclusive with uule"}
+        uule: {type: string, required: false, note: "Google UULE location string; mutually exclusive with location"}
+        device: {type: string, required: false, note: "desktop | mobile, default desktop", example: "desktop"}
+        include:
+          type: object
+          required: false
+          note: "any of markdown, html, googleGoto, expandProducts. The first three are free; expandProducts adds 1 credit per expanded product, charged after the fact from the number actually returned."
+      bodyType: json
+    test_request:
+      body:
+        prompt: "what is a stock split"
+        gl: "US"
+        include: {markdown: true, html: true, googleGoto: true}
+      bodyType: json
+    verified: '2026-09-07'
+    added: '2026-09-07'
+    example_response: examples/cloro.google.serp.ai_mode.json
+    cost:
+      type: per_call
+      value: 6
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: 'https://cloro.dev/docs/guides/providers'
+      checked: '2026-09-05'
+      confidence: documented
+      note: "4 base + the 2-credit sync surcharge. markdown, html and googleGoto are free. include.expandProducts is the one flag left out of the test request: it adds 1 credit per product returned, so its total is not knowable before the response — leave it off for a fixed price. A failed extraction is not charged."
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-aimode
+
+  - id: cloro.google.serp.organic
+    domain: serp
+    capability: google.serp.organic
+    platform: google
+    scope: any_account
+    method: POST
+    path: /v1/monitor/google
+    name: "Google SERP — organic, PAA, local pack, AI Overview"
+    summary: "Returns a parsed Google SERP for a keyword from a chosen country: organic results with sitelinks, People Also Ask, related searches, local pack, knowledge graph, shopping cards, sponsored ads and, on request, the AI Overview."
+    input:
+      body:
+        query: {type: string, required: false, note: "the keyword. Pass query or url, not both.", example: "best running shoes"}
+        url: {type: string, required: false, note: "a complete google.com/search URL used as the fetch target instead of the structured fields. The URL owns query, location, uule and pages."}
+        gl: {type: string, required: false, note: "result geography, ISO 3166-1 alpha-2. Required in structured mode; derived from the URL's gl otherwise. `country` is a deprecated alias.", example: "US"}
+        hl: {type: string, required: false, note: "interface language", example: "en"}
+        location: {type: string, required: false, note: "free-text location; mutually exclusive with uule"}
+        uule: {type: string, required: false, note: "Google UULE location string; mutually exclusive with location"}
+        device: {type: string, required: false, note: "desktop | mobile", example: "desktop"}
+        pages: {type: integer, required: false, note: "1-10, default 1. Each page past the first adds 2 credits.", example: 1}
+        include:
+          type: object
+          required: false
+          note: "any of html, aioverview, paaAioverview, googleGoto. html and googleGoto are free; aioverview or paaAioverview adds 2 credits."
+      bodyType: json
+    test_request:
+      body:
+        query: "what is a stock split"
+        gl: "US"
+        pages: 1
+        include: {html: true, aioverview: true, paaAioverview: true, googleGoto: true}
+      bodyType: json
+    verified: '2026-09-07'
+    added: '2026-09-07'
+    example_response: examples/cloro.google.serp.organic.json
+    cost:
+      type: per_call
+      value: 7
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: 'https://cloro.dev/docs/guides/providers'
+      checked: '2026-09-05'
+      confidence: documented
+      note: "7 = 3 base + 2 for include.aioverview / paaAioverview + the 2-credit sync surcharge, for one page. A plain call without the AI Overview flags is 5. html and googleGoto are free. Each page past the first adds 2, and `pages` is capped at 10, so 23 is the ceiling. A failed extraction is not charged."
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-google
+
+  - id: cloro.google.serp.news
+    domain: serp
+    capability: google.serp.news
+    platform: google
+    scope: any_account
+    method: POST
+    path: /v1/monitor/google/news
+    name: "Google News results — titles, sources, dates"
+    summary: "Returns parsed Google News articles for a keyword from a chosen country, each with its title, link, snippet, publisher, publication date and thumbnail."
+    input:
+      body:
+        query: {type: string, required: true, note: "1-10,000 characters", example: "federal reserve rate decision"}
+        gl: {type: string, required: true, note: "result geography, ISO 3166-1 alpha-2. `country` is a deprecated alias.", example: "US"}
+        hl: {type: string, required: false, note: "interface language", example: "en"}
+        device: {type: string, required: false, note: "desktop | mobile", example: "desktop"}
+        pages: {type: integer, required: false, note: "1-10, default 1. Each page past the first adds 2 credits.", example: 1}
+        include:
+          type: object
+          required: false
+          note: "html only, and it is free."
+      bodyType: json
+    test_request:
+      body:
+        query: "federal reserve rate decision"
+        gl: "US"
+        pages: 1
+        include: {html: true}
+      bodyType: json
+    verified: '2026-09-07'
+    added: '2026-09-07'
+    example_response: examples/cloro.google.serp.news.json
+    cost:
+      type: per_call
+      value: 5
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: 'https://cloro.dev/docs/guides/providers'
+      checked: '2026-09-05'
+      confidence: documented
+      note: "3 base + the 2-credit sync surcharge, for one page. include.html is free. Each page past the first adds 2, and `pages` is capped at 10, so 23 is the ceiling. A failed extraction is not charged."
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-google-news
+
+  - id: cloro.google.redirect.resolve
+    kind: utility
+    domain: serp
+    capability: google.redirect.resolve
+    platform: google
+    scope: any_account
+    method: POST
+    path: /v1/monitor/google/goto
+    name: "Resolve a Google redirect link to its destination"
+    summary: "Resolves one encrypted google.com /goto or /url redirect link to the page it points at — the companion to the include.googleGoto flag on the Google Search and AI Mode endpoints, which ship those links unresolved."
+    input:
+      body:
+        url: {type: string, required: true, note: "an absolute google.com /goto or /url redirect link, as shipped by include.googleGoto", example: "https://www.google.com/url?q=https://example.com/"}
+      bodyType: json
+    test_request:
+      body: {url: "https://www.google.com/url?q=https://example.com/"}
+      bodyType: json
+    verified: '2026-09-07'
+    added: '2026-09-07'
+    example_response: examples/cloro.google.redirect.resolve.json
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://cloro.dev/docs/api-reference/endpoint/google/resolve-goto
+
+proposed_capabilities:
+  # ai-search already carries chatgpt/gemini `.scrape` and perplexity `.answer`. Copilot is the same
+  # job against one more answer engine and has no id yet.
+  ai-search.copilot.scrape: "Scrape a live Microsoft Copilot answer page for a keyword"
+  # Google ships encrypted /goto redirect links on the SERP. Resolving one is its own job, separate
+  # from fetching the SERP that carried it.
+  google.redirect.resolve: "Resolve a Google redirect link to its destination URL"
+  # Which geographies a provider will actually serve is a precondition of every geo-targeted call
+  # here, and the answer differs per answer engine. `account.usage` covers balance, not coverage.
+  account.coverage.countries: "List the countries a provider can run a request from"
+  account.coverage.regions: "List the sub-national regions a provider can target"

@@ -1,0 +1,118 @@
+{
+  "requestId": "284f8a5f9f2c61b86eaebdb33e1f4f9f",
+  "resolvedSearchType": "",
+  "results": [
+    {
+      "id": "https://exa.ai/library/organization/64hnz3g3vgf",
+      "title": "Pinecone",
+      "url": "https://pinecone.io/",
+      "publishedDate": "2026-06-27T00:00:00.000Z",
+      "author": "Exa",
+      "image": "https://media.licdn.com/dms/image/v2/C4E0BAQHYjma_4kJHhw/company-logo_200_200/company-logo_200_200/0/1630629175187/hypercube_systems_logo?e=2147483647&v=beta&t=qvV03plHu-LpeSPOf2CYWLrAVFaYKzYofLUmpuifLuo",
+      "entities": [
+        {
+          "id": "https://exa.ai/library/organization/64hnz3g3vgf",
+          "type": "company",
+          "version": 1,
+          "properties": {
+            "name": "Pinecone",
+            "foundedYear": 2019,
+            "description": "Pinecone is the knowledge infrastructure for AI at scale. Its leading vector database and knowledge engine, Pinecone Nexus, power accurate, performant AI applications for more than 9,000 customers and 800,000 developers worldwide. Pinecone's mission is to make AI knowledgeable.",
+            "workforce": {
+              "total": 88
+            },
+            "headquarters": {
+              "address": "New York, NY 10001, US",
+              "city": "New York",
+              "postalCode": null,
+              "country": "United States"
+            },
+            "financials": {
+              "revenueAnnual": 18500000,
+              "fundingTotal": 138000000,
+              "fundingLatestRound": null
+            },
+            "webTraffic": {
+              "visitsMonthly": 648024,
+              "countryRank": 37853,
+              "avgDurationSeconds": 154,
+              "history": [
+                {
+                  "value": 627693,
+                  "dateFrom": "2026-03",
+                  "dateTo": "2026-03"
+                },
+                {
+                  "value": 536597,
+                  "dateFrom": "2026-04",
+                  "dateTo": "2026-04"
+                },
+                "… 4 more item(s) truncated"
+              ]
+            },
+            "research": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://exa.ai/library/organization/wcftrdxc39q",
+      "title": "Qdrant",
+      "url": "https://qdrant.tech/",
+      "image": "https://media.licdn.com/dms/image/v2/D4D0BAQGJgSgWmgTCIQ/company-logo_200_200/B4DZgABCBEH8AM-/0/1752346928000/qdrant_logo?e=2147483647&v=beta&t=WruBXkp9lSqEt3ETIg7GqoH2S8lOMoJZ7RL56x5ELzc",
+      "entities": [
+        {
+          "id": "https://exa.ai/library/organization/wcftrdxc39q",
+          "type": "company",
+          "version": 1,
+          "properties": {
+            "name": "Qdrant",
+            "foundedYear": 2021,
+            "description": "Powering the next generation of AI applications\nwith advanced and high-performant vector similarity search technology.\n\nQdrant is an open-source vector search engine. It deploys as an API service providing a search for the nearest high-dimensional vectors. With Qdrant, embeddings or neural network encoders can be turned into full-fledged applications for matching, searching, recommending, and much more. \n\nMake the most of your Unstructured Data!",
+            "workforce": {
+              "total": 102
+            },
+            "headquarters": {
+              "address": "Berlin, Berlin 10115, DE",
+              "city": "Berlin",
+              "postalCode": null,
+              "country": "Germany"
+            },
+            "financials": {
+              "revenueAnnual": 1000000,
+              "fundingTotal": 88268073,
+              "fundingLatestRound": null
+            },
+            "webTraffic": {
+              "visitsMonthly": 300240,
+              "countryRank": 58647,
+              "avgDurationSeconds": 60,
+              "history": [
+                {
+                  "value": 319234,
+                  "dateFrom": "2026-02",
+                  "dateTo": "2026-02"
+                },
+                {
+                  "value": 363418,
+                  "dateFrom": "2026-03",
+                  "dateTo": "2026-03"
+                },
+                "… 4 more item(s) truncated"
+              ]
+            },
+            "research": null
+          }
+        }
+      ]
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "searchTime": 890.5,
+  "costDollars": {
+    "total": 0.007,
+    "search": {
+      "neural": 0.007
+    }
+  }
+}

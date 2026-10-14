@@ -1,0 +1,35 @@
+{
+  "employees": [
+    {
+      "endDate": "2020-02-01T00:00:00.000Z",
+      "startDate": "2019-07-01T00:00:00.000Z",
+      "linkedinNumID": 2135371,
+      "entityType": "company",
+      "positionList": [
+        {
+          "startDate": "2019-07-01T00:00:00.000Z",
+          "endDate": "2020-02-01T00:00:00.000Z",
+          "title": "Example role",
+          "location": "Redacted",
+          "seniorityScore": 0
+        }
+      ],
+      "personID": "person-id-redacted",
+      "companyID": "OYClaZ4jscaMd-JHzdbItcb2o3wRHoY",
+      "companyName": "Stripe",
+      "person": {
+        "id": "person-id-redacted",
+        "fullName": "Example Person",
+        "firstName": "Example",
+        "lastName": "Person",
+        "entityType": "person",
+        "location": "Redacted",
+        "URLs": {
+          "linkedin": "linkedin.com/in/example-person"
+        }
+      }
+    }
+  ],
+  "pages": 26877,
+  "totalResults": 26877
+}

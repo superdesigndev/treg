@@ -1,0 +1,22 @@
+{
+ "status": 404,
+ "body": {
+  "success": false,
+  "error": "API request failed with status 404",
+  "data": {
+   "status": "error",
+   "message": "Failed to retrieve data. Please try again."
+  },
+  "_orthogonal": {
+   "error": "orthogonal_endpoint_contract",
+   "message": "The upstream API rejected this request. Compare your request to expected_schema and retry.",
+   "endpoint": "GET /api/intellimatch/data"
+  },
+  "requestId": "run_phone:81f29939dc_a3otaxrxout"
+ },
+ "expect": {
+  "upstream_status": null,
+  "price": null,
+  "ok": false
+ }
+}

@@ -1,0 +1,7 @@
+{
+  "url": "https://docs.keenable.ai/",
+  "title": "Quickstart",
+  "content": "Keenable provides web search and content access for AI agents. There are three ways in: MCP, CLI, and the REST API.\n\n## REST API\n\nCall the endpoints directly over HTTP.\n\n..._This content has been truncated to stay below 500 characters_...",
+  "description": "",
+  "published_at": 1787644872
+}

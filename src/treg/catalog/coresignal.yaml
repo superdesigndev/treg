@@ -35,13 +35,14 @@ source:
 pricing_url: https://coresignal.com/pricing/  # Search returns ids for free; COLLECTING each record costs a credit.
 endpoints:
   - id: coresignal.companies.enrich
+    added: '2026-07-28'
     domain: companies
     capability: companies.enrich
     platform: companies
     scope: any_account
     method: GET
     path: /company_multi_source/enrich
-    name: "Enrich a company by website or LinkedIn URL"
+    name: "Enrich a company by website — funding, headcount"
     summary: "Enrich a company from its website or LinkedIn URL — firmographics, funding, headcount"
     input:
       queryParams:
@@ -62,13 +63,14 @@ endpoints:
     docs_url: https://docs.coresignal.com/company-api/multi-source-company-api/enrich
 
   - id: coresignal.companies.search
+    added: '2026-07-28'
     domain: companies
     capability: companies.search
     platform: companies
     scope: any_account
     method: POST
     path: /company_multi_source/search/es_dsl
-    name: "Search companies by filter"
+    name: "Search companies by industry, size or country — ids, free"
     summary: "Find companies by Elasticsearch filter (industry, size, country) — ids only, free"
     input:
       bodyType: json
@@ -79,13 +81,14 @@ endpoints:
     docs_url: https://docs.coresignal.com/company-api/multi-source-company-api/elasticsearch-dsl
 
   - id: coresignal.companies.collect
+    added: '2026-07-28'
     domain: companies
     capability: companies.enrich
     platform: companies
     scope: any_account
     method: GET
     path: /company_multi_source/collect/{id}
-    name: "Get a company's full record"
+    name: "A company's full record by Coresignal id"
     summary: "Read one company's full record by the id a company search returned"
     input:
       pathParams:
@@ -99,19 +102,20 @@ endpoints:
       unit: record
       source: docs
       source_url: https://coresignal.com/pricing/
-      checked: '2026-07-28'
-      confidence: inferred
-      note: 20 Coresignal credits per record collected. The cheaper company_base / employee_base collections cost 10.
+      checked: '2026-08-13'
+      confidence: documented
+      note: '20 Coresignal credits per record collected (multi_source); the cheaper company_base / employee_base collections cost 10. Rate published on coresignal.com/pricing. Live re-verify 2026-08-13 was blocked by a 402 "Billing: Insufficient credits" on the test account, so the count stays documented (from pricing) rather than verified.'
     docs_url: https://docs.coresignal.com/company-api/multi-source-company-api/collect
 
   - id: coresignal.people.enrich
+    added: '2026-07-28'
     domain: contacts
     capability: people.enrich
     platform: people
     scope: any_account
     method: GET
     path: /employee_multi_source/collect/{identifier}
-    name: "Get a person's full profile"
+    name: "A person's full profile by LinkedIn URL or id"
     summary: "One person's full record — role, employer, work history, education — by LinkedIn URL or id"
     input:
       pathParams:
@@ -125,19 +129,20 @@ endpoints:
       unit: record
       source: docs
       source_url: https://coresignal.com/pricing/
-      checked: '2026-07-28'
-      confidence: inferred
-      note: 20 Coresignal credits per record collected. The cheaper company_base / employee_base collections cost 10.
+      checked: '2026-08-13'
+      confidence: documented
+      note: '20 Coresignal credits per record collected (multi_source); the cheaper company_base / employee_base collections cost 10. Rate published on coresignal.com/pricing. Live re-verify 2026-08-13 was blocked by a 402 "Billing: Insufficient credits" on the test account, so the count stays documented (from pricing) rather than verified.'
     docs_url: https://docs.coresignal.com/employee-api/multi-source-employee-api/collect
 
   - id: coresignal.people.search
+    added: '2026-07-28'
     domain: contacts
     capability: people.search
     platform: people
     scope: any_account
     method: POST
     path: /employee_multi_source/search/es_dsl
-    name: "Search people by filter"
+    name: "Search people by title, employer or country — ids, free"
     summary: "Find people by Elasticsearch filter (title, employer, country) — ids only, free"
     input:
       bodyType: json

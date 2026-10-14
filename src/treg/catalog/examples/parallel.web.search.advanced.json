@@ -1,0 +1,30 @@
+{
+  "search_id": "search_973010b10155216fc5655ceae976eae8",
+  "results": [
+    {
+      "url": "https://requests.readthedocs.io/",
+      "title": "Requests: HTTP for Humans™ — Requests 2.32.5 documentation",
+      "publish_date": null,
+      "excerpts": [
+        "# Requests: HTTP for Humans™ ¶\n\nRelease v2.32.5. ( Installation )\n\n[Requests Downloads Per Month Badge](https://pepy.tech/project/requests) [License Badge](https://pypi.org/project/requests/) [Wheel Support Badge](https://pypi.org/project/requests/) [Python Version Support …"
+      ]
+    },
+    {
+      "url": "https://pypi.org/project/requests/",
+      "title": "Requests",
+      "publish_date": null,
+      "excerpts": [
+        "Requests allows you to send HTTP/1.1 requests extremely easily. There's no need to manually add query strings to your URLs, or to form-encode your PUT & POST"
+      ]
+    }
+  ],
+  "warnings": null,
+  "usage": [
+    {
+      "name": "sku_search",
+      "count": 1
+    }
+  ],
+  "metadata": null,
+  "session_id": "session_973010b10155216fc5655ceae976eae8"
+}

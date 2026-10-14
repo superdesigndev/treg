@@ -1,0 +1,2377 @@
+"""Target resolution and marketplace pricing for proxied calls."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import re
+from email import policy
+from email.parser import BytesParser
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from urllib.parse import quote, urlsplit
+
+from sqlalchemy import or_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
+
+from ... import oauth, oauth_providers
+from ... import sandbox as demo_sandbox
+from ...config import get_settings
+from ...domain.capacity import marks as capacity_marks
+from ...domain.capacity.routes_view import view as overflow_routes_view
+from ...domain.capacity.view import view as capacity_view
+from ...domain.catalog import store as catalog_store
+from ...domain.connections import authorization as connection_authorization
+from ...domain.connections.refresh import expiry_state
+from ...domain.governance import access as access_policy
+from ...domain.identity.access import Caller
+from ...domain.money import settlement as settlement_basis
+from ...domain import provider_resources
+from ...infra.db import session_maker
+from ...domain.governance.access import pinned_tag_predicates
+from ...models import AsyncResourceRecord, AsyncTaskRecord, CapabilityPin, Org, Secret, Tool
+from ..connect import _host_of, _provider_bindings
+from . import keyslots
+from .idempotency import _IDEM_SCOPE_SEP, IDEMPOTENCY_HEADER, _idempotency_key
+from .types import ResolutionFailed, ResolvedTarget
+
+
+AUTHORIZATION_METHOD_HEADER = "X-Treg-Authorization-Method"
+
+
+@dataclass(frozen=True)
+class QueryValues:
+    items: tuple[tuple[str, str], ...]
+
+    def get(self, key: str, default=None):
+        return next((value for name, value in reversed(self.items) if name == key), default)
+
+    def multi_items(self) -> list[tuple[str, str]]:
+        return list(self.items)
+
+
+def _normalize_scheme(rest: str) -> str:
+    """A path param collapses `https://` to `https:/`; restore it."""
+    for sch in ("https:/", "http:/"):
+        if rest.startswith(sch) and not rest.startswith(sch + "/"):
+            return sch + "/" + rest[len(sch):]
+    return rest
+
+
+async def _resolve_call(rest: str, caller: Caller, db: AsyncSession) -> ResolvedTarget:
+    """Resolve `/call/<rest>` to (tool, full upstream URL), scoped to the caller's org. Shapes:
+
+    - URL-passthrough (agent-facing): rest is the real upstream URL. Resolve the tool by host
+      (indexed) + longest base_url prefix — the caller types no treg vocabulary, just the API.
+    - Named (CLI/legacy): rest = "<tool-name>/<upstream-path>".
+
+    Both lookups are constrained to `org_id`, so two orgs resolve independently (and may reuse
+    a tool name or an upstream host without colliding).
+
+    Passthrough candidates are additionally filtered by the caller's ACL (project scope AND the
+    per-tool list) *before* the longest-prefix tiebreak. That ordering matters: a same-host tool the
+    caller cannot use must not be able to cause a 409 — or win the tiebreak — for someone who can't
+    even see it in `list_tools`. This narrows the candidate set, so it can never grant access: whatever
+    resolves still passes the access-policy gate. The named shape needs no filter (it resolves one tool).
+    """
+    org_id = caller.org_id
+    norm = _normalize_scheme(rest)
+    if norm.startswith("http://") or norm.startswith("https://"):
+        try:
+            host = urlsplit(norm).netloc.lower()
+        except ValueError:  # malformed passthrough URL (e.g. unbalanced IPv6 brackets) → 400, not 500
+            raise ResolutionFailed(
+                "invalid_target", status_code=400, detail="malformed upstream URL")
+        on_host = (await db.execute(
+            select(Tool).where(Tool.host == host, Tool.org_id == org_id)
+        )).scalars().all()
+        candidates = [t for t in on_host if access_policy._tool_usable(caller, t)]  # can't use it → can't 409 on it
+        # Match on a path-segment boundary, not a raw string prefix: base `.../v2` must NOT match
+        # request `.../v20/...` (that would inject v2's credential onto an unregistered sibling path).
+        def _prefix_match(base: str) -> bool:
+            b = base.rstrip("/")
+            return norm == b or norm.startswith(b + "/")
+
+        matches = [t for t in candidates if _prefix_match(t.base_url)]
+        if not matches:
+            # Tell "no such tool" and "not yours to use" apart. If the ACL filter above is the ONLY
+            # reason nothing matched, this is a 403 like the named shape would give — a 404 here
+            # would send an admin hunting for a registration that already exists. The message names
+            # the HOST the caller already typed, never the internal tool name the ACL hides.
+            if any(_prefix_match(t.base_url) for t in on_host):
+                raise ResolutionFailed(
+                    "tool_access_denied", status_code=403, detail=(
+                        f"you don't have access to the registered tool for {host!r} in this team — an "
+                        "admin can grant it (dashboard → Team, or `treg org access <you> …`)"))
+            raise ResolutionFailed(
+                "target_not_found", status_code=404,
+                detail=f"no registered tool for upstream {host!r}")
+        # Tiebreak on the NORMALIZED length so `.../v1` and `.../v1/` count equal (a real 409), not
+        # one silently "longer" than the other.
+        longest = max(len(t.base_url.rstrip("/")) for t in matches)
+        top = [t for t in matches if len(t.base_url.rstrip("/")) == longest]
+        if len(top) > 1:
+            # A hand-registered tool for the same API (often predating the OAuth registry, and
+            # frequently holding a stale credential) collides on host with the one connect
+            # auto-provisioned. Both are real tools, so neither base_url is "longer" — but they are
+            # not equally intended: the registry-provisioned one is the live connection the user
+            # just authorised, and URL-passthrough is the AGENT-facing mode, so 409-ing here breaks
+            # exactly the callers who never typed a tool name. Prefer the provider-backed tool.
+            provider_owned = []
+            for t in top:
+                sids = {b.get("secret_id") for b in (t.bindings or []) if b.get("secret_id") is not None}
+                for sid in sids:
+                    s = await db.get(Secret, sid)
+                    if s is not None and s.org_id == org_id and s.provider:
+                        provider_owned.append(t)
+                        break
+            if len(provider_owned) == 1:
+                return ResolvedTarget(provider_owned[0], norm)
+            names = ", ".join(repr(t.name) for t in sorted(top, key=lambda t: t.name))
+            raise ResolutionFailed(
+                "target_ambiguous", status_code=409, detail=(
+                    f"ambiguous: multiple tools match {host!r}: {names}; call one by name as "
+                    "/call/<name>/<path>"))
+        return ResolvedTarget(top[0], norm)
+
+    name, _, path = rest.partition("/")
+    tool = (
+        await db.execute(select(Tool).where(Tool.name == name, Tool.org_id == org_id))
+    ).scalar_one_or_none()
+    if tool is None:
+        cat = catalog_store.load()
+        # An EXACT catalog id followed by a URL path (`reapi.tasks.get/tasks/<id>`) is the own-tool
+        # shape applied to the catalog half: the caller had the right id and wrote the vendor's path
+        # by hand. "no tool in this org" sends them hunting in the wrong half of treg; name the
+        # endpoint's real parameter slots instead so the next call is the right one.
+        if path and (ep := cat.by_id.get(name)) is not None:
+            inp = ep.get("input") or {}
+            slots = sorted({k for sec in ("pathParams", "queryParams", "query", "body")
+                            for k in (inp.get(sec) or {})})
+            raise ResolutionFailed(
+                "invalid_target", status_code=400, detail={
+                    "error": f"{name!r} is a catalog endpoint and takes no URL path",
+                    "hint": (f"pass parameters as --query K=V (path and query params) or --data "
+                             f"'{{…}}' (body): treg call {name} --query <k>=<v>"
+                             + (f"; parameters: {', '.join(slots)}" if slots else "")),
+                    "parameters": slots})
+        # A DOTTED name that reached here was meant to be a catalog endpoint id and missed — a
+        # near-miss id, most often one segment off. Answering "no tool 'lusha.companies-signals' in
+        # this org" describes the wrong half of treg and leaves the caller nothing to try; naming
+        # the real id turns the dead end back into the next call.
+        if (name not in cat.by_id and "." in name and not path
+                and (near := catalog_store.near_ids(name, cat))):
+            raise ResolutionFailed(
+                "target_not_found", status_code=404, detail={
+                    "error": f"no endpoint {name!r} in the catalog",
+                    "hint": "did you mean " + ", ".join(near) + "?",
+                    "did_you_mean": near})
+        detail = f"no tool {name!r} in this org"
+        # A caller may have mistaken a catalog-looking operation for a path on the connected own
+        # tool. Look only at callable tools inside this org and only on the error path; the first
+        # dotted segment is the provider/tool convention (`google-analytics.report` →
+        # `google-analytics`). Connection
+        # suffixes also count, so an org whose surviving account is `google-analytics-2` still gets
+        # an actionable route. Keep catalog_store.near_ids above provider-local and unchanged.
+        own_tools = (await db.execute(
+            select(Tool).where(Tool.org_id == org_id)
+        )).scalars().all()
+        first_segment = name.partition(".")[0]
+        own_near = sorted({
+            t.name for t in own_tools
+            if access_policy._tool_usable(caller, t) and (
+                name.startswith(t.name + ".")
+                or t.name == first_segment
+                or t.name.startswith(first_segment + "-")
+            )
+        }, key=lambda candidate: (-len(candidate), candidate))
+        if own_near:
+            suggested = own_near[0]
+            raise ResolutionFailed(
+                "target_not_found", status_code=404, detail={
+                    "error": detail,
+                    "hint": (f"your org has tool {suggested!r} — call "
+                             f"/call/{suggested}/<path>"),
+                    "did_you_mean": own_near,
+                })
+        # A bare provider name (`treg call tikhub /path`) stays a miss, but points at the
+        # marketplace form instead of dead-ending — its endpoints are callable without a tool.
+        if oauth_providers.get(name) is not None or name in cat.provider_meta:
+            detail += (f" — but {name!r} is a marketplace provider; call its endpoints directly: "
+                       f"treg catalog search <what you need> → treg call <endpoint-id>")
+        raise ResolutionFailed("target_not_found", status_code=404, detail=detail)
+    base = tool.base_url.rstrip("/")
+    # No path → the base URL itself, WITHOUT a trailing slash: a base pinned to a full resource
+    # (e.g. .../v1/charges) must relay as-is — Stripe 404s `/v1/charges/`.
+    return ResolvedTarget(tool, (f"{base}/{path.lstrip('/')}" if path else base))
+
+
+async def resolve_call_target(
+    rest: str,
+    caller: Caller,
+    resolver: Callable[[str, Caller, AsyncSession], Awaitable[ResolvedTarget]],
+) -> ResolvedTarget:
+    async with session_maker() as db:
+        return await resolver(rest, caller, db)
+
+
+# ---- direct marketplace calls: `treg call <catalog-endpoint-id>`, no tool registration ----------
+# See docs/context/interface/cli-audit-2026-07-28.md (design section). The registry stays "our
+# stuff"; the catalog is "everything callable". Credential ladder: (1) an org tool bound to the
+# provider — resolved via the URL-passthrough shape, so ACLs and ambiguity handling are identical —
+# then (2) an org credential matching the provider, injected via a VIRTUAL tool that is never
+# persisted (no registry pollution), then (4) TREG'S OWN key for the provider, metered against the
+# org's prepaid balance — the keyless first call — and only then (3) an actionable error naming the
+# connect/secret fix.
+#
+# Tier 4 is the only rung that spends OUR money, so it is fenced on every side: the endpoint must be
+# `platform_eligible` (priced, price-provenanced, live-verified, not the caller's own account's
+# business — see catalog_store.platform_eligible), the provider must be allow-listed AND keyed
+# (config.platform_key_for — the kill switch), the org must not be a demo, the estimated cost is
+# RESERVED from the balance before the request leaves, and a per-org daily ceiling caps the damage a
+# runaway agent can do. The key itself only ever exists as a `platform_setting` NAME in a virtual
+# tool's bindings; `relay` reads the value from settings at call time, so no platform credential is
+# stored, listable, or reachable from a local run.
+
+def _catalog_endpoint_for(rest: str) -> dict | None:
+    """The catalog endpoint `rest` names, or None. Only a dotted, slash-free rest can be an
+    endpoint id, so tool names and URL/named shapes never reach the catalog lookup."""
+    if "/" in rest or "." not in rest or rest.startswith("http"):
+        return None
+    return catalog_store.load().by_id.get(rest)
+
+
+def _enforce_catalog_status(ep: dict) -> None:
+    """Refuse a catalog id the provider has retired or broken, with its migration story.
+
+    This runs only after `_resolve_call` has failed and `_catalog_endpoint_for` has identified a
+    real catalog id. A team's own tool with the same name therefore still wins, and URL-passthrough
+    calls never enter this path at all.
+    """
+    status = str(ep.get("status") or "").strip().lower()
+    if not status:
+        return
+    detail = f"{ep['id']} is {status}"
+    if note := str(ep.get("status_note") or "").strip():
+        detail += f": {note}"
+    if successor := str(ep.get("superseded_by") or "").strip():
+        detail += f" Use {successor} instead."
+    elif alternatives := _capability_alternatives(ep):
+        # 41 of the 50 TikHub retirements have no same-provider successor, so `superseded_by` has
+        # nothing to say for them. A cross-provider sibling is the only help left — and it is the
+        # difference between a tombstone and a migration path.
+        detail += " " + " ".join(alternatives)
+    else:
+        detail += " No replacement is currently catalogued."
+    raise ResolutionFailed("catalog_retired", status_code=410, detail=detail)
+
+
+def _authorization_method(secret: Secret) -> str:
+    """Stored grant method, including the provider's declared legacy inference."""
+    provider = oauth_providers.get(secret.provider) if secret.provider else None
+    return (
+        provider.authorization_method_name(secret.authorization_method)
+        if provider else secret.authorization_method
+    )
+
+
+async def _marketplace_secret(
+    service: str, org_id: int, db: AsyncSession, methods: tuple[str, ...] = (),
+) -> Secret | None:
+    """Tier 2's credential: an org secret tagged with this provider (registry connects), else one
+    NAMED exactly for it (`treg secret add tikhub …`). Newest wins — a reconnect supersedes."""
+    if methods:
+        tagged_rows = (await db.execute(
+            select(Secret).where(Secret.org_id == org_id, Secret.provider == service)
+            .order_by(Secret.id.desc())
+        )).scalars().all()
+        # Rows are newest first. Preserve the first row for each method; assigning every row into
+        # a comprehension would let the oldest reconnect overwrite the newest one.
+        by_method: dict[str, Secret] = {}
+        for row in tagged_rows:
+            by_method.setdefault(_authorization_method(row), row)
+        for method in methods:
+            if method in by_method:
+                return by_method[method]
+        return None
+    tagged = (await db.execute(
+        select(Secret).where(Secret.org_id == org_id, Secret.provider == service)
+        .order_by(Secret.id.desc())
+    )).scalars().first()
+    if tagged is not None:
+        return tagged
+    return (await db.execute(
+        select(Secret).where(Secret.org_id == org_id, Secret.name == service)
+        .order_by(Secret.id.desc())
+    )).scalars().first()
+
+
+@dataclass
+class MarketplaceCall:
+    """One resolved catalog-endpoint call: where it goes, who paid for the credential, and — when
+    treg's own key is paying — what the ledger is holding for it. `call_tool` carries this from
+    resolution through the relay to the settle and the telemetry row, so the endpoint id and the
+    credential tier are recorded even when the call fails."""
+
+    tool: Tool                      # real (tier 1) or virtual + never persisted (tiers 2/4)
+    upstream: str
+    consumed: set[str]              # query params eaten by `{placeholder}` path substitution
+    endpoint_id: str
+    provider: str
+    tier: str                       # tool | credential | anonymous | platform | platform-overflow
+    cost_type: str = ""             # cost.type — decides whether a 4xx is billable (per_call is)
+    estimate_micro: int = 0         # RAW provider estimate; the ledger applies the margin
+    max_cost_micro: int | None = None  # remaining caller ceiling, inherited by overflow
+    params_hash: str = ""
+    call_id: str | None = None      # the ledger hold, once reserved (metered calls only)
+    payer_org_id: int | None = None  # captured from the trusted caller when reserving
+    reserved_micro: int | None = None  # the held amount; None for legacy in-memory callers
+    # The call rides a REGISTRY OAUTH CONNECT of a provider that bills treg's app per use (X's
+    # pay-per-use: the app owner pays whoever's token made the call). Orthogonal to `tier` — the
+    # credential is genuinely the org's own (tier 1/2), but the upstream bill is ours, so the call
+    # is metered anyway. Set by `_billed_marketplace` after the bound secrets are known.
+    billed_oauth: bool = False
+    unit_micro: int = 0             # RAW per-resource price for a per_result settle-by-count
+    reported_charge_unit_micro: int = 0  # RAW value of one response-reported provider credit
+    # treg's own account is marked exhausted AND an overflow route is enabled: skip the direct
+    # attempt (no hold, no vendor 402) and go straight to the child cycle (plan §4 ladder).
+    skip_direct: bool = False
+    settlement_basis: dict = field(default_factory=dict)
+    request_data: dict = field(default_factory=dict)
+    async_descriptor: dict | None = None
+    resource_ownership: dict | None = None
+    managed_resource: dict | None = None
+    public_resource_ids: tuple[str, ...] = ()
+    # On an endpoint declaring `spooled_response`: the response paths its settlement reads (the
+    # usage meters, the `expect` success rule). A metered 2xx goes to disk; only these are kept.
+    spooled_evidence: tuple[str, ...] = ()
+    # A platform-key utility poll was authorized against this org-owned submission. The buffered
+    # response may teach the same row its provider result/file id before the background worker runs.
+    async_owner_call_id: str | None = None
+    # Admitted through an active capacity lock as its probe (domain.capacity.marks): a 2xx clears
+    # exactly that lock.
+    probe_lock_id: str | None = None
+    # Which of treg's accounts for the provider serves this platform call (`keyslots`); None until
+    # the call path picks one when resolution left the choice open.
+    key_slot: str | None = None
+    # A routed child: settle into this list instead of the ledger (CallContext.deferred_settles).
+    deferred: list | None = None
+
+    @property
+    def free_owned_poll(self) -> bool:
+        """A free status read authorized against this org's durable submission."""
+        return (self.tier == "platform" and self.async_owner_call_id is not None
+                and self.cost_type == "free" and self.estimate_micro == 0
+                and not self.billed_oauth)
+
+    @property
+    def streamable_free_result(self) -> bool:
+        """An authorized final fetch with no body evidence to settle or learn."""
+        ownership = self.resource_ownership or {}
+        required = ownership.get("requires") or {}
+        return (self.tier == "platform" and self.cost_type == "free"
+                and self.estimate_micro == 0 and not self.billed_oauth
+                and self.async_owner_call_id is None and not self.async_descriptor
+                and not ownership.get("produces")
+                and str(required.get("kind", "")).startswith("fetch:"))
+
+    @property
+    def metered(self) -> bool:
+        """True when OUR money is at stake: treg's platform key (tier 4), or an org credential that
+        rides treg's pay-per-use OAuth app (`billed_oauth`). Tiers 1/2 on a provider that bills the
+        account owner stay unmetered; there the org's own account pays. An owned free poll reads
+        an existing task without reserving or settling money again."""
+        return ((self.tier in ("platform", "platform-overflow") or self.billed_oauth)
+                and not self.free_owned_poll)
+
+
+# A `per_result` price is per ROW, so an estimate needs a row count. The caller's own limit param is
+# the best available signal; without one, assume a page. Capped, because `limit=100000` must not be
+# able to reserve an org's whole balance for a single call — the settle corrects the estimate either way.
+_PLATFORM_PAGE_DEFAULT = 20
+_PLATFORM_PAGE_MAX = 100
+_LIMIT_PARAMS = ("limit", "count", "depth", "page_size", "per_page", "num", "max_results", "size",
+                 "pageSize", "perPage", "numResults", "maxResults",
+                 "contactsLimit",  # camelCase: companyenrich, exa, lusha; contactsLimit: lusha buying-group
+                 "pastNMonths")  # spyfu domain stats: one row per month
+
+
+# Units that name an INPUT entity rather than a returned row: the caller pays per thing they asked
+# about (an SE Ranking `target`, a Serpstat `domain`, a `keyword`; `call` is the flat case). Providers
+# billing this way rarely report a per-call cost, so the reserve IS the charge — a wrong count is a
+# wrong bill, not a hold the settle trues up.
+_ENTITY_UNITS = frozenset({"target", "domain", "keyword", "call"})
+_ENTITY_KEYS = ("targets", "keywords", "domains", "urls", "target", "keyword", "domain", "url")
+_ENTITY_MAX = 10_000  # a body cannot reserve more than this many entities' worth in one call
+
+
+def _doc_entities(doc) -> int:
+    """Entities named by one JSON object: a list under an entity key (top level, or inside a
+    JSON-RPC `params` — serpstat), else one for a scalar target."""
+    if not isinstance(doc, dict):
+        return 0
+    for scope in (doc, doc.get("params")):
+        if not isinstance(scope, dict):
+            continue
+        for key in _ENTITY_KEYS:
+            val = scope.get(key)
+            if isinstance(val, list):
+                return len(val)
+            if isinstance(val, str) and val.strip():
+                return 1
+    return 0
+
+
+def _entity_count(query, body: bytes) -> int:
+    """How many billable input entities a request names. Query first (repeated keys — `target=a&
+    target=b` or `targets[]=` — and comma-separated values both count), then the JSON body (an
+    entity array, or one per task object in a DataForSEO-style array). Never below one: a request
+    that names no entity still asks about the one its path implies."""
+    n = 0
+    if query is not None:
+        items = query.multi_items() if hasattr(query, "multi_items") else list(query.items())
+        for key, val in items:
+            if key.rstrip("[]") in _ENTITY_KEYS and val is not None and str(val).strip():
+                n += max(1, len([p for p in str(val).split(",") if p.strip()]))
+    if n == 0 and body:
+        try:
+            doc = json.loads(body)
+        except (ValueError, UnicodeDecodeError):
+            doc = None
+        if isinstance(doc, list):
+            n = sum(_doc_entities(d) for d in doc) or len(doc)
+        else:
+            n = _doc_entities(doc)
+    return max(1, min(n, _ENTITY_MAX))
+
+
+def _body_limit(body: bytes) -> int | None:
+    """A row-count signal from a JSON body: an explicit limit key first (dataforseo takes
+    `[{..., "limit": 3}]`, lusha `{"limit": 1}`), else the ARRAY LENGTH — providers that take a
+    list of inputs (brightdata's urls, dataforseo's tasks) bill one result per item, so a 1-item
+    body estimating at the 20-row default overstated 20x (seen live: $0.03 shown for a $0.0015
+    call). Under-estimating is safe either way — the settle trues up, overruns included."""
+    if not body:
+        return None
+    try:
+        doc = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    items = None
+    if isinstance(doc, list) and doc:
+        items = len(doc)
+        doc = doc[0]
+    if not isinstance(doc, dict):
+        return items
+    for name in _LIMIT_PARAMS:
+        val = doc.get(name)
+        if isinstance(val, int) and not isinstance(val, bool) and val > 0:
+            return val
+    for name in ("targets", "keywords", "domains", "urls", "lookups", "emails", "contacts", "companies"):
+        val = doc.get(name)  # one row per item: moz targets, dataforseo keywords, companyenrich domains, brightdata urls, lusha contacts/companies
+        if isinstance(val, list) and val:
+            return len(val)
+    # icypeas / lusha: {"pagination": {"size": 10}}; influencersclub: {"paging": {"limit": 10}} —
+    # the miss on `paging` left discovery reserving the 20-row default whatever the caller asked
+    # (found live 2026-08-30, the same calls whose settle over-billed).
+    for envelope in ("pagination", "paging"):
+        nested = doc.get(envelope)
+        if isinstance(nested, dict):
+            for name in _LIMIT_PARAMS:
+                val = nested.get(name)
+                if isinstance(val, int) and not isinstance(val, bool) and val > 0:
+                    return val
+    return items
+
+
+def _body_text_characters(body: bytes) -> int:
+    """Count the provider-facing ``text`` field for character-priced generation calls.
+
+    The catalog price is already normalized to USD per character. Invalid JSON or a missing text
+    field reserves one unit rather than zero; platform request validation/provider rejection still
+    decides whether the call is relayed or charged.
+    """
+    if body:
+        try:
+            document = json.loads(body)
+        except (ValueError, UnicodeDecodeError):
+            document = None
+        if isinstance(document, dict) and isinstance(document.get("text"), str):
+            return max(1, len(document["text"]))
+    return 1
+
+
+def _body_text_utf8_bytes(body: bytes) -> int:
+    """Count Fish Audio's billed unit: UTF-8 bytes in the JSON ``text`` string."""
+    if body:
+        try:
+            document = json.loads(body)
+        except (ValueError, UnicodeDecodeError):
+            document = None
+        if isinstance(document, dict) and isinstance(document.get("text"), str):
+            return max(1, len(document["text"].encode("utf-8")))
+    return 1
+
+
+def _platform_estimate_micro(cost: dict, query, body: bytes = b"") -> int:
+    """What one call is expected to cost the platform, in RAW micro-USD (no margin — ledger.reserve
+    applies that). Rounds UP: a fraction of a micro-dollar is not representable and must not round to
+    free. Returns 0 for a genuinely free endpoint, which reserves nothing."""
+    usd = cost.get("usd")
+    if usd is None:
+        return 0
+    n = 1
+    if cost.get("unit") == "character":
+        n = _body_text_characters(body)
+    elif cost.get("unit") == "utf8_byte":
+        n = _body_text_utf8_bytes(body)
+    elif cost.get("type") in ("per_result", "quota_rows") and cost.get("unit") in _ENTITY_UNITS:
+        # Priced per INPUT entity, not per returned row: the page-size default below has no
+        # meaning here and billed one-target calls 20x (seranking summary, serpstat overview —
+        # 2026-09-05). The request names how many entities it asks about.
+        n = 1 if cost.get("unit") == "call" else _entity_count(query, body)
+    elif cost.get("type") in ("per_result", "quota_rows"):
+        asked = None
+        for name in _LIMIT_PARAMS:
+            raw = query.get(name)
+            if raw is not None and str(raw).strip().isdigit():
+                asked = int(str(raw).strip())
+                break
+        if asked is None:
+            asked = _body_limit(body)  # POST providers put the row count in the body, not the query
+        n = max(1, min(asked or _PLATFORM_PAGE_DEFAULT, _PLATFORM_PAGE_MAX))
+    # Round to 9 dp BEFORE the ceil: float artifacts (0.0015 × 3 → 4500.000000001) must not
+    # over-reserve a phantom micro-dollar.
+    raw_micro = round(usd * n * 1_000_000, 9)
+    whole = int(raw_micro)
+    return whole + 1 if raw_micro > whole else whole
+
+
+# ---- oauth-billed metering: providers whose upstream bill lands on treg's app -------------------
+# X moved to pay-per-use (Feb 2026): the APP OWNER is billed per resource read / per post written,
+# whoever's user token made the call. A registry connect rides treg's app, so those calls spend
+# treg's prepaid credits and must be metered against the org's balance — the same reserve→settle
+# path as tier 4. A BYO connect (/oauth/start with the caller's own client_id) stores
+# `secret.provider == ""` and is therefore never flagged: its upstream bill is already the org's.
+
+def _usd_to_micro(usd: float) -> int:
+    """USD → RAW micro-USD, rounded UP like `_platform_estimate_micro` — a fraction of a
+    micro-dollar must not round to free."""
+    raw = round(usd * 1_000_000, 9)
+    whole = int(raw)
+    return whole + 1 if raw > whole else whole
+
+
+def _truthy(value) -> bool:
+    """Provider query/body booleans arrive as strings or JSON booleans; interpret both."""
+    return value is True or (isinstance(value, str) and value.strip().lower() in ("1", "true", "yes"))
+
+
+_OPENMART_METERED_ENDPOINTS = frozenset({
+    "openmart.businesses.search",
+    "openmart.businesses.lookup.openmart",
+    "openmart.businesses.lookup.google-place",
+    "openmart.companies.enrich",
+    "openmart.companies.search",
+})
+_OPENMART_LOOKUP_ENDPOINTS = frozenset({
+    "openmart.businesses.lookup.openmart",
+    "openmart.businesses.lookup.google-place",
+})
+_OPENMART_PLATFORM_MAX_RECORDS = 25
+
+_TAVILY_ENDPOINTS = frozenset({
+    "tavily.web.search",
+    "tavily.web.extract",
+    "tavily.web.map",
+    "tavily.web.crawl",
+})
+_OCTEN_ENDPOINTS = frozenset({
+    "octen.web.search", "octen.web.search.broad", "octen.web.search.news", "octen.web.extract",
+})
+_TAVILY_BOUNDED_SITE_ENDPOINTS = frozenset({"tavily.web.map", "tavily.web.crawl"})
+_TAVILY_PLATFORM_MAX_RESULTS = 20
+_TAVILY_RATE_KEYS = {
+    "tavily.web.search": frozenset({"basic", "fast", "ultra_fast", "advanced"}),
+    "tavily.web.extract": frozenset({"basic", "advanced"}),
+    "tavily.web.map": frozenset({"regular", "instructions"}),
+    "tavily.web.crawl": frozenset({
+        "basic", "basic_instructions", "advanced", "advanced_instructions",
+    }),
+}
+
+
+def _openmart_credits(records: int) -> int:
+    """Openmart bills 3 credits per 10 returned records, rounded up per operation."""
+    return 0 if records <= 0 else (3 * records + 9) // 10
+
+
+def _openmart_requested_records(endpoint_id: str, body: bytes) -> int | None:
+    """Read the requested Openmart result ceiling without changing a BYOK request."""
+    if not body:
+        return None
+    try:
+        document = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if endpoint_id in _OPENMART_LOOKUP_ENDPOINTS:
+        return len(document) if isinstance(document, list) else None
+    if not isinstance(document, dict):
+        return None
+    if endpoint_id == "openmart.companies.search":
+        pagination = document.get("pagination")
+        value = pagination.get("limit") if isinstance(pagination, dict) else None
+    else:
+        value = document.get("limit")
+    return value if type(value) is int else None
+
+
+def _tavily_rate_credits(endpoint_id: str, cost: dict, name: str) -> float:
+    """Read a complete positive Tavily rate set, or refuse the call before reserve/relay."""
+    rates = cost.get("tavily_rates")
+    expected = _TAVILY_RATE_KEYS[endpoint_id]
+    valid = (
+        isinstance(rates, dict)
+        and set(rates) == expected
+        and all(
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+            and value > 0
+            for value in rates.values()
+        )
+    )
+    if not valid:
+        raise ResolutionFailed(
+            "catalog_price_invalid", status_code=503, detail={
+                "error": "catalog_price_invalid",
+                "endpoint_id": endpoint_id,
+                "message": "Tavily pricing is unavailable because its catalog rates are invalid",
+            },
+        )
+    return float(rates[name])
+
+
+def _tavily_pricing(endpoint_id: str, cost: dict, body: bytes) -> tuple[int, int]:
+    """Return Tavily's bounded hold and frozen response unit without rewriting the request."""
+    rate = catalog_store.load().credit_rates.get("tavily")
+    if (not isinstance(rate, (int, float)) or isinstance(rate, bool)
+            or not math.isfinite(float(rate)) or rate <= 0):
+        raise ResolutionFailed(
+            "catalog_price_invalid", status_code=503, detail={
+                "error": "catalog_price_invalid",
+                "endpoint_id": endpoint_id,
+                "message": "Tavily pricing is unavailable because its credit rate is invalid",
+            },
+        )
+    credit_micro = _usd_to_micro(float(rate))
+    document = _json_object(body)
+    if endpoint_id == "tavily.web.search":
+        depth = document.get("search_depth")
+        if depth == "advanced":
+            credits = _tavily_rate_credits(endpoint_id, cost, "advanced")
+        elif depth in ("basic", "fast", "ultra-fast"):
+            # An explicit depth overrides auto_parameters, including explicit basic.
+            credits = _tavily_rate_credits(endpoint_id, cost, str(depth).replace("-", "_"))
+        elif document.get("auto_parameters") is True:
+            credits = _tavily_rate_credits(endpoint_id, cost, "advanced")
+        else:
+            credits = _tavily_rate_credits(endpoint_id, cost, "basic")
+        return _usd_to_micro(float(rate) * credits), credit_micro
+
+    instructions = document.get("instructions")
+    instructed = isinstance(instructions, str) and bool(instructions.strip())
+    if endpoint_id == "tavily.web.extract":
+        requested = document.get("urls")
+        count = len(requested) if isinstance(requested, list) and requested else _TAVILY_PLATFORM_MAX_RESULTS
+        count = min(count, _TAVILY_PLATFORM_MAX_RESULTS)
+        mode = "advanced" if document.get("extract_depth") == "advanced" else "basic"
+    else:
+        limit = document.get("limit")
+        count = limit if type(limit) is int and 1 <= limit <= _TAVILY_PLATFORM_MAX_RESULTS \
+            else _TAVILY_PLATFORM_MAX_RESULTS
+        if endpoint_id == "tavily.web.map":
+            mode = "instructions" if instructed else "regular"
+        else:
+            depth = "advanced" if document.get("extract_depth") == "advanced" else "basic"
+            mode = f"{depth}_instructions" if instructed else depth
+    per_result_micro = _usd_to_micro(
+        float(rate) * _tavily_rate_credits(endpoint_id, cost, mode))
+    return count * per_result_micro, per_result_micro
+
+
+def _json_object(body: bytes) -> dict:
+    try:
+        doc = json.loads(body) if body else {}
+    except (ValueError, UnicodeDecodeError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def _input_count(doc: dict, keys: tuple[str, ...]) -> int:
+    """Count request records without mistaking field-selection arrays for billable inputs."""
+    sizes = [len(doc[k]) for k in keys if isinstance(doc.get(k), list)]
+    return max(sizes, default=1)
+
+
+def _credit_modifiers(cost: dict, query, doc: dict) -> tuple[bool, float, float, float]:
+    """Return (free, reserve add, settle add, add per requested result) from catalog rules.
+
+    The request SHAPE stays provider-aware, but every credit NUMBER stays in the provider YAML.
+    A documented but live-unbilled rider can stay in the safety hold with `reserve_only: true`.
+    This prevents a rate-card edit from leaving hardcoded arithmetic in the billing path.
+    """
+    free, added, settled_added, per_result = False, 0.0, 0.0, 0.0
+    modifiers = cost.get("modifiers")
+    if not isinstance(modifiers, dict):
+        return free, added, settled_added, per_result
+    for name, rule in modifiers.items():
+        if not isinstance(rule, dict):
+            continue
+        location = rule.get("location", "query")
+        if location == "query":
+            values = [query.get(name)]
+        elif location == "body":
+            values = [doc.get(name)]
+        elif location == "lookups":
+            lookups = doc.get("lookups") if isinstance(doc.get("lookups"), list) else []
+            values = [item.get(name) for item in lookups if isinstance(item, dict)]
+        else:
+            continue
+        when = rule.get("when", "truthy")
+        matches = (any(value not in (None, "") for value in values)
+                   if when == "present" else any(_truthy(value) for value in values))
+        if not matches:
+            continue
+        if rule.get("set_credits") == 0:
+            free = True
+        if isinstance(rule.get("add_credits"), (int, float)):
+            added += float(rule["add_credits"])
+            if not rule.get("reserve_only"):
+                settled_added += float(rule["add_credits"])
+        if isinstance(rule.get("add_credits_per_result"), (int, float)):
+            per_result += float(rule["add_credits_per_result"])
+    return free, added, settled_added, per_result
+
+
+def _octen_rates_or_fail(endpoint_id: str, cost: dict | None) -> dict[str, int]:
+    from . import octen
+    try:
+        return octen.rates_micro(endpoint_id, cost or {})
+    except ValueError as exc:
+        raise ResolutionFailed(
+            "catalog_price_invalid", status_code=503, detail={
+                "error": "catalog_price_invalid", "endpoint_id": endpoint_id,
+                "message": "Octen pricing is unavailable because its catalog rates are invalid",
+            },
+        ) from exc
+
+
+def _marketplace_pricing(
+    provider: str, endpoint_id: str, cost: dict | None, query, body: bytes
+) -> tuple[int, int]:
+    """Return (reserve estimate, response-count unit), in raw micro-USD.
+
+    The catalog remains the price source. This helper only models provider rules that one fixed
+    scalar cannot express: provider batch shapes and request-dependent modes.
+    `unit` is non-zero only when the response must decide the final charge.
+    """
+    if provider == "octen" and endpoint_id in _OCTEN_ENDPOINTS:
+        from . import octen
+        rates = _octen_rates_or_fail(endpoint_id, cost)
+        return octen.estimate_micro(endpoint_id, rates, body), 0
+    if provider == "enrichlayer" and cost and cost.get("enrichlayer"):
+        from . import enrichlayer
+        credit = _usd_to_micro(catalog_store.load().credit_rates["enrichlayer"])
+        query_values = dict(query.multi_items()) if isinstance(query, QueryValues) else dict(query)
+        return enrichlayer.estimate_micro(endpoint_id, cost, query_values, credit)
+    if not cost:
+        return 0, 0
+    if provider == "tavily" and endpoint_id in _TAVILY_ENDPOINTS:
+        return _tavily_pricing(endpoint_id, cost, body)
+    if provider == "openmart" and endpoint_id in _OPENMART_METERED_ENDPOINTS:
+        rate = catalog_store.load().credit_rates.get("openmart")
+        if rate:
+            requested = _openmart_requested_records(endpoint_id, body)
+            bounded = max(1, min(requested or _OPENMART_PLATFORM_MAX_RECORDS,
+                                 _OPENMART_PLATFORM_MAX_RECORDS))
+            credit_micro = _usd_to_micro(rate)
+            return _openmart_credits(bounded) * credit_micro, credit_micro
+    if provider == "sumble" and cost.get("sumble"):
+        from . import sumble
+        credit = _usd_to_micro(float(cost.get("usd") or 0) * int(cost.get("per") or 1))
+        return sumble.estimate(cost["sumble"], _json_object(body)) * credit, credit
+    if provider == "contactout":
+        from . import contactout
+        request = _json_object(body) if body else dict(query.multi_items())
+        return contactout.estimate(cost, request), 0
+    if provider == "dropleads":
+        doc = _json_object(body)
+        rate = float(cost.get("usd") or 0)
+        unit = _usd_to_micro(rate)
+        if endpoint_id == "dropleads.companies.enrich":
+            domains = doc.get("domains") if isinstance(doc.get("domains"), list) else []
+            names = doc.get("companyNames") if isinstance(doc.get("companyNames"), list) else []
+            # More than 50 is rejected before charging; reserve the maximum valid request.
+            return _usd_to_micro(rate * max(1, min(len(domains) + len(names), 50))), unit
+        if endpoint_id == "dropleads.companies.search":
+            nested = doc.get("pagination") if isinstance(doc.get("pagination"), dict) else {}
+            raw = nested.get("limit", 20)
+            asked = int(str(raw).strip()) if not isinstance(raw, bool) \
+                and str(raw).strip().isdigit() else 20
+            asked = max(1, min(asked, 50))
+            return _usd_to_micro(rate * asked), unit
+    estimate = _platform_estimate_micro(cost, query, body)
+    credit_rate = (catalog_store.load().credit_rates.get(provider)
+                   if cost.get("currency") == "credit" else None)
+    if credit_rate and cost.get("type") in ("per_result", "quota_rows"):
+        unit = _usd_to_micro(credit_rate)
+    elif cost.get("type") == "per_success" and cost.get("usd"):
+        unit = _usd_to_micro(cost["usd"])
+    else:
+        unit = (_usd_to_micro(cost["usd"])
+                if cost.get("type") in ("per_result", "quota_rows") and cost.get("usd") else 0)
+    if endpoint_id in ("icypeas.bulk.search", "icypeas.people.email.find") and credit_rate:
+        # The answer is an id ({file} / {item: {_id}}) with no rows, so this reserve IS the bill: one
+        # row per bulk `data` entry at its task's rate, one for a single search. Without it the
+        # 20-row default billed a 3-row job, and a single email lookup, $0.38.
+        # ponytail: a search row is billed as if found; per-found billing needs a settle on job end.
+        doc = _json_object(body)
+        rows = doc.get("data") if isinstance(doc.get("data"), list) else []
+        credits = 0.1 if doc.get("task") == "email-verification" else 1
+        return _usd_to_micro(max(1, min(len(rows), 5000)) * credits * credit_rate), unit
+    if provider == "quickenrich":
+        credit = _usd_to_micro(float(cost.get("usd") or 0))
+        if endpoint_id == "quickenrich.people.search.domain":
+            # Fixed 20-row page; title queries charge each contactable employee, otherwise one page.
+            return credit * (20 if query.get("title") else 1), credit
+        if endpoint_id == "quickenrich.companies.search":
+            doc = _json_object(body)
+            size = doc.get("per_page", 10)
+            size = max(1, min(size, 100)) if type(size) is int else 100
+            return size * credit, credit
+        return estimate, credit
+    if provider == "apify" and cost.get("type") == "per_result" and cost.get("usd"):
+        # The platform guard requires maxTotalChargeUsd, which caps every event Apify bills; the
+        # flat call_fee adds the per-run charge (a start event inside the cap, or run compute billed
+        # to the caller outside it).
+        cap = _apify_charge_cap(query)
+        rows = unit * _PLATFORM_PAGE_DEFAULT if cap is None else _usd_to_micro(cap)
+        return _usd_to_micro(float(cost.get("call_fee") or 0)) + rows, unit
+    if provider == "tomba" and endpoint_id == "tomba.companies.emails.list":
+        # Tomba bills requested page slots in blocks of ten, with a ten-slot default.
+        # A partial non-empty page still costs the full block; settlement frees empty pages.
+        raw = query.get("limit")
+        size = int(str(raw)) if raw is not None and str(raw).isdigit() else 10
+        credit = _usd_to_micro(float(cost.get("usd") or 0))
+        return max(1, (size + 9) // 10) * credit, credit
+    if provider == "crustdata" and endpoint_id in (
+        "crustdata.companies.enrich", "crustdata.people.enrich"
+    ):
+        doc = _json_object(body)
+        count = _input_count(doc, (
+            "domains", "names", "professional_network_profile_urls", "business_emails"
+        ))
+        return _usd_to_micro(float(cost.get("usd") or 0) * count), unit
+    if provider == "hunter" and endpoint_id == "hunter.companies.emails":
+        # Hunter charges 1 search credit per 10 emails RETURNED, rounded UP — not linear per-email.
+        # The settle logic uses ceil(emails/10); the estimate must match to avoid billing mismatch.
+        # With limit=1 returning 1 email: linear estimate would be $0.00245, but settle is 1 credit
+        # = $0.0245 — a 10x overbill. Use the same rounding here.
+        raw = query.get("limit")
+        asked = int(str(raw)) if raw is not None and str(raw).isdigit() else 10  # Hunter's default
+        asked = max(1, min(asked, 100))  # Hunter's max
+        rate = catalog_store.load().credit_rates.get("hunter")
+        if rate:
+            credits = -(-asked // 10)  # ceil division: whole credits, minimum 1
+            return _usd_to_micro(credits * rate), _usd_to_micro(rate)
+        return estimate, unit
+    if provider != "aviato" and not cost.get("modifiers"):
+        return estimate, unit
+
+    # Credit-priced providers with a `cost.modifiers` block (Aviato, cloro): the request decides
+    # the price, so the reserve is base + every triggered rider, converted at the provider's rate.
+    rate = credit_rate
+    if not rate:
+        return estimate, unit
+    def credit_micro(credits):
+        return _usd_to_micro(float(credits) * rate)
+
+    doc = _json_object(body)
+    free, added, settled_added, per_result = _credit_modifiers(cost, query, doc)
+    if free:
+        return 0, 0
+    credits = float(cost.get("value") or 0) + added
+    settled_credits = float(cost.get("value") or 0) + settled_added
+    if endpoint_id in ("aviato.companies.enrich.bulk", "aviato.people.enrich.bulk"):
+        lookups = doc.get("lookups") if isinstance(doc.get("lookups"), list) else []
+        per_record = credit_micro(credits)
+        return per_record * max(1, len(lookups)), credit_micro(settled_credits)
+    if per_result:
+        raw = query.get("perPage")
+        asked = int(raw) if raw is not None and str(raw).isdigit() else _PLATFORM_PAGE_DEFAULT
+        asked = max(1, min(asked, _PLATFORM_PAGE_MAX))
+        # The documented rider stays in the safety hold. A catalog `settle: base` rule can release
+        # it after the response when multi-row balance evidence proves that the provider did not
+        # charge or deliver the add-on.
+        return credit_micro(credits + asked * per_result), 0
+    if cost.get("modifiers"):
+        settle_unit = credit_micro(settled_credits) if added != settled_added else 0
+        return credit_micro(credits), settle_unit
+    return estimate, 0
+
+
+def _oauth_billed_provider(secrets: dict[int, Secret]):
+    """The flagged OAuthProvider whose registry connect this call's bindings ride, or None.
+    Three gates: the secret is a REGISTRY connect (`secret.provider` is only ever set by the
+    callback of a provider-mode /oauth/start — BYO connects carry ""), the registry entry says the
+    upstream bills treg's app (`platform_billed`), and this deployment opted into charging
+    (`TREG_OAUTH_BILLED_PROVIDERS`, the kill switch — empty keeps today's free behavior)."""
+    billed = get_settings().oauth_billed_set
+    if not billed:
+        return None
+    for s in secrets.values():
+        if s.kind == "oauth" and s.provider and s.provider in billed:
+            p = oauth_providers.get(s.provider)
+            if p is not None and p.platform_billed:
+                return p
+    return None
+
+
+def _billed_endpoint_match(service: str, method: str, path: str) -> dict | None:
+    """The catalog endpoint a URL-passthrough call to `path` lands on, or None. Exact-path entries
+    win over templated ones ({id} → one segment), so `/2/users/me` matches the own-account read and
+    not `/2/users/{id}`. Purely for pricing + telemetry — never for routing."""
+    best, best_placeholders = None, 99
+    for ep in catalog_store.load().by_id.values():
+        if ep.get("provider") != service or (ep.get("method") or "GET").upper() != method:
+            continue
+        template = ep.get("path") or "/"
+        placeholders = template.count("{")
+        if placeholders >= best_placeholders:
+            continue
+        pattern = re.sub(r"\{\w+\}", "[^/]+", re.escape(template).replace(r"\{", "{").replace(r"\}", "}"))
+        if re.fullmatch(pattern, path):
+            best, best_placeholders = ep, placeholders
+    return best
+
+
+def _post_has_link(body: bytes) -> bool:
+    """Whether a write body's `text` carries a URL — X prices those at `billed_write_link_usd`
+    (13x a plain post). Sniffs only the text field, not the whole body, so a quote-post id or a
+    docs URL in some other field can't inflate the price."""
+    if not body:
+        return False
+    try:
+        doc = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return False
+    text = doc.get("text") if isinstance(doc, dict) else None
+    return bool(isinstance(text, str) and re.search(r"https?://|www\.", text))
+
+
+def _oauth_billed_estimate(provider, ep: dict | None, method: str, query, body: bytes) -> tuple[int, str, int]:
+    """What this oauth-billed call is expected to cost, RAW micro-USD (ledger applies the margin)
+    → (estimate_micro, cost_type, unit_micro). A priced catalog entry wins (the curated x.yaml
+    carries per-endpoint rates: own-account reads are 5x cheaper, user lookups 2x dearer than the
+    default); the provider-level rates cover the extended/passthrough long tail. `unit_micro` is
+    the per-resource price a `per_result` settle counts the response against."""
+    cv = catalog_store.load().cost_view(ep.get("cost"), provider.service) if ep and ep.get("cost") else None
+    # A ZERO price must fall through to the provider rate, not bill zero — on an oauth-billed
+    # provider the upstream charges us whatever the catalog says, so `free` there is a catalog bug
+    # (a stale ingest), never a fact. Spelled out because it used to ride on `0.0` being falsy:
+    # the same expression read as "no price recorded" and "the price is nothing", and the catalog
+    # could publish free while the balance was debited the fallback.
+    if cv and cv.get("type") != "free" and cv.get("usd"):
+        ctype = str(cv.get("type") or "per_call")
+        est = _platform_estimate_micro(cv, query, body)
+        if method != "GET" and provider.billed_write_link_usd and _post_has_link(body):
+            est = max(est, _usd_to_micro(provider.billed_write_link_usd))
+        return est, ctype, (_usd_to_micro(cv["usd"]) if ctype in ("per_result", "quota_rows") else 0)
+    if method == "GET":
+        rate = provider.billed_read_usd
+        est = _platform_estimate_micro({"type": "per_result", "usd": rate}, query, body)
+        return est, "per_result", _usd_to_micro(rate)
+    if provider.billed_write_link_usd and _post_has_link(body):
+        return _usd_to_micro(provider.billed_write_link_usd), "per_call", 0
+    return _usd_to_micro(provider.billed_write_usd), "per_call", 0
+
+
+async def _billed_marketplace(
+    mk: MarketplaceCall | None, provider, tool: Tool, upstream_url: str, *, method: str,
+    query: QueryValues, has_body: bool, read_body: Callable[[], Awaitable[bytes]],
+) -> MarketplaceCall:
+    """Flag (or, for a URL-passthrough call, build) the `MarketplaceCall` that meters an
+    oauth-billed relay. The catalog id shape arrives with an `mk` (tier 1/2 — keep its endpoint id
+    and telemetry identity); the passthrough shape gets one made here, priced off the catalog
+    entry its path lands on so both shapes pay the same price for the same route."""
+    body = await read_body() if has_body else b""
+    method = method.upper()
+    if mk is None:
+        path = urlsplit(upstream_url).path or "/"
+        ep = _billed_endpoint_match(provider.service, method, path)
+        endpoint_id = ep["id"] if ep else f"{provider.service}.passthrough"
+        mk = MarketplaceCall(
+            tool=tool, upstream=upstream_url, consumed=set(), endpoint_id=endpoint_id,
+            provider=provider.service, tier="tool",
+            params_hash=_params_hash(endpoint_id, query.multi_items(), body))
+    else:
+        ep = catalog_store.load().by_id.get(mk.endpoint_id)
+    est, ctype, unit = _oauth_billed_estimate(provider, ep, method, query, body)
+    mk.billed_oauth, mk.estimate_micro, mk.cost_type, mk.unit_micro = True, est, ctype, unit
+    # OAuth-app billing can override a catalog estimate (notably X writes containing a URL), so its
+    # response-time basis must be rebuilt from the authoritative billed-app estimate.
+    mk.settlement_basis = {
+        "when": "response", "amount": {"kind": "observed"},
+        "fallback_micro": est, "reserve_micro": est,
+    }
+    return mk
+
+
+def _params_hash(endpoint_id: str, query_items: list[tuple[str, str]], body: bytes) -> str:
+    """An identity for "this exact call again": sha256 over the endpoint id, the ORDER-INDEPENDENT
+    query, and a digest of the body. The body itself is never stored or logged — only its hash — so
+    this is safe to keep forever and is the future cache key (plan phase 5, repeat-rate measurement)."""
+    h = hashlib.sha256()
+    h.update(endpoint_id.encode("utf-8", "replace"))
+    for k, v in sorted(query_items):
+        h.update(b"\x1f" + f"{k}={v}".encode("utf-8", "replace"))
+    h.update(b"\x1e" + (hashlib.sha256(body).digest() if body else b""))
+    return h.hexdigest()
+
+
+def _platform_offer(ep: dict, provider, org: Org) -> dict | None:
+    """May tier 4 serve `ep` for this org, and at what price? The cost view when yes, None when no.
+
+    Every clause is a refusal we WANT to be boring: an unpriced/unknown-confidence price
+    (`platform_eligible`), a provider nobody enabled (`platform_key_for` — key AND allow-list), an
+    OAuth provider (a platform key is meaningless for one: the credential is a user's own account),
+    or a demo org (the sandbox and the public demo must never be able to spend real money — the
+    landing page is reachable by anyone with the URL)."""
+    if ep.get("platform_auth") == "anonymous" or not provider.uses_pasted_secret:
+        return None
+    cat = catalog_store.load()
+    if not cat.platform_eligible(ep):
+        return None
+    if not get_settings().platform_key_for(ep["provider"]):
+        return None
+    if demo_sandbox.is_sandbox(org) or org.public_demo:
+        return None
+    return cat.cost_view(ep.get("cost"), ep["provider"]) or None
+
+
+def _anonymous_offer(ep: dict, org: Org) -> dict | None:
+    """A free catalog fallback that relays without any provider credential.
+
+    The team's own tool or credential is resolved before this function is reached, so the normal
+    own-key precedence remains intact. The deployment provider allow-list is still the kill switch.
+    Catalog validation confines this mode to verified, free, read-only endpoints.
+    """
+    if ep.get("platform_auth") != "anonymous":
+        return None
+    cat = catalog_store.load()
+    if not cat.platform_eligible(ep):
+        return None
+    if not get_settings().platform_provider_enabled(ep["provider"]):
+        return None
+    if demo_sandbox.is_sandbox(org) or org.public_demo:
+        return None
+    cost = cat.cost_view(ep.get("cost"), ep["provider"])
+    return cost if cost and cost.get("type") == "free" else None
+
+
+def _capability_alternatives(ep: dict, *, limit: int = 3) -> list[str]:
+    """Other providers' endpoints for the same capability, best first — derived, never hand-written.
+
+    A dead end that names only the provider the caller asked for is the reason one org spent 268
+    calls on `meta-ad-library.meta-ads.library.search` while `scrapecreators.…-search-ads` — the
+    same `capability` string, on a key treg already holds — sat one row away answering 192 of 208
+    calls for fourteen other teams. The refusal knew the capability the whole time.
+
+    Read from `cat.endpoints`, which `_parse` has already stripped of marked rows, so a retirement
+    stops being suggested the moment it is marked and no list here needs maintaining. This
+    COMPARES, it does not route: treg never fails over on the caller's behalf (see the charter),
+    so this names the options and their prices and leaves the choice where it belongs.
+
+    Deliberately synchronous and I/O-free. Measured success would need `endpoint_stats.observed`
+    and a DB round-trip on an error path — which is how a 404 turns into a 500 — and the caller's
+    next step, `catalog get`, already ranks the same siblings by observed success.
+    """
+    capability = ep.get("capability")
+    if not capability:  # only curated capabilities can find siblings; nothing is better than a guess
+        return []
+    cat = catalog_store.load()
+    settings = get_settings()
+    ranked = []
+    for alt in cat.for_capability(capability):
+        if alt["id"] == ep["id"] or catalog_store.paused(alt):
+            continue
+        cost = cat.cost_view(alt.get("cost"), alt["provider"])
+        usd = cost.get("usd") if cost else None
+        # "Servable" is the caller's real question: not "does another row exist" but "can treg
+        # answer it for me right now". Both halves of tier 4, exactly as `_platform_offer` asks.
+        servable = bool(cat.platform_eligible(alt) and settings.platform_key_for(alt["provider"]))
+        ranked.append((not servable, usd if usd is not None else float("inf"), alt["id"], usd, servable))
+    if not ranked:
+        return []
+    ranked.sort()
+    lines = [f"another provider serves {capability}:"]
+    for _, _, alt_id, usd, servable in ranked[:limit]:
+        price = "price unknown" if usd is None else ("free" if usd == 0 else f"~${usd:g}/call")
+        how = "callable now on treg's key" if servable else f"needs your own {alt_id.split('.')[0]} credential"
+        lines.append(f"  {alt_id}  {price}  ({how})")
+    return lines
+
+
+def _marketplace_no_credential(
+    service: str, ep_id: str, provider, ep: dict | None = None,
+) -> ResolutionFailed:
+    """Tier 3: the actionable dead-end. Every line names a real command; a pasted-key provider
+    gets the `secret add` route too (name it for the service so the ladder finds it)."""
+    lines = [f"no {service} credential in this org — {ep_id} is a marketplace endpoint"]
+    lines.append(f"  connect one:  treg connections connect --provider {service}")
+    if provider.uses_pasted_secret:
+        lines.append(f"  or add a key: treg secret add {service} --env-var {service.upper().replace('-', '_')}_API_KEY")
+    lines.append(f"  or register the tool yourself: treg tool add {service} --base-url {provider.base_url} …")
+    if ep is not None:
+        lines.extend(_capability_alternatives(ep))
+    return ResolutionFailed(
+        "credential_missing", status_code=404, detail="\n".join(lines))
+
+
+_VALID_PERCENT_ESCAPE_RE = re.compile(r"%[0-9A-Fa-f]{2}")
+
+
+def _marketplace_upstream(
+    ep: dict, provider, query_params, authorization_method: str = "",
+) -> tuple[str, set[str]]:
+    """The full upstream URL for an endpoint-id call, with `{placeholder}` path params filled from
+    the caller's query params (they are consumed — dropped from the relayed query). Missing
+    required params fail HERE, before a credential is touched or money spent."""
+    path = (ep.get("authorization_paths") or {}).get(authorization_method) or ep["path"] or "/"
+    inp = ep.get("input") or {}
+    for where in ("pathParams", "queryParams"):
+        for name, spec in (inp.get(where) or {}).items():
+            allowed = tuple((spec or {}).get("authorization_methods") or ())
+            if (authorization_method and allowed and authorization_method not in allowed
+                    and query_params.get(name) is not None):
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, detail=(
+                        f"{ep['id']} does not accept {name} with {authorization_method}; "
+                        f"choose {', '.join(allowed)} or remove {name}"))
+    consumed = set()
+    for name in re.findall(r"{(\w+)}", path):
+        value = query_params.get(name)
+        if value is None:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail=(
+                    f"{ep['id']} needs --query {name}=<value> "
+                    f"(a path parameter of {ep['path']})"))
+        # Agents often pass `siteUrl` straight from GSC's sites list, where it may already be
+        # encoded. Preserve a value containing a real %HH escape; otherwise encode it exactly once.
+        # A literal/invalid percent sequence has no valid escape and therefore becomes `%25`.
+        # @ is a legal character inside a path segment (RFC 3986 pchar), not a path/query
+        # delimiter. Email-path APIs may validate it before percent-decoding (Tomba does).
+        # Keep it literal; slashes, ?, # and other delimiters still need escaping.
+        rendered = value if _VALID_PERCENT_ESCAPE_RE.search(value) else quote(value, safe="@")
+        path = path.replace("{%s}" % name, rendered)
+        consumed.add(name)
+    required = [k for k, v in (inp.get("queryParams") or {}).items()
+                if isinstance(v, dict) and v.get("required")
+                and (not v.get("authorization_methods")
+                     or authorization_method in v["authorization_methods"])
+                and query_params.get(k) is None]
+    if required:
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400, detail=(
+                f"{ep['id']} requires --query "
+                + " --query ".join(f"{k}=<value>" for k in required)))
+    return provider.base_url.rstrip("/") + "/" + path.lstrip("/"), consumed
+
+
+class _DuplicateJsonKey(ValueError):
+    pass
+
+
+def _strict_json_object(body: bytes, ep_id: str) -> dict:
+    """Parse a platform request without accepting ambiguous duplicate JSON keys."""
+    def object_pairs(pairs):
+        result = {}
+        for name, value in pairs:
+            if name in result:
+                raise _DuplicateJsonKey(str(name))
+            result[name] = value
+        return result
+
+    try:
+        document = json.loads(body, object_pairs_hook=object_pairs)
+    except _DuplicateJsonKey as exc:
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400,
+            detail=f"{ep_id} request body repeats JSON field {str(exc)!r}",
+        ) from None
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400,
+            detail=f"{ep_id} requires a JSON request body",
+        ) from None
+    if not isinstance(document, dict):
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400,
+            detail=f"{ep_id} requires a JSON object request body",
+        )
+    return document
+
+
+def _input_spec(input_schema: dict, dotted: str) -> dict | None:
+    """Find a catalog body-field spec across the direct-map and nested-properties shapes."""
+    current: object = input_schema.get("body") or {}
+    for part in dotted.split("."):
+        if not isinstance(current, dict):
+            return None
+        if part in current:
+            current = current[part]
+        else:
+            current = (current.get("properties") or {}).get(part)
+    return current if isinstance(current, dict) else None
+
+
+def _document_value(document: object, dotted: str) -> object:
+    current = document
+    for part in dotted.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def _enforce_catalog_query(ep: dict, query: QueryValues, has_body: bool) -> None:
+    """Opt-in catalog contract on every credential tier; raw own-tool relays are unaffected.
+
+    A strict GET tool accepts only its declared query fields, once each. No request is rewritten,
+    and invalid values are never echoed (they may be accidentally supplied session credentials).
+    """
+    if not ep.get("strict_query"):
+        return
+    fields = (ep.get("input") or {}).get("queryParams") or {}
+    values: dict[str, str] = {}
+    invalid = has_body
+    for name, value in query.multi_items():
+        spec = fields.get(name)
+        if name in values or not isinstance(spec, dict):
+            invalid = True
+        elif spec.get("enum") is not None and value not in spec["enum"]:
+            invalid = True
+        values[name] = value
+    if any(spec.get("required") and not values.get(name) for name, spec in fields.items()):
+        invalid = True
+    if invalid:
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400,
+            detail={"error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                    "message": "Use only the declared query parameters and allowed values, once each; "
+                               "include required parameters and omit the request body."},
+        )
+
+
+def _enforce_catalog_body(ep: dict, body: bytes) -> None:
+    """Enforce an opt-in reviewed JSON-body surface without rewriting the request.
+
+    Most catalog schemas describe the upstream API and deliberately leave BYOK requests as a
+    faithful relay. ``strict_body`` is the narrow exception for a catalog tool whose advertised
+    contract is intentionally smaller than the upstream surface. ``body_allowlist`` additionally
+    rejects undeclared fields and validates the declared scalar types, enums and numeric bounds.
+    Array limits are read from the existing input declaration. These constraints apply on every
+    credential tier when the caller chooses the catalog endpoint; a team's raw tool remains a
+    faithful relay.
+    """
+    if not ep.get("strict_body") and not ep.get("body_allowlist"):
+        return
+    document = _strict_json_object(body, ep["id"])
+    fields = (ep.get("input") or {}).get("body") or {}
+    if ep.get("body_allowlist"):
+        unknown = sorted(set(document) - set(fields))
+        missing = sorted(
+            name for name, spec in fields.items()
+            if isinstance(spec, dict) and spec.get("required")
+            and (name not in document or document.get(name) in (None, ""))
+        )
+        if unknown or missing:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid",
+                    "endpoint_id": ep["id"],
+                    "message": "Use only the declared body fields and include every required field.",
+                    **({"undeclared": unknown} if unknown else {}),
+                    **({"missing": missing} if missing else {}),
+                },
+            )
+        scalar_types = {
+            "string": lambda value: isinstance(value, str),
+            "integer": lambda value: isinstance(value, int) and not isinstance(value, bool),
+            "number": lambda value: isinstance(value, (int, float)) and not isinstance(value, bool),
+            "boolean": lambda value: isinstance(value, bool),
+            "object": lambda value: isinstance(value, dict),
+        }
+        for name, value in document.items():
+            spec = fields.get(name)
+            if not isinstance(spec, dict):
+                continue
+            declared = str(spec.get("type") or "")
+            checker = scalar_types.get(declared)
+            invalid = checker is not None and not checker(value)
+            if (not invalid and not declared.startswith("array")
+                    and spec.get("enum") is not None):
+                invalid = value not in spec["enum"]
+            if not invalid and declared in {"integer", "number"}:
+                minimum, maximum = spec.get("min"), spec.get("max")
+                invalid = ((isinstance(minimum, (int, float)) and value < minimum)
+                           or (isinstance(maximum, (int, float)) and value > maximum))
+            if invalid:
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid",
+                        "endpoint_id": ep["id"],
+                        "parameter": f"body.{name}",
+                        "message": f"{ep['id']} received an invalid value for body.{name}",
+                    },
+                )
+    for name, spec in fields.items():
+        if not isinstance(spec, dict) or not str(spec.get("type") or "").startswith("array"):
+            continue
+        if name not in document and not spec.get("required"):
+            continue
+        value = document.get(name)
+        minimum = spec.get("minItems", spec.get("min"))
+        maximum = spec.get("maxItems", spec.get("max"))
+        valid = isinstance(value, list)
+        if valid and spec.get("enum") is not None:
+            valid = all(item in spec["enum"] for item in value)
+        if valid and isinstance(minimum, int):
+            valid = len(value) >= minimum
+        if valid and isinstance(maximum, int):
+            valid = len(value) <= maximum
+        if not valid:
+            expected = (
+                f"between {minimum} and {maximum}" if minimum != maximum
+                else f"exactly {minimum}"
+            )
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid",
+                    "endpoint_id": ep["id"],
+                    "parameter": f"body.{name}",
+                    "message": f"{ep['id']} requires {expected} item in body.{name}",
+                },
+            )
+
+
+def _request_headers(headers) -> dict[str, str]:
+    if headers is None:
+        return {}
+    if hasattr(headers, "raw"):
+        return {
+            name.decode("latin-1").lower(): value.decode("latin-1")
+            for name, value in headers.raw
+        }
+    return {str(name).lower(): str(value) for name, value in headers.items()}
+
+
+def _request_header_values(headers, wanted: str) -> list[str]:
+    """Preserve duplicates for fixed-header checks; ambiguity must not reach the provider."""
+    wanted = wanted.lower()
+    if headers is None:
+        return []
+    if hasattr(headers, "raw"):
+        return [value.decode("latin-1") for name, value in headers.raw
+                if name.decode("latin-1").lower() == wanted]
+    return [str(value) for name, value in headers.items() if str(name).lower() == wanted]
+
+
+def _multipart_fields(body: bytes, content_type: str, ep_id: str) -> dict[str, object]:
+    """Read text fields for policy checks without changing the relayed multipart bytes."""
+    try:
+        message = BytesParser(policy=policy.default).parsebytes(
+            b"Content-Type: " + content_type.encode("latin-1")
+            + b"\r\nMIME-Version: 1.0\r\n\r\n" + body
+        )
+        if not message.is_multipart():
+            raise ValueError("not multipart")
+        fields: dict[str, object] = {}
+        for part in message.iter_parts():
+            name = part.get_param("name", header="content-disposition")
+            if not name or part.get_filename() is not None:
+                continue
+            value = part.get_content()
+            if name in fields:
+                current = fields[name]
+                fields[name] = [*current, value] if isinstance(current, list) else [current, value]
+            else:
+                fields[name] = value
+        return fields
+    except Exception as exc:  # noqa: BLE001 - malformed multipart is one caller error
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400,
+            detail=f"{ep_id} requires a valid multipart/form-data request body",
+        ) from exc
+
+
+def _request_body_document(ep: dict, body: bytes, headers) -> dict:
+    content_type = _request_headers(headers).get("content-type", "")
+    if content_type.lower().startswith("multipart/form-data"):
+        return _multipart_fields(body, content_type, ep["id"])
+    return _strict_json_object(body, ep["id"])
+
+
+# Apify runs bill per event, and only the run option maxTotalChargeUsd bounds those events: the
+# maxItems option does not bind actors whose own input sets the row count. A platform call must name
+# that cap, and may add only the run options below, each once; a dataset-view option (limit, offset,
+# format, unwind) would make the returned rows disagree with the events billed.
+# ponytail: a run that outlives its timeout answers 400 with no rows while Apify still bills up to
+# the cap; the ceiling below bounds that loss per call. Settling from the run itself would lift it.
+_APIFY_PLATFORM_MAX_CHARGE_USD = 1.0
+# A run must end, and its rows arrive, before anyone stops waiting: past Apify's 300-second synchronous
+# wait it answers 408, past treg's upstream read timeout (call_timeout_s) or the MCP client's 120 s
+# the call fails, and each releases the hold unbilled while the run keeps billing. 90 s leaves room
+# for the container start and the dataset read under the shortest of those waits.
+_APIFY_PLATFORM_MAX_TIMEOUT = 90
+
+
+def _apify_max_timeout() -> int:
+    # Catalog rows pin timeout 90, so call_timeout_s must stay >= 120 or those rows refuse every call.
+    return max(1, min(_APIFY_PLATFORM_MAX_TIMEOUT, get_settings().call_timeout_s - 30))
+_APIFY_PLATFORM_QUERY = frozenset({"maxTotalChargeUsd", "maxItems", "memory", "timeout"})
+_ASCII_INT = re.compile(r"[0-9]+")
+_ASCII_DECIMAL = re.compile(r"[0-9]+(?:\.[0-9]+)?")
+
+
+def _query_value(raw: str, expected: object) -> object:
+    """Read a query string as the pinned value's type. Only plain ASCII spellings count: `int()`
+    also accepts Unicode digits, signs, spaces and underscores that an upstream may not parse."""
+    if isinstance(expected, bool):
+        return {"true": True, "false": False}.get(raw)
+    if isinstance(expected, int):
+        return int(raw) if _ASCII_INT.fullmatch(raw) else None
+    if isinstance(expected, float):
+        return float(raw) if _ASCII_DECIMAL.fullmatch(raw) else None
+    return raw
+
+
+def _apify_charge_cap(query) -> float | None:
+    """The single, plainly spelled maxTotalChargeUsd a platform Apify call carries, else None."""
+    values = [value for name, value in query.multi_items() if name == "maxTotalChargeUsd"] \
+        if query is not None else []
+    if len(values) != 1 or not _ASCII_DECIMAL.fullmatch(values[0]):
+        return None
+    cap = float(values[0])
+    return cap if 0 < cap <= _APIFY_PLATFORM_MAX_CHARGE_USD else None
+
+
+def _enforce_apify_run_options(ep: dict, query) -> None:
+    names = [name for name, _ in query.multi_items()] if query is not None else []
+    problem = None
+    if any(name not in _APIFY_PLATFORM_QUERY for name in names):
+        problem = "only maxTotalChargeUsd, maxItems, memory and timeout"
+    elif len(names) != len(set(names)):
+        problem = "each run option at most once"
+    elif _apify_charge_cap(query) is None:
+        problem = f"maxTotalChargeUsd above 0 and at most {_APIFY_PLATFORM_MAX_CHARGE_USD:g}"
+    elif not (_ASCII_INT.fullmatch(query.get("timeout") or "")
+              and 1 <= int(query.get("timeout")) <= _apify_max_timeout()):
+        problem = f"timeout from 1 to {_apify_max_timeout()} seconds"
+    elif query.get("maxItems") is not None and not (
+            _ASCII_INT.fullmatch(query.get("maxItems")) and int(query.get("maxItems")) >= 1):
+        problem = "maxItems as a positive integer"
+    else:
+        # Settlement bills the whole cap within two rows of it, so a smaller cap would bill an
+        # empty answer in full.
+        cost = ep.get("cost") or {}
+        floor = _usd_to_micro(float(cost.get("call_fee") or 0)) + 3 * _usd_to_micro(
+            float(cost.get("value") or 0) / float(cost.get("per") or 1))
+        if _usd_to_micro(_apify_charge_cap(query)) < floor:
+            problem = (f"maxTotalChargeUsd of at least {floor / 1_000_000:g} "
+                       "(the call fee plus three rows)")
+    if problem:
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400, detail={
+                "error": "catalog_parameter_invalid",
+                "endpoint_id": ep["id"],
+                "parameter": "queryParams",
+                "expected": problem,
+                "message": (
+                    f"Apify platform calls take {problem}; maxTotalChargeUsd is the spend cap Apify "
+                    "enforces and the hold. Connect your own key for larger runs"
+                ),
+            },
+        )
+
+
+def _spool_evidence_paths(ep: dict, cost: dict) -> tuple[str, ...]:
+    """What a spooled answer must keep for settlement: the top-level objects its usage terms read,
+    and the leaf its `expect` success rule compares. Everything else stays on disk."""
+    if not ep.get("spooled_response"):
+        return ()
+    rule = (ep.get("expect") or {}).get("json_path")
+    return settlement_basis.usage_roots(cost) + ((str(rule),) if rule else ())
+
+
+def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -> None:
+    """Check explicit platform constraints and fixed pricing selectors before reserve/relay.
+
+    Catalog tables may price several rows on one upstream path. A table condition whose body field
+    has a singleton enum is the row identity, not caller choice: accepting another value lets a cheap
+    row reserve for an expensive model. Full schema validation remains out of the faithful BYOK path.
+    """
+    if ep.get("provider") == "oceanio":
+        endpoint_id = ep["id"]
+        if endpoint_id in {
+            "oceanio.companies.lookalike", "oceanio.companies.search", "oceanio.people.search",
+        }:
+            document = _request_body_document(ep, body, headers)
+            size = document.get("size")
+            if type(size) is not int or not 1 <= size <= 100:
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": endpoint_id,
+                        "parameter": "body.size",
+                        "message": "Ocean.io shared-key search requires an explicit size from 1 to 100; "
+                                   "connect your own key for larger searches",
+                    },
+                )
+        elif endpoint_id == "oceanio.people.enrich":
+            document = _request_body_document(ep, body, headers)
+            for name in ("revealEmails", "revealPhones"):
+                if name in document:
+                    raise ResolutionFailed(
+                        "catalog_parameter_invalid", status_code=400, detail={
+                            "error": "catalog_parameter_invalid", "endpoint_id": endpoint_id,
+                            "parameter": f"body.{name}",
+                            "message": "Ocean.io contact reveals are not available on the shared key; "
+                                       "connect your own key for reveals",
+                        },
+                    )
+
+    if ep.get("provider") == "octen" and ep.get("id") in _OCTEN_ENDPOINTS:
+        from . import octen
+        invalid = octen.invalid_platform_parameter(ep["id"], body)
+        if invalid:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                    "parameter": invalid,
+                    "message": "Octen platform calls require a bounded request; connect your own key "
+                               "for the upstream range",
+                },
+            )
+
+    if ep.get("provider") == "enrichlayer":
+        from . import enrichlayer
+        invalid = enrichlayer.invalid_platform_parameter(
+            ep["id"], dict(query.multi_items()) if query else {}, ep.get("cost") or {})
+        if invalid:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                    "parameter": invalid,
+                    "message": "Enrichlayer shared-key calls require a bounded, priced request; "
+                               "connect your own key for other options.",
+                },
+            )
+
+    if ep.get("provider") == "openmart" and ep.get("id") in _OPENMART_METERED_ENDPOINTS:
+        requested = _openmart_requested_records(ep["id"], body)
+        parameter = (
+            "body" if ep["id"] in _OPENMART_LOOKUP_ENDPOINTS
+            else "body.pagination.limit" if ep["id"] == "openmart.companies.search"
+            else "body.limit"
+        )
+        if requested is None or not 1 <= requested <= _OPENMART_PLATFORM_MAX_RECORDS:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid",
+                    "endpoint_id": ep["id"],
+                    "parameter": parameter,
+                    "message": (
+                        "Openmart platform calls require an explicit result count from 1 to 25; "
+                        "connect your own key for the upstream limit"
+                    ),
+                },
+            )
+
+    if ep.get("provider") == "tavily" and ep.get("id") in _TAVILY_BOUNDED_SITE_ENDPOINTS:
+        document = _request_body_document(ep, body, headers)
+        limit = document.get("limit")
+        if type(limit) is not int or not 1 <= limit <= _TAVILY_PLATFORM_MAX_RESULTS:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid",
+                    "endpoint_id": ep["id"],
+                    "parameter": "body.limit",
+                    "expected": "an integer from 1 to 20",
+                    "message": (
+                        "Tavily platform Map and Crawl calls require an explicit integer limit "
+                        "from 1 to 20; connect your own key for the upstream range"
+                    ),
+                },
+            )
+
+    if ep.get("provider") == "apify" and (ep.get("cost") or {}).get("type") == "per_result":
+        _enforce_apify_run_options(ep, query)
+
+    input_schema = ep.get("input") or {}
+    # A path parameter with a declared enum names WHAT the shared key is spent on (Google AI's
+    # `model`): the price row and usage rates are that model's. Accepting any other value would
+    # let one catalog row run a different model on treg's key at the wrong rates.
+    for name, spec in sorted((input_schema.get("pathParams") or {}).items()):
+        allowed = spec.get("enum") if isinstance(spec, dict) else None
+        if isinstance(allowed, list) and (query.get(name) if query is not None else None) not in allowed:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                    "parameter": f"pathParams.{name}", "expected": allowed,
+                    "message": f"{ep['id']} serves {name} " + ", ".join(map(str, allowed))
+                               + " on treg's key; connect your own key for other values",
+                })
+    rules = ep.get("platform_request") or {}
+    for path, expected in sorted(rules.items()):
+        if not str(path).startswith("headers."):
+            continue
+        name = str(path).split(".", 1)[1].lower()
+        supplied = _request_header_values(headers, name)
+        if supplied != [str(expected)]:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                    "parameter": f"headers.{name}", "expected": expected,
+                    "message": f"{ep['id']} requires header {name}: {expected}",
+                },
+            )
+    for path, expected in sorted(rules.items()):
+        if not str(path).startswith("queryParams."):
+            continue
+        name = str(path).split(".", 1)[1]
+        supplied = [value for key, value in query.multi_items() if key == name] \
+            if query is not None else []
+        if len(supplied) != 1 or _query_value(supplied[0], expected) != expected:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                    "parameter": f"queryParams.{name}", "expected": expected,
+                    "message": f"{ep['id']} requires query parameter {name}={expected}",
+                },
+            )
+    selectors: dict[str, object] = {
+        path.removeprefix("body."): value
+        for path, value in rules.items() if str(path).startswith("body.")
+    }
+    for row in (ep.get("cost") or {}).get("table") or []:
+        for path in (row.get("when") or {}):
+            if not str(path).startswith("body."):
+                continue
+            relative = str(path)[len("body."):]
+            spec = _input_spec(input_schema, relative)
+            allowed = spec.get("enum") if spec else None
+            if isinstance(allowed, list) and len(allowed) == 1:
+                selectors[relative] = allowed[0]
+    if not selectors:
+        return
+    document = _request_body_document(ep, body, headers)
+    for path, expected in sorted(selectors.items()):
+        actual = _document_value(document, path)
+        if actual != expected or (isinstance(expected, bool) and type(actual) is not bool):
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid",
+                    "endpoint_id": ep["id"],
+                    "parameter": f"body.{path}",
+                    "expected": expected,
+                    "message": (
+                        f"{ep['id']} fixes body.{path} to {expected!r}; "
+                        "use the required value for a platform call"
+                    ),
+                },
+            )
+
+
+def _managed_values(ep: dict, rule: dict, query: QueryValues, body: bytes, headers) -> list[str]:
+    locator = rule.get("id") or {}
+    where = locator.get("in")
+    name = str(locator.get("name") or locator.get("path") or "")
+    value: object = None
+    if where in ("pathParams", "queryParams"):
+        found = [item for key, item in query.items if key == name]
+        value = found if locator.get("many") else (found[-1] if found else None)
+    elif where == "body":
+        value = _document_value(_request_body_document(ep, body, headers), name)
+    if value in (None, "") and locator.get("optional"):
+        return []
+    values = value if isinstance(value, list) else [value]
+    if (not values or any(not isinstance(item, str) or not item.strip() for item in values)
+            or (not locator.get("many") and len(values) != 1)):
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400, detail={
+                "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                "parameter": f"{where}.{name}",
+                "message": f"{ep['id']} requires a valid managed resource id",
+            },
+        )
+    return [item.strip() for item in values]
+
+
+async def _enforce_platform_managed_ownership(
+    ep: dict, query: QueryValues, body: bytes, headers, caller: Caller, db: AsyncSession,
+) -> tuple[tuple[str, ...], tuple[str | None, ...]]:
+    """(public ids looked up on any account, key slots of the org's own resources acted on)."""
+    rule = ep.get("managed_resource") or {}
+    operation = rule.get("operation")
+    if not rule or operation == "create":
+        return (), ()
+    values = _managed_values(ep, rule, query, body, headers)
+    public_ids: list[str] = []
+    owners: list[str | None] = []
+    for upstream_id in values:
+        row = await provider_resources.owned(
+            db, caller.org_id, ep["provider"], str(rule.get("kind") or ""), upstream_id,
+            include_deleted=operation == "delete",
+        )
+        if row is not None:
+            owners.append(row.key_slot)
+            continue
+        # A resource assigned to another org (or tombstoned by this one) is private even when the
+        # provider also has a public catalog. Deny it locally; never ask the shared account about a
+        # cross-tenant id. Only ids absent from treg's durable ownership table may be public.
+        if await provider_resources.assigned(
+                db, ep["provider"], str(rule.get("kind") or ""), upstream_id) is not None:
+            raise ResolutionFailed(
+                "provider_resource_not_owned", status_code=403,
+                detail={"error": "provider_resource_not_owned",
+                        "message": "resource is not owned by this organization"},
+            )
+        if rule.get("public_lookup"):
+            public_ids.append(upstream_id)
+            continue
+        raise ResolutionFailed(
+            "provider_resource_not_owned", status_code=403,
+            detail={"error": "provider_resource_not_owned",
+                    "message": "resource is not owned by this organization"},
+        )
+    return tuple(public_ids), tuple(owners)
+
+
+def _async_resource_refs(ep: dict) -> list[tuple[str, dict]]:
+    """How this utility is referenced by effective async descriptors in the live catalog."""
+    refs: list[tuple[str, dict]] = []
+    for candidate in catalog_store.load().endpoints:
+        if candidate.get("provider") != ep.get("provider"):
+            continue
+        descriptor = candidate.get("async") or {}
+        poll = descriptor.get("poll") or {}
+        if poll.get("endpoint") == ep.get("id") and isinstance(poll.get("param"), dict):
+            refs.append(("poll", poll["param"]))
+        result = descriptor.get("result") or {}
+        if result.get("fetch") == ep.get("id") and isinstance(result.get("fetch_param"), dict):
+            refs.append(("fetch", result["fetch_param"]))
+    return refs
+
+
+def _one_resource_value(ep: dict, query: QueryValues, refs: list[tuple[str, dict]],
+                        body: bytes = b"") -> str:
+    supplied: list[str] = []
+    document = _strict_json_object(body, ep["id"]) if body else {}
+    for _, param in refs:
+        name = str(param.get("name") or "")
+        if param.get("in") == "body":
+            value = document.get(name)
+            if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+                supplied.append(str(value))
+        else:
+            supplied.extend(value for key, value in query.items if key == name)
+    values = set(supplied)
+    if len(values) != 1:
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400,
+            detail=f"{ep['id']} requires exactly one unambiguous async resource id",
+        )
+    return values.pop()
+
+
+def _descriptor_ref(descriptor: dict, kind: str) -> tuple[str, dict]:
+    if kind == "poll":
+        rule = descriptor.get("poll") or {}
+        return str(rule.get("endpoint") or ""), rule.get("param") or {}
+    rule = descriptor.get("result") or {}
+    return str(rule.get("fetch") or ""), rule.get("fetch_param") or {}
+
+
+async def _enforce_platform_async_ownership(
+    ep: dict, query: QueryValues, body: bytes, caller: Caller, db: AsyncSession,
+) -> tuple[str | None, tuple[str | None, ...]]:
+    """Authorize shared-key task/result utilities through the caller org's durable submission.
+    Returns (the owning submission when this is its poll, the key slot of the row that authorized
+    the call; empty when nothing had to)."""
+    ownership = ep.get("resource_ownership") or {}
+    required = ownership.get("requires") or {}
+    resource_slot: tuple[str | None, ...] = ()  # (the owning row's key slot,) when it exists
+    if required:
+        value = _one_resource_value(
+            ep, query,
+            [("resource", {"name": required.get("param"), "in": required.get("in")})],
+            body,
+        )
+        resource_slot = tuple((await db.execute(select(AsyncResourceRecord.key_slot).where(
+            AsyncResourceRecord.org_id == caller.org_id,
+            *pinned_tag_predicates(AsyncResourceRecord.tags, caller.membership.pinned_tags),
+            AsyncResourceRecord.provider == ep["provider"],
+            AsyncResourceRecord.resource_kind == required.get("kind"),
+            AsyncResourceRecord.resource_id == value,
+        ))).first() or ())
+
+    refs = _async_resource_refs(ep)
+    if not refs:
+        if required and not resource_slot:
+            raise _async_resource_denied(caller)
+        return None, resource_slot
+    value = _one_resource_value(ep, query, refs, body)
+    candidates = (await db.execute(select(AsyncTaskRecord).where(
+        AsyncTaskRecord.org_id == caller.org_id,
+        *pinned_tag_predicates(AsyncTaskRecord.tags, caller.membership.pinned_tags),
+        AsyncTaskRecord.provider == ep["provider"],
+        or_(AsyncTaskRecord.task_id == value, AsyncTaskRecord.result_id == value),
+    ))).scalars().all()
+    for row in candidates:
+        for kind, current_param in refs:
+            endpoint_id, frozen_param = _descriptor_ref(row.descriptor or {}, kind)
+            if endpoint_id != ep["id"] or frozen_param != current_param:
+                continue
+            if kind == "poll" and row.task_id == value:
+                return row.call_id, (row.key_slot, *resource_slot)
+            if kind == "fetch":
+                result = (row.descriptor or {}).get("result") or {}
+                same_as_task = (
+                    row.task_id == value
+                    and (result.get("fetch_param") or {}).get("value_from")
+                    == (row.descriptor or {}).get("id_from")
+                )
+                if row.result_id == value or same_as_task:
+                    return None, (row.key_slot, *resource_slot)
+    if resource_slot:
+        return None, resource_slot
+    raise _async_resource_denied(caller)
+
+
+def _async_resource_denied(caller: Caller) -> ResolutionFailed:
+    return ResolutionFailed(
+        "async_resource_not_owned",
+        status_code=404 if caller.membership.pinned_tags else 403, detail={
+            "error": "async_resource_not_owned",
+            "message": "this async task or result is not available to the current team",
+        },
+    )
+
+
+async def _enforce_capability_pin(ep: dict, caller: Caller, db: AsyncSession) -> None:
+    """Refuse a catalog call that goes around the team's pin for that capability.
+
+    A pin is a decision the team already made ("for finding work emails we use Hunter"), so the
+    answer names the endpoint they DO use — an agent that gets told "no" without being told "use
+    this instead" will simply try the next provider and be refused again.
+
+    Enforced here rather than in the client so it does not depend on the caller's goodwill, and
+    before anything is reserved, so a refusal never has to un-hold money."""
+    cap = ep.get("capability")
+    if not cap or caller.org_id is None:
+        return
+    pin = (await db.execute(select(CapabilityPin).where(
+        CapabilityPin.org_id == caller.org_id,
+        CapabilityPin.capability == cap).order_by(CapabilityPin.id))).scalars().first()
+    if pin is None or pin.provider == ep["provider"]:
+        return
+    cat = catalog_store.load()
+    # Suggest the OBVIOUS endpoint, not merely the first one in file order: `core` is the curated
+    # route for a job, `extended` is the bulk-ingested long tail. Suggesting
+    # `tikhub.x.tiktok-analytics-fetch-creator-info-and-milestones` when `tikhub.tiktok.user.profile`
+    # exists reads as a broken suggestion and sends the caller somewhere they did not ask to go.
+    mine = [e for e in cat.for_capability(cap) if e["provider"] == pin.provider]
+    mine.sort(key=lambda e: ((e.get("tier") or "") != "core", not cat.platform_eligible(e), e["id"]))
+    alt = mine[0]["id"] if mine else None
+    raise ResolutionFailed(
+        "capability_pinned", status_code=403, detail={
+            "error": "capability_pinned",
+            "message": (f"this team uses {pin.provider!r} for {cap!r}"
+                        + (f" — call {alt} instead" if alt else "")
+                        + f". An admin can change it: treg org unpin {cap}"),
+            "capability": cap, "pinned_provider": pin.provider, "use_endpoint": alt,
+        })
+
+
+async def _provider_tool_grant(
+    service: str, methods: tuple[str, ...], caller: Caller, db: AsyncSession,
+    endpoint: dict | None = None,
+) -> tuple[Tool, Secret, str] | None:
+    """Resolve a named catalog endpoint by provider and grant identity, not only by host.
+
+    This is the generic fix for providers that share one upstream host. It stays in catalog-call
+    resolution; the faithful relay still receives one resolved tool and knows no provider rules.
+    """
+    tools = (await db.execute(select(Tool).where(Tool.org_id == caller.org_id))).scalars().all()
+    secrets = (await db.execute(select(Secret).where(
+        Secret.org_id == caller.org_id, Secret.provider == service,
+    ))).scalars().all()
+    secrets_by_id = {secret.id: secret for secret in secrets}
+    provider = oauth_providers.get(service)
+    connection_names = {
+        item.name: item.connection_name for item in (provider.authorization_methods if provider else ())
+    }
+    matches: list[tuple[bool, int, bool, int, Tool, Secret, str]] = []
+    denied = False
+    for tool in tools:
+        for binding in tool.bindings or []:
+            sid = binding.get("secret_id")
+            if sid is None:
+                continue
+            secret = secrets_by_id.get(sid)
+            if secret is None:
+                continue
+            method = _authorization_method(secret)
+            if method not in methods:
+                continue
+            if not access_policy._tool_usable(caller, tool):
+                denied = True
+                continue
+            priority = methods.index(method)
+            exact = tool.name == connection_names.get(method, service)
+            authorization = (
+                connection_authorization.method_spec(provider, method) if provider else None
+            )
+            required = (
+                connection_authorization.required_scopes(endpoint, authorization)
+                if endpoint else []
+            )
+            granted = set(secret.granted_scopes.split())
+            scope_gap = any(scope not in granted for scope in required)
+            matches.append(
+                (scope_gap, priority, not exact, -(secret.id or 0), tool, secret, method)
+            )
+    if not matches:
+        if denied:
+            raise ResolutionFailed(
+                "tool_access_denied", status_code=403,
+                detail=f"a {service} authorization exists, but you do not have access to its tool",
+            )
+        return None
+    matches.sort(key=lambda item: item[:4])
+    _, _, _, _, tool, secret, method = matches[0]
+    return tool, secret, method
+
+
+def _authorization_error(
+    ep: dict, method: str, *, code: str, explanation: str, scopes: list[str], authorization=None,
+) -> ResolutionFailed:
+    provider = oauth_providers.get(ep["provider"])
+    capability = (
+        connection_authorization.connect_capability(provider, ep, authorization)
+        if provider else str(ep.get("authorization_capability") or "")
+    )
+    command = f"treg connections connect --provider {ep['provider']}"
+    if capability:
+        command += f" --capability {capability}"
+    return ResolutionFailed("authorization_required", status_code=428, detail={
+        "error": code,
+        "provider": ep["provider"],
+        "endpoint_id": ep["id"],
+        "required_authorization_method": method,
+        "required_capability": capability,
+        "required_scopes": scopes,
+        "message": explanation,
+        "cli_command": command,
+        "dashboard_action": {
+            "label": connection_authorization.action_label(authorization, capability),
+            "url": "/app#connections",
+        },
+    })
+
+
+def _preflight_authorization(ep: dict, secret: Secret, method: str, authorization=None) -> None:
+    required = connection_authorization.required_scopes(ep, authorization)
+    state = expiry_state(secret.expires_at, oauth.secret_is_refreshable(secret))
+    if state == "expired":
+        raise _authorization_error(
+            ep, method, code="authorization_expired",
+            explanation=f"The {method} authorization has expired. A human must authorize it again.",
+            scopes=required, authorization=authorization,
+        )
+    missing = [scope for scope in required if scope not in secret.granted_scopes.split()]
+    if missing:
+        raise _authorization_error(
+            ep, method, code="authorization_scope_required",
+            explanation="The connected authorization does not include every permission that this tool requires.",
+            scopes=missing, authorization=authorization,
+        )
+    if ep.get("required_resource") and not secret.resource_ref:
+        raise _authorization_error(
+            ep, method, code="authorization_resource_required",
+            explanation=(
+                authorization.missing_message
+                if authorization and authorization.missing_message else
+                "No usable account is selected for this authorization."
+            ),
+            scopes=required, authorization=authorization,
+        )
+
+
+async def _resolve_marketplace_call(
+    ep: dict, *, method: str, query: QueryValues, has_body: bool,
+    read_body: Callable[[], Awaitable[bytes]], caller: Caller, db: AsyncSession,
+    resolve_call: Callable[[str, Caller, AsyncSession], Awaitable[ResolvedTarget]],
+    request_headers=None,
+    authorization_method: str = "",
+) -> MarketplaceCall:
+    """Resolve a catalog call, selecting an explicit OAuth grant before host matching.
+
+    Endpoints without authorization metadata retain the normal tool → credential → platform
+    ladder. Annotated endpoints select by provider plus grant method. That generic identity avoids
+    ambiguous same-host tools without teaching the faithful relay about Instagram or Meta.
+    """
+    _enforce_catalog_query(ep, query, has_body)
+    await _enforce_capability_pin(ep, caller, db)
+    _enforce_catalog_status(ep)
+    service = ep["provider"]
+    provider = oauth_providers.get(service)
+    if provider is None or not provider.base_url:
+        raise ResolutionFailed(
+            "injection_failed", status_code=502,
+            detail=f"{ep['id']} is cataloged but {service!r} isn't proxy-callable yet")
+    if method.upper() != (ep.get("method") or "GET").upper():
+        raise ResolutionFailed(
+            "method_mismatch", status_code=400,
+            detail=f"{ep['id']} is {ep['method']} — add --method {ep['method']}")
+
+    try:
+        methods = connection_authorization.select_endpoint_methods(
+            ep, authorization_method,
+        )
+    except ValueError as exc:
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400, detail=str(exc),
+        ) from None
+    chosen_tool: Tool | None = None
+    chosen_secret: Secret | None = None
+    chosen_method = ""
+    if methods:
+        authorization = None
+        grant = await _provider_tool_grant(service, methods, caller, db, endpoint=ep)
+        if grant is not None:
+            chosen_tool, chosen_secret, chosen_method = grant
+        else:
+            chosen_secret = await _marketplace_secret(service, caller.org_id, db, methods)
+            if chosen_secret is not None:
+                chosen_method = _authorization_method(chosen_secret)
+        if chosen_secret is None:
+            required_method = methods[0]
+            authorization = connection_authorization.method_spec(provider, required_method)
+            raise _authorization_error(
+                ep, required_method, code="authorization_missing",
+                explanation=(
+                    authorization.missing_message if authorization and authorization.missing_message
+                    else f"This tool requires {provider.display_name} authorization."
+                ),
+                scopes=connection_authorization.required_scopes(ep, authorization),
+                authorization=authorization,
+            )
+        authorization = connection_authorization.method_spec(provider, chosen_method)
+        _preflight_authorization(ep, chosen_secret, chosen_method, authorization)
+        provider = provider.profile_for_authorization(chosen_method)
+
+    endpoint_host = str(ep.get("host") or "").strip().lower()
+    if endpoint_host and provider.catalog_targets:
+        try:
+            provider = provider.profile_for_catalog_host(endpoint_host)
+        except ValueError as exc:
+            raise ResolutionFailed(
+                "injection_failed", status_code=502,
+                detail=f"{ep['id']} declares an upstream host that is not approved for {service}",
+            ) from exc
+
+    upstream, consumed = _marketplace_upstream(ep, provider, query, chosen_method)
+    body = await read_body() if has_body else b""
+    _enforce_catalog_body(ep, body)
+    phash = _params_hash(ep["id"], query.multi_items(), body)
+    # The catalog's estimate travels on EVERY tier - informational on tiers 1/2 (the provider bills
+    # the org's own account; Activity shows "estimated") and the reserve amount on tier 4 only
+    # (`metered` gates the ledger, so this never charges a balance for an own-key call).
+    cat = catalog_store.load()
+    raw_cost = ep.get("cost") or {}
+    cv = cat.cost_view(raw_cost, service) if raw_cost else None
+    info_est, info_unit = _marketplace_pricing(service, ep["id"], cv, query, body)
+    request_data = settlement_basis.request_evidence(
+        query.multi_items(), body, path_names=consumed)
+    unit_view = cat.cost_view({**raw_cost, "value": 1, "per": 1}, service) if raw_cost else None
+    unit_micro = _usd_to_micro(unit_view.get("usd")) if unit_view else 0
+    usage_unit_micro = None
+    usage_unit = str((raw_cost.get("usage") or {}).get("unit") or "")
+    if usage_unit == "credit":
+        # One provider credit in micro-USD, from fx.yaml; the validator guarantees the entry.
+        usage_unit_micro = _usd_to_micro(cat.credit_rates.get(service))
+    elif usage_unit and usage_unit != "usd":
+        # Freeze a provider-native meter just like a credit rate so a later rate-card edit cannot
+        # re-price a task already in flight.
+        usage_unit_micro = _usd_to_micro(cat.unit_rates.get(service, {}).get(usage_unit))
+    reported_charge_unit_micro = 0
+    if raw_cost.get("currency") == "credit" or \
+            (raw_cost.get("reported_charge") or {}).get("unit") == "credit":
+        # Freeze one provider credit's replacement cost so a later fx edit cannot re-price a call
+        # already in flight. USD reported charges use their fixed micro-USD conversion directly.
+        # Body-reported credit counts (datagma, sumble, scrubby) settle against this, never against
+        # `unit_micro`, which is a whole call on a per_success row.
+        reported_charge_unit_micro = _usd_to_micro(cat.credit_rates.get(service))
+    basis = settlement_basis.derive_basis(
+        raw_cost, request=request_data, input_schema=ep.get("input") or {},
+        unit_micro=unit_micro, terminal=bool(ep.get("async")),
+        response_estimate_micro=info_est, usage_unit_micro=usage_unit_micro,
+    )
+    # A table computes the request-specific hold even when the response's generic reported charge
+    # will decide settlement. Do not leave `estimate_micro` at the table's fallback ceiling.
+    if service != "tavily" and (raw_cost.get("table")
+                                or basis.get("amount", {}).get("kind") == "usage"):
+        info_est = int(basis["reserve_micro"])
+    if service == "tavily" and ep["id"] in _TAVILY_ENDPOINTS:
+        # Tavily's synchronous formulas are provider-specific response evidence. Search reports
+        # this request's credits; Extract/Map/Crawl settle from this request's returned successes.
+        # In every case the provider-specific request calculation above is the safe fallback hold.
+        basis = {
+            "when": "response", "amount": {"kind": "observed"},
+            "fallback_micro": info_est, "reserve_micro": info_est,
+        }
+    if service == "octen" and ep["id"] in _OCTEN_ENDPOINTS:
+        basis = {
+            "when": "response", "amount": {"kind": "observed"},
+            "fallback_micro": info_est, "reserve_micro": info_est,
+            "octen_rates_micro": _octen_rates_or_fail(ep["id"], cv),
+        }
+    if service == "enrichlayer" and raw_cost.get("enrichlayer"):
+        basis = {
+            "when": "response", "amount": {"kind": "observed"},
+            "fallback_micro": info_est, "reserve_micro": info_est,
+            "enrichlayer_rule": raw_cost["enrichlayer"],
+            "enrichlayer_unit_micro": info_unit,
+        }
+    common = dict(
+        upstream=upstream, consumed=consumed, endpoint_id=ep["id"], provider=service,
+        params_hash=phash, cost_type=str((ep.get("cost") or {}).get("type") or ""),
+        estimate_micro=info_est,
+        # The per-ROW price, carried on every tier (settle only reads it on metered calls):
+        # a `per_result` settle that can't count rows can only ever bill the estimate,
+        # which is how 6,000 delivered Bright Data records once billed as one (2026-08-24).
+        unit_micro=info_unit, reported_charge_unit_micro=reported_charge_unit_micro,
+        settlement_basis=basis, request_data=request_data,
+        async_descriptor=ep.get("async"), resource_ownership=ep.get("resource_ownership"),
+        managed_resource=ep.get("managed_resource"),
+        spooled_evidence=_spool_evidence_paths(ep, raw_cost),
+    )
+    if chosen_tool is not None:
+        return MarketplaceCall(tool=chosen_tool, tier="tool", **common)
+
+    if not methods:
+        for candidate in provider.tool_lookup_urls(upstream):
+            try:  # tier 1 - the org registered this provider: their tool, their bindings, their ACLs
+                target = await resolve_call(candidate, caller, db)
+                return MarketplaceCall(
+                    tool=target.tool, tier="tool", **{**common, "upstream": target.upstream})
+            except ResolutionFailed as exc:
+                if exc.status_code != 404:  # 403 (ACL) / 409 (ambiguous) are real answers, not fall-through
+                    raise
+
+    secret = chosen_secret or await _marketplace_secret(service, caller.org_id, db)  # tier 2
+    if secret is not None:
+        virtual = Tool(
+            org_id=caller.org_id, name=ep["id"], owner=secret.owner,
+            base_url=provider.base_url, host=_host_of(provider.base_url),
+            bindings=_provider_bindings(provider, secret),
+        )
+        return MarketplaceCall(tool=virtual, tier="credential", **common)
+
+    # Generic public-upstream fallback. It comes after both own-key tiers, so a team's credential
+    # still wins, and before tier 4 because no treg provider credential or money is needed. The
+    # empty binding list is the whole behavior: the normal faithful relay sends the caller's
+    # request without inventing an Authorization or provider-key header.
+    anonymous_cost = _anonymous_offer(ep, caller.org)
+    if anonymous_cost is not None:
+        _enforce_platform_request(ep, body, request_headers, query)
+        virtual = Tool(
+            org_id=caller.org_id, name=ep["id"], owner=caller.email,
+            base_url=provider.base_url, host=_host_of(provider.base_url), bindings=[],
+        )
+        return MarketplaceCall(
+            tool=virtual, tier="anonymous", **{
+                **common, "cost_type": "free", "estimate_micro": 0, "unit_micro": 0,
+            },
+        )
+
+    # tier 4 — treg's own key, metered against the org's balance. Shadowed by tiers 1 and 2 above:
+    # an org that brought its own credential is billed by the provider, not by us, and must never be
+    # silently switched onto our key (their quota, their rate limits, their data agreements).
+    cost = _platform_offer(ep, provider, caller.org)
+    async_owner_call_id = None
+    async_owners: tuple[str | None, ...] = ()
+    resource_owners: tuple[str | None, ...] = ()
+    if cost is not None:
+        _enforce_platform_request(ep, body, request_headers, query)
+        if service == "sumble":
+            from . import sumble
+            sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
+        if service == "contactout":
+            # Fixed catalog splits must not silently fall into ContactOut's personal+work default.
+            inputs = ep.get("input") or {}
+            values = _json_object(body) if body else dict(query.multi_items())
+            if ep["id"] == "contactout.people.search.reveal":
+                size = values.get("page_size")
+                if not isinstance(size, int) or isinstance(size, bool) or not 1 <= size <= 25:
+                    raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": "page_size",
+                        "message": "Specify page_size from 1 to 25; each result reserves up to $0.67.",
+                    })
+            for name, spec in (inputs.get("body") or inputs.get("queryParams") or {}).items():
+                if not isinstance(spec, dict) or not spec.get("required") or len(spec.get("enum", [])) != 1:
+                    continue
+                expected, actual = spec["enum"][0], values.get(name)
+                if isinstance(expected, bool) and isinstance(actual, str):
+                    actual = actual.lower() == "true" if actual.lower() in ("true", "false") else actual
+                if actual != expected:
+                    raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": name, "expected": expected,
+                        "message": f"{ep['id']} requires {name}={expected!r}; use the matching catalog tool.",
+                    })
+        async_owner_call_id, async_owners = await _enforce_platform_async_ownership(
+            ep, query, body, caller, db)
+        public_resource_ids, resource_owners = await _enforce_platform_managed_ownership(
+            ep, query, body, request_headers, caller, db)
+    skip_direct = False
+    probe_lock_id = None
+    key_slot = None
+    if cost is not None:
+        # None: any of treg's accounts may serve it; the call path picks one before the relay.
+        key_slot = keyslots.pinned(
+            service, owners=async_owners + resource_owners,
+            idempotency_key=_key_affinity(caller, request_headers))
+    if cost is not None and (keyslots.exhausted(service, ep["id"], key_slot) if key_slot is not None
+                             else keyslots.all_exhausted(service, ep["id"])):
+        # treg's own account for this call is known to be out (the call-path lock, or the sweep).
+        # Either admits one probe a minute so a recovered account is noticed. Otherwise never
+        # relay a call we know will 402: with an enabled overflow route the ladder skips straight
+        # to the child cycle (plan §4); else refuse BEFORE reserve with a typed 503 naming when
+        # and what else (§4.2). With every account out, the probe goes to the primary.
+        key_slot = key_slot or keyslots.PRIMARY_SLOT
+        cap_slot = keyslots.capacity_slot(key_slot)
+        lock = capacity_view.active_lock(service, ep["id"], cap_slot)
+        state = capacity_view.get(service) if lock is None and cap_slot is None else None
+        if lock is not None and capacity_marks.probe_due(lock.key):
+            probe_lock_id = lock.lock_id
+        elif state is not None and capacity_marks.sweep_probe_due(service, state.observed_at):
+            probe_lock_id = capacity_marks.sweep_probe_id(state.observed_at)
+        elif (get_settings().overflow_mode == "on" and not caller.org.platform_overflow_disabled
+                and overflow_routes_view.for_endpoint(ep["id"])):
+            skip_direct = True
+        else:
+            raise _provider_capacity_unavailable(
+                ep, service, capacity_view.exhausted_until(service, ep["id"], cap_slot), probing=True)
+    if cost is not None:
+        virtual = Tool(
+            org_id=caller.org_id, name=ep["id"], owner=caller.email,
+            base_url=provider.base_url, host=_host_of(provider.base_url),
+            bindings=oauth_providers.platform_bindings(provider, key_slot),
+        )
+        return MarketplaceCall(tool=virtual, tier="platform", skip_direct=skip_direct,
+                               async_owner_call_id=async_owner_call_id,
+                               public_resource_ids=public_resource_ids,
+                               probe_lock_id=probe_lock_id,
+                               key_slot=key_slot, **{
+            **common, "cost_type": str(cost.get("type") or "per_call"),
+            "estimate_micro": info_est, "unit_micro": info_unit})
+    raise _marketplace_no_credential(service, ep["id"], provider, ep)
+
+
+def _key_affinity(caller: Caller, headers) -> str:
+    """The caller's Idempotency-Key, scoped to the org: what pins a retry to one of treg's
+    accounts (`keyslots`). Empty without the header."""
+    key = _idempotency_key(headers.get(IDEMPOTENCY_HEADER) if headers is not None else None)
+    return f"{caller.org_id}{_IDEM_SCOPE_SEP}{key}" if key else ""
+
+
+def _provider_capacity_unavailable(ep: dict, service: str, resets, *,
+                                   probing: bool = False) -> ResolutionFailed:
+    """The typed floor (plan §4.5): no charge, `resets_at` when known, and the same-capability
+    alternatives — treg names them and leaves the choice to the caller (charter: no failover)."""
+    # Say what treg is doing about it before what the caller could do: an agent quotes the first
+    # imperative line back to its user, and "use your own key" read as "your plan lost access"
+    # (2026-09-17). Nothing about the caller's plan or balance changed.
+    lines = [f"treg's own {service} account is out of capacity right now — {ep['id']} can't be "
+             f"served on treg's key" + (f" until about {resets:%Y-%m-%d %H:%M} UTC" if resets else "")
+             + "; nothing about your plan or balance changed and nothing was charged"]
+    if probing:
+        lines.append("  treg retries the vendor about once a minute and lifts this as soon as it "
+                     "answers, so a retry later may succeed")
+    lines.extend(_capability_alternatives(ep))
+    lines.append(f"  or use your own key: treg secret add {service} --env-var "
+                 f"{service.upper().replace('-', '_')}_API_KEY  (own keys are never affected)")
+    return ResolutionFailed("provider_capacity", status_code=503, detail={
+        "error": "provider_capacity_unavailable", "provider": service, "endpoint_id": ep["id"],
+        "resets_at": resets.isoformat() + "Z" if resets else None,
+        "alternatives": [ln.strip() for ln in _capability_alternatives(ep)[1:]],
+        "message": "\n".join(lines),
+    })
+
+
+def provider_paused(service: str, endpoint_id: str | None = None) -> ResolutionFailed:
+    """This deployment paused `service` (TREG_PAUSED_PROVIDERS): refused before any hold, charge
+    or upstream request, on the catalog road and on a connection's own tool alike."""
+    return ResolutionFailed("provider_paused", status_code=503,
+                            detail=oauth_providers.paused_detail(service, endpoint_id))
+
+
+async def resolve_marketplace_target(
+    ep: dict,
+    *,
+    method: str,
+    query: QueryValues,
+    has_body: bool,
+    read_body: Callable[[], Awaitable[bytes]],
+    caller: Caller,
+    resolve_call: Callable[[str, Caller, AsyncSession], Awaitable[ResolvedTarget]],
+    request_headers=None,
+    authorization_method: str = "",
+) -> MarketplaceCall:
+    if oauth_providers.is_paused(ep.get("provider")):
+        raise provider_paused(ep["provider"], ep["id"])
+    # The exhausted view is refreshed here — before the resolution session opens, so at most one
+    # connection is held at a time, and before any hold exists. Cached 60 s; a stale or empty view
+    # never refuses (plan §4.1: blocking fires on confirmed signals only).
+    await capacity_view.load()
+    if get_settings().overflow_mode != "off":
+        await overflow_routes_view.load()  # same discipline: before the session, cached 60 s
+    async with session_maker() as db:
+        return await _resolve_marketplace_call(
+            ep,
+            method=method,
+            query=query,
+            has_body=has_body,
+            read_body=read_body,
+            caller=caller,
+            db=db,
+            resolve_call=resolve_call,
+            request_headers=request_headers,
+            authorization_method=authorization_method,
+        )
+
+
+def _may_have_body(raw_headers: tuple[tuple[bytes, bytes], ...]) -> bool:
+    """Whether this request could carry a body worth hashing. Mirrors proxy._has_body — a GET with no
+    content-length must not be awaited for a body it never sends."""
+    headers = {name.lower(): value for name, value in raw_headers}
+    cl = headers.get(b"content-length", b"").decode("latin-1") or None
+    if cl is not None and cl != "0":
+        return True
+    return "chunked" in headers.get(b"transfer-encoding", b"").decode("latin-1").lower()

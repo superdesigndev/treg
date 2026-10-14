@@ -1,0 +1,27 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "highlights": [
+        {
+          "coverUrl": "https://scontent-lga3-2.cdninstagram.com/v/t51.71878-15/790023468_2121263175128256_672389239189128279_n.jpg?stp=c0.248.640.640a_dst-jpg_e15_tt6&_nc_ht=scontent-lga3-2.cdninstagram.com&_nc_cat=100&_nc_… [442 chars]",
+          "id": "18195781759377100",
+          "ownerHandle": "nasa",
+          "title": "Roman"
+        },
+        "… 4 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 5,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "29125644-2d53-4549-895c-92bd546db4be"
+}

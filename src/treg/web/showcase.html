@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Built with treg: apps and the people who made them | treg.to</title>
+<meta name="description" content="Apps built with treg: Meta ad makers, AI ops bots, social listening and company facts. Meet the makers and read their launch posts.">
+<link rel="canonical" href="{BASE}/showcase"/>
+<meta property="og:title" content="Built with treg: apps and the people who made them | treg.to"/>
+<meta property="og:description" content="Apps built with treg: Meta ad makers, AI ops bots, social listening and company facts. Meet the makers and read their launch posts."/>
+<meta property="og:url" content="{BASE}/showcase"/>
+<meta property="og:type" content="website"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta property="og:image" content="{BASE}/media/og.png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta name="twitter:image" content="{BASE}/media/og.png"/>
+<link rel="icon" href="favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"CollectionPage","name":"Built with treg","url":"{BASE}/showcase","description":"Apps whose agents reach the outside world through treg, and the people who made them.","mainEntity":{"@type":"ItemList","numberOfItems":6,"itemListElement":[{"@type":"ListItem","position":1,"item":{"@type":"SoftwareApplication","name":"Gimme Gimme","url":"https://getgimmegimme.com/","description":"Give it a product or a website link and it makes a batch of Meta ads, each with the numbers to judge it by.","applicationCategory":"BusinessApplication","creator":{"@type":"Person","name":"Josh Jackson","sameAs":"https://x.com/IamJoshJackson"}}},{"@type":"ListItem","position":2,"item":{"@type":"SoftwareApplication","name":"Bops","url":"https://bops.bot/","description":"A Mac app with a team of AI bots for your inbox, pipeline, invoices and reports. Each bot has its own computer, email and phone number.","applicationCategory":"BusinessApplication","creator":{"@type":"Person","name":"Nick Vasilescu","sameAs":"https://x.com/nickvasiles"}}},{"@type":"ListItem","position":3,"item":{"@type":"SoftwareApplication","name":"Sniffington","url":"https://sniffington.com/","description":"Finds posts about your brand and your competitors on eleven platforms, ranks them by buying intent and drafts a reply.","applicationCategory":"BusinessApplication","creator":{"@type":"Person","name":"Ankur Shrestha","sameAs":"https://x.com/ankurmans"}}},{"@type":"ListItem","position":4,"item":{"@type":"SoftwareApplication","name":"ListeningKit","url":"https://log.listeningkit.com/","description":"A free social listening tool. Enter your website and it shows what your customers are really saying.","applicationCategory":"BusinessApplication","creator":{"@type":"Person","name":"Matt","sameAs":"https://x.com/matthewsoldit"}}},{"@type":"ListItem","position":5,"item":{"@type":"SoftwareApplication","name":"NOAN","url":"https://www.getnoan.com/","description":"One API for your company facts. Verified and versioned, so every model, agent and app gives the same answer.","applicationCategory":"BusinessApplication","creator":{"@type":"Person","name":"Neal Mann","sameAs":"https://x.com/fieldproducer"}}},{"@type":"ListItem","position":6,"item":{"@type":"SoftwareApplication","name":"Grok Bot Feed","url":"https://grokbotfeed.sharenow.today/","description":"Grok Bot demos, prompts and tips from X, Threads, YouTube and Instagram, gathered into one feed every six hours.","applicationCategory":"BusinessApplication","creator":{"@type":"Person","name":"sharenow","sameAs":"https://x.com/sharenow_today"}}}]}}</script>
+<style>
+  :root {
+    --bg: #FDFCFB;
+    --card: #F5F4F1;
+    --ink: #101010;
+    --muted: #8A8885;
+    --line: #E9E7E2;
+    --green: #118453;
+    --green-soft: rgba(17,132,83,.12);
+    --display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+    --text: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --ease: cubic-bezier(.2,.8,.2,1);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--text); font-size: 16px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  ::selection { background: rgba(17,132,83,.22); }
+  img { display: block; max-width: 100%; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px;
+    padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); text-decoration: none; cursor: pointer;
+  }
+  .pill:hover { background: var(--card); }
+  .pill.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .pill.dark:hover { background: #2b2b2a; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+
+  /* ---------- nav (mirrors the other landing pages) ---------- */
+  .nav {
+    position: fixed; inset: 0 0 auto 0; z-index: 90; display: flex; align-items: center;
+    justify-content: space-between; padding: 14px 28px;
+    background: rgba(253,252,251,.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid transparent; transition: border-color .3s;
+  }
+  .nav.scrolled { border-color: var(--line); }
+  .wordmark { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 15px; }
+  .wordmark svg { width: 22px; height: 22px; border-radius: 6px; }
+  .nav-links { display: flex; gap: 22px; align-items: center; margin-right: 10px; }
+  .nav-links a { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 500; color: #43413E; text-decoration: none; }
+  .nav-links a:hover { color: var(--ink); }
+  @media (max-width: 900px) { .nav-links { display: none; } .nav { padding: 12px 16px; } }
+
+  /* ---------- hero: the stack that deals itself out ---------- */
+  .hero { padding: 138px 24px 0; text-align: center; }
+  .hero h1 {
+    margin: 0 auto; max-width: 900px; font-family: var(--display); font-weight: 500;
+    font-size: clamp(42px, 7vw, 78px); line-height: 1.04; letter-spacing: -.03em;
+  }
+  .hero h1 .mk { display: inline-block; width: .78em; height: .78em; vertical-align: -.04em; margin: 0 .06em 0 .1em; }
+  .hero h1 .mk rect { transition: transform .9s var(--ease) .5s; transform-box: fill-box; }
+  .hero.ready h1 .mk .a { transform: translate(-6%, -6%); }
+  .hero.ready h1 .mk .b { transform: translate(6%, 6%); }
+  .hero .sub { max-width: 54ch; margin: 22px auto 0; color: var(--muted); font-size: 18px; text-wrap: balance; }
+
+  .fan { position: relative; height: calc(clamp(220px, 30vw, 400px) * .55 + 90px); margin: 46px auto 0; max-width: 1240px; }
+  .fan .card {
+    position: absolute; left: 50%; top: 18px; width: clamp(220px, 30vw, 400px);
+    aspect-ratio: 1200 / 625; border-radius: 12px; overflow: hidden; cursor: pointer;
+    background: #fff; border: 1px solid var(--line); padding: 0;
+    box-shadow: 0 1px 0 rgba(16,16,16,.04), 0 18px 40px -18px rgba(16,16,16,.28);
+    transform: translateX(-50%) translateY(40px) rotate(0) scale(.86); opacity: 0;
+    transition: transform 1s var(--ease), opacity .6s ease, box-shadow .3s;
+    transition-delay: calc(var(--i) * 70ms);
+  }
+  .fan .card img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+  .fan .card .bar { position: absolute; inset: 0 0 auto; height: 18px; background: rgba(255,255,255,.92); border-bottom: 1px solid var(--line); display: flex; gap: 4px; align-items: center; padding: 0 7px; }
+  .fan .card .bar i { width: 6px; height: 6px; border-radius: 50%; background: #DDDAD4; }
+  .fan .card img { padding-top: 18px; }
+  .hero.ready .fan .card {
+    opacity: 1;
+    transform: translateX(calc(-50% + var(--x))) translateY(var(--y)) rotate(var(--r)) scale(1);
+  }
+  .hero.ready .fan .card:hover, .hero.ready .fan .card:focus-visible {
+    transform: translateX(calc(-50% + var(--x))) translateY(calc(var(--y) - 16px)) rotate(calc(var(--r) * .4)) scale(1.04);
+    box-shadow: 0 1px 0 rgba(16,16,16,.04), 0 30px 60px -24px rgba(16,16,16,.4);
+    z-index: 10; transition-delay: 0s;
+  }
+  .fan-hint { margin-top: 0; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+
+  /* ---------- the crew: one tile per app's icon under the hero, one hopping now and then ---------- */
+  .crew { display: flex; justify-content: center; flex-wrap: wrap; gap: 14px; margin: 36px auto 0; }
+  .crew a {
+    position: relative; width: 54px; height: 54px; border-radius: 15px; background: #fff; display: grid; place-items: center;
+    box-shadow: 0 0 0 1px var(--line), 0 10px 22px -14px rgba(16,16,16,.35);
+    opacity: 0; transform: translateY(12px); transition: opacity .5s ease, transform .6s var(--ease), box-shadow .25s;
+    transition-delay: calc(.25s + var(--i) * 70ms);
+  }
+  .hero.ready .crew a { opacity: 1; transform: none; }
+  .hero.ready .crew a:hover, .hero.ready .crew a:focus-visible {
+    transform: translateY(-4px); transition-delay: 0s;
+    box-shadow: 0 0 0 1px #DAD7D0, 0 16px 28px -14px rgba(16,16,16,.4);
+  }
+  .crew img { width: 36px; height: 36px; border-radius: 10px; }
+  .crew a.hop img { animation: hop .6s cubic-bezier(.3,.7,.4,1); }
+  @keyframes hop {
+    0% { transform: translateY(0) scale(1, 1); }
+    18% { transform: translateY(0) scale(1.06, .92); }
+    42% { transform: translateY(-11px) scale(.96, 1.05); }
+    68% { transform: translateY(0) scale(1.05, .94); }
+    84% { transform: translateY(-2px) scale(1, 1); }
+    100% { transform: translateY(0) scale(1, 1); }
+  }
+  .crew .tip {
+    position: absolute; left: 50%; top: calc(100% + 8px); transform: translate(-50%, -4px); white-space: nowrap;
+    font-size: 12px; font-weight: 500; color: #fff; background: var(--ink); padding: 4px 9px; border-radius: 7px;
+    opacity: 0; pointer-events: none; transition: opacity .18s, transform .25s var(--ease);
+  }
+  .crew a:hover .tip, .crew a:focus-visible .tip { opacity: 1; transform: translate(-50%, 0); }
+  /* phones: smaller tiles so all six fit one row */
+  @media (max-width: 640px) {
+    .crew { gap: 10px; margin-top: 26px; }
+    .crew a { width: 44px; height: 44px; border-radius: 12px; }
+    .crew img { width: 28px; height: 28px; border-radius: 8px; }
+  }
+
+  /* ---------- section heads ---------- */
+  /* one page width for every section: the gallery, the launch posts and the X wall line up */
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+  .shead { display: flex; align-items: end; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 30px; }
+  .shead h2 { margin: 0; font-family: var(--display); font-weight: 500; font-size: clamp(30px, 4.6vw, 46px); letter-spacing: -.025em; line-height: 1.12; }
+  .shead p { margin: 10px 0 0; color: #55534F; max-width: 520px; }
+
+  /* ---------- filter tabs with a sliding marker ---------- */
+  .tabs { position: relative; display: inline-flex; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); }
+  .tabs button {
+    position: relative; z-index: 1; border: 0; background: none; font: 500 13.5px var(--text);
+    color: #5F5D59; padding: 8px 15px; border-radius: 999px; cursor: pointer; transition: color .25s;
+  }
+  .tabs button[aria-selected="true"] { color: var(--ink); }
+  .tabs .mark {
+    position: absolute; top: 4px; bottom: 4px; left: 0; width: 0; border-radius: 999px;
+    background: #fff; box-shadow: 0 1px 2px rgba(16,16,16,.08), 0 0 0 1px var(--line);
+    transition: transform .35s var(--ease), width .35s var(--ease);
+  }
+  @media (max-width: 640px) { .tabs { overflow-x: auto; max-width: 100%; } .tabs button { white-space: nowrap; } }
+
+  /* ---------- the gallery ---------- */
+  .gallery { padding-top: 90px; scroll-margin-top: 40px; }
+  @media (max-width: 640px) { .gallery { padding-top: 56px; } }
+  /* rows sit far apart and a tile's parts sit close, so a maker reads as their own app's, never the next row's */
+  .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 44px 22px; }
+  .app { grid-column: span var(--span, 6); display: flex; flex-direction: column; scroll-margin-top: 90px; }
+  .grid.filtered .app { grid-column: span 6; }
+  .app[hidden] { display: none; }
+  .stage {
+    position: relative; display: block; border-radius: 18px; padding: 14px 14px 0; overflow: hidden;
+    background: var(--tint); text-decoration: none; isolation: isolate;
+    height: clamp(300px, 34vw, 430px);
+  }
+  .stage::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px rgba(16,16,16,.06); pointer-events: none; }
+  .win {
+    position: relative; height: 100%; border-radius: 10px 10px 0 0; overflow: hidden; background: #fff;
+    box-shadow: 0 0 0 1px rgba(16,16,16,.08), 0 24px 50px -24px rgba(16,16,16,.45);
+  }
+  .win .bar {
+    height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 12px;
+    background: #FAFAF8; border-bottom: 1px solid #ECEAE5;
+  }
+  .win .bar i { width: 9px; height: 9px; border-radius: 50%; background: #E1DED8; }
+  .win .bar span { margin: 0 auto; transform: translateX(-20px); font: 11.5px var(--mono); color: #6F6D69; background: #F0EEEA; padding: 3px 12px; border-radius: 6px; }
+  .win img { width: 100%; height: calc(100% - 30px); object-fit: cover; object-position: var(--focus, center top); transition: transform 1.2s var(--ease); }
+  .visit {
+    position: absolute; right: 18px; bottom: 18px; z-index: 2; display: inline-flex; align-items: center; gap: 6px;
+    background: var(--ink); color: #fff; font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 999px;
+    opacity: 0; transform: translateY(8px); transition: opacity .25s, transform .35s var(--ease);
+  }
+  .stage:hover .win img, .stage:focus-visible .win img { transform: scale(1.025); }
+  .stage:hover .visit, .stage:focus-visible .visit { opacity: 1; transform: none; }
+
+  .meta { display: grid; grid-template-columns: 1fr auto; gap: 6px 20px; padding: 18px 4px 0; align-items: start; }
+  .meta h3 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: -.02em; display: flex; align-items: center; gap: 10px; }
+  .ico { flex: none; border-radius: 6px; object-fit: cover; box-shadow: 0 0 0 1px rgba(16,16,16,.08); }
+  .meta h3 .ico { width: 22px; height: 22px; margin-right: -2px; }
+  .meta .kind { font: 500 11.5px var(--mono); color: var(--green); background: var(--green-soft); padding: 3px 9px; border-radius: 999px; letter-spacing: 0; }
+  .meta p { grid-column: 1 / -1; margin: 0; color: #55534F; font-size: 15px; max-width: 62ch; }
+  .maker {
+    grid-column: 1 / -1; margin-top: 12px; display: flex; align-items: center; gap: 11px;
+  }
+  .avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex: none; background: var(--card); box-shadow: 0 0 0 1px var(--line); }
+  .avatar.mono { display: grid; place-items: center; font: 600 14px var(--display); color: #fff; background: var(--ink); }
+  .maker .who { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+  .maker .who b { font-weight: 600; font-size: 14px; }
+  .maker .who a { color: var(--muted); font-size: 13px; text-decoration: none; }
+  .maker .who a:hover { color: var(--ink); }
+  .maker .launch { margin-left: auto; font-size: 13px; font-weight: 500; color: var(--ink); text-decoration: none; display: inline-flex; gap: 6px; align-items: center; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); }
+  .maker .launch:hover { background: var(--card); }
+
+  /* filtering: tiles fade, then the grid settles (View Transitions when the browser has them) */
+  .app { transition: opacity .3s, transform .3s var(--ease); }
+  .app.leaving { opacity: 0; transform: scale(.98); }
+  ::view-transition-group(*) { animation-duration: .45s; animation-timing-function: cubic-bezier(.2,.8,.2,1); }
+
+  @media (max-width: 860px) { .grid { row-gap: 36px; } .app, .grid.filtered .app { grid-column: 1 / -1; } .stage { padding: 10px 10px 0; height: auto; aspect-ratio: 16 / 10; } }
+
+  /* ---------- launch posts ---------- */
+  .posts { padding-top: 130px; }
+  .wall { columns: 3 330px; column-gap: 22px; }
+  .post { break-inside: avoid; margin: 0 0 26px; }
+  .post .for {
+    display: inline-flex; align-items: center; gap: 8px; padding: 0 2px 10px; font-size: 14px; color: #5F5D59; text-decoration: none;
+  }
+  .post .for b { color: var(--ink); font-weight: 600; }
+  .post .for:hover b { text-decoration: underline; text-underline-offset: 3px; }
+  .tweet { position: relative; min-height: 220px; }
+  .tweet .twitter-tweet { margin: 0 !important; }
+  .tweet iframe { border-radius: 12px; }
+  .ph {
+    position: absolute; inset: 0; border-radius: 12px; background: #fff; border: 1px solid var(--line);
+    padding: 16px; display: flex; flex-direction: column; gap: 12px; text-decoration: none; color: var(--ink);
+    transition: opacity .5s ease;
+  }
+  .ph .row { display: flex; gap: 10px; align-items: center; }
+  .ph .row span { display: flex; flex-direction: column; line-height: 1.25; font-size: 14px; }
+  .ph .row small { color: var(--muted); font-size: 13px; }
+  .ph .ln { height: 10px; border-radius: 5px; background: linear-gradient(90deg, #EFEDE9 0%, #F7F6F3 50%, #EFEDE9 100%); background-size: 200% 100%; animation: shimmer 1.6s linear infinite; }
+  .ph .ln:nth-child(3) { width: 86%; } .ph .ln:nth-child(4) { width: 64%; }
+  .ph .open { margin-top: auto; font-size: 13px; color: var(--muted); }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  .embed { opacity: 0; transform: translateY(10px); transition: opacity .6s ease, transform .7s var(--ease); }
+  .tweet.loaded { min-height: 0; }
+  .tweet.loaded .embed { opacity: 1; transform: none; }
+  .tweet.loaded .ph { opacity: 0; pointer-events: none; }
+  .tweet.failed .ph .ln { animation: none; }
+  .tweet.failed .ph .open { color: var(--ink); }
+
+  /* the wall rises in, one post after another, the first time it comes into view */
+  .post { opacity: 0; transform: translateY(24px); transition: opacity .7s ease, transform .9s var(--ease); transition-delay: calc(var(--i) * 90ms); }
+  .wall.seen .post { opacity: 1; transform: none; }
+
+  /* ---------- the wall: posts about treg, columns drifting up and down ---------- */
+  .xwall { margin-top: 130px; }
+  .xcols {
+    position: relative; height: min(920px, 100vh); display: grid; gap: 18px; overflow: hidden;
+    grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%);
+  }
+  .xcol { min-width: 0; }
+  .xtrack { display: flex; flex-direction: column; gap: 18px; animation: xdrift var(--dur, 60s) linear infinite; will-change: transform; }
+  .xcol.down .xtrack { animation-direction: reverse; }
+  .xcol:hover .xtrack, .xcol:focus-within .xtrack { animation-play-state: paused; }
+  @keyframes xdrift { from { transform: translateY(0); } to { transform: translateY(calc(-50% - 9px)); } }
+  .xcard {
+    display: block; padding: 18px 18px 16px; border-radius: 16px; background: #fff; color: var(--ink);
+    text-decoration: none; box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(16,16,16,.04);
+    transition: box-shadow .25s, transform .3s var(--ease);
+  }
+  .xcard:hover { box-shadow: 0 0 0 1px #D9D6CF, 0 16px 34px -18px rgba(16,16,16,.3); transform: translateY(-2px); }
+  .xcard .row { display: flex; align-items: center; gap: 10px; }
+  .xcard .row img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex: none; background: var(--card); }
+  .xcard .row span { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+  .xcard .row b { font-weight: 600; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .xcard .row small { color: var(--muted); font-size: 13px; }
+  .xcard .row svg { margin-left: auto; flex: none; color: #2b2b2a; }
+  .xcard p {
+    margin: 12px 0 0; font-size: 14.5px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-line-clamp: 9; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .xcard p i { font-style: normal; color: var(--green); }
+  .xcard time { display: block; margin-top: 12px; color: var(--muted); font-size: 12.5px; }
+
+  /* ---------- closing call ---------- */
+  .closer { margin: 130px auto 0; text-align: center; padding: 0 24px; }
+  .closer h2 { margin: 0; font-family: var(--display); font-weight: 500; font-size: clamp(30px, 4.6vw, 46px); letter-spacing: -.025em; line-height: 1.12; }
+  .closer p { color: #55534F; max-width: 520px; margin: 16px auto 26px; }
+  .closer .ctas { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+  /* ---------- the site footer, mirrored from the home page ---------- */
+  .bigfoot { border-top: 1px solid var(--line); margin-top: 110px; padding: 46px 24px 40px; background: #FBFAF8; text-align: left; }
+  .bigfoot-in { max-width: 1020px; margin: 0 auto; display: flex; gap: 44px; justify-content: space-between; flex-wrap: wrap; }
+  .bf-brand .bfb { display: inline-flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 16px; color: var(--ink); }
+  .bf-brand svg { width: 20px; height: 20px; border-radius: 6px; }
+  .bf-brand .note { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+  .bf-cols { display: flex; gap: 56px; flex-wrap: wrap; }
+  .bf-col { display: flex; flex-direction: column; gap: 7px; min-width: 108px; }
+  .bf-col .lab { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .bf-col a { color: var(--ink); text-decoration: none; font-size: 13.5px; }
+  .bf-col a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .bf-tag { max-width: 1020px; margin: 36px auto 0; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+
+  /* ---------- sign-in modal (as on /people-search): opens when a signed-out visitor starts ---------- */
+  .scrim { position: fixed; inset: 0; background: rgba(26,26,26,.55); display: none; place-items: center; z-index: 200; padding: 20px; backdrop-filter: blur(6px); }
+  .scrim.open { display: grid; }
+  .smodal { width: min(400px, 94vw); background: #fff; border-radius: 20px; padding: 30px 28px; text-align: center; position: relative; box-shadow: 0 30px 90px -38px rgba(20,18,12,.4); }
+  .smodal .cls { position: absolute; top: 12px; right: 15px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+  .smodal .cls:hover { color: var(--ink); }
+  .smodal h3 { font-family: var(--display); font-weight: 600; font-size: 22px; margin: 4px 0 6px; letter-spacing: -.015em; }
+  .smodal p { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 0 0 18px; }
+  .smodal .pill { width: 100%; justify-content: center; margin-top: 9px; }
+  .smodal .div { display: flex; align-items: center; gap: 10px; margin: 16px 0 6px; color: var(--muted); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
+  .smodal .div::before, .smodal .div::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .smodal input { width: 100%; margin-top: 9px; background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 11px 13px; font-family: var(--mono); font-size: 13px; outline: none; }
+  .smodal input:focus { border-color: var(--ink); }
+  .smodal .err { color: #C0362F; font-size: 11.5px; margin-top: 10px; min-height: 14px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { transition-duration: 0s !important; transition-delay: 0s !important; animation: none !important; }
+    .xcols { overflow-y: auto; } .xcols .dup { display: none !important; }
+  }
+</style>
+<script src="/captcha.js" defer></script>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <span class="wordmark"><a href="/" style="display:inline-flex;align-items:center;gap:10px;color:inherit;text-decoration:none" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</a> <span style="color:var(--muted);font-weight:400">/</span> <span style="font-weight:500">Showcase</span></span>
+  <span style="display:flex;gap:8px">
+    <span class="nav-links"><a href="#apps">Apps</a><a href="#posts">Launch posts</a><a href="#talk">On X</a><a href="/catalog">Catalog</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a><a href="https://x.com/treg_ai" target="_blank" rel="noopener" aria-label="treg on X"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a></span>
+    <a class="pill dark" href="/app" id="ctaNav">Start building</a>
+  </span>
+</nav>
+
+<header class="hero" id="hero">
+  <h1>Built with <svg class="mk" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect class="a" x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect class="b" x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</h1>
+  <p class="sub">Real products whose agents reach the outside world through one treg token.</p>
+  <nav class="crew" id="crew" aria-label="Jump to an app"></nav>
+  <!-- the dealt-out fan of screenshots: hidden for now, kept so it can return with one attribute -->
+  <div class="fan-wrap" hidden>
+    <div class="fan" id="fan" role="list" aria-label="Apps built with treg"></div>
+    <div class="fan-hint">Pick a window to jump to the app</div>
+  </div>
+</header>
+
+<section class="gallery wrap" id="apps">
+  <div class="shead">
+    <div>
+      <h2>The apps</h2>
+    </div>
+    <div class="tabs" role="tablist" aria-label="Filter apps" id="tabs"><span class="mark" id="mark" aria-hidden="true"></span></div>
+  </div>
+  <div class="grid" id="grid">
+    <article class="app" id="app-gimme" data-kind="ads" style="--span:7;--tint:#FFF1D6">
+      <a class="stage" href="https://getgimmegimme.com/" target="_blank" rel="noopener" aria-label="Visit Gimme Gimme">
+        <div class="win"><div class="bar"><i></i><i></i><i></i><span>getgimmegimme.com</span></div><img src="media/showcase/gimme.jpg" alt="Gimme Gimme home page" loading="lazy" width="1200" height="625"></div>
+        <span class="visit">Visit getgimmegimme.com ↗</span>
+      </a>
+      <div class="meta">
+        <h3><img class="ico" src="media/showcase/icon-gimme.png" alt="" width="22" height="22"><span class="nm">Gimme Gimme</span> <span class="kind">Ads</span></h3>
+        <p>Give it a product or a website link and it makes a batch of Meta ads, each with the numbers to judge it by.</p>
+        <div class="maker"><img class="avatar" src="media/showcase/josh.jpg" alt="" loading="lazy" width="34" height="34"><span class="who"><b>Josh Jackson</b><a href="https://x.com/IamJoshJackson" target="_blank" rel="noopener">@IamJoshJackson</a></span><a class="launch" href="https://x.com/IamJoshJackson/status/2104569353400209778" target="_blank" rel="noopener" aria-label="View on X">View on <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg> ↗</a></div>
+      </div>
+    </article>
+    <article class="app" id="app-bops" data-kind="ops" style="--span:5;--tint:#EEFF7A;--focus:left top">
+      <a class="stage" href="https://bops.bot/" target="_blank" rel="noopener" aria-label="Visit Bops">
+        <div class="win"><div class="bar"><i></i><i></i><i></i><span>bops.bot</span></div><img src="media/showcase/bops.jpg" alt="Bops home page" loading="lazy" width="1200" height="625"></div>
+        <span class="visit">Visit bops.bot ↗</span>
+      </a>
+      <div class="meta">
+        <h3><img class="ico" src="media/showcase/icon-bops.png" alt="" width="22" height="22"><span class="nm">Bops</span> <span class="kind">Business ops</span></h3>
+        <p>A Mac app with a team of AI bots for your inbox, pipeline, invoices and reports. Each bot has its own computer, email and phone number.</p>
+        <div class="maker"><img class="avatar" src="media/showcase/nick.jpg" alt="" loading="lazy" width="34" height="34"><span class="who"><b>Nick Vasilescu</b><a href="https://x.com/nickvasiles" target="_blank" rel="noopener">@nickvasiles</a></span><a class="launch" href="https://x.com/nickvasiles/status/2107951099101802497" target="_blank" rel="noopener" aria-label="View on X">View on <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg> ↗</a></div>
+      </div>
+    </article>
+    <article class="app" id="app-sniffington" data-kind="listening" style="--span:5;--tint:#FFD9AE">
+      <a class="stage" href="https://sniffington.com/" target="_blank" rel="noopener" aria-label="Visit Sniffington">
+        <div class="win"><div class="bar"><i></i><i></i><i></i><span>sniffington.com</span></div><img src="media/showcase/sniffington.jpg" alt="Sniffington home page" loading="lazy" width="1200" height="625"></div>
+        <span class="visit">Visit sniffington.com ↗</span>
+      </a>
+      <div class="meta">
+        <h3><img class="ico" src="media/showcase/icon-sniffington.png" alt="" width="22" height="22"><span class="nm">Sniffington</span> <span class="kind">Social listening</span></h3>
+        <p>Finds posts about your brand and your competitors on eleven platforms, ranks them by buying intent and drafts a reply.</p>
+        <div class="maker"><img class="avatar" src="media/showcase/ankur.jpg" alt="" loading="lazy" width="34" height="34"><span class="who"><b>Ankur Shrestha</b><a href="https://x.com/ankurmans" target="_blank" rel="noopener">@ankurmans</a></span><a class="launch" href="https://x.com/ankurmans/status/2107061799510237190" target="_blank" rel="noopener" aria-label="View on X">View on <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg> ↗</a></div>
+      </div>
+    </article>
+    <article class="app" id="app-listeningkit" data-kind="listening" style="--span:7;--tint:#BFDBFF">
+      <a class="stage" href="https://log.listeningkit.com/" target="_blank" rel="noopener" aria-label="Visit ListeningKit">
+        <div class="win"><div class="bar"><i></i><i></i><i></i><span>log.listeningkit.com</span></div><img src="media/showcase/listeningkit.jpg" alt="ListeningKit home page" loading="lazy" width="1200" height="625"></div>
+        <span class="visit">Visit log.listeningkit.com ↗</span>
+      </a>
+      <div class="meta">
+        <h3><img class="ico" src="media/showcase/icon-listeningkit.png" alt="" width="22" height="22"><span class="nm">ListeningKit</span> <span class="kind">Social listening</span></h3>
+        <p>A free social listening tool. Enter your website and it shows what your customers are really saying.</p>
+        <div class="maker"><img class="avatar" src="media/showcase/matt.jpg" alt="" loading="lazy" width="34" height="34"><span class="who"><b>Matt</b><a href="https://x.com/matthewsoldit" target="_blank" rel="noopener">@matthewsoldit</a></span><a class="launch" href="https://x.com/matthewsoldit/status/2102674211424854426" target="_blank" rel="noopener" aria-label="View on X">View on <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg> ↗</a></div>
+      </div>
+    </article>
+    <article class="app" id="app-noan" data-kind="data" style="--span:7;--tint:#1F2622">
+      <a class="stage" href="https://www.getnoan.com/" target="_blank" rel="noopener" aria-label="Visit NOAN">
+        <div class="win"><div class="bar"><i></i><i></i><i></i><span>www.getnoan.com</span></div><img src="media/showcase/noan.jpg" alt="NOAN home page" loading="lazy" width="1200" height="625"></div>
+        <span class="visit">Visit getnoan.com ↗</span>
+      </a>
+      <div class="meta">
+        <h3><img class="ico" src="media/showcase/icon-noan.png" alt="" width="22" height="22"><span class="nm">NOAN</span> <span class="kind">Company data</span></h3>
+        <p>One API for your company facts. Verified and versioned, so every model, agent and app gives the same answer.</p>
+        <div class="maker"><img class="avatar" src="media/showcase/neal.jpg" alt="" loading="lazy" width="34" height="34"><span class="who"><b>Neal Mann</b><a href="https://x.com/fieldproducer" target="_blank" rel="noopener">@fieldproducer</a></span><a class="launch" href="https://x.com/fieldproducer/status/2108164627234173235" target="_blank" rel="noopener" aria-label="View on X">View on <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg> ↗</a></div>
+      </div>
+    </article>
+    <article class="app" id="app-grokbotfeed" data-kind="listening" style="--span:5;--tint:#E4ECE7">
+      <a class="stage" href="https://grokbotfeed.sharenow.today/" target="_blank" rel="noopener" aria-label="Visit Grok Bot Feed">
+        <div class="win"><div class="bar"><i></i><i></i><i></i><span>grokbotfeed.sharenow.today</span></div><img src="media/showcase/grokbotfeed.jpg" alt="Grok Bot Feed home page" loading="lazy" width="1200" height="625"></div>
+        <span class="visit">Visit grokbotfeed.sharenow.today ↗</span>
+      </a>
+      <div class="meta">
+        <h3><img class="ico" src="media/showcase/icon-grokbotfeed.png" alt="" width="22" height="22"><span class="nm">Grok Bot Feed</span> <span class="kind">Social listening</span></h3>
+        <p>Grok Bot demos, prompts and tips from X, Threads, YouTube and Instagram, gathered into one feed every six hours.</p>
+        <div class="maker"><img class="avatar" src="media/showcase/sharenow.jpg" alt="" loading="lazy" width="34" height="34"><span class="who"><b>sharenow</b><a href="https://x.com/sharenow_today" target="_blank" rel="noopener">@sharenow_today</a></span><a class="launch" href="https://x.com/sharenow_today/status/2090653533863362980" target="_blank" rel="noopener" aria-label="View on X">View on <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg> ↗</a></div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="posts wrap" id="posts">
+  <div class="shead">
+    <div>
+      <h2>In their own words</h2>
+      <p>The posts where each maker announced their app.</p>
+    </div>
+  </div>
+  <div class="wall" id="wall">
+    <article class="post" id="post-gimme" style="--i:0;--tint:#FFF1D6">
+      <a class="for" href="#app-gimme"><img class="ico" src="media/showcase/icon-gimme.png" alt="" width="18" height="18" loading="lazy"><b>Gimme Gimme</b></a>
+      <div class="tweet" data-id="2104569353400209778">
+        <a class="ph" href="https://x.com/IamJoshJackson/status/2104569353400209778" target="_blank" rel="noopener"><span class="row"><img class="avatar" src="media/showcase/josh.jpg" alt="" loading="lazy" width="34" height="34"><span><b>Josh Jackson</b><small>@IamJoshJackson</small></span></span><span class="ln"></span><span class="ln"></span><span class="ln"></span><span class="open">Read the post on X ↗</span></a>
+        <div class="embed"></div>
+      </div>
+    </article>
+    <article class="post" id="post-bops" style="--i:1;--tint:#EEFF7A">
+      <a class="for" href="#app-bops"><img class="ico" src="media/showcase/icon-bops.png" alt="" width="18" height="18" loading="lazy"><b>Bops</b></a>
+      <div class="tweet" data-id="2107951099101802497">
+        <a class="ph" href="https://x.com/nickvasiles/status/2107951099101802497" target="_blank" rel="noopener"><span class="row"><img class="avatar" src="media/showcase/nick.jpg" alt="" loading="lazy" width="34" height="34"><span><b>Nick Vasilescu</b><small>@nickvasiles</small></span></span><span class="ln"></span><span class="ln"></span><span class="ln"></span><span class="open">Read the post on X ↗</span></a>
+        <div class="embed"></div>
+      </div>
+    </article>
+    <article class="post" id="post-sniffington" style="--i:2;--tint:#FFD9AE">
+      <a class="for" href="#app-sniffington"><img class="ico" src="media/showcase/icon-sniffington.png" alt="" width="18" height="18" loading="lazy"><b>Sniffington</b></a>
+      <div class="tweet" data-id="2107061799510237190">
+        <a class="ph" href="https://x.com/ankurmans/status/2107061799510237190" target="_blank" rel="noopener"><span class="row"><img class="avatar" src="media/showcase/ankur.jpg" alt="" loading="lazy" width="34" height="34"><span><b>Ankur Shrestha</b><small>@ankurmans</small></span></span><span class="ln"></span><span class="ln"></span><span class="ln"></span><span class="open">Read the post on X ↗</span></a>
+        <div class="embed"></div>
+      </div>
+    </article>
+    <article class="post" id="post-listeningkit" style="--i:3;--tint:#BFDBFF">
+      <a class="for" href="#app-listeningkit"><img class="ico" src="media/showcase/icon-listeningkit.png" alt="" width="18" height="18" loading="lazy"><b>ListeningKit</b></a>
+      <div class="tweet" data-id="2102674211424854426">
+        <a class="ph" href="https://x.com/matthewsoldit/status/2102674211424854426" target="_blank" rel="noopener"><span class="row"><img class="avatar" src="media/showcase/matt.jpg" alt="" loading="lazy" width="34" height="34"><span><b>Matt</b><small>@matthewsoldit</small></span></span><span class="ln"></span><span class="ln"></span><span class="ln"></span><span class="open">Read the post on X ↗</span></a>
+        <div class="embed"></div>
+      </div>
+    </article>
+    <article class="post" id="post-noan" style="--i:4;--tint:#1F2622">
+      <a class="for" href="#app-noan"><img class="ico" src="media/showcase/icon-noan.png" alt="" width="18" height="18" loading="lazy"><b>NOAN</b></a>
+      <div class="tweet" data-id="2108164627234173235">
+        <a class="ph" href="https://x.com/fieldproducer/status/2108164627234173235" target="_blank" rel="noopener"><span class="row"><img class="avatar" src="media/showcase/neal.jpg" alt="" loading="lazy" width="34" height="34"><span><b>Neal Mann</b><small>@fieldproducer</small></span></span><span class="ln"></span><span class="ln"></span><span class="ln"></span><span class="open">Read the post on X ↗</span></a>
+        <div class="embed"></div>
+      </div>
+    </article>
+    <article class="post" id="post-grokbotfeed" style="--i:5;--tint:#E4ECE7">
+      <a class="for" href="#app-grokbotfeed"><img class="ico" src="media/showcase/icon-grokbotfeed.png" alt="" width="18" height="18" loading="lazy"><b>Grok Bot Feed</b></a>
+      <div class="tweet" data-id="2090653533863362980">
+        <a class="ph" href="https://x.com/sharenow_today/status/2090653533863362980" target="_blank" rel="noopener"><span class="row"><img class="avatar" src="media/showcase/sharenow.jpg" alt="" loading="lazy" width="34" height="34"><span><b>sharenow</b><small>@sharenow_today</small></span></span><span class="ln"></span><span class="ln"></span><span class="ln"></span><span class="open">Read the post on X ↗</span></a>
+        <div class="embed"></div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="xwall wrap" id="talk">
+  <div class="shead">
+    <div>
+      <h2>What others say on X</h2>
+      <p>Posts about treg from the people who use it.</p>
+    </div>
+  </div>
+  <div class="xcols" id="xcols" aria-label="Posts about treg on X"></div>
+</section>
+
+<section class="closer">
+  <h2>Build the next one.</h2>
+  <p>Give your agent one token and the whole catalog. Built something with treg? Tell us and we will add it here.</p>
+  <div class="ctas">
+    <a class="pill dark" href="/app" id="ctaFinal">Start building</a>
+    <a class="pill" href="https://x.com/treg_ai" target="_blank" rel="noopener">Tell us on X</a>
+  </div>
+</section>
+
+<footer class="bigfoot">
+  <div class="bigfoot-in">
+    <div class="bf-brand">
+      <span class="bfb"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+      <div class="note">100% open source</div>
+    </div>
+    <nav class="bf-cols" aria-label="Site">
+      <div class="bf-col"><div class="lab">Explore</div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><!--hosted--><a href="/gtm-engineering">GTM engineering</a><!--/hosted--><a href="/agents/claude-code">Agents</a><a href="/blog">Blog</a></div>
+      <div class="bf-col"><div class="lab">Build</div>
+        <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
+      <div class="bf-col"><div class="lab">Company</div>
+        <a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </nav>
+  </div>
+  <div class="bf-tag">© 2026 treg — OpenRouter for agent tools</div>
+</footer>
+
+<!-- sign-in modal: shown when "Start building" is clicked while signed out -->
+<div class="scrim" id="signin-scrim">
+  <div class="smodal" role="dialog" aria-modal="true" aria-label="Sign in">
+    <button class="cls" id="signinClose" aria-label="Close">✕</button>
+    <h3>Sign in to treg</h3>
+    <p>first sign-in creates your account</p>
+    <a class="pill dark" href="/auth/github" style="text-decoration:none">Continue with GitHub</a>
+    <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
+    <div class="div">or email a code</div>
+    <div id="em-step1">
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
+      <button class="pill" id="em-btn1">Email me a sign-in code</button>
+    </div>
+    <div id="em-step2" style="display:none">
+      <input id="em-code" inputmode="numeric" placeholder="6-digit code"/>
+      <button class="pill dark" id="em-btn2">Sign in</button>
+    </div>
+    <div class="err" id="em-err"></div>
+  </div>
+</div>
+
+<script>
+/* The apps are written in the HTML (#grid), so crawlers and link previews read them without running
+   this script; the fan, the tabs and the launch-post embeds all read that one list from the page.
+   Adding an app: one <article class="app"> in #grid, its <article class="post"> in #wall, its
+   ListItem in the ld+json, plus its screenshot and the maker's photo in media/showcase/. */
+var APPS = [].map.call(document.querySelectorAll('#grid .app'), function (n) {
+  return { id: n.id.replace(/^app-/, ''), name: n.querySelector('h3 .nm').textContent, kind: n.dataset.kind, node: n };
+});
+var KINDS = [['all', 'All'], ['listening', 'Social listening'], ['ads', 'Ads'], ['ops', 'Business ops'], ['data', 'Company data']];
+var MEDIA = 'media/showcase/';
+var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* PostHog through sitetrack.js's helper, which stamps the surface; inert when analytics is off */
+function track(event, props) { try { if (window.TregTracking) TregTracking.capture(event, props); } catch (e) { /* analytics must never break the page */ } }
+
+function el(tag, attrs, html) {
+  var n = document.createElement(tag);
+  for (var k in attrs) n.setAttribute(k, attrs[k]);
+  if (html != null) n.innerHTML = html;
+  return n;
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function host(u) { return u.replace(/^https?:\/\//, '').replace(/\/$/, ''); }
+
+/* ---- hero fan: positions spread evenly, centre cards on top ---- */
+(function () {
+  var fan = document.getElementById('fan'), n = APPS.length;
+  APPS.forEach(function (a, i) {
+    var t = n === 1 ? 0 : i / (n - 1) - .5;                 // -0.5 … 0.5
+    var b = el('button', { class: 'card', role: 'listitem', 'aria-label': a.name + ': jump to the app' },
+      '<span class="bar"><i></i><i></i><i></i></span><img src="' + MEDIA + a.id + '.jpg" alt="">');
+    b.style.setProperty('--i', i);
+    b.style.setProperty('--x', 'calc(' + (t * 128).toFixed(1) + 'vw * .5)');
+    b.style.setProperty('--y', (Math.pow(t * 2, 2) * 46).toFixed(0) + 'px');
+    b.style.setProperty('--r', (t * 18).toFixed(1) + 'deg');
+    b.style.zIndex = 10 - Math.round(Math.abs(t) * 10);
+    b.addEventListener('click', function () { show('all'); document.getElementById('app-' + a.id).scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' }); });
+    fan.appendChild(b);
+  });
+  requestAnimationFrame(function () { requestAnimationFrame(function () { document.getElementById('hero').classList.add('ready'); }); });
+})();
+
+/* ---- the crew: one icon per app, and every second or two one of them hops (never the same twice
+   running); about one hop in three brings a second, non-adjacent icon a beat later. Quiet while the
+   hero is off screen or the tab is hidden; still with reduced motion. ---- */
+(function () {
+  var crew = document.getElementById('crew');
+  APPS.forEach(function (a, i) {
+    var link = el('a', { href: '#app-' + a.id, 'aria-label': a.name },
+      '<img src="' + MEDIA + 'icon-' + a.id + '.png" alt="" width="36" height="36"><span class="tip" aria-hidden="true">' + esc(a.name) + '</span>');
+    link.style.setProperty('--i', i);
+    link.addEventListener('click', function () { show('all'); track('showcase_app_click', { app: a.id, target: 'hero_icon' }); });
+    link.addEventListener('animationend', function () { link.classList.remove('hop'); });
+    crew.appendChild(link);
+  });
+  if (reduced) return;
+  var icons = crew.querySelectorAll('a'), last = -1, timer = null, visible = true;
+  function jump(i) { if (!icons[i].matches(':hover')) icons[i].classList.add('hop'); }
+  function hop() {
+    var n;
+    do { n = Math.floor(Math.random() * icons.length); } while (icons.length > 1 && n === last);
+    last = n;
+    jump(n);
+    if (icons.length > 2 && Math.random() < .35) {
+      var m;
+      do { m = Math.floor(Math.random() * icons.length); } while (Math.abs(m - n) < 2);
+      setTimeout(function () { jump(m); }, 110);
+    }
+    next();
+  }
+  function next() {
+    clearTimeout(timer);
+    if (visible && !document.hidden) timer = setTimeout(hop, 800 + Math.random() * 1100);
+  }
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (es) { visible = es[0].isIntersecting; next(); }).observe(crew);
+  }
+  document.addEventListener('visibilitychange', next);
+  setTimeout(next, 1400);   // after the icons have risen in
+})();
+
+/* ---- gallery ---- */
+(function () {
+  var grid = document.getElementById('grid');
+  APPS.forEach(function (a) {
+    var art = a.node;
+    art.querySelector('.stage').addEventListener('click', function () { track('showcase_app_click', { app: a.id, target: 'site' }); });
+    art.querySelector('.launch').addEventListener('click', function () { track('showcase_app_click', { app: a.id, target: 'launch_post' }); });
+    art.querySelector('.who a').addEventListener('click', function () { track('showcase_app_click', { app: a.id, target: 'maker' }); });
+  });
+
+  /* tabs: only kinds that have an app get a tab */
+  var tabs = document.getElementById('tabs'), mark = document.getElementById('mark');
+  KINDS.forEach(function (k) {
+    if (k[0] !== 'all' && !APPS.some(function (a) { return a.kind === k[0]; })) return;
+    var b = el('button', { role: 'tab', 'aria-selected': k[0] === 'all' ? 'true' : 'false', 'data-kind': k[0] }, esc(k[1]));
+    b.addEventListener('click', function () { show(k[0]); });
+    tabs.appendChild(b);
+  });
+  function place() {
+    var on = tabs.querySelector('[aria-selected="true"]');
+    mark.style.width = on.offsetWidth + 'px';
+    mark.style.transform = 'translateX(' + on.offsetLeft + 'px)';
+  }
+  place();
+  window.addEventListener('resize', place);
+  if (document.fonts) document.fonts.ready.then(place);
+
+  var current = 'all';
+  window.show = function (kind) {
+    if (kind === current) return;
+    current = kind;
+    track('showcase_filter', { kind: kind });
+    tabs.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.kind === kind ? 'true' : 'false'); });
+    place();
+    function apply() {
+      grid.classList.toggle('filtered', kind !== 'all');
+      grid.querySelectorAll('.app').forEach(function (n) { n.hidden = kind !== 'all' && n.dataset.kind !== kind; });
+    }
+    if (document.startViewTransition && !reduced) {
+      grid.querySelectorAll('.app').forEach(function (n, i) { n.style.viewTransitionName = 'app-' + i; });
+      document.startViewTransition(apply);
+    } else apply();
+  };
+})();
+
+/* ---- launch posts: placeholders first, the real embeds load once the wall is near ---- */
+(function () {
+  var wall = document.getElementById('wall');
+
+  function embed() {
+    wall.querySelectorAll('.tweet').forEach(function (t) {
+      var slot = t.querySelector('.embed');
+      window.twttr.widgets.createTweet(t.dataset.id, slot, { dnt: true, theme: 'light', conversation: 'none', align: 'center' })
+        .then(function (node) { t.classList.add(node ? 'loaded' : 'failed'); })
+        .catch(function () { t.classList.add('failed'); });
+    });
+  }
+  /* runs once: the scroll trigger and a #post- link can both ask, and a second run embeds every
+     post a second time */
+  var started = false;
+  function load() {
+    if (started) return;
+    started = true;
+    if (window.twttr && window.twttr.widgets) return embed();
+    var s = el('script', { src: 'https://platform.twitter.com/widgets.js', async: '', charset: 'utf-8' });
+    s.onload = function () { window.twttr.ready(embed); };
+    s.onerror = function () { wall.querySelectorAll('.tweet').forEach(function (t) { t.classList.add('failed'); }); };
+    document.body.appendChild(s);
+  }
+  if (!('IntersectionObserver' in window)) { wall.classList.add('seen'); load(); return; }
+  var io = new IntersectionObserver(function (es) {
+    if (!es.some(function (e) { return e.isIntersecting; })) return;
+    io.disconnect(); wall.classList.add('seen'); load();
+  }, { rootMargin: '0px 0px -10% 0px' });
+  io.observe(wall);
+  /* a post linked from a tile must be visible when we land on it */
+  window.addEventListener('hashchange', function () { if (location.hash.indexOf('#post-') === 0) { wall.classList.add('seen'); load(); } });
+})();
+
+/* "Start building": signed in → the dashboard; signed out → the sign-in modal, without leaving
+   the page. Clicks are counted (showcase_cta_click) so we can see whether the page brings signups. */
+(function () {
+  var scrim = document.getElementById('signin-scrim');
+  function openSignin() { scrim.classList.add('open'); document.getElementById('em-input').focus(); }
+  function closeSignin() { scrim.classList.remove('open'); }
+  document.getElementById('signinClose').addEventListener('click', closeSignin);
+  scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSignin(); });
+  addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSignin(); });
+  [['ctaNav', 'nav'], ['ctaFinal', 'final']].forEach(function (pair) {
+    document.getElementById(pair[0]).addEventListener('click', function (e) {
+      track('showcase_cta_click', { cta: pair[1] });
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; /* let new-tab clicks be */
+      e.preventDefault();
+      fetch('/auth/me', { credentials: 'same-origin' }).then(function (r) {
+        if (r.ok) location.href = '/app'; else openSignin();
+      }).catch(openSignin);
+    });
+  });
+  var btn1 = document.getElementById('em-btn1'), btn2 = document.getElementById('em-btn2');
+  var input = document.getElementById('em-input'), code = document.getElementById('em-code'), err = document.getElementById('em-err');
+  btn1.addEventListener('click', emailStart);
+  input.addEventListener('keyup', function (e) { if (e.key === 'Enter') emailStart(); });
+  btn2.addEventListener('click', emailVerify);
+  code.addEventListener('keyup', function (e) { if (e.key === 'Enter') emailVerify(); });
+  function emailStart() {
+    var em = input.value.trim();
+    if (!em) { err.textContent = 'Enter your email address.'; return; }
+    if (btn1.disabled) return; btn1.disabled = true; btn1.textContent = 'Sending…'; err.textContent = '';
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (d) {
+          if (!r.ok) throw new Error(d.detail || 'could not send the code');
+          return d;
+        });
+      })
+      .then(function (d) {
+        document.getElementById('em-step1').style.display = 'none';
+        document.getElementById('em-step2').style.display = 'block';
+        if (d.dev_code) { code.value = d.dev_code; err.style.color = 'var(--green)'; err.textContent = 'dev mode — your code: ' + d.dev_code; }
+        else { err.style.color = ''; }
+        code.focus();
+      })
+      .catch(function (e2) { err.textContent = e2.message; btn1.disabled = false; btn1.textContent = 'Email me a sign-in code'; });
+  }
+  function emailVerify() {
+    if (!code.value.trim()) return;
+    btn2.textContent = 'Verifying…'; err.textContent = '';
+    fetch('/auth/email/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: input.value.trim(), code: code.value.trim() }) })
+      .then(function (r) { if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.detail || "that code didn't work"); }); location.href = '/app'; })
+      .catch(function (e2) { err.textContent = e2.message; btn2.textContent = 'Sign in'; });
+  }
+})();
+
+/* ---- the wall: a one-off snapshot of posts about treg (media/showcase/wall.json), never refetched
+   from X. Posts are dealt round-robin into columns; each column holds its cards twice so the drift
+   loops without a seam, and every column moves at the same reading speed whatever its height. ---- */
+(function () {
+  var host = document.getElementById('xcols');
+  var X_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg>';
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var posts = [], cols = 0;
+  function body(t) { return esc(t).replace(/(^|[^\w])(@\w+|treg\.to[\w\/-]*)/gi, '$1<i>$2</i>'); }
+  function card(p) {
+    var d = p.date.split('-');
+    return '<a class="xcard" href="https://x.com/' + p.handle + '/status/' + p.id + '" target="_blank" rel="noopener" data-handle="' + esc(p.handle) + '">' +
+      '<span class="row"><img src="' + MEDIA + p.photo + '" alt="" loading="lazy" width="38" height="38">' +
+      '<span><b>' + esc(p.name) + '</b><small>@' + esc(p.handle) + '</small></span>' + X_ICON + '</span>' +
+      '<p>' + body(p.text) + '</p>' +
+      '<time datetime="' + p.date + '">' + MONTHS[+d[1] - 1] + ' ' + (+d[2]) + ', ' + d[0] + '</time></a>';
+  }
+  function want() { var w = host.clientWidth; return w < 640 ? 1 : w < 860 ? 2 : w < 1100 ? 3 : 4; }
+  function build() {
+    var n = want();
+    if (n === cols || !posts.length) return;
+    cols = n;
+    host.style.setProperty('--cols', n);
+    var buckets = [];
+    for (var i = 0; i < n; i++) buckets.push([]);
+    posts.forEach(function (p, i) { buckets[i % n].push(card(p)); });
+    host.innerHTML = buckets.map(function (b, i) {
+      var cards = b.join('');
+      /* the second copy is for the loop only: hidden from screen readers and the tab order */
+      return '<div class="xcol' + (i % 2 ? ' down' : '') + '"><div class="xtrack">' + cards +
+        '<div aria-hidden="true" style="display:contents" class="dup">' + cards + '</div></div></div>';
+    }).join('');
+    host.querySelectorAll('.dup a').forEach(function (a) { a.tabIndex = -1; });
+    host.querySelectorAll('.xtrack').forEach(function (t, i) {
+      var px = t.scrollHeight / 2;
+      t.style.setProperty('--dur', Math.round(px / (26 + (i % 3) * 4)) + 's');   // ~26–34 px a second
+    });
+  }
+  host.addEventListener('click', function (e) {
+    var a = e.target.closest('.xcard');
+    if (a) track('showcase_wall_click', { handle: a.dataset.handle });
+  });
+  fetch(MEDIA + 'wall.json').then(function (r) { return r.json(); }).then(function (list) {
+    posts = list; build();
+    var t; window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(build, 150); });
+  }).catch(function () { document.getElementById('talk').hidden = true; });
+})();
+
+/* nav hairline once the page scrolls */
+(function () {
+  var nav = document.getElementById('nav');
+  function f() { nav.classList.toggle('scrolled', window.scrollY > 8); }
+  window.addEventListener('scroll', f, { passive: true }); f();
+})();
+</script>
+<script src="/sitetrack.js"></script>
+<script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
+</body>
+</html>

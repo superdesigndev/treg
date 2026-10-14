@@ -1,0 +1,80 @@
+{
+  "search_metadata": {
+    "id": "40662b69726e1f48791ff63e",
+    "status": "Success",
+    "created_at": "2026-09-29T13:58:55.218979+00:00",
+    "processed_at": "2026-09-29T13:58:56.598675+00:00",
+    "json_endpoint": "https://api.litescrape.com/api/google/play/movies?hl=en&gl=us&q=Dune",
+    "google_play_url": "https://play.google.com/store/search?hl=en&gl=us&q=Dune&c=movies",
+    "total_time_taken": 1.38
+  },
+  "search_parameters": {
+    "hl": "en",
+    "gl": "us",
+    "q": "Dune"
+  },
+  "organic_results": [
+    {
+      "title": "Movies",
+      "see_more_link": "https://play.google.com/store/movies/collection/cluster?clp=igIMCgREdW5lEAYYASAB:S:ANO1ljL_SPo&gsr=Cg-KAgwKBER1bmUQBhgBIAE%3D:S:ANO1ljIOXvA",
+      "items": [
+        {
+          "title": "Dune",
+          "link": "https://play.google.com/store/movies/details/Dune?id=TyMZAc6Wbjo",
+          "product_id": "TyMZAc6Wbjo",
+          "rating": 4.41571,
+          "category": "Sci-fi & fantasy",
+          "thumbnail": "https://play-lh.googleusercontent.com/7zwFBMZPx3mwRQhBf1TV1FoE7dG8Tlfx3ck9QUGEHyhEHUDYKVJeRBT6kUratWVqrkFTyw",
+          "description": "The long-awaited film version of Frank Herbert's classic science fiction epic, Dune, explodes on the screen with dazzling special effects, unforgettable images …",
+          "video": "https://www.youtube.com/embed/ChA0qNHV1D4?vq=large&rel=0&autohide=1&showinfo=0",
+          "content_rating": "PG-13",
+          "price": "$3.99",
+          "extracted_price": 3.99,
+          "currency": "USD"
+        },
+        {
+          "title": "Dune 2-Film Collection",
+          "link": "https://play.google.com/store/movies/details/Dune_2_Film_Collection?id=3kZgt4zPUQM.P",
+          "product_id": "3kZgt4zPUQM.P",
+          "rating": 1.8125,
+          "category": "Sci-fi & fantasy",
+          "thumbnail": "https://play-lh.googleusercontent.com/KnSrgKY-OqjdD8kfsLiLoEoBxSqL8UTJGITbzUHyuP02aj8YihroGNUeI9dak4cYME1HeofctQQ223GlnSc",
+          "description": "Dune: A mythic and emotionally charged hero’s journey, “Dune” tells the story of Paul Atreides, a brilliant and gifted young man born into a great destiny beyon…",
+          "content_rating": "PG-13",
+          "price": "$26.99",
+          "extracted_price": 26.99,
+          "currency": "USD"
+        }
+      ],
+      "litescrape_next_link": "https://api.litescrape.com/api/google/play/movies?hl=en&gl=us&q=Dune&section_page_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJtb3ZpZXMiLCJjb250ZXh0Ijp7ImhsIjoiZW4iLCJnbCI6…",
+      "section_page_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJtb3ZpZXMiLCJjb250ZXh0Ijp7ImhsIjoiZW4iLCJnbCI6InVzIiwicSI6IkR1bmUifSwia2luZCI6InNlY3Rpb24iLCJ0b2tlbiI6IkNnajZub0dkQXdJSUZCQVVHZy1LQWd3S0JFUjFibVVRQmhnQklBRWdBRG9PQ2dZS0JFUjFibVVRQUJnQklBUSJ9",
+      "see_more_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJtb3ZpZXMiLCJjb250ZXh0Ijp7ImhsIjoiZW4iLCJnbCI6InVzIiwicSI6IkR1bmUifSwia2luZCI6ImNvbGxlY3Rpb24iLCJ0b2tlbiI6IkNnLUtBZ3dLQkVSMWJtVVFCaGdCSUFFPTpTOkFOTzFsaklPWHZBIn0",
+      "litescrape_see_more_link": "https://api.litescrape.com/api/google/play/movies?hl=en&gl=us&q=Dune&see_more_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJtb3ZpZXMiLCJjb250ZXh0Ijp7ImhsIjoiZW4iLCJnbCI6InVzIiwicSI6IkR1bmUifSwia2luZCI6ImNvbGxlY3Rpb24iLCJ0b2tlbiI6IkNnLUtBZ3dLQkVSMWJtVVFCaGdCSUFFPTpTOkFOTzFsaklPWHZBIn0"
+    },
+    {
+      "title": "TV shows",
+      "see_more_link": "https://play.google.com/store/movies/collection/cluster?clp=igIMCgREdW5lEBIYASAB:S:ANO1ljKKsF8&gsr=Cg-KAgwKBER1bmUQEhgBIAE%3D:S:ANO1ljI16QY",
+      "items": [
+        {
+          "title": "Dune: Prophecy",
+          "link": "https://play.google.com/store/tv/show/Dune_Prophecy?id=dfG5FqYlZhc.P",
+          "product_id": "dfG5FqYlZhc.P",
+          "category": "Action & adventure",
+          "thumbnail": "https://play-lh.googleusercontent.com/BKM3d12ZmoqbHkDcYpkxrGYTKhk1URUEwTlXVRWGC--cpqZagilIAw51QyMOSo7nAMHMjMA11WzeT5vU0rAg"
+        },
+        {
+          "title": "Lady of the Dunes: Hunting a Cape Cod Killer",
+          "link": "https://play.google.com/store/tv/show/Lady_of_the_Dunes_Hunting_a_Cape_Cod_Killer?id=i2YtbASu6zc.P",
+          "product_id": "i2YtbASu6zc.P",
+          "category": "Documentary",
+          "thumbnail": "https://play-lh.googleusercontent.com/HdC_0UUdpeHxov6hGFKOxNzTA29n0LIcri_-wp-RcQAe5aiFcQaFUD716njAZ6EuDyv4wkPV0bidqxoxk4Nx"
+        }
+      ],
+      "see_more_token": "eyJ2IjoxLCJvcGVyYXRpb24iOiJtb3ZpZXMiLCJjb250ZXh0Ijp7ImhsIjoiZW4iLCJnbCI6InVzIiwicSI6IkR1bmUifSwia2luZCI6ImNvbGxlY3Rpb24iLCJ0b2tlbiI6IkNnLUtBZ3dLQkVSMWJtVVFFaGdCSUFFPTpTOkFOTzFsakkxNlFZIn0",
+      "litescrape_see_more_link": "https://api.litescrape.com/api/google/play/movies?hl=en&gl=us&q=Dune&see_more_token=eyJ2IjoxLCJvcGVyYXRpb24iOiJtb3ZpZXMiLCJjb250ZXh0Ijp7ImhsIjoiZW4iLCJnbCI6InVzIiwicSI6IkR1bmUifSwia2luZCI6ImNvbGxlY3Rpb24iLCJ0b2tlbiI6IkNnLUtBZ3dLQkVSMWJtVVFFaGdCSUFFPTpTOkFOTzFsakkxNlFZIn0"
+    }
+  ],
+  "litescrape_pagination": {
+    "current": "https://api.litescrape.com/api/google/play/movies?hl=en&gl=us&q=Dune"
+  }
+}

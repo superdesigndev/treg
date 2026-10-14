@@ -1,0 +1,18 @@
+[
+ {
+  "output": {
+   "name": "Linear",
+   "domain": "linear.app",
+   "industry": "computer-software",
+   "description": "Linear helps streamline software projects, sprints, tasks, and bug tracking.",
+   "employees": "1-10",
+   "founded": 2019,
+   "location": "San Francisco United States"
+  },
+  "raw": {
+   "descriptions": {
+    "tagline": "A better way to build products"
+   }
+  }
+ }
+]

@@ -1,0 +1,123 @@
+{
+  "success": true,
+  "result": {
+    "text": "A stock split is when a company increases the number of its outstanding shares by issuing more shares to existing shareholders in a predefined ratio (for example, 2-for-1 or 3-for-1). This usually lowers the price per share without changing the company’s total market value.\n\nKey points:\n- Purpose: To make shares more affordable and improve liquidity, not to change the company’s intrinsic value.\n- How it works: If you own 1 share at $100 and the company does a 2-for-1 split, you receive 2 shares … [977 chars total]",
+    "sources": [
+      {
+        "position": 1,
+        "label": "Stock Splits",
+        "url": "https://www.finra.org/investors/investing/investment-products/stocks/stock-splits",
+        "description": "There are many ways you can slice a pie and reasons why you might want to serve larger or smaller pieces, but if you go too big, the size of a piece can become overwhelming. Sometimes, the same could be said of stocks.When a stock price gets high, sometimes a public company will want to lower that price and can do that with a stock split.A stock split is a decision by a company’s board to increase the number of outstanding shares in the company by issuing new shares to existing shareholders in..… [501 chars total]"
+      },
+      {
+        "position": 2,
+        "label": "What a Stock Split Is, Why Companies Do It, and How ...",
+        "url": "https://www.investopedia.com/terms/s/stocksplit.asp",
+        "description": "A stock split happens when a company increases the number of its outstanding shares of stock to boost the stock's liquidity."
+      },
+      "… 8 more item(s) truncated"
+    ],
+    "citationPills": [],
+    "shopping_cards": [],
+    "related_queries": [],
+    "markdown": "A stock split is when a company increases the number of its outstanding shares by issuing more shares to existing shareholders in a predefined ratio (for example, 2-for-1 or 3-for-1). This usually lowers the price per share without changing the company’s total market value.\n\nKey points:\n- Purpose: To make shares more affordable and improve liquidity, not to change the company’s intrinsic value.\n- How it works: If you own 1 share at $100 and the company does a 2-for-1 split, you receive 2 shares … [977 chars total]",
+    "rawResponse": [
+      {
+        "backend_uuid": "0d092505-1eb4-4b63-a59b-9c967d9859a8",
+        "context_uuid": "b7f2a082-58e9-4882-be24-4c989d795004",
+        "uuid": "d5b3d4fb-6f34-4ac0-9adc-4baadbfd6f5c",
+        "frontend_context_uuid": "84cc3ebc-e1f8-42b3-b26c-61aea38ee691",
+        "display_model": "turbo",
+        "mode": "CONCISE",
+        "search_focus": "internet",
+        "source": "ios",
+        "thread_url_slug": "0d092505-1eb4-4b63-a59b-9c967d9859a8",
+        "expect_search_results": "false",
+        "gpt4": false,
+        "text_completed": false,
+        "blocks": [
+          {
+            "intended_usage": "pro_search_steps",
+            "plan_block": {
+              "progress": "IN_PROGRESS",
+              "goals": [],
+              "steps": [
+                {
+                  "uuid": "",
+                  "step_type": "INITIAL_QUERY",
+                  "initial_query_content": {
+                    "query": "what is a stock split"
+                  }
+                }
+              ],
+              "final": false
+            }
+          },
+          {
+            "intended_usage": "pending_followups",
+            "pending_followups_block": {
+              "followups": []
+            }
+          }
+        ],
+        "message_mode": "STREAMING",
+        "answer_modes": [],
+        "reconnectable": true,
+        "cursor": "06a9e57e-205e-79bf-8000-920a82f559c4",
+        "search_mode": "SEARCH",
+        "status": "PENDING",
+        "final_sse_message": false
+      },
+      {
+        "backend_uuid": "0d092505-1eb4-4b63-a59b-9c967d9859a8",
+        "context_uuid": "b7f2a082-58e9-4882-be24-4c989d795004",
+        "uuid": "d5b3d4fb-6f34-4ac0-9adc-4baadbfd6f5c",
+        "frontend_context_uuid": "84cc3ebc-e1f8-42b3-b26c-61aea38ee691",
+        "display_model": "turbo",
+        "mode": "CONCISE",
+        "search_focus": "internet",
+        "source": "ios",
+        "thread_url_slug": "0d092505-1eb4-4b63-a59b-9c967d9859a8",
+        "expect_search_results": "false",
+        "gpt4": false,
+        "text_completed": false,
+        "blocks": [
+          {
+            "intended_usage": "answer_tabs",
+            "diff_block": {
+              "field": "answer_tabs_block",
+              "patches": [
+                {
+                  "op": "replace",
+                  "path": "",
+                  "value": {
+                    "modes": [
+                      {
+                        "answer_mode_type": "ANSWER"
+                      },
+                      {
+                        "answer_mode_type": "SOURCES"
+                      },
+                      "… 1 more item(s) truncated"
+                    ],
+                    "reformulated_queries": []
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "message_mode": "STREAMING",
+        "answer_modes": [],
+        "reconnectable": true,
+        "cursor": "06a9e57e-21ad-7de2-8000-ef148010388b",
+        "query_language": "en",
+        "search_mode": "SEARCH",
+        "status": "PENDING",
+        "final_sse_message": false
+      },
+      "… 67 more item(s) truncated"
+    ],
+    "html": "https://cdn.cloro.dev/results/202dd548-1065-4f7f-b1a4-e619e8d16403/page-1.html"
+  }
+}

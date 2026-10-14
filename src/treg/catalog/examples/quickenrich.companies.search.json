@@ -1,0 +1,44 @@
+{
+  "success": true,
+  "message": "Companies fetched",
+  "code": 200,
+  "data": [
+    {
+      "company_name": "Stripe",
+      "url": "stripe.com",
+      "email_domain": "stripe.com",
+      "final_email_domain": "stripe.com",
+      "home_page_email": null,
+      "phone": "+16504279276",
+      "linkedin_url": "http://www.linkedin.com/company/stripe",
+      "city": "South San Francisco",
+      "region_code": "CA",
+      "country_code": "US",
+      "industry": "Technology, Information and Internet",
+      "employee_count": ">10000",
+      "revenue": ">1 Billion",
+      "services": [
+        "Billing Solutions",
+        "Card Issuing Programs",
+        "Corporate office",
+        "Financial Services",
+        "Payment Processing",
+        "Revenue Management Tools"
+      ],
+      "service_count": 6,
+      "home_page_text_snippet": "Products Solutions Developers Resources Pricing Sign in Start nowContact sales Back Sign inSign in Contact sales Global GDP running on Stripe: Financial infrastructure to grow your revenue. Accept pay\u2026",
+      "bio_li_snippet": "Stripe builds programmable financial services. Millions of companies\u2014from the world\u2019s largest enterprises to the most ambitious startups\u2014use Stripe to accept payments, grow their revenue, and accelera\u2026"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "per_page": 1,
+    "total": 1,
+    "last_page": 1,
+    "credits_used": 1,
+    "next_cursor": null,
+    "has_more": false,
+    "max_pages": 5,
+    "remaining_credits": 289
+  }
+}

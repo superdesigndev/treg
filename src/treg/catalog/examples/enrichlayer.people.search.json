@@ -1,0 +1,11 @@
+{
+  "results": [
+    {
+      "linkedin_profile_url": "https://example.com/profile/example",
+      "profile": null,
+      "last_updated": null
+    }
+  ],
+  "next_page": "https://example.com/profile/example",
+  "total_result_count": 1
+}

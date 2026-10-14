@@ -1,0 +1,32 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "city": "Wichita, Kansas",
+      "coverPhotoUrl": "https://scontent-sjc6-1.xx.fbcdn.net/v/t39.30808-6/570154625_122237652734251216_7108892451437434978_n.jpg?_nc_cat=102&ccb=1-7&_nc_sid=75d36f&_nc_ohc=Mcs_kf3FM2oQ7kNvwE8Ed6w&_nc_oc=Adpejp_X4kM1O3ts-klj… [392 chars]",
+      "dayTimeSentence": "Oct 31 at 10:00 AM – Nov 1 at 5:00 PM CST",
+      "description": "Kansas Comic Con is back! Join us Saturday, October 31st and Sunday, November 1st 2026 For two full days of celebs, creators & artists, vendors, fan groups, Q&As, fan panels, cosplay, and more!",
+      "endTime": "",
+      "goingCount": 170,
+      "id": "4045709448982422",
+      "interestedCount": 1816,
+      "isCanceled": false,
+      "isOnline": false,
+      "locationName": "Century II Performing Arts & Convention Center",
+      "name": "Kansas Comic Con 2026",
+      "startTime": "",
+      "url": "https://www.facebook.com/events/4045709448982422/"
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "ffc8b122-1422-432c-8b75-595c415cbf59"
+}

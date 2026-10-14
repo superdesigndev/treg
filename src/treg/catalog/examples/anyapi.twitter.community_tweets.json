@@ -1,0 +1,31 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "tweets": [
+        {
+          "authorHandle": "AIinPeak",
+          "createdUtc": 1789715676,
+          "favoriteCount": 1,
+          "id": "2100845932447514877",
+          "quoteCount": 0,
+          "replyCount": 1,
+          "retweetCount": 0,
+          "text": "BREAKING: the big AI labs just stopped building \"one AI that knows everything\" and started building AI that has an actual job.\n\nLawyer AI. Banker AI. Background -working AI. Local AI that runs on your… [282 chars]"
+        },
+        "… 18 more item(s) truncated"
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0005,
+  "items": 19,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-lynx",
+    "name": "Lynx",
+    "kind": "anonymous",
+    "artworkKey": "lynx"
+  },
+  "resultId": "e0e2195d-57e1-4b98-9b08-083ed6c25a93"
+}

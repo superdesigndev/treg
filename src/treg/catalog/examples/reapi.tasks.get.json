@@ -1,0 +1,15 @@
+{
+  "id": "task_01a09ddf13f8745c85ee3aaea0529e2a",
+  "model": "gemini-3-pro-image-preview",
+  "status": "completed",
+  "created_at": 1789355037,
+  "output": {
+    "image_urls": [
+      "https://file.deepytb.com/reapi-slave2/tasks/task_01a09ddf13f8745c85ee3aaea0529e2a/0.jpg"
+    ]
+  },
+  "usage": {
+    "credits": 30
+  },
+  "error": null
+}

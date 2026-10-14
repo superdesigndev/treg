@@ -5,11 +5,67 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Treg Support</title>
 <meta name="description" content="How to get help with treg — the tool catalog for your agent."/>
+<!-- One page answers /support, /contact and /help. The canonical collapses all three into one URL
+     so they cannot compete with each other in search. -->
+<link rel="canonical" href="{BASE}/support"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Pixel&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/legal.css"/>
+
+<!-- FAQPage over section 02 below. The five questions and answers here are the ones ON the page,
+     copied from it — Google treats FAQ schema that does not match the visible text as a violation,
+     so if you edit a question in the body, edit it here in the same commit. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "url": "{BASE}/support",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "I cannot sign in.",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "treg has three doors: GitHub, Google, and a one-time code sent to your email. If a code does not arrive, check spam for mail from no-reply@treg.to. Signing in for the first time creates the account — there is no separate registration."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "A call was refused for funds.",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Catalog endpoints that treg serves on its own key are metered against your team's prepaid balance. Run `treg balance` to see it, and `treg topup` to add more. A new team starts with $1.00 free, and there is a default ceiling of $5 per team per day so a runaway agent cannot spend without limit."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "I want my API keys removed.",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Deleting a tool or a secret in the dashboard removes the stored credential. To delete an entire team and everything in it, use `treg org delete <slug>`. If you would rather we did it, email us from the address on the account."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Something is charging more than I expected.",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Every metered call is recorded with what it cost. `treg balance` shows the ledger. If a price looks wrong, tell us the endpoint id and we will check it against the provider's own rate — the catalog's prices are read from provider rate cards and from what we observe being charged, and both can drift."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is my data used for anything else?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Credentials are encrypted at rest and used only to make the calls you or your team ask for. The privacy policy is the full answer."
+      }
+    }
+  ]
+}
+</script>
 </head>
 <body>
 
@@ -53,7 +109,7 @@
   <h2 class="sec" id="s2"><span class="n">02</span>Common things</h2>
 
   <p><b>I cannot sign in.</b> treg has three doors: GitHub, Google, and a one-time code sent to your
-  email. If a code does not arrive, check spam for mail from <code>no-reply@treg.superdesign.dev</code>.
+  email. If a code does not arrive, check spam for mail from <code>no-reply@treg.to</code>.
   Signing in for the first time creates the account — there is no separate registration.</p>
 
   <p><b>A call was refused for funds.</b> Catalog endpoints that treg serves on its own key are
@@ -84,7 +140,7 @@
 
   <h2 class="sec" id="s4"><span class="n">04</span>Self-hosted installations</h2>
   <p>treg is open source, and you can run your own registry with
-  <code>curl -fsSL https://treg.superdesign.dev/selfhost.sh | sh</code>. We are happy to help through
+  <code>curl -fsSL https://treg.to/selfhost.sh | sh</code>. We are happy to help through
   <a href="https://github.com/superdesigndev/treg/issues" target="_blank" rel="noopener">GitHub
   issues</a>, but we have no access to your deployment and cannot see its data — so please include
   logs and versions rather than asking us to look.</p>
@@ -93,7 +149,7 @@
   <p><b>Superdesign</b><br/>
   Email: <a href="mailto:jason@superdesign.dev">jason@superdesign.dev</a><br/>
   Issues: <a href="https://github.com/superdesigndev/treg/issues" target="_blank" rel="noopener">github.com/superdesigndev/treg/issues</a><br/>
-  Service: <a href="https://treg.superdesign.dev">treg.superdesign.dev</a></p>
+  Service: <a href="https://treg.to">treg.to</a></p>
 
 </div>
 
@@ -128,6 +184,19 @@ const io = new IntersectionObserver(entries => {
   links.forEach(a => a.classList.toggle('on', a === byId.get(first)));
 }, {rootMargin: '-72px 0px -70% 0px'});
 document.querySelectorAll('h2.sec').forEach(h => io.observe(h));
+
+// Support chat (Intercom), anonymous visitor mode — loads ONLY when this deployment configured an
+// app id (/meta.intercom_app_id); self-hosted instances serve "" and nothing loads.
+(function(){
+  fetch('/meta').then(function(r){return r.json();}).then(function(m){
+    var app=m&&m.intercom_app_id; if(!app) return;
+    window.intercomSettings={app_id:app};
+    var i=function(){i.c(arguments)}; i.q=[]; i.c=function(a){i.q.push(a)};
+    if(!window.Intercom) window.Intercom=i;
+    var s=document.createElement('script'); s.async=true;
+    s.src='https://widget.intercom.io/widget/'+app; document.head.appendChild(s);  // loader auto-boots from intercomSettings
+  }).catch(function(){});
+})();
 </script>
 
 </body>

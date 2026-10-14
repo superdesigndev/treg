@@ -31,12 +31,13 @@ source:
 pricing_url: https://business-api.tiktok.com/portal/docs
 endpoints:
   - id: tiktok-ads.accounts
+    added: '2026-07-28'
     capability: tiktok-ads.accounts
     platform: tiktok-ads
     scope: own_account
     method: GET
     path: /oauth2/advertiser/get/
-    name: "List ad accounts"
+    name: "TikTok ad accounts this connection manages"
     summary: "List the TikTok ad accounts this connection can manage"
     input:
       queryParams:
@@ -47,12 +48,13 @@ endpoints:
     docs_url: https://business-api.tiktok.com/portal/docs?id=1738455508553729
 
   - id: tiktok-ads.query
+    added: '2026-07-28'
     capability: tiktok-ads.query
     platform: tiktok-ads
     scope: own_account
     method: GET
     path: /report/integrated/get/
-    name: "Get ad performance metrics"
+    name: "Your TikTok ads' spend, impressions, clicks, conversions"
     summary: "Get spend, impressions, clicks and conversions for your TikTok ads"
     input:
       queryParams:
@@ -74,12 +76,13 @@ endpoints:
     docs_url: https://business-api.tiktok.com/portal/docs?id=1740302848100353
 
   - id: tiktok-ads.campaigns
+    added: '2026-07-28'
     capability: tiktok-ads.campaigns
     platform: tiktok-ads
     scope: own_account
     method: GET
     path: /campaign/get/
-    name: "List ad campaigns"
+    name: "Campaigns in your TikTok ad account — status, budget"
     summary: "List the campaigns in your TikTok ad account with objective, status and budget"
     input:
       queryParams:
@@ -93,12 +96,13 @@ endpoints:
     docs_url: https://business-api.tiktok.com/portal/docs?id=1739315828649986
 
   - id: tiktok-ads.adgroups
+    added: '2026-07-28'
     capability: tiktok-ads.adgroups
     platform: tiktok-ads
     scope: own_account
     method: GET
     path: /adgroup/get/
-    name: "List ad groups"
+    name: "Ad groups in your TikTok ad account — bid, targeting"
     summary: "List the ad groups in your TikTok ad account with targeting, bid and schedule"
     input:
       queryParams:
@@ -112,12 +116,13 @@ endpoints:
     docs_url: https://business-api.tiktok.com/portal/docs?id=1739314558673922
 
   - id: tiktok-ads.ads
+    added: '2026-07-28'
     capability: tiktok-ads.ads
     platform: tiktok-ads
     scope: own_account
     method: GET
     path: /ad/get/
-    name: "List ads with creatives"
+    name: "Ads in your TikTok ad account, with creatives"
     summary: "List the ads in your TikTok ad account with their creatives and landing pages"
     input:
       queryParams:

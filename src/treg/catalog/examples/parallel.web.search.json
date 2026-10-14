@@ -1,0 +1,30 @@
+{
+  "search_id": "search_d3c71b3b78cae2883ad8c1023d0e31b1",
+  "results": [
+    {
+      "url": "https://pypi.python.org/pypi/requests",
+      "title": "requests · PyPI",
+      "publish_date": null,
+      "excerpts": [
+        "* Python :: 3.13\n* Python :: 3.14\n* Python :: 3.15\n* Python :: Free Threading :: 2 - Beta\n* Python :: Implementation :: CPython\n* Python :: Implementation :: PyPy\n* Topic\n* Internet :: WWW/HTTP\n* Software Development :: Libraries\nReport project as malware\n* Project description\n* Project details\n* …"
+      ]
+    },
+    {
+      "url": "https://pypi.org/project/requests/2.5.2",
+      "title": "requests · PyPI",
+      "publish_date": null,
+      "excerpts": [
+        "* Description\n* Release files\n* Release history\nhttps://img.shields.io/pypi/v/requests.svg https://img.shields.io/pypi/dm/requests.svg\nRequests is an Apache2 Licensed HTTP library, written in Python, for human beings.\nMost existing Python modules for sending HTTP requests are extremely verbose and …"
+      ]
+    }
+  ],
+  "warnings": null,
+  "usage": [
+    {
+      "name": "sku_search",
+      "count": 1
+    }
+  ],
+  "metadata": null,
+  "session_id": "session_d3c71b3b78cae2883ad8c1023d0e31b1"
+}

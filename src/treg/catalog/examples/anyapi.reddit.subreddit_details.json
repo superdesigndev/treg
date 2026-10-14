@@ -1,0 +1,25 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "advertiserCategory": null,
+      "createdUtc": 1141150769,
+      "description": "Computer Programming",
+      "iconUrl": "https://styles.redditmedia.com/t5_2fwo/styles/communityIcon_1bqa1ibfp8q11.png?width=64&frame=1&auto=webp&s=2545f3c0332e412c8635f5f2a5868c0e857ef040",
+      "id": "t5_2fwo",
+      "name": "programming",
+      "weeklyActiveUsers": null
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.00038,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-bison-9321fc54",
+    "name": "Bison",
+    "kind": "anonymous",
+    "artworkKey": "bison"
+  },
+  "resultId": "8569cc76-d54d-4245-b496-5f2ec9a024e1"
+}

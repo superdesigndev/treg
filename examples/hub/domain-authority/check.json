@@ -1,0 +1,1 @@
+{ "inputs": { "domain": "stripe.com" }, "fields": ["verdict", "report", "top_linking_domains", "summary"] }

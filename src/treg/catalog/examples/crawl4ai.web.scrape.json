@@ -1,0 +1,23 @@
+{
+  "bytes": 2373,
+  "cache": "archive",
+  "content_hash": "351cd22b2ce0970b10890dcca83951f04d7e52860450bcf13d434ec40a81fb83",
+  "engine": "archive",
+  "fell_back": false,
+  "markdown": "This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.\n\nهذا النطاق مُخصص للاستخدام في أمثلة التوثيق دون الحاجة إلى إذن. هذه ليست خدمة، يُرجى تجنب الاعتماد عليها لأغراض الاختبار والمراقبة.\n\n该域名仅用于文档示例，无需获得许可。这并非一项服务，请勿将其用于测试和监控目的。\n\nL’usage de ce domaine est réservé à des exemples de documentation, sans autorisation préalable. Il ne s’agit pas d’un service ; son utilisation à des fins de test ou de surveillance est à éviter.\n\nДанный домен предназначен для использования в примерах документации без необходимости получения предварительного разрешения. Это не сервис; не рекомендуется его использование для тестирования и мониторинга.\n\nEste dominio está destinado al uso en ejemplos de documentación sin necesidad de permiso. Esto no es un servicio; evitar utilizarlo para realizar pruebas o monitoreos.\n\n[Learn more](https://iana.org/help/example-domains)",
+  "ms": 3,
+  "ok": true,
+  "reason": "archive",
+  "text_len": 958,
+  "usage": {
+    "boxes": [
+      "crawl"
+    ],
+    "remaining_before": {
+      "concurrent": 9,
+      "requests": 29,
+      "search": 120
+    },
+    "units": 1
+  }
+}

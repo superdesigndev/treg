@@ -19,7 +19,7 @@ handing the credential around. That shipped, and it still works exactly as writt
 "share what we already have", and the product now leads with a different question: **"get what you
 don't have."**
 
-treg carries ~2,600 catalogued endpoints across ~40 providers (SEO, backlinks, social, enrichment,
+treg carries a curated catalog of endpoints from many providers (SEO, backlinks, social, enrichment,
 ads, scraping) and serves eligible ones **on its own key**, metered per call from a prepaid balance.
 The pitch is *"OpenRouter, but for agent tools instead of models"* and *"ask for the task, not the
 tool"* — because the tools an agent needs sit behind subscriptions nobody buys for one run.
@@ -31,12 +31,12 @@ What this means for anyone reading this fragment:
 | The two halves | **the catalog** (public, metered) and **your own tools** (yours, never metered) |
 | Which wins | your own credential always beats treg's, automatically |
 | The words we use | `tool` · `the catalog` · `your own tools`. **Not** "vault", "marketplace", or "registry" for either half — `registry` now means only the server/deployment |
-| Not built yet | automatic routing or failover between providers of one capability. `treg catalog search` compares them; **choosing is the caller's** |
+| Not built | automatic routing or failover **between providers** of one capability. `treg catalog search` compares them; **choosing is the caller's**. What treg *may* do (when a deployment turns it on, [capacity](../ops/capacity.md)): if its **own** account for a provider is out, serve the **same endpoint** through a relay — same request, same response shape, the relay's real price, disclosed via `X-Treg-Served-Via`; a team can opt out. **First-party routed endpoints** (`treg.<capability>`, generated from verified adapters) are the explicit opt-in where the caller asks treg to choose among providers; each always names the child that served and returns its raw body ([catalog](../architecture/catalog.md) § Routing) |
 
 Money and metering: [money](../architecture/money.md). The endpoint data and its pricing rules:
 [catalog](../architecture/catalog.md).
 
-> **Status:** shipped and live on `treg.superdesign.dev` (Render, multi-tenant). This fragment records
+> **Status:** shipped and live on `treg.to` (Render, multi-tenant; `treg.superdesign.dev` is the legacy alias). This fragment records
 > the ORIGINAL vision from the 2026-06-30 kickoff and the "why" behind the proxy; the shipped detail
 > lives in the architecture/interface fragments.
 >

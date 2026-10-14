@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": [
+      "module: youtube-channel-videos: Veritasium (UCHnyfMqiRRG1u-2MsSQLbXA) · 15 videos"
+    ]
+  },
+  "recipe": "youtube-channel-videos",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 155,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 3,
+  "rows": [
+    {
+      "description": null,
+      "published": "10 days ago",
+      "thumbnail": "https://i.ytimg.com/vi/ONAuUyml0yI/hqdefault.jpg",
+      "title": "We're trying something new...",
+      "url": "https://www.youtube.com/watch?v=ONAuUyml0yI",
+      "video_id": "ONAuUyml0yI",
+      "views": 1284476
+    },
+    {
+      "description": null,
+      "published": "2 weeks ago",
+      "thumbnail": "https://i.ytimg.com/vi/JsBZOcqZerk/hqdefault.jpg",
+      "title": "The Insane Real Engineering of the Nazi Enigma Machine",
+      "url": "https://www.youtube.com/watch?v=JsBZOcqZerk",
+      "video_id": "JsBZOcqZerk",
+      "views": 18256705
+    }
+  ]
+}

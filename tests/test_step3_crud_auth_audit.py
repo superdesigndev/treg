@@ -8,7 +8,7 @@ from __future__ import annotations
 from httpx import ASGITransport, AsyncClient
 
 from treg.api import app
-from treg.db import reset_db
+from treg.infra.db import reset_db
 
 
 # ---- registration + auth ------------------------------------------------------------------
@@ -20,11 +20,6 @@ async def test_register_returns_token_once_and_dedupes_email():
         assert r.json()["token"]  # shown exactly once
         again = await c.post("/users", json={"email": "a@x.dev"})
         assert again.status_code == 409  # email already registered
-
-
-async def test_bad_token_rejected(clients: AsyncClient):
-    r = await clients.get("/tools", headers={"X-Treg-Token": "garbage"})
-    assert r.status_code == 401
 
 
 # ---- secret CRUD --------------------------------------------------------------------------

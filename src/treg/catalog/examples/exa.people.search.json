@@ -1,0 +1,136 @@
+{
+  "requestId": "00000000000000000000000000000000",
+  "resolvedSearchType": "",
+  "results": [
+    {
+      "id": "https://exa.ai/library/person/example1",
+      "title": "Jane Doe",
+      "url": "https://www.linkedin.com/in/jane-doe-example",
+      "author": "Exa",
+      "image": "https://static.licdn.com/example.jpg",
+      "entities": [
+        {
+          "id": "https://exa.ai/library/person/example1",
+          "type": "person",
+          "version": 1,
+          "properties": {
+            "name": "Jane Doe",
+            "firstName": "Jane",
+            "lastName": "Doe",
+            "location": "Berlin, Berlin, Germany",
+            "workHistory": [
+              {
+                "title": "Head of Information Security",
+                "location": "Berlin, Germany",
+                "dates": {
+                  "from": "2025-04-01",
+                  "to": null
+                },
+                "company": {
+                  "id": "https://exa.ai/library/organization/example",
+                  "name": "Example Fintech GmbH"
+                }
+              },
+              {
+                "title": "Chief Information Security Officer",
+                "location": "Berlin, Germany",
+                "dates": {
+                  "from": "2022-12-01",
+                  "to": "2025-04-01"
+                },
+                "company": {
+                  "id": "https://exa.ai/library/organization/example",
+                  "name": "Example Fintech GmbH"
+                }
+              },
+              "… 5 more item(s) truncated"
+            ],
+            "educationHistory": [
+              {
+                "degree": "MSc Computer Science",
+                "dates": {
+                  "from": "2007",
+                  "to": "2012"
+                },
+                "institution": {
+                  "id": "https://exa.ai/library/organization/example-university",
+                  "name": "Example University"
+                }
+              }
+            ],
+            "research": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "https://exa.ai/library/person/example2",
+      "title": "John Smith",
+      "url": "https://www.linkedin.com/in/john-smith-example",
+      "author": "Exa",
+      "image": "https://static.licdn.com/example.jpg",
+      "entities": [
+        {
+          "id": "https://exa.ai/library/person/example2",
+          "type": "person",
+          "version": 1,
+          "properties": {
+            "name": "John Smith",
+            "firstName": "John",
+            "lastName": "Smith",
+            "location": "Berlin, Berlin, Germany",
+            "workHistory": [
+              {
+                "title": "Head of Security & IT",
+                "location": "Berlin, Germany",
+                "dates": {
+                  "from": "2026-01-01",
+                  "to": null
+                },
+                "company": {
+                  "id": "https://exa.ai/library/organization/example",
+                  "name": "Example Fintech GmbH"
+                }
+              },
+              {
+                "title": "Security Engineering Lead",
+                "location": null,
+                "dates": {
+                  "from": "2024-01-01",
+                  "to": "2025-12-01"
+                },
+                "company": {
+                  "id": "https://exa.ai/library/organization/example",
+                  "name": "Example Fintech GmbH"
+                }
+              },
+              "… 10 more item(s) truncated"
+            ],
+            "educationHistory": [
+              {
+                "degree": "MSc Computer Science",
+                "dates": {
+                  "from": "2012",
+                  "to": "2014"
+                },
+                "institution": {
+                  "id": "https://exa.ai/library/organization/example-university",
+                  "name": "Example University"
+                }
+              }
+            ],
+            "research": null
+          }
+        }
+      ]
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "searchTime": 1530.2,
+  "costDollars": {
+    "total": 0.007,
+    "search": {
+      "neural": 0.007
+    }
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 0,
+    "from_cache": true,
+    "llm_calls": 0,
+    "pages_fetched": 0,
+    "partial": false,
+    "warnings": []
+  },
+  "recipe": "airbnb-listing",
+  "usage": {
+    "boxes": [
+      "gate"
+    ],
+    "cache": "hit",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 198,
+      "search": 3000
+    },
+    "units": 1
+  },
+  "version": 1,
+  "rows": [
+    {
+      "baths": null,
+      "bedrooms": 1.0,
+      "beds": 1.0,
+      "city": "New York City",
+      "description": "Make Chelsea your home in New York. You'll feel right at home in this Chelsea condo.  Relax after a long day with a smart TV and sound system. Walk to dozens of great restaurants, or cook up a storm in the chef's kitchen. If you'd like to entertain friends or family, the dining table expands and com…",
+      "guests": 2,
+      "latitude": 40.7426,
+      "listing_id": "678901120783302718",
+      "longitude": -74.0011,
+      "name": "Your home in New York: Chic & Spacious Chelsea 1BR",
+      "photos": [
+        "https://a0.muscache.com/im/pictures/miso/Hosting-678901120783302718/original/94ecde23-c90d-40f8-9f70-95f963a0725b.jpeg",
+        "https://a0.muscache.com/im/pictures/miso/Hosting-678901120783302718/original/20f11c99-9da1-4ec7-921a-4e4b800f6e26.jpeg"
+      ],
+      "rating": 5.0,
+      "review_count": 9,
+      "type": "Entire apartment",
+      "url": "https://www.airbnb.com/rooms/678901120783302718"
+    }
+  ]
+}

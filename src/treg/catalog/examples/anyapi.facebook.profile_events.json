@@ -1,0 +1,37 @@
+{
+  "output": {
+    "data": {
+      "events": [
+        {
+          "city": "Wichita",
+          "creatorName": "Brickyard",
+          "dayTimeSentence": "Sat, Sep 19 at 5:30 PM CDT",
+          "id": "1622289862879211",
+          "isCanceled": false,
+          "isOnline": false,
+          "isPast": false,
+          "name": "Julia Trechak at Brickyard",
+          "placeName": "Brickyard",
+          "startTimestamp": 1789857000,
+          "url": "https://www.facebook.com/events/1622289862879211/"
+        },
+        "… 7 more item(s) truncated"
+      ],
+      "hasNextPage": true,
+      "nextCursor": "KRU5BGZpHdnCjU-NFCMlAtdn5v2WEEbeT2WBrN_qCna5KoBFb6n8LhMkWy4gdJUIz5XBkRF1NtHElthOQ3a8TA7I0R5wqE8IIjzSERwml3GXNNP3n4TLZfKfT0cjk1JfzRaA25uqEEbXvdWYj23ccvJY1u4z1ZX_dO1WmiISiteZIoehs-VdbWqT0d9KwT_YUPbhjImQ… [639 chars]",
+      "totalCount": 17
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 8,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "81d1793b-b5b2-4aa0-8c2d-b22ddfd892c5"
+}

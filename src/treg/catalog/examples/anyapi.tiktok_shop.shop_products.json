@@ -1,0 +1,38 @@
+{
+  "output": {
+    "data": {
+      "hasMore": true,
+      "nextCursor": "WLyhE-ysuPR7qojDQf1z5uBk3SvzDCOGoqzZUSZNC1IEALGcBzTE7BdTsd66Bd2R-IGQ2tOc9B1RiF6Lx5p2bBQRTspl3VswgeFBADBGMtKnTrHAwKVOziJAmSctgFZpxD3YVz_0srynuJf-dn0LjdFxperbQL3dxjKgOGopAVIy3roMed7tClCHefg717l-t7v7Mxg7… [220 chars]",
+      "productCount": 52,
+      "products": [
+        {
+          "currency": "USD",
+          "originalPrice": 19,
+          "price": 14.98,
+          "productId": "1729527313880355335",
+          "rating": 4.5,
+          "reviewCount": 94643,
+          "soldCount": 1302517,
+          "title": "Goli Ashwagandha & Vitamin D Gummy - Mixed Berry, KSM-66, Vegan, Plant Based, Non-GMO, Gluten-Free & Gelatin Free. America's #1 Ashwagandha Brand",
+          "url": "https://www.tiktok.com/shop/pdp/1729527313880355335"
+        },
+        "… 19 more item(s) truncated"
+      ],
+      "shopName": "Goli Nutrition",
+      "shopRating": 4.6,
+      "soldCount": 5747805
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 20,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "a321ee27-b09f-47e3-8c98-75f6b5d788c8"
+}

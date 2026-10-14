@@ -1,0 +1,4 @@
+{
+  "task_id": "example-task-id",
+  "base_resp": {"status_code": 0, "status_msg": "success"}
+}

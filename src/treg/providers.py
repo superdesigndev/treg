@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 # `auth` is the provider's DEFAULT shape; a per-variable form (CLIENT_ID/SECRET → oauth2) can override
 # it. Served at GET /providers.json so the CLI can refresh centrally (bundled copy = offline fallback);
 # bump CATALOG_VERSION whenever entries change so a cache can tell it's stale.
-CATALOG_VERSION = 9
+CATALOG_VERSION = 24  # v24: Parallel API key detection
 # `skills` (optional) matches a SKILL FOLDER name for file-credential skills that have no env var to
 # key on (OAuth token files etc.) — see `match_skill`. Such providers carry `tokens: []` so the env
 # scanner never mis-detects them as a simple bearer key (their real auth is OAuth + extra headers).
@@ -70,7 +70,7 @@ CATALOG: list[dict] = [
      "cli": {"bin": "openai", "install": "pip install openai", "auth_mechanism": "env", "beta": True,
              "inject": [{"via": "env", "name": "OPENAI_API_KEY"}], "errors": _ERR_AUTH}},
     {"provider": "Anthropic",   "tokens": ["ANTHROPIC", "CLAUDE"], "base_url": "https://api.anthropic.com/v1",                    "auth": {"shape": "api_key_header", "header": "x-api-key"}},
-    {"provider": "Google AI",   "tokens": ["GEMINI"],              "base_url": "https://generativelanguage.googleapis.com/v1beta","auth": {"shape": "api_key_header", "header": "x-goog-api-key"}},
+    {"provider": "Google AI",   "tokens": ["GEMINI"],              "base_url": "https://generativelanguage.googleapis.com/v1beta","auth": {"shape": "api_key_header", "header": "x-goog-api-key"}, "probe": "models?pageSize=1"},
     {"provider": "Mistral",     "tokens": ["MISTRAL"],             "base_url": "https://api.mistral.ai/v1",                       "auth": {"shape": "bearer"}},
     {"provider": "Cohere",      "tokens": ["COHERE"],              "base_url": "https://api.cohere.ai/v1",                        "auth": {"shape": "bearer"}},
     {"provider": "Groq",        "tokens": ["GROQ"],                "base_url": "https://api.groq.com/openai/v1",                  "auth": {"shape": "bearer"}},
@@ -134,6 +134,30 @@ CATALOG: list[dict] = [
     {"provider": "Ahrefs",      "tokens": ["AHREFS"],              "base_url": "https://api.ahrefs.com/v3",                       "auth": {"shape": "bearer"}},
     {"provider": "Apify",       "tokens": ["APIFY"],               "base_url": "https://api.apify.com/v2",                        "auth": {"shape": "bearer"}, "probe": "users/me"},
     {"provider": "ScrapeCreators", "tokens": ["SCRAPECREATORS"],   "base_url": "https://api.scrapecreators.com",                  "auth": {"shape": "api_key_header", "header": "x-api-key"}},
+    {"provider": "Fetchin", "tokens": ["FETCHINIO"], "base_url": "https://api.fetchin.io",
+     "auth": {"shape": "api_key_header", "header": "X-API-Key"}, "probe": "api/v1/subscription"},
+    {"provider": "Sumble", "tokens": ["SUMBLE"], "base_url": "https://api.sumble.com/v9",
+     "auth": {"shape": "bearer"}},
+    {"provider": "MoltSets", "tokens": ["MOLTSETS"],
+     "base_url": "https://api.moltsets.com/api/v1/tools", "auth": {"shape": "bearer"},
+     "required_headers": {"User-Agent": "treg/1.0 (+https://treg.to)"}},
+    {"provider": "Openmart", "tokens": ["OPENMART"],
+     "base_url": "https://api.openmart.ai", "auth": {"shape": "bearer"},
+     "probe": "api/v2/credit-balance"},
+    {"provider": "LimaData", "tokens": ["LIMADATA"], "base_url": "https://api.limadata.com",
+     "auth": {"shape": "api_key_header", "header": "x-api-key"}},
+    {"provider": "TrestleIQ", "tokens": ["TRESTLEIQ", "TRESTLE"],
+     "base_url": "https://api.trestleiq.com",
+     "auth": {"shape": "api_key_header", "header": "x-api-key"}},
+    {"provider": "Datagma", "tokens": ["DATAGMA"], "base_url": "https://gateway.datagma.net",
+     "auth": {"shape": "query", "param": "apiId"}, "probe": "api/ingress/v1/mine"},
+    {"provider": "Crustdata", "tokens": ["CRUSTDATA"], "base_url": "https://api.crustdata.com",
+     "auth": {"shape": "bearer"}, "probe": "account/credits",
+     "required_headers": {"x-api-version": "2025-11-01"}},
+    {"provider": "Aviato", "tokens": ["AVIATO"], "base_url": "https://data.api.aviato.co",
+     "auth": {"shape": "bearer"}, "probe": "billing/balance"},
+    {"provider": "Enrichlayer", "tokens": ["ENRICHLAYER"], "base_url": "https://enrichlayer.com",
+     "auth": {"shape": "bearer"}, "probe": "api/v2/credit-balance"},
     {"provider": "AgentMail",   "tokens": ["AGENTMAIL"],           "base_url": "https://api.agentmail.to/v0",                     "auth": {"shape": "bearer"}, "probe": "inboxes"},
     {"provider": "Cloudflare",  "tokens": ["CLOUDFLARE"],          "base_url": "https://api.cloudflare.com/client/v4",            "auth": {"shape": "bearer"},
      "skills": ["wrangler", "cloudflare", "cloudflare-workers"],
@@ -152,13 +176,37 @@ CATALOG: list[dict] = [
     {"provider": "Cartesia",    "tokens": ["CARTESIA"],            "base_url": "https://api.cartesia.ai",                         "auth": {"shape": "api_key_header", "header": "X-API-Key"}},
     # --- search / scraping ---
     {"provider": "Tavily",      "tokens": ["TAVILY"],              "base_url": "https://api.tavily.com",                          "auth": {"shape": "bearer"}},
-    {"provider": "Firecrawl",   "tokens": ["FIRECRAWL"],           "base_url": "https://api.firecrawl.dev/v1",                    "auth": {"shape": "bearer"}},
+    {"provider": "Search1API",  "tokens": ["SEARCH1API"],          "base_url": "https://api.search1api.com",                    "auth": {"shape": "bearer"}, "probe": "usage"},
+    {"provider": "Octen",       "tokens": ["OCTEN"],               "base_url": "https://api.octen.ai",                           "auth": {"shape": "api_key_header", "header": "x-api-key"}},
+    {"provider": "Linkup",      "tokens": ["LINKUP"],              "base_url": "https://api.linkup.so/v1",                       "auth": {"shape": "bearer"}, "probe": "credits/balance"},
+    {"provider": "Parallel",    "tokens": ["PARALLEL"],            "base_url": "https://api.parallel.ai",                        "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "v1/monitors/stats"},
+    {"provider": "You.com",     "tokens": ["YDC_API_KEY", "YOU_API_KEY"], "base_url": "https://api.you.com", "auth": {"shape": "api_key_header", "header": "X-API-Key"}, "probe": "v1/billing/account_balance"},
+    {"provider": "Valyu",       "tokens": ["VALYU_API_KEY", "VALYU"], "base_url": "https://api.valyu.ai", "auth": {"shape": "api_key_header", "header": "X-API-Key"}, "probe": "v1/datasources"},
+    {"provider": "Keenable",    "tokens": ["KEENABLE"],            "base_url": "https://api.keenable.ai",                         "auth": {"shape": "api_key_header", "header": "X-API-Key"}},
+    {"provider": "Olostep",     "tokens": ["OLOSTEP"],             "base_url": "https://api.olostep.com",                         "auth": {"shape": "bearer"}, "probe": "user/credits/info"},
+    {"provider": "ScrapeGraphAI", "tokens": ["SCRAPEGRAPHAI", "SGAI"],
+     "base_url": "https://v2-api.scrapegraphai.com",
+     "auth": {"shape": "api_key_header", "header": "SGAI-APIKEY"}, "probe": "api/credits"},
+    {"provider": "Firecrawl",   "tokens": ["FIRECRAWL"],           "base_url": "https://api.firecrawl.dev/v2",                    "auth": {"shape": "bearer"}, "probe": "team/credit-usage"},
+    {"provider": "Spider",      "tokens": ["SPIDERCLOUD", "SPIDER"], "base_url": "https://api.spider.cloud",                    "auth": {"shape": "bearer"}, "probe": "data/credits"},
     {"provider": "Exa",         "tokens": ["EXA"],                 "base_url": "https://api.exa.ai",                              "auth": {"shape": "api_key_header", "header": "x-api-key"}},
+    {"provider": "cloro",       "tokens": ["CLORO"],               "base_url": "https://api.cloro.dev",                           "auth": {"shape": "bearer"}, "probe": "v1/credits"},
     {"provider": "Serper",      "tokens": ["SERPER"],              "base_url": "https://google.serper.dev",                       "auth": {"shape": "api_key_header", "header": "X-API-KEY"}},
     {"provider": "SerpAPI",     "tokens": ["SERPAPI"],             "base_url": "https://serpapi.com",                             "auth": {"shape": "query", "param": "api_key"}},
     {"provider": "Brave Search","tokens": ["BRAVE"],               "base_url": "https://api.search.brave.com/res/v1",             "auth": {"shape": "api_key_header", "header": "X-Subscription-Token"}},
     {"provider": "ScrapingBee", "tokens": ["SCRAPINGBEE"],         "base_url": "https://app.scrapingbee.com/api/v1",              "auth": {"shape": "query", "param": "api_key"}},
     {"provider": "NewsAPI",     "tokens": ["NEWSAPI"],             "base_url": "https://newsapi.org/v2",                          "auth": {"shape": "api_key_header", "header": "X-Api-Key"}},
+    # --- market data (auth shapes LIVE-VERIFIED 2026-08-15 against each real API; see
+    #     src/treg/catalog/<service>.yaml and docs/MARKET-DATA-CATEGORY-RESEARCH.md) ---
+    {"provider": "CoinGecko",   "tokens": ["COINGECKO"],           "base_url": "https://pro-api.coingecko.com/api/v3",            "auth": {"shape": "api_key_header", "header": "x-cg-pro-api-key"}},
+    {"provider": "Polygon.io",  "tokens": ["POLYGON", "MASSIVE"],  "base_url": "https://api.polygon.io",                          "auth": {"shape": "bearer"}},
+    {"provider": "Finnhub",     "tokens": ["FINNHUB"],             "base_url": "https://finnhub.io/api/v1",                       "auth": {"shape": "api_key_header", "header": "X-Finnhub-Token"}},
+    {"provider": "Twelve Data", "tokens": ["TWELVEDATA", "TWELVE"],"base_url": "https://api.twelvedata.com",                      "auth": {"shape": "query", "param": "apikey"}},
+    {"provider": "Financial Modeling Prep", "tokens": ["FMP", "FINANCIALMODELINGPREP"], "base_url": "https://financialmodelingprep.com/api/v3", "auth": {"shape": "query", "param": "apikey"}},
+    {"provider": "EODHD",       "tokens": ["EODHD"],               "base_url": "https://eodhd.com/api",                           "auth": {"shape": "query", "param": "api_token"}},
+    {"provider": "Marketstack", "tokens": ["MARKETSTACK"],         "base_url": "https://api.marketstack.com/v1",                  "auth": {"shape": "query", "param": "access_key"}},
+    {"provider": "Tiingo",      "tokens": ["TIINGO"],              "base_url": "https://api.tiingo.com",                          "auth": {"shape": "api_key_header", "header": "Authorization", "format": "Token {secret}"}},
+    {"provider": "Financial Datasets", "tokens": ["FINANCIALDATASETS"], "base_url": "https://api.financialdatasets.ai",             "auth": {"shape": "api_key_header", "header": "X-API-KEY"}},
     # --- dev / infra / cloud ---
     {"provider": "DigitalOcean","tokens": ["DIGITALOCEAN"],        "base_url": "https://api.digitalocean.com/v2",                 "auth": {"shape": "bearer"},
      "skills": ["doctl", "digitalocean"],
@@ -293,6 +341,7 @@ class Detection:
     base_url: str | None = None
     auth: dict | None = None           # resolved auth shape (see module docstring)
     probe: str | None = None           # a cheap GET path (relative to base_url) that validates the key
+    required_headers: dict[str, str] = field(default_factory=dict)  # fixed protocol headers on every call
     note: str | None = None
 
 
@@ -486,7 +535,8 @@ def scan_env(env_path: str, catalog: list[dict] | None = None) -> list[Detection
                 detections.append(Detection(
                     kind="matched", vars=[name], provider=provider["provider"],
                     base_url=provider["base_url"], auth=dict(provider["auth"]),
-                    probe=provider.get("probe")))
+                    probe=provider.get("probe"),
+                    required_headers=dict(provider.get("required_headers") or {})))
         elif _is_internal(upper):
             detections.append(Detection(kind="app_internal", vars=[name], note="app's own secret — never a tool"))
         elif comps & SECRET_HINTS:
@@ -552,6 +602,7 @@ class Action:
     tool_name: str | None = None
     base_url: str | None = None
     binding: dict | None = None     # binding template; secret_id is filled in at register time
+    required_headers: dict[str, str] = field(default_factory=dict)  # constant bindings using same secret ref
     combine: tuple | None = None    # (username_var, password_var) for basic pairs → base64 at register
     health: dict | None = None      # {path, expect_status} probe from the catalog, so the tool self-validates
     reason: str | None = None       # why unsupported
@@ -567,6 +618,7 @@ def plan_actions(detections: list[Detection]) -> list[Action]:
             actions.append(Action(
                 detection=d, supported=binding is not None, secret_name=d.vars[0],
                 tool_name=_slug(d.provider or d.vars[0]), base_url=d.base_url, binding=binding,
+                required_headers=dict(d.required_headers),
                 health={"path": d.probe, "expect_status": 200} if d.probe else None,
                 reason=None if binding else f"auth shape {d.auth.get('shape') if d.auth else '?'} not auto-registered yet"))
         elif d.kind == "oauth_pair":
@@ -622,8 +674,16 @@ def llm_prompt(names: list[str]) -> tuple[str, str]:
 
 def llm_parse(text: str) -> list[dict]:
     """Parse the LLM's JSON reply into resolution dicts, tolerating prose around the JSON. Keeps only
-    entries with a var + base_url + a known auth shape."""
+    entries with a var + base_url + a known auth shape.
+
+    Self-hosted reasoning models (vLLM/llama-server without --reasoning-parser) may return thinking
+    inline in `content` as `<think>…</think>JSON` — strip everything before the last `</think>` first
+    so JSON drafts inside the thinking block don't corrupt the brace-slice fallback."""
     import json
+    # Strip inline thinking: take only content after the last </think> if present.
+    think_end = text.rfind("</think>")
+    if think_end >= 0:
+        text = text[think_end + len("</think>"):]
     try:
         data = json.loads(text)
     except Exception:

@@ -18,7 +18,7 @@ related:
 
 A member runs a vendor CLI (`stripe`, `gh`, `flyctl`, `gcloud`, …) on their own machine while the
 credential stays in treg custody. The security goal: **no other program of the same user may read the
-credential** while the CLI runs. Design + the full decision trail: `docs/CLI-RUN-PLAN.md`.
+credential** while the CLI runs.
 
 > `treg run` has a second tier — **`--server`** (Tier 0): the CLI runs on the registry server instead of
 > the member's machine (`POST /run`, `runner.run_bundle`). This fragment covers the **`--local`** (default)
@@ -62,8 +62,11 @@ The trade-off (inherent to a real boundary): the CLI runs as `treg-run`, so it c
 files. Commands that need the member's own private files or `localhost` are out of scope for the protected
 mode.
 
-## Server side — the grant (`localrun.py`, unchanged by the runner change)
-`render_grant(tool, profile, db, http)` returns a delivery-agnostic list: `{"items": [{via:"env",
+## Server side — the grant (`localrun.py`)
+`localrun.py` keeps `sqlalchemy`, `sqlmodel`, `.crypto`, `.oauth` and `.models` out of its top-level
+imports (`TYPE_CHECKING`-only, loaded lazily inside `render_grant`), because those are server-only
+deps and this module must stay importable by the light CLI install (the "Lightweight CLI modules"
+import-linter contract in `pyproject.toml`). `render_grant(tool, profile, db, http)` returns a delivery-agnostic list: `{"items": [{via:"env",
 name, value} | {via:"argv", argv:[…]}], "ttl_seconds"}`. The runner applies each item to the CLI (env var
 or command-line flag) under `treg-run`. An **oauth** secret is refreshed first (`oauth.ensure_fresh`) and
 only the short-lived **leaf** is released: the inject entry's `secret_field` must be on an **allow-list**

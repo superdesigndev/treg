@@ -1,0 +1,22 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "language": "en",
+      "postId": "1oiu9xm",
+      "transcript": "",
+      "transcriptNotAvailable": true
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 0,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "46bacd20-8087-4b54-9110-b2883222311b"
+}

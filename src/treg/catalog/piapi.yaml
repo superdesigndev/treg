@@ -1,0 +1,300 @@
+provider: piapi
+source:
+  docs: https://piapi.ai/docs/overview
+  curated: 2026-09-14
+pricing_url: https://piapi.ai/seedance-2-5
+limits: "Generation is asynchronous: POST /api/v1/task answers with data.task_id; poll GET /api/v1/task/{task_id} every 10 seconds. Errors arrive as HTTP 200 with a non-200 `code`. Output URLs are temporary; download promptly. Reference image URLs must return raw image bytes with an image/* content-type, not an HTML file page."
+async:
+  id_from: data.task_id
+  poll:
+    endpoint: piapi.task.get
+    param: {in: pathParams, name: task_id}
+  status:
+    path: data.status
+    success: [Completed, completed]
+    failure: [Failed, failed]
+  result:
+    path: data.output.video
+  interval: 10
+# PiAPI answers HTTP 200 with the error in the envelope (`code` 400/401/500 plus `message`); the
+# gpt-image route answers a bare task object instead and overrides this rule per endpoint.
+expect: {json_path: code, equals: 200}
+endpoints:
+  - id: piapi.task.get
+    kind: utility
+    capability: video-gen.task.status
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /api/v1/task/{task_id}
+    name: "Check a PiAPI task"
+    summary: "Read a task's status (Pending, Processing, Completed, Failed, Staged) and its output URLs."
+    resource_ownership:
+      requires: {kind: "poll:piapi.task.get", param: task_id}
+    async: false
+    input:
+      pathParams:
+        task_id: {type: string, required: true, example: "a30cb03f-a8d3-4d87-a547-c2a0d113e7a5"}
+    test_request: {pathParams: {task_id: "a30cb03f-a8d3-4d87-a547-c2a0d113e7a5"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Task status checks are free."}
+    verified: 2026-09-14
+    added: '2026-09-14'
+    example_response: examples/piapi.task.get.json
+    docs_url: https://piapi.ai/docs/unified-api-schema/get-task
+
+  - id: piapi.video-gen.seedance-2-5
+    capability: video-gen.seedance-2-5.generate
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /api/v1/task
+    name: "ByteDance: Seedance 2.5"
+    summary: "Create a Seedance 2.5 video task from a prompt with optional image, video and audio references (default content filter)."
+    input:
+      body:
+        model: {type: string, required: true, enum: [seedance], example: seedance}
+        task_type: {type: string, required: true, enum: [seedance-2.5], example: seedance-2.5}
+        input:
+          type: object
+          required: true
+          properties:
+            prompt: {type: string, required: true, example: "A paper boat drifts across a quiet pond at sunrise.", note: "Refer to references as @image1, @audio1."}
+            duration: {type: integer, required: false, default: 5, min: 5, max: 30, enum: [5, 8, 10, 15, 20, 25, 30], example: 5}
+            resolution: {type: string, required: false, default: 480p, enum: [480p, 720p, 1080p], example: 480p}
+            aspect_ratio: {type: string, required: false, default: "16:9", enum: ["21:9", "16:9", "9:16", "4:3", "1:1", "3:4"], example: "16:9"}
+            image_urls: {type: array, required: false, note: "Up to 9 public image URLs. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML and the task fails). `treg host <file>` prints a URL that satisfies this."}
+            video_urls: {type: array, required: false, note: "Up to 3 public video URLs."}
+            audio_urls: {type: array, required: false, note: "Up to 3 public audio URLs, 15 s total."}
+      bodyType: json
+    test_request:
+      body: {model: seedance, task_type: seedance-2.5, input: {prompt: "A paper boat drifts across a quiet pond at sunrise.", duration: 5, resolution: 480p, aspect_ratio: "16:9"}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.input.resolution: 480p}, value: 0.15, times: body.input.duration}
+        - {when: {body.input.resolution: 720p}, value: 0.35, times: body.input.duration}
+        - {when: {body.input.resolution: 1080p}, value: 0.80, times: body.input.duration}
+      fallback: {value: 24.01, note: "Thirty seconds of 1080p output at the documented per-second rate ($24.00), rounded up a cent to clear float comparison."}
+      currency: USD
+      settle: table
+      source: observed
+      source_url: https://piapi.ai/seedance-2-5
+      checked: 2026-09-14
+      confidence: verified
+      note: "Billed per second of output at the resolution's rate. Live 2026-09-14: a 5 s 480p clip consumed 7,500,000 points ($0.75, at 10,000,000 points per dollar); 720p and 1080p are documented only."
+    verified: 2026-09-14
+    added: '2026-09-14'
+    example_response: examples/piapi.video-gen.seedance-2-5.json
+    docs_url: https://piapi.ai/docs/seedance-api/seedance-2-5
+
+  - id: piapi.video-gen.seedance-2-5.less-restriction
+    capability: video-gen.seedance-2-5-unrestricted.generate
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /api/v1/task
+    name: "ByteDance: Seedance 2.5 (Less Restriction)"
+    summary: "Less Restriction: the same Seedance 2.5 model on PiAPI's relaxed filter, where a real person's face may drive the video; the default row refuses real faces. Face images must first pass the connected account's Private Asset Library review; other references are used as-is. 10% dearer than the default row."
+    input:
+      body:
+        model: {type: string, required: true, enum: [seedance], example: seedance}
+        task_type: {type: string, required: true, enum: [seedance-2.5-less-restriction], example: seedance-2.5-less-restriction}
+        input:
+          type: object
+          required: true
+          properties:
+            prompt: {type: string, required: true, example: "The subject in @image1 slowly turns toward the camera."}
+            duration: {type: integer, required: false, default: 5, min: 5, max: 30, enum: [5, 8, 10, 15, 20, 25, 30], example: 5}
+            resolution: {type: string, required: false, default: 480p, enum: [480p, 720p, 1080p], example: 480p}
+            aspect_ratio: {type: string, required: false, default: "16:9", enum: ["21:9", "16:9", "9:16", "4:3", "1:1", "3:4"], example: "9:16"}
+            image_urls: {type: array, required: false, example: ["https://picsum.photos/seed/treg-aigc/720/1280"], note: "Up to 9 public image URLs. A real person's face must be pre-approved in the Private Asset Library of the connected account. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML and the task fails). `treg host <file>` prints a URL that satisfies this."}
+            video_urls: {type: array, required: false, note: "Up to 3 public video URLs."}
+            audio_urls: {type: array, required: false, note: "Up to 3 public audio URLs, 15 s total."}
+      bodyType: json
+    test_request:
+      body: {model: seedance, task_type: seedance-2.5-less-restriction, input: {prompt: "The subject in @image1 slowly turns toward the camera.", duration: 5, resolution: 480p, aspect_ratio: "9:16", image_urls: ["https://picsum.photos/seed/treg-aigc/720/1280"]}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.input.resolution: 480p}, value: 0.165, times: body.input.duration}
+        - {when: {body.input.resolution: 720p}, value: 0.385, times: body.input.duration}
+        - {when: {body.input.resolution: 1080p}, value: 0.88, times: body.input.duration}
+      fallback: {value: 26.41, note: "Thirty seconds of 1080p output at the documented per-second rate ($26.40), rounded up a cent to clear float comparison."}
+      currency: USD
+      settle: table
+      source: observed
+      source_url: https://piapi.ai/seedance-2-5
+      checked: 2026-09-14
+      confidence: verified
+      note: "10% over the default-filter row at every resolution. Live 2026-09-14: a 5 s 480p clip from one reference image consumed 8,250,000 points ($0.825); 720p and 1080p are documented only."
+    verified: 2026-09-14
+    added: '2026-09-14'
+    example_response: examples/piapi.video-gen.seedance-2-5.less-restriction.json
+    docs_url: https://piapi.ai/docs/seedance-api/seedance-2-5
+
+  - id: piapi.image-gen.gemini-3-pro-image
+    capability: image-gen.gemini-3-pro-image.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /api/v1/task
+    name: "Google: Gemini 3 Pro Image (Nano Banana Pro)"
+    summary: "Generate or edit an image with Gemini 3 Pro Image at 1K, 2K or 4K from a prompt and up to 14 reference images."
+    async:
+      id_from: data.task_id
+      poll:
+        endpoint: piapi.task.get
+        param: {in: pathParams, name: task_id}
+      status:
+        path: data.status
+        success: [Completed, completed]
+        failure: [Failed, failed]
+      result:
+        path: data.output.image_urls
+      interval: 5
+    input:
+      body:
+        model: {type: string, required: true, enum: [gemini], example: gemini}
+        task_type: {type: string, required: true, enum: [nano-banana-pro], example: nano-banana-pro}
+        input:
+          type: object
+          required: true
+          properties:
+            prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
+            image_urls: {type: array, required: false, note: "Up to 14 public image URLs to edit or reference. Each URL must answer a plain GET with the raw image bytes and an image/* content-type (signed cloud-storage or CDN links work; file-page hosts such as tmpfiles.org return HTML and the task fails). `treg host <file>` prints a URL that satisfies this."}
+            resolution: {type: string, required: false, default: 1K, enum: [1K, 2K, 4K], example: 1K}
+            aspect_ratio: {type: string, required: false, default: "1:1", enum: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "5:4", "4:5"], example: "1:1"}
+            output_format: {type: string, required: false, default: png, enum: [png, jpeg], example: png}
+            safety_level: {type: string, required: false, default: high, enum: [low, medium, high], example: high}
+      bodyType: json
+    test_request:
+      body: {model: gemini, task_type: nano-banana-pro, input: {prompt: "A clean editorial illustration of a paper airplane.", resolution: 1K, aspect_ratio: "1:1", output_format: png}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.input.resolution: 1K}, value: 0.105}
+        - {when: {body.input.resolution: 2K}, value: 0.105}
+        - {when: {body.input.resolution: 4K}, value: 0.18}
+      fallback: {value: 0.181, note: "One 4K image at the documented rate, rounded up a tenth of a cent to clear float comparison."}
+      currency: USD
+      settle: table
+      source: observed
+      source_url: https://piapi.ai/nano-banana-pro
+      checked: 2026-09-14
+      confidence: verified
+      note: "One image per task. Live 2026-09-14: a 1K image consumed 1,050,000 points ($0.105); 2K and 4K are documented only."
+    verified: 2026-09-14
+    added: '2026-09-14'
+    example_response: examples/piapi.image-gen.gemini-3-pro-image.json
+    docs_url: https://piapi.ai/docs/gemini-api/nano-banana-pro
+
+  - id: piapi.image-gen.gpt-image-2-5
+    capability: image-gen.gpt-image-2-5.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /api/v1/images/generations/async
+    name: "OpenAI: GPT Image 2.5 (Flare / Sunburst)"
+    summary: "Generate images with GPT Image 2.5 through PiAPI's OpenAI-shaped async route, metered by quality and size."
+    async:
+      id_from: task_id
+      poll:
+        endpoint: piapi.task.get
+        param: {in: pathParams, name: task_id}
+      status:
+        path: data.status
+        success: [Completed, completed]
+        failure: [Failed, failed]
+      result:
+        path: data.output.data
+        ttl_note: "Images arrive inline as OpenAI-shaped {b64_json} items, not URLs."
+      interval: 5
+    # This route answers the bare task object (no {code, data} envelope), so the provider-wide
+    # rule cannot see `code`; success is error.code 0 on the submission body.
+    expect: {json_path: error.code, equals: 0}
+    input:
+      body:
+        model: {type: string, required: true, enum: [gpt-image-2.5-flare, gpt-image-2.5-sunburst], example: gpt-image-2.5-flare}
+        prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
+        size: {type: string, required: false, default: 1024x1024, enum: [1024x1024], example: 1024x1024, note: "1024x1536 and 1536x1024 answered 'Internal error' (unbilled) on every live attempt at listing time, so only the square size is listed."}
+        quality: {type: string, required: false, default: low, enum: [low, medium, high], example: low}
+        n: {type: integer, required: false, default: 1, min: 1, max: 4, example: 1}
+      bodyType: json
+    test_request:
+      body: {model: gpt-image-2.5-flare, prompt: "A clean editorial illustration of a paper airplane.", size: 1024x1024, quality: low, n: 1}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.quality: low}, value: 0.0051, times: body.n}
+        - {when: {body.quality: medium}, value: 0.0106, times: body.n}
+        - {when: {body.quality: high}, value: 0.0402, times: body.n}
+      fallback: {value: 0.161, note: "Four high-quality 1024x1024 images at the observed rate ($0.1608), rounded up to clear float comparison."}
+      currency: USD
+      settle: table
+      source: observed
+      source_url: https://piapi.ai/docs/gpt-image/gpt-image-api
+      checked: 2026-09-14
+      confidence: verified
+      note: "Token-metered upstream (OpenAI's $3.75 / $22.50 per 1M input / output tokens, passed through at cost). Cells are the points PiAPI consumed live on 2026-09-14 (50,663 / 105,338 / 401,663 points at 10,000,000 points per dollar for low / medium / high), rounded up to the next hundredth of a cent; Flare and Sunburst meter identically. A very long prompt adds a fraction of a cent the table does not carry."
+    verified: 2026-09-14
+    added: '2026-09-14'
+    example_response: examples/piapi.image-gen.gpt-image-2-5.json
+    docs_url: https://piapi.ai/docs/gpt-image/gpt-image-api
+
+  - id: piapi.image-gen.gpt-image-2
+    capability: image-gen.gpt-image-2.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /api/v1/images/generations/async
+    name: "OpenAI: GPT Image 2"
+    summary: "Generate images with GPT Image 2 (medium quality only) through PiAPI's OpenAI-shaped async route."
+    async:
+      id_from: task_id
+      poll:
+        endpoint: piapi.task.get
+        param: {in: pathParams, name: task_id}
+      status:
+        path: data.status
+        success: [Completed, completed]
+        failure: [Failed, failed]
+      result:
+        path: data.output.data
+        ttl_note: "Images arrive inline as OpenAI-shaped {b64_json} items, not URLs."
+      interval: 5
+    # This route answers the bare task object (no {code, data} envelope), so the provider-wide
+    # rule cannot see `code`; success is error.code 0 on the submission body.
+    expect: {json_path: error.code, equals: 0}
+    input:
+      body:
+        model: {type: string, required: true, enum: [gpt-image-2], example: gpt-image-2}
+        prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
+        size: {type: string, required: false, default: 1024x1024, enum: [1024x1024, 1024x1536, 1536x1024], example: 1024x1024}
+        quality: {type: string, required: false, default: medium, enum: [medium], example: medium}
+        n: {type: integer, required: false, default: 1, min: 1, max: 4, example: 1}
+      bodyType: json
+    test_request:
+      body: {model: gpt-image-2, prompt: "A clean editorial illustration of a paper airplane.", size: 1024x1024, quality: medium, n: 1}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.size: 1024x1024}, value: 0.0064, times: body.n}
+        - {when: {body.size: 1024x1536}, value: 0.0421, times: body.n}
+        - {when: {body.size: 1536x1024}, value: 0.0421, times: body.n}
+      fallback: {value: 0.169, note: "Four 1536x1024 images at the observed rate ($0.1684), rounded up to clear float comparison."}
+      currency: USD
+      settle: table
+      source: observed
+      source_url: https://piapi.ai/docs/gpt-image/gpt-image-api
+      checked: 2026-09-14
+      confidence: verified
+      note: "Token-metered upstream ($30 per 1M output tokens, passed through at cost); medium is the only quality. Cells are the points PiAPI consumed live on 2026-09-14 (63,450 for 1024x1024; 420,350 for either non-square size, at 10,000,000 points per dollar), rounded up. The docs' ~$0.032 figure for a square image was not what the meter charged."
+    verified: 2026-09-14
+    added: '2026-09-14'
+    example_response: examples/piapi.image-gen.gpt-image-2.json
+    docs_url: https://piapi.ai/docs/gpt-image/gpt-image-api

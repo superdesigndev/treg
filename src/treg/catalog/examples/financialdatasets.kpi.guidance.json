@@ -1,0 +1,42 @@
+{
+  "kpi_guidance": [
+    {
+      "change_direction": "initiated",
+      "high": 2.5,
+      "low": 2,
+      "metric_name": "earnings_per_share_diluted",
+      "period": "Q3 2026",
+      "period_type": "quarterly",
+      "raw_text": "In the September quarter, we expect earnings per share to grow over prior year to $2.00 to $2.50 on an operating margin of 11 to 13 percent",
+      "source_text": "In the September quarter, we expect earnings per share to grow over prior year to $2.00 to $2.50 on an operating margin of 11 to 13 percent",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/27904/000002790426000029/deltaairlinesannouncesjune.htm#:~:text=In%20the%20September%20quarter%2C%20we",
+      "ticker": "DAL",
+      "unit": "dollars per share"
+    },
+    {
+      "change_direction": "initiated",
+      "metric_name": "fuel_cost_per_gallon",
+      "period": "Q3 2026",
+      "period_type": "quarterly",
+      "point_estimate": 3.15,
+      "raw_text": "This results in a projected all-in fuel price for the quarter of approximately $3.15 per gallon.",
+      "source_text": "This results in a projected all-in fuel price for the quarter of approximately $3.15 per gallon.",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/27904/000002790426000029/deltaairlinesannouncesjune.htm#:~:text=This%20results%20in%20a%20projected",
+      "ticker": "DAL",
+      "unit": "dollars"
+    },
+    {
+      "change_direction": "initiated",
+      "high": 13,
+      "low": 11,
+      "metric_name": "operating_margin",
+      "period": "Q3 2026",
+      "period_type": "quarterly",
+      "raw_text": "Operating Margin 11% - 13%",
+      "source_text": "Operating Margin",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/27904/000002790426000029/deltaairlinesannouncesjune.htm",
+      "ticker": "DAL",
+      "unit": "%"
+    }
+  ]
+}

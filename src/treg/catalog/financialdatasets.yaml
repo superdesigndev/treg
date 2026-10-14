@@ -1,0 +1,801 @@
+provider: financialdatasets
+source:
+  docs: https://docs.financialdatasets.ai
+  openapi: https://www.financialdatasets.ai/openapi.json
+  curated: '2026-09-15'
+pricing_url: https://www.financialdatasets.ai/pricing
+limits: "Financial Datasets publishes Credits pricing per successful request but does not return charge or remaining-Credits headers. Coverage is US public-company data, ETF and index-fund holdings, plus central-bank interest rates; use each dataset's free discovery helper to confirm coverage."
+
+# BYOK and treg's platform key expose the same paths. A team's own key is unmetered by treg.
+# On treg's key, documented Credits rates are settled from the catalog rate card after success.
+proposed_capabilities:
+  stocks.financials.all: "Get standardized company financial statements"
+  stocks.financials.income-statements: "Get company income statements"
+  stocks.financials.balance-sheets: "Get company balance sheets"
+  stocks.financials.cash-flow-statements: "Get company cash-flow statements"
+  stocks.financials.segments: "Get company financial-statement segments"
+  stocks.earnings.list: "List company earnings"
+  stocks.filings.list: "List SEC filings"
+  stocks.insider-trades.list: "List insider trades"
+  stocks.institutional-holdings.list: "List institutional holdings"
+  stocks.index-funds.holdings: "Get ETF and index-fund holdings and weights"
+  stocks.screener.search: "Screen US public companies by financial filters"
+  stocks.macro.interest-rates: "Get major central-bank interest rates"
+  stocks.kpi.metrics: "Get company operating KPIs"
+  stocks.kpi.guidance: "Get company KPI guidance"
+  stocks.kpi.non-gaap: "Get company non-GAAP metrics"
+  stocks.ipos.list: "List IPO and registration filings"
+  stocks.discovery.company-facts-tickers: "List tickers available for company facts"
+  stocks.discovery.company-facts-ciks: "List CIKs available for company facts"
+  stocks.discovery.prices-tickers: "List tickers available for historical prices"
+  stocks.discovery.price-snapshot-tickers: "List tickers available for price snapshots"
+  stocks.discovery.earnings-tickers: "List tickers available for earnings"
+  stocks.discovery.filings-tickers: "List tickers available for filings"
+  stocks.discovery.filings-ciks: "List CIKs available for filings"
+  stocks.discovery.filings-types: "List filing types available for filings"
+  stocks.discovery.financial-metrics-snapshot-tickers: "List tickers available for financial-metric snapshots"
+  stocks.discovery.screener-filters: "List supported financial-screener fields and operators"
+  stocks.discovery.interest-rate-banks: "List central banks available for interest rates"
+  stocks.discovery.institutional-holdings-tickers: "List tickers available for institutional holdings"
+  stocks.discovery.institutional-holdings-investors: "List institutional investors available for holdings"
+  stocks.discovery.index-funds-tickers: "List available ETF and index-fund tickers"
+
+endpoints:
+  - id: financialdatasets.company.facts
+    domain: stocks
+    capability: stocks.company.profile
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /company/facts
+    name: "US company facts by ticker or CIK"
+    summary: "Get identity, exchange, sector, industry, status and SEC metadata for a US public company"
+    input:
+      queryParams:
+        ticker: {type: string, required: false, note: "US stock ticker; supply ticker or cik. If availability is uncertain, call financialdatasets.company.facts.tickers first", example: AAPL}
+        cik: {type: string, required: false, note: "SEC Central Index Key; supply ticker or cik. If availability is uncertain, call financialdatasets.company.facts.ciks first"}
+      note: "Supply exactly one of ticker or cik. Use the matching company-facts utility when coverage is uncertain."
+    test_request: {queryParams: {ticker: AAPL}}
+    cost: {type: per_success, value: 0.02, currency: USD, per: 1, unit: call, source: observed, source_url: "https://www.financialdatasets.ai/pricing", checked: '2026-09-15', confidence: verified, note: "Observed in the provider transaction ledger: the authenticated batch reconciled to $0.02 for each standard request"}
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.company.facts.json
+    docs_url: https://docs.financialdatasets.ai/api/company/facts/ticker
+
+  - id: financialdatasets.financials
+    domain: stocks
+    capability: stocks.financials.all
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /financials
+    name: "US company financial statements"
+    summary: "Get standardized income statements, balance sheets and cash-flow statements for a US public company"
+    input: &financial_input
+      queryParams:
+        ticker: {type: string, required: false, note: "US stock ticker; supply ticker or cik", example: AAPL}
+        cik: {type: string, required: false, note: "SEC Central Index Key; supply ticker or cik"}
+        period: {type: string, required: true, note: "annual | quarterly | ttm", example: annual}
+        limit: {type: integer, required: false, min: 1}
+        report_period: {type: string, required: false, note: "exact report date, YYYY-MM-DD"}
+        report_period_gte: {type: string, required: false, note: "report date on or after YYYY-MM-DD"}
+        report_period_lte: {type: string, required: false, note: "report date on or before YYYY-MM-DD"}
+        report_period_gt: {type: string, required: false, note: "report date after YYYY-MM-DD"}
+        report_period_lt: {type: string, required: false, note: "report date before YYYY-MM-DD"}
+        filing_date: {type: string, required: false, note: "exact filing date, YYYY-MM-DD"}
+        filing_date_gte: {type: string, required: false, note: "filing date on or after YYYY-MM-DD"}
+        filing_date_lte: {type: string, required: false, note: "filing date on or before YYYY-MM-DD"}
+        filing_date_gt: {type: string, required: false, note: "filing date after YYYY-MM-DD"}
+        filing_date_lt: {type: string, required: false, note: "filing date before YYYY-MM-DD"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_page_url; when supplied, omit the original filters because the cursor preserves them"}
+      note: "Supply ticker or cik unless continuing with cursor."
+    test_request: {queryParams: {ticker: AAPL, period: annual, limit: 1}}
+    cost: &standard_cost {type: per_success, value: 0.02, currency: USD, per: 1, unit: call, source: observed, source_url: "https://www.financialdatasets.ai/pricing", checked: '2026-09-15', confidence: verified, note: "Observed in the provider transaction ledger: the authenticated batch reconciled to $0.02 for each standard request"}
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.financials.json
+    docs_url: https://docs.financialdatasets.ai/api/financials/all-financial-statements
+
+  - id: financialdatasets.financials.income-statements
+    domain: stocks
+    capability: stocks.financials.income-statements
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /financials/income-statements
+    name: "US company income statements"
+    summary: "Get standardized annual, quarterly or trailing income statements for a US public company"
+    input: *financial_input
+    test_request: {queryParams: {ticker: AAPL, period: annual, limit: 1}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.financials.income-statements.json
+    docs_url: https://docs.financialdatasets.ai/api/financials/income-statements
+
+  - id: financialdatasets.financials.balance-sheets
+    domain: stocks
+    capability: stocks.financials.balance-sheets
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /financials/balance-sheets
+    name: "US company balance sheets"
+    summary: "Get standardized annual, quarterly or trailing balance sheets for a US public company"
+    input: *financial_input
+    test_request: {queryParams: {ticker: AAPL, period: annual, limit: 1}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.financials.balance-sheets.json
+    docs_url: https://docs.financialdatasets.ai/api/financials/balance-sheets
+
+  - id: financialdatasets.financials.cash-flow-statements
+    domain: stocks
+    capability: stocks.financials.cash-flow-statements
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /financials/cash-flow-statements
+    name: "US company cash-flow statements"
+    summary: "Get standardized annual, quarterly or trailing cash-flow statements for a US public company"
+    input: *financial_input
+    test_request: {queryParams: {ticker: AAPL, period: annual, limit: 1}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.financials.cash-flow-statements.json
+    docs_url: https://docs.financialdatasets.ai/api/financials/cash-flow-statements
+
+  - id: financialdatasets.financials.income-statements.segments
+    domain: stocks
+    capability: stocks.financials.segments
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /financials/income-statements/segments
+    name: "US company income-statement segments"
+    summary: "Get annual or quarterly revenue and income-statement breakdowns by business or geographic segment"
+    input:
+      queryParams:
+        ticker: {type: string, required: false, note: "US stock ticker; supply ticker or cik", example: AAPL}
+        cik: {type: string, required: false, note: "SEC Central Index Key; supply ticker or cik"}
+        period: {type: string, required: true, note: "annual | quarterly", example: annual}
+        limit: {type: integer, required: false, min: 1}
+        report_period: {type: string, required: false, note: "exact report date, YYYY-MM-DD"}
+        report_period_gte: {type: string, required: false, note: "report date on or after YYYY-MM-DD"}
+        report_period_lte: {type: string, required: false, note: "report date on or before YYYY-MM-DD"}
+        report_period_gt: {type: string, required: false, note: "report date after YYYY-MM-DD"}
+        report_period_lt: {type: string, required: false, note: "report date before YYYY-MM-DD"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_page_url; when supplied, omit the original filters because the cursor preserves them"}
+    test_request: {queryParams: {ticker: AAPL, period: annual, limit: 1}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.financials.income-statements.segments.json
+    docs_url: https://docs.financialdatasets.ai/api/financials/income-statement-segments
+
+  - id: financialdatasets.financial-metrics
+    domain: stocks
+    capability: stocks.fundamentals.metrics
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /financial-metrics
+    name: "US company historical financial metrics"
+    summary: "Get valuation, profitability, liquidity, growth and per-share metrics across reporting periods"
+    input: *financial_input
+    test_request: {queryParams: {ticker: AAPL, period: annual, limit: 1}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.financial-metrics.json
+    docs_url: https://docs.financialdatasets.ai/api/financial-metrics/historical
+
+  - id: financialdatasets.financial-metrics.snapshot
+    domain: stocks
+    capability: stocks.fundamentals.metrics
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /financial-metrics/snapshot
+    name: "US company latest financial-metrics snapshot"
+    summary: "Get the latest valuation, profitability, liquidity, growth and per-share metrics for a US public company"
+    input:
+      queryParams:
+        ticker: {type: string, required: false, note: "US stock ticker; supply ticker or cik. If ticker availability is uncertain, call financialdatasets.financial-metrics.snapshot.tickers first", example: AAPL}
+        cik: {type: string, required: false, note: "SEC Central Index Key; supply ticker or cik"}
+    test_request: {queryParams: {ticker: AAPL}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.financial-metrics.snapshot.json
+    docs_url: https://docs.financialdatasets.ai/api/financial-metrics/snapshot
+
+  - id: financialdatasets.earnings
+    domain: stocks
+    capability: stocks.earnings.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /earnings
+    name: "US company earnings"
+    summary: "List reported earnings results and estimates for a US stock ticker"
+    input:
+      queryParams:
+        ticker: {type: string, required: true, note: "US stock ticker. If availability is uncertain, call financialdatasets.earnings.tickers first", example: AAPL}
+        limit: {type: integer, required: false, min: 1, max: 40, note: "default 1"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_page_url; when supplied, omit the original filters because the cursor preserves them"}
+    test_request: {queryParams: {ticker: AAPL, limit: 1}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.earnings.json
+    docs_url: https://docs.financialdatasets.ai/api/earnings
+
+  - id: financialdatasets.filings
+    domain: stocks
+    capability: stocks.filings.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /filings
+    name: "US public-company SEC filings"
+    summary: "List SEC filing metadata for a US public company by ticker or CIK"
+    input:
+      queryParams:
+        ticker: {type: string, required: false, note: "US stock ticker; supply ticker or cik. If availability is uncertain, call financialdatasets.filings.tickers first", example: AAPL}
+        cik: {type: string, required: false, note: "SEC Central Index Key; supply ticker or cik. If availability is uncertain, call financialdatasets.filings.ciks first"}
+        filing_type: {type: "array[string]", required: false, note: "repeatable filing type. Call financialdatasets.filings.types to list supported values"}
+        limit: {type: integer, required: false, min: 1, note: "default 10"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_page_url; when supplied, omit the original filters because the cursor preserves them"}
+    test_request: {queryParams: {ticker: AAPL, filing_type: [10-K], limit: 1}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.filings.json
+    docs_url: https://docs.financialdatasets.ai/api/filings/ticker
+
+  - id: financialdatasets.prices
+    domain: stocks
+    capability: stocks.eod.history
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /prices
+    name: "US stock historical prices"
+    summary: "Get split-adjusted historical price bars for a US stock ticker over a date range"
+    input:
+      queryParams:
+        ticker: {type: string, required: true, note: "US stock ticker. If availability is uncertain, call financialdatasets.prices.tickers first", example: AAPL}
+        interval: {type: string, required: true, note: "day | week | month | year", example: day}
+        start_date: {type: string, required: true, note: "YYYY-MM-DD", example: '2026-09-01'}
+        end_date: {type: string, required: true, note: "YYYY-MM-DD", example: '2026-09-14'}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_page_url; when supplied, omit the original filters because the cursor preserves them"}
+    test_request: {queryParams: {ticker: AAPL, interval: day, start_date: '2026-09-01', end_date: '2026-09-14'}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.prices.json
+    docs_url: https://docs.financialdatasets.ai/api/prices/historical
+
+  - id: financialdatasets.prices.snapshot
+    domain: stocks
+    capability: stocks.quote.live
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /prices/snapshot
+    name: "Latest US stock-price snapshot"
+    summary: "Get the latest available price and daily change for an actively traded US stock ticker"
+    input:
+      queryParams:
+        ticker: {type: string, required: true, note: "actively traded US stock ticker. If availability is uncertain, call financialdatasets.prices.snapshot.tickers first", example: AAPL}
+    test_request: {queryParams: {ticker: AAPL}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.prices.snapshot.json
+    docs_url: https://docs.financialdatasets.ai/api/prices/snapshot
+
+  - id: financialdatasets.news
+    domain: stocks
+    capability: stocks.company.news
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /news
+    name: "US company and market news"
+    summary: "Get recent market news, optionally filtered to a US stock ticker"
+    input:
+      queryParams:
+        ticker: {type: string, required: false, note: "US stock ticker; omit for broad market news", example: AAPL}
+        limit: {type: integer, required: false, min: 1, max: 10, note: "default 5"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_page_url; when supplied, omit the original filters because the cursor preserves them"}
+    test_request: {queryParams: {ticker: AAPL, limit: 1}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.news.json
+    docs_url: https://docs.financialdatasets.ai/api/news/company
+
+  - id: financialdatasets.insider-trades
+    domain: stocks
+    capability: stocks.insider-trades.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /insider-trades
+    name: "US company insider trades"
+    summary: "List SEC-reported insider transactions for a US stock ticker"
+    input:
+      queryParams:
+        ticker: {type: string, required: true, note: "US stock ticker", example: AAPL}
+        limit: {type: integer, required: false, min: 1, note: "default 10"}
+        name: {type: string, required: false, note: "insider name filter"}
+        transaction_type: {type: string, required: false}
+        form_type: {type: string, required: false, note: "4 | 4/A | 5 | 5/A"}
+        filing_date: {type: string, required: false, note: "exact filing date, YYYY-MM-DD"}
+        filing_date_gte: {type: string, required: false, note: "filing date on or after YYYY-MM-DD"}
+        filing_date_lte: {type: string, required: false, note: "filing date on or before YYYY-MM-DD"}
+        filing_date_gt: {type: string, required: false, note: "filing date after YYYY-MM-DD"}
+        filing_date_lt: {type: string, required: false, note: "filing date before YYYY-MM-DD"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_page_url; when supplied, omit the original filters because the cursor preserves them"}
+    test_request: {queryParams: {ticker: AAPL, limit: 1}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.insider-trades.json
+    docs_url: https://docs.financialdatasets.ai/api/insider-trades
+
+  - id: financialdatasets.institutional-holdings
+    domain: stocks
+    capability: stocks.institutional-holdings.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /institutional-holdings
+    name: "US institutional holdings"
+    summary: "List 13F institutional holdings by filer CIK or US stock ticker"
+    input:
+      queryParams:
+        filer_cik: {type: string, required: false, note: "institutional filer's SEC CIK; supply exactly one of filer_cik or ticker. Call financialdatasets.institutional-holdings.investors to list supported filers"}
+        ticker: {type: string, required: false, note: "US stock ticker; supply exactly one of filer_cik or ticker. If availability is uncertain, call financialdatasets.institutional-holdings.tickers first", example: AAPL}
+        limit: {type: integer, required: false, min: 1, note: "default 10"}
+        report_period: {type: string, required: false, note: "exact report date, YYYY-MM-DD"}
+        report_period_gte: {type: string, required: false, note: "report date on or after YYYY-MM-DD"}
+        report_period_lte: {type: string, required: false, note: "report date on or before YYYY-MM-DD"}
+        report_period_gt: {type: string, required: false, note: "report date after YYYY-MM-DD"}
+        report_period_lt: {type: string, required: false, note: "report date before YYYY-MM-DD"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_page_url; when supplied, omit the original filters because the cursor preserves them"}
+    test_request: {queryParams: {ticker: AAPL, limit: 1}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.institutional-holdings.json
+    docs_url: https://docs.financialdatasets.ai/api/institutional-holdings/ticker
+
+  - id: financialdatasets.index-funds
+    domain: stocks
+    capability: stocks.index-funds.holdings
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /index-funds
+    name: "ETF and index-fund holdings"
+    summary: "Get an ETF or index fund's holdings and weights, or find funds that hold a US security"
+    input:
+      queryParams:
+        ticker: {type: string, required: false, note: "ETF or index-fund ticker; supply exactly one of ticker or holding. If availability is uncertain, call financialdatasets.index-funds.tickers first", example: SPY}
+        holding: {type: string, required: false, note: "US security ticker; supply exactly one of ticker or holding to find funds whose latest filing holds the security"}
+        as_of: {type: string, required: false, note: "YYYY-MM-DD; valid only with ticker; returns the fund composition in effect on or before this date"}
+        asset_class: {type: string, required: false, note: "equity | bond; valid only with ticker; omit for all holdings"}
+        limit: {type: integer, required: false, min: 1, note: "total rows across all pages; default 50; each response page contains up to 10 rows"}
+        offset: {type: integer, required: false, min: 0, note: "rows to skip; default 0"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_page_url; when supplied, omit the original filters because the cursor preserves them"}
+      note: "Supply exactly one of ticker or holding unless continuing with cursor. The response shape depends on the query: ticker returns fund and holdings; holding returns security and funds."
+    test_request: {queryParams: {ticker: SPY, limit: 1}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.index-funds.json
+    docs_url: https://docs.financialdatasets.ai/api/index-funds/ticker
+
+  - id: financialdatasets.financials.search.screener
+    domain: stocks
+    capability: stocks.screener.search
+    platform: stocks
+    scope: any_account
+    method: POST
+    path: /financials/search/screener
+    name: "US public-company financial screener"
+    summary: "Screen US public companies with supported company and financial-metric filters"
+    input:
+      body:
+        filters: {type: array, required: true, note: "filter objects: {field, operator, value}. Call financialdatasets.financials.search.screener.filters to discover supported fields, values and operators before constructing an unfamiliar filter", example: [{field: market_cap, operator: gte, value: 100000000000}]}
+        limit: {type: integer, required: false, min: 1, note: "default 10"}
+    test_request: {body: {filters: [{field: ticker, operator: in, value: [AAPL]}], limit: 1}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.financials.search.screener.json
+    docs_url: https://docs.financialdatasets.ai/api/financials/search-screener
+
+  - id: financialdatasets.macro.interest-rates
+    domain: stocks
+    capability: stocks.macro.interest-rates
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /macro/interest-rates
+    name: "Major central-bank interest rates"
+    summary: "Get historical policy interest rates for a supported major central bank"
+    input:
+      queryParams:
+        bank: {type: string, required: true, note: "central-bank code. Call financialdatasets.macro.interest-rates.banks to list supported values", example: FED}
+        start_date: {type: string, required: false, note: "YYYY-MM-DD"}
+        end_date: {type: string, required: false, note: "YYYY-MM-DD"}
+    test_request: {queryParams: {bank: FED, start_date: '2026-01-01', end_date: '2026-09-15'}}
+    cost: *standard_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.macro.interest-rates.json
+    docs_url: https://docs.financialdatasets.ai/api/macro/interest-rates/historical
+
+  - id: financialdatasets.kpi.metrics
+    domain: stocks
+    capability: stocks.kpi.metrics
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /kpi/metrics
+    name: "US company operating KPIs"
+    summary: "Get company-specific operating KPIs extracted from filings for a US stock ticker"
+    input: &kpi_input
+      queryParams:
+        ticker: {type: string, required: true, note: "US stock ticker", example: DAL}
+        metric_name: {type: string, required: false, note: "canonical metric name"}
+        period: {type: string, required: false, note: "quarterly | annual; default quarterly"}
+        report_period_gte: {type: string, required: false, note: "report date on or after YYYY-MM-DD"}
+        report_period_lte: {type: string, required: false, note: "report date on or before YYYY-MM-DD"}
+        limit: {type: integer, required: false, min: 1, max: 50, note: "number of reporting periods, not rows; default 4"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_page_url; when supplied, omit the original filters because the cursor preserves them"}
+    test_request: {queryParams: {ticker: DAL, limit: 1}}
+    cost: &premium_cost {type: per_success, value: 0.16, currency: USD, per: 1, unit: call, source: observed, source_url: "https://www.financialdatasets.ai/pricing", checked: '2026-09-15', confidence: verified, note: "Observed in the provider transaction ledger: the authenticated batch reconciled to $0.16 for each premium request"}
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.kpi.metrics.json
+    docs_url: https://docs.financialdatasets.ai/api/kpi/metrics
+
+  - id: financialdatasets.kpi.guidance
+    domain: stocks
+    capability: stocks.kpi.guidance
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /kpi/guidance
+    name: "US company KPI guidance"
+    summary: "Get management guidance for company-specific KPIs for a US stock ticker"
+    input: *kpi_input
+    test_request: {queryParams: {ticker: DAL, limit: 1}}
+    cost: *premium_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.kpi.guidance.json
+    docs_url: https://docs.financialdatasets.ai/api/kpi/guidance
+
+  - id: financialdatasets.kpi.non-gaap
+    domain: stocks
+    capability: stocks.kpi.non-gaap
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /kpi/non-gaap
+    name: "US company non-GAAP metrics"
+    summary: "Get company-reported non-GAAP measures and reconciliations for a US stock ticker"
+    input: *kpi_input
+    test_request: {queryParams: {ticker: DAL, limit: 1}}
+    cost: *premium_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.kpi.non-gaap.json
+    docs_url: https://docs.financialdatasets.ai/api/kpi/non-gaap
+
+  - id: financialdatasets.ipos
+    domain: stocks
+    capability: stocks.ipos.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /ipos
+    name: "US IPO and registration filings"
+    summary: "List US IPO, SPAC, shell-company, resale and other registration filings"
+    input:
+      queryParams:
+        ticker: {type: string, required: false, note: "US stock ticker", example: ARM}
+        cik: {type: string, required: false, note: "SEC Central Index Key"}
+        classification: {type: string, required: false, note: "ipo | shell_company | spac | resale | other"}
+        filing_date: {type: string, required: false, note: "exact filing date, YYYY-MM-DD"}
+        filing_date_gte: {type: string, required: false, note: "filing date on or after YYYY-MM-DD"}
+        filing_date_lte: {type: string, required: false, note: "filing date on or before YYYY-MM-DD"}
+        filing_date_gt: {type: string, required: false, note: "filing date after YYYY-MM-DD"}
+        filing_date_lt: {type: string, required: false, note: "filing date before YYYY-MM-DD"}
+        limit: {type: integer, required: false, min: 1, note: "default 10"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_page_url; when supplied, omit the original filters because the cursor preserves them"}
+    test_request: {queryParams: {classification: ipo, limit: 1}}
+    cost: *premium_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.ipos.json
+    docs_url: https://docs.financialdatasets.ai/api/ipos
+
+  # These dataset-specific discovery helpers are anonymous upstream and free. They use the existing
+  # utility kind, so the dashboard folds them into its utility accordion while CLI and agents can
+  # still call them directly to establish a valid identifier first.
+  - id: financialdatasets.company.facts.tickers
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.company-facts-tickers
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /company/facts/tickers
+    name: "Available company-facts tickers"
+    summary: "List US stock tickers accepted by the company-facts dataset"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: &free_cost {type: free, value: 0, currency: USD, unit: call, source: observed, checked: '2026-09-15', confidence: verified, note: "Observed across three anonymous batches with no provider balance change. Free only when the caller does not send an X-API-KEY header; a caller-supplied key can use that key's credits"}
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.company.facts.tickers.json
+    docs_url: https://docs.financialdatasets.ai/api/company/facts/ticker
+
+  - id: financialdatasets.company.facts.ciks
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.company-facts-ciks
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /company/facts/ciks
+    name: "Available company-facts CIKs"
+    summary: "List SEC CIKs accepted by the company-facts dataset"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.company.facts.ciks.json
+    docs_url: https://docs.financialdatasets.ai/api/company/facts/cik
+
+  - id: financialdatasets.prices.tickers
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.prices-tickers
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /prices/tickers
+    name: "Available historical-price tickers"
+    summary: "List US stock tickers accepted by the historical-prices dataset"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.prices.tickers.json
+    docs_url: https://docs.financialdatasets.ai/api/prices/historical
+
+  - id: financialdatasets.prices.snapshot.tickers
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.price-snapshot-tickers
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /prices/snapshot/tickers
+    name: "Available price-snapshot tickers"
+    summary: "List actively traded US stock tickers accepted by the latest-price snapshot dataset"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.prices.snapshot.tickers.json
+    docs_url: https://docs.financialdatasets.ai/api/prices/snapshot
+
+  - id: financialdatasets.earnings.tickers
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.earnings-tickers
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /earnings/tickers
+    name: "Available earnings tickers"
+    summary: "List US stock tickers accepted by the earnings dataset"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.earnings.tickers.json
+    docs_url: https://docs.financialdatasets.ai/api/earnings
+
+  - id: financialdatasets.filings.tickers
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.filings-tickers
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /filings/tickers
+    name: "Available filings tickers"
+    summary: "List US stock tickers accepted by the SEC-filings dataset"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.filings.tickers.json
+    docs_url: https://docs.financialdatasets.ai/api/filings/ticker
+
+  - id: financialdatasets.filings.ciks
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.filings-ciks
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /filings/ciks
+    name: "Available filings CIKs"
+    summary: "List SEC CIKs accepted by the filings dataset"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.filings.ciks.json
+    docs_url: https://docs.financialdatasets.ai/api/filings/ticker
+
+  - id: financialdatasets.filings.types
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.filings-types
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /filings/types
+    name: "Available SEC filing types"
+    summary: "List filing-type values accepted by the filings dataset"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.filings.types.json
+    docs_url: https://docs.financialdatasets.ai/api/filings/ticker
+
+  - id: financialdatasets.financial-metrics.snapshot.tickers
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.financial-metrics-snapshot-tickers
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /financial-metrics/snapshot/tickers
+    name: "Available financial-metric snapshot tickers"
+    summary: "List US stock tickers accepted by the financial-metrics snapshot dataset"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.financial-metrics.snapshot.tickers.json
+    docs_url: https://docs.financialdatasets.ai/api/financial-metrics/snapshot
+
+  - id: financialdatasets.financials.search.screener.filters
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.screener-filters
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /financials/search/screener/filters
+    name: "Available financial-screener filters"
+    summary: "List supported screener fields, aliases, values and comparison operators"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.financials.search.screener.filters.json
+    docs_url: https://docs.financialdatasets.ai/api/financials/search-screener
+
+  - id: financialdatasets.macro.interest-rates.banks
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.interest-rate-banks
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /macro/interest-rates/banks
+    name: "Available central banks"
+    summary: "List central-bank codes accepted by the interest-rates dataset"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.macro.interest-rates.banks.json
+    docs_url: https://docs.financialdatasets.ai/api/macro/interest-rates/historical
+
+  - id: financialdatasets.institutional-holdings.tickers
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.institutional-holdings-tickers
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /institutional-holdings/tickers
+    name: "Available institutional-holdings tickers"
+    summary: "List US stock tickers accepted by the institutional-holdings dataset"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.institutional-holdings.tickers.json
+    docs_url: https://docs.financialdatasets.ai/api/institutional-holdings/ticker
+
+  - id: financialdatasets.institutional-holdings.investors
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.institutional-holdings-investors
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /institutional-holdings/investors
+    name: "Available institutional investors"
+    summary: "List institutional investors and filer CIKs accepted by the holdings dataset, optionally by name prefix"
+    input:
+      queryParams:
+        name: {type: string, required: false, note: "case-insensitive investor-name prefix"}
+    test_request: {queryParams: {name: Berkshire}}
+    cost: *free_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.institutional-holdings.investors.json
+    docs_url: https://docs.financialdatasets.ai/api/institutional-holdings/investor
+
+  - id: financialdatasets.index-funds.tickers
+    kind: utility
+    platform_auth: anonymous
+    domain: stocks
+    capability: stocks.discovery.index-funds-tickers
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /index-funds/tickers
+    name: "Available ETF and index-fund tickers"
+    summary: "List ETF and index-fund ticker symbols accepted by the index-funds dataset"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    verified: '2026-09-15'
+    added: '2026-09-15'
+    example_response: examples/financialdatasets.index-funds.tickers.json
+    docs_url: https://docs.financialdatasets.ai/api/index-funds/ticker

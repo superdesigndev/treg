@@ -1,0 +1,8 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Apple Maps">
+  <!-- Simplified map and location pin for the platform tile. -->
+  <path fill="#72C8F4" d="M2 5.2 8.7 3v15.8L2 21z"/>
+  <path fill="#F8E6A5" d="m8.7 3 6.6 2.2V21l-6.6-2.2z"/>
+  <path fill="#76C88A" d="M15.3 5.2 22 3v15.8L15.3 21z"/>
+  <path fill="none" stroke="#fff" stroke-width="1.4" d="M3 15.5 9 11l6 2.3 5.7-5"/>
+  <path fill="#E84858" d="M16.5 2.2a3.6 3.6 0 0 0-3.6 3.6c0 2.7 3.6 6.3 3.6 6.3s3.6-3.6 3.6-6.3a3.6 3.6 0 0 0-3.6-3.6zm0 5.1a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
+</svg>

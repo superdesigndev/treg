@@ -1,0 +1,27 @@
+{
+  "success": true,
+  "message": "Country codes fetched",
+  "code": 200,
+  "data": [
+    "AF",
+    "DZ",
+    "AO",
+    "AR",
+    "AU",
+    "AT",
+    "AZ",
+    "BD",
+    "BE",
+    "BJ",
+    "BO",
+    "BR",
+    "BG",
+    "BF",
+    "KH",
+    "CM",
+    "CA",
+    "TD",
+    "CL",
+    "CN"
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "output": {
+    "data": {
+      "comments": [
+        {
+          "author": "rubens1975_",
+          "avatarUrl": "https://instagram.fiev22-1.fna.fbcdn.net/v/t51.82787-19/752952187_18614553679018284_992225851145836784_n.jpg?stp=dst-jpg_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby41NDIuYzIifQ&_nc_ht=instagram.fiev22-1.fna.fbcdn.net&_nc_cat=100&_nc_oc=Q6cZ2gGUx20oYbz0zB4yWZytvMS7D-SDH9nTVYXN1fPw4hAs11GdY0aTg91XE0flKO34mH0&_nc_ohc=P1cVsBIHc94Q7kNvwG-Oklw&_nc_gid=8qilCunnqttvGh85D7Ew9g&edm=APs17CUBAAAA&ccb=7-5&oh=00_AQIphuEbTIzAf7iCSCpM2cyc4ZeoZ6gdW01hc6JA-5wRVQ&oe=6AB423C5&_nc_sid=10d13b",
+          "createdUtc": 1775756088,
+          "id": "18066264752338681",
+          "likes": 0,
+          "text": "E joga lixo na rua",
+          "verified": false
+        },
+        {
+          "author": "clerouak66",
+          "avatarUrl": "https://instagram.fiev22-1.fna.fbcdn.net/v/t51.2885-19/472643005_1159140318890442_4657304045473698858_n.jpg?stp=dst-jpg_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby45NzIuYzIifQ&_nc_ht=instagram.fiev22-1.fna.fbcdn.net&_nc_cat=106&_nc_oc=Q6cZ2gGUx20oYbz0zB4yWZytvMS7D-SDH9nTVYXN1fPw4hAs11GdY0aTg91XE0flKO34mH0&_nc_ohc=anjgao9vpTAQ7kNvwGou5Ei&_nc_gid=8qilCunnqttvGh85D7Ew9g&edm=APs17CUBAAAA&ccb=7-5&oh=00_AQLjLEoU3jfLEmGANUhHVXcB7EyOIIk0MZUyYrkCGlDa3g&oe=6AB443C2&_nc_sid=10d13b",
+          "createdUtc": 1775622550,
+          "id": "18007543739853361",
+          "likes": 0,
+          "text": "Fazer o que na Lua, Lulu,? milhões que poderia ser usado na humanidade, na fome , na natureza, só por Xapiri mesmo 😮",
+          "verified": false
+        },
+        "… 13 more item(s) truncated"
+      ],
+      "nextCursor": "_afkhecoAvQ70qad4W-kLmKCqwdum29XMNpbwmnCwmstvO9WLvQkrC-fdOXifP-EVMZ8JSorW7dqdRSO2aCRsb9Qy4xaWR0qh9HIhA0fUhnwI-Z-FW-25CtRUUIPDshVmSTEgG1YK7U2vz-HSI3iJXj1e4dg4c7JeXpA8Lq7no3C1dhT82_A6evxFSKJGMX8nI8h4Hwfr-z7y0m5dCZ7S-FjnCXwxj_b3FqOLeWocTXBukYAMC3SwB1a0iMiuIw1ag6cR0fuIjR-WS3h7Cy4wFln9ER5h72uYCimm5WVWjnP7YeZmhAUjvy4LPVjdwEsA0mnBeMoVKWCBxvFAxRDajg-d6cH7dk"
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0008,
+  "items": 15,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-quokka",
+    "name": "Quokka",
+    "kind": "anonymous",
+    "artworkKey": "quokka"
+  },
+  "hint": "large_result: this response is ~11 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+  "resultId": "81d1f8fe-62fb-47c6-9393-3a4c34019530"
+}

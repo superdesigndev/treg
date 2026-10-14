@@ -1,0 +1,25 @@
+{
+  "output": {
+    "found": true,
+    "data": {
+      "transcripts": [
+        {
+          "id": "3597267389859272809",
+          "shortcode": "DHsD6HGqJhp",
+          "text": "Let's fry up the perfect bun sale. Beautiful. Everybody. Shh. The perfect bun sale. Let me show you my bun sale. When it comes down to bun sale, we make it the crispiest. Hear the crunch? Heaven."
+        }
+      ]
+    }
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 1,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-giraffe",
+    "name": "Giraffe",
+    "kind": "anonymous",
+    "artworkKey": "giraffe"
+  },
+  "resultId": "0a4d8fc1-4139-4116-b2e8-3a63e9a8d7a7"
+}

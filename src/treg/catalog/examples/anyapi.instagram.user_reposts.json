@@ -1,0 +1,24 @@
+{
+  "output": {
+    "data": {
+      "nextCursor": "Istnr9kAfsuvwUP-9tA6LmAGyd2eaMId4DNw2GamJ1sScHWjDQpHvyB_dZmxP1t503fQ0p4zme-hlOmj4nycB3B5fw90mFjMn_xWd9osZyKWIwT67u93ymM89vHTb1C_5cWNMebRFjsmcLBlP2bGxClcAjlB9cEimvJbi0j7yIs1N16W2x4gde3WNU87fMaPnqglfcM4… [323 chars]",
+      "posts": [
+        "… {28 field(s) truncated}",
+        "… 11 more item(s) truncated"
+      ]
+    },
+    "found": true
+  },
+  "provider": "AnyAPI",
+  "costUsd": 0.0012,
+  "items": 12,
+  "replayed": false,
+  "source": {
+    "id": "anonymous-tiger",
+    "name": "Tiger",
+    "kind": "anonymous",
+    "artworkKey": "tiger"
+  },
+  "hint": "large_result: this response is ~34 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "de707477-a2d1-47ac-b162-1cda752192cd"
+}

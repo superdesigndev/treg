@@ -1,0 +1,78 @@
+{
+  "meta": {
+    "blocked": [],
+    "elapsed_ms": 360,
+    "from_cache": false,
+    "llm_calls": 0,
+    "pages_fetched": 1,
+    "partial": false,
+    "warnings": [
+      "module: coingecko-markets: 20 coins in usd"
+    ]
+  },
+  "recipe": "coingecko-markets",
+  "usage": {
+    "boxes": [
+      "gate",
+      "recipe"
+    ],
+    "cache": "miss",
+    "engine": "recipe",
+    "lines": [
+      {
+        "about": "the call",
+        "boxes": [
+          "gate"
+        ],
+        "cache": "miss",
+        "call": "recipes",
+        "engine": "gate",
+        "units": 1
+      },
+      {
+        "attempts": 1,
+        "cache": "api",
+        "call": "scrape",
+        "engine": "api",
+        "proxy": "none",
+        "units": 1,
+        "url": "https://api.coingecko.com/…"
+      }
+    ],
+    "remaining_before": {
+      "concurrent": 99,
+      "requests": 190,
+      "search": 3000
+    },
+    "units": 2
+  },
+  "version": 1,
+  "rows": [
+    {
+      "ath": 126080,
+      "change_24h": 0.44322,
+      "high_24h": 83094,
+      "low_24h": 82572,
+      "market_cap": 1667788777251,
+      "name": "Bitcoin",
+      "price": 82987,
+      "rank": 1,
+      "symbol": "BTC",
+      "updated": "2026-10-11T05:25:48.000Z",
+      "volume_24h": 14326765173
+    },
+    {
+      "ath": 4946.05,
+      "change_24h": 0.51666,
+      "high_24h": 2516.64,
+      "low_24h": 2490.33,
+      "market_cap": 306002093853,
+      "name": "Ethereum",
+      "price": 2505.63,
+      "rank": 2,
+      "symbol": "ETH",
+      "updated": "2026-10-11T05:25:48.000Z",
+      "volume_24h": 6502942490
+    }
+  ]
+}

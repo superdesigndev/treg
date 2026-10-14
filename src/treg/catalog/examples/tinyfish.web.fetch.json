@@ -1,0 +1,18 @@
+{
+  "results": [
+    {
+      "url": "https://example.com",
+      "final_url": "https://example.com",
+      "title": "Example Domain",
+      "description": null,
+      "language": "en",
+      "text": "This domain is for use in documentation examples without needing permission. Avoid use in operations.\n\nLearn more",
+      "author": null,
+      "published_date": null,
+      "links": ["https://iana.org/domains/example"],
+      "latency_ms": 629.5599199947901,
+      "format": "markdown"
+    }
+  ],
+  "errors": []
+}

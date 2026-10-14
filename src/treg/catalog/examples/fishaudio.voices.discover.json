@@ -1,0 +1,15 @@
+{
+  "total": 7,
+  "items": [
+    {
+      "_id": "297a6fd278df47c3b9da9bfdf55ac89a",
+      "title": "Licensed English narrator",
+      "visibility": "public",
+      "licensed": true,
+      "state": "trained",
+      "type": "tts",
+      "languages": ["en"]
+    }
+  ],
+  "has_more": true
+}

@@ -8,11 +8,21 @@ Checks (the success criteria from docs/context/architecture/catalog.md):
   - provider file's `provider` matches its filename and exists in treg.oauth_providers.REGISTRY
   - endpoint ids unique across the WHOLE catalog; id convention `<provider>.<capability>`
   - `capability` exists in capabilities.yaml OR the file's own proposed_capabilities
+  - a proposed capability is not already in capabilities.yaml and carries one description across
+    files; WARN once endpoints of two providers use it (promote it), and WARN when two
+    capabilities of one platform share a description (one job under two ids splits the comparison)
   - `platform` equals the capability's first segment and exists in capabilities.yaml platforms
   - required fields present; enums valid (scope, method, cost.type/currency/unit/source/confidence)
   - a `cost` block is BILLABLE, not decorative: a null `value` and `confidence: unknown` appear
     together or not at all; a verified/documented price names its `source_url`; every priced entry
     carries `checked` (WARN past 90 days); free is spelled exactly one way
+  - `cost.table` rows reference safe input fields, linear `times` fields have a maximum, and the
+    explicit fallback covers every row's maximum computable price
+  - merged provider/endpoint `async` descriptors have exactly one poll mode and result mode,
+    same-provider endpoint references, a dynamic-URL host allow-list, and per-success or per-call
+    billing
+  - every tool row carries `added:`, the UTC day it reached main, as YYYY-MM-DD and not in the
+    future (scripts/catalog_added.py writes it; its `--base` mode guards existing dates in CI)
   - a `verified` endpoint must have an existing example_response file
   - an extended endpoint a verification run has touched claims exactly one non-empty state
     (verified | unverified | untestable | skipped), and an `untestable` one carries no
@@ -36,6 +46,7 @@ never what a claim on it is worth.
 from __future__ import annotations
 
 import datetime as dt
+import math
 import re
 import sys
 from pathlib import Path
@@ -47,9 +58,11 @@ CATALOG = ROOT / "src" / "treg" / "catalog"
 sys.path.insert(0, str(ROOT / "src"))
 # The enums the SERVER reads the same files with. Imported, never re-typed: a validator that
 # accepts a unit `cost_view` cannot price is worse than no validator.
-from treg.catalog_store import COST_SOURCES as _SOURCES  # noqa: E402
-from treg.catalog_store import COST_UNITS as _UNITS  # noqa: E402
-from treg.catalog_store import CONFIDENCES as _CONFIDENCES  # noqa: E402
+from treg.domain.catalog.store import COST_SOURCES as _SOURCES  # noqa: E402
+from treg.domain.catalog.store import COST_UNITS as _UNITS  # noqa: E402
+from treg.domain.catalog.store import CONFIDENCES as _CONFIDENCES  # noqa: E402
+from treg.domain.catalog.store import effective_async_descriptor  # noqa: E402
+from treg.domain.catalog.routing import paths as _paths  # noqa: E402
 
 SCOPES = {"any_account", "own_account"}
 METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
@@ -70,8 +83,24 @@ TIERS = {"core", "extended"}
 # what an endpoint IS (marketplace browse surface vs. plumbing). Optional — absent reads as "data" —
 # but a stated one must be from this set. See docs/context/architecture/catalog.md.
 KINDS = {"data", "action", "account", "utility"}
+ENDPOINT_STATUSES = {"retired", "broken"}
+QUERY_ARRAY_ENCODINGS = {"json", "comma", "repeated"}
+ASYNC_PARAM_LOCATIONS = {"pathParams", "queryParams"}
+_IDENT = r"[A-Za-z_][A-Za-z0-9_-]*"
+JSON_PATH = re.compile(rf"(?:{_IDENT}|[0-9]+)(?:\.(?:{_IDENT}|[0-9]+))*")
+# A usage term path: dotted keys, each optionally selecting a list item by `[key=value]`. The
+# value excludes "." because the runtime (`settlement.usage_term_path`) splits on dots first.
+_USAGE_SEGMENT = rf"{_IDENT}(?:\[{_IDENT}=[A-Za-z0-9_-]+\])?"
+USAGE_TERM_PATH = re.compile(rf"{_USAGE_SEGMENT}(?:\.{_USAGE_SEGMENT})*")
+# Only the unit real traffic has settled (OpenRouter's `usage.cost` in dollars). A token unit
+# returns with the first metered token-priced listing, together with its fx rule and a live test.
+USAGE_UNITS = {"usd", "credit"}  # plus provider-native meters declared in unit_rates_usd
 # the section heading an endpoint files under on its platform page — one lowercase word
 DOMAIN = re.compile(r"[a-z][a-z0-9_]*")
+HOST = re.compile(
+    r"(?=.{1,253}\Z)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)"
+    r"(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*"
+)
 REQUIRED = {
     "core": ("id", "capability", "platform", "method", "path", "summary"),
     "extended": ("id", "platform", "method", "path", "summary"),
@@ -105,6 +134,31 @@ def fail(errors: list[str], where: str, msg: str) -> None:
     errors.append(f"{where}: {msg}")
 
 
+def check_status_marker(ep: dict, where: str, endpoint_status: dict[str, str],
+                        errors: list[str]) -> None:
+    """Validate the migration marker and its cross-catalog successor reference."""
+    status = str(ep.get("status") or "").strip()
+    note = str(ep.get("status_note") or "").strip()
+    successor = str(ep.get("superseded_by") or "").strip()
+    if status and status not in ENDPOINT_STATUSES:
+        fail(errors, where, f"status '{status}' not one of {sorted(ENDPOINT_STATUSES)}")
+    if status and not note:
+        fail(errors, where, "status requires a non-empty status_note explaining the retirement")
+    if not status and note:
+        fail(errors, where, "status_note requires status: retired or status: broken")
+    if not status and successor:
+        fail(errors, where, "superseded_by requires status: retired or status: broken")
+    if not successor:
+        return
+    if successor == ep.get("id"):
+        fail(errors, where, "superseded_by cannot point to the endpoint itself")
+    elif successor not in endpoint_status:
+        fail(errors, where, f"superseded_by target '{successor}' is not a catalog endpoint id")
+    elif endpoint_status[successor]:
+        fail(errors, where, f"superseded_by target '{successor}' is itself "
+                            f"{endpoint_status[successor]} — replacements must be live")
+
+
 def _as_date(value) -> dt.date | None:
     """`checked: 2026-07-28` parses as a date; quoted, it stays a string. Accept both, reject prose."""
     if isinstance(value, dt.datetime):
@@ -117,7 +171,650 @@ def _as_date(value) -> dt.date | None:
         return None
 
 
-def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str]) -> None:
+def check_added(ep: dict, where: str, errors: list[str]) -> None:
+    added = ep.get("added")
+    day = _as_date(added) if added is not None else None
+    if day is None or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(added)):
+        fail(errors, where, "missing or invalid `added:` (the UTC day the tool reached main, "
+                            "YYYY-MM-DD); run `uv run python scripts/catalog_added.py` to add today's")
+    elif day > dt.datetime.now(dt.UTC).date():
+        fail(errors, where, f"`added: {added}` is in the future; it is the UTC day the tool reached main")
+
+
+def _input_fields(input_schema: object) -> dict[str, dict]:
+    """Flatten request fields to location-qualified dotted paths used by price tables."""
+    if not isinstance(input_schema, dict):
+        return {}
+    fields: dict[str, dict] = {}
+    for location in ("pathParams", "queryParams", "headers", "body"):
+        block = input_schema.get(location)
+        if not isinstance(block, dict):
+            continue
+        if isinstance(block.get("properties"), dict):
+            block = block["properties"]
+        def add_fields(items: dict, prefix: str) -> None:
+            for name, spec in items.items():
+                if not isinstance(spec, dict):
+                    continue
+                field = f"{prefix}.{name}"
+                fields.setdefault(field, spec)
+                nested = spec.get("properties")
+                if isinstance(nested, dict):
+                    add_fields(nested, field)
+
+        for name, spec in block.items():
+            if isinstance(spec, dict):
+                field = f"{location}.{name}"
+                fields.setdefault(field, spec)
+                nested = spec.get("properties")
+                if isinstance(nested, dict):
+                    add_fields(nested, field)
+    return fields
+
+
+def _finite_number(value: object) -> bool:
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(float(value)))
+
+
+def check_strict_query(ep: dict, where: str, errors: list[str]) -> None:
+    if "strict_query" not in ep:
+        return
+    if type(ep["strict_query"]) is not bool:
+        fail(errors, where, "strict_query must be a boolean")
+    if ep["strict_query"] is not True:
+        return
+    fields = (ep.get("input") or {}).get("queryParams")
+    if ep.get("method") != "GET" or not isinstance(fields, dict) or not fields:
+        fail(errors, where, "strict_query requires a GET with declared queryParams")
+        return
+    if "{" in str(ep.get("path", "")) or (ep.get("input") or {}).get("body"):
+        fail(errors, where, "strict_query cannot use path placeholders or body inputs")
+    for name, spec in fields.items():
+        if not isinstance(spec, dict):
+            fail(errors, where, f"strict query field {name} must be a mapping")
+        elif "enum" in spec and (not isinstance(spec["enum"], list) or not spec["enum"]
+                                 or any(not isinstance(v, str) for v in spec["enum"])):
+            fail(errors, where, f"strict query field {name} enum must contain strings")
+
+
+def check_strict_body(ep: dict, where: str, errors: list[str]) -> None:
+    if "strict_body" not in ep:
+        return
+    if ep["strict_body"] is not True:
+        fail(errors, where, "strict_body must be true when present")
+        return
+    fields = (ep.get("input") or {}).get("body")
+    arrays = [
+        spec for spec in (fields or {}).values()
+        if isinstance(spec, dict) and str(spec.get("type") or "").startswith("array")
+    ]
+    if ep.get("method") not in {"POST", "PUT", "PATCH"} or not arrays:
+        fail(errors, where, "strict_body requires a body method with a declared array field")
+        return
+    for spec in arrays:
+        minimum = spec.get("minItems", spec.get("min"))
+        maximum = spec.get("maxItems", spec.get("max"))
+        if not isinstance(minimum, int) or not isinstance(maximum, int) or minimum > maximum:
+            fail(errors, where, "strict_body array fields require valid integer min/max bounds")
+
+
+def check_body_allowlist(ep: dict, where: str, errors: list[str]) -> None:
+    if "body_allowlist" not in ep:
+        return
+    fields = (ep.get("input") or {}).get("body")
+    if ep["body_allowlist"] is not True:
+        fail(errors, where, "body_allowlist must be true when present")
+    elif ep.get("method") not in {"POST", "PUT", "PATCH"} or not isinstance(fields, dict) or not fields:
+        fail(errors, where, "body_allowlist requires a body method with declared body fields")
+
+
+def check_platform_request(rule: object, input_schema: object, where: str,
+                           errors: list[str]) -> None:
+    """Platform-only fixed request values; BYOK input remains an upstream contract."""
+    if not isinstance(rule, dict) or not rule:
+        fail(errors, where, "platform_request must be a non-empty mapping")
+        return
+    fields = _input_fields(input_schema)
+    for path, value in rule.items():
+        spec = fields.get(path) if isinstance(path, str) else None
+        if (not isinstance(path, str)
+                or not path.startswith(("body.", "headers.", "queryParams.")) or spec is None):
+            fail(errors, where, "platform_request must name a declared body, header or query field")
+            continue
+        allowed = spec.get("enum")
+        if (not isinstance(allowed, list) or len(allowed) != 1
+                or type(value) is not type(allowed[0]) or value != allowed[0]):
+            fail(errors, where, "platform_request value must match the field's singleton enum")
+
+
+TAVILY_RATE_KEYS = {
+    "tavily.web.search": {"basic", "fast", "ultra_fast", "advanced"},
+    "tavily.web.extract": {"basic", "advanced"},
+    "tavily.web.map": {"regular", "instructions"},
+    "tavily.web.crawl": {
+        "basic", "basic_instructions", "advanced", "advanced_instructions",
+    },
+}
+
+
+def check_tavily_rates(endpoint_id: str, cost: dict, where: str,
+                        errors: list[str]) -> None:
+    """Tavily's provider-specific formulas require a complete positive finite mode table."""
+    expected = TAVILY_RATE_KEYS.get(endpoint_id)
+    if expected is None:
+        return
+    rates = cost.get("tavily_rates")
+    if not isinstance(rates, dict) or set(rates) != expected:
+        fail(errors, where, "cost.tavily_rates must contain exactly " + ", ".join(sorted(expected)))
+        return
+    if any(not _finite_number(value) or value <= 0 for value in rates.values()):
+        fail(errors, where, "cost.tavily_rates values must be positive finite numbers")
+
+
+OCTEN_RATE_KEYS = {
+    "octen.web.search": {"call", "full_content_extra"},
+    "octen.web.search.broad": {"subquery", "full_content_extra"},
+    "octen.web.search.news": {"call", "full_content_extra"},
+    "octen.web.extract": {"standard", "advanced"},
+}
+
+
+def check_octen_rates(endpoint_id: str, cost: dict, where: str,
+                      errors: list[str]) -> None:
+    """A platform call needs every Octen component rate before it can reserve."""
+    expected = OCTEN_RATE_KEYS.get(endpoint_id)
+    if expected is None:
+        return
+    rates = cost.get("octen_rates")
+    if not isinstance(rates, dict) or set(rates) != expected:
+        fail(errors, where, "cost.octen_rates must contain exactly " + ", ".join(sorted(expected)))
+        return
+    if any(not _finite_number(value) or value <= 0 or value * 1_000_000 != round(value * 1_000_000)
+           for value in rates.values()):
+        fail(errors, where, "cost.octen_rates values must be positive whole-micro USD rates")
+        return
+    base_key = ("advanced" if endpoint_id == "octen.web.extract" else
+                "subquery" if endpoint_id == "octen.web.search.broad" else "call")
+    if (cost.get("currency") != "USD" or not _finite_number(cost.get("value"))
+            or not _finite_number(cost.get("per")) or cost["per"] <= 0
+            or abs(cost["value"] / cost["per"] - rates[base_key]) > 1e-12):
+        fail(errors, where, "cost.value/per must match the Octen base rate")
+
+
+def check_enrichlayer_rule(cost: dict, input_schema: dict, where: str,
+                           errors: list[str]) -> None:
+    """A response-count price must have a finite hold and only declared option riders."""
+    rule = cost.get("enrichlayer")
+    if cost.get("type") != "per_result":
+        if rule is not None:
+            fail(errors, where, "cost.enrichlayer is only valid on per_result prices")
+        return
+    if (not isinstance(rule, dict) or set(rule) - {"field", "max_page", "extra_per_result"}
+            or set(rule) & {"field", "max_page"} != {"field", "max_page"}
+            or rule.get("field") not in {"results", "employees", "numbers", "emails"}
+            or type(rule.get("max_page")) is not int or not 1 <= rule["max_page"] <= 10
+            or cost.get("currency") != "credit" or cost.get("per") != 1
+            or type(cost.get("value")) is not int or cost["value"] <= 0):
+        fail(errors, where, "cost.enrichlayer needs a result field, bounded page, and positive credit rate")
+        return
+    fields = (input_schema or {}).get("queryParams") or {}
+    if "page_size" not in fields:
+        fail(errors, where, "cost.enrichlayer requires a declared page_size query parameter")
+    extras = rule.get("extra_per_result", {})
+    if not isinstance(extras, dict) or any(
+        name not in fields or not isinstance(prices, dict) or not prices
+        or any(not isinstance(value, str) or type(amount) is not int or amount <= 0
+               for value, amount in prices.items())
+        for name, prices in extras.items()
+    ):
+        fail(errors, where, "cost.enrichlayer.extra_per_result needs declared options with positive credit rates")
+
+
+def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
+    """Anonymous platform fallback is intentionally narrow: proven public GETs that cost zero."""
+    mode = ep.get("platform_auth")
+    if mode is None:
+        return
+    if mode != "anonymous":
+        fail(errors, where, "platform_auth must be 'anonymous'")
+        return
+    if ep.get("method") != "GET":
+        fail(errors, where, "platform_auth anonymous requires GET")
+    cost = ep.get("cost")
+    if not isinstance(cost, dict) or cost.get("type") != "free":
+        fail(errors, where, "platform_auth anonymous requires cost.type free")
+    if not ep.get("verified"):
+        fail(errors, where, "platform_auth anonymous requires live verification")
+    if ep.get("scope", "any_account") != "any_account" or ep.get("kind") == "account":
+        fail(errors, where, "platform_auth anonymous cannot expose an own-account endpoint")
+    if (ep.get("authorization_method") or ep.get("authorization_methods")
+            or ep.get("required_scopes") or ep.get("required_resource")):
+        fail(errors, where, "platform_auth anonymous cannot require provider authorization")
+    if ep.get("async") or ep.get("resource_ownership"):
+        fail(errors, where, "platform_auth anonymous cannot create or retrieve shared async resources")
+
+
+def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[str],
+                     provider: str | None = None) -> None:
+    """Validate a first-match AIGC price table and its explicit reserve upper bound."""
+    table = cost.get("table")
+    if not isinstance(table, list) or not table:
+        fail(errors, where, "cost.table must be a non-empty list")
+        return
+    fields = _input_fields(input_schema)
+    maximums: list[float] = []
+    prior_conditions: list[dict] = []
+    for index, row in enumerate(table):
+        rwhere = f"{where}:cost.table[{index}]"
+        if not isinstance(row, dict):
+            fail(errors, rwhere, "table row must be a mapping")
+            continue
+        extra = set(row) - {"when", "value", "times", "times_min"}
+        if extra:
+            fail(errors, rwhere, f"unknown table row keys: {sorted(extra)}")
+        when = row.get("when")
+        if not isinstance(when, dict) or not when:
+            fail(errors, rwhere, "when must be a non-empty mapping")
+        else:
+            for previous in prior_conditions:
+                if all(field in when and when[field] == value for field, value in previous.items()):
+                    fail(errors, rwhere, "when is shadowed by an earlier subset row")
+                    break
+            prior_conditions.append(when)
+            for field, expected in when.items():
+                spec = fields.get(str(field))
+                if spec is None:
+                    fail(errors, rwhere, f"when field '{field}' is not declared in input")
+                elif spec.get("required") is not True and "default" not in spec:
+                    fail(errors, rwhere, f"when field '{field}' must be required or declare a default")
+                elif isinstance(expected, (dict, list)) or expected is None:
+                    fail(errors, rwhere, f"when field '{field}' must compare a scalar value")
+                elif isinstance(expected, float) and not math.isfinite(expected):
+                    fail(errors, rwhere, f"when field '{field}' must compare a finite number")
+                else:
+                    if isinstance(spec.get("enum"), list) and expected not in spec["enum"]:
+                        fail(errors, rwhere, f"when value {expected!r} is not in input enum for '{field}'")
+                    if _finite_number(expected):
+                        lower = spec.get("min")
+                        upper = spec.get("max")
+                        if _finite_number(lower) and float(expected) < float(lower):
+                            fail(errors, rwhere, f"when value {expected!r} is below input min for '{field}'")
+                        if _finite_number(upper) and float(expected) > float(upper):
+                            fail(errors, rwhere, f"when value {expected!r} is above input max for '{field}'")
+        value = row.get("value")
+        if not _finite_number(value) or float(value) < 0:
+            fail(errors, rwhere, "value must be a finite non-negative number")
+            continue
+        maximum = float(value)
+        if "times" in row:
+            times = row.get("times")
+            if not isinstance(times, str) or not times.strip():
+                fail(errors, rwhere, "times must name an input field")
+                continue
+            spec = fields.get(times)
+            if spec is None:
+                fail(errors, rwhere, f"times field '{times}' is not declared in input")
+                continue
+            if spec.get("type") not in ("integer", "number"):
+                fail(errors, rwhere, f"times field '{times}' must be numeric")
+                continue
+            upper = spec.get("max")
+            if not _finite_number(upper) or float(upper) <= 0:
+                fail(errors, rwhere, f"times field '{times}' must declare a positive input max")
+                continue
+            maximum *= float(upper)
+            # `times_min`: this row's own lower bound on the `times` field, when the model it names
+            # accepts less than the field-wide minimum. Display only (the price floor); it must sit
+            # inside the field's declared range.
+            if "times_min" in row:
+                low = row.get("times_min")
+                field_min = spec.get("min")
+                if not _finite_number(low) or float(low) <= 0 \
+                        or (_finite_number(field_min) and float(low) < float(field_min)) \
+                        or float(low) > float(upper):
+                    fail(errors, rwhere, "times_min must be a number within the times field's declared range")
+        elif "times_min" in row:
+            fail(errors, rwhere, "times_min is only valid on a row with times")
+        maximums.append(maximum)
+
+    if not check_cost_fallback(cost, "cost.table", where, errors):
+        return
+    fallback_value = cost["fallback"].get("value")
+    if _finite_number(fallback_value) \
+            and maximums and float(fallback_value) < max(maximums):
+        fail(errors, where, "cost.fallback.value must be at least every table row's maximum "
+                            "computable price")
+
+    settle = cost.get("settle", "table")
+    if settle not in ("table", "usage"):
+        fail(errors, where, "cost.table settle must be 'table' or 'usage'")
+    check_usage_block(cost, settle, where, errors, provider)
+
+
+def check_cost_fallback(cost: dict, owner: str, where: str, errors: list[str]) -> bool:
+    """The explicit reserve upper bound a table or a usage settlement holds when nothing narrower
+    applies (`settlement.derive_basis` reads `fallback.value` unconditionally for both)."""
+    fallback = cost.get("fallback")
+    if not isinstance(fallback, dict):
+        fail(errors, where, f"{owner} requires a fallback mapping with value and note")
+        return False
+    extra = set(fallback) - {"value", "note"}
+    if extra:
+        fail(errors, where, f"cost.fallback has unknown keys: {sorted(extra)}")
+    fallback_value = fallback.get("value")
+    if not _finite_number(fallback_value) or float(fallback_value) < 0:
+        fail(errors, where, "cost.fallback.value must be a finite non-negative number")
+    if not str(fallback.get("note") or "").strip():
+        fail(errors, where, "cost.fallback.note must explain the explicit upper bound")
+    return True
+
+
+def check_usage_block(cost: dict, settle: object, where: str, errors: list[str],
+                      provider: str | None) -> None:
+    """`settle: usage` names the dotted path and unit of the provider's own reported charge."""
+    usage = cost.get("usage")
+    if settle == "usage":
+        if isinstance(usage, dict) and set(usage) == {"terms", "unit"}:
+            terms = usage["terms"]
+            if not isinstance(terms, list) or not terms or not all(
+                    isinstance(term, dict) and set(term) == {"path", "rate"}
+                    and isinstance(term.get("path"), str) and USAGE_TERM_PATH.fullmatch(term["path"])
+                    and _finite_number(term.get("rate")) and float(term["rate"]) > 0
+                    for term in terms):
+                fail(errors, where, "usage.terms must be a non-empty list of {path, rate} with a "
+                                    "dotted path (segments may select name[key=value]) and a "
+                                    "positive rate")
+            elif usage.get("unit") != "usd":
+                fail(errors, where, "usage.terms rates are USD per unit; usage.unit must be 'usd'")
+            return
+        if not isinstance(usage, dict) or set(usage) != {"path", "unit"} \
+                or not isinstance(usage.get("path"), str) or not JSON_PATH.fullmatch(usage["path"]) \
+                or not isinstance(usage.get("unit"), str) or not usage["unit"].strip():
+            fail(errors, where, "cost.settle 'usage' requires usage.path and usage.unit, "
+                                "or usage.terms and unit 'usd'")
+        elif usage.get("unit") == "credit" and not _finite_number(_credit_rate(provider)):
+            fail(errors, where, f"usage.unit 'credit' needs a numeric fx.yaml credit_rates_usd entry "
+                                f"for '{provider}'")
+        elif usage.get("unit") not in USAGE_UNITS \
+                and not _finite_number(_unit_rate(provider, usage.get("unit"))):
+            fail(errors, where, f"usage.unit '{usage.get('unit')}' needs a numeric "
+                                f"fx.yaml unit_rates_usd entry for '{provider}'")
+    elif usage is not None:
+        fail(errors, where, "cost.usage is only valid with settle: usage")
+
+
+def check_async_descriptor(descriptor: object, where: str, provider: str,
+                           endpoint_index: dict[str, dict], cost: object,
+                           errors: list[str]) -> None:
+    """Validate the effective (provider defaults + endpoint overrides) async descriptor."""
+    if not isinstance(descriptor, dict):
+        fail(errors, where, "async must be a mapping")
+        return
+    extra = set(descriptor) - {"id_from", "poll", "status", "result", "interval", "max_age",
+                               "terminal_on_submission"}
+    if extra:
+        fail(errors, where, f"async has unknown keys: {sorted(extra)}")
+    if not isinstance(descriptor.get("id_from"), str) or not JSON_PATH.fullmatch(descriptor["id_from"]):
+        fail(errors, where, "async.id_from must be a dotted JSON path")
+
+    def check_param(value: object, label: str, target: dict | None, *, fetch: bool = False) -> None:
+        expected = {"in", "name", "value_from"} if fetch else {"in", "name"}
+        if not isinstance(value, dict) or set(value) != expected:
+            suffix = " and value_from" if fetch else ""
+            fail(errors, where, f"{label} requires exactly in, name{suffix}")
+            return
+        location, field = value.get("in"), value.get("name")
+        if location not in ASYNC_PARAM_LOCATIONS or not isinstance(field, str) or not field.strip():
+            fail(errors, where, f"{label} must name an input field in pathParams or queryParams")
+        elif target is not None and f"{location}.{field}" not in _input_fields(target.get("input")):
+            fail(errors, where, f"{label} target does not declare input field '{location}.{field}'")
+        elif target is not None:
+            # The declared location must agree with the target path: a pathParams id needs exactly
+            # one `{name}` placeholder, a queryParams id none - the worker substitutes by location.
+            marker, path = "{" + field + "}", str(target.get("path") or "")
+            if location == "pathParams" and path.count(marker) != 1:
+                fail(errors, where, f"{label} pathParams '{field}' needs exactly one {marker} in the target path")
+            if location == "queryParams" and marker in path:
+                fail(errors, where, f"{label} queryParams '{field}' must not appear as {marker} in the target path")
+        if fetch and (not isinstance(value.get("value_from"), str)
+                      or not JSON_PATH.fullmatch(value["value_from"])):
+            fail(errors, where, f"{label}.value_from must be a dotted terminal-response JSON path")
+
+    def target_for(endpoint_id: str, label: str) -> dict | None:
+        target = endpoint_index.get(endpoint_id)
+        if target is None or target.get("provider") != provider:
+            fail(errors, where, f"{label} '{endpoint_id}' must be an existing same-provider catalog id")
+            return None
+        if target.get("kind") != "utility":
+            fail(errors, where, f"{label} '{endpoint_id}' must have kind utility")
+        if str(target.get("status") or "").strip():
+            fail(errors, where, f"{label} '{endpoint_id}' is marked {target['status']!r}; a descriptor "
+                                "cannot depend on a retired or broken row")
+        if target.get("method") != "GET":
+            fail(errors, where, f"{label} '{endpoint_id}' must use GET")
+        return target
+
+    poll = descriptor.get("poll")
+    if not isinstance(poll, dict):
+        fail(errors, where, "async.poll must be a mapping")
+    else:
+        modes = [key for key in ("endpoint", "url_from")
+                 if isinstance(poll.get(key), str) and poll[key].strip()]
+        if len(modes) != 1:
+            fail(errors, where, "async.poll needs exactly one of endpoint or url_from")
+        if modes == ["endpoint"]:
+            target = str(poll["endpoint"])
+            target_ep = target_for(target, "async.poll.endpoint")
+            if set(poll) != {"endpoint", "param"}:
+                fail(errors, where, "async.poll endpoint mode allows only endpoint and param")
+            check_param(poll.get("param"), "async.poll endpoint mode", target_ep)
+        elif modes == ["url_from"]:
+            if set(poll) != {"url_from", "url_hosts"}:
+                fail(errors, where, "async.poll url_from mode allows only url_from and url_hosts")
+            if not isinstance(poll.get("url_from"), str) or not JSON_PATH.fullmatch(poll["url_from"]):
+                fail(errors, where, "async.poll.url_from must be a dotted JSON path")
+            hosts = poll.get("url_hosts")
+            if (not isinstance(hosts, list) or not hosts
+                    or any(not isinstance(host, str) or not HOST.fullmatch(host) for host in hosts)):
+                fail(errors, where, "async.poll.url_from requires non-empty url_hosts")
+
+    # A task bounded by `max_age` always ends, so it may have no failure word.
+    bounded = "max_age" in descriptor
+    status = descriptor.get("status")
+    if not isinstance(status, dict):
+        fail(errors, where, "async.status must be a mapping")
+    else:
+        if set(status) - {"path", "progress", "success", "failure", "billed_failure"} \
+                or not ({"path", "success"} | (set() if bounded else {"failure"})).issubset(status):
+            fail(errors, where, "async.status requires path, success, failure (optional with max_age), "
+                                "and optionally progress and billed_failure")
+        if not isinstance(status.get("path"), str) or not JSON_PATH.fullmatch(status["path"]):
+            fail(errors, where, "async.status.path must be a dotted JSON path")
+        success, failure = status.get("success"), status.get("failure")
+        progress, billed_failure = status.get("progress"), status.get("billed_failure")
+        for name, values in (("progress", progress), ("success", success), ("failure", failure),
+                             ("billed_failure", billed_failure)):
+            if values is None and (name in {"progress", "billed_failure"}
+                                   or (name == "failure" and bounded)):
+                continue
+            if not isinstance(values, list) or (name == "success" and not values) \
+                    or (name in {"progress", "billed_failure"} and not values):
+                fail(errors, where, f"async.status.{name} must be a non-empty list")
+            elif any(isinstance(value, (dict, list, bool)) or value is None
+                     or not str(value).strip() for value in values):
+                fail(errors, where, f"async.status.{name} values must be non-empty strings or numbers")
+        groups = [values for values in (progress, success, failure, billed_failure)
+                  if isinstance(values, list)]
+        if sum(len({str(value) for value in values}) for values in groups) != \
+                len(set().union(*({str(value) for value in values} for values in groups))):
+            fail(errors, where, "async.status groups must not overlap")
+        if not failure and not billed_failure and not bounded:
+            fail(errors, where, "async.status needs failure or billed_failure terminal values, "
+                                "or max_age to end the task")
+
+    result = descriptor.get("result")
+    if not isinstance(result, dict):
+        fail(errors, where, "async.result must be a mapping")
+    else:
+        modes = [key for key in ("path", "fetch")
+                 if isinstance(result.get(key), str) and result[key].strip()]
+        if len(modes) != 1:
+            fail(errors, where, "async.result needs exactly one of path or fetch")
+        if modes == ["fetch"]:
+            target = str(result["fetch"])
+            target_ep = target_for(target, "async.result.fetch")
+            if set(result) - {"fetch", "fetch_param", "ttl_note"}:
+                fail(errors, where, "async.result fetch mode allows only fetch, fetch_param, and ttl_note")
+            check_param(result.get("fetch_param"), "async.result fetch mode", target_ep, fetch=True)
+        elif modes == ["path"]:
+            if set(result) - {"path", "ttl_note"}:
+                fail(errors, where, "async.result path mode allows only path and ttl_note")
+            if not isinstance(result.get("path"), str) or not JSON_PATH.fullmatch(result["path"]):
+                fail(errors, where, "async.result.path must be a dotted JSON path")
+        if "ttl_note" in result and (not isinstance(result.get("ttl_note"), str)
+                                     or not result["ttl_note"].strip()):
+            fail(errors, where, "async.result.ttl_note must be non-empty when present")
+
+    interval = descriptor.get("interval")
+    if not _finite_number(interval) or interval <= 0:
+        fail(errors, where, "async.interval must be a positive finite number of seconds")
+    if "max_age" in descriptor and (not _finite_number(descriptor["max_age"])
+                                    or not 0 < descriptor["max_age"] <= 86400):
+        fail(errors, where, "async.max_age must be a positive number of seconds, at most 86400")
+    if "terminal_on_submission" in descriptor and descriptor["terminal_on_submission"] is not True:
+        fail(errors, where, "async.terminal_on_submission must be true when present")
+    # per_call: the provider bills every finished answer, so treg settles one on each.
+    if not isinstance(cost, dict) or cost.get("type") not in ("per_success", "per_call"):
+        fail(errors, where, "an endpoint with async must have cost.type per_success or per_call")
+
+
+def check_spooled_response(ep: dict, effective_async: object, where: str,
+                           errors: list[str]) -> None:
+    """`spooled_response: true` - a synchronous metered answer too large to buffer (inline media),
+    read to disk and settled from what the row declares it reads: its usage meters (`settle:
+    usage`) or, for a fixed price, its `expect` success rule. Nothing else may need the body: no
+    async task, resource ownership or managed resource."""
+    if ep["spooled_response"] is not True:
+        fail(errors, where, "spooled_response must be true when present")
+        return
+    if effective_async is not None or ep.get("resource_ownership") or ep.get("managed_resource"):
+        fail(errors, where, "spooled_response cannot be combined with async, resource_ownership "
+                            "or managed_resource: those read the whole body")
+    if (ep.get("cost") or {}).get("settle") != "usage" and not (ep.get("expect") or {}).get("json_path"):
+        fail(errors, where, "spooled_response keeps only the evidence the row declares: it needs "
+                            "settle: usage or an expect success rule")
+
+
+def check_resource_ownership(rule: object, where: str, input_schema: object,
+                             errors: list[str]) -> None:
+    """Validate declarative ownership of opaque ids on treg's shared provider account."""
+    if not isinstance(rule, dict) or not rule or set(rule) - {"requires", "produces"}:
+        fail(errors, where, "resource_ownership must contain only requires and/or produces")
+        return
+    required = rule.get("requires")
+    if required is not None:
+        if (not isinstance(required, dict) or set(required) not in ({"kind", "param"}, {"kind", "param", "in"})
+                or not all(isinstance(required.get(k), str) and required[k].strip()
+                           for k in ("kind", "param"))
+                or required.get("in", "query") not in {"query", "body"}):
+            fail(errors, where, "resource_ownership requires needs exactly kind, param, and optional in=query|body")
+        else:
+            fields = _input_fields(input_schema)
+            name = required["param"]
+            locations = ((f"body.{name}",) if required.get("in") == "body"
+                         else (f"pathParams.{name}", f"queryParams.{name}"))
+            if not any(field in fields for field in locations):
+                fail(errors, where, f"resource_ownership requires undeclared parameter '{name}'")
+    produced = rule.get("produces")
+    if produced is not None:
+        if not isinstance(produced, list) or not produced:
+            fail(errors, where, "resource_ownership.produces must be a non-empty list")
+        else:
+            for item in produced:
+                if (not isinstance(item, dict) or set(item) != {"kind", "path"}
+                        or not isinstance(item.get("kind"), str) or not item["kind"].strip()
+                        or not isinstance(item.get("path"), str)
+                        or not JSON_PATH.fullmatch(item["path"])):
+                    fail(errors, where, "each resource_ownership.produces item needs exactly kind and JSON path")
+
+
+def check_managed_resource(rule: object, where: str, input_schema: object,
+                           errors: list[str]) -> None:
+    """Validate long-lived shared-account resource lifecycle declarations."""
+    allowed = {"operation", "kind", "id", "name_from", "cleanup_endpoint", "public_lookup"}
+    if not isinstance(rule, dict) or set(rule) - allowed:
+        fail(errors, where, "managed_resource has unsupported fields")
+        return
+    operation = rule.get("operation")
+    if operation not in {"create", "read", "use", "update", "delete"}:
+        fail(errors, where, "managed_resource.operation must be create/read/use/update/delete")
+    if not isinstance(rule.get("kind"), str) or not rule["kind"].strip():
+        fail(errors, where, "managed_resource.kind must be non-empty")
+    locator = rule.get("id")
+    if not isinstance(locator, dict):
+        fail(errors, where, "managed_resource.id must be a mapping")
+        return
+    if set(locator) - {"in", "name", "path", "optional", "many"}:
+        fail(errors, where, "managed_resource.id has unsupported fields")
+    location = locator.get("in")
+    field = locator.get("name") or locator.get("path")
+    if location not in {"response", "pathParams", "queryParams", "body"}:
+        fail(errors, where, "managed_resource.id.in has an unsupported location")
+    if not isinstance(field, str) or not field.strip():
+        fail(errors, where, "managed_resource.id needs a non-empty name/path")
+    elif location != "response" and f"{location}.{field}" not in _input_fields(input_schema):
+        fail(errors, where, f"managed_resource id references undeclared {location}.{field}")
+    for flag in ("optional", "many"):
+        if flag in locator and type(locator[flag]) is not bool:
+            fail(errors, where, f"managed_resource.id.{flag} must be boolean")
+    if operation == "create" and location != "response":
+        fail(errors, where, "managed_resource create id must come from response")
+    if operation != "create" and location == "response":
+        fail(errors, where, "only managed_resource create may read its id from response")
+    if rule.get("cleanup_endpoint") is not None and operation != "create":
+        fail(errors, where, "managed_resource.cleanup_endpoint is create-only")
+    public_lookup = rule.get("public_lookup")
+    if public_lookup is not None:
+        if operation != "use":
+            fail(errors, where, "managed_resource.public_lookup is use-only")
+        if (not isinstance(public_lookup, dict)
+                or set(public_lookup) != {"method", "path", "requires"}
+                or public_lookup.get("method") != "GET"
+                or not isinstance(public_lookup.get("path"), str)
+                or public_lookup["path"].count("{id}") != 1
+                or not public_lookup["path"].startswith("/")
+                or not isinstance(public_lookup.get("requires"), dict)
+                or not public_lookup["requires"]):
+            fail(errors, where, "managed_resource.public_lookup needs GET path with {id} and requires")
+        elif any(not isinstance(key, str) or not key or isinstance(value, (dict, list))
+                 for key, value in public_lookup["requires"].items()):
+            fail(errors, where, "managed_resource.public_lookup requires must contain scalar fields")
+    name_from = rule.get("name_from")
+    if name_from is not None:
+        if (not isinstance(name_from, dict) or set(name_from) != {"in", "path"}
+                or name_from.get("in") != "body"
+                or not isinstance(name_from.get("path"), str)
+                or f"body.{name_from.get('path')}" not in _input_fields(input_schema)):
+            fail(errors, where, "managed_resource.name_from must reference a declared body field")
+
+
+def _credit_rate(provider: str | None) -> object:
+    """The provider credit rate used by async cost.settle: usage validation."""
+    fx = yaml.safe_load((CATALOG / "fx.yaml").read_text()) or {}
+    entry = (fx.get("credit_rates_usd") or {}).get(provider or "")
+    return entry.get("usd") if isinstance(entry, dict) else entry
+
+
+def _unit_rate(provider: str | None, unit: object) -> object:
+    """The provider-scoped native-meter rate used by async usage settlement."""
+    fx = yaml.safe_load((CATALOG / "fx.yaml").read_text()) or {}
+    entry = ((fx.get("unit_rates_usd") or {}).get(provider or "") or {}).get(str(unit or ""))
+    return entry.get("usd") if isinstance(entry, dict) else entry
+
+
+def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
+               input_schema: object = None, provider: str | None = None) -> None:
     """The price block's own rules — the ones that make a figure BILLABLE rather than decorative.
 
     A platform key spends treg's money on a caller's behalf, so every number here has to answer
@@ -138,6 +835,125 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str]) -
     per = cost.get("per")
     if per is not None and (not isinstance(per, int) or isinstance(per, bool) or per < 1):
         fail(errors, where, f"cost.per '{per}' must be a positive integer (the quantity `value` covers)")
+    reported = cost.get("reported_charge")
+    if reported is not None:
+        if (not isinstance(reported, dict) or set(reported) != {"path", "unit"}
+                or not isinstance(reported.get("path"), str)
+                or not JSON_PATH.fullmatch(reported["path"])
+                or reported.get("unit") not in {"usd", "credit"}):
+            fail(errors, where, "cost.reported_charge requires a JSON path and unit: usd or credit")
+        if reported.get("unit") == "credit" and not _finite_number(_credit_rate(provider)):
+            fail(errors, where, "cost.reported_charge unit credit needs a numeric "
+                                "fx.yaml credit_rates_usd entry")
+        if "settle" in cost or cost.get("type") == "free":
+            fail(errors, where, "cost.reported_charge requires a paid price without cost.settle")
+    if "call_fee" in cost:
+        fee = cost["call_fee"]
+        if (provider != "apify" or cost.get("type") != "per_result"
+                or cost.get("currency", "USD") != "USD"
+                or not _finite_number(fee) or fee <= 0):
+            fail(errors, where, "cost.call_fee must be a positive USD fee on an Apify per_result price")
+    if "call_fee_per" in cost:
+        per = cost["call_fee_per"]
+        fields = _input_fields(input_schema)
+        if (not isinstance(per, list) or not per or "call_fee" not in cost
+                or any(not isinstance(p, str) or not p.startswith("body.")
+                       or "array" not in str((fields.get(p) or {}).get("type", "")) for p in per)):
+            fail(errors, where, "cost.call_fee_per must list declared body array fields beside call_fee")
+    if "display" in cost:
+        display = cost["display"]
+        if (not isinstance(display, dict) or not isinstance(display.get("unit"), str)
+                or not display["unit"].strip() or len(display["unit"]) > 40
+                or set(display) - {"unit", "grouped", "round_up", "variable", "maximum"}):
+            fail(errors, where, "cost.display requires a short unit and optional grouped/round_up/variable/maximum flags")
+        else:
+            for flag in {"grouped", "round_up", "variable", "maximum"} & set(display):
+                if type(display[flag]) is not bool:
+                    fail(errors, where, f"cost.display.{flag} must be boolean")
+            if display.get("round_up") and not display.get("grouped"):
+                fail(errors, where, "cost.display.round_up requires grouped")
+            if display.get("grouped") and (type(cost.get("per")) is not int or cost["per"] <= 0):
+                fail(errors, where, "cost.display.grouped requires positive integer cost.per")
+        if cost.get("type") == "free" or ("table" in cost and not display.get("maximum")):
+            fail(errors, where, "cost.display requires a scalar paid price unless it labels a table maximum")
+    if "sumble" in cost:
+        rule = cost["sumble"]
+        modes = {"single": set(), "results": {"reserve_results"},
+                 "lookup": {"records", "block_size", "max_records"},
+                 "compose": {"records", "base", "attribute", "metric", "free_attributes",
+                             "safe_attributes", "max_records", "default_limit", "max_limit"}}
+        mode = rule.get("mode") if isinstance(rule, dict) else None
+        if mode not in modes or set(rule) != {"mode"} | modes.get(mode, set()):
+            fail(errors, where, "cost.sumble must declare exactly the fields for a supported mode")
+        else:
+            for key in modes[mode] - {"records", "free_attributes", "safe_attributes"}:
+                if type(rule[key]) is not int or rule[key] <= 0:
+                    fail(errors, where, f"cost.sumble.{key} must be a positive integer")
+            for key in {"free_attributes", "safe_attributes"} & modes[mode]:
+                if not isinstance(rule[key], list) or any(not isinstance(v, str) for v in rule[key]):
+                    fail(errors, where, f"cost.sumble.{key} must be a string list")
+            if "records" in rule and (not isinstance(rule["records"], str)
+                                      or not re.fullmatch(r"[a-z_]+", rule["records"])):
+                fail(errors, where, "cost.sumble.records must name a body array")
+        if mode == "lookup" and isinstance(rule, dict) and rule.get("block_size") != cost.get("per"):
+            fail(errors, where, "cost.sumble.block_size must equal cost.per")
+        if cost.get("currency") != "credit" or cost.get("value") != 1:
+            fail(errors, where, "cost.sumble requires a one-credit base price")
+    if "contactout" in cost:
+        rule = cost["contactout"]
+        jobs = {"contact", "person", "email", "linkedin", "search", "decision",
+                "company_search", "domains", "reverse"}
+        rates = rule.get("rates_micro") if isinstance(rule, dict) else None
+        if not isinstance(rule, dict) or rule.get("job") not in jobs:
+            fail(errors, where, "cost.contactout needs a supported job")
+        if not isinstance(rates, dict) or set(rates) != {"work_email", "personal_email", "phone", "search"} \
+                or any(isinstance(v, bool) or not isinstance(v, int) or v <= 0 for v in rates.values()):
+            fail(errors, where, "cost.contactout.rates_micro needs four positive integer micro-USD rates")
+        if cost.get("currency") != "USD":
+            fail(errors, where, "cost.contactout requires USD")
+    has_table = "table" in cost
+    if has_table:
+        if "value" in cost:
+            fail(errors, where, "cost.value and cost.table are mutually exclusive")
+        check_cost_table(cost, input_schema, where, errors, provider)
+    if not has_table:
+        settle = cost.get("settle")
+        if settle is not None and settle not in ("base", "modifiers", "usage"):
+            fail(errors, where, "cost.settle currently supports only 'base', 'modifiers' or 'usage'")
+        if settle == "usage":
+            # A flat rate-card price with the provider's reported charge settling: the fallback is
+            # the reserve, the reply's `usage.path` the charge (sync body or async terminal document).
+            check_cost_fallback(cost, "cost.settle 'usage'", where, errors)
+        check_usage_block(cost, settle, where, errors, provider)
+    modifiers = cost.get("modifiers")
+    if modifiers is not None:
+        if not isinstance(modifiers, dict) or not modifiers:
+            fail(errors, where, "cost.modifiers must be a non-empty mapping")
+        else:
+            for name, rule in modifiers.items():
+                mwhere = f"{where}:cost.modifiers.{name}"
+                if not isinstance(name, str) or not name or not isinstance(rule, dict):
+                    fail(errors, mwhere, "modifier name and rule must be mappings keyed by parameter name")
+                    continue
+                if rule.get("location", "query") not in ("query", "body", "lookups"):
+                    fail(errors, mwhere, "location must be query, body, or lookups")
+                if rule.get("when", "truthy") not in ("truthy", "present"):
+                    fail(errors, mwhere, "when must be truthy or present")
+                effects = [key for key in ("set_credits", "add_credits", "add_credits_per_result")
+                           if key in rule]
+                if len(effects) != 1:
+                    fail(errors, mwhere, "needs exactly one credit effect")
+                reserve_only = rule.get("reserve_only")
+                if reserve_only is not None and not isinstance(reserve_only, bool):
+                    fail(errors, mwhere, "reserve_only must be a boolean")
+                if reserve_only and effects != ["add_credits"]:
+                    fail(errors, mwhere, "reserve_only currently supports only add_credits")
+                for key in effects:
+                    amount = rule[key]
+                    if (not isinstance(amount, (int, float)) or isinstance(amount, bool) or amount < 0):
+                        fail(errors, mwhere, f"{key} must be a non-negative number")
+                    if key == "set_credits" and amount != 0:
+                        fail(errors, mwhere, "set_credits currently supports only the free value 0")
     # `currency: unit` means "the provider's own meter" — which meter is the only thing that makes
     # the number convertible, and it is `unit` that names it.
     if cur == "unit" and unit not in COST_UNITS:
@@ -150,13 +966,19 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str]) -
             fail(errors, where, f"free must be spelled {CANONICAL_FREE} (got {wrong or {'per': per}})")
         return
 
+    if has_table:
+        if cost.get("currency") not in CURRENCIES:
+            fail(errors, where, f"cost.table currency must be one of {sorted(CURRENCIES)}")
+        value = (cost.get("fallback") or {}).get("value") \
+            if isinstance(cost.get("fallback"), dict) else None
+
     # An unknown price and a null figure are the SAME fact, so they must always be written together:
     # a null value with a confident-looking block is how a guess ships, and `confidence: unknown`
     # over a real number is how a real number gets ignored.
-    if (value is None) != (conf == "unknown"):
+    if not has_table and (value is None) != (conf == "unknown"):
         fail(errors, where, f"cost.value {value!r} vs confidence {conf!r} — a null value requires "
                             "confidence: unknown and vice versa")
-    if value is None:
+    if not has_table and value is None:
         if not str(cost.get("note") or "").strip():
             fail(errors, where, "unknown price needs a cost.note saying why no figure is recorded")
         return
@@ -178,17 +1000,185 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str]) -
         warnings.append(f"{where}: cost.checked is {age} days old (> {STALE_DAYS}) — re-check the price")
 
 
+SHARED_PLAN_KIND = "treg_shared_plan"
+TRIAL_KIND = "treg_trial"
+
+
+def check_fx(errors: list[str]) -> None:
+    """The fx entries that carry a rate TREG SET, not one the vendor published.
+
+    A `kind: treg_shared_plan` entry is the catalog asserting its own price for a flat-fee provider
+    (see docs/SHARED-PLAN-PRICING-PLAN.md). Everything downstream shows the basis string as
+    provenance, so the honesty lives in that string — these checks make it impossible to add a
+    treg-set rate that does not say whose price it is, what the vendor fee was, and what volume it
+    breaks even at. A treg rate card with none of that printed is exactly the dishonesty the design
+    exists to avoid.
+    """
+    fx = yaml.safe_load((CATALOG / "fx.yaml").read_text()) or {}
+    for service, entry in (fx.get("credit_rates_usd") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        where = f"fx.yaml credit_rates_usd.{service}"
+        kind = entry.get("kind")
+        basis = str(entry.get("basis") or "")
+        if kind is None:
+            # a vendor-published rate; but prose claiming a treg rate without the marker is drift
+            # between what the machine knows and what the human reads
+            if "treg shared-plan" in basis.lower():
+                fail(errors, where, "basis claims a treg shared-plan rate but has no "
+                                    f"`kind: {SHARED_PLAN_KIND}` marker")
+            continue
+        if kind == TRIAL_KIND:
+            # A ZERO rate treg set: served on treg's own free-tier key as a capped taste. The
+            # allowance is what makes $0 honest — without it the zero reads as unlimited and the
+            # shared free key dies to the first looping agent.
+            if entry.get("usd") not in (0, 0.0):
+                fail(errors, where, "a treg_trial rate must be exactly 0 — a non-zero treg-set "
+                                    "price is a shared plan, not a trial")
+            allowance = entry.get("trial_calls_per_team_day")
+            if not isinstance(allowance, int) or allowance <= 0:
+                fail(errors, where, "trial_calls_per_team_day (a positive integer) is required — "
+                                    "at $0 the allowance is the only congestion control")
+            if not basis.startswith("treg trial rate"):
+                fail(errors, where, "basis must START with 'treg trial rate' so every surface "
+                                    "showing provenance says whose $0 this is")
+            if not entry.get("source") or not entry.get("checked"):
+                fail(errors, where, "source and checked are required on a treg-set rate")
+            continue
+        if kind != SHARED_PLAN_KIND:
+            fail(errors, where, f"unknown kind {kind!r} (only {SHARED_PLAN_KIND!r} and "
+                                f"{TRIAL_KIND!r} exist)")
+            continue
+        if not isinstance(entry.get("usd"), (int, float)) or entry["usd"] <= 0:
+            fail(errors, where, "a treg_shared_plan rate must carry a positive usd — null means "
+                                "'unpriced', which needs no marker")
+        if not basis.startswith("treg shared-plan rate"):
+            fail(errors, where, "basis must START with 'treg shared-plan rate' so every surface "
+                                "showing provenance says whose price this is")
+        if not re.search(r"\$[\d,]+(?:\.\d+)?\s*/\s*(?:mo|yr)", basis):
+            fail(errors, where, "basis must name the vendor fee (e.g. '$49.99/mo')")
+        if not re.search(r"break-even at [\d,]+ calls/mo", basis):
+            fail(errors, where, "basis must state 'break-even at N calls/mo'")
+        if not entry.get("source") or not entry.get("checked"):
+            fail(errors, where, "source and checked are required on a treg-set rate")
+        fee = entry.get("fee_usd_month")
+        if not isinstance(fee, (int, float)) or fee <= 0:
+            fail(errors, where, "fee_usd_month is required on a treg_shared_plan entry — the "
+                                "recovery report computes fee vs collected from it, and a fee that "
+                                "lives only in prose cannot be computed against")
+
+
+_ALIAS_KEY = re.compile(r"^[a-z0-9\u3400-\u9fff]+$")
+_ALIAS_TARGET = re.compile(r"^(?:[a-z0-9]+(?:-[a-z0-9]+)*|[\u3400-\u9fff]+)$")
+
+
+def check_aliases(errors: list[str], warnings: list[str]) -> None:
+    """aliases.yaml — the query-side vocabulary map (catalog_store.search).
+
+    Keys must survive query tokenization as one token. Targets may also be a lowercase hyphenated
+    phrase: matching uses the target string directly against catalog text, which is exactly what
+    lets compact queries such as t2v bridge to the selective phrase text-to-video. A target that
+    occurs nowhere in catalog text is dead weight and produces a warning."""
+    path = CATALOG / "aliases.yaml"
+    if not path.exists():
+        return
+    doc = yaml.safe_load(path.read_text()) or {}
+    corpus = "\n".join(p.read_text().lower() for p in CATALOG.glob("*.yaml") if p != path)
+    for key, vals in (doc.get("aliases") or {}).items():
+        where = f"aliases.yaml {key}"
+        if not _ALIAS_KEY.fullmatch(str(key)):
+            fail(errors, where, "key must be one lowercase word (it must survive the tokenizer)")
+        if not isinstance(vals, list) or not vals:
+            fail(errors, where, "value must be a non-empty list of words")
+            continue
+        for v in vals:
+            if not _ALIAS_TARGET.fullmatch(str(v)):
+                fail(errors, where, f"alias {v!r} must be one lowercase word or hyphenated phrase")
+            elif str(v) == str(key):
+                fail(errors, where, "alias points at itself")
+            elif str(v) not in corpus:
+                warnings.append(f"{where}: alias {v!r} occurs nowhere in the catalog — dead weight")
+
+
+def _description_key(description: object) -> str:
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", str(description or "").lower()).split())
+
+
+def check_proposed_capabilities(taxonomy: dict[str, str], docs: list[tuple[str, dict]],
+                                errors: list[str], warnings: list[str]) -> None:
+    """Keep `proposed_capabilities` a staging area, not a second taxonomy.
+
+    The loader merges every proposal into the live taxonomy (first file wins the description), so
+    an unmerged proposal is fully live: a duplicate of a taxonomy id is dead text, two descriptions
+    for one id means the page title depends on filename order, and a proposal two providers already
+    use is a shared join key that belongs in capabilities.yaml. Two ids of one platform with the
+    same description are one job under two names, which splits its comparison row in two."""
+    proposals: dict[str, dict[str, str]] = {}
+    users: dict[str, set[str]] = {}
+    for name, data in docs:
+        provider = str(data.get("provider") or "")
+        for cap, desc in (data.get("proposed_capabilities") or {}).items():
+            proposals.setdefault(cap, {})[name] = desc
+        for ep in data.get("endpoints") or []:
+            if isinstance(ep, dict) and ep.get("capability"):
+                users.setdefault(ep["capability"], set()).add(provider)
+    for cap, by_file in sorted(proposals.items()):
+        where = f"proposed_capabilities {cap}"
+        if cap in taxonomy:
+            fail(errors, where, f"already in capabilities.yaml; delete the proposal from {sorted(by_file)}")
+            continue
+        if len({_description_key(d) for d in by_file.values()}) > 1:
+            fail(errors, where, f"proposed with different descriptions in {sorted(by_file)}; "
+                                "agree on one (or promote it to capabilities.yaml)")
+        if len(users.get(cap, ())) >= 2:
+            warnings.append(f"{where}: used by {sorted(users[cap])}; promote it to capabilities.yaml")
+    same: dict[tuple[str, str], set[str]] = {}
+    described = [(cap, desc) for cap, desc in taxonomy.items()]
+    described += [(cap, desc) for cap, by_file in proposals.items() if cap not in taxonomy
+                  for desc in by_file.values()]
+    for cap, desc in described:
+        key = _description_key(desc)
+        if key:
+            same.setdefault((cap.split(".")[0], key), set()).add(cap)
+    for (_, desc), caps in sorted(same.items()):
+        if len(caps) > 1:
+            warnings.append(f"capabilities {sorted(caps)} share the description {desc!r}; "
+                            "unify them on one id or tell the jobs apart")
+
+
 def main(argv: list[str]) -> int:
     errors: list[str] = []
     warnings: list[str] = []
+    check_fx(errors)
+    check_aliases(errors, warnings)
     tax = yaml.safe_load((CATALOG / "capabilities.yaml").read_text())
     platforms = set(tax.get("platforms") or {})
-    capabilities = set(tax.get("capabilities") or {})
+    taxonomy = tax.get("capabilities") or {}
+    capabilities = set(taxonomy)
 
     from treg.oauth_providers import REGISTRY  # noqa: E402
 
     only = set(argv)
-    files = sorted(p for p in CATALOG.glob("*.yaml") if p.name not in ("capabilities.yaml", "fx.yaml"))
+    all_files = sorted(p for p in CATALOG.glob("*.yaml")
+                       if p.name not in ("capabilities.yaml", "fx.yaml", "aliases.yaml", "contracts.yaml", "adapters.yaml"))
+    # Successors can appear later in the same file or in another provider. Build the reference map
+    # before validating any row; a one-pass lookup would make validity depend on filename order.
+    endpoint_status: dict[str, str] = {}
+    endpoint_index: dict[str, dict] = {}
+    docs: list[tuple[str, dict]] = []
+    for path in all_files:
+        data = yaml.safe_load(path.read_text()) or {}
+        if not isinstance(data, dict):
+            continue
+        docs.append((path.name, data))
+        provider = str(data.get("provider") or path.stem.removesuffix(".extended"))
+        for ep in data.get("endpoints") or []:
+            if isinstance(ep, dict) and ep.get("id"):
+                endpoint_id = str(ep["id"])
+                endpoint_status[endpoint_id] = str(ep.get("status") or "").strip()
+                endpoint_index[endpoint_id] = {**ep, "provider": provider}
+    check_proposed_capabilities(taxonomy, docs, errors, warnings)
+    files = list(all_files)
     # "tikhub" selects tikhub.yaml AND tikhub.extended.yaml — a service is both its tiers
     service_of = {p: p.stem.removesuffix(".extended") for p in files}
     if only:
@@ -203,7 +1193,10 @@ def main(argv: list[str]) -> int:
     # `dataset_id`, GAQL's query body), so a core/extended path collision is legitimate THERE and
     # only there. Everywhere else it is the ingest-dedup failure that shipped 27 duplicate rows
     # (dataforseo via the /v3 prefix mismatch, scrapecreators via core being curated after ingest).
-    PARAM_MULTIPLEXED = {"serpapi", "brightdata", "google-ads"}
+    # Some APIs deliberately expose several catalog jobs on one method/path and select the job by
+    # required parameters. Instagram Graph's profile read and business_discovery both call
+    # GET /{ig_user_id}; the latter is selected by its required business_discovery `fields` value.
+    PARAM_MULTIPLEXED = {"serpapi", "brightdata", "google-ads", "instagram", "minimax", "openrouter"}
     route_tiers: dict[tuple, dict[str, list[str]]] = {}
     for path in files:
         name = path.name
@@ -245,6 +1238,28 @@ def main(argv: list[str]) -> int:
             for f in REQUIRED[tier]:
                 if not ep.get(f):
                     fail(errors, where, f"missing required field '{f}'")
+            check_added(ep, where, errors)
+            miss = ep.get("miss")
+            if isinstance(miss, dict) and miss.get("when") is not None:
+                # The router evaluates `when` against the provider body; a misspelt path parses
+                # fine, evaluates False on every body, and silently turns every declared miss back
+                # into an error. Require a comparison or a call the expression language accepts.
+                when = miss["when"]
+                if not isinstance(when, str) or not (_paths._CMP.match(when.strip()) or _paths._CALL.match(when.strip())):
+                    fail(errors, where, f"miss.when must be a comparison or call in the adapter expression language, got {when!r}")
+                elif miss.get("status") is None:
+                    fail(errors, where, "miss.when needs miss.status (the 4xx it narrows)")
+            nf = ep.get("not_found")
+            if nf is not None:
+                statuses = nf.get("status") if isinstance(nf, dict) else None
+                statuses = statuses if isinstance(statuses, list) else [statuses]
+                if not isinstance(nf, dict) or not nf.get("means") or not all(isinstance(s, int) and 200 <= s < 500 for s in statuses):
+                    fail(errors, where, "not_found needs status (a 2xx/4xx or a list of them) and means")
+                elif nf.get("when") is not None and not (isinstance(nf["when"], str) and (
+                        _paths._CMP.match(nf["when"].strip()) or _paths._CALL.match(nf["when"].strip()))):
+                    fail(errors, where, f"not_found.when must be a comparison or call in the adapter expression language, got {nf['when']!r}")
+                elif any(200 <= s < 300 for s in statuses) and nf.get("when") is None:
+                    fail(errors, where, "not_found with a 2xx status needs a `when` predicate, or every success would end the call")
             if eid in seen_ids:
                 fail(errors, where, f"duplicate id (also in {seen_ids[eid]})")
             seen_ids[eid] = name
@@ -279,6 +1294,30 @@ def main(argv: list[str]) -> int:
                 fail(errors, where, f"bad scope '{ep.get('scope')}'")
             if ep.get("method") not in METHODS:
                 fail(errors, where, f"bad method '{ep.get('method')}'")
+            host = ep.get("host")
+            if host is not None:
+                if not isinstance(host, str) or not HOST.fullmatch(host):
+                    fail(errors, where, "host must be one DNS hostname without a scheme, port, or path")
+                elif (provider_config := REGISTRY.get(service)) and provider_config.catalog_targets:
+                    try:
+                        provider_config.profile_for_catalog_host(host)
+                    except ValueError:
+                        fail(errors, where, f"host '{host}' is not an approved catalog target for '{service}'")
+            check_status_marker(ep, where, endpoint_status, errors)
+            inp = ep.get("input") or {}
+            check_strict_query(ep, where, errors)
+            if "observed_from" in ep and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(ep["observed_from"])):
+                fail(errors, where, "observed_from must be a YYYY-MM-DD date")
+            check_strict_body(ep, where, errors)
+            check_body_allowlist(ep, where, errors)
+            check_platform_auth(ep, where, errors)
+            if "platform_request" in ep:
+                check_platform_request(ep["platform_request"], inp, where, errors)
+            default_array_encoding = inp.get("queryArrayEncoding")
+            if (default_array_encoding is not None
+                    and default_array_encoding not in QUERY_ARRAY_ENCODINGS):
+                fail(errors, where, "input.queryArrayEncoding must be one of "
+                     f"{sorted(QUERY_ARRAY_ENCODINGS)}")
             cost = ep.get("cost")
             if cost is not None or tier == "core":
                 # cost is optional in the extended tier — several providers publish prices per API
@@ -288,7 +1327,28 @@ def main(argv: list[str]) -> int:
                 if not isinstance(cost, dict):
                     fail(errors, where, f"cost.type missing or not one of {sorted(COST_TYPES)}")
                 else:
-                    check_cost(cost, where, errors, warnings)
+                    check_cost(cost, where, errors, warnings, inp, service)
+                    if service == "tavily":
+                        check_tavily_rates(eid, cost, where, errors)
+                    if service == "octen":
+                        check_octen_rates(eid, cost, where, errors)
+                    if service == "enrichlayer":
+                        check_enrichlayer_rule(cost, inp, where, errors)
+            effective_async = effective_async_descriptor(data.get("async"), ep.get("async"))
+            if effective_async is not None:
+                check_async_descriptor(effective_async, where, str(service), endpoint_index,
+                                       cost, errors)
+                terminal_ex = ep.get("terminal_example_response")
+                if terminal_ex is not None and not (CATALOG / str(terminal_ex)).is_file():
+                    fail(errors, where, f"terminal_example_response '{terminal_ex}' does not exist")
+            elif ep.get("terminal_example_response") is not None:
+                fail(errors, where, "terminal_example_response requires an async descriptor")
+            if ep.get("resource_ownership") is not None:
+                check_resource_ownership(ep["resource_ownership"], where, inp, errors)
+            if ep.get("managed_resource") is not None:
+                check_managed_resource(ep["managed_resource"], where, inp, errors)
+            if "spooled_response" in ep:
+                check_spooled_response(ep, effective_async, where, errors)
             if ep.get("verified"):
                 ex = ep.get("example_response")
                 if not ex:
