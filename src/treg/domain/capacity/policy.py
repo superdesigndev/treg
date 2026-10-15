@@ -90,6 +90,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "apify": ("cash", "manual", "api"),
     "twelvedata": ("requests", "subscription", "api"),
     "financialdatasets": ("credits", "auto_recharge", "manual"),
+    "lopjlb": ("requests", "subscription", "manual"),
     "fishaudio": ("cash", "manual", "api"),
     "bounceban": ("credits", "manual", "api"),
     # The free API reports only the current balance, not whether vendor Auto-Pay is enabled.
@@ -200,6 +201,9 @@ _RATE_LIMITS: dict[str, dict] = {
     # The shared account's upgraded level: 100 RPS, honored only on the enterprise node (base_url).
     "tikhub": {"limit": 100, "window_s": 1, "source": "policy"},
     "getleadsio": {"limit": 100, "window_s": 60, "source": "docs"},
+    # Enterprise key ceiling from https://www.lopjlb.com/api/llms.txt. Public routes are a
+    # separate 120/minute IP limit and do not read the key.
+    "lopjlb": {"limit": 600, "window_s": 60, "source": "docs"},
 }
 # An endpoint whose upstream allowance differs from its provider's has its own bucket here. It
 # replaces the provider entry for that endpoint and does not draw from the provider's bucket.

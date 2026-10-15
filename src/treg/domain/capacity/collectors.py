@@ -1036,6 +1036,9 @@ NO_BALANCE_API = {
     "financialdatasets": "no free balance or usage endpoint in the official API "
                          "(checked www.financialdatasets.ai/openapi.json 2026-09-15) — "
                          "prepaid Credits are visible in the vendor dashboard only",
+    "lopjlb": "no balance or per-call usage endpoint (checked www.lopjlb.com/api/llms.txt "
+              "2026-10-11) — Enterprise is a flat subscription; quota is the published "
+              "rate limit, not a balance the API returns",
     "justoneapi": "balance available only via MCP server (get_account_balance tool), no public REST "
                   "endpoint documented (checked docs.justoneapi.com 2026-08-31) — dashboard only",
     "google_ai": "no balance endpoint: the Gemini API bills the key's Google Cloud project "

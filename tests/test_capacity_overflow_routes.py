@@ -299,6 +299,7 @@ _UNRECORDED_SIGNATURE = {
     "openmart",  # funded subscription was not exhausted; shared-key exhaustion was not forced
     # Bare 402 is already the generic balance signal; the real empty-Credits body was not forced.
     "financialdatasets",
+    "lopjlb",  # flat subscription; a 429 is the published rate limit, not an empty wallet
     "fetchinio",  # funded credits remain; documented generic 402 was not deliberately forced
     "fishaudio",  # shared-key serving stays disabled until the funded-account signatures are verified
     "minimax", "oceanio", "openrouter", "replicate", "scrapecreators", "seranking",

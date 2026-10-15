@@ -3751,6 +3751,40 @@ FINANCIALDATASETS = OAuthProvider(
     ),
 )
 
+LOPJLB = OAuthProvider(
+    service="lopjlb",
+    display_name="LOPJLB",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your LOPJLB API key",
+    # Header, never a query param: the BFF reads X-LOPJLB-API-Key. Public routes ignore the
+    # header, so a garbage key still gets HTTP 200 there (observed 2026-10-11 on /hmm/latest).
+    token_header="X-LOPJLB-API-Key",
+    token_format="{secret}",
+    setup_url="https://www.lopjlb.com/settings",
+    setup_action_label="Get your LOPJLB API key",
+    setup_steps=(
+        "Subscribe to Enterprise at lopjlb.com/pricing (self-serve checkout, no sales call).",
+        "Open Settings and create an API key.",
+        "Copy the key. It is shown once.",
+    ),
+    setup_note=(
+        "Public research routes are free and do not check the key. Connecting checks "
+        "GET /bigfive/peers/AAPL, which has no per-call charge. A key requires the "
+        "self-serve Enterprise plan ($1,599/mo, or $1,039/mo billed annually)."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Market data",
+    summary="US equity regime, factor scorecards, congress disclosures, and options-research ledgers.",
+    base_url="https://www.lopjlb.com/bff/api",
+    docs_url="https://www.lopjlb.com/developers",
+    # Peers is the cheapest key-gated read. Live 2026-10-11: a garbage key returned
+    # 401 {"error":"invalid_api_key"}; a valid Enterprise key returned 200 with no charge field.
+    probe_path="/bigfive/peers/AAPL",
+)
+
 
 # Alpha Vantage is DELIBERATELY absent. Its API served real quote data to a garbage key (verified
 # live 2026-08-14: bogus key -> HTTP 200 with the IBM quote; even premium endpoints answer 200 with
@@ -3967,7 +4001,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         INFLUENCERSCLUB,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
-        FINANCIALDATASETS,
+        FINANCIALDATASETS, LOPJLB,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
