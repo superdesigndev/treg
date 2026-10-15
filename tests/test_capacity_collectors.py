@@ -703,6 +703,26 @@ async def test_prospeo_balance_collector_uses_remaining_credits(remaining, expec
 
 @pytest.mark.parametrize(
     "remaining,expected",
+    [(150387, 150387), (150387.76, 150387.76), (0, 0), (-1, None), (True, None)],
+)
+async def test_richapi_balance_collector_reads_credits_remaining(remaining, expected):
+    def serve(request):
+        assert request.url.path == "/api/v1/usage"
+        assert request.headers["x-api-key"] == "test-key"
+        return httpx.Response(200, json={"credits_remaining": remaining})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as upstream:
+        if expected is None:
+            with pytest.raises(ValueError):
+                await collectors._richapi(upstream, "test-key")
+        else:
+            row = await collectors._richapi(upstream, "test-key")
+            assert row["value"] == expected
+            assert row["unit"] == "credits"
+
+
+@pytest.mark.parametrize(
+    "remaining,expected",
     [(15000, 15000), (0, 0), (15000.5, 15000.5), (-1, None), (True, None)],
 )
 async def test_aiark_balance_collector_uses_total(remaining, expected):

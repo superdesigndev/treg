@@ -283,6 +283,7 @@ _UNRECORDED_SIGNATURE = {
     "aiark",  # funded allowance was not exhausted; no provider-specific body was forced
     "wiza",  # The funded grant was not exhausted; no provider-specific body was forced
     "limadata",  # Starter credits remain; no provider-specific empty-balance body was forced
+    "richapi",  # funded credits remain; documented 402 was not forced
     "getleadsio",  # promotional allocation was not exhausted; bare 402 remains the generic signal
     "keenable",  # funded request balance remains; documented bare 402 was not forced
     "olostep",  # funded credit balance remains; documented 402 was not forced
