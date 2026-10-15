@@ -113,6 +113,9 @@ platforms:
   pinterest-ads: {label: "Pinterest Ads", category: "Advertising", summary: "Your Pinterest Ads campaigns, ad groups and analytics."}
   snapchat-ads: {label: "Snapchat Ads", category: "Advertising", summary: "Your Snapchat Ads campaigns and stats."}
 
+  # --- Advertising: print & offline campaigns ----------------------------------------------------
+  qr-codes: {label: "QR codes", category: "Advertising", summary: "Make dynamic QR codes for print, change where they point, and read their scan analytics and the leads their landing pages collect."}
+
   # --- Enrichment: B2B company & people data ---------------------------------------------------
   companies: {label: "Company data", category: "Enrichment", featured: 1, summary: "Enrich and search companies — firmographics, funding, tech stack, employees."}
   people: {label: "People & contact data", category: "Enrichment", featured: 2, summary: "Enrich people and find or verify work contact details — role, company, email, phone."}

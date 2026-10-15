@@ -1,0 +1,152 @@
+provider: ariaqr
+source:
+  docs: https://ariaqr.com/developers
+  openapi: https://ariaqr.com/openapi.json  # OpenAPI 3.1; every path below was taken from it
+  curated: '2026-10-12'
+# AriaQR REST API v1 (https://ariaqr.com/api/v1): make a scannable picture QR code from a square
+# image and a link, list your codes, read a code's scan analytics, change where a printed code
+# points, and read the leads a landing page's forms collected. Auth is `Authorization: Bearer aq_…`;
+# keys need an active quarter plan or Business plan (402 otherwise). Bad key: HTTP 401
+# {"error":"Missing or invalid API key. Send `Authorization: Bearer aq_…`."} (observed 2026-10-12).
+#
+# OWN-KEY ONLY, deliberately: no platform key and no fx.yaml rate. AriaQR does not price per call:
+# a plan carries a quota of ACTIVATIONS (quarter plan 45 a quarter, Business 100 a month), and a
+# code made on treg's shared key would belong to treg's AriaQR account, so the caller could never
+# edit its link or see its scans, which is what the product is for. The create cost is therefore
+# 1 credit with no fx rate (usd null), and every row is `own_account`, so none is platform-eligible.
+#
+# Full surface (the OpenAPI document lists exactly these five operations): all five are catalogued.
+# Not catalogued: /api/v1/keys and /api/v1/connectors (key and connector-URL management; they take
+# a signed-in browser session, not an API key) and the MCP server at /api/mcp (same jobs as these
+# routes plus the landing-page builder; treg lists REST routes). There is no rate-card endpoint and
+# no API route that reports the remaining activation balance.
+#
+# Self-tested 2026-10-12 with free calls only: create ran with `activate: false` (generated and
+# verified, spends no activation), and the account's active-code count stayed 86 before and after.
+# The activated create price is documented, not observed. No `cache:` declaration (absent reads
+# as forbidden), so a create is never served from the archive.
+limits: "60 requests/minute per key; a 429 says how many seconds to wait. A create can take up to a few minutes. Images: square PNG, JPEG or WebP up to 10 MB."
+pricing_url: https://ariaqr.com/pricing  # quarter plan: 45 activations a quarter; Business: 100 a month; reads are included
+proposed_capabilities:
+  qr-codes.code.create: "Make a scannable QR code from a picture and a link"
+  qr-codes.code.list: "List the QR codes on your account"
+  qr-codes.code.stats: "Scan analytics for one of your QR codes — scans, devices, places, daily counts"
+  qr-codes.code.destination.update: "Change where a printed dynamic QR code points"
+  qr-codes.page.leads: "List the leads a landing page's forms collected"
+endpoints:
+  - id: ariaqr.qr-codes.code.create
+    added: '2026-10-12'
+    capability: qr-codes.code.create
+    platform: qr-codes
+    scope: own_account
+    kind: action
+    method: POST
+    path: /codes
+    name: "Make a scannable picture QR code from an image and a link"
+    summary: "Generates a code from an image through the same engine and verification as the site and, unless `activate` is false, activates it on your plan."
+    input:
+      bodyType: json
+      body:
+        image_url: {type: string, required: false, note: "public URL of a square (1:1 within 2%) PNG, JPEG or WebP, up to 10 MB", example: "https://ariaqr.com/pages/templates/pp-card-consultant-1.webp"}
+        image_base64: {type: string, required: false, note: "the image as base64 (a data URL is fine), when it is not online"}
+        url: {type: string, required: false, note: "where the code goes; required for a website code (the default kind)", example: "https://ariaqr.com"}
+        kind: {type: string, required: false, default: website, note: "website | whatsapp | vcard | wifi | upi | email | phone | sms | maps | event | text"}
+        fields: {type: object, required: false, note: "fields for the chosen kind, same names as the site's generator"}
+        edge: {type: string, required: false, enum: [soft, seamless], note: "how the code meets the picture"}
+        activate: {type: boolean, required: false, default: true, note: "false generates and verifies without spending an activation; the response then carries pay_url and no download_url", example: false}
+        team_id: {type: string, required: false, note: "make the code in a team workspace you belong to"}
+      note: "one of image_url | image_base64. Returns job_id, verified, activated, code, short_url, preview_url, download_url (activated only), stats_url and pay_url (not activated only)."
+    test_request:
+      body: {image_url: "https://ariaqr.com/pages/templates/pp-card-consultant-1.webp", url: "https://ariaqr.com", activate: false}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://ariaqr.com/pricing
+      checked: '2026-10-12'
+      confidence: documented
+      note: "1 credit = 1 plan activation, spent only when the code is made AND activated (activate defaults to true); a failed generation spends nothing. With activate: false nothing is spent (observed 2026-10-12: active codes 86 before and after the test_request). Activated price not observed in this listing. No fx rate: usd is null and the row is own-key only."
+    docs_url: https://ariaqr.com/developers#codes
+
+  - id: ariaqr.qr-codes.code.list
+    added: '2026-10-12'
+    capability: qr-codes.code.list
+    platform: qr-codes
+    scope: own_account
+    method: GET
+    path: /codes
+    name: "List your QR codes — short links, destinations, status"
+    summary: "Every code on the account (and on teams you are still a member of), newest first."
+    input:
+      note: "no parameters. Each entry: code, short_url, destination, kind, summary, active, tier, activation, created_at, expires_at, stats_url."
+    test_request:
+      queryParams: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in the plan; spends no activation"}
+    docs_url: https://ariaqr.com/developers#codes
+
+  - id: ariaqr.qr-codes.code.stats
+    added: '2026-10-12'
+    capability: qr-codes.code.stats
+    platform: qr-codes
+    scope: own_account
+    method: GET
+    path: /codes/{code}
+    name: "QR code scan analytics by code — scans, devices, places"
+    summary: "The code's summary plus scan analytics: totals, unique visitors, 90 days of daily counts and breakdowns by place, device and browser."
+    input:
+      pathParams:
+        code: {type: string, required: true, note: "a code on the caller's own account, as returned by the list or create routes; any other code is a 404", example: "85JRf1"}
+    test_request:
+      pathParams: {code: "85JRf1"}  # an inactive code the test account made with activate: false
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in the plan; spends no activation"}
+    docs_url: https://ariaqr.com/developers#stats
+
+  - id: ariaqr.qr-codes.code.destination.update
+    added: '2026-10-12'
+    capability: qr-codes.code.destination.update
+    platform: qr-codes
+    scope: own_account
+    kind: action
+    method: PATCH
+    path: /codes/{code}
+    name: "Change where a printed QR code points, by code"
+    summary: "Points the printed code at a new address without reprinting. The address is safety-checked first."
+    input:
+      pathParams:
+        code: {type: string, required: true, note: "a code on the caller's own account", example: "85JRf1"}
+      bodyType: json
+      body:
+        destination: {type: string, required: true, note: "a full URL including https://; an unsafe address is a 400 with the reason", example: "https://ariaqr.com"}
+      note: "returns the updated code in the list-entry shape"
+    # A no-op: it re-sets the test account's inactive preview code to the destination it already has.
+    test_request:
+      pathParams: {code: "85JRf1"}
+      body: {destination: "https://ariaqr.com"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in the plan; spends no activation"}
+    docs_url: https://ariaqr.com/developers#destination
+
+  - id: ariaqr.qr-codes.page.leads
+    added: '2026-10-12'
+    capability: qr-codes.page.leads
+    platform: qr-codes
+    scope: own_account
+    method: GET
+    path: /pages/{id}/leads
+    name: "Landing page leads by page id — form entries, conversion"
+    summary: "What the page's forms collected, newest first, with the 30-day conversion and leads per printed code."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "a landing page on the caller's own account; any other id is a 404", example: "gofsT52BcUhS"}
+      queryParams:
+        limit: {type: integer, required: false, min: 1, max: 500, default: 50, example: 1}
+        since_days: {type: integer, required: false, min: 1, max: 365, note: "only leads from the last this many days"}
+        format: {type: string, required: false, enum: [csv], note: "csv returns every lead as a CSV file instead of JSON"}
+      note: "JSON: page, leads, total_kept, retention_days, last_30d (views, leads, conversion_pct, from_qr), by_code. Lead entries carry what people typed into the form: personal data."
+    test_request:
+      pathParams: {id: "gofsT52BcUhS"}  # a live page on the test account that holds zero leads
+      queryParams: {limit: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in the plan; spends no activation. Landing pages are built and published through the MCP server, not this API"}
+    docs_url: https://ariaqr.com/developers#leads

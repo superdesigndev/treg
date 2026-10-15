@@ -3853,6 +3853,37 @@ SERPAPI = OAuthProvider(
     probe_path="/account",  # free account/plan snapshot; 401 on bad key
 )
 
+ARIAQR = OAuthProvider(
+    service="ariaqr",
+    display_name="AriaQR",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your AriaQR API key (aq_…)",
+    # Bearer header only; AriaQR has no query-param form. Connector tokens (aqc_…) are MCP-only and
+    # the REST API refuses them with a 401.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://ariaqr.com/dashboard/developers",
+    setup_action_label="Get your AriaQR API key",
+    setup_steps=(
+        "Start the AriaQR quarter plan or Business plan (API keys come with either).",
+        "Open Dashboard → Developers → Keys and connector URLs (also on your account page).",
+        "Click New key and copy the aq_… secret; it is shown once.",
+    ),
+    setup_note="Activating a code spends one activation from your plan; reads, stats, leads and "
+               "generating with activate: false spend none. A key on an account with no active "
+               "plan is refused (402).",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Advertising",
+    summary="Make scannable picture QR codes from an image and a link, then read scan analytics "
+            "and landing-page leads.",
+    base_url="https://ariaqr.com/api/v1",
+    docs_url="https://ariaqr.com/developers",
+    probe_path="/codes",  # free list of the caller's codes; 401 on a bad key, 402 with no plan
+)
+
 # ---- Advertising OAuth platforms (UNCONFIGURED until this deployment registers a dev app) ------
 # These list as `configured: false` until treg holds each platform's client id/secret. Microsoft +
 # Snapchat fit the existing OAuth machinery (Microsoft additionally needs the user's own developer
@@ -3969,7 +4000,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
-        SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
+        SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, ARIAQR,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
     )
 }

@@ -114,6 +114,34 @@ async def test_parallel_rejects_a_key_its_monitor_stats_refuse(clients, monkeypa
     assert "rejected" in response.text
 
 
+async def test_ariaqr_key_uses_free_code_list_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/api/v1/codes"
+        assert request.headers["authorization"] == "Bearer own-key"
+        return httpx.Response(200, json={"codes": []})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "ariaqr", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+
+async def test_ariaqr_rejects_a_key_its_code_list_refuses(clients, monkeypatch):
+    """The live answer to a bogus key, 2026-10-12."""
+    async with AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(
+            401, json={"error": "Missing or invalid API key. Send `Authorization: Bearer aq_…`."},
+    ))) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "ariaqr", "token": "bogus-key"},
+        )
+    assert response.status_code == 422, response.text
+    assert "rejected" in response.text
+
+
 async def test_enrichlayer_key_uses_free_balance_probe(clients, monkeypatch):
     def probe(request):
         assert request.method == "GET"
