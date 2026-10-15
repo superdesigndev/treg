@@ -120,6 +120,7 @@ platforms:
 
   ebay: {label: "eBay", category: "E-commerce", summary: "Product listings and search results from eBay."}
   walmart: {label: "Walmart", category: "E-commerce", summary: "Product listings and search results from Walmart."}
+  retail: {label: "Retail catalogs", category: "E-commerce", summary: "Product search, categories, promotions and price history across retailers."}
   home-depot: {label: "Home Depot", category: "E-commerce", summary: "Search Home Depot products by keyword."}
   yandex: {label: "Yandex Search Results (SERP)", category: "SEO/AEO", summary: "Organic results and rankings from Yandex."}
   duckduckgo: {label: "DuckDuckGo Search Results (SERP)", category: "SEO/AEO", summary: "Organic results from DuckDuckGo."}

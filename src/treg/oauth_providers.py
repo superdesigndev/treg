@@ -1324,6 +1324,33 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+LEMMEBUYIT = OAuthProvider(
+    service="lemmebuyit",
+    display_name="LemMeBuyIt",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your LemMeBuyIt API key",
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://www.lemmebuyit.com/dashboard/api-keys",
+    setup_action_label="Open LemMeBuyIt API keys",
+    setup_steps=(
+        "Arrange Enterprise REST API access with LemMeBuyIt.",
+        "Open Dashboard → API Keys and copy your REST-enabled key.",
+    ),
+    setup_note="Direct REST access requires Enterprise with custom pricing and limits. "
+               "MCP and browser-extension plans do not include this REST integration. "
+               "Connecting checks retailer access; probe billing is not published.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="E-commerce",
+    summary="Search retail products, shopping listings, categories, promotions and price history across supported retailers.",
+    base_url="https://api.lemmebuyit.com/v1",
+    docs_url="https://api.lemmebuyit.com/openapi.yaml",
+    probe_path="/retailers",  # authenticated; does not require access to a particular retailer
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -3950,7 +3977,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, LEMMEBUYIT, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
