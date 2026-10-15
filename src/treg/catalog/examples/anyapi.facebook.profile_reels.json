@@ -1,19 +1,31 @@
 {
   "output": {
-    "found": true,
     "data": {
+      "nextCursor": "cur_XIkaSgPcU344hYd3tAaUlw",
       "reels": [
         {
+          "authorId": "100044541544829",
+          "authorImage": "https://scontent-lga3-2.xx.fbcdn.net/v/t39.30808-1/284964043_10159903868513445_7696353984967674128_n.jpg?stp=cp0_dst-jpg_tt6&cstp=mx400x400&ctp=s80x80&_nc_cat=1&ccb=1-7&_nc_sid=2d3e12&_nc_ohc=KZO4Mgu7… [435 chars]",
+          "authorName": "Nike",
+          "authorVerified": true,
           "caption": "Leave your limits at the surface. #JustDoIt",
+          "comments": null,
           "createdUtc": 1757952115,
-          "id": "UzpfSTEwMDA0NDU0MTU0NDgyOTpWSzoyMTY2MDkxMjMwNTgyMTQx",
-          "thumbnail": "https://scontent-lga3-2.xx.fbcdn.net/v/t51.71878-15/548908492_1090209716559060_2221563587374446505_n.jpg?stp=dst-jpg_tt6&cstp=mx640x1136&ctp=s960x960&_nc_cat=100&ccb=1-7&_nc_sid=b5ba86&_nc_ohc=V9wUHHz… [436 chars]",
+          "durationSeconds": 30.025,
+          "feedbackId": "ZmVlZGJhY2s6MTM5MzQ2MTExNTQ4MTkyNw==",
+          "id": "1393461115481927",
+          "likes": null,
+          "shares": null,
+          "thumbnail": "https://scontent-lga3-2.xx.fbcdn.net/v/t51.71878-15/548908492_1090209716559060_2221563587374446505_n.jpg?stp=dst-jpg_tt6&cstp=mx640x1136&ctp=s960x960&_nc_cat=100&ccb=1-7&_nc_sid=b5ba86&_nc_ohc=xoYWsLT… [436 chars]",
           "url": "https://www.facebook.com/reel/2166091230582141",
-          "views": 3400000
+          "videoId": "2166091230582141",
+          "videoUrl": "https://video-lga3-1.xx.fbcdn.net/o1/v/t2/f2/m86/AQNrPdap6OftBP5OG6byX9Zra9AIeTlJgFFSnCnQtKX-YrtZwceyclf7S_s9vyochvQvd5rnHPfbDksk867PaxJsnJKbOjIMokT-UHM.mp4?_nc_cat=103&_nc_sid=5e9851&_nc_ht=video-lga… [1056 chars]",
+          "views": 3600000
         },
         "… 5 more item(s) truncated"
       ]
-    }
+    },
+    "found": true
   },
   "provider": "AnyAPI",
   "costUsd": 0.0012,
@@ -25,5 +37,6 @@
     "kind": "anonymous",
     "artworkKey": "giraffe"
   },
-  "resultId": "e54c750c-907d-43b1-a6b7-9273d3606106"
+  "hint": "large_result: this response is ~15 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq… [309 chars]",
+  "resultId": "2c897572-7225-4276-aed4-791abc0652f5"
 }

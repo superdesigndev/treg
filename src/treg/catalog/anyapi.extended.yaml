@@ -56,12 +56,12 @@ endpoints:
     confidence: verified
   docs_url: https://getanyapi.com/api/facebook/ad-details
   note: AnyAPI slug `facebook.ad_details`. Price is what the cheapest source charges per request, and that source serves first; a call rescued by a dearer source settles above it. 1 source can serve it; the cheapest serves first and a failed attempt is retried on the next, up to a $0.0012 ceiling per request. `costUsd` on the response is the exact charge, which is what reported_charge settles. Send `max_cost_usd` to refuse any source dearer than a price you name.
-  verified: '2026-09-19'
+  verified: '2026-10-15'
   example_response: examples/anyapi.facebook.ad_details.json
   test_request:
     body:
       id: '1249043200627555'
-  observed_time: 2.98
+  observed_time: 1.83
 - id: anyapi.facebook.ad_details_full
   tier: extended
   platform: facebook
@@ -504,13 +504,13 @@ endpoints:
     confidence: verified
   docs_url: https://getanyapi.com/api/facebook/marketplace-item
   note: AnyAPI slug `facebook.marketplace_item`. Price is what the cheapest source charges per request, and that source serves first; a call rescued by a dearer source settles above it. 1 source can serve it; the cheapest serves first and a failed attempt is retried on the next, up to a $0.0012 ceiling per request. `costUsd` on the response is the exact charge, which is what reported_charge settles. Send `max_cost_usd` to refuse any source dearer than a price you name.
-  verified: '2026-09-19'
+  verified: '2026-10-15'
   example_response: examples/anyapi.facebook.marketplace_item.json
   capability: facebook.marketplace.item.detail
   test_request:
     body:
       url: https://www.facebook.com/marketplace/item/1656586118821988/
-  observed_time: 2.6
+  observed_time: 2.53
 - id: anyapi.facebook.marketplace_location_search
   tier: extended
   platform: facebook
@@ -583,12 +583,12 @@ endpoints:
     confidence: verified
   docs_url: https://getanyapi.com/api/facebook/page-contact
   note: AnyAPI slug `facebook.page_contact`. Price is what the cheapest source charges per request, and that source serves first; a call rescued by a dearer source settles above it. 2 sources can serve it; the cheapest serves first and a failed attempt is retried on the next, up to a $0.011 ceiling per request. `costUsd` on the response is the exact charge, which is what reported_charge settles. Send `max_cost_usd` to refuse any source dearer than a price you name.
-  verified: '2026-09-19'
+  verified: '2026-10-15'
   example_response: examples/anyapi.facebook.page_contact.json
   test_request:
     body:
       page: https://www.facebook.com/joesstonecrab
-  observed_time: 4.09
+  observed_time: 3.15
 - id: anyapi.facebook.page_lookup
   tier: extended
   platform: facebook
@@ -743,13 +743,13 @@ endpoints:
     confidence: verified
   docs_url: https://getanyapi.com/api/facebook/post-transcript
   note: AnyAPI slug `facebook.post_transcript`. Price is what the cheapest source charges per request, and that source serves first; a call rescued by a dearer source settles above it. 2 sources can serve it; the cheapest serves first and a failed attempt is retried on the next, up to a $0.036 ceiling per request. `costUsd` on the response is the exact charge, which is what reported_charge settles. Send `max_cost_usd` to refuse any source dearer than a price you name.
-  verified: '2026-09-19'
+  verified: '2026-10-15'
   example_response: examples/anyapi.facebook.post_transcript.json
   capability: facebook.post.transcript
   test_request:
     body:
       url: https://www.facebook.com/reel/2166091230582141/
-  observed_time: 5.76
+  observed_time: 8.44
 - id: anyapi.facebook.profile
   tier: extended
   platform: facebook
@@ -784,13 +784,13 @@ endpoints:
     confidence: verified
   docs_url: https://getanyapi.com/api/facebook/profile
   note: AnyAPI slug `facebook.profile`. Price is what the cheapest source charges per request, and that source serves first; a call rescued by a dearer source settles above it. 2 sources can serve it; the cheapest serves first and a failed attempt is retried on the next, up to a $0.0036 ceiling per request. `costUsd` on the response is the exact charge, which is what reported_charge settles. Send `max_cost_usd` to refuse any source dearer than a price you name.
-  verified: '2026-09-19'
+  verified: '2026-10-15'
   example_response: examples/anyapi.facebook.profile.json
   capability: facebook.page.profile
   test_request:
     body:
       url: https://www.facebook.com/nike
-  observed_time: 3.01
+  observed_time: 3.05
 - id: anyapi.facebook.profile_events
   tier: extended
   platform: facebook
@@ -866,13 +866,13 @@ endpoints:
     confidence: verified
   docs_url: https://getanyapi.com/api/facebook/profile-reels
   note: AnyAPI slug `facebook.profile_reels`. Price is what the cheapest source charges per request, and that source serves first; a call rescued by a dearer source settles above it. 3 sources can serve it; the cheapest serves first and a failed attempt is retried on the next, up to a $0.0067 ceiling per request. `costUsd` on the response is the exact charge, which is what reported_charge settles. Send `max_cost_usd` to refuse any source dearer than a price you name.
-  verified: '2026-09-19'
+  verified: '2026-10-15'
   example_response: examples/anyapi.facebook.profile_reels.json
   capability: facebook.page.reels
   test_request:
     body:
       url: https://www.facebook.com/nike
-  observed_time: 2.07
+  observed_time: 2.05
 - id: anyapi.facebook.search_companies
   tier: extended
   platform: facebook
@@ -950,13 +950,13 @@ endpoints:
     confidence: verified
   docs_url: https://getanyapi.com/api/facebook/search-pages
   note: AnyAPI slug `facebook.search_pages`. Priced per result, so the price is the p90 of what AnyAPI charged for this endpoint in the 7 days to 2026-10-07 (139 charged calls, $0.0374 median), not the list price at the input maximum; roughly one call in ten settles above it. 1 source can serve it; the cheapest serves first and a failed attempt is retried on the next, up to a $0.123 ceiling per request. `costUsd` on the response is the exact charge, which is what reported_charge settles. Send `max_cost_usd` to refuse any source dearer than a price you name.
-  verified: '2026-09-19'
+  verified: '2026-10-15'
   example_response: examples/anyapi.facebook.search_pages.json
   test_request:
     body:
       limit: 3
       query: nike
-  observed_time: 50.34
+  observed_time: 11.75
 - id: anyapi.facebook.search_posts
   tier: extended
   platform: facebook
@@ -4188,7 +4188,7 @@ endpoints:
     confidence: verified
   docs_url: https://getanyapi.com/api/facebook/ads-search
   note: AnyAPI slug `facebook.ads_search`. Price is what the cheapest source charges per request, and that source serves first; a call rescued by a dearer source settles above it. 4 sources can serve it; the cheapest serves first and a failed attempt is retried on the next, up to a $0.018 ceiling per request. `costUsd` on the response is the exact charge, which is what reported_charge settles. Send `max_cost_usd` to refuse any source dearer than a price you name.
-  verified: '2026-09-19'
+  verified: '2026-10-15'
   example_response: examples/anyapi.facebook.ads_search.json
   capability: meta-ads.library.search
   test_request:
@@ -4196,7 +4196,7 @@ endpoints:
       country: US
       query: nike
       searchType: keyword_exact_phrase
-  observed_time: 5.07
+  observed_time: 1.55
 - id: anyapi.facebook.company_ads
   tier: extended
   platform: meta-ads
@@ -4278,14 +4278,14 @@ endpoints:
     confidence: verified
   docs_url: https://getanyapi.com/api/facebook/company-ads
   note: AnyAPI slug `facebook.company_ads`. Price is what the cheapest source charges per request, and that source serves first; a call rescued by a dearer source settles above it. 2 sources can serve it; the cheapest serves first and a failed attempt is retried on the next, up to a $0.0012 ceiling per request. `costUsd` on the response is the exact charge, which is what reported_charge settles. Send `max_cost_usd` to refuse any source dearer than a price you name.
-  verified: '2026-09-19'
+  verified: '2026-10-15'
   example_response: examples/anyapi.facebook.company_ads.json
   capability: meta-ads.library.advertiser
   test_request:
     body:
       companyName: nike
       sortBy: recent
-  observed_time: 3.78
+  observed_time: 3.38
 - id: anyapi.reddit.avatar
   tier: extended
   platform: reddit

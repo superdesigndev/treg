@@ -1403,7 +1403,7 @@ endpoints:
     checked: '2026-10-07'
     confidence: verified
   example_response: examples/anyapi.facebook.group.posts.json
-  verified: '2026-09-19'
+  verified: '2026-10-15'
   docs_url: https://getanyapi.com/api/facebook/group-posts
   note: AnyAPI slug `facebook.group_posts`. Price is what the cheapest source charges per request, and that
     source serves first; a call rescued by a dearer source settles above it. 3 sources can serve it; the
@@ -1453,7 +1453,7 @@ endpoints:
     checked: '2026-10-07'
     confidence: verified
   example_response: examples/anyapi.facebook.user.posts.json
-  verified: '2026-09-19'
+  verified: '2026-10-15'
   docs_url: https://getanyapi.com/api/facebook/profile-posts
   note: AnyAPI slug `facebook.profile_posts`. Price is what the cheapest source charges per request, and
     that source serves first; a call rescued by a dearer source settles above it. 3 sources can serve it;
@@ -1495,7 +1495,7 @@ endpoints:
     checked: '2026-10-07'
     confidence: verified
   example_response: examples/anyapi.facebook.post.detail.json
-  verified: '2026-09-19'
+  verified: '2026-10-15'
   docs_url: https://getanyapi.com/api/facebook/post
   note: AnyAPI slug `facebook.post`. Price is what the cheapest source charges per request, and that source
     serves first; a call rescued by a dearer source settles above it. 3 sources can serve it; the cheapest
