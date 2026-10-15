@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import event, select, update
+from sqlalchemy.ext.asyncio import AsyncResult
 
 from treg.application import catalog_stats
 from treg.domain.catalog import stats
@@ -505,3 +506,91 @@ async def test_cancelled_recount_keeps_previous_bucket_and_dirty_work(clients, m
     assert bucket.n == bucket.hits == bucket.hit_decided == 5
     assert bucket.free_misses == 0 and bucket.verdicts == {"valid": 5}
     assert bucket.updated_at == NOW and await _dirty() == []
+
+
+async def test_recount_stream_transports_only_upstream_evidence(clients, monkeypatch):
+    monkeypatch.setattr(catalog_stats, "BATCH_ROWS", 4)
+    monkeypatch.setattr(catalog_store, "empty_is_failure", lambda _: True)
+    evidence = [
+        (200, 100, True, 0, "valid"),
+        (200, 200, False, 0, "not_found"),
+        (500, 300, False, None, "unknown"),
+        (422, None, None, None, None),
+        (202, 400, None, 5000, None),
+        (200, 500, True, 0, "catch_all"),
+    ]
+    minute = 0
+    for status, ms, hit, cost, verdict in evidence:
+        for refusal in ("balance", ""):
+            await _record(ASYNC, at=YESTERDAY + timedelta(minutes=minute), status=200,
+                          ms=9000, hit=True, cost=9999, refused_by=refusal, verdict="refused")
+            minute += 1
+        await _record(ASYNC, at=YESTERDAY + timedelta(minutes=minute), status=status,
+                      ms=ms, hit=hit, cost=cost, verdict=verdict)
+        minute += 1
+    folded = await catalog_stats.refresh(session_maker, batch_rows=4, now=NOW)
+    assert folded["rows"] == 3 * len(evidence) and folded["caught_up"]
+    async with session_maker() as db:
+        bucket = await db.get(EndpointDayStat, (ASYNC, _day(YESTERDAY)))
+        bucket.n = 99
+        db.add(bucket)
+        await mark_dirty(db, {(ASYNC, _day(YESTERDAY))}, now=NOW)
+        await db.commit()
+
+    source_rows = 0
+    original_partitions = AsyncResult.partitions
+
+    async def count_transported_rows(result, *args, **kwargs):
+        nonlocal source_rows
+        async for batch in original_partitions(result, *args, **kwargs):
+            source_rows += len(batch)
+            yield batch
+
+    monkeypatch.setattr(AsyncResult, "partitions", count_transported_rows)
+    result = await catalog_stats.refresh(session_maker, max_rows=0, now=NOW)
+    assert result["repaired"] == 1 and result["repair_failed"] == result["repair_pending"] == 0
+    assert source_rows == len(evidence)
+    bucket = await _bucket()
+    assert (bucket.n, bucket.ok, bucket.bad) == (6, 3, 2)
+    assert (bucket.hits, bucket.hit_decided, bucket.paid_hits, bucket.free_misses) == (2, 4, 1, 0)
+    assert bucket.last_ok_at == YESTERDAY + timedelta(minutes=minute - 1)
+    assert bucket.latency_seen == 3 and sorted(bucket.latency_sample) == [100, 400, 500]
+    assert bucket.verdicts == {"valid": 1, "not_found": 1, "unknown": 1, "catch_all": 1}
+    assert bucket.terminal_reconciled and await _dirty() == []
+
+
+async def test_recount_of_an_all_refused_day_streams_no_rows_and_clears_stale_evidence(
+    clients, monkeypatch,
+):
+    for refusal in ("balance", "", "policy"):
+        await _record(ASYNC, refused_by=refusal, hit=True, verdict="refused")
+    folded = await catalog_stats.refresh(session_maker, now=NOW)
+    assert folded["rows"] == 3 and folded["caught_up"]
+    assert await _bucket() is None
+    async with session_maker() as db:
+        db.add(EndpointDayStat(
+            endpoint_id=ASYNC, day=_day(YESTERDAY), n=9, ok=8, bad=1,
+            hits=7, hit_decided=8, paid_hits=2, free_misses=1, last_ok_at=YESTERDAY,
+            latency_seen=8, latency_sample=[999], verdicts={"stale": 9},
+            terminal_reconciled=False))
+        await mark_dirty(db, {(ASYNC, _day(YESTERDAY))}, now=NOW)
+        await db.commit()
+
+    source_rows = 0
+    original_partitions = AsyncResult.partitions
+
+    async def count_transported_rows(result, *args, **kwargs):
+        nonlocal source_rows
+        async for batch in original_partitions(result, *args, **kwargs):
+            source_rows += len(batch)
+            yield batch
+
+    monkeypatch.setattr(AsyncResult, "partitions", count_transported_rows)
+    result = await catalog_stats.refresh(session_maker, max_rows=0, now=NOW)
+    assert result["repaired"] == 1 and result["repair_failed"] == result["repair_pending"] == 0
+    assert source_rows == 0
+    bucket = await _bucket()
+    assert (bucket.n, bucket.ok, bucket.bad, bucket.hits, bucket.hit_decided,
+            bucket.paid_hits, bucket.free_misses, bucket.latency_seen) == (0,) * 8
+    assert bucket.last_ok_at is None and bucket.latency_sample == [] and bucket.verdicts == {}
+    assert bucket.terminal_reconciled and bucket.updated_at == NOW and await _dirty() == []

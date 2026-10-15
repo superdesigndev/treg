@@ -1755,7 +1755,11 @@ therefore cannot make a regularly repaired bucket look abandoned; failures and r
 renew its age. `catalog_stat_dirty` owns
 all marker writes; the worker owns transaction boundaries. Repairs read only one endpoint/day
 through the existing `(endpoint_id, created_at)` index and stream bounded batches without source-row
-locks. Each batch is unpacked locally, avoiding an async result transition per row, and yields to
+locks. The source query keeps only `refused_by IS NULL`, excluding empty-string refusal values,
+before transport: these records never contribute to `Tally`. Filtering can reduce transferred rows
+but does not guarantee fewer heap reads or faster repairs when refusals are rare. An empty source
+still replaces the old bucket with a reconciled zero tally and acknowledges its marker.
+Each batch is unpacked locally, avoiding an async result transition per row, and yields to
 the event loop before the next batch. Batching preserves the complete source query and its single
 snapshot; it does not cap the day or reduce the database scan. Repairs have independent bucket-count,
 elapsed-time and per-bucket timeout budgets. A failed replacement
