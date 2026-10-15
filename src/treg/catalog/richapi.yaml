@@ -1,0 +1,89 @@
+provider: richapi
+source:
+  docs: https://app.richapi.ai/docs
+  openapi: https://api.richapi.ai/api/v1/openapi.json
+  curated: '2026-10-15'
+limits: "Rate limits follow monthly credit volume. Sandbox is 1 request per second, Starter (5,000 credits) is 10, Growth and Scale are 25, and 100,000 credits is 50. Burst is up to twice the limit. Over the limit the API returns 429 with Retry-After. Out of credits the API returns 402."
+pricing_url: https://richapi.ai/pricing
+endpoints:
+  - id: richapi.people.enrich
+    domain: people
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /enrich_profile
+    body_allowlist: true
+    platform_request:
+      body.include_social_metrics: false
+    name: Enrich a LinkedIn profile
+    summary: "Get LinkedIn profile data including name, headline, location, experience, education and more. Base price is 1 credits per call. When `include_social_metrics` is `True`, the optional component adds 1 credits; it is not charged when unavailable."
+    input:
+      bodyType: json
+      body:
+        url:
+          type: string
+          required: true
+          example: https://www.linkedin.com/in/satyanadella/
+          note: LinkedIn profile URL
+        include_social_metrics:
+          type: boolean
+          required: true
+          enum:
+            - false
+          note: "Pinned false so this tool stays the 1-credit profile call. A true value adds 1 credit when the social-metrics component is available."
+    test_request:
+      body:
+        url: https://www.linkedin.com/in/satyanadella/
+        include_social_metrics: false
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://api.richapi.ai/api/v1/catalog
+      checked: '2026-10-15'
+      confidence: verified
+      settle: modifiers
+      modifiers:
+        include_social_metrics: {location: body, when: truthy, add_credits: 1}
+      note: "1 credit per call with include_social_metrics false. Observed 2026-10-15 on https://www.linkedin.com/in/satyanadella/: X-Credits-Charged 1, wallet down 1, cache miss. The card's maximum is 2 when include_social_metrics is true and the component is available. The platform request pins false. The modifier adds 1 credit for a truthy field. That true path was not called. An unavailable component is not charged on the card. Whether an unavailable component still adds the credit was not called."
+    docs_url: https://app.richapi.ai/docs
+    added: '2026-10-15'
+
+  - id: richapi.companies.enrich
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /enrich_company
+    body_allowlist: true
+    name: Enrich a LinkedIn company
+    summary: Get company data from LinkedIn including size, industry, specialties and employee insights.
+    input:
+      bodyType: json
+      body:
+        url:
+          type: string
+          required: true
+          example: https://www.linkedin.com/company/microsoft/
+          note: LinkedIn company page URL
+    test_request:
+      body:
+        url: https://www.linkedin.com/company/microsoft/
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://api.richapi.ai/api/v1/catalog
+      checked: '2026-10-15'
+      confidence: verified
+      note: "1 credit per call. Observed 2026-10-15 on https://www.linkedin.com/company/microsoft/: X-Credits-Charged 1, wallet down 1, cache miss."
+    docs_url: https://app.richapi.ai/docs
+    added: '2026-10-15'

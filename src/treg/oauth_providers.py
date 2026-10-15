@@ -3485,6 +3485,34 @@ INFLUENCERSCLUB = OAuthProvider(
 )
 
 
+RICHAPI = OAuthProvider(
+    service="richapi",
+    display_name="RichAPI",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your RichAPI API key",
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://app.richapi.ai/auth/sign-in",
+    setup_action_label="Get your RichAPI API key",
+    setup_steps=(
+        "Sign in at app.richapi.ai. A new account starts with 100 credits and no card.",
+        "Open API Keys for the team at /home/<team>/api-keys and copy the key.",
+    ),
+    setup_note="The usage call is free. Profile and company enrich spend credits.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="LinkedIn profile and company enrichment from one credit pool.",
+    base_url="https://api.richapi.ai/api/v1",
+    docs_url="https://app.richapi.ai/docs",
+    # Free and rejects cleanly: a bogus key answers 401 {"error":"Missing API key identity"}
+    # (verified live 2026-10-15). GET /usage/allowance uses a different 401 string and is not the probe.
+    probe_path="/usage",
+)
+
+
 # ---- Advertising API-key providers (ad intelligence) -----------------------------------------
 
 # ---- Market data API-key providers -------------------------------------------------------------
@@ -3964,7 +3992,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB,
+        INFLUENCERSCLUB, RICHAPI,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,

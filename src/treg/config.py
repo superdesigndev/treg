@@ -313,6 +313,7 @@ class Settings(BaseSettings):
     platform_key_dropleads: str = ""  # X-API-Key; PAYG credits priced in fx.yaml
     platform_key_quickenrich: str = ""  # Bearer; monthly subscription credits, not auto-top-up
     platform_key_prospeo: str = ""  # X-KEY; Starter monthly subscription credits
+    platform_key_richapi: str = ""  # x-api-key; Enrichment Pass credits for profile and company enrich
     platform_key_aiark: str = ""  # X-TOKEN; monthly subscription credits with rollover
     platform_key_wiza: str = ""  # Bearer; prepaid API credits, no vendor auto-top-up
     platform_key_limadata: str = ""  # x-api-key; monthly credits with configured auto top-up

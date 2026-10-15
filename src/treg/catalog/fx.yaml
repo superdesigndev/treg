@@ -58,6 +58,11 @@ credit_rates_usd:
   scrapecreators: {usd: 0.00188, basis: "Freelance pay-as-you-go $47 / 25,000 credits (Business tier is $497 / 500,000 = $0.000994)", source: "https://scrapecreators.com/", checked: "2026-07-28"}
   leadmagic: {usd: 0.025, basis: "Basic $49.99/mo / 2,000 credits per month (annual billing $490/yr / 24,000 = $0.0204)", source: "https://leadmagic.io/pricing", checked: "2026-07-28"}
   hunter: {usd: 0.0245, basis: "Starter $49/mo / 2,000 credits; one shared pool -- a search costs 1 credit, a verification 0.5 credit, so verification effectively $0.0123", source: "https://hunter.io/pricing", checked: "2026-07-28"}
+  richapi:
+    usd: 0.00598
+    basis: "Enrichment Pass for profile and company enrichment. Until 1 November 2026 the price is $149 per month, billed yearly, for 50,000 enrichments plus 10,000 more (60,000 a month). From 1 November 2026 a new subscription is $299 per month, billed yearly, for 50,000 enrichments a month. The catalog rate is the later price, $299 / 50,000 = $0.00598 per enrichment. Credit bundles are the price for the other endpoints."
+    source: "https://richapi.ai/pricing"
+    checked: "2026-10-15"
   diffbot: {usd: 0.001196, basis: "Startup $299/mo / 250,000 credits", source: "https://www.diffbot.com/pricing/", checked: "2026-07-28"}
   lusha: {usd: 0.1248, basis: "Starter $49.90/mo / 400 credits (email reveal = 1 credit, phone reveal = 5 per the live rate card 2026-09-04; treg's account is a premium monthly plan at 4,600 credits, its per-credit price unread — this Starter rate is the upper bound). GET /v3/account/usage returns a free pricing object of per-action credit COUNTS, not dollars -- multiply those counts by this rate", source: "https://www.lusha.com/pricing/", checked: "2026-07-28"}
   akta: {usd: 0.05, basis: "pay-as-you-go $0.05/credit as stated in docs ($0.04 on subscription)", source: "https://docs.akta.pro/getting-started/pricing", checked: "2026-07-28"}

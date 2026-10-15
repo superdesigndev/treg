@@ -479,6 +479,17 @@ async def _getleadsio(c, key):
             "note": f"Unlimited plan fair-use: {detail}; binding {d.get('binding', '?')}"}
 
 
+async def _richapi(c, key):
+    # GET /usage is free. credits_remaining is the wallet (include_balance defaults true).
+    d = await _get(c, "https://api.richapi.ai/api/v1/usage", headers={"x-api-key": key})
+    remaining = d.get("credits_remaining") if isinstance(d, dict) else None
+    return {
+        "value": _balance(remaining, "RichAPI"),
+        "unit": "credits",
+        "note": "Enrichment Pass and bundle credits remaining",
+    }
+
+
 async def _hunter(c, key):
     d = await _get(c, "https://api.hunter.io/v2/account", params={"api_key": key})
     req = (d.get("data") or {}).get("requests", {})
@@ -980,6 +991,7 @@ BALANCE_ROUTES = {
     "moz": _moz,
     "seranking": _seranking,
     "hunter": _hunter,
+    "richapi": _richapi,
     "harvestapi": _harvestapi,
     "fetchinio": _fetchinio,
     "prospeo": _prospeo,
