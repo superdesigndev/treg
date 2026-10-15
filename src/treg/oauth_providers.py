@@ -1991,6 +1991,29 @@ TIKHUB = OAuthProvider(
     probe_path="/api/v1/tikhub/user/get_user_info",  # account info — the natural key check
 )
 
+REAP = OAuthProvider(
+    service="reap",
+    display_name="reap",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your reap API key",
+    setup_url="https://app.reap.video/?settings=api-keys",
+    setup_action_label="Get your reap API key",
+    setup_steps=(
+        "Sign in to reap and open Settings → API Keys.",
+        "Create a Secret Key and copy it.",
+    ),
+    setup_note="API access requires an active Creator or Studio plan; processing draws from that plan's credits, while the usage check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="AI video editing API for turning long videos into short clips, adding animated captions, transcription, auto-reframing, multilingual dubbing and social publishing.",
+    base_url="https://public.reap.video/api/v1",
+    docs_url="https://docs.reap.video/api-reference/1_introduction",
+    probe_path="/automation/get-plan-usage",
+)
+
 BRIGHTDATA = OAuthProvider(
     service="brightdata",
     display_name="Bright Data",
@@ -3956,7 +3979,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         OPENROUTER,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
-        TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
+        TIKHUB, REAP, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
