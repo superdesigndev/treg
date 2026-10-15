@@ -1759,6 +1759,32 @@ BOUNCEBAN = OAuthProvider(
     ),
 )
 
+TRUELIST = OAuthProvider(
+    service="truelist",
+    display_name="Truelist",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Truelist API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://truelist.io",
+    setup_action_label="Get your Truelist API key",
+    setup_steps=(
+        "Sign in to Truelist and open the API settings.",
+        "Create or copy an API key and paste it here.",
+    ),
+    setup_note=("Each verified address uses one prepaid credit; unknown and catch-all results "
+                "use none. The account check is free."),
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Verify email deliverability and flag catch-all, disposable and role addresses.",
+    base_url="https://api.truelist.io",
+    docs_url="https://truelist.io/docs/api",
+    # A bad key answers HTTP 401 {"error": "Could not find user via token"}.
+    probe_path="/me",
+)
+
 MINIMAX = OAuthProvider(
     service="minimax",
     display_name="MiniMax",
@@ -3952,7 +3978,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # API-key providers
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
-        TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
+        TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, TRUELIST, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,

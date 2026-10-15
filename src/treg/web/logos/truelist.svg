@@ -1,0 +1,7 @@
+<!-- Official vendor icon: https://truelist.io/favicon.svg ; retrieved 2026-10-12 -->
+<svg role="img" aria-label="truelist" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="0" fill="#2C1810"/>
+  <g transform="translate(176, 147) scale(4)">
+    <path d="M0 0h40v6c-6.63 0-12 5.37-12 12v40H12V18c0-6.63-5.37-12-12-12V0z" fill="#FBF8F4"/>
+  </g>
+</svg>

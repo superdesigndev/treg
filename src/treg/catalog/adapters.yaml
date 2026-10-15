@@ -483,6 +483,18 @@ adapters:
     # LimaData reports a catch-all domain as a flag next to `Risky`.
     verdict: "choose(is_catch_all == true, choose(result == 'Risky', 'catch_all', result), result)"
 
+  truelist.people.email.verify:
+    accepts: [[email]]
+    in: {email: queryParams.email}
+    out: {valid: "emails[0].email_state == 'ok'", status: "emails[0].email_state"}
+    # Truelist documents unknown as uncharged; as a miss it releases the hold and lets a routed
+    # waterfall continue. accept_all is also uncharged upstream but is a catch-all answer.
+    miss: "coalesce(emails[0].email_state, 'unknown') == 'unknown'"
+    # Live catch-alls arrive as risky with an accept_all sub-state; a disposable mailbox is also a
+    # sub-state and counts as risky, like peer verifiers.
+    verdict: "choose(emails[0].email_sub_state == 'accept_all', 'catch_all', choose(emails[0].email_sub_state == 'is_disposable', 'risky', emails[0].email_state))"
+    verdicts: {ok: valid, email_invalid: invalid, accept_all: catch_all}
+
   # ---- people.enrich ------------------------------------------------------------------------
   dropleads.people.enrich:
     accepts: [[email], [linkedin_url], [first_name, last_name, domain], [full_name, domain]]
