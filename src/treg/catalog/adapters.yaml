@@ -3140,6 +3140,12 @@ adapters:
     in_expr: {body.limit: limit}
     out: {results: links, count: "len(links)"}
     miss: "success == false"
+  crawl4ai.web.map:
+    accepts: [[url]]
+    in_expr: {body.domain: "host(url)", body.max_urls: limit}
+    test_identity: {url: "https://docs.crawl4ai.com"}
+    out: {results: rows, count: "len(rows)"}
+    miss: "coalesce(rows, []) == []"
   branddev.web.map:
     accepts: [[url]]
     in_expr: {queryParams.domain: "host(url)"}
