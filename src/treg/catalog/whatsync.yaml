@@ -1,0 +1,329 @@
+# WhatSync's Developer API (https://whatsync.app/openapi.json), curated 2026-10-16 by the vendor.
+#
+# WhatSync links a person's or a business's OWN WhatsApp number, either a personal number by QR
+# or an official WhatsApp Business number through Meta, and exposes it as tools. A `wsk_live_` key
+# belongs to one WhatSync account and only answers for the numbers that account linked, so every
+# endpoint below is scope own_account: this is the caller's own WhatsApp, not a lookup service.
+#
+# Three conventions shape every entry:
+#   1. Every tool is `POST /tools/{name}` with a JSON body, even the reads. The body is validated
+#      strictly (unknown fields are a 400), so test_requests carry only documented fields.
+#   2. Errors are real HTTP statuses with `{"error": {"code", "message"}}`: 401 invalid_api_key,
+#      403 plan_required / insufficient_permission, 409 whatsapp_not_connected / outcome_unknown,
+#      422 tool_error, 429 rate_limited / daily_limit_reached (with Retry-After). A 2xx is a
+#      success, so no `expect` predicate is needed.
+#   3. Sends take an `idempotencyKey` (8-128 of [A-Za-z0-9._:-]); a retry with the same key never
+#      sends twice. A 409 outcome_unknown means "may have been accepted": check get_send_status,
+#      never retry with a new key.
+#
+# Key permissions are chosen when the key is created: Read is always on; "Send messages" unlocks
+# the send rows and "Manage groups" unlocks list_groups / send_group_message. A missing permission
+# answers 403 insufficient_permission ("This key lacks permission for this tool.").
+#
+# The vendor's test credential is WhatSync's reviewer demo account: seeded chats, groups and a demo
+# Business number with fake +1 202-555-01xx contacts. Sends on that account are written into the
+# demo chat and never reach WhatsApp or Meta, which is what makes the write rows safe to verify.
+# The ids in the test_requests below (12025550111@s.whatsapp.net, 120363000000000101@g.us) are
+# that demo data, not real people.
+provider: whatsync
+source:
+  docs: https://whatsync.app/docs/api/tools
+  openapi: https://whatsync.app/openapi.json
+  curated: 2026-10-16
+
+limits: "per key: 600 requests/minute for reads, 120 requests/minute for sends and other writes; personal (QR) numbers can send 50 messages a day through the API, the official Business API has no WhatSync daily cap"
+pricing_url: https://whatsync.app/pricing  # subscription; API access comes with the WhatSync plans that include it, no per-call charge
+endpoints:
+  - id: whatsync.account.identity
+    added: '2026-10-16'
+    kind: utility
+    capability: account.identity
+    platform: account
+    scope: own_account
+    method: GET
+    path: /me
+    name: "Check the connected WhatSync account and numbers"
+    summary: "Check account, numbers and granted permissions"
+    input:
+      note: "takes no parameters. Returns account_id, key_name, permissions, and one entry per linked WhatsApp number (channel qr or business, connected, status). This is the connect probe: a garbage key answers 401 invalid_api_key"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: 'included in WhatSync plans with API access, see pricing_url; read limit 600 requests/minute per key'}
+    docs_url: https://whatsync.app/docs/api/quickstart
+
+  - id: whatsync.whatsapp.chats.list
+    added: '2026-10-16'
+    capability: whatsapp.chats.list
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /tools/list_conversations
+    name: "List your recent WhatsApp chats"
+    summary: "List WhatsApp conversations"
+    input:
+      body:
+        query: {type: string, required: false, note: "contact name, phone number or conversation id; max 120 chars", example: "Rahul"}
+        after: {type: string, required: false, note: "ISO 8601 timestamp; defaults to the 180 days ending at `before`", example: "2026-09-01T00:00:00Z"}
+        before: {type: string, required: false, note: "ISO 8601 timestamp"}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page"}
+        limit: {type: integer, required: false, note: "1-50, default 20", example: 5}
+      bodyType: json
+      note: "each row carries the conversation_id the read and send tools take. Numbers the account owner excluded never appear"
+    test_request:
+      body: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: 'included in WhatSync plans with API access, see pricing_url; read limit 600 requests/minute per key'}
+    docs_url: https://whatsync.app/docs/api/tools
+
+  - id: whatsync.whatsapp.messages.history
+    added: '2026-10-16'
+    capability: whatsapp.messages.history
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /tools/get_conversation
+    name: "Read the messages in one WhatsApp chat"
+    summary: "Read a WhatsApp conversation"
+    input:
+      body:
+        conversationId: {type: string, required: true, note: "the exact conversation_id from list_conversations or search_messages (a chat JID such as 12025550111@s.whatsapp.net, or a group JID ending @g.us)", example: "12025550111@s.whatsapp.net"}
+        before: {type: string, required: false, note: "ISO 8601 timestamp; only messages before it"}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page"}
+        limit: {type: integer, required: false, note: "1-50, default 20", example: 10}
+      bodyType: json
+      note: "messages come back in chronological order with sender, direction, text and attachment metadata"
+    test_request:
+      body: {conversationId: "12025550111@s.whatsapp.net", limit: 10}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: 'included in WhatSync plans with API access, see pricing_url; read limit 600 requests/minute per key'}
+    docs_url: https://whatsync.app/docs/api/tools
+
+  - id: whatsync.whatsapp.messages.search
+    added: '2026-10-16'
+    capability: whatsapp.messages.search
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /tools/search_messages
+    name: "Search your WhatsApp messages by keyword"
+    summary: "Search WhatsApp messages"
+    input:
+      body:
+        query: {type: string, required: true, note: "words or phrase; also matches attachment file names and contact names; max 300 chars", example: "invoice"}
+        conversationId: {type: string, required: false, note: "limit the search to one conversation_id"}
+        direction: {type: string, required: false, note: "inbound | outbound"}
+        after: {type: string, required: false, note: "ISO 8601 timestamp; searches default to the last 180 days"}
+        before: {type: string, required: false, note: "ISO 8601 timestamp; one window can span at most 366 days"}
+        cursor: {type: string, required: false}
+        limit: {type: integer, required: false, note: "1-50, default 20", example: 5}
+      bodyType: json
+    test_request:
+      body: {query: "invoice", limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: 'included in WhatSync plans with API access, see pricing_url; read limit 600 requests/minute per key'}
+    docs_url: https://whatsync.app/docs/api/tools
+
+  - id: whatsync.whatsapp.chats.unanswered
+    added: '2026-10-16'
+    capability: whatsapp.chats.unanswered
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /tools/list_unanswered_conversations
+    name: "Find WhatsApp chats waiting for your reply"
+    summary: "Find conversations awaiting a reply"
+    input:
+      body:
+        after: {type: string, required: false, note: "ISO 8601 timestamp"}
+        before: {type: string, required: false, note: "ISO 8601 timestamp"}
+        limit: {type: integer, required: false, note: "1-50", example: 5}
+      bodyType: json
+      note: "one-to-one chats whose latest visible message in the window is inbound. A signal for triage, not a read receipt"
+    test_request:
+      body: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: 'included in WhatSync plans with API access, see pricing_url; read limit 600 requests/minute per key'}
+    docs_url: https://whatsync.app/docs/api/tools
+
+  - id: whatsync.whatsapp.contacts.list
+    added: '2026-10-16'
+    capability: whatsapp.contacts.list
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /tools/list_contacts
+    name: "Find people in your WhatsApp by name or number"
+    summary: "List WhatsApp contacts"
+    input:
+      body:
+        query: {type: string, required: false, note: "name or number; max 120 chars", example: "Sarah"}
+        after: {type: string, required: false, note: "ISO 8601 timestamp; limits chat history only"}
+        before: {type: string, required: false}
+        limit: {type: integer, required: false, note: "1-50", example: 5}
+        offset: {type: integer, required: false, note: "0-10000; use next_offset from the previous page"}
+      bodyType: json
+      note: "people the account has chatted with plus the contact names its linked WhatsApp shares. total_count says how many match"
+    test_request:
+      body: {query: "Sarah", limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: 'included in WhatSync plans with API access, see pricing_url; read limit 600 requests/minute per key'}
+    docs_url: https://whatsync.app/docs/api/tools
+
+  - id: whatsync.whatsapp.groups.list
+    added: '2026-10-16'
+    capability: whatsapp.groups.list
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /tools/list_groups
+    name: "List the WhatsApp groups you are in"
+    summary: "List my WhatsApp groups"
+    input:
+      body:
+        after: {type: string, required: false, note: "group JID to page after (digits and dashes ending @g.us)"}
+        limit: {type: integer, required: false, note: "1-100", example: 20}
+      bodyType: json
+      note: "personal (QR) numbers only; needs the key's \"Manage groups\" permission. Each row's jid is what send_group_message takes"
+    test_request:
+      body: {limit: 20}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: 'included in WhatSync plans with API access, see pricing_url; read limit 600 requests/minute per key'}
+    docs_url: https://whatsync.app/docs/api/tools
+
+  - id: whatsync.whatsapp.templates.list
+    added: '2026-10-16'
+    capability: whatsapp.templates.list
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /tools/list_business_templates
+    name: "List your WhatsApp Business message templates"
+    summary: "List WhatsApp Business templates"
+    input:
+      body:
+        status: {type: string, required: false, note: "APPROVED | PENDING | REJECTED", example: "APPROVED"}
+        after: {type: string, required: false, note: "paging cursor from the previous page"}
+        limit: {type: integer, required: false, note: "1-50", example: 10}
+      bodyType: json
+      note: "official Business numbers only; returns each template's name, language, category, approval status and components, read live from Meta"
+    test_request:
+      body: {status: "APPROVED", limit: 10}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: 'included in WhatSync plans with API access, see pricing_url; read limit 600 requests/minute per key'}
+    docs_url: https://whatsync.app/docs/api/tools
+
+  - id: whatsync.whatsapp.recipient.check
+    added: '2026-10-16'
+    capability: whatsapp.recipient.check
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /tools/check_recipient_send_options
+    name: "Check how you can message a WhatsApp number"
+    summary: "Check how to message one recipient"
+    input:
+      body:
+        channel: {type: string, required: false, note: "qr | business; required when both kinds of number are linked", example: "qr"}
+        conversationId: {type: string, required: false, note: "a conversation_id from another tool"}
+        phoneNumber: {type: string, required: false, note: "with country code, 7-30 chars", example: "12025550111"}
+      bodyType: json
+      note: "the free pre-flight before a send: is the number linked and ready, allowed by the account's number filters, is there history, and for Business whether a free-form reply is inside Meta's 24-hour window or needs an approved template. Does not prove the recipient is on WhatsApp or opted in"
+    test_request:
+      body: {channel: "qr", phoneNumber: "12025550111"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: 'included in WhatSync plans with API access, see pricing_url; read limit 600 requests/minute per key'}
+    docs_url: https://whatsync.app/docs/api/tools
+
+  - id: whatsync.whatsapp.message.send
+    added: '2026-10-16'
+    kind: action
+    capability: whatsapp.message.send
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /tools/send_message
+    name: "Send a WhatsApp message to one person"
+    summary: "Send one WhatsApp message now"
+    input:
+      body:
+        idempotencyKey: {type: string, required: true, note: "8-128 of [A-Za-z0-9._:-]; reuse it exactly on a retry, a new key means a new message", example: "treg-send-0001"}
+        channel: {type: string, required: false, note: "qr | business; required when both kinds of number are linked", example: "qr"}
+        conversationId: {type: string, required: false, note: "send into an existing chat; give this or phoneNumber"}
+        phoneNumber: {type: string, required: false, note: "one recipient with country code", example: "12025550111"}
+        text: {type: string, required: false, note: "the exact message, 1-4096 chars", example: "Hi Rahul, the invoice is paid. Thanks!"}
+      bodyType: json
+      note: "SENDS a real message on a live account; one recipient per call, never bulk. On a Business number a free-form text only works inside Meta's 24-hour window, otherwise use the template row. Response returns status and intent_id; accepted is not delivered, check get_send_status. Personal numbers: 50 API sends a day (429 daily_limit_reached)"
+    unverified: "write action: sends a real WhatsApp message, so no test_request for an automated run to replay. Verify by hand, and only with the WhatSync demo credential (sends are recorded in the demo chat and never reach WhatsApp), with body {idempotencyKey: treg-verify-send-0001, channel: qr, phoneNumber: '12025550111', text: treg verification message}"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: 'included in WhatSync plans with API access, see pricing_url; write limit 120 requests/minute per key; personal numbers 50 API sends a day'}
+    docs_url: https://whatsync.app/docs/api/tools
+
+  - id: whatsync.whatsapp.template.send
+    added: '2026-10-16'
+    kind: action
+    capability: whatsapp.template.send
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /tools/send_message
+    name: "Send an approved WhatsApp Business template"
+    summary: "Send one WhatsApp message now"
+    input:
+      body:
+        idempotencyKey: {type: string, required: true, note: "8-128 of [A-Za-z0-9._:-]; reuse it exactly on a retry", example: "treg-template-0001"}
+        channel: {type: string, required: false, note: "templates always go through business", example: "business"}
+        phoneNumber: {type: string, required: true, note: "one recipient with country code; cannot be the Business number itself", example: "12025550131"}
+        templateName: {type: string, required: true, note: "an APPROVED template name from list_business_templates", example: "order_update"}
+        templateLanguage: {type: string, required: false, note: "the template's language code", example: "en_US"}
+        templateParameters: {type: array, required: false, note: "body variables in order, up to 20 strings; the count must match the template's {{n}} placeholders exactly", example: ["Olivia", "#4521", "Friday"]}
+        recipientOptInConfirmed: {type: boolean, required: true, note: "must be true: the recipient agreed to receive messages from this business", example: true}
+      bodyType: json
+      note: "the way to start a Business conversation outside Meta's 24-hour window. SENDS a real message on a live account; Meta bills the template conversation to the business's own WhatsApp Business account at Meta's rates, WhatSync adds no charge. Templates with media headers or buttons that need a value are not supported"
+    unverified: "write action: sends a real template, so no test_request for an automated run to replay. Verify by hand, and only with the WhatSync demo credential (its demo Business number answers locally and never reaches Meta), with body {idempotencyKey: treg-verify-template-0002, channel: business, phoneNumber: '12025550131', templateName: order_update, templateLanguage: en_US, templateParameters: [Olivia, '#4521', Friday], recipientOptInConfirmed: true}"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: 'included in WhatSync plans with API access, see pricing_url; Meta charges its own template conversation fee to the business''s WhatsApp Business account directly'}
+    docs_url: https://whatsync.app/docs/api/tools
+
+  - id: whatsync.whatsapp.group.message.send
+    added: '2026-10-16'
+    kind: action
+    capability: whatsapp.group.message.send
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /tools/send_group_message
+    name: "Send a message to a WhatsApp group"
+    summary: "Send a WhatsApp group message"
+    input:
+      body:
+        idempotencyKey: {type: string, required: true, note: "8-128 of [A-Za-z0-9._:-]; reuse it exactly on a retry", example: "treg-group-0001"}
+        jid: {type: string, required: true, note: "group JID from list_groups (digits and dashes ending @g.us)", example: "120363000000000101@g.us"}
+        text: {type: string, required: true, note: "1-4096 chars", example: "Standup moved to 11am today."}
+      bodyType: json
+      note: "personal (QR) numbers only; needs the key's \"Send messages\" and \"Manage groups\" permissions. Every member of the group can receive it"
+    unverified: "write action: posts to a real WhatsApp group, so no test_request for an automated run to replay. Verify by hand, and only with the WhatSync demo credential (sends are recorded in the demo group and never reach WhatsApp), with body {idempotencyKey: treg-verify-group-0001, jid: '120363000000000101@g.us', text: treg verification message}"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: 'included in WhatSync plans with API access, see pricing_url; write limit 120 requests/minute per key; personal numbers 50 API sends a day'}
+    docs_url: https://whatsync.app/docs/api/tools
+
+  - id: whatsync.whatsapp.message.status
+    added: '2026-10-16'
+    capability: whatsapp.message.status
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /tools/get_send_status
+    name: "Check whether a WhatsApp send was delivered"
+    summary: "Check a WhatsApp send"
+    input:
+      body:
+        intentId: {type: string, required: true, note: "the intent_id (a UUID) a send returned", example: "3f9a2c1e-8b7d-4e6f-9a01-2b3c4d5e6f70"}
+      bodyType: json
+      note: "request status (accepted / failed) kept separate from delivery (sent / delivered / read), with Meta's error, a fix link and the next action for Business sends. A missing receipt is not a reason to resend"
+    unverified: "needs the intent_id from a real send, so it is checked by hand right after the send rows"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: 'included in WhatSync plans with API access, see pricing_url; read limit 600 requests/minute per key'}
+    docs_url: https://whatsync.app/docs/api/tools
+
+proposed_capabilities:
+  # WhatsApp is a new platform shelf (added under Community, beside Slack and Telegram). The ids
+  # follow slack.* and instagram.* so the jobs line up across messaging platforms.
+  whatsapp.chats.list: "List your WhatsApp chats"
+  whatsapp.messages.history: "Read a WhatsApp chat's messages"
+  whatsapp.messages.search: "Search your WhatsApp messages"
+  whatsapp.chats.unanswered: "Find WhatsApp chats waiting for your reply"
+  whatsapp.contacts.list: "Find people in your WhatsApp by name or number"
+  whatsapp.groups.list: "List the WhatsApp groups you are in"
+  whatsapp.templates.list: "List your WhatsApp Business message templates"
+  whatsapp.recipient.check: "Check how you can message a WhatsApp number"
+  whatsapp.message.send: "Send a WhatsApp message to one person"
+  whatsapp.template.send: "Send an approved WhatsApp Business template"
+  whatsapp.group.message.send: "Send a message to a WhatsApp group"
+  whatsapp.message.status: "Check whether a WhatsApp message was delivered"
