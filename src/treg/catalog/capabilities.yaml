@@ -154,6 +154,10 @@ platforms:
   health: {label: "Health & biomedical", category: "Research & public data", summary: "Clinical studies, medicine labels and public health statistics."}
   economics: {label: "Economic indicators", category: "Research & public data", summary: "Official labor and development statistics."}
 
+  # --- LLM chat & provider introspection --------------------------------------------------------
+  text-gen: {label: "Text generation (LLM chat)", category: "AI generation", summary: "OpenAI-compatible chat completions over hosted LLMs, with prices side by side."}
+  meta: {label: "Provider introspection", category: "Developer", summary: "Live model catalogs, rate cards and provider metadata."}
+
 capabilities:
   # --- AI generation ---------------------------------------------------------------------------
   # The job-level generation capabilities are DELIBERATELY memberless: generation models are not

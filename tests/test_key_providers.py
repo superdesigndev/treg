@@ -536,3 +536,32 @@ async def test_financialdatasets_connect_accepts_only_valid_key_outcomes_without
                     if t["name"] == "financialdatasets")
         assert tool["health_check"] is None
         assert tool["bindings"][0]["name"] == "X-API-KEY"
+
+
+async def test_mapleai_key_uses_free_prepaid_status_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/prepaid/status"
+        assert request.headers["authorization"] == "Bearer own-key"
+        return httpx.Response(200, json={"object": "prepaid_key_status", "valid": True, "reason": None,
+                                         "allowedModels": ["gpt-6-luna"],
+                                         "tokens": {"total": 100000, "used": 0, "reserved": 0, "remaining": 100000}})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "mapleai", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+
+async def test_mapleai_rejects_a_garbage_key(clients, monkeypatch):
+    """The live answer to a bogus key, 2026-10-12: 401 {"error":{"code":"AUTH_002","message":"Invalid marketplace buyer key"}}."""
+    async with AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(401, json={"error": {"code": "AUTH_002", "message": "Invalid marketplace buyer key"}}))) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "mapleai", "token": "oms_buy_garbage"},
+        )
+    assert response.status_code == 422, response.text
+    assert "rejected" in response.text

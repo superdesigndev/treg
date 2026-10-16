@@ -1829,6 +1829,34 @@ OPENROUTER = OAuthProvider(
     probe_path="/key",
 )
 
+MAPLEAI = OAuthProvider(
+    service="mapleai",
+    display_name="MapleAI",
+    auth_kind="key",
+    token_label="prepaid key",
+    token_placeholder="oms_buy_…",
+    # The bearer prepaid key rides in an Authorization header; the same header works on every
+    # prepaid endpoint, and the free /prepaid/status route both validates it and reports the budget.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://base.mapleai.shop/developers#prepaid",
+    setup_action_label="Mint a MapleAI prepaid key",
+    setup_steps=(
+        "POST https://base.mapleai.shop/prepaid/codes/auto with an x402 payment (from ~$0.008) to mint an oms_buy_… key instantly — fully self-serve, no signup.",
+        "Send it as Authorization: Bearer oms_buy_… on any prepaid endpoint.",
+    ),
+    setup_note="Prepaid keys carry a token budget and do not expire; GET /prepaid/status reports remaining budget for free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="OpenAI-compatible LLM chat completion and evidence judging on a prepaid bearer key; x402-priced per use, no accounts.",
+    base_url="https://mapleai.shop/v1",
+    docs_url="https://base.mapleai.shop/developers",
+    probe_path="/prepaid/status",  # free — a garbage key gets 401 {"error":{"code":"AUTH_002"}}
+    probe_reject_statuses=(401, 403),
+)
+
 REPLICATE = OAuthProvider(
     service="replicate",
     display_name="Replicate",
@@ -3953,7 +3981,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
-        OPENROUTER,
+        OPENROUTER, MAPLEAI,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
