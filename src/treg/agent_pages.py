@@ -386,7 +386,12 @@ AGENTS: dict[str, dict] = {
         # {n} is interpolated from the catalog count at render time.
         "install_steps": [
             "Give ChatGPT this line: <b>set up treg — https://treg.to/llms.txt</b>",
-            "ChatGPT reads the skill, signs you in, and is ready to call {n} APIs.",
+            "ChatGPT reads it and tells you the one step it cannot do itself: add "
+            "<code>https://treg.to/mcp/</code> as a custom app, choose OAuth and sign in. That "
+            "connects it to {n} APIs.",
+            "Custom apps need ChatGPT's developer mode. On a Business or Enterprise workspace an "
+            "admin turns it on first; <a href=\"https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt\">"
+            "OpenAI's guide</a> has the steps for each plan.",
             "Ask for what you want done. ChatGPT searches the catalog, tells you the price, and "
             "calls the endpoint. You never hold a provider key.",
         ],
@@ -407,9 +412,11 @@ AGENTS: dict[str, dict] = {
              "rate. Every row on this page shows the lowest price for that job, and ChatGPT tells "
              "you the price before it spends it."),
             ("Does treg.to pick the provider for me?",
-             "No. Where several providers do the same job they are shown side by side with prices "
-             "and measured reliability, and ChatGPT (or you) chooses. treg.to does not route or "
-             "fail over between them automatically."),
+             "Only when it calls a routed tool, one whose id starts with treg. (treg.people.email.find). It "
+             "picks a provider for the job (your own keys first), moves to the next on an error or a "
+             "miss, and stops at the X-Treg-Route-Max-Cost cap. Any other endpoint is exactly the "
+             "provider named, and where several do one job they are shown side by side with prices and "
+             "measured reliability for ChatGPT, or you, to choose."),
         ],
     },
 }
@@ -475,8 +482,8 @@ USE_CASE_PAGES: dict[str, dict] = {
              "Most agencies use one email finder, get 45-50% coverage, and immediately lose half their list before even emailing.",
              "@itsalexvacca on X", "https://x.com/i/status/1976301889634566420",
              "All nine are callable through one key, so a miss costs one more call to try the next "
-             "one. Tell the agent the order you want; treg.to compares, it does not fail over on "
-             "its own."),
+             "one. Or call treg.people.email.find, the routed tool, which runs that waterfall itself: "
+             "your own keys first, then the next provider on a miss, up to the cost cap you set."),
             ("The lead is a LinkedIn URL and nothing else",
              "I tried GetProspect and Apollo.io to extract the email address but most of them were wrong.",
              "r/businessemail", "https://www.reddit.com/r/businessemail/comments/1ttn2fd/how_to_search_an_email_address_on_linkedin_easily/",
@@ -525,7 +532,8 @@ USE_CASE_PAGES: dict[str, dict] = {
             ("Which provider should I use?",
              "It depends on what you have. Name plus domain: start with the cheapest verified "
              "per-success provider. A LinkedIn URL: use one that accepts it directly. treg.to shows "
-             "them side by side but does not choose or fail over for you."),
+             "them side by side. To let treg.to choose, call treg.people.email.find: it tries them "
+             "in order and names the one that answered."),
             ("Is the data legal to use?",
              "These providers return business contact data under their own terms; you are "
              "responsible for how you use it, including consent and anti-spam law in your "
@@ -648,10 +656,14 @@ AGENTS["claude"] = {
         "accounts to open."),
     "install_steps": [
         "In Claude, send this in the chat: <code>set up treg &mdash; https://treg.to/llms.txt</code>",
-        "It reads that page and sets itself up. If it asks for a key, give it your team token from "
-        "the treg.to dashboard (header <code>X-Treg-Token</code>).",
-        "Your first team starts with $1.00 of free calls. No card, no subscription, no seats.",
-        "Ask for what you want done. Claude searches the catalog, tells you the price, and calls the "
+        "Claude reads it and points you to the one step it cannot do from the cloud: in Claude's "
+        "connector settings, add a custom connector named treg with the URL "
+        "<code>https://treg.to/mcp/</code>. On a Team or Enterprise plan an owner adds it for the "
+        "organization first, then you click Connect "
+        "(<a href=\"https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp\">Anthropic's steps</a>).",
+        "Sign in on treg.to's consent screen and pick the team it spends from. Your first team "
+        "starts with $1.00 of free calls.",
+        "Turn treg on for a chat from the <b>+</b> menu, under Connectors, then ask for what you want done. Claude searches the catalog, tells you the price, and calls the "
         "endpoint. You never hold a provider key.",
     ],
     "install_image": None,
@@ -669,9 +681,11 @@ AGENTS["claude"] = {
              "a few cents for a verified work email. treg.to adds $0.000 on top of the provider's "
              "rate, and Claude tells you the price before it spends it."),
             ("Does treg.to pick the provider for me?",
-             "No. Where several providers do one job they are shown side by side with prices and "
-             "measured reliability, and Claude picks, or you tell it how. treg.to does not route or "
-             "fail over between providers automatically."),
+             "Only when it calls a routed tool, one whose id starts with treg. (treg.people.email.find). It "
+             "picks a provider for the job (your own keys first), moves to the next on an error or a "
+             "miss, and stops at the X-Treg-Route-Max-Cost cap. Any other endpoint is exactly the "
+             "provider named, and where several do one job they are shown side by side with prices and "
+             "measured reliability for Claude, or you, to choose."),
         ],
 }
 
@@ -696,9 +710,9 @@ AGENTS["claude-code"] = {
         "keys at the provider's rate with $0.000 markup, and your own keys are never metered."),
     "install_steps": [
         "In Claude Code, send this in the chat: <code>set up treg &mdash; https://treg.to/llms.txt</code>",
-        "It reads that page and registers treg.to as an MCP server for you. Prefer to do it "
-        "yourself? <code>curl -fsSL https://treg.to/install.sh | sh</code> then "
-        "<code>treg login</code> and <code>treg mcp install</code>.",
+        "It installs the treg CLI and skill and signs you in. Run <code>treg mcp install</code> to "
+        "add the MCP tools as well. By hand: <code>curl -fsSL https://treg.to/install.sh | sh</code>, "
+        "<code>treg login</code>, <code>treg mcp install</code>.",
         "Your first team starts with $1.00 of free calls. No card, no subscription, no seats.",
         "Ask for what you want done, or run <code>treg catalog get &lt;endpoint-id&gt;</code> for "
         "the price and parameters, then <code>treg call &lt;endpoint-id&gt;</code>.",
@@ -816,8 +830,8 @@ AGENTS["hermes"] = {
         "is below). <code>treg mcp install</code> detects Hermes and prints manual configuration "
         "instructions rather than writing the file.",
         "In Hermes, run <code>/reload-mcp</code>. The tools appear as "
-        "<code>mcp__treg__catalog_search</code>, <code>mcp__treg__catalog_get</code> and "
-        "<code>mcp__treg__call</code>.",
+        "<code>mcp_treg_catalog_search</code>, <code>mcp_treg_catalog_get</code> and "
+        "<code>mcp_treg_call</code>.",
         "Your first team starts with $1.00 of free calls. No card, no subscription, no seats.",
     ],
     "install_image": None,
@@ -904,8 +918,9 @@ AGENTS["cursor"] = {
         "balance that starts with $1.00 free."),
     "install_steps": [
         "In Cursor's agent chat, send: <code>set up treg &mdash; https://treg.to/llms.txt</code>",
-        "It reads that page and sets itself up. If it asks for a key, give it your team token from "
-        "the treg.to dashboard (header <code>X-Treg-Token</code>).",
+        "It installs the treg CLI and skill and signs you in. Then run <code>treg mcp install</code>, "
+        "which writes treg.to into <code>~/.cursor/mcp.json</code> so Cursor's agent gets the MCP "
+        "tools.",
         "Your first team starts with $1.00 of free calls. No card, no subscription, no seats.",
         "Ask for what you want done. Cursor searches the catalog, tells you the price, and calls the "
         "endpoint. You never hold a provider key.",
@@ -925,10 +940,107 @@ AGENTS["cursor"] = {
              "a few cents for a verified work email. treg.to adds $0.000 on top of the provider's "
              "rate, and Cursor tells you the price before it spends it."),
             ("Does treg.to pick the provider for me?",
-             "No. Where several providers do one job they are shown side by side with prices and "
-             "measured reliability, and Cursor picks, or you tell it how. treg.to does not route or "
-             "fail over between providers automatically."),
+             "Only when it calls a routed tool, one whose id starts with treg. (treg.people.email.find). It "
+             "picks a provider for the job (your own keys first), moves to the next on an error or a "
+             "miss, and stops at the X-Treg-Route-Max-Cost cap. Any other endpoint is exactly the "
+             "provider named, and where several do one job they are shown side by side with prices and "
+             "measured reliability for Cursor, or you, to choose."),
         ],
+}
+
+# Codex (OpenAI's coding agent) reads MCP servers from ~/.codex/config.toml, and `treg mcp install`
+# writes that table (mcp_install._write_toml_agent). Two things make Codex its own page, both checked
+# against codex-cli 0.162 on 2026-10-13: its default shell sandbox has no network, so the treg CLI
+# cannot reach treg.to from inside Codex while MCP calls can; and `codex exec` runs a prompt headless,
+# which is how a recurring check runs from cron or CI. The token goes inline, never by env var: see
+# the incident in mcp_install's docstring.
+AGENTS["codex"] = {
+    "name": "Codex",
+    "h1_noun": "MCP server",
+    "h1": "Codex MCP server: {n} APIs for Codex, headless runs included",
+    "title": "Codex MCP server: {n} APIs, no keys | treg.to",
+    "description": (
+        "Add treg.to to Codex's config.toml and it can call {n} APIs across {p} platforms: SERPs, "
+        "keyword data, backlinks, page fetches, enrichment. Works in codex exec for scheduled runs, "
+        "priced per call at the provider's own rate with no markup."),
+    "definition": (
+        "treg.to is an MCP server for Codex that gives it {n} ready-to-call APIs across {p} "
+        "platforms: SERPs and keyword data, backlinks, page fetching, people and company enrichment. "
+        "One table in ~/.codex/config.toml; calls run on treg.to's keys at the provider's rate "
+        "with $0.000 markup, and your own keys are never metered."),
+    "install_steps": [
+        "In your own terminal, not inside Codex (its sandbox has no network): "
+        "<code>curl -fsSL https://treg.to/install.sh | sh</code>, then <code>treg login</code>.",
+        "Run <code>treg mcp install</code>. It writes treg.to into <code>~/.codex/config.toml</code> "
+        "with your token inline (the block is below). With a dashboard key, "
+        "<code>curl -fsSL https://treg.to/install.sh | sh -s -- --token &lt;key&gt;</code> does "
+        "all of it in one line.",
+        "Check with <code>codex mcp list</code>: treg shows as enabled. Restart Codex if it was "
+        "already open.",
+        "Your first team starts with $1.00 of free calls. No card, no subscription, no seats.",
+    ],
+    "install_image": None,
+    "focus": ("Search & rankings", "Web & scraping"),
+    "roles": ("developers", "SEO engineers", "growth engineers", "indie hackers", "data engineers"),
+    "guide": [
+        {"id": "config", "seclab": "The config",
+         "h2": "The table in ~/.codex/config.toml",
+         "html": (
+             "<pre><code>[mcp_servers.treg]\n"
+             "url = \"https://treg.to/mcp/\"\n"
+             "http_headers = { \"Authorization\" = \"Bearer &lt;your team token&gt;\" }</code></pre>"
+             "<p>This is what <code>treg mcp install</code> writes. Keep the token inline. Codex can "
+             "also read a bearer token from an environment variable, but a variable set in one shell "
+             "is gone when the Codex app restarts, treg.to then refuses the call, and Codex drops "
+             "the server without saying so. Each call shows in Codex as "
+             "<code>treg/catalog_search</code>, <code>treg/call</code> and so on.</p>")},
+        {"id": "sandbox", "seclab": "MCP, not the shell",
+         "h2": "Why Codex should call treg.to over MCP",
+         "html": (
+             "<p>Codex runs its shell commands in a sandbox, and by default that sandbox has no "
+             "network. Checked on 13 Oct with codex-cli 0.162: <code>curl https://treg.to/llms.txt</code> "
+             "from inside Codex failed with &ldquo;Could not resolve host&rdquo;, while the MCP "
+             "search in the same setup came back with results. MCP calls leave from Codex itself, "
+             "not from the sandbox, so they work with no change.</p>"
+             "<p>Want the CLI for a batch, so 500 rows never pass through the context window? Turn "
+             "network on for the workspace sandbox:</p>"
+             "<pre><code>[sandbox_workspace_write]\n"
+             "network_access = true</code></pre>")},
+        {"id": "exec", "seclab": "Headless",
+         "h2": "A weekly rank check with codex exec",
+         "html": (
+             "<p><code>codex exec</code> runs one prompt with no chat window and loads the same MCP "
+             "servers, so cron or a CI job can run a check and leave a file behind. "
+             "<code>-s workspace-write</code> lets it write that file:</p>"
+             "<pre><code>codex exec -s workspace-write \"Using treg, get the Google top 10 for each "
+             "keyword in keywords.txt (US, desktop). Show the price per lookup before you start. "
+             "Write keyword, our position (or blank), and the URL that ranks to ranks.csv, and add "
+             "a line to ranks-history.csv with today's date.\"</code></pre>"
+             "<p>treg.to answers the calls; the schedule is yours. Where several SERP providers do the "
+             "job they are listed side by side with prices, and Codex, or you, picks one. The "
+             "providers and their measured success rates are on "
+             "<a href=\"/use-cases/google-results-for-a-keyword\">Google results for a keyword</a>.</p>")},
+    ],
+    "faq": [
+        ("Is treg.to free to use in Codex?",
+         "Adding it is free and your first team starts with $1.00 of calls. After that each call is "
+         "metered from the team's prepaid balance at the provider's own rate, with no markup, no "
+         "subscription and no seats. Calls on your team's own keys are free."),
+        ("Do I need API keys from the providers?",
+         "No. treg.to makes the upstream request on its own key and relays the answer, so Codex "
+         "only holds your treg.to team token. If your team already pays for a provider, register "
+         "that key and those calls are never metered."),
+        ("Why can't Codex run the treg CLI?",
+         "It can, once its sandbox has network. By default Codex runs shell commands with no "
+         "network, so the CLI cannot reach treg.to. The MCP tools work without that change; set "
+         "network_access = true under [sandbox_workspace_write] when you want the CLI."),
+        ("Does treg.to pick the provider for me?",
+         "Only when it calls a routed tool, one whose id starts with treg. (treg.people.email.find). It "
+         "picks a provider for the job (your own keys first), moves to the next on an error or a "
+         "miss, and stops at the X-Treg-Route-Max-Cost cap. Any other endpoint is exactly the "
+         "provider named, and where several do one job they are shown side by side with prices and "
+         "measured reliability for Codex, or you, to choose."),
+    ],
 }
 
 USE_CASE_PAGES["verify-an-email"] = {
@@ -1018,8 +1130,10 @@ USE_CASE_PAGES["verify-an-email"] = {
          "The prices and how each provider bills an inconclusive result are in the comparison below."),
         ("Can I run several verifiers over the same list?",
          "Yes, they are all callable through one key, and heavy senders do exactly that because "
-         "verifiers disagree on the ambiguous rows. Your agent chains them; treg.to compares the "
-         "options but does not route or fail over on its own."),
+         "verifiers disagree on the ambiguous rows. Your agent chains them. The routed tool, "
+         "treg.people.email.verify, picks one verifier and moves on when it errors or the provider "
+         "counts the answer as a miss. Most stop on unknown; ZeroBounce does not bill an unknown, so "
+         "the waterfall moves past it. Either way it is one verdict, not a second opinion."),
     ],
     "related": ("Find professional emails", "Enrich a person from an email or LinkedIn URL",
                 "A company's email format", "Find people by role, company or location"),
@@ -2954,9 +3068,11 @@ AGENTS["grok-bot"] = {
          "the same MCP server that Claude, ChatGPT, Cursor and the rest connect to, answering the "
          "same token and the same catalog."),
         ("Does treg.to pick the provider for me?",
-         "No. Where several providers do the same job they are shown side by side with prices and "
-         "measured reliability, and Grok (or you) chooses. treg.to does not route or fail over "
-         "between them automatically."),
+         "Only when it calls a routed tool, one whose id starts with treg. (treg.people.email.find). It "
+         "picks a provider for the job (your own keys first), moves to the next on an error or a "
+         "miss, and stops at the X-Treg-Route-Max-Cost cap. Any other endpoint is exactly the "
+         "provider named, and where several do one job they are shown side by side with prices and "
+         "measured reliability for Grok, or you, to choose."),
     ],
 }
 
@@ -3862,8 +3978,9 @@ USE_CASE_PAGES["backlink-profile-of-a-domain"] = {
          "another's."),
         ("Which provider should my agent use?",
          "The one whose columns match the question and whose rate fits the volume. treg.to "
-         "shows all six side by side with the rate and the measured success; it compares, it "
-         "does not route or fail over for you."),
+         "shows all six side by side with the rate and the measured success. The routed tool, "
+         "treg.web.backlinks.summary, picks one for you and falls back if it fails, but the "
+         "scores differ by provider, so name one when you compare domains over time."),
     ],
     "voices_intro": (
         "Backlink threads are among the most seeded in SEO: of the ~163 Reddit and X posts "
@@ -3979,8 +4096,9 @@ USE_CASE_PAGES["search-posts-by-keyword"] = {
          "on two platforms is two calls a day."),
         ("Which provider should my agent use?",
          "The platform decides the shelf. Within it, treg.to shows each row's rate and "
-         "measured success side by side, and the agent picks, or you tell it; treg.to does "
-         "not route or fail over between them."),
+         "measured success side by side, and the agent picks, or you tell it. X and TikTok also "
+         "have routed tools (treg.x.search.posts, treg.tiktok.search.videos) that pick a provider "
+         "and fall back on an error; Reddit and LinkedIn do not."),
     ],
     "voices_intro": (
         "Keyword-monitoring threads are a vendor parade: of the ~165 Reddit and X posts read "
@@ -4316,8 +4434,9 @@ USE_CASE_PAGES["get-a-linkedin-profile"] = {
         "thin, and the fields most often missing are exactly the ones people want: the dated "
         "experience list. The cheap experiment is the honest answer: run the same twenty URLs "
         "through three rows for a few cents and count who filled the columns you need. "
-        "treg.to shows the rows side by side and the agent picks; it does not route between "
-        "them and it does not fail over.",
+        "treg.to shows the rows side by side and the agent picks. treg.linkedin.user.profile, "
+        "the routed tool, picks one and falls back on an error or a miss, but a thin profile is "
+        "not a miss, so run the experiment before you trust it with the dated history.",
     ],
     "faq": [
         ("Is there an official LinkedIn API for other people's profiles?",
@@ -4441,8 +4560,9 @@ USE_CASE_PAGES["find-phone-numbers"] = {
         "provider strong on US technology can be thin on European professional services, and "
         "that a number being current is not the same as somebody answering it. The cheap "
         "experiment is the only real answer: run the same twenty rows through three providers "
-        "for a couple of dollars and count. treg.to shows the rates side by side; the agent "
-        "picks, and treg.to never routes or fails over between them.",
+        "for a couple of dollars and count. treg.to shows the rates side by side and the agent "
+        "picks. treg.people.phone.find, the routed tool, picks one for you and moves on when it "
+        "errors or finds nothing, but a number found is not a number checked.",
     ],
     "faq": [
         ("Can I find out who owns a phone number I already have?",
@@ -4571,8 +4691,9 @@ USE_CASE_PAGES["keyword-volume-cpc-and-competition"] = {
         "list at all. The bid range is an estimate of an auction rather than the auction: "
         "practitioners regularly report paying many times the figure, or a fraction of it. "
         "Use these fields to rank keywords against each other and take your real cost from "
-        "your own campaign data. treg.to puts the rows side by side; the agent picks, and "
-        "treg.to never routes or fails over between them.",
+        "your own campaign data. treg.to puts the rows side by side and the agent picks. "
+        "treg.google.keywords.volume, the routed tool, picks one and falls back if it fails, but "
+        "the numbers differ by provider, so name one when you compare over time.",
     ],
     "faq": [
         ("Is this the same data as Google Keyword Planner?",
@@ -4822,7 +4943,7 @@ WORKFLOWS["find-and-verify-a-lead-list"] = {
         ("What does jev decide, and what does it cost?",
          "Two things. Before the paid lookups it reads each company's list fields and returns the probability that it fits your ICP; the agent keeps the rows at or above the threshold you name. After the news step it picks which event to lead with and scores how usable it is as a first line. jev is priced on input tokens only, and the two steps together cost a fraction of a cent for the whole run. You need a jev key of your own, or the agent can make the same judgements itself behind the same interface, slower and dearer, until you have one."),
         ("Does treg.to pick the providers?",
-         "No. treg.to shows the agent every provider for each step with its price and measured success rate; the agent picks, or you tell it which one. There is no automatic failover. jev is the same kind of choice: it is the agent's judge, not treg.to's router."),
+         "Only where the prompt calls a routed tool. The people search, email find and verify steps can use treg.people.search, treg.people.email.find and treg.people.email.verify, which pick a provider (your own keys first) and fall back on an error or a miss; every other step uses the provider the agent names, from the prices and measured success rates treg.to shows. jev is the same kind of choice: it is the agent's judge, not treg.to's router."),
         ("What comes back at the end?",
          "A CSV with company, domain, person, title, email, which provider found it, the verifier's verdict, the catch-all flag, the event to lead with, jev's opener score and jev's fit probability, strongest opener first. The one from the run on this page is linked above with the person, title and email columns removed, because these are real people and a title at a named company is enough to identify one; the row-level outcomes are what the numbers on this page come from. Your own run returns every column."),
     ],

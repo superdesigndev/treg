@@ -178,8 +178,9 @@ Notes:
     so you can build its request. Say which one you switched to.
   - **Never retry a 4xx elsewhere.** A 4xx is usually your parameters; fixing them is the fix, and
     retrying burns the team's money on N providers for one mistake.
-  - treg does **not** choose or fail over **between providers** for you. That is deliberate: only
-    you know which inputs you hold, and treg relays rather than rewrites your request. If treg's
+  - On a provider's own id, treg does **not** choose or fail over **between providers** for you.
+    That is deliberate: only you know which inputs you hold, and treg relays rather than rewrites
+    your request. The routed `treg.<capability>` tools are where you ask treg to choose. If treg's
     own account for a provider is out it may serve the **same endpoint** through a treg-owned relay
     (`X-Treg-Served-Via: overflow:<name>`, or `served_via` + a hint on the MCP `call` result; real
     price, same shape). `catalog_get` shows that price up front as `overflow_price_usd` when the

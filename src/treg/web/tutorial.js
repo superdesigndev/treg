@@ -65,7 +65,7 @@
       explain: "Tom has just installed the CLI. He has no team, no keys, nothing registered — and he can already work. He does not need to know which vendor sells backlink data; he searches by the <b>job</b>. Each hit shows what it costs, so nothing is a surprise.",
       cmd: `treg catalog search "backlinks for a domain"`,
       out: `76 matches for "backlinks for a domain" — showing 25\n\n  ENDPOINT                              PLATFORM   PROVIDER     COST\n  dataforseo.web.backlinks.summary      web        DataForSEO   $0.024/call\n  moz.links.summary                     web        Moz          $0.0025/call\n  majestic.backlinks.list               web        Majestic     $0.010/call\n  …`,
-      notice: "Several providers usually serve one capability at different prices. treg shows them side by side — <b>choosing is yours</b>; it does not silently pick or fail over for you." },
+      notice: "Several providers usually serve one capability at different prices. treg shows them side by side — <b>choosing is yours</b>; a provider's own id never silently switches. A routed <code>treg.</code> tool is the opt-in where treg picks and names the provider." },
 
     { part: "Part 1 · The catalog (no key, no setup)", who: "tom", title: "Read the price before you spend",
       explain: "Every catalogued endpoint carries its price, its parameters and an example response. An agent is expected to read this and tell the human the cost <i>before</i> spending the team's balance.",

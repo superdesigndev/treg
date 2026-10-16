@@ -464,10 +464,35 @@ unknown. Three optional keys on an `AGENTS` entry fix that without forking the r
 `/agents/claude-code` uses them to lead with lead enrichment (the four routed calls, the 23 Sep lead-list receipt, MCP vs CLI vs skill, the work-email
 bench). `/agents/hermes` is new: the `~/.hermes/config.yaml` block from Hermes's documented MCP config
 (`treg mcp install` detects Hermes but only prints manual instructions; it does not write YAML), then a weekly buying-signal check on Hermes's own
-scheduler; treg.to answers the calls and neither schedules nor delivers. An agent without these keys
+scheduler; treg.to answers the calls and neither schedules nor delivers. `/agents/codex` (2026-10-13) leads with what is
+true only of Codex, checked against codex-cli 0.162: the `~/.codex/config.toml` table `treg mcp install`
+writes (token inline, never by env var), why Codex should call treg.to over MCP (its default shell
+sandbox has no network, so the CLI cannot reach treg.to from inside it; MCP calls can), and a weekly
+rank check run headless with `codex exec`; its focus is Search & rankings and Web & scraping.
+
+**Install steps say what the client actually does** (2026-10-13, each tested). Hosted assistants
+(ChatGPT, claude.ai) cannot install or sign in from the setup line: llms.txt tells them to send the
+person to add `https://treg.to/mcp/` as a custom connector, and that is what both replied, so the steps
+say so instead of "it signs you in". The setup line in a local agent installs the CLI and skill and
+signs in but does not run `treg mcp install`, so the Claude Code and Cursor steps name that command.
+Hermes registers MCP tools as `mcp_<server>_<tool>` (single underscores, per its MCP docs), not
+Claude Code's `mcp__treg__…`. ChatGPT custom apps need developer mode (an admin enables it on
+Business/Enterprise) and claude.ai Team/Enterprise need an owner to add the connector first; both
+steps link the vendor's own guide rather than hard-coding menus that move. The agent FAQs' "does treg
+pick the provider?" now describes the routed `treg.<job>` tools (fallback on error or miss, capped by
+`X-Treg-Route-Max-Cost`) instead of "does not route". The same correction runs through every
+page whose job HAS a routed tool (find and verify an email, backlinks, a LinkedIn profile, X and
+TikTok post search, phone numbers, keyword volume, the lead-list workflow, the provider pages'
+"Same jobs" strip, /docs), and the agent-facing files scope "does not choose between providers" to a
+provider's own id: llms.txt, skill.md (and the plugin copies `build_plugin.py` generates), the
+tutorial trio, and the "What happens if a provider fails?" answer on the enrichment, company,
+social and SEO landings (body and FAQ JSON-LD). Pages whose
+job has none (TikTok Shop, competitor ads, crypto, employee reviews, paid keywords) keep "compares,
+does not fail over", because there it is still true. The rule is AGENTS.md non-negotiable 4. An agent without these keys
 renders exactly as before. Tests hold the overlap with the template page under 75%, every
 `treg call <id>` in a guide to an existing endpoint, every guide link to a 200, every category
-reachable from a focused page, and the Hermes block to the same shape as `mcp_install`'s hint.
+reachable from a focused page, the Hermes block to the same shape as `mcp_install`'s hint, and the
+Codex table to exactly what `mcp_install` writes.
 
 ## The use-case pages — `/use-cases/<job>`, and the hub at `/use-cases`
 

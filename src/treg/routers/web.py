@@ -2828,8 +2828,8 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
             '<section id="alts"><div class="wrap"><div class="seclab">Related</div>'
             "<h2>Same jobs, other providers</h2>"
             f"<p>These providers answer some of the same capabilities as {esc_d}. The platform "
-            "pages show them on one row with rate and coverage; choosing is yours, treg.to does "
-            "not route between providers automatically.</p>"
+            "pages show them on one row with rate and coverage; choosing is yours unless you call "
+            "a routed <code>treg.</code> tool, which picks a provider and names it.</p>"
             f'<div class="provstrip"><div class="pl">also on the catalog</div>'
             f'<div class="ptiles">{tiles}</div></div></div></section>')
 
@@ -3132,8 +3132,11 @@ treg's key and metered against your prepaid balance at the provider's own rate.<
 <h2>Finding an endpoint</h2>
 <p>Search by what you want to <i>do</i>, not by vendor: <code>GET /catalog/search?q=backlinks</code>.
 When several providers can do the same job, <code>/catalog/platforms/{slug}</code> lists them side by
-side with measured success rate, speed and price. <b>Choosing is yours</b> — treg compares, but it
-does not route between providers automatically and does not fail over.</p>
+side with measured success rate, speed and price. <b>Choosing is yours</b>: a provider's own endpoint
+never switches to another provider. (If treg's own account for it is out, the same endpoint may be
+served through a disclosed relay, <code>X-Treg-Served-Via</code>.) To have treg choose, call a routed
+<code>treg.&lt;capability&gt;</code> endpoint: it picks the provider (your own key first), falls back
+on an error or a miss, and names the one that answered.</p>
 <p>The whole catalog is also browsable as pages: <a href="/catalog">/catalog</a>.</p>
 
 <h2>Other ways in</h2>
