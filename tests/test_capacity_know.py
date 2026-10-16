@@ -68,7 +68,7 @@ async def test_import_creates_one_policy_per_account_and_flags_unknowns_without_
     assert rows["findymail"].owner_email == "jason@example.com"  # the hand-edited row survived
     assert rows["crustdata"].capacity_type == "unknown" and "crustdata" in unknown
     assert rows["findymail"].enabled and not rows["dataforseo"].enabled  # enabled ⇔ a key exists
-    assert rows["overflow:orthogonal"].source == "manual"
+    assert rows["overflow:orthogonal"].source == "api"
     # a second import is a no-op
     async with session_maker() as db:
         assert await ensure_policies(db, has_key=lambda p: False) == []
@@ -135,6 +135,41 @@ async def test_sweep_one_failing_collector_does_not_stop_the_others(monkeypatch)
         assert {s.provider for s in snaps} == {"findymail", "leadsforge", "overflow:monid"}
         assert next(s for s in snaps if s.provider == "leadsforge").error.startswith("ConnectError")
         assert await ratestore.kv_get(db, STATE_NS, "findymail") == result.states["findymail"].to_json()
+
+
+async def test_sweep_reads_aggregator_wallets_with_overflow_credentials(monkeypatch):
+    await reset_db()
+    monkeypatch.setenv("TREG_OVERFLOW_KEY_MONID", "monid-test")
+    monkeypatch.setenv("TREG_OVERFLOW_KEY_ORTHOGONAL", "orthogonal-test")
+    from treg.config import get_settings
+    get_settings.cache_clear()
+    seen = []
+
+    def probe(request):
+        seen.append(request.url.host)
+        if request.url.host == "api.monid.ai":
+            assert request.headers["authorization"] == "Bearer monid-test"
+            return httpx.Response(200, json={"balance": {"value": 12.5, "currency": "USD"}})
+        assert request.url.host == "api.orthogonal.com"
+        assert request.headers["authorization"] == "Bearer orthogonal-test"
+        return httpx.Response(200, json={"balance": "$0.00"})
+
+    try:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+            async with session_maker() as db:
+                result = await run_sweep(db, only={"overflow:monid", "overflow:orthogonal"}, client=client)
+        async with session_maker() as db:
+            snapshots = (await db.execute(select(CapacitySnapshot))).scalars().all()
+            assert {s.provider: s.remaining for s in snapshots} == {
+                "overflow:monid": 12.5, "overflow:orthogonal": 0,
+            }
+            for provider in result.providers:
+                assert await ratestore.kv_get(db, STATE_NS, provider) == result.states[provider].to_json()
+    finally:
+        get_settings.cache_clear()
+    assert set(seen) == {"api.monid.ai", "api.orthogonal.com"}
+    assert result.states["overflow:monid"].health == "ok"
+    assert result.states["overflow:orthogonal"].health == "exhausted"
 
 
 async def test_view_sees_a_published_state_from_a_fresh_process_within_the_ttl():

@@ -73,9 +73,6 @@ class SweepResult:
 
 async def _collect_all(providers: list[str], client: httpx.AsyncClient | None) -> dict[str, dict]:
     async def one(p: str) -> tuple[str, dict]:
-        if p.startswith("overflow:"):
-            return p, {"provider": p, "value": None, "unit": "", "no_api": True,
-                       "note": "aggregator publishes no balance endpoint; source=manual"}
         return p, await collectors.provider_balance(p, client)
     rows = await asyncio.gather(*(one(p) for p in providers))
     return dict(rows)

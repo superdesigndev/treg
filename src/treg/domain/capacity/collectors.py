@@ -28,6 +28,78 @@ async def _get(c: httpx.AsyncClient, url: str, **kw) -> dict:
     return r.json()
 
 
+def _balance_amount(value, provider: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError(f"{provider} returned no valid balance")
+    try:
+        amount = Decimal(str(value))
+        result = float(amount)
+    except (InvalidOperation, ValueError, OverflowError):
+        raise ValueError(f"{provider} returned no valid balance") from None
+    if not amount.is_finite() or amount < 0 or not math.isfinite(result):
+        raise ValueError(f"{provider} returned no valid balance")
+    return result
+
+
+async def _aviato(c, key):
+    d = await _get(c, "https://data.api.aviato.co/billing/balance",
+                   headers={"Authorization": f"Bearer {key}"})
+    value = _balance_amount(d.get("balance") if isinstance(d, dict) else None, "Aviato")
+    return {"value": value, "unit": "credits", "note": "team credit balance"}
+
+
+async def _openrouter(c, key):
+    d = await _get(c, "https://openrouter.ai/api/v1/credits",
+                   headers={"Authorization": f"Bearer {key}"})
+    data = d.get("data") if isinstance(d, dict) else None
+    if not isinstance(data, dict):
+        raise ValueError("OpenRouter returned no valid account credits")
+    purchased = _balance_amount(data.get("total_credits"), "OpenRouter")
+    used = _balance_amount(data.get("total_usage"), "OpenRouter")
+    # Usage may exceed purchased credits; retain the signed balance rather than hiding debt.
+    return {"value": purchased - used, "unit": "USD", "note": "account credits minus usage"}
+
+
+async def _justoneapi(c, key):
+    # This is the free HTTP read used by the provider's get_account_balance MCP tool.
+    # Its query credential must never appear in a sweep error or snapshot.
+    try:
+        d = await _get(c, "https://api.justoneapi.com/user/get-balance", params={"token": key})
+    except httpx.HTTPError as exc:
+        status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+        raise ValueError(f"JustOneAPI balance request failed (HTTP {status or 'unavailable'})") from None
+    if not isinstance(d, dict) or type(d.get("code")) is not int or d["code"] != 0:
+        raise ValueError("JustOneAPI balance request was refused")
+    data = d.get("data")
+    if not isinstance(data, dict):
+        raise ValueError("JustOneAPI returned no valid account balance")
+    value = _balance_amount(data.get("availableBalance"), "JustOneAPI")
+    currency = data.get("currency")
+    if not isinstance(currency, str) or len(currency) != 3 or not currency.isascii() or not currency.isalpha():
+        raise ValueError("JustOneAPI returned no valid balance currency")
+    return {"value": value, "unit": currency.upper(), "note": "available balance after reservations"}
+
+
+async def _monid(c, key):
+    d = await _get(c, "https://api.monid.ai/v1/wallet/balance",
+                   headers={"Authorization": f"Bearer {key}"})
+    balance = d.get("balance") if isinstance(d, dict) else None
+    if not isinstance(balance, dict) or balance.get("currency") != "USD":
+        raise ValueError("Monid returned no valid USD wallet balance")
+    value = _balance_amount(balance.get("value"), "Monid")
+    return {"value": value, "unit": "USD", "note": "workspace wallet balance"}
+
+
+async def _orthogonal(c, key):
+    d = await _get(c, "https://api.orthogonal.com/v1/credits/balance",
+                   headers={"Authorization": f"Bearer {key}"})
+    balance = d.get("balance") if isinstance(d, dict) else None
+    if not isinstance(balance, str) or not balance.startswith("$"):
+        raise ValueError("Orthogonal returned no valid USD balance")
+    value = _balance_amount(balance[1:], "Orthogonal")
+    return {"value": value, "unit": "USD", "note": "account credit balance"}
+
+
 async def _dataforseo(c, key):
     d = await _get(c, "https://api.dataforseo.com/v3/appendix/user_data",
                    headers={"Authorization": f"Basic {key}"})
@@ -271,18 +343,24 @@ async def _moz(c, key):
 
 
 async def _seranking(c, key):
-    # Two pools: the monthly subscription bucket AND a non-expiring top-up wallet. The old
-    # /account/subscription call only saw the first, reporting "0 left" while 248k sat in the
-    # wallet (2026-08-20). /account/credits reports both plus which one is granting access.
+    # The totals are disjoint pools; the detailed buckets repeat the add-on and wallet credits.
     d = await _get(c, "https://api.seranking.com/v1/account/credits",
                    headers={"Authorization": f"Token {key}"})
-    t = d.get("totals", {})
-    sub, wallet = t.get("subscription", {}), t.get("wallet", {})
-    total = (sub.get("remaining") or 0) + (wallet.get("remaining") or 0)
+    t = d.get("totals") if isinstance(d, dict) else None
+    remaining = {}
+    for name in ("subscription", "addon", "wallet"):
+        pool = t.get(name) if isinstance(t, dict) else None
+        value = pool.get("remaining") if isinstance(pool, dict) else None
+        if type(value) is not int or value < 0:
+            raise ValueError(f"SE Ranking returned no valid {name} credit balance")
+        remaining[name] = value
+    sub, addon = t["subscription"], t["addon"]
+    total = sum(remaining.values())
     reason = (d.get("access") or {}).get("primary_reason", "?")
     return {"value": total, "unit": "credits left",
-            "note": f"wallet {wallet.get('remaining', 0):,} (non-expiring) + subscription "
-                    f"{sub.get('remaining', 0):,}/{sub.get('total', 0):,} (resets "
+            "note": f"wallet {remaining['wallet']:,} (non-expiring) + addon "
+                    f"{remaining['addon']:,} (expires {addon.get('expire_at', '?')}) + subscription "
+                    f"{remaining['subscription']:,}/{sub.get('total', 0):,} (resets "
                     f"{sub.get('expire_at', '?')}); access via {reason}"}
 
 
@@ -935,6 +1013,11 @@ async def _piapi(c, key):
 
 
 BALANCE_ROUTES = {
+    "aviato": _aviato,
+    "openrouter": _openrouter,
+    "justoneapi": _justoneapi,
+    "overflow:monid": _monid,
+    "overflow:orthogonal": _orthogonal,
     "anyapi": _anyapi,
     "cloro": _cloro,
     "crawl4ai": _crawl4ai,
@@ -1023,9 +1106,6 @@ NO_BALANCE_API = {
     "adyntel": "no public balance or usage endpoint in the official API reference "
                 "(checked docs.adyntel.com 2026-09-22) — PAYG credits are visible in the "
                 "provider dashboard only",
-    "aviato": "no public balance endpoint documented (checked docs.data.aviato.co 2026-08-31) — "
-              "internal playbooks reference aviato_get_balance but it is not in the public API; "
-              "dashboard only",
     "coresignal": "no dedicated balance endpoint (checked docs.coresignal.com 2026-08-31) — "
                   "x-credits-remaining header rides only on BILLED 200s (a free 422 has none); "
                   "dashboard only",
@@ -1036,8 +1116,6 @@ NO_BALANCE_API = {
     "financialdatasets": "no free balance or usage endpoint in the official API "
                          "(checked www.financialdatasets.ai/openapi.json 2026-09-15) — "
                          "prepaid Credits are visible in the vendor dashboard only",
-    "justoneapi": "balance available only via MCP server (get_account_balance tool), no public REST "
-                  "endpoint documented (checked docs.justoneapi.com 2026-08-31) — dashboard only",
     "google_ai": "no balance endpoint: the Gemini API bills the key's Google Cloud project "
                  "postpaid, and Cloud Billing reads need OAuth, not the API key (checked "
                  "ai.google.dev 2026-09-29) — spend and budgets live in the Cloud console",
@@ -1055,9 +1133,6 @@ NO_BALANCE_API = {
                "verification responses; do not spend a verification merely to collect capacity",
     "minimax": "no balance or quota endpoint in the international API reference (checked "
                "platform.minimax.io/docs 2026-10-01) — usage is on the console page only",
-    "openrouter": "GET /api/v1/credits needs a management key, not the inference key held here, and "
-                  "GET /api/v1/key reports only the key's own spending cap (checked openrouter.ai/docs "
-                  "2026-10-01) — account credits are in the dashboard",
     "replicate": "no balance, credit or billing endpoint; GET /v1/account returns identity only "
                  "(checked replicate.com/docs/reference/http 2026-10-01) — dashboard only",
     "tiingo": "no usage API (api/account/usage 404s, checked 2026-08-31) — tiingo.com/account/usage is "
@@ -1082,7 +1157,8 @@ async def provider_balance(provider: str, client: httpx.AsyncClient | None = Non
 
     Reads the SETTING, not `platform_key_for`: the tier-4 allow-list is a serving kill switch, and a
     provider we just switched off is exactly one whose final balance we still want to see."""
-    setting = platform_setting_name(provider)
+    setting = (f"overflow_key_{provider.split(':', 1)[1]}" if provider.startswith("overflow:")
+               else platform_setting_name(provider))
     key = getattr(get_settings(), setting, "") or ""
     if not key:
         return {"provider": provider, "value": None, "unit": "", "no_key": True,

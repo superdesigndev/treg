@@ -54,6 +54,26 @@ reading below `EMPTY_BELOW` refuses the provider's shared-key calls, so a collec
 that bills overage rather than refusing (SpyFu's monthly allowance) as informational once spent,
 and sums every pool that can pay for a call (Fiber AI's trial and paid pools).
 
+SE Ranking's collector reads `/v1/account/credits` and sums the remaining subscription,
+API add-on and non-expiring wallet credits from `totals`. Detail buckets repeat those balances
+and are not added again. Every pool must report a nonnegative integer remainder; missing or
+malformed pools fail the reading rather than reporting an exhausted account. The balance note
+names each pool and the subscription/add-on expiry. The web account's cash balance is a separate
+unit and is not converted into API credits.
+
+Free account reads also cover Aviato's team credits, JustOneAPI's available cash balance in its
+reported currency, and OpenRouter's purchased credits minus cumulative usage in USD. JustOneAPI
+uses the HTTP read underlying its official MCP balance tool; reserved funds are excluded by reading
+`availableBalance`, and query-credential HTTP failures are replaced with credential-free errors.
+OpenRouter's account read requires billing-capable credentials; a refused read is unknown rather
+than a fallback to a key's separate spend cap. Malformed balances fail the reading.
+
+The sweep reads `overflow:monid` and `overflow:orthogonal` through the same collector path using
+their `overflow_key_*` settings. Monid reports its workspace USD wallet balance; Orthogonal's
+USD-formatted balance is parsed before persisting numeric snapshots. Missing credentials and failed
+reads use the normal stale state; fresh zero wallets participate in the existing overflow admission
+check. Policy defaults name the API source, but an existing operator policy is not overwritten.
+
 Octen's PAYG balance has no account balance or usage endpoint in its published OpenAPI, so
 `NO_BALANCE_API` reports it as dashboard-only. `_KNOWN` classifies the account as manually funded
 cash. The shared-key rate policy spaces calls at five per second, below the Base plan's displayed

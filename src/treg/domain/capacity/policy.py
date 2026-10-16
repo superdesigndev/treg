@@ -19,6 +19,9 @@ AGGREGATORS = ("orthogonal", "monid")
 # capacity_type / funding_mode / source. Anything not listed imports as unknown/unknown and is
 # flagged by the sweep — a policy row must be classified by a person, never guessed by code.
 _KNOWN: dict[str, tuple[str, str, str]] = {
+    "aviato": ("credits", "unknown", "api"),
+    "justoneapi": ("cash", "unknown", "api"),
+    "openrouter": ("cash", "unknown", "api"),
     "enrichlayer": ("credits", "auto_recharge", "api"),
     "adyntel": ("credits", "manual", "manual"),
     "dropleads": ("credits", "manual", "api"),
@@ -96,9 +99,8 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     # Treat replenishment as manual until that account setting is explicitly verified.
     "zerobounce": ("credits", "manual", "api"),
     "datagma": ("credits", "manual", "api"),
-    # Neither aggregator exposes a balance endpoint at its documented path (plan §7).
-    "overflow:orthogonal": ("cash", "manual", "manual"),
-    "overflow:monid": ("cash", "manual", "manual"),
+    "overflow:orthogonal": ("cash", "manual", "api"),
+    "overflow:monid": ("cash", "manual", "api"),
 }
 
 # Verified quota/rate facts (plan §0.1, §4.1). A provider can carry both.
