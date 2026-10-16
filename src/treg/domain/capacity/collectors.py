@@ -1060,6 +1060,8 @@ NO_BALANCE_API = {
                   "2026-10-01) — account credits are in the dashboard",
     "replicate": "no balance, credit or billing endpoint; GET /v1/account returns identity only "
                  "(checked replicate.com/docs/reference/http 2026-10-01) — dashboard only",
+    "photostudio": "no free balance endpoint (checked photostudio.io/docs/api/generators 2026-10-15) — "
+                   "credits_remaining appears only on billed generation responses; the balance is in the app",
     "tiingo": "no usage API (api/account/usage 404s, checked 2026-08-31) — tiingo.com/account/usage is "
               "a logged-in HTML page only",
 }

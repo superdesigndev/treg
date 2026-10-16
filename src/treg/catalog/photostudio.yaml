@@ -1,0 +1,372 @@
+provider: photostudio
+source:
+  docs: https://photostudio.io/docs/api/generators
+  openapi: null # specs live in the product repo; no stable hosted OpenAPI URL
+  curated: 2026-10-15
+limits: "10 requests/minute per key by default (the key's rate_limit_per_minute)"
+pricing_url: https://photostudio.io/pricing
+# Credits, not dollars, are the meter. The dearest public pack is $19 for 100 credits
+# ($0.19/credit in fx.yaml). Standard generators spend 2 credits per successful image.
+# A failed run is refunded. There is no rate-card endpoint.
+proposed_capabilities:
+  image-gen.product.models: "List approved fashion model catalog entries"
+  image-gen.product.presets: "List creative presets and campaign templates"
+  image-gen.product.export_formats: "List social and ad export format ids"
+  image-gen.product.looks: "List saved garment looks for this account"
+  image-gen.product.ghost: "Turn a garment photo into a ghost-mannequin product image"
+  image-gen.product.flatlay: "Turn a garment photo into a flat-lay product image"
+  image-gen.product.detail: "Turn a garment photo into a square detail product image"
+  image-gen.product.lifestyle: "Place a garment photo in a lifestyle scene"
+  image-gen.product.on_model: "Render a garment photo on a catalog model"
+  image-gen.product.photoshoot: "Render a garment photo as a studio photoshoot"
+  image-gen.product.export: "Export a product image into one social or ad format"
+endpoints:
+  - id: photostudio.image-gen.product.models
+    capability: image-gen.product.models
+    platform: image-gen
+    domain: product
+    scope: any_account
+    kind: data
+    method: GET
+    path: /api-catalog
+    name: "Model catalog"
+    summary: "List approved, active catalog models and the public pose ids"
+    input:
+      queryParams:
+        category: {type: string, required: false, note: "exact match on the base model's category; unknown values return models: []"}
+        include_variants: {type: string, required: false, note: "true or false; default true", example: "false"}
+    test_request:
+      queryParams: {include_variants: "false"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+    added: '2026-10-15'
+    docs_url: https://photostudio.io/docs/api/generators
+
+  - id: photostudio.image-gen.product.presets
+    capability: image-gen.product.presets
+    platform: image-gen
+    domain: product
+    scope: any_account
+    kind: data
+    method: GET
+    path: /api-v1/v1/presets
+    name: "Creative presets"
+    summary: "List creative presets and campaign templates"
+    input: {}
+    test_request: {}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+    added: '2026-10-15'
+    docs_url: https://photostudio.io/docs/api/v1-mcp
+
+  - id: photostudio.image-gen.product.export_formats
+    capability: image-gen.product.export_formats
+    platform: image-gen
+    domain: product
+    scope: any_account
+    kind: data
+    method: GET
+    path: /api-v1/v1/export-formats
+    name: "Export formats"
+    summary: "List social and ad export format ids"
+    input: {}
+    test_request: {}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+    added: '2026-10-15'
+    docs_url: https://photostudio.io/docs/api/v1-mcp
+    note: "This route answers 200 with no key. It is not the connect probe."
+
+  - id: photostudio.image-gen.product.looks
+    capability: image-gen.product.looks
+    platform: image-gen
+    domain: product
+    scope: own_account
+    kind: account
+    method: GET
+    path: /api-v1/v1/looks
+    name: "Saved looks"
+    summary: "List looks owned by this key's account"
+    input:
+      queryParams:
+        collection_id: {type: string, required: false, note: "uuid; omit to list every look on the account"}
+    test_request: {}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+    added: '2026-10-15'
+    docs_url: https://photostudio.io/docs/api/v1-mcp
+
+  - id: photostudio.image-gen.product.export
+    capability: image-gen.product.export
+    platform: image-gen
+    domain: product
+    scope: any_account
+    kind: action
+    method: POST
+    path: /api-v1/v1/exports
+    name: "Export one format"
+    summary: "Enqueue social/ad format exports"
+    input:
+      headers:
+        Idempotency-Key: {type: string, required: true, note: "required; a retry with the same key replays the original job", example: "treg-export-instagram-square-1"}
+      body:
+        image_url: {type: string, required: false, note: "public https garment image; or pass source_job_id", example: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"}
+        formats: {type: array, required: true, note: "one or more format ids from the export-formats list; 1 credit each", example: ["instagram_square"]}
+      bodyType: json
+    test_request:
+      headers: {Idempotency-Key: "treg-export-instagram-square-1"}
+      body:
+        image_url: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"
+        formats: ["instagram_square"]
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://photostudio.io/docs/api/v1-mcp
+      checked: '2026-10-15'
+      confidence: documented
+      note: "1 credit per format. The test sends one format, the cheapest tier. credits_charged on the 202 is the meter. A failure is refunded."
+      reported_charge: {path: credits_charged, unit: credit}
+    added: '2026-10-15'
+    docs_url: https://photostudio.io/docs/api/v1-mcp
+
+  - id: photostudio.image-gen.product.ghost
+    capability: image-gen.product.ghost
+    platform: image-gen
+    domain: product
+    scope: any_account
+    kind: action
+    method: POST
+    path: /api-ghost-mannequin
+    name: "Ghost mannequin"
+    summary: "Ghost mannequin product image from a garment photo"
+    input:
+      body:
+        image_url: {type: string, required: true, note: "public https garment image", example: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"}
+        image_size: {type: string, required: false, note: "1K, 2K, or 4K; all three cost 2 credits", example: "1K"}
+        aspect_ratio: {type: string, required: false, example: "3:4"}
+        async: {type: boolean, required: false, note: "true returns 202 and a job_id instead of holding the connection", example: true}
+      bodyType: json
+    test_request:
+      body:
+        image_url: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"
+        image_size: "1K"
+        aspect_ratio: "3:4"
+        async: true
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://photostudio.io/docs/api/ghost-mannequin
+      checked: '2026-10-15'
+      confidence: documented
+      note: "2 credits, same for 1K, 2K, and 4K. async:true still charges 2 and returns credits_charged; it does not wait for the image. Failures are refunded."
+      reported_charge: {path: credits_charged, unit: credit}
+    added: '2026-10-15'
+    docs_url: https://photostudio.io/docs/api/ghost-mannequin
+
+  - id: photostudio.image-gen.product.flatlay
+    capability: image-gen.product.flatlay
+    platform: image-gen
+    domain: product
+    scope: any_account
+    kind: action
+    method: POST
+    path: /api-flatlay
+    name: "Flat lay"
+    summary: "Flatlay product image from a garment photo"
+    input:
+      body:
+        image_url: {type: string, required: true, note: "public https garment image", example: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"}
+        image_size: {type: string, required: false, example: "1K"}
+        aspect_ratio: {type: string, required: false, example: "3:4"}
+        async: {type: boolean, required: false, example: true}
+      bodyType: json
+    test_request:
+      body:
+        image_url: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"
+        image_size: "1K"
+        aspect_ratio: "3:4"
+        async: true
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://photostudio.io/docs/api/generators
+      checked: '2026-10-15'
+      confidence: documented
+      note: "2 credits per successful run. async:true is the cheap verification path and still charges 2. Failures are refunded."
+      reported_charge: {path: credits_charged, unit: credit}
+    added: '2026-10-15'
+    docs_url: https://photostudio.io/docs/api/generators
+
+  - id: photostudio.image-gen.product.detail
+    capability: image-gen.product.detail
+    platform: image-gen
+    domain: product
+    scope: any_account
+    kind: action
+    method: POST
+    path: /api-detail
+    name: "Detail shot"
+    summary: "Square detail shot from a garment photo"
+    input:
+      body:
+        image_url: {type: string, required: true, note: "public https garment image", example: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"}
+        image_size: {type: string, required: false, example: "1K"}
+        async: {type: boolean, required: false, example: true}
+      bodyType: json
+    test_request:
+      body:
+        image_url: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"
+        image_size: "1K"
+        async: true
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://photostudio.io/docs/api/generators
+      checked: '2026-10-15'
+      confidence: documented
+      note: "2 credits. The detail route forces aspect ratio 1:1. async:true still charges 2. Failures are refunded."
+      reported_charge: {path: credits_charged, unit: credit}
+    added: '2026-10-15'
+    docs_url: https://photostudio.io/docs/api/generators
+
+  - id: photostudio.image-gen.product.lifestyle
+    capability: image-gen.product.lifestyle
+    platform: image-gen
+    domain: product
+    scope: any_account
+    kind: action
+    method: POST
+    path: /api-lifestyle
+    name: "Lifestyle scene"
+    summary: "Lifestyle product image from a garment photo"
+    input:
+      body:
+        image_url: {type: string, required: true, note: "public https garment image", example: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"}
+        scene: {type: string, required: false, note: "preset id or free-form scenery", example: "minimalist_home"}
+        image_size: {type: string, required: false, example: "1K"}
+        async: {type: boolean, required: false, example: true}
+      bodyType: json
+    test_request:
+      body:
+        image_url: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"
+        scene: "minimalist_home"
+        image_size: "1K"
+        async: true
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://photostudio.io/docs/api/generators
+      checked: '2026-10-15'
+      confidence: documented
+      note: "2 credits. async:true still charges 2. Failures are refunded."
+      reported_charge: {path: credits_charged, unit: credit}
+    added: '2026-10-15'
+    docs_url: https://photostudio.io/docs/api/generators
+
+  - id: photostudio.image-gen.product.on_model
+    capability: image-gen.product.on_model
+    platform: image-gen
+    domain: product
+    scope: any_account
+    kind: action
+    method: POST
+    path: /api-on-model
+    name: "On model"
+    summary: "On-model product image from a garment photo"
+    input:
+      body:
+        image_url: {type: string, required: true, note: "public https garment image", example: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"}
+        pose: {type: string, required: false, note: "frontal, three_quarter, side, or back", example: "frontal"}
+        image_size: {type: string, required: false, example: "1K"}
+        async: {type: boolean, required: false, example: true}
+      bodyType: json
+    test_request:
+      body:
+        image_url: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"
+        pose: "frontal"
+        image_size: "1K"
+        async: true
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://photostudio.io/docs/api/generators
+      checked: '2026-10-15'
+      confidence: documented
+      note: "2 credits. async:true still charges 2. Failures are refunded."
+      reported_charge: {path: credits_charged, unit: credit}
+    added: '2026-10-15'
+    docs_url: https://photostudio.io/docs/api/generators
+
+  - id: photostudio.image-gen.product.photoshoot
+    capability: image-gen.product.photoshoot
+    platform: image-gen
+    domain: product
+    scope: any_account
+    kind: action
+    method: POST
+    path: /api-photoshoot
+    name: "Photoshoot"
+    summary: "Studio photoshoot image from a garment photo"
+    input:
+      body:
+        image_url: {type: string, required: true, note: "public https garment image", example: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"}
+        pose: {type: string, required: false, note: "frontal, three_quarter, side, or back", example: "frontal"}
+        image_size: {type: string, required: false, example: "1K"}
+        async: {type: boolean, required: false, example: true}
+      bodyType: json
+    test_request:
+      body:
+        image_url: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=60"
+        pose: "frontal"
+        image_size: "1K"
+        async: true
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://photostudio.io/docs/api/generators
+      checked: '2026-10-15'
+      confidence: documented
+      note: "2 credits. async:true still charges 2. Failures are refunded."
+      reported_charge: {path: credits_charged, unit: credit}
+    added: '2026-10-15'
+    docs_url: https://photostudio.io/docs/api/generators
