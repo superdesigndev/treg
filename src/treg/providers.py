@@ -158,6 +158,8 @@ CATALOG: list[dict] = [
      "auth": {"shape": "bearer"}, "probe": "billing/balance"},
     {"provider": "Enrichlayer", "tokens": ["ENRICHLAYER"], "base_url": "https://enrichlayer.com",
      "auth": {"shape": "bearer"}, "probe": "api/v2/credit-balance"},
+    {"provider": "VidGuy", "tokens": ["VIDGUY"], "base_url": "https://www.vidguy.ai/api/v1",
+     "auth": {"shape": "bearer"}, "probe": "credits"},
     {"provider": "AgentMail",   "tokens": ["AGENTMAIL"],           "base_url": "https://api.agentmail.to/v0",                     "auth": {"shape": "bearer"}, "probe": "inboxes"},
     {"provider": "Cloudflare",  "tokens": ["CLOUDFLARE"],          "base_url": "https://api.cloudflare.com/client/v4",            "auth": {"shape": "bearer"},
      "skills": ["wrangler", "cloudflare", "cloudflare-workers"],

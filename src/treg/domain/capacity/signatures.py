@@ -30,6 +30,8 @@ BURST_MAX_RETRY_AFTER_S = 60
 # provider → (status, substring-regex on the body, kind). `*` = any provider. First match wins.
 _TABLE: list[tuple[str, int, str, str]] = [
     ("findymail", 402, r"not enough credits", "balance"),
+    # VidGuy: an empty balance is a 402 {"error": "Insufficient credits", "required", "balance"}.
+    ("vidguy", 402, r"insufficient credits", "balance"),
     ("leadsforge", 402, r"insufficient_credits", "balance"),
     ("leadmagic", 402, r"insufficient_credits", "balance"),
     ("thecompaniesapi", 403, r"noCreditsRemaining", "balance"),
