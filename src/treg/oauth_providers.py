@@ -824,6 +824,50 @@ SLACK = OAuthProvider(
     identity_label_path="team",
 )
 
+WHATSYNC = OAuthProvider(
+    service="whatsync",
+    display_name="WhatSync",
+    # The Slack shape with an API key: every key belongs to one WhatSync account and only ever
+    # answers for the WhatsApp numbers that account has linked (a personal number by QR, an
+    # official Business number, or both). There is no shared treg account to hold, so this is
+    # bring-your-own-key only and every catalog row is own_account.
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="wsk_live_…",
+    # The key is also accepted as `X-API-Key`; Bearer is the documented primary form.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://whatsync.app/dashboard/developers",
+    setup_action_label="Create your WhatSync API key",
+    setup_steps=(
+        "Sign in at whatsync.app and link your WhatsApp number (QR for a personal number, or "
+        "Connect through Meta for an official Business number).",
+        "Open Dashboard → Developers and create an API key. Read is always on; also tick "
+        "\"Send messages\" and \"Manage groups\" if the agent should send or work with groups.",
+        "Copy the key (it starts with wsk_live_). It is shown once.",
+    ),
+    setup_note=(
+        "API keys come with the WhatSync plans that include API access (see whatsync.app/pricing); "
+        "there is no per-call charge."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Community",
+    summary=(
+        "Read, search and send WhatsApp messages and group messages from your own number, "
+        "personal or Business."
+    ),
+    base_url="https://whatsync.app/api/v1",
+    docs_url="https://whatsync.app/docs/api/quickstart",
+    # Free and read-only. A garbage key gets 401 invalid_api_key; a real key on a plan without API
+    # access gets 403 plan_required, so a key that cannot call the tools never connects.
+    probe_path="/me",
+    identity_path="/me",
+    identity_id_path="account_id",
+    identity_label_path="key_name",
+)
+
 X = OAuthProvider(
     service="x",
     display_name="X (Twitter)",
@@ -3958,6 +4002,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
+        # Community API-key providers
+        WHATSYNC,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, LITESCRAPE, CLORO,
