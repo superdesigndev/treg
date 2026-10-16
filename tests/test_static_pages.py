@@ -10,6 +10,8 @@ from urllib.parse import urlsplit
 import pytest
 from httpx import AsyncClient
 
+from treg import page_media
+from treg.config import get_settings
 from treg.domain.catalog import store as catalog_store
 
 WEB = Path(__file__).resolve().parents[1] / "src" / "treg" / "web"
@@ -66,6 +68,32 @@ async def test_media_cache_policy(clients: AsyncClient, path: str, policy: str):
     if policy == "no-cache":
         again = await clients.get(path, headers={"If-None-Match": r.headers["etag"]})
         assert again.status_code == 304
+
+
+def test_offloaded_media_names_the_current_bytes():
+    """A manifest entry is a promise that the store holds these exact bytes. Editing a video
+    without re-running scripts/offload_page_media.py would redirect to the old cut, so it fails
+    here instead."""
+    for path, key in page_media.manifest().items():
+        file = page_media.MEDIA_DIR / path
+        assert file.is_file(), path
+        assert key == page_media.content_key(path, file.read_bytes()), path
+
+
+async def test_offloaded_media_redirects_only_when_configured(clients: AsyncClient, monkeypatch):
+    path, key = next(iter(page_media.manifest().items()))
+    local = await clients.get(f"/media/{path}", headers={"Range": "bytes=0-15"})
+    assert local.status_code == 206
+
+    monkeypatch.setattr(get_settings(), "site_media_url", "https://cdn.example/site/")
+    for method in (clients.get, clients.head):
+        r = await method(f"/media/{path}", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == f"https://cdn.example/site/{key}"
+    # A file without a published copy is still served here.
+    kept = await clients.get("/media/og.png")
+    assert kept.status_code == 200
+    assert kept.headers["cache-control"] == "public, max-age=86400"
 
 
 # A typed catalog size: "2,896 tools", "2,600+ data endpoints", "+ 2,867 more</b> tools", and any

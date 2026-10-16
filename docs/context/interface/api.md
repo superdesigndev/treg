@@ -4,6 +4,7 @@ status: shipped
 sources:
   - src/treg/application/key_spend.py
   - src/treg/routers/media.py
+  - src/treg/page_media.py
   - src/treg/web/sitetrack.js
   - src/treg/api.py
   - src/treg/bootstrap_handlers.py
@@ -679,6 +680,11 @@ shared HTTP client. `/auth/logout` remains an HTTP-only cookie action.
   Page media is mounted at `/media` (`_MediaStatic` over `web/media/`): the names are unversioned, so
   scripts, stylesheets and text answer `no-cache` (revalidated through the ETag, never a heuristic
   lifetime that would pair old code with new HTML) and images, video and fonts `public, max-age=86400`.
+  Video can instead leave from an object store: `scripts/offload_page_media.py` uploads each file under
+  a content-addressed key (`ugc/tutorial.<digest>.mp4`, cached immutable) and records it in
+  `web/media-offload.json`; with `site_media_url` set, `/media/<path>` answers a 302 (`max-age=300`)
+  to that copy, and anything unrecorded is still served here. A test fails when a recorded file's
+  bytes no longer match its key, so an edited video cannot keep redirecting to the old cut.
   `dashboard_marketplace` (`GET /app/marketplace/{service}`) serves the plain SPA (a connect page is only
   meaningful to a signed-in member, so no OG meta).
   `_serve_md` backs `quickstart_md` (`GET /quickstart.md`) + `tutorial_md` (`GET /tutorial.md`) -

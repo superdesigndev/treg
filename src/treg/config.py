@@ -675,6 +675,10 @@ class Settings(BaseSettings):
     # treg's own public base URL — used to build the OAuth callback (must be whitelisted in the
     # provider's OAuth app). Self-hosting? Set TREG_PUBLIC_URL to your deployment's URL.
     public_url: str = "https://treg.to"
+    # Base URL of an object store holding content-addressed copies of the heavy page media listed in
+    # src/treg/web/media-offload.json (written by scripts/offload_page_media.py). Set, `/media/...`
+    # redirects those files there; empty, this process serves every file itself.
+    site_media_url: str = ""
     # Proof to OpenAI's plugin directory that we control this domain. The portal generates a token
     # and fetches it from /.well-known/openai-apps-challenge; that endpoint must return THAT token
     # and nothing else — not JSON, not a list. Empty (the default) leaves the route 404, which is the

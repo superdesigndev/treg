@@ -19,13 +19,14 @@ from fastapi.routing import APIRoute, request_response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import RedirectResponse
 from starlette.routing import BaseRoute, Mount
 
 from . import adsconv, analytics, archive, audit
 from .application.call import route as routed_call
 from .application import arena, find_index
 from .application.onboard import first_run
-from . import bootstrap_handlers, policy
+from . import bootstrap_handlers, page_media, policy
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
     _DevTitleMiddleware,
@@ -450,9 +451,21 @@ class _MediaStatic(StaticFiles):
     browser applies a heuristic lifetime and never revalidates, so a page's edited script or
     stylesheet would keep running old code against new HTML. Code and text therefore revalidate
     on every use (`no-cache`; the ETag makes that a 304), and images, video and fonts, which a page
-    only ever swaps by renaming, keep a day's cache like the logos."""
+    only ever swaps by renaming, keep a day's cache like the logos.
+
+    With `site_media_url` set, a file that has a published copy (`page_media`) redirects to it, so
+    the bytes leave from the store's edge instead of a worker. The redirect is short-lived because
+    the copy's key changes with its bytes; the copy itself is cached for good."""
 
     _REVALIDATE = frozenset({".js", ".mjs", ".css", ".html", ".json", ".md", ".txt"})
+
+    async def get_response(self, path, scope):
+        base = get_settings().site_media_url.rstrip("/")
+        key = page_media.manifest().get(Path(path).as_posix()) if base else None
+        if key:
+            return RedirectResponse(f"{base}/{key}", status_code=302,
+                                    headers={"Cache-Control": "public, max-age=300"})
+        return await super().get_response(path, scope)
 
     def file_response(self, full_path, *args, **kwargs):
         response = super().file_response(full_path, *args, **kwargs)
