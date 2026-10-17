@@ -89,6 +89,9 @@ _TABLE: list[tuple[str, int, str, str]] = [
     # route (read from archived answers, 2026-09-27). The only 2xx row: callers of `classify` that
     # gate on >= 400 would never see it.
     ("icypeas", 200, r'"message"\s*:\s*"insufficient_credits"', "balance"),
+    # HLR Lookup answers an empty account with a 200 whose `results[0].error` is
+    # INSUFFICIENT_CREDIT (its docs; the catalog row's `expect` already keeps it unbilled).
+    ("hlrlookup", 200, r'"error"\s*:\s*"insufficient_credit"', "balance"),
     ("*", 402, r"", "balance"),
 ]
 
@@ -99,7 +102,7 @@ _TABLE: list[tuple[str, int, str, str]] = [
 # "quotation mark" and "unbalanced quotes" - a caller's error echoed back. The test
 # `test_every_recorded_phrase_arms_the_tripwire` keeps this list and the table in step.
 CAPACITY_PHRASES = (
-    r"not enough credits", r"insufficient[ _]credits", r"nocreditsremaining", r"payment required",
+    r"not enough credits", r"insufficient[ _]credits?", r"nocreditsremaining", r"payment required",
     r"reached your credit limit", r"exceeded the monthly request limit", r"hit your account maximum for",
     r"insufficient (?:credits?|balance|funds)", r"out of credits?", r"credits? (?:exhausted|remaining|left)",
     r"(?:account |api |credit )?(?:balance|quota)(?: (?:has been|is|was))? (?:exceeded|reached|exhausted|limit)",

@@ -143,6 +143,49 @@ adapters:
     out: {email: "email[0].[0]", verified: "email[0].[1] == 'OK'"}
     miss: "email[0].[0] == null"
 
+  # ---- people.email.find.personal ------------------------------------------------------------
+  # Routed cheapest per hit: fiber, aviato, limadata, contactout, sixtyfour. A same-people bench
+  # (30 people, 2026-10-17) kept LeadMagic and Enrichlayer out: fewer of their hits looked like the
+  # person's own address, and the cheaper children above already found the people they found.
+  leadmagic.x.personal-email-finder:
+    route: false
+    accepts: [[linkedin_url]]
+    in:  {linkedin_url: body.profile_url}
+    out: {email: first_personal_email}
+    miss: "first_personal_email == null"
+  fiber-ai.people.contacts.reveal.personal:
+    accepts: [[linkedin_url]]
+    in:  {linkedin_url: body.linkedinUrl}
+    const: {body.enrichmentType: {getWorkEmails: false, getPersonalEmails: true, getPhoneNumbers: false},
+            body.validateEmails: true}
+    out: {email: "output.profile.emails[0].email", verified: "output.profile.emails[0].status == 'valid'"}
+    miss: "coalesce(output.profile.emails, []) == []"
+  aviato.people.email.find.personal:
+    accepts: [[linkedin_url]]
+    in:  {linkedin_url: queryParams.linkedinURL}
+    const: {queryParams.type: personal}
+    out: {email: "emails[0].email"}
+    miss: "coalesce(emails, []) == []"
+  sixtyfour.people.email.find.personal:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: body.lead.linkedin_url}
+    const: {body.mode: PERSONAL}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/routing-fixture"}
+    out: {email: "personal_email[0].[0]", verified: "personal_email[0].[1] == 'OK'"}
+    miss: "personal_email[0].[0] == null"
+  limadata.people.email.find.personal:
+    accepts: [[linkedin_url], [email]]
+    in:  {linkedin_url: body.linkedin_url, email: body.work_email}
+    out: {email: "emails[0]"}
+    miss: "coalesce(emails, []) == []"
+  contactout.people.contact.personal:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.profile}
+    const: {queryParams.email_type: personal, queryParams.include_phone: false}
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/routing-fixture"}
+    out: {email: "profile.personal_email[0]"}
+    miss: "at_least(status_code != 200, coalesce(profile.personal_email) == null)"
+
   # ---- instagram.user.profile ---------------------------------------------------------------
   # Instagram users come in GraphQL (edge_*.count) or private API (*_count) shape; read both.
   tikhub.instagram.user.profile:
@@ -2494,11 +2537,6 @@ adapters:
     in:  {linkedin_url: body.linkedinUrl}
     out: {email: "output.profile.emails[0].email", verified: "output.profile.emails[0].status == 'valid'"}
     miss: "output.profile.emails == []"
-  leadmagic.x.personal-email-finder:
-    accepts: [[linkedin_url]]
-    in:  {linkedin_url: body.profile_url}
-    out: {email: first_personal_email}
-    miss: "first_personal_email == null"
 
   findymail.search.reverse-email:
     accepts: [[email]]

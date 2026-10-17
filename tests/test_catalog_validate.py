@@ -738,7 +738,8 @@ def test_contactout_person_routes_cannot_recapture_pii():
     endpoints = yaml.safe_load(path.read_text())["endpoints"]
     safe = {"contactout.people.count", "contactout.people.email.verify",
             "contactout.companies.search", "contactout.companies.enrich"}
-    structural = {"contactout.people.contact.work", "contactout.people.contact.phone"}
+    structural = {"contactout.people.contact.work", "contactout.people.contact.phone",
+                  "contactout.people.contact.personal"}
     for ep in endpoints:
         if ep["id"] in safe:
             continue

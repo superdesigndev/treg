@@ -110,7 +110,8 @@ Notes:
   catch-all, disposable, role-address or SMTP field, call that provider's endpoint: the routed
   `treg.people.email.verify` contract defines only `valid`, `status` and `score`.
 - To find AND check an email in one call, send `--header "X-Treg-Route-Verify: true"` on
-  `treg.people.email.find`. The check is its own small charge. Read `_treg.verification.verdict`
+  `treg.people.email.find` (or `treg.people.email.find.personal` for a personal address from a
+  LinkedIn URL or work email). The check is its own small charge. Read `_treg.verification.verdict`
   (`valid`, `invalid`, `catch_all`, `risky`, `unknown`); `checked: false` means no check ran.
   The same header on `treg.people.phone.find` checks the line live: `live`, `dead` or `unknown`.
   Never call a phone "verified": a live line is not proof it is this person's number.

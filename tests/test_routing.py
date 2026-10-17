@@ -1072,6 +1072,31 @@ def test_rank_prefers_the_candidate_that_uses_more_of_the_identity():
     assert rank([apollo, hunter], given={"full_name", "domain"}, derive=derive)[0] is hunter
 
 
+@pytest.mark.parametrize("capability", ["people.phone.find", "people.email.find"])
+def test_a_one_subject_lookup_ranks_cheapest_per_hit_first_whatever_keys_a_child_reads(capability):
+    """A caller holding a LinkedIn URL, a name and a domain sent phone finds to a name+domain child
+    at ~$0.25 ahead of LinkedIn children at a fraction of a cent that hit on the same people:
+    specificity ranked ahead of price. On a one-subject lookup every variant names the same
+    person, so price per hit leads and the plan is in ascending price order."""
+    from treg.domain.catalog.routing.plan import candidates_for
+    cat = catalog_store.load()
+    contract = cat.contracts[capability]
+    assert contract.one_subject
+    sent = {"linkedin_url": "https://www.linkedin.com/in/patrickcollison", "full_name": "Patrick Collison",
+            "domain": "stripe.com"}
+    ident, _ = canonical_identity(contract, sent)
+    eps = [e for e in cat.endpoints if e.get("capability") == capability]
+    raw, _ = candidates_for(contract, eps, cat.adapters, ident)
+    cands = [Candidate(endpoint=e, adapter=ad, variant=v, tier="platform",
+                       price_micro=cost_at(cat.cost_view(e.get("cost"), e["provider"]), ident, ad),
+                       hit_rate=None, ok_rate=None, p50_ms=None, last_ok_days=None) for e, ad, v in raw]
+    ranked = rank(cands, given=set(sent), derive=contract.derive, one_subject=contract.one_subject)
+    prices = [c.price_micro for c in ranked]
+    assert prices == sorted(prices), [(c.endpoint["id"], c.price_micro) for c in ranked]
+    # a search keeps specificity first: the flag is what changes the order, not the price data
+    assert not cat.contracts["people.search"].one_subject
+
+
 def test_a_provider_that_cannot_express_a_supplied_filter_ranks_last_among_equals():
     """Live 2026-08-29: `{q, title, location: London, country: GB}` went to the cheapest candidate,
     which had no place for either geo filter, and returned people in Bengaluru and San Francisco —
@@ -2024,3 +2049,34 @@ def test_a_contract_default_the_caller_did_not_send_is_not_an_ignored_filter():
     quote = [cand(c.endpoint["id"], c.price_micro, ()) for c in plan]
     assert [c.endpoint["id"] for c in rank(plan, given={"keywords"})] == \
         [c.endpoint["id"] for c in rank(quote)] == ["seranking.google.keywords.volume", "dataforseo.google.keywords.volume"]
+
+
+async def test_a_missed_child_releases_its_hold_before_the_next_child_reserves(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    """A balance that covers one child at a time, not two. A free miss used to keep its hold open
+    until the routed call closed, so the next child's reserve answered a false 402 mid-waterfall."""
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        await ledger.reserve(db, org_id, "leave room for one child", await _balance(clients) - 25_000)
+    miss_tomba = (200, {"data": {"email": None, "score": None, "verification": {"status": None}}})
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tomba": [miss_tomba],
+        "findymail": [(200, {"contact": {"name": "Patrick Collison", "email": "patrick@stripe.com"}})],
+    }, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+                           headers={"X-Treg-Route-Prefer": "tomba,findymail"})
+    assert r.status_code == 200, r.text
+    assert [t["outcome"] for t in r.json()["_treg"]["tried"]] == ["miss", "hit"]
+    assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]) == 19_800
+    async with session_maker() as db:
+        holds = (await db.execute(select(Hold))).scalars().all()
+    assert len(holds) == 1 and holds[0].amount_micro > 25_000, "only the drain is open; every child closed once"
+    async with session_maker() as db:
+        entries = (await db.execute(select(LedgerEntry))).scalars().all()
+    call_id = r.headers["X-Treg-Call-Id"]
+    assert sorted((e.call_id, e.kind) for e in entries if (e.call_id or "").startswith(call_id)) == [
+        (f"{call_id}:r0", "release"), (f"{call_id}:r0", "reserve"),
+        (f"{call_id}:r1", "reserve"), (f"{call_id}:r1", "settle")]

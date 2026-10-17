@@ -136,7 +136,7 @@ async def test_a_strong_answer_lists_the_job_by_vendor_with_a_verdict(clients, m
     assert all(r["job"] == JOB and r["score"] is None for r in rows)
     assert rows[0]["more_providers"] == 26 - len({r["provider"] for r in rows[1:]})
     assert "more_providers" not in rows[1]
-    assert out["total_matches"] == 36 and out["hint"].startswith(f"{JOB} does this; catalog_get('treg.{JOB}')")
+    assert out["total_matches"] == 34 and out["hint"].startswith(f"{JOB} does this; catalog_get('treg.{JOB}')")
     assert out["next"].startswith("catalog_get")
     (_, _, kw), = seen
     assert kw["timeout_s"] == get_settings().typesafe_timeout_s        # the agent's budget, not find's

@@ -1208,12 +1208,19 @@ async def _platform_settle(
         actual = actual * repeat_percent // 100
     call_id, mk.call_id = mk.call_id, None  # closing is once-only, even if two paths try
     charged = 0
-    if (mk.deferred is not None and overflow_spend is None and observed_override is None
+    if mk.deferred is not None and billable and actual == 0:
+        # A routed child the provider reported free (a miss on a per-success rate card): there is
+        # nothing for the parent to decide, so it is released below like any unbilled child.
+        billable, reason = False, reason or "free_answer"
+    if (mk.deferred is not None and billable and overflow_spend is None and observed_override is None
             and status_code is not None):
         # A routed child: the parent decides whether the caller pays (a routed call that fails
         # charges nothing). Leave the hold open, hand the parent what this settle WOULD do, and
         # tell the child it is finished. The parent closes it exactly once (`close_deferred`);
         # a crash in between leaves the hold to the reaper, which releases in the caller's favour.
+        # A child that charges nothing (a free miss, an error) is released below, NOW: the parent
+        # would close it at zero anyway, and an open hold made the next child's reserve answer a
+        # false 402 on a balance that covers each child in turn.
         mk.deferred.append(DeferredSettle(
             call_id=call_id, billable=billable, actual_micro=actual, archive_use=archive_use,
             payer_org_id=mk.payer_org_id, reserved_micro=mk.reserved_micro,

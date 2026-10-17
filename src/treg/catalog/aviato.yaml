@@ -525,6 +525,41 @@ endpoints:
       note: "8 credits per successful call, confirmed from an 8-credit live balance delta on 2026-08-25. This route returns email values; /person/email-hash is a different privacy-safe hash operation. No numeric route limit is published."
     docs_url: https://docs.data.aviato.co/api-reference/person/get-email
 
+  - id: aviato.people.email.find.personal
+    domain: contacts
+    capability: people.email.find.personal
+    platform: people
+    scope: any_account
+    method: GET
+    path: /person/email
+    name: "Find a person's personal email"
+    summary: "Personal email addresses for a person from a LinkedIn URL or another profile identifier"
+    platform_request: {queryParams.type: personal}
+    input:
+      queryParams:
+        type: {type: string, required: true, enum: [personal], note: "personal on treg's key"}
+        linkedinURL: {type: string, required: false, note: "public, Sales Navigator or Recruiter URL", example: "https://www.linkedin.com/in/satyanadella"}
+        id: {type: string, required: false, note: "Aviato person id"}
+        email: {type: string, required: false}
+      note: "supply one person identifier"
+    test_request:
+      queryParams: {linkedinURL: "https://www.linkedin.com/in/satyanadella", type: "personal"}
+    verified: '2026-10-17'
+    added: '2026-10-17'
+    example_response: examples/aviato.people.email.find.personal.json
+    untestable: "A real answer is a person's private address; the example is a structural fixture with reserved fake contact data."
+    cost:
+      type: per_success
+      value: 8
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      checked: '2026-10-17'
+      confidence: verified
+      note: "8 credits on a hit, as for a work email; a personal miss answered 200 with no emails and was not charged."
+    docs_url: https://docs.data.aviato.co/api-reference/person/get-email
+
   - id: aviato.people.phone.find
     domain: contacts
     capability: people.phone.find

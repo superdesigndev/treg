@@ -360,8 +360,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         cands = kept
     return Plan(contract=contract, identity=identity, variant=variant,
                 candidates=rank(cands, prefer=options.prefer or list(contract.prefer), exclude=options.exclude,
-                                given=given,
-                                derive=contract.derive), dropped=dropped)
+                                given=given, derive=contract.derive,
+                                one_subject=contract.one_subject), dropped=dropped)
 
 
 def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
@@ -485,8 +485,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                         f"no provider for {ep['id']} can honour every filter you sent for this identity "
                         f"(X-Treg-Route-Strict-Filters): " + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in strict_drop)
                         + ". Send an identity a filter-aware provider accepts, or drop the header to accept a looser answer")})
-    # rank() puts specificity ahead of price, so candidates[0] can cost more than a later
-    # one. Refuse only when none of them fit the ceiling, and name the true minimum.
+    # On a search, rank() puts specificity ahead of price, so candidates[0] can cost more than a
+    # later one. Refuse only when none of them fit the ceiling, and name the true minimum.
     if options.max_cost_micro is not None and all(
             (cand.price_micro or 0) > options.max_cost_micro for cand in plan.candidates):
         cheapest = min(plan.candidates, key=lambda cand: cand.price_micro or 0)

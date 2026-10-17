@@ -2224,7 +2224,10 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   under a 20000 envelope). A
   MISS tries the next candidate — the waterfall is ON by default (decided
   2026-08-28: the endpoint's job is to find the thing, and misses on the per-success children are
-  free); `X-Treg-Route-Waterfall: 0` stops at the first miss. **A child never settles its own
+  free); `X-Treg-Route-Waterfall: 0` stops at the first miss. A child that charges nothing (not
+  billable, or a provider-reported zero such as a free miss) releases its hold at once, before the
+  next child reserves: holding it to the end made a balance that covers each child in turn answer
+  a false 402 mid-waterfall. **A billed child never settles its own
   hold**: it leaves it open in the parent's `deferred_settles` list (`settle.DeferredSettle`) with
   the amount its settle would charge, and `run_routed` closes every one exactly once at the end
   (`settle.close_deferred`, one transaction): settled at that real price when the routed call
@@ -2237,8 +2240,8 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   that would breach it is `skipped`). Before any child runs, the route returns 402
   `route_max_cost` (`cheapest_micro`, `plan`, `charged_micro: 0`) only when no candidate's
   `price_micro` fits the ceiling, and that detail names the minimum price rather than the
-  first-ranked candidate: `rank` puts specificity ahead of price, so a dearer provider can be
-  first while a later one still fits. Quota-row quotes scale with the requested row count, just
+  first-ranked candidate: on a search `rank` puts specificity ahead of price, so a dearer
+  provider can be first while a later one still fits. Quota-row quotes scale with the requested row count, just
   like per-result quotes. Each child also receives the remaining ceiling after actual earlier
   charges; the shared reservation gate checks the resolved estimate including margin, even when
   the advisory quote was too low or the child uses overflow. A budget refusal skips that candidate
@@ -2293,6 +2296,12 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   goes to a title-aware search, not a free domain-only one that would answer the whole company.
   Only caller-supplied keys count (`rank(given=…)`), never keys reached through `derive`. Price
   decides among equals.
+  **Not on a one-subject lookup** (contract `one_subject: true`: `people.email.find`, `people.email.find.personal`,
+  `people.phone.find`): every identity variant names the same person, so reading more of the
+  caller's keys does not change the question. There expected cost per hit ranks first and
+  specificity only breaks ties; specificity first had sent `{linkedin_url, full_name, domain}`
+  phone finds to a name+domain child at roughly 500 times the price of LinkedIn children that hit
+  on the same people.
 - **Ranking, dropped filters (2026-08-29)**: a candidate whose adapter cannot express a filter the
   caller SENT ranks below every candidate that can — `len(candidate.ignored)` sits in `rank()`'s key
   between specificity and price. It answers a LOOSER question, and a non-empty answer to the looser

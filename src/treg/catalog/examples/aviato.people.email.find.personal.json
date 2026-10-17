@@ -1,0 +1,8 @@
+{
+  "emails": [
+    {
+      "email": "routing-fixture@example.invalid",
+      "type": "personal"
+    }
+  ]
+}

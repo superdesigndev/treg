@@ -35,6 +35,7 @@ contracts:
       verified: {type: bool, note: "the provider says it checked the mailbox"}
     miss: "email == null"
     idempotent: true            # a lookup — error-fallback to the next provider is safe
+    one_subject: true           # every variant names one person: cost per hit ranks first
     # The provider's own claim, stored per call; a finder with no `verified` output stores none.
     verdict: {from: verified, words: [verified, unverified], map: {true: verified, false: unverified}}
     # Attached as `_treg.advice` when a hit's `verified` is not true. A find is a guess the provider
@@ -42,6 +43,26 @@ contracts:
     # pattern-guessed hits without verifying and bounced on most of them.
     advice_unverified: "This address was found, not confirmed deliverable (verified != true). Send X-Treg-Route-Verify: true and treg checks it with treg.people.email.verify in the same call, or run that check yourself before outreach — a fraction of a cent, and it catches catch-all domains and dead mailboxes."
     # `X-Treg-Route-Verify`: checks every hit, a finder's own `verified` included; BounceBan first here only.
+    check: {endpoint: treg.people.email.verify, field: email, prefer: [bounceban]}
+
+  people.email.find.personal:
+    summary: "Find someone's personal email from their LinkedIn URL or work email — treg picks the provider (own keys first, then cheapest per hit) and names the one that served"
+    identity:
+      - {linkedin_url: url}
+      - {linkedin_handle: str}
+      - {email: str}
+    derive:
+      linkedin_url: "linkedin_url(linkedin_handle)"
+      linkedin_handle: "linkedin_handle(linkedin_url)"
+    filters: {}
+    output:
+      email: {type: str, required: true, note: "a personal mailbox (gmail, outlook, …), not the work address"}
+      verified: {type: bool, note: "the provider says it checked the mailbox"}
+    miss: "email == null"
+    idempotent: true
+    one_subject: true           # every variant names one person: cost per hit ranks first
+    # A personal find is a guess tied to a profile: one finder's hits have belonged to someone else.
+    advice_unverified: "A personal email is found, not confirmed to belong to this person or to accept mail. Send X-Treg-Route-Verify: true and treg checks it with treg.people.email.verify in the same call, or run that check yourself before outreach."
     check: {endpoint: treg.people.email.verify, field: email, prefer: [bounceban]}
 
   # ---- batch 1: social lookups (2026-08-28) ---------------------------------------------------
@@ -131,6 +152,7 @@ contracts:
       country_code: {type: str}
     miss: "phone == null"
     idempotent: true
+    one_subject: true           # every variant names one person: cost per hit ranks first
     # No phone provider reports a line check, so every hit carries this.
     advice_unverified: "This number was found, not confirmed live. Send X-Treg-Route-Verify: true and treg checks the line with a live network lookup (hlrlookup.people.phone.verify) in the same call. For a US number, trestleiq.people.contact.verify also checks that it belongs to this person."
     # `X-Treg-Route-Verify`: HLR's live check; a national-form number would be read as another country's.

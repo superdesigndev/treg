@@ -143,7 +143,7 @@ endpoints:
     added: '2026-07-28'
     example_response: examples/leadmagic.x.personal-email-finder.json
     docs_url: https://leadmagic.io/docs/api-reference/personal-email-finder
-    capability: people.email.find
+    capability: people.email.find.personal
 
   - id: leadmagic.x.role-finder
     domain: contacts

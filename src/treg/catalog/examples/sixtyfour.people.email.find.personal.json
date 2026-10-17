@@ -1,0 +1,13 @@
+{
+  "linkedin_url": "https://www.linkedin.com/in/routing-fixture",
+  "personal_email": [
+    [
+      "routing-fixture@example.invalid",
+      "OK",
+      "PERSONAL"
+    ]
+  ],
+  "personal_other_emails": [],
+  "cost_cents": 20,
+  "cost_credits": 2
+}

@@ -44,7 +44,7 @@ endpoints:
     example_response: examples/sixtyfour.people.email.find.work.json
 
   - id: sixtyfour.people.email.find.personal
-    capability: people.email.find
+    capability: people.email.find.personal
     platform: people
     domain: contacts
     scope: any_account
@@ -67,7 +67,9 @@ endpoints:
       note: "2 credits for a found personal email; the live miss reported cost_credits 0. Exact cost_credits controls settlement."
     docs_url: https://docs.sixtyfour.ai/api-reference/endpoint/find-email
     added: '2026-10-16'
-    untestable: "A useful fixture would disclose a real person's personal email."
+    untestable: "A useful fixture would disclose a real person's personal email; the example is a structural fixture with reserved fake contact data."
+    example_response: examples/sixtyfour.people.email.find.personal.json
+    test_request: {body: {lead: {linkedin_url: "https://www.linkedin.com/in/routing-fixture"}, mode: PERSONAL}}
 
   - id: sixtyfour.people.phone.find
     capability: people.phone.find

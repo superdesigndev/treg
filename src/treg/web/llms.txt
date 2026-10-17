@@ -303,7 +303,8 @@ A found contact is not a confirmed one: an email or phone find is the provider's
 only `output.verified: true` means it checked the mailbox. Otherwise the answer carries
 `_treg.advice` naming the verify step (`treg.people.email.verify`, a fraction of a cent) — run it
 before outreach, and never re-send the same find: every hit bills, repeats included.
-Send `X-Treg-Route-Verify: true` on `treg.people.email.find` and treg checks every hit with
+Send `X-Treg-Route-Verify: true` on `treg.people.email.find` or `treg.people.email.find.personal`
+(personal email from a LinkedIn URL or work email) and treg checks every hit with
 `treg.people.email.verify` in the same call (your own verifier key first, then BounceBan), as its
 own charge inside `X-Treg-Route-Max-Cost`. The answer adds `_treg.verification: {verdict, checked,
 served_by, cost_micro}`, `verdict` one of `valid`, `invalid`, `catch_all`, `risky`, `unknown`.

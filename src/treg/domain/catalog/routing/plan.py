@@ -149,8 +149,13 @@ class Plan:
 
 
 def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclude: list[str] | None = None,
-         given: set[str] | frozenset[str] | None = None, derive: dict[str, str] | None = None) -> list[Candidate]:
+         given: set[str] | frozenset[str] | None = None, derive: dict[str, str] | None = None,
+         one_subject: bool = False) -> list[Candidate]:
     """`given` = the identity keys the CALLER actually sent; `derive` = the contract's derive rules.
+    `one_subject` (the contract's flag): every variant names the same person, so expected cost per
+    hit leads and specificity only breaks ties. Specificity first sent `{linkedin_url, full_name,
+    domain}` phone finds to a ~$0.25 name+domain child ahead of LinkedIn children charging a
+    fraction of a cent that hit on the same people.
     The specificity tiebreak counts how many of the caller's keys a variant COVERS — a key the
     variant names, or one it was derived from (`first_name`/`last_name` cover a supplied
     `full_name`; `domain` covers a supplied `email`). So `{first_name, last_name, domain}` and
@@ -186,7 +191,9 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
         # price alone (live 2026-08-29: `{q, title, location: London, country: GB}` went to the
         # cheapest candidate, which dropped both geo filters and returned people in Bengaluru and
         # San Francisco). It stays reachable, just last among equals.
-        return (tier, pref, specificity, len(c.ignored), c.expected_cost_per_hit,
+        cost = c.expected_cost_per_hit
+        lead = (len(c.ignored), cost, specificity) if one_subject else (specificity, len(c.ignored), cost)
+        return (tier, pref, *lead,
                 c.p50_ms if c.p50_ms is not None else 10**9,
                 c.last_ok_days if c.last_ok_days is not None else 10**6, c.endpoint["id"])
     return sorted(keep, key=key)

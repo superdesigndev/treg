@@ -72,6 +72,11 @@ class Contract:
     # against the endpoint (`stats.Tally.fold`), so a provider that answers 200 to everything
     # cannot rank on a success rate it did not earn.
     empty_is_failure: bool = False
+    # True where every identity variant names the same one subject (a person's email or phone):
+    # a child that reads more of the caller's keys answers the same question, so expected cost per
+    # hit ranks ahead of how many keys it uses. Left false on searches, where `{title,
+    # company_domain}` and `{company_domain}` are different questions.
+    one_subject: bool = False
 
     @property
     def required_output(self) -> tuple[str, ...]:
@@ -211,6 +216,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
             check=_parse_check(cap, c.get("check"), c.get("output") or {}),
             empty_is_failure=bool(c.get("empty_is_failure", False)),
+            one_subject=bool(c.get("one_subject", False)),
             **_parse_verdict(cap, c.get("verdict")))
     return out
 

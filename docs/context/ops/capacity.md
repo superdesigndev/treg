@@ -172,7 +172,8 @@ cache hits and portability lookups cost half a credit. The policy is `credits / 
 bundles are bought by hand and expire 18 months after purchase. The vendor caps concurrency at 210
 requests and throttles per telephone network, so shared-key smoothing uses a conservative 50
 requests per second. An empty balance arrives as a per-result `INSUFFICIENT_CREDIT` inside HTTP 200,
-not a 4xx; it was not forced, so no exhaustion signature or overflow route is claimed.
+not a 4xx. The signature table reads it as an empty balance (a strike, as for Icypeas below); the
+row's `expect` already kept it unbilled. No overflow route is claimed.
 
 Adyntel publishes no free balance or usage API. `NO_BALANCE_API` therefore reports PAYG credits as
 dashboard-only instead of the ambiguous "no fetcher written yet" state. `_KNOWN` classifies the
@@ -462,7 +463,8 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
   documented HTTP 429 `Discovery API credit limit reached` is an endpoint quota signal; ordinary
   per-minute 429s with Retry-After remain bursts. reAPI's empty prepaid balance is a **402**
   `error.code 30001 "Insufficient credits. Required: N"` (observed 2026-09-14); PiAPI's wallet
-  exhaustion is acknowledged unobserved. Icypeas is the one **200**: an empty pool answers
+  exhaustion is acknowledged unobserved. Icypeas and HLR Lookup answer with a **200**: HLR's
+  `results[0].error` is `INSUFFICIENT_CREDIT`, and Icypeas' empty pool answers
   `{"validationErrors": [{"message": "insufficient_credits", ...}], "success": false}` on every
   paid route. The call path reads a platform 2xx through the table too, so such an answer is
   released rather than settled, never archived, counted as a strike, and eligible for overflow.

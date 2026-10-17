@@ -746,7 +746,9 @@ endpoints:
       rates_micro: *id033
   docs_url: https://api.contactout.com/
   untestable: Requires a person lookup or returns named individuals; no automated
-    verification request or stored example under the catalog PII rule.
+    verification request is stored under the catalog PII rule. The example is a
+    hand-sanitized structural routing fixture with reserved fake contact data.
+  example_response: examples/contactout.people.contact.personal.json
 - id: contactout.people.contact.phone
   added: '2026-09-08'
   domain: contacts

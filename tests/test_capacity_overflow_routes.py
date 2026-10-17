@@ -234,6 +234,14 @@ def test_icypeas_says_out_of_credits_with_a_200():
     assert S.classify("hunter", 200, None, ICYPEAS_OUT_OF_CREDITS) is None, "a 2xx is only ever read per provider"
 
 
+def test_hlrlookup_says_out_of_credit_with_a_200():
+    out = b'{"body":"OK","results":[{"error":"INSUFFICIENT_CREDIT","telephone_number":"447540822872"}]}'
+    sig = S.classify("hlrlookup", 200, None, out)
+    assert sig.kind == "balance" and S.is_exhausting(sig)
+    assert S.classify("hlrlookup", 200, None, b'{"results":[{"error":"NONE","live_status":"LIVE"}]}') is None
+    assert S.classify("hlrlookup", 200, None, b'{"results":[{"error":"TOO_MANY_REQUESTS"}]}') is None
+
+
 def test_every_recorded_phrase_arms_the_tripwire():
     """Recording one vendor's wording must arm the tripwire for every other: each literal body
     phrase in `_TABLE` (the 429 rows carry period words, not capacity phrases) is in CAPACITY_PHRASES."""
@@ -310,7 +318,6 @@ _UNRECORDED_SIGNATURE = {
     "spidercloud",  # funded dollar balance remains; no empty-balance response was forced
     "perplexity",  # auto top-up is enabled; no empty-credit response was forced
     "trestleiq",  # funded wallet remains; documented 403/429 shapes do not identify empty balance
-    "hlrlookup",  # empty balance is a per-result INSUFFICIENT_CREDIT inside HTTP 200; not forced
     "you",  # funded wallet remains; no provider-specific empty-balance response was forced
     "valyu",  # subscription credits remain; no provider-specific empty-balance response was forced
     "octen",  # PAYG balance remains; no provider-specific empty-balance response was forced

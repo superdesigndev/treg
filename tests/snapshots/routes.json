@@ -843,6 +843,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "recruit_skill_md",
+    "path": "/skills/recruit/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "jev_memory_skill_md",
     "path": "/skills/jev-memory/SKILL.md"
   },
@@ -1272,6 +1281,15 @@
     ],
     "name": "well_known_web_access_md",
     "path": "/.well-known/skills/web-access/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "well_known_recruit_md",
+    "path": "/.well-known/skills/recruit/SKILL.md"
   },
   {
     "kind": "APIRoute",

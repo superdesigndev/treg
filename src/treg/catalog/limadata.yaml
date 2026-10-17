@@ -329,6 +329,9 @@ endpoints:
     verified: '2026-09-17'
     added: '2026-09-17'
     example_response: examples/limadata.people.email.find.personal.json
+    miss:
+      status: 404
+      means: "no personal email found for this identifier — a normal outcome (and free), not an API failure"
 
   - id: limadata.people.email.verify
     capability: people.email.verify

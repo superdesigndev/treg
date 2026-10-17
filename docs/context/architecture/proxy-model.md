@@ -417,7 +417,9 @@ reserve, relay faithfulness, capacity, overflow, audit, cancellation - applies p
 unchanged. **Settle does not** apply straight: each child's `MarketplaceCall.deferred` points at
 the parent's `CallContext.deferred_settles` list, so `_platform_settle` appends a `DeferredSettle`
 (call id, billable, the amount it would have charged, its archive-use marker) and leaves the hold
-open instead of closing it. The parent - not each child - decides whether the caller pays, and
+open instead of closing it. Only a child that would charge something defers: one that is not
+billable or settles at a provider-reported zero releases at once, so its hold never blocks the next
+child's reserve. The parent - not each child - decides whether the caller pays, and
 closes every child's hold exactly once with `settle.close_deferred(charge=…)`: `charge=True` settles
 each billable child as its own settle would have, `charge=False` releases all of them, because a
 routed call that fails charges the caller nothing. A crash before `close_deferred` runs leaves the
