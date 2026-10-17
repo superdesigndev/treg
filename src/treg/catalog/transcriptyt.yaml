@@ -1,0 +1,229 @@
+provider: transcriptyt
+source:
+  docs: https://transcript-yt.com/docs
+  llms: https://transcript-yt.com/llms.txt
+  openapi: https://transcript-yt.com/openapi.json
+  curated: '2026-10-17'
+pricing_url: https://transcript-yt.com/#pricing
+limits: >-
+  Requests per minute per key by plan (the free plan allows 10; paid plans 200). Uncached search and
+  playlist lookups are also capped at 200 a day per account (429 RATE_LIMITED). Credits: 100 free once, then monthly plans from $3 for
+  1,000 credits ($0.003 a credit) to $79 for 50,000 ($0.00158 a credit); top-ups $2.50 per 1,000 on
+  any paid plan. Failed requests are never billed. Search, playlist listing, caption-language lists
+  and usage are free.
+proposed_capabilities:
+  youtube.videos.captions: Get the captions of up to 50 videos, or of a playlist or channel, in one call
+  youtube.video.summary: Summarize a video into key points and timestamped notes
+  youtube.video.captions.languages: List a video's caption languages without downloading one
+endpoints:
+  - id: transcriptyt.youtube.video.captions
+    capability: youtube.video.captions
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/transcript
+    name: Transcript of a YouTube video
+    summary: "Returns the transcript of a public YouTube video: timestamped segments, full text and video metadata,
+      as JSON, text, SRT, VTT, CSV or Markdown, in the video's language or translated into 150+ languages. Videos
+      with no captions are transcribed with AI speech-to-text (mode=auto)."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "watch URL, youtu.be or shorts link, or the 11-character video id", example: "dQw4w9WgXcQ"}
+        language: {type: string, required: false, note: "caption language code, e.g. en, es, pt-BR", example: "en"}
+        translate_to: {type: string, required: false, note: "translate the transcript into this language code", example: "es"}
+        format: {type: string, required: false, enum: [json, text, srt, vtt, csv, md], note: "default json", example: "json"}
+        includeSegments: {type: boolean, required: false, note: "default true; false returns only the full text"}
+        timestamps: {type: boolean, required: false, note: "default false; inline timestamps in text formats"}
+        paragraphs: {type: boolean, required: false, note: "default false; group lines into paragraphs"}
+        chunkSize: {type: integer, required: false, note: "merge segments into chunks of about this many characters (50 or more)"}
+        captionType: {type: string, required: false, enum: [any, manual, auto], note: "default any; a person's track is preferred over an auto-generated one"}
+        originalLanguage: {type: boolean, required: false, note: "default false; true returns the video's original-language track"}
+        mode: {type: string, required: false, enum: [auto, captions, ai], note: "default auto: captions first, AI speech-to-text when a video has none; captions never transcribes; ai always transcribes"}
+        startTime: {type: number, required: false, note: "seconds; return only segments from here"}
+        endTime: {type: number, required: false, note: "seconds; return only segments up to here"}
+        search: {type: string, required: false, note: "return only segments containing this phrase"}
+    test_request:
+      queryParams: {url: "dQw4w9WgXcQ", format: "json"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://transcript-yt.com/openapi.json
+      checked: '2026-10-17'
+      confidence: verified
+      note: "1 credit for a video with captions. A video without captions (mode=auto or ai) is AI-transcribed at
+        1 credit per started minute of audio. Failed requests are free. Observed live 2026-10-17: X-Credits-Charged 1 for dQw4w9WgXcQ; AI-transcription price unobserved. The X-Credits-Charged header settles
+        the actual charge."
+    docs_url: https://transcript-yt.com/docs
+    added: '2026-10-17'
+  - id: transcriptyt.youtube.videos.captions
+    capability: youtube.videos.captions
+    platform: youtube
+    scope: any_account
+    method: POST
+    path: /v1/transcripts
+    name: Transcripts of up to 50 YouTube videos
+    summary: "Transcripts for up to 50 videos in one call, either from a list of URLs or from a playlist or channel.
+      Takes every /v1/transcript option; results and failures are reported per video."
+    input:
+      bodyType: json
+      body:
+        urls: {type: array, required: false, note: "up to 50 video URLs or ids; send urls or playlist", example: ["dQw4w9WgXcQ"]}
+        playlist: {type: string, required: false, note: "playlist URL/id or channel URL/@handle, instead of urls"}
+        limit: {type: integer, required: false, note: "1 to 50, default 50; with playlist", example: 1}
+        language: {type: string, required: false, note: "caption language code"}
+        translate_to: {type: string, required: false, note: "translate every transcript into this language code"}
+        format: {type: string, required: false, enum: [json, text, srt, vtt, csv, md], note: "default json"}
+        mode: {type: string, required: false, enum: [auto, captions, ai], note: "default auto"}
+    test_request:
+      body: {urls: ["dQw4w9WgXcQ"]}
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: item
+      source: observed
+      source_url: https://transcript-yt.com/openapi.json
+      checked: '2026-10-17'
+      confidence: verified
+      note: "Each video is billed like a single /v1/transcript call: 1 credit with captions, 1 credit per started
+        minute when AI-transcribed. Failed videos are free. Observed live 2026-10-17: one captioned video charged 1 credit (balance
+        delta); this route sends no X-Credits-Charged header, so it settles at the per-video price."
+    docs_url: https://transcript-yt.com/docs
+    added: '2026-10-17'
+  - id: transcriptyt.youtube.video.summary
+    capability: youtube.video.summary
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/summary
+    name: AI summary of a YouTube video
+    summary: "Summary, key points and timestamped study notes generated from a video's transcript, in the
+      transcript's language or translated."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "watch URL, youtu.be or shorts link, or the 11-character video id", example: "dQw4w9WgXcQ"}
+        language: {type: string, required: false, note: "caption language code"}
+        translate_to: {type: string, required: false, note: "write the summary in this language code"}
+    test_request:
+      queryParams: {url: "dQw4w9WgXcQ"}
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://transcript-yt.com/openapi.json
+      checked: '2026-10-17'
+      confidence: verified
+      note: "1 credit for the transcript plus 1 for the summary on videos up to about 25 minutes (and cached
+        summaries); about 1 more per further 45 minutes. AI transcription of a caption-less video adds 1 credit
+        per started minute. Failed requests are free. Observed live 2026-10-17: X-Credits-Charged 2 for dQw4w9WgXcQ. The X-Credits-Charged header settles the actual charge."
+    docs_url: https://transcript-yt.com/docs
+    added: '2026-10-17'
+  - id: transcriptyt.youtube.video.captions.languages
+    capability: youtube.video.captions.languages
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/languages
+    name: Caption languages of a YouTube video
+    summary: "Lists a video's available caption tracks (manual and auto-generated) plus every translate_to target,
+      without downloading a transcript. Free; use it to check a language before paying for a transcript."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "watch URL, youtu.be or shorts link, or the 11-character video id", example: "dQw4w9WgXcQ"}
+    test_request:
+      queryParams: {url: "dQw4w9WgXcQ"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: observed
+      source_url: https://transcript-yt.com/openapi.json
+      checked: '2026-10-17'
+      confidence: verified
+    docs_url: https://transcript-yt.com/docs
+    added: '2026-10-17'
+  - id: transcriptyt.youtube.channel.videos
+    capability: youtube.channel.videos
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/playlist
+    name: Videos of a YouTube channel or playlist
+    summary: "Video ids, titles and durations of a playlist, or of a channel's uploads newest first. Free; pair it
+      with the transcript endpoints to fetch a whole channel."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "playlist URL/id, or channel URL/@handle", example: "https://www.youtube.com/@YouTube"}
+        limit: {type: integer, required: false, note: "default 100", example: 5}
+    test_request:
+      queryParams: {url: "https://www.youtube.com/@YouTube", limit: 5}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://transcript-yt.com/openapi.json
+      checked: '2026-10-17'
+      confidence: documented
+    docs_url: https://transcript-yt.com/docs
+    added: '2026-10-17'
+  - id: transcriptyt.youtube.search.videos
+    capability: youtube.search.videos
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/search
+    name: Search YouTube videos
+    summary: "Searches YouTube for videos by keyword, or within one channel when channel is given. Free."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "search query", example: "python tutorial"}
+        channel: {type: string, required: false, note: "channel URL or @handle to search within"}
+        limit: {type: integer, required: false, note: "default 20", example: 5}
+    test_request:
+      queryParams: {q: "python tutorial", limit: 5}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://transcript-yt.com/openapi.json
+      checked: '2026-10-17'
+      confidence: documented
+    docs_url: https://transcript-yt.com/docs
+    added: '2026-10-17'
+  - id: transcriptyt.account.usage
+    capability: account.usage
+    platform: account
+    domain: account
+    scope: own_account
+    kind: account
+    method: GET
+    path: /v1/usage
+    name: Check TranscriptYT credits
+    summary: "The connected key's plan, credits used and credits left."
+    input:
+      note: "This free route is also the connection probe; a bad key answers 401."
+    test_request: {queryParams: {}}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: observed
+      source_url: https://transcript-yt.com/openapi.json
+      checked: '2026-10-17'
+      confidence: verified
+    docs_url: https://transcript-yt.com/docs
+    added: '2026-10-17'

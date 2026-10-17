@@ -28,6 +28,7 @@
 # NOTE: this block must stay ABOVE `rates_to_usd:` -- catalog_fx_update.py rewrites the file
 # from the text before that key, so anything below it is discarded on the next FX refresh.
 credit_rates_usd:
+  transcriptyt: {usd: 0.003, basis: "Micro plan: $3 per month / 1,000 credits = $0.003 per credit, the dearest plan; larger plans fall to $0.00158 and top-ups are $2.50 per 1,000", source: "https://transcript-yt.com/#pricing", checked: "2026-10-17"}
   blitzapi: {usd: 0.000495, basis: "Operator-supplied Start subscription: $99 per month / 200,000 included records = $0.000495 per record when fully used; unused records increase effective cost", source: "Account purchase price and https://docs.blitz-api.ai/guide/reference/fair-use-policy", checked: "2026-10-16"}
   sixtyfour: {usd: 0.24, basis: "Operator-supplied Individual subscription price: $24 per month / 100 included credits; credits do not roll over", source: "Account purchase price and https://docs.sixtyfour.ai/guides/credits-and-pricing", checked: "2026-10-16"}
   enrichlayer: {usd: 0.1, basis: "Pay-as-you-go replacement cost: $0.1000 per credit with vendor auto top-up enabled", source: "https://enrichlayer.com/pricing", checked: "2026-10-01"}

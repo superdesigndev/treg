@@ -68,6 +68,26 @@ async def test_sixtyfour_balance_rejects_invalid_credit_values(credits):
             await collectors._sixtyfour(client, "test")
 
 
+async def test_transcriptyt_balance_uses_the_free_usage_route():
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url == "https://transcript-yt.com/v1/usage"
+        assert request.headers["authorization"] == "Bearer test"
+        return httpx.Response(200, json={"plan": "STARTER", "credits_remaining": 3820})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await collectors._transcriptyt(client, "test")
+    assert row == {"value": 3820, "unit": "credits", "note": "Plan plus top-up credits"}
+
+
+@pytest.mark.parametrize("credits", [None, True, "3820", -1])
+async def test_transcriptyt_balance_rejects_invalid_credit_values(credits):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"credits_remaining": credits}))) as client:
+        with pytest.raises(ValueError, match="TranscriptYT returned no valid credit balance"):
+            await collectors._transcriptyt(client, "test")
+
+
 async def test_spidercloud_balance_converts_api_credits_to_usd():
     def probe(request):
         assert request.method == "GET"

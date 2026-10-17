@@ -414,6 +414,7 @@ _CREDIT_HEADERS = {
     "cloro": ("x-credits-charged", 1),
     "aiark": ("x-credit", -1),
     "crawl4ai": ("x-c4-cost", 1),
+    "transcriptyt": ("x-credits-charged", 1),
 }
 
 

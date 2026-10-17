@@ -310,6 +310,7 @@ class Settings(BaseSettings):
     platform_key_harvestapi: str = ""  # X-API-Key; prepaid USD wallet
     platform_key_fetchinio: str = ""  # X-API-Key; subscription + PAYG credit balance
     platform_key_sixtyfour: str = ""  # x-api-key; monthly credits, free balance check
+    platform_key_transcriptyt: str = ""  # Bearer; monthly plan credits plus top-ups, free usage check
     platform_key_blitzapi: str = ""  # x-api-key; monthly record allowance, free key-info balance
     platform_key_anyapi: str = ""  # X-API-Key; prepaid USD wallet, exact charge settles from costUsd
     platform_key_dropleads: str = ""  # X-API-Key; PAYG credits priced in fx.yaml

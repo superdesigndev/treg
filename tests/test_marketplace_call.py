@@ -1072,6 +1072,9 @@ _AIARK = ("aiark", {"endpoint_id": "aiark.people.phone.find", "cost_type": "per_
 # cloro's X-Credits-Charged is absent on free routes and failed extractions (neither is billed),
 # which settles as unreported rather than as zero.
 _CLORO = ("cloro", {"endpoint_id": "cloro.ai-search.chatgpt.scrape"}, b'{"success": true}')
+# TranscriptYT reports X-Credits-Charged on every response: 1 for a captioned video, 1 per started
+# minute when a caption-less video is AI-transcribed. Failed requests carry no charge.
+_TRANSCRIPTYT = ("transcriptyt", {"endpoint_id": "transcriptyt.youtube.video.captions"}, b'{"videoId": "dQw4w9WgXcQ"}')
 _CREDIT_HEADERS = [
     (_CRUSTDATA, {"X-Credits-Used": "0.03"}, 9_000),
     (_CRUSTDATA, {}, None),
@@ -1088,6 +1091,9 @@ _CREDIT_HEADERS = [
     (_CLORO, {"X-Credits-Charged": "9"}, 3_600),
     (_CLORO, {}, None),
     (_CLORO, {"X-Credits-Charged": "?"}, None),
+    (_TRANSCRIPTYT, {"X-Credits-Charged": "1", "X-Credits-Remaining": "99"}, 3_000),
+    (_TRANSCRIPTYT, {"X-Credits-Charged": "4"}, 12_000),
+    (_TRANSCRIPTYT, {}, None),
 ]
 
 
