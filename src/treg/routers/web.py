@@ -3460,6 +3460,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/fable", "fable-gtm.html", "0.8"),
     ("/gpt6", "astra.html", "0.8"),
     ("/ugc", "ugc.html", "0.8"),
+    ("/aeo", "aeo.html", "0.8"),
     ("/jev", "jev.html", "0.8"),
     ("/terms", "terms.html", "0.2"),
     ("/privacy", "privacy.html", "0.2"),
@@ -3932,6 +3933,15 @@ async def ugc_page(request: Request):
     return _static_page("ugc.html", request)
 
 
+@app.get("/aeo", include_in_schema=False)
+async def aeo_page(request: Request):
+    """Landing page for the AEO workflow article: getting AI answers to recommend a product in four
+    steps (what customers ask, who AI recommends, the sites AI cites, getting onto them) and the
+    one meta prompt that runs them. Indexed like /ugc: canonical, OG meta, in the sitemap,
+    no-cache. Asset paths are relative (media/aeo/…)."""
+    return _static_page("aeo.html", request)
+
+
 @app.get("/showcase", include_in_schema=False)
 async def showcase_page(request: Request):
     """The gallery of products built on treg: each app, its maker and the maker's launch post,
@@ -4088,6 +4098,8 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
 # chronological (newest first), not alphabetical.
 _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
     # (slug, title, date, one-line blurb)
+    ("/aeo", "How to Get AI to Recommend Your Product", "2026-10-17",
+     "Four steps and one prompt: what customers ask, who AI recommends, the sites it cites, getting on them."),
     ("/web-access", "Free WebAccess for agents", "2026-10-15",
      "Free web search and page reads for your agent; when free fails, the next vendor answers."),
     ("/showcase", "Built with treg", "2026-10-12",

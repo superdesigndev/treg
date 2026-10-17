@@ -1014,6 +1014,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "aeo_page",
+    "path": "/aeo"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "showcase_page",
     "path": "/showcase"
   },

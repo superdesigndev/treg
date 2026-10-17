@@ -38,7 +38,7 @@ async def test_apps_are_in_the_served_html_and_the_structured_data(clients: Asyn
 
 async def test_showcase_is_linked_and_listed(clients: AsyncClient):
     for page in ("/", "/blog", "/use-cases", "/people-search", "/leads-signals", "/grokbot", "/fable",
-                 "/ugc", "/jev", "/gtm-engineering"):
+                 "/ugc", "/aeo", "/jev", "/gtm-engineering"):
         r = await clients.get(page)
         assert f'href="{PATH}"' in r.text, page
         # the bundled pages unwrap their hosted markers when they serve (the home page keeps its own)
@@ -54,7 +54,7 @@ async def test_showcase_404s_on_a_self_hosted_registry(monkeypatch):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
             assert (await c.get(PATH)).status_code == 404
             assert f"{PATH}<" not in (await c.get("/sitemap.xml")).text
-            for page in ("/", "/people-search", "/grokbot", "/fable", "/ugc", "/jev"):
+            for page in ("/", "/people-search", "/grokbot", "/fable", "/ugc", "/aeo", "/jev"):
                 r = await c.get(page)
                 assert r.status_code == 200, page
                 assert f'href="{PATH}"' not in r.text, page

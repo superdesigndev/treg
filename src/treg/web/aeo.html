@@ -1,0 +1,1151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to Get AI to Recommend Your Product — The AEO Workflow | treg</title>
+<meta name="description" content="A four-step AEO workflow your coding agent runs: find what customers ask, see which brands ChatGPT, Gemini, Perplexity and AI Mode recommend, reverse engineer the sites AI cites, then get your product onto them. One prompt, about $0.30 an audit.">
+<link rel="canonical" href="{BASE}/aeo"/>
+<meta property="og:title" content="How to Get AI to Recommend Your Product — The AEO Workflow | treg"/>
+<meta property="og:description" content="Find what customers ask, see who AI recommends, reverse engineer the sites AI cites, get on the map. One prompt for your agent."/>
+<meta property="og:url" content="{BASE}/aeo"/>
+<meta property="og:type" content="website"/>
+<meta property="og:image" content="{BASE}/media/aeo/step2-which-brands-ai-recommends.jpg"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:image" content="{BASE}/media/aeo/step2-which-brands-ai-recommends.jpg"/>
+<link rel="icon" href="favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Geist+Pixel&display=swap">
+<style>
+  :root {
+    --bg: #FDFCFB; --card: #F5F4F1; --ink: #101010; --muted: #8A8885; --line: #E9E7E2;
+    --green: #118453; --green-soft: rgba(17,132,83,.12); --red: #C0362F;
+    --display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+    --text: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --pink: #C47A8A; --pink-soft: rgba(196,122,138,.18);
+    --pixel: "Geist Pixel", "Geist Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--text); font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  ::selection { background: rgba(17,132,83,.22); }
+  a { color: inherit; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); text-decoration: none; cursor: pointer; font-family: var(--text); }
+  .pill:hover { background: var(--card); }
+  .pill.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .pill.dark:hover { background: #2b2b2a; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* nav */
+  .nav { position: fixed; inset: 0 0 auto 0; z-index: 90; display: flex; align-items: center; justify-content: space-between; padding: 14px 28px; background: transparent; border-bottom: 1px solid transparent; transition: border-color .3s, background .3s; }
+  .nav.scrolled { background: rgba(253,252,251,.85); backdrop-filter: blur(12px); }
+  .wordmark { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 15px; }
+  .wordmark svg { width: 22px; height: 22px; border-radius: 6px; }
+  .nav-links { display: flex; gap: 22px; align-items: center; margin-right: 10px; }
+  .nav-links a { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 500; color: #43413E; text-decoration: none; }
+  .nav-links a:hover { color: var(--ink); }
+  @media (max-width: 900px) { .nav-links { display: none; } }
+  .hero-agents { display: inline-flex; align-items: center; gap: .14em; vertical-align: -.1em; margin-left: .1em; }
+  .hero-agents img { width: .82em; height: .82em; border-radius: .2em; box-shadow: 0 1px 0 rgba(0,0,0,.06); }
+  .ctas { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  /* sections fade up as they enter */
+  .rv { opacity: 0; transform: translateY(22px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.8,.2,1); }
+  .rv.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } }
+  /* section heads */
+  .sec { padding: 124px 24px 0; }
+  .sec h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; font-size: clamp(30px, 4.6vw, 46px); line-height: 1.12; margin: 0; text-wrap: balance; }
+  .sec .lede strong { color: var(--ink); font-weight: 500; }
+  .sec .lede { color: var(--muted); font-size: 17px; max-width: 60ch; margin: 0; }
+
+  /* steps */
+  .steps { max-width: 1080px; margin: 0 auto; }
+  #steps .steps { margin-top: 80px; }
+  .step { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; padding: 72px 0; }
+  .step .vis { position: sticky; top: 96px; } /* each step is one row: the illustration stays beside its text */
+  .step .num { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 12px; }
+  .step .num .n { width: 40px; height: 40px; border-radius: 50%; background: var(--green); color: #fff; display: grid; place-items: center; font: 600 17px var(--display); letter-spacing: 0; flex: none; box-shadow: 0 8px 20px -8px rgba(17,132,83,.6); }
+  .step h3 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; font-size: clamp(26px, 3vw, 34px); line-height: 1.12; margin: 14px 0 14px; text-wrap: balance; }
+  .step p { color: #43413E; font-size: 15.5px; margin: 0 0 14px; }
+  .step p strong { color: var(--ink); font-weight: 500; }
+  .step .vis { display: grid; gap: 14px; }
+  @media (max-width: 860px) { .step { grid-template-columns: 1fr; gap: 28px; padding: 52px 0; } .step .vis { position: static; } }
+
+
+  /* vendor chips (which tools a step pulls through treg) */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .chips .lab { width: 100%; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+  .chips .lab svg { width: 16px; height: 16px; border-radius: 4px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px 6px 7px; border: 1px solid var(--line); background: #fff; border-radius: 999px; font-size: 13px; font-weight: 500; text-decoration: none; color: inherit; }
+  .chip:hover { background: var(--card); }
+  .chip img { width: 18px; height: 18px; border-radius: 5px; object-fit: contain; }
+  .chip s { text-decoration: none; color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  /* the Claude Code session card that opens every step (the /fable terminal, compact) */
+  .sess { background: #1B1B1A; color: #E8E6E1; border-radius: 14px; padding: 16px 18px 18px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; box-shadow: 0 30px 60px -30px rgba(0,0,0,.35); margin-top: 18px; }
+  .sess .dots { display: flex; gap: 6px; margin-bottom: 12px; }
+  .sess .dots i { width: 8px; height: 8px; border-radius: 50%; background: #3A3A37; }
+  .sess .who { display: flex; align-items: center; gap: 8px; color: #B8B6B0; font-size: 12px; margin-bottom: 12px; }
+  .sess .who img { width: 16px; height: 16px; border-radius: 4px; }
+  .sess .dim { color: #8B8985; }
+  .tpill { display: inline-flex; align-items: center; gap: 5px; background: #2E2E2C; border: 1px solid #3F3F3C; border-radius: 6px; padding: 1px 7px 1px 4px; color: #F3F1EC; font-family: var(--mono); font-size: .9em; vertical-align: -.1em; white-space: nowrap; }
+  .tpill svg { width: 14px; height: 14px; border-radius: 4px; }
+  .sess .st { margin-left: auto; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: #8B8985; display: inline-flex; align-items: center; gap: 6px; }
+  .sess .st i { width: 6px; height: 6px; border-radius: 50%; background: #6E6E6A; }
+  .sess.run .st i { background: #7FC48C; animation: blink 1s steps(1) infinite; }
+  .sess.done .st i { background: #7FC48C; animation: none; }
+  @keyframes blink { 50% { opacity: .2; } }
+  .ln { display: grid; grid-template-columns: 16px 1fr; gap: 8px; align-items: start; opacity: 0; transform: translateY(4px); transition: opacity .35s ease, transform .35s ease; margin-top: 7px; }
+  .sess.run .ln.on, .sess.done .ln { opacity: 1; transform: none; }
+  .ln .g { color: #8B8985; text-align: center; }
+  .ln .g:empty::before { content: "◌"; }
+  .ln.ask { font-family: var(--text); font-size: 15.5px; line-height: 1.45; color: #F3F1EC; margin: 0 0 8px; }
+  .ln.ask .p { color: #E8846B; font-family: var(--mono); font-weight: 600; }
+  .ln.tool img { width: 15px; height: 15px; border-radius: 4px; vertical-align: -3px; margin-right: 6px; }
+  .ln.tool .id { color: #E8E6E1; }
+  .ln.tool .m { color: #8B8985; }
+  .ln.tool.own .g::before { content: "🔑"; font-size: 10px; }
+  .ln.ok { color: #E8E6E1; margin-top: 12px; font-family: var(--text); font-size: 13.5px; }
+  .ln.ok .g { color: #7FC48C; }
+  .ln.ok b { color: #7FC48C; font-weight: 600; }
+  .ln.cur .g::after { content: "▍"; color: #E8846B; animation: blink 1s steps(1) infinite; }
+    .step .sess { margin-top: 12px; padding: 14px 16px 14px; }
+  .step .chips { margin-top: 12px; }
+  /* each step's own short explanation, flush left with the column */
+  .why { margin-top: 20px; }
+  .why summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13.5px; color: var(--ink); }
+  .why summary::-webkit-details-marker { display: none; }
+  .why summary::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform .15s ease; }
+  .why[open] summary::after { transform: translateY(2px) rotate(-135deg); }
+  .why summary:focus-visible { outline: 2px solid var(--pink); outline-offset: 3px; border-radius: 4px; }
+  .why[open] summary { margin-bottom: 12px; }
+  .why p + p { margin-top: 12px; }
+  .why p { margin: 0; font-size: 14px; line-height: 1.55; color: #43413E; }
+  .why b { display: block; margin-bottom: 2px; font-weight: 600; font-size: 13px; color: var(--ink); }
+  /* step prompt bars: a title and Copy; the prompt itself is only copied */
+  .oneline.step-p { margin-top: 20px; max-width: none; justify-content: space-between; padding: 6px 6px 6px 16px; background: #fff; color: var(--ink); border: 1px solid rgba(37,37,34,.2); }
+  .oneline.step-p .h { font-family: var(--text); font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink); }
+  .oneline.step-p button { color: var(--ink); border-color: rgba(37,37,34,.3); padding: 5px 13px; }
+  .oneline.step-p button:hover { background: var(--card); }
+  @media (prefers-reduced-motion: reduce) { .ln { opacity: 1; transform: none; transition: none; } .sess .st i { animation: none !important; } }
+
+
+  /* code card */
+  .code { background: #1B1B1A; color: #D6D6D2; border-radius: 16px; padding: 18px 20px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto; white-space: pre-wrap; position: relative; }
+  .section { padding: 124px 24px 0; }
+  #prompt.section { padding-top: 110px; }
+  .section h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; line-height: 1.12; font-size: clamp(30px, 4.6vw, 46px); text-align: center; margin: 0 0 14px; text-wrap: balance; }
+  .section .lede { text-align: center; color: var(--muted); max-width: 56ch; margin: 0 auto 48px; font-size: 17px; text-wrap: balance; }
+  .hl2 { color: var(--green); font-weight: 600; }
+  .fineprint { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 34px; }
+  /* one token: the catalog grid */
+  .catwrap { max-width: 1000px; margin: 0 auto; }
+  .pgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .pcard { border-radius: 14px; padding: 13px 14px; background: #fff; box-shadow: 0 1px 2px rgba(20,18,12,.05), 0 4px 14px -6px rgba(20,18,12,.08); display: flex; align-items: center; gap: 12px; transition: box-shadow .24s ease; }
+  .pcard:hover { box-shadow: 0 2px 4px rgba(20,18,12,.06), 0 14px 30px -10px rgba(20,18,12,.16); }
+  .pcard .ph { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 11px; background: #FBFAF7; border: 1px solid rgba(0,0,0,.07); }
+  .pcard .ph img { width: 23px; height: 23px; border-radius: 5px; object-fit: contain; }
+  .pcard .pt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .pcard .pt b { font-weight: 600; font-size: 13.5px; line-height: 1.25; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pcard .pt s { font-family: var(--mono); font-size: 10.5px; color: var(--muted); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .moreline { text-align: center; margin-top: -8px; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  @media (max-width: 880px) { .pgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  .pcard.hl .pt s { display: inline-flex; align-items: center; gap: 4px; }
+  .pcard.hl .pt s img { width: 12px; height: 12px; border-radius: 3px; }
+  /* final CTA */
+  .final { max-width: 1080px; margin: 124px auto 0; padding: 0 24px; }
+  .final-in { background: #1B1B1A; color: #fff; border-radius: 24px; padding: 60px 40px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 26px; }
+  .final h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.03em; font-size: clamp(32px, 4.6vw, 52px); line-height: 1.08; margin: 0; }
+  .final h2 .hero-agents img { background: rgba(255,255,255,.08); box-shadow: 0 0 0 1px rgba(255,255,255,.12); padding: .06em; }
+  .final h2 .hero-agents img[alt="Hermes"] { background: #fff; }
+  .final .pill { border-color: rgba(255,255,255,.2); background: transparent; color: #fff; }
+  .final .pill.light { background: #fff; color: var(--ink); border-color: #fff; }
+  .final .pill.light:hover { background: #ECEAE5; }
+  .copybox { background: #0F0F0E; border: 1px solid rgba(255,255,255,.12); border-radius: 16px; padding: 16px 18px; font-family: var(--mono); font-size: 13px; color: #D6D6D2; width: min(560px, 100%); text-align: left; }
+  .copybox .h { color: #9A9A9A; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 10px; }
+  .copybox .line { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+  .copybox .line span { color: #45E39E; word-break: break-all; }
+  .copybox button { flex: none; border: 1px solid rgba(255,255,255,.2); background: transparent; color: #fff; border-radius: 999px; padding: 6px 12px; font: 500 12px var(--text); cursor: pointer; }
+  .copybox button:hover { background: rgba(255,255,255,.08); }
+  .copybox .then { margin-top: 12px; color: #B5B5B0; }
+  @media (max-width: 860px) { .final-in { padding: 40px 22px; } }
+
+  /* footer */
+  .bigfoot { border-top: 1px solid var(--line); margin-top: 124px; padding: 46px 24px 40px; background: #FBFAF8; }
+  .bigfoot-in { max-width: 1020px; margin: 0 auto; display: flex; gap: 44px; justify-content: space-between; flex-wrap: wrap; }
+  .bf-brand .bfb { display: inline-flex; align-items: center; gap: 9px; font-family: var(--display); font-weight: 600; font-size: 16px; }
+  .bf-brand .bfb svg { width: 20px; height: 20px; }
+  .bf-brand .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .bf-cols { display: flex; gap: 48px; flex-wrap: wrap; }
+  .bf-col { display: flex; flex-direction: column; gap: 8px; }
+  .bf-col .lab { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .bf-col a { color: var(--ink); text-decoration: none; font-size: 13.5px; }
+  .bf-col a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .bf-tag { max-width: 1020px; margin: 36px auto 0; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+
+  /* sign-in modal */
+  .scrim { position: fixed; inset: 0; background: rgba(26,26,26,.55); display: none; place-items: center; z-index: 200; padding: 20px; backdrop-filter: blur(6px); }
+  .scrim.open { display: grid; }
+  .smodal { width: min(400px, 94vw); background: #fff; border-radius: 20px; padding: 30px 28px; text-align: center; position: relative; box-shadow: 0 30px 90px -38px rgba(20,18,12,.4); }
+  .smodal .cls { position: absolute; top: 12px; right: 15px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+  .smodal h3 { font-family: var(--display); font-weight: 600; font-size: 22px; margin: 4px 0 6px; letter-spacing: -.015em; }
+  .smodal p { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 0 0 18px; }
+  .smodal .pill { width: 100%; justify-content: center; margin-top: 9px; }
+  .smodal .div { display: flex; align-items: center; gap: 10px; margin: 16px 0 6px; color: var(--muted); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
+  .smodal .div::before, .smodal .div::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .smodal input { width: 100%; margin-top: 9px; background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 11px 13px; font-family: var(--mono); font-size: 13px; outline: none; }
+  .smodal input:focus { border-color: var(--ink); }
+  .smodal .err { color: var(--red); font-size: 11.5px; margin-top: 10px; min-height: 14px; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  /* the painted colour field (the AI SEO launch film's plate: a pastel impasto blurred to colour only) */
+  .field { position: relative; isolation: isolate; overflow: hidden; background: #c79aa2; color: #fff; }
+  .field > .paint { position: absolute; inset: -30%; z-index: -1; background: url(media/aeo/field.jpg) center / cover no-repeat; filter: blur(48px) saturate(1.5) brightness(.86); transform: scale(1.08); animation: dolly 18s ease-in-out infinite alternate; }
+  @keyframes dolly { 0% { transform: scale(1.05) translate(-7%, -5%) rotate(0deg); } 50% { transform: scale(1.3) translate(6%, 4%) rotate(10deg); } 100% { transform: scale(1.15) translate(-3%, 7%) rotate(-8deg); } }
+  .nav:not(.scrolled) .nav-links a { color: #fff; }
+  .nav:not(.scrolled) .wordmark { color: #fff; }
+  .nav:not(.scrolled) .wordmark > span:first-of-type { color: rgba(255,255,255,.75) !important; } /* the "/" separator carries an inline muted colour */
+  .glass { background: rgba(255,255,255,.5); -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4); border: 1px solid rgba(255,255,255,.65); border-radius: 16px; color: var(--ink); box-shadow: 0 30px 70px -40px rgba(40,20,30,.45); }
+
+  /* hero: "Use [harness] for AI SEO." then the misted line that clears on "you." */
+  .hero { padding: 170px 24px 130px; text-align: center; }
+  .hero-in { max-width: 1000px; margin: 0 auto; }
+  .hero h1 { font-family: var(--pixel); font-weight: 400; letter-spacing: -.01em; font-size: clamp(42px, 7vw, 78px); line-height: 1.04; margin: 0 0 10px; text-wrap: balance; }
+  .roll { display: inline-block; position: relative; vertical-align: bottom; height: 1.12em; overflow: hidden; transition: width .45s cubic-bezier(.22,.9,.24,1); text-align: left; }
+  .roll b { font-weight: inherit; display: inline-block; white-space: nowrap; transition: transform .45s cubic-bezier(.22,.9,.24,1), opacity .35s ease, filter .35s ease; }
+  .roll b.out { position: absolute; top: 0; left: 0; transform: translateY(-60%); opacity: 0; filter: blur(6px); }
+  .roll b.pre { transform: translateY(60%); opacity: 0; filter: blur(6px); transition: none; }
+  .seo { position: relative; z-index: 0; white-space: nowrap; margin-left: .3em; }
+  .seo::before { content: ""; position: absolute; z-index: -1; inset: .04em -.3em -.02em; border-radius: 999px; background: rgba(255,255,255,.24); transform: scale(0); transition: transform .9s cubic-bezier(.3,1.5,.5,1) .5s; }
+  .hero.in .seo::before { transform: scale(1); }
+  .find { font-family: var(--display); font-weight: 500; letter-spacing: -.02em; font-size: clamp(24px, 3vw, 34px); margin: 14px 0 30px; }
+  /* the white arrow from "find." to "you.": drawn in, held, faded, again */
+  .find { position: relative; }
+  .arrow { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  .arrow path { fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .arrow .ap { stroke-dasharray: var(--len); stroke-dashoffset: var(--len); animation: arrowDraw 3.6s ease-in-out .8s infinite; }
+  .arrow .ah { opacity: 0; animation: arrowHead 3.6s ease-in-out .8s infinite; }
+  @keyframes arrowDraw { 0% { stroke-dashoffset: var(--len); opacity: 1; } 35%, 80% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+  @keyframes arrowHead { 0%, 30% { opacity: 0; } 38%, 80% { opacity: 1; } 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .arrow .ap { animation: none; stroke-dashoffset: 0; } .arrow .ah { animation: none; opacity: 1; } }
+  .you { padding: 0 .14em; border-radius: .14em; background: #fff; color: #000; mix-blend-mode: screen; }
+  .hero .pill { border-color: rgba(255,255,255,.5); background: rgba(255,255,255,.14); color: #fff; }
+  .hero .pill:hover { background: rgba(255,255,255,.26); }
+  .hero .pill.dark { background: #fff; color: var(--ink); border-color: #fff; }
+  .hero .pill.dark:hover { background: #F1EEEA; }
+  .hero-in > :not(.find) { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s cubic-bezier(.2,.8,.2,1); }
+  .hero.in .hero-in > :not(.find) { opacity: 1; transform: none; }
+  .hero.in .hero-in > :nth-child(2) { transition-delay: .08s } .hero.in .hero-in > :nth-child(3) { transition-delay: .16s } 
+
+
+  /* the map: SEO, GEO, AEO */
+  .map { margin-top: 32px; }
+  .terms { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .term { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: grid; grid-template-columns: 84px 1fr; gap: 14px; align-items: center; }
+  .term b { font: 600 17px var(--display); letter-spacing: -.01em; }
+  .term span { font-size: 14.5px; color: #43413E; }
+  .term.on { border-color: rgba(196,122,138,.5); box-shadow: 0 0 0 3px var(--pink-soft); }
+  .term.on b { color: var(--pink); }
+  @media (max-width: 760px) { .terms { grid-template-columns: 1fr; } }
+
+  /* the CRM example: a question goes in, an answer comes back without us in it */
+  .askcard { border-radius: 24px; margin-top: 32px; padding: 54px 24px; }
+  .askcard.field { background: #F6E9EC; }
+  .askcard > .paint { opacity: .45; filter: blur(48px) saturate(1.3) brightness(1.08); }
+  .ask-in { max-width: 680px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .q { justify-self: end; max-width: 86%; background: rgba(255,255,255,.9); color: var(--ink); border-radius: 18px 18px 4px 18px; padding: 12px 16px; font-size: 15px; }
+  .q .caret::after { content: "▍"; color: #E8846B; animation: blink 1s steps(1) infinite; }
+  .ans { padding: 16px 18px; font-size: 14.5px; line-height: 1.55; opacity: 0; transform: translateY(10px); transition: opacity .35s ease, transform .35s ease; }
+  .ans.on { opacity: 1; transform: none; }
+  .ans-h { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #5D5A57; margin-bottom: 10px; }
+  .ans-h img { width: 16px; height: 16px; }
+  .ans p { margin: 0 0 12px; }
+  .ans p b { font-weight: 600; }
+  .brands { display: flex; flex-wrap: wrap; gap: 6px; }
+  .brands span { font-size: 12.5px; font-weight: 500; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.8); border: 1px solid rgba(0,0,0,.06); opacity: 0; transform: scale(.85); transition: opacity .3s ease, transform .4s cubic-bezier(.3,1.5,.5,1); }
+  .brands span s { text-decoration: none; color: var(--muted); font-family: var(--mono); font-size: 11px; margin-left: 4px; }
+  .brands span.you2 { background: transparent; border: 1.5px dashed rgba(16,16,16,.22); color: rgba(16,16,16,.35); }
+  .ans.on .brands span.you2 { opacity: .55; }
+  /* callouts: two white bubbles under the answer, white arrows curving up to the chips */
+  .ask-in { position: relative; }
+  .callouts { display: flex; justify-content: space-between; gap: 16px; margin-top: 40px; }
+  .callouts .bubble { background: #fff; color: var(--ink); font-size: 13.5px; font-weight: 500; padding: 9px 14px; border-radius: 12px; box-shadow: 0 12px 30px -12px rgba(60,20,40,.35); opacity: 0; transform: translateY(8px); transition: opacity .25s ease, transform .25s ease; }
+  .callouts.on .bubble { opacity: 1; transform: none; }
+  .callouts .bubble { position: relative; }
+  .callouts .bubble::before { content: ""; position: absolute; top: -4px; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 2.5px #fff; }
+  #bubTop::before { left: -4px; background: var(--green); }
+  #bubYou::before { right: -4px; background: var(--pink); }
+  .callouts .bubble:last-of-type { transition-delay: .2s; }
+  .arrows { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; filter: drop-shadow(0 1px 2px rgba(110,50,70,.35)); }
+  .arrows path { fill: none; stroke: #fff; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+  .arrows .ap { stroke-dasharray: var(--len); stroke-dashoffset: var(--len); transition: stroke-dashoffset .45s ease .15s; }
+  .arrows .ah { opacity: 0; transition: opacity .15s ease .55s; }
+  .callouts.on .arrows .ap { stroke-dashoffset: 0; }
+  .callouts.on .arrows .ah { opacity: 1; }
+  .callouts.on #arYou { transition-delay: .35s; }
+  .callouts.on #arYouHead { transition-delay: .75s; }
+  .ans.on .brands span { opacity: 1; transform: none; }
+
+
+  /* steps: the number is a little painted dot */
+  .step .num { color: var(--ink); font-weight: 600; }
+  .step .num .n { background: url(media/aeo/field.jpg) center / 400% no-repeat; box-shadow: none; text-shadow: none; font-weight: 800; }
+
+  /* highlight lines take the hero's colour field: rose, peach, gold, drifting slowly */
+  .hl2 { color: var(--pink); background: linear-gradient(90deg, #C9707F, #D98C6E, #C9A02E, #D98C6E, #C9707F) 0 0 / 300% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: hlDrift 12s linear infinite; }
+  @keyframes hlDrift { to { background-position: 300% 0; } }
+  @media (prefers-reduced-motion: reduce) { .hl2 { animation: none; } }
+  /* the bill */
+  .bill { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 4px 18px; font-size: 14px; }
+  .bill div { display: flex; justify-content: space-between; padding: 11px 0; border-top: 1px solid var(--line); gap: 12px; }
+  .bill div:first-child { border-top: 0; }
+  .bill .m { font-family: var(--mono); white-space: nowrap; }
+  .bill .tot { font-weight: 600; }
+  .bill .tot .m { color: var(--green); }
+  .bill small { color: var(--muted); display: block; font-size: 12px; }
+
+  .bill { max-width: 720px; margin: 0 auto; }
+  .bill { overflow: hidden; }
+  .bill .tot { margin: 0 -18px -4px; padding: 13px 18px; background: linear-gradient(90deg, rgba(201,112,127,.16), rgba(217,140,110,.14), rgba(201,160,46,.14)); border-top-color: transparent; }
+  .bill .tot .m { font-weight: 600; background: linear-gradient(90deg, #C9707F, #D98C6E, #C9A02E); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  /* step scenes: the AI SEO launch film's step animations (V2), rebuilt in HTML on the colour field */
+  .stage { position: relative; isolation: isolate; overflow: hidden; border-radius: 20px; padding: 16px; color: var(--ink); font-size: 12.5px; line-height: 1.4; }
+  .stage + .stage { margin-top: 14px; }
+  .stage.field { background: #F3E2E6; color: var(--ink); }
+  .stage > .paint { opacity: .6; filter: blur(48px) saturate(1.4) brightness(1.02); }
+  .stage .ill { position: absolute; top: 9px; right: 14px; font: 10.5px var(--mono); color: rgba(16,16,16,.42); z-index: 2; }
+  .stage .pn { background: rgba(255,255,255,.72); border-radius: 14px; }
+  .stage .mono { font-family: var(--mono); }
+  .stage .mut { color: #6b6b72; }
+  .stage b { font-weight: 500; }
+  .sx { opacity: 0; transform: translateY(10px); transition: opacity .45s cubic-bezier(.16,1,.3,1), transform .45s cubic-bezier(.16,1,.3,1); }
+  .sx.on { opacity: 1; transform: none; }
+  .stage .tl { width: 22px; height: 22px; border-radius: 6px; background: rgba(255,255,255,.5); display: inline-grid; place-items: center; flex: none; }
+  .stage .tl img { width: 62%; height: 62%; object-fit: contain; }
+  .stage .tiles { display: flex; gap: 4px; }
+  .stage .ck { width: 14px; height: 14px; fill: var(--ink); flex: none; }
+  .stage .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(0,0,0,.12); border-top-color: var(--ink); animation: spin .7s linear infinite; flex: none; }
+  .stage .spin.w { border-color: rgba(255,255,255,.25); border-top-color: #fff; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .stage .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 500 12px var(--display); flex: none; }
+  .stage .links { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  .stage .links path { fill: none; stroke: rgba(255,255,255,.85); stroke-width: 3; stroke-linecap: round; }
+  .stage .links circle { fill: #fff; }
+  /* step 1: seeds, keyword ideas filtered to buy-ready, the questions buyers ask */
+  .s1-h { font-weight: 500; font-size: 13px; margin: 14px 0 7px; display: flex; align-items: baseline; gap: 8px; }
+  .s1-h:first-of-type { margin-top: 6px; }
+  .s1-h .mono { font-size: 10.5px; font-weight: 400; }
+  .seeds { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seeds span { border-radius: 999px; padding: 5px 11px; font-weight: 500; font-size: 12px; }
+  .kws { display: grid; gap: 5px; }
+  .kw { display: grid; grid-template-columns: minmax(0, 1fr) 64px auto; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; transition: opacity .45s cubic-bezier(.16,1,.3,1), transform .45s cubic-bezier(.16,1,.3,1), filter .4s ease; }
+  .kw .k { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kw .bar { height: 6px; border-radius: 3px; background: rgba(0,0,0,.06); overflow: hidden; }
+  .kw .bar i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--ink); transition: width .7s cubic-bezier(.22,.9,.24,1); }
+  .kw .tag { justify-self: end; font: 10.5px var(--mono); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+  .kw .tag.buy { background: var(--pink-soft); color: #9E4E5F; }
+  .kw .tag.res { background: rgba(0,0,0,.06); color: #6b6b72; }
+  .kw.cut.on { opacity: .35; filter: grayscale(1); }
+  .kw.cut .k { text-decoration: line-through; text-decoration-color: rgba(16,16,16,.45); }
+  .qq { display: flex; align-items: center; gap: 9px; padding: 7px 10px; margin-top: 5px; font-size: 12.5px; }
+  .qq .r { width: 20px; height: 20px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; font: 500 11px var(--mono); flex: none; }
+  /* four answers */
+  .q4 { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 999px; font-weight: 500; font-size: 13px; margin-top: 14px; }
+  .q4 .m { font: 10.5px var(--mono); color: #6b6b72; flex: none; }
+  .q4 .qt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; }
+  .q4 .send { width: 26px; height: 26px; border-radius: 50%; background: var(--ink); display: grid; place-items: center; flex: none; transition: transform .15s ease; }
+  .q4 .send.on { transform: scale(.86); }
+  .q4 .send svg { width: 16px; height: 16px; fill: #fff; }
+  .g4 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .a4 { padding: 10px 11px; min-height: 236px; }
+  @media (max-width: 460px) { .g4 { grid-template-columns: 1fr; } .a4 { min-height: 0; } }
+  .a4h { display: flex; align-items: center; gap: 7px; font-weight: 500; font-size: 13px; }
+  .a4h img { width: 16px; height: 16px; }
+  .a4h .stat { margin-left: auto; display: flex; }
+  .a4t { margin: 8px 0 0; min-height: 68px; font-size: 12px; color: #3a3a40; }
+  .a4t b { color: var(--ink); }
+  .a4f { border-top: 1px solid rgba(0,0,0,.08); margin-top: 8px; padding-top: 8px; }
+  .a4f .lab { font: 10px var(--mono); color: #6b6b72; margin: 2px 0 5px; }
+  .a4f .bc { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+  .a4f .bc span { background: var(--ink); color: #fff; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 500; }
+  .a4f .sc { display: grid; gap: 3px; }
+  .a4f .sc span { display: flex; align-items: center; gap: 6px; font: 11px var(--mono); }
+  .a4f .sc .tl { width: 18px; height: 18px; }
+  /* tree */
+  .tr { position: relative; display: grid; gap: 6px; margin-top: 14px; }
+  .tr > .pn { position: relative; z-index: 1; }
+  .tr .root { justify-self: start; display: grid; gap: 6px; padding: 10px 12px; width: 66%; }
+  .tr .root b { font-size: 15px; }
+  .tr .root .mono { font-size: 11px; }
+  .tr .mid { justify-self: start; margin: 8px 0 0 26px; padding: 7px 12px; font-weight: 500; font-size: 13px; }
+  .tr .lf { margin-left: 54px; display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; }
+  .tr .lf b { width: 76px; flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tr .lf b.mono { width: 84px; font-size: 11px; font-weight: 400; }
+  .tr .lf .v { font: 10.5px var(--mono); color: #6b6b72; }
+  .tr .lf .bar { flex: 1; height: 6px; border-radius: 3px; background: rgba(0,0,0,.06); overflow: hidden; }
+  .tr .lf .bar i { display: block; height: 100%; width: 0; border-radius: 3px; background: var(--ink); transition: width .7s cubic-bezier(.22,.9,.24,1); }
+  .tr .lf .bar.g i { background: linear-gradient(90deg, #C9707F, #D98C6E, #C9A02E); }
+  .tr .lf .n { font: 11px var(--mono); flex: none; }
+  .tr .lf.unnamed { background: rgba(255,255,255,.45); color: #6b6b72; }
+  .tr .lf.unnamed.on { animation: nope .5s ease .35s; }
+  @keyframes nope { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
+  /* chain: the camera travels down */
+  .stage[data-scene="chain"] { height: 430px; padding: 0; }
+  .cam { position: relative; padding: 34px 16px 16px; transition: transform .8s cubic-bezier(.65,0,.35,1); }
+  .ch-lab { position: relative; z-index: 2; width: max-content; font-weight: 500; font-size: 12.5px; margin: 0 0 6px; padding: 2px 9px; border-radius: 999px; background: rgba(255,255,255,.6); }
+  .ch-row { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 34px; }
+  .cc { padding: 9px 10px; display: grid; gap: 6px; align-content: start; min-height: 58px; font-size: 12px; }
+  .cc .cs { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+  .cc .cs .mono { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cc .tiles .tl { width: 18px; height: 18px; }
+  .cc b { font-size: 12.5px; line-height: 1.3; }
+  .cc .mono.mut { font-size: 10.5px; }
+  .person { min-height: 54px; align-content: center; }
+  .person .look { display: flex; align-items: center; gap: 6px; font-size: 10.5px; }
+  .person .who { display: none; align-items: center; gap: 7px; min-width: 0; }
+  .person .who > span:last-child { display: grid; min-width: 0; }
+  .person .who b, .person .who .mono { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .person.found .look { display: none; }
+  .person.found .who { display: flex; animation: pop .35s cubic-bezier(.3,1.5,.5,1); }
+  @keyframes pop { from { transform: scale(.88); } }
+  .ct { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; min-height: 0; }
+  .ct .mono { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ct .ml { width: 14px; height: 14px; fill: var(--ink); }
+  .ct .ck { opacity: 0; transition: opacity .2s ease .5s; }
+  .ct.on .ck { opacity: 1; }
+  .tps { position: relative; z-index: 1; justify-self: center; display: flex; align-items: center; gap: 8px; width: max-content; margin: -18px auto 16px; padding: 6px 14px 6px 6px; border-radius: 999px; background: var(--ink); color: #fff; font-weight: 500; font-size: 13px; }
+  .tps .tm svg { width: 22px; height: 22px; display: block; }
+  .tps .px { font-family: var(--pixel); font-weight: 400; }
+  .tps .ck { fill: #fff; display: none; }
+  .tps.found .spin { display: none; }
+  .tps.found .ck { display: block; }
+  /* pitch */
+  .pt-h { font-weight: 500; font-size: 15px; margin-top: 6px; display: flex; align-items: baseline; gap: 8px; }
+  .pt-h .mono { font-size: 10.5px; font-weight: 400; }
+  .cmp { position: relative; margin-top: 10px; padding: 12px 14px 54px; }
+  .cmp > b { font-size: 14px; display: block; padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,.1); }
+  .cmp .kv { display: flex; gap: 10px; font-size: 11px; padding: 6px 0; border-bottom: 1px solid rgba(0,0,0,.06); white-space: nowrap; overflow: hidden; }
+  .cmp .body { margin: 10px 0 0; font-weight: 500; font-size: 13px; line-height: 1.45; min-height: 57px; }
+  .cmp .body.typing::after, .q4 .qt.typing::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--ink); animation: blink 1s steps(1) infinite; }
+  .sendb { position: absolute; right: 12px; bottom: 12px; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 16px; border-radius: 999px; background: var(--ink); color: #fff; font-weight: 500; font-size: 13px; overflow: hidden; transition: transform .12s ease; }
+  .sendb::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, #C9707F, #D98C6E, #C9A02E); opacity: 0; transition: opacity .4s ease; }
+  .sendb > * { position: relative; }
+  .sendb .ck { fill: #fff; display: none; }
+  .sendb.press { transform: scale(.94); }
+  .sendb.sent::before { opacity: 1; }
+  .sendb.sent .ck { display: block; }
+  .au { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 10px; }
+  .au .who { display: grid; min-width: 0; flex: 1; }
+  .au .who .mono { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .au .state { font-size: 10.5px; flex: none; }
+  .au .state.sent { display: inline-flex; align-items: center; gap: 4px; background: var(--ink); color: #fff; border-radius: 999px; padding: 4px 10px; font: 500 12px var(--text); animation: pop .3s cubic-bezier(.3,1.5,.5,1); }
+  .au .state.sent .ck { fill: #fff; width: 12px; height: 12px; }
+  @media (prefers-reduced-motion: reduce) { .sx, .cam, .tr .lf .bar i { transition: none; } .tr .lf.unnamed.on { animation: none; } }
+  /* the meta prompt */
+  .oneline { max-width: 820px; margin: 0 auto; display: flex; align-items: center; gap: 14px; background: #1B1B1A; color: #D6D6D2; border-radius: 999px; padding: 10px 10px 10px 22px; font-family: var(--mono); font-size: 13px; }
+  .prompt-d { max-width: 820px; margin: 0 auto; }
+  .prompt-d.open .oneline { border-radius: 18px 18px 0 0; justify-content: space-between; }
+  .meta-d { width: max-content; max-width: 100%; }
+  .meta-d.open { width: min(820px, 100%); }
+  .meta-d .oneline { padding: 7px 7px 7px 20px; gap: 10px; }
+  .meta-d .oneline .h { margin-right: 6px; }
+  .prompt-d .code { border-radius: 0 0 18px 18px; border-top: 1px solid #2E2E2C; max-height: 520px; overflow: auto; font-size: 12px; }
+  .oneline .h { flex: none; color: #9A9A9A; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; }
+  @media (max-width: 600px) { .oneline { justify-content: space-between; } }
+  .oneline button, .copybox button { flex: none; border: 1px solid rgba(255,255,255,.2); background: transparent; color: #fff; border-radius: 999px; padding: 6px 12px; font: 500 12px var(--text); cursor: pointer; }
+  .oneline button:hover { background: rgba(255,255,255,.08); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .callouts .bubble, .arrows .ap, .arrows .ah { transition: none !important; }
+    .field > .paint { animation: none; }
+    .seo::before, .hero-in > *, .ans, .brands span { transition: none !important; filter: none; opacity: 1; transform: none; }
+  }
+  /* phones: last in the sheet so these win over the base rules above */
+  @media (max-width: 760px) {
+    .hero { padding: 110px 20px 70px; }
+    .hero .find { font-size: clamp(16px, 4.6vw, 26px); }
+    .callouts .bubble { font-size: 11.5px; padding: 6px 9px; max-width: 48%; }
+    .callouts { margin-top: 34px; gap: 8px; }
+    .askcard { padding: 36px 14px; }
+    .term { grid-template-columns: 72px 1fr; }
+    .stage { padding: 14px 12px; }
+    .stage[data-scene="chain"] { height: 420px; }
+    .cam { padding: 32px 10px 14px; }
+    .ch-row { gap: 5px; }
+    .cc { padding: 7px 7px; font-size: 11px; }
+    .cc b { font-size: 11.5px; }
+    .cc .cs { gap: 4px; font-size: 10px; }
+    .cc .cs .tl { width: 18px; height: 18px; }
+    .cc .tiles { gap: 2px; }
+    .cc .tiles .tl { width: 15px; height: 15px; }
+    .person .who { gap: 5px; }
+    .stage .person .av, .stage .ct .ml { display: none; }
+    .ct { grid-template-columns: minmax(0, 1fr) auto; }
+    .kw { grid-template-columns: minmax(0, 1fr) 40px auto; }
+    .tr .root { width: 100%; }
+    .tr .lf { margin-left: 40px; }
+    .tr .lf b { width: 64px; }
+    .tr .lf b.mono { width: 72px; }
+    .tr .lf .v { display: none; }
+  }
+</style>
+<script src="/captcha.js" defer></script>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <span class="wordmark"><a href="/" style="display:inline-flex;align-items:center;gap:10px;color:inherit;text-decoration:none" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</a> <span style="color:var(--muted);font-weight:400">/</span> <span style="font-weight:500">AEO</span></span>
+  <span style="display:flex;gap:8px">
+    <span class="nav-links"><a href="#steps">The AEO workflow</a><a href="#pricing">Pricing</a><a href="#tools">Tools</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a><a href="https://x.com/treg_ai" target="_blank" rel="noopener" aria-label="treg on X"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a></span>
+    <a class="pill dark" href="/app?ref=aeo" id="ctaNav">Set up treg</a>
+  </span>
+</nav>
+
+<header class="hero field">
+  <div class="paint" aria-hidden="true"></div>
+  <div class="hero-in">
+    <h1>Use <span class="roll" id="roll" aria-label="Claude"><b>Claude</b></span> for <span class="seo">AI SEO</span></h1>
+    <p class="find">AI only recommends what it can <span id="fFind">find.</span><br>So we help AI <span style="white-space:nowrap">find <span class="you" id="fYou">you.</span></span><svg class="arrow" id="arrow" aria-hidden="true"><path class="ap" id="arrowPath"/><path class="ah" id="arrowHead"/></svg></p>
+    <div class="ctas">
+      <a class="pill dark" href="/app?ref=aeo" id="ctaHero">Set up treg</a>
+      <a class="pill" href="#prompt">Get the prompt ↓</a>
+    </div>
+  </div>
+</header>
+
+<section class="sec rv" id="map">
+  <div class="wrap">
+    <h2>What is AEO</h2>
+    <div class="map">
+      <div class="terms">
+        <div class="term"><b>SEO</b><span>Search engine optimization: showing up on Google.</span></div>
+        <div class="term on"><b>AEO/GEO</b><span>Generative or answer engine optimization: showing up in AI answers. One idea, two names. This guide works here.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="steps">
+  <div class="wrap">
+    <h2>Step by step guide for AEO workflow</h2>
+    <div class="askcard field" id="ask">
+      <div class="paint" aria-hidden="true"></div>
+      <div class="ask-in">
+        <div class="q"><span id="qText"></span><span class="caret"></span></div>
+        <div class="ans glass" id="ans">
+          <div class="ans-h"><img src="media/aeo/logos/chatgpt.svg" alt="">ChatGPT answer</div>
+          <p>For a small team, <b>Northdesk</b> is the easiest pick. <b>Pipewell</b> is close behind if email matters most, <b>Clientry</b> is simpler for 2–10 people, and <b>Hubline</b> scales furthest.</p>
+          <div class="brands"><span id="chipTop">Northdesk<s>#1</s></span><span>Pipewell<s>#2</s></span><span>Clientry<s>#3</s></span><span>Hubline<s>#4</s></span><span class="you2" id="chipYou">your brand · not named</span></div>
+        </div>
+        <div class="callouts" id="callouts">
+          <span class="bubble" id="bubTop">Your competitors</span>
+          <span class="bubble" id="bubYou">Your product isn't showing here</span>
+          <svg class="arrows" id="calloutArrows" aria-hidden="true"><path class="ap" id="arTop"/><path class="ah" id="arTopHead"/><path class="ap" id="arYou"/><path class="ah" id="arYouHead"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="steps wrap">
+    <!-- STEP 1 -->
+    <article class="step rv" id="step-1">
+      <div class="txt">
+        <div class="num"><span class="n">1</span>Step 1</div>
+        <h3>What are people actually asking?</h3>
+        <div class="sess">
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div class="who"><img src="media/people-search/claude-code.png" alt="">Claude Code <span class="dim">·</span> <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span><span class="st"><i></i> <span class="stt">working</span></span></div>
+          <div class="ln ask"><span class="p">&gt;</span><span>Seeds: small business CRM, CRM for small teams. Find what buyers actually ask, keep the ones close to a purchase. <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="logos/seranking.svg" alt=""><span class="id">treg.google.keywords.ideas</span> <span class="m">~40 related keywords</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="media/aeo/logos/google.svg" alt=""><span class="id">treg.google.keywords.volume</span> <span class="m">volume · CPC · difficulty</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="logos/dataforseo.svg" alt=""><span class="id">dataforseo…search-intent-live</span> <span class="m">ready to buy?</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="media/aeo/logos/google.svg" alt=""><span class="id">treg.google.serp.organic</span> <span class="m">People also ask</span></span></div>
+          <div class="ln ok"><span class="g">●</span><span>Top question: "what's the best CRM for a small business?" Step est. <b>~$0.04</b> with <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+        </div>
+        <div class="chips">
+          <span class="lab">the tools this step pulls through treg</span>
+          <a class="chip" href="/catalog?q=keyword%20ideas"><img src="logos/seranking.svg" alt="">Keyword ideas</a>
+          <a class="chip" href="/catalog?q=keyword%20volume"><img src="media/aeo/logos/google.svg" alt="">Keyword volume</a>
+          <a class="chip" href="/catalog?q=search%20intent"><img src="logos/dataforseo.svg" alt="">Search intent <s>DataForSEO</s></a>
+          <a class="chip" href="/catalog?q=google%20results"><img src="media/aeo/logos/google.svg" alt="">Google results</a>
+        </div>
+        <div class="oneline step-p"><span class="h">Step 1 prompt</span><button type="button" class="copyStep">Copy</button><div class="code" hidden>═══ STEP 1 · What customers ask ═══ ~$0.04
+1. `seranking.google.keywords.ideas` per seed (GET, source=cc, limit=40, sort=volume) → vol, CPC, difficulty. Merge, dedupe, drop off-topic rows (list them).
+2. `dataforseo.x.dataforseo-labs-google-search-intent-live`, 1 call. I = transactional 1 | commercial 0.8 | informational 0.2 | navigational 0.
+   BuyerScore = I(0.50 C + 0.35 V + 0.15 E); C = minmax(CPC), V = minmax(log10(1+vol)), E = 1 − diff/100. Keep I ≥ 0.8.
+3. Merge look-alikes (reordered/plural) into groups, score = max. Keep the top 8.
+◆ G1: table keyword | intent | CPC→C→×.50 | vol→V→×.35 | diff→E→×.15 | score, + 5 best cut ✗ and why big ones were cut. keep | edit | weights | stop
+4. `treg.google.serp.organic` per group → People Also Ask. Keep choose/compare/buy questions, merge same-meaning ones.
+   QuestionScore = max BuyerScore × (1 + 0.1(F−1)), F = groups sharing it. ≤10 questions. Rewrite as [situation] + [need] + "which should I buy?". No PAA → from keyword, tagged.
+◆ G2: rank | question | source PAA | BuyerScore | F | score. approve | edit | swap | stop</div></div>
+        <details class="why"><summary>What this step does, and why</summary><p><b>What this step does</b>Turns two or three seed phrases into about forty related keywords with volume, cost per click and difficulty, labels each by search intent, keeps the ones close to a purchase, and pulls the full questions people type from “People also ask”.</p><p><b>Why it matters</b>People are not asking what you think they are. The questions nearest to buying are the ones worth winning in AI answers.</p></details>
+      </div>
+      <div class="vis">
+        <div class="stage field" data-scene="ask1"><div class="paint" aria-hidden="true"></div><span class="ill">illustrative</span><div class="s1-h sx" data-at="0">Seed keywords</div><div class="seeds"><span class="pn sx" data-at="100">small business CRM</span><span class="pn sx" data-at="250">CRM for small teams</span></div><div class="s1-h sx" data-at="450">Keyword ideas <span class="mono mut">volume · ready to buy?</span></div><div class="kws"><div class="kw pn sx" data-at="600"><span class="k">best crm for small business</span><span class="bar"><i data-w="92"></i></span><span class="tag sx buy" data-at="1500">ready to buy</span></div><div class="kw pn sx" data-at="720"><span class="k">crm software for small teams</span><span class="bar"><i data-w="64"></i></span><span class="tag sx buy" data-at="1590">ready to buy</span></div><div class="kw pn sx" data-at="840"><span class="k">simple crm</span><span class="bar"><i data-w="55"></i></span><span class="tag sx buy" data-at="1680">ready to buy</span></div><div class="kw pn sx" data-at="960"><span class="k">crm pricing</span><span class="bar"><i data-w="48"></i></span><span class="tag sx buy" data-at="1770">ready to buy</span></div><div class="kw pn sx" data-at="1080" data-cut="2400"><span class="k">what is a crm</span><span class="bar"><i data-w="88"></i></span><span class="tag sx res" data-at="1860">research</span></div><div class="kw pn sx" data-at="1200" data-cut="2400"><span class="k">crm vs spreadsheet</span><span class="bar"><i data-w="30"></i></span><span class="tag sx res" data-at="1950">research</span></div></div><div class="s1-h sx" data-at="2700">What buyers ask <span class="mono mut">People also ask</span></div><div class="qq pn sx" data-at="2900"><span class="r">1</span><b>What's the best CRM for a small business?</b></div><div class="qq pn sx" data-at="3100"><span class="r">2</span><b>Which CRM is easiest for a small team?</b></div><div class="qq pn sx" data-at="3300"><span class="r">3</span><b>Is a CRM worth it for 5 people?</b></div></div>
+      </div>
+    </article>
+    <!-- STEP 2 -->
+    <article class="step rv" id="step-2">
+      <div class="txt">
+        <div class="num"><span class="n">2</span>Step 2</div>
+        <h3>Who does AI recommend?</h3>
+        <div class="sess">
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div class="who"><img src="media/people-search/claude-code.png" alt="">Claude Code <span class="dim">·</span> <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span><span class="st"><i></i> <span class="stt">working</span></span></div>
+          <div class="ln ask"><span class="p">&gt;</span><span>Ask every AI engine the top questions. Who gets named, in what order, and which sites do they cite? <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="media/aeo/logos/chatgpt.svg" alt=""><span class="id">cloro.ai-search.chatgpt.scrape</span> <span class="m">answer · citations</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="media/aeo/logos/gemini.svg" alt=""><span class="id">cloro.ai-search.gemini.scrape</span> <span class="m">answer · citations</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="media/aeo/logos/google.svg" alt=""><span class="id">cloro.google.serp.ai_mode</span> <span class="m">AI Mode</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="media/aeo/logos/perplexity-icon.svg" alt=""><span class="id">treg.ai-search.perplexity.answer</span> <span class="m">answer · sources</span></span></div>
+          <div class="ln ok"><span class="g">●</span><span>Northdesk is named in 4 of 4 answers; Your brand in 0. Est. <b>~$0.015 a question</b> with <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+        </div>
+        <div class="chips">
+          <span class="lab">the tools this step pulls through treg</span>
+          <a class="chip" href="/catalog?q=cloro"><img src="logos/cloro.svg" alt="">ChatGPT · Gemini · AI Mode <s>cloro</s></a>
+          <a class="chip" href="/catalog?q=perplexity"><img src="logos/perplexity.svg" alt="">Perplexity</a>
+        </div>
+        <div class="oneline step-p"><span class="h">Step 2 prompt</span><button type="button" class="copyStep">Copy</button><div class="code" hidden>═══ STEP 2 · How AI recommends ═══ ~$0.015/question
+Engines (parallel, 300s timeout): ChatGPT `cloro.ai-search.chatgpt.scrape` · Perplexity `treg.ai-search.perplexity.answer` · Gemini `cloro.ai-search.gemini.scrape` · AI Mode `cloro.google.serp.ai_mode` (gl/hl). Fallback: matching `dataforseo.x.ai-optimization-*` / `serp-google-ai-mode-live-advanced`.
+Per answer: m named, p position (m/p = 0 if m = 0), n brands, c own domain quoted.
+- VS = mean 100(0.5m + 0.3 m/p + 0.2c), also per engine · MentionRate = Σm/N · Share = Σm/Σn · CompScore_b = 100 Σ(m/p)/N
+- Sites/pages: Cite = Σ 1/source-position · QuotedIn = % of answers · Vis = 100 Cite/N · Infl = Vis/max · DomainScore = Cite(1 + 0.1(Q−1))(1 + 0.1(E−1)). Type each site.
+1. Q1 on all engines. ◆ G3: per engine: quoted sites → brands (behind-the-scenes searches only if returned). all | ChatGPT + Perplexity | edit | stop
+2. Full run. ◆ G4: tiles VS/MentionRate/Share/SiteVis_user · competitor bar · question × engine grid (✓/✗ + who is named 1st) · top-15 sites table · who wins, why. continue | re-run failed | stop</div></div>
+        <details class="why"><summary>What this step does, and why</summary><p><b>What this step does</b>Sends the top questions to ChatGPT, Gemini, Perplexity and Google’s AI Mode, then reads three things off every answer: the answer itself, the brands it names, and the websites it cites.</p><p><b>Why it matters</b>It shows which competitors AI recommends and how high, and which websites AI trusts. These numbers are your baseline to measure against later.</p></details>
+      </div>
+      <div class="vis">
+        <div class="stage field" data-scene="four"><div class="paint" aria-hidden="true"></div><span class="ill">illustrative</span><div class="q4 pn"><span class="m">ask 4 AIs</span><span class="qt" data-type="What's the best CRM for a small business?" data-at="150"></span><i class="send" data-at="820"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.5 7 11.5l1.1 1.1 3.1-3.1V17.5h1.6V9.5l3.1 3.1 1.1-1.1z"/></svg></i></div><div class="g4"><div class="a4 pn sx" data-at="900"><div class="a4h"><img src="media/aeo/logos/chatgpt.svg" alt="">ChatGPT<span class="stat"></span></div><p class="a4t" data-stream="For a small team, Northdesk is the easiest pick. Pipewell is close behind if email matters most." data-at="1050"></p><div class="a4f sx" data-at="2700"><div class="lab">brands mentioned</div><div class="bc"><span>Northdesk</span><span>Pipewell</span></div><div class="lab">sites cited</div><div class="sc"><span><span class="tl"><img src="media/aeo/logos/reddit.png" alt=""></span>reddit.com</span><span><span class="tl"><img src="media/aeo/logos/youtube.png" alt=""></span>youtube.com</span></div></div></div><div class="a4 pn sx" data-at="1020"><div class="a4h"><img src="media/aeo/logos/claude.svg" alt="">Claude<span class="stat"></span></div><p class="a4t" data-stream="Most small teams start with Northdesk. Clientry is a simpler option for 2–10 people." data-at="1170"></p><div class="a4f sx" data-at="2810"><div class="lab">brands mentioned</div><div class="bc"><span>Northdesk</span><span>Clientry</span></div><div class="lab">sites cited</div><div class="sc"><span><span class="tl"><img src="media/aeo/logos/reddit.png" alt=""></span>reddit.com</span><span><span class="tl"><img src="media/aeo/logos/linkedin.png" alt=""></span>linkedin.com</span></div></div></div><div class="a4 pn sx" data-at="1140"><div class="a4h"><img src="media/aeo/logos/perplexity-icon.svg" alt="">Perplexity<span class="stat"></span></div><p class="a4t" data-stream="Popular choices are Northdesk and Pipewell, both well reviewed for small businesses." data-at="1290"></p><div class="a4f sx" data-at="2920"><div class="lab">brands mentioned</div><div class="bc"><span>Northdesk</span><span>Pipewell</span></div><div class="lab">sites cited</div><div class="sc"><span><span class="tl"><img src="media/aeo/logos/youtube.png" alt=""></span>youtube.com</span><span><span class="tl"><img src="media/aeo/logos/google.svg" alt=""></span>g2.com</span></div></div></div><div class="a4 pn sx" data-at="1260"><div class="a4h"><img src="media/aeo/logos/gemini.svg" alt="">Gemini<span class="stat"></span></div><p class="a4t" data-stream="Reviewers recommend Northdesk, Pipewell and Clientry for small businesses." data-at="1410"></p><div class="a4f sx" data-at="3030"><div class="lab">brands mentioned</div><div class="bc"><span>Northdesk</span><span>Pipewell</span><span>Clientry</span></div><div class="lab">sites cited</div><div class="sc"><span><span class="tl"><img src="media/aeo/logos/reddit.png" alt=""></span>reddit.com</span><span><span class="tl"><img src="media/aeo/logos/youtube.png" alt=""></span>youtube.com</span><span><span class="tl"><img src="media/aeo/logos/linkedin.png" alt=""></span>linkedin.com</span></div></div></div></div></div>
+      </div>
+    </article>
+    <!-- STEP 3 -->
+    <article class="step rv" id="step-3">
+      <div class="txt">
+        <div class="num"><span class="n">3</span>Step 3</div>
+        <h3>Reverse engineer AI answers.</h3>
+        <div class="sess">
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div class="who"><img src="media/people-search/claude-code.png" alt="">Claude Code <span class="dim">·</span> <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span><span class="st"><i></i> <span class="stt">working</span></span></div>
+          <div class="ln ask"><span class="p">&gt;</span><span>For every site AI cited: how strong is it, who links to our competitors, and how do we get on the page? <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="logos/seranking.svg" alt=""><span class="id">treg.web.url.metrics</span> <span class="m">page + site strength</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="logos/seranking.svg" alt=""><span class="id">seranking.web.linking_domains.list</span> <span class="m">top 3 competitors</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="logos/dataforseo.svg" alt=""><span class="id">treg.web.extract</span> <span class="m">15 pages read</span></span></div>
+          <div class="ln ok"><span class="g">●</span><span>reddit.com is cited most and scores highest: the best target. Step est. <b>~$0.09</b> with <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+        </div>
+        <div class="chips">
+          <span class="lab">the tools this step pulls through treg</span>
+          <a class="chip" href="/catalog?q=url%20metrics"><img src="logos/seranking.svg" alt="">URL metrics</a>
+          <a class="chip" href="/catalog?q=linking%20domains"><img src="logos/seranking.svg" alt="">Linking domains <s>SE Ranking</s></a>
+          <a class="chip" href="/catalog?q=extract%20page"><img src="logos/dataforseo.svg" alt="">Page extractor</a>
+        </div>
+        <div class="oneline step-p"><span class="h">Step 3 prompt</span><button type="button" class="copyStep">Copy</button><div class="code" hidden>═══ STEP 3 · Websites AI reads ═══ ~$0.09
+1. Candidates = normalized pages minus brand/retailer pages; flag pages about another product type.
+2. `treg.web.url.metrics` (~$0.007) on the 12 most-quoted → PA, DA. Unmeasured → same-site PA, tagged.
+◆ G5: scatter PA vs PageVis, color = type (top-left = easy wins) + table. continue | exclude types | stop
+3. `treg.web.extract` top 15 → brands listed, criteria, date, contact route, covers product type?
+   Opp = 0.40 Infl + 0.20 Gap + 0.15 (1 − PA/100) + 0.15 Access + 0.10 Fresh
+   Gap 1/0.5/0 (absent + rival / both absent / present) · Access 1 contact-affiliate / 0.5 author / 0 · Fresh 1 ≤12mo / 0.5 ≤24mo / 0
+◆ G6: stacked Opp bars, top 10, one line each incl. fit. approve | swap | weights | stop</div></div>
+        <details class="why"><summary>What this step does, and why</summary><p><b>What this step does</b>Scores every page AI cited for page and site strength, finds the sites that already link to your top competitors, and reads the best pages: who they list, when they were updated, and how to reach the people who run them.</p><p><b>Why it matters</b>The easy wins are weak pages that AI quotes a lot. An opportunity score ranks every page, so you pitch the ten that matter.</p></details>
+      </div>
+      <div class="vis">
+        <div class="stage field" data-scene="tree"><div class="paint" aria-hidden="true"></div><span class="ill">illustrative</span><div class="tr"><svg class="links" aria-hidden="true"></svg><div class="root pn sx" id="trRoot" data-at="100"><b>4 AI answers</b><span class="tiles"><span class="tl"><img src="media/aeo/logos/chatgpt.svg" alt=""></span><span class="tl"><img src="media/aeo/logos/claude.svg" alt=""></span><span class="tl"><img src="media/aeo/logos/perplexity-icon.svg" alt=""></span><span class="tl"><img src="media/aeo/logos/gemini.svg" alt=""></span></span><span class="mono mut">“best CRM for a small business”</span></div><div class="mid pn sx" id="trMidB" data-link="trRoot" data-at="600">Brands mentioned</div><div class="lf pn sx" id="trB0" data-link="trMidB" data-at="1100"><b>Northdesk</b><span class="bar"><i data-w="100"></i></span><span class="n">4 of 4 answers</span></div><div class="lf pn sx" id="trB1" data-link="trMidB" data-at="1260"><b>Pipewell</b><span class="bar"><i data-w="75"></i></span><span class="n">3 of 4 answers</span></div><div class="lf pn sx" id="trB2" data-link="trMidB" data-at="1420"><b>Clientry</b><span class="bar"><i data-w="50"></i></span><span class="n">2 of 4 answers</span></div><div class="lf pn sx unnamed" id="trB3" data-link="trMidB" data-at="1580"><b>Your brand</b><span class="bar"><i data-w="0"></i></span><span class="n">0 of 4 answers</span></div><div class="mid pn sx" id="trMidS" data-link="trRoot" data-at="1500">Sites cited</div><div class="lf pn sx" id="trS0" data-link="trMidS" data-at="1900"><span class="tl"><img src="media/aeo/logos/reddit.png" alt=""></span><b class="mono">reddit.com</b><span class="v">value</span><span class="bar g"><i data-w="92"></i></span><span class="n">cited 3×</span></div><div class="lf pn sx" id="trS1" data-link="trMidS" data-at="2060"><span class="tl"><img src="media/aeo/logos/youtube.png" alt=""></span><b class="mono">youtube.com</b><span class="v">value</span><span class="bar g"><i data-w="80"></i></span><span class="n">cited 3×</span></div><div class="lf pn sx" id="trS2" data-link="trMidS" data-at="2220"><span class="tl"><img src="media/aeo/logos/linkedin.png" alt=""></span><b class="mono">linkedin.com</b><span class="v">value</span><span class="bar g"><i data-w="70"></i></span><span class="n">cited 2×</span></div><div class="lf pn sx" id="trS3" data-link="trMidS" data-at="2380"><span class="tl"><img src="media/aeo/logos/google.svg" alt=""></span><b class="mono">g2.com</b><span class="v">value</span><span class="bar g"><i data-w="40"></i></span><span class="n">cited 1×</span></div></div></div>
+      </div>
+    </article>
+    <!-- STEP 4 -->
+    <article class="step rv" id="step-4">
+      <div class="txt">
+        <div class="num"><span class="n">4</span>Step 4</div>
+        <h3>Find people behind the site or content.</h3>
+        <div class="sess">
+          <div class="dots"><i></i><i></i><i></i></div>
+          <div class="who"><img src="media/people-search/claude-code.png" alt="">Claude Code <span class="dim">·</span> <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span><span class="st"><i></i> <span class="stt">working</span></span></div>
+          <div class="ln ask"><span class="p">&gt;</span><span>For every source AI cites, find the person behind it and how to reach them. Draft what to send. <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="logos/scrapecreators.svg" alt=""><span class="id">scrapecreators.reddit.search.posts</span> <span class="m">threads to answer</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="logos/youtube.svg" alt=""><span class="id">treg.youtube.search.videos</span> <span class="m">creators to contact</span></span></div>
+          <div class="ln tool treg"><span class="g"></span><span><img src="logos/dataforseo.svg" alt=""><span class="id">treg.web.extract</span> <span class="m">author · contact route</span></span></div>
+          <div class="ln ok"><span class="g">●</span><span>Drafts ready: 10 pitches, Reddit replies, YouTube outreach, a page fix. Step est. <b>~$0.03</b> with <span class="tpill"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></span></div>
+        </div>
+        <div class="chips">
+          <span class="lab">the tools this step pulls through treg</span>
+          <a class="chip" href="/catalog?q=reddit%20search"><img src="logos/scrapecreators.svg" alt="">Reddit search <s>Scrape Creators</s></a>
+          <a class="chip" href="/catalog?q=youtube%20search"><img src="logos/youtube.svg" alt="">YouTube search</a>
+          <a class="chip" href="/catalog?q=extract%20page"><img src="logos/dataforseo.svg" alt="">Page extractor</a>
+        </div>
+        <div class="oneline step-p"><span class="h">Step 4 prompt</span><button type="button" class="copyStep">Copy</button><div class="code" hidden>═══ STEP 4 · Get on the map ═══ ~$0.03
+0. ◆ G7: confirm facts (from URL via `treg.web.extract`, else the form) and check question fit. Most don't fit → recommend redoing Step 1 with matched seeds. correct | fix | redo | stop
+Search with 2-5 word keyword forms of the questions.
+- Review/blog: Impact = Opp. Pitch ≤120 words.
+- Reddit `scrapecreators.reddit.search.posts` (relevance, year, trim; link = `url`): Impact = 0.4 minmax(log10(1+ups+2·comments)) + 0.3 exp(−days/180) + 0.2 Rel + 0.1 Cited → top 10
+- YouTube `treg.youtube.search.videos`, title must contain the product noun, no competitor channels: Impact = 0.4 minmax(log10(1+views)) + 0.2 exp(−days/365) + 0.2 Rel + 0.2 Cited → top 5 channels
+- Own page: Impact = 1 − share of questions answered in the first 2 sentences (no page → 1).
+- Priority = Impact / Effort (1 reply · 2 pitch · 3 content). Thirds = High/Med/Low. Tag fit per item.
+◆ G8: grouped list; per item `#1 · [channel] target (link)` · `Impact 0.88 ▓▓▓▓▓▓▓▓▓░ · Effort 2 · Priority 0.44 · fit` · why · next step. all | High only | drop | stop
+5. Drafts: Reddit answers the question first, mentions the product only where it fits, and ends with a disclosure line. Plus pitches, YouTube outreach + 3 angles, and a page draft (direct answers, comparison table, specs, FAQ JSON-LD).</div></div>
+        <details class="why"><summary>What this step does, and why</summary><p><b>What this step does</b>For every source AI cites (review pages, Reddit threads, YouTube videos) it finds the person behind it and how to reach them, and drafts the pitch or reply. It also checks your own page: are AI bots allowed in, and do your first two sentences answer the questions.</p><p><b>Why it matters</b>AI repeats what these people publish. Get onto their pages and AI starts naming you. Nothing is sent for you: every draft is yours to review and send.</p></details>
+      </div>
+      <div class="vis">
+        <div class="stage field" data-scene="chain"><div class="paint" aria-hidden="true"></div><span class="ill">illustrative</span><div class="cam"><svg class="links" aria-hidden="true"></svg><div class="ch-lab sx" data-at="50">Sites AI cites</div><div class="ch-row "><div class="cc pn sx" id="c00" data-at="200"><span class="cs"><span class="tl"><img src="media/aeo/logos/reddit.png" alt=""></span><span class="mono">reddit.com</span></span><span class="tiles"><span class="tl"><img src="media/aeo/logos/chatgpt.svg" alt=""></span><span class="tl"><img src="media/aeo/logos/claude.svg" alt=""></span><span class="tl"><img src="media/aeo/logos/perplexity-icon.svg" alt=""></span><span class="tl"><img src="media/aeo/logos/gemini.svg" alt=""></span></span></div><div class="cc pn sx" id="c01" data-at="320"><span class="cs"><span class="tl"><img src="media/aeo/logos/youtube.png" alt=""></span><span class="mono">youtube.com</span></span><span class="tiles"><span class="tl"><img src="media/aeo/logos/chatgpt.svg" alt=""></span><span class="tl"><img src="media/aeo/logos/claude.svg" alt=""></span><span class="tl"><img src="media/aeo/logos/perplexity-icon.svg" alt=""></span><span class="tl"><img src="media/aeo/logos/gemini.svg" alt=""></span></span></div><div class="cc pn sx" id="c02" data-at="440"><span class="cs"><span class="tl"><img src="media/aeo/logos/linkedin.png" alt=""></span><span class="mono">linkedin.com</span></span><span class="tiles"><span class="tl"><img src="media/aeo/logos/chatgpt.svg" alt=""></span><span class="tl"><img src="media/aeo/logos/claude.svg" alt=""></span><span class="tl"><img src="media/aeo/logos/perplexity-icon.svg" alt=""></span></span></div></div><div class="ch-lab sx" data-at="850">Posts</div><div class="ch-row "><div class="cc pn sx" id="c10" data-link="c00" data-at="1000"><span class="mono mut">thread</span><b>What CRM does your small team use?</b></div><div class="cc pn sx" id="c11" data-link="c01" data-at="1120"><span class="mono mut">video</span><b>Best CRMs for small business, tested</b></div><div class="cc pn sx" id="c12" data-link="c02" data-at="1240"><span class="mono mut">post</span><b>Our agency's CRM stack</b></div></div><div class="tps sx" data-at="1750" data-found="2700"><span class="tm"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#fff"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#101010"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#101010"/></svg></span><span class="px">treg</span> people search<span class="spin w"></span><svg class="ck" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6 12-12-1.4-1.4z"/></svg></div><div class="ch-lab sx" data-at="1750">People behind them</div><div class="ch-row "><div class="cc pn sx person" id="c20" data-link="c10" data-at="1900" data-found="2700"><span class="look mono"><span class="spin"></span>people search</span><span class="who"><span class="av" style="background:#c7dca0">DO</span><span><b>Dan Okafor</b><span class="mono mut">u/opsguy_dan</span></span></span></div><div class="cc pn sx person" id="c21" data-link="c11" data-at="2020" data-found="2880"><span class="look mono"><span class="spin"></span>people search</span><span class="who"><span class="av" style="background:#f2b8c6">MC</span><span><b>Maya Chen</b><span class="mono mut">@mayareviews</span></span></span></div><div class="cc pn sx person" id="c22" data-link="c12" data-at="2140" data-found="3060"><span class="look mono"><span class="spin"></span>people search</span><span class="who"><span class="av" style="background:#b9cdea">PN</span><span><b>Priya Nair</b><span class="mono mut">RevOps lead</span></span></span></div></div><div class="ch-lab sx" data-at="3150">Contact</div><div class="ch-row "><div class="cc pn sx ct" id="c30" data-link="c20" data-at="3300"><svg class="ml" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm8 7.2L19 7.5V7H5v.5z"/></svg><span class="mono">dan@opsguy.co</span><svg class="ck" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6 12-12-1.4-1.4z"/></svg></div><div class="cc pn sx ct" id="c31" data-link="c21" data-at="3420"><svg class="ml" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm8 7.2L19 7.5V7H5v.5z"/></svg><span class="mono">hi@mayachen.tv</span><svg class="ck" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6 12-12-1.4-1.4z"/></svg></div><div class="cc pn sx ct" id="c32" data-link="c22" data-at="3540"><svg class="ml" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm8 7.2L19 7.5V7H5v.5z"/></svg><span class="mono">LinkedIn DM</span><svg class="ck" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6 12-12-1.4-1.4z"/></svg></div></div></div></div>
+        <div class="stage field" data-scene="pitch"><div class="paint" aria-hidden="true"></div><span class="ill">illustrative</span><div class="pt-h sx" data-at="0">Drafting pitches <span class="mono mut">you review and send</span></div><div class="cmp pn sx" data-at="500"><b>Draft pitch</b><div class="kv mono"><span class="mut">to</span>Dan Okafor · dan@opsguy.co</div><div class="kv mono"><span class="mut">re</span>Your CRM thread on r/smallbusiness</div><p class="body" data-type="Hi Dan, loved your thread on CRMs for small teams. We built Your brand for exactly that. Want a free seat to try it?" data-at="800" data-speed="15"></p><span class="sendb" data-at="2850"><span class="lbl">Save draft</span><svg class="ck" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6 12-12-1.4-1.4z"/></svg></span></div><div class="au pn sx" data-at="150"><span class="tl"><img src="media/aeo/logos/reddit.png" alt=""></span><span class="av" style="background:#c7dca0">DO</span><span class="who"><b>Dan Okafor</b><span class="mono mut">dan@opsguy.co</span></span><span class="state mono mut" data-sent="3000">drafting</span></div><div class="au pn sx" data-at="280"><span class="tl"><img src="media/aeo/logos/youtube.png" alt=""></span><span class="av" style="background:#f2b8c6">MC</span><span class="who"><b>Maya Chen</b><span class="mono mut">hi@mayachen.tv</span></span><span class="state mono mut" data-sent="3260">queued</span></div><div class="au pn sx" data-at="410"><span class="tl"><img src="media/aeo/logos/linkedin.png" alt=""></span><span class="av" style="background:#b9cdea">PN</span><span class="who"><b>Priya Nair</b><span class="mono mut">LinkedIn DM</span></span><span class="state mono mut" data-sent="3520">queued</span></div></div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="section rv" id="prompt">
+  <h2>One prompt runs all four steps.<br><span class="hl2">You decide at every gate.</span></h2>
+  <p class="lede">Each step above shows its part. The copy is the whole prompt: setup, the four steps, the report, and step 5 for when you come back in 3 to 4 weeks to measure the change.</p>
+  <div class="prompt-d meta-d" id="metaPrompt">
+  <div class="oneline">
+    <span class="h">the meta prompt</span>
+    <button type="button" class="tog" id="togPrompt" aria-expanded="false" aria-controls="promptText">Show prompt ▾</button>
+    <button type="button" id="copyPrompt">Copy prompt</button>
+  </div>
+  <div class="code" id="promptText" hidden>GOAL: 4-step audit of whether AI recommends the user's product. User decides at each ◆ gate. Step 5 (3-4 weeks later) measures movement.
+
+═══ SETUP ═══
+- `audit.md` with baseline appendix exists → ask: Step 5 | new audit | stop.
+- INPUT, one form (interactive card if available): product name | what it does (1 line) | product type noun | 2-3 seed keywords | brand | domain? | product URL? | price | where sold | features | outreach contact | country (US) | language (en).
+- Seeds must match the product type. Mismatch → flag and ask before spending.
+- PROGRESS at each step and gate: `[■■□□] Step 2/4 · &lt;name&gt; · task 1/2 · spent $0.06 / $0.30` + now/next.
+- GATES ◆: chart + 2-line reasoning → options, recommended first, always "stop". Before paid calls: About card (what · why · result · tools · calls · est. cost) → "Run Step X (~$cost)". Stop → build the report from what's done.
+
+RULES
+- treg: describe each endpoint first; quote its price. `dataforseo.x.*` takes an array body.
+- Python does all math. Every number the user sees comes from code output, re-checked before sending. CSV → `audit-step{1-4}.csv`.
+- minmax over the current set (0 if flat); cap outliers at p95 first.
+- URLs: strip `#…`/`?…`, dedupe, drop google.com/search links.
+- Brands: dictionary match, first-appearance order, links stripped. After each batch, add unmatched bold/linked brand names and re-run.
+- Fail → 1 fallback retry → else "unavailable", excluded from N.
+- Never invent specs, reviews or anecdotes. Output = drafts; the user publishes.
+- Labels: header "Step N of 4 · &lt;name&gt; · Check Gx" → finding as a plain-sentence title → "What these mean" legend (every column/axis/color) → "How X works" (formula in words + 1 real worked row).
+- Plain words for a small-business owner: DA → "site strength (0-100)", CPC → "what advertisers pay per click", intent → "ready to buy?".
+
+═══ STEP 1 · What customers ask ═══ ~$0.04
+1. `seranking.google.keywords.ideas` per seed (GET, source=cc, limit=40, sort=volume) → vol, CPC, difficulty. Merge, dedupe, drop off-topic rows (list them).
+2. `dataforseo.x.dataforseo-labs-google-search-intent-live`, 1 call. I = transactional 1 | commercial 0.8 | informational 0.2 | navigational 0.
+   BuyerScore = I(0.50 C + 0.35 V + 0.15 E); C = minmax(CPC), V = minmax(log10(1+vol)), E = 1 − diff/100. Keep I ≥ 0.8.
+3. Merge look-alikes (reordered/plural) into groups, score = max. Keep the top 8.
+◆ G1: table keyword | intent | CPC→C→×.50 | vol→V→×.35 | diff→E→×.15 | score, + 5 best cut ✗ and why big ones were cut. keep | edit | weights | stop
+4. `treg.google.serp.organic` per group → People Also Ask. Keep choose/compare/buy questions, merge same-meaning ones.
+   QuestionScore = max BuyerScore × (1 + 0.1(F−1)), F = groups sharing it. ≤10 questions. Rewrite as [situation] + [need] + "which should I buy?". No PAA → from keyword, tagged.
+◆ G2: rank | question | source PAA | BuyerScore | F | score. approve | edit | swap | stop
+
+═══ STEP 2 · How AI recommends ═══ ~$0.015/question
+Engines (parallel, 300s timeout): ChatGPT `cloro.ai-search.chatgpt.scrape` · Perplexity `treg.ai-search.perplexity.answer` · Gemini `cloro.ai-search.gemini.scrape` · AI Mode `cloro.google.serp.ai_mode` (gl/hl). Fallback: matching `dataforseo.x.ai-optimization-*` / `serp-google-ai-mode-live-advanced`.
+Per answer: m named, p position (m/p = 0 if m = 0), n brands, c own domain quoted.
+- VS = mean 100(0.5m + 0.3 m/p + 0.2c), also per engine · MentionRate = Σm/N · Share = Σm/Σn · CompScore_b = 100 Σ(m/p)/N
+- Sites/pages: Cite = Σ 1/source-position · QuotedIn = % of answers · Vis = 100 Cite/N · Infl = Vis/max · DomainScore = Cite(1 + 0.1(Q−1))(1 + 0.1(E−1)). Type each site.
+1. Q1 on all engines. ◆ G3: per engine: quoted sites → brands (behind-the-scenes searches only if returned). all | ChatGPT + Perplexity | edit | stop
+2. Full run. ◆ G4: tiles VS/MentionRate/Share/SiteVis_user · competitor bar · question × engine grid (✓/✗ + who is named 1st) · top-15 sites table · who wins, why. continue | re-run failed | stop
+
+═══ STEP 3 · Websites AI reads ═══ ~$0.09
+1. Candidates = normalized pages minus brand/retailer pages; flag pages about another product type.
+2. `treg.web.url.metrics` (~$0.007) on the 12 most-quoted → PA, DA. Unmeasured → same-site PA, tagged.
+◆ G5: scatter PA vs PageVis, color = type (top-left = easy wins) + table. continue | exclude types | stop
+3. `treg.web.extract` top 15 → brands listed, criteria, date, contact route, covers product type?
+   Opp = 0.40 Infl + 0.20 Gap + 0.15 (1 − PA/100) + 0.15 Access + 0.10 Fresh
+   Gap 1/0.5/0 (absent + rival / both absent / present) · Access 1 contact-affiliate / 0.5 author / 0 · Fresh 1 ≤12mo / 0.5 ≤24mo / 0
+◆ G6: stacked Opp bars, top 10, one line each incl. fit. approve | swap | weights | stop
+
+═══ STEP 4 · Get on the map ═══ ~$0.03
+0. ◆ G7: confirm facts (from URL via `treg.web.extract`, else the form) and check question fit. Most don't fit → recommend redoing Step 1 with matched seeds. correct | fix | redo | stop
+Search with 2-5 word keyword forms of the questions.
+- Review/blog: Impact = Opp. Pitch ≤120 words.
+- Reddit `scrapecreators.reddit.search.posts` (relevance, year, trim; link = `url`): Impact = 0.4 minmax(log10(1+ups+2·comments)) + 0.3 exp(−days/180) + 0.2 Rel + 0.1 Cited → top 10
+- YouTube `treg.youtube.search.videos`, title must contain the product noun, no competitor channels: Impact = 0.4 minmax(log10(1+views)) + 0.2 exp(−days/365) + 0.2 Rel + 0.2 Cited → top 5 channels
+- Own page: Impact = 1 − share of questions answered in the first 2 sentences (no page → 1).
+- Priority = Impact / Effort (1 reply · 2 pitch · 3 content). Thirds = High/Med/Low. Tag fit per item.
+◆ G8: grouped list; per item `#1 · [channel] target (link)` · `Impact 0.88 ▓▓▓▓▓▓▓▓▓░ · Effort 2 · Priority 0.44 · fit` · why · next step. all | High only | drop | stop
+5. Drafts: Reddit answers the question first, mentions the product only where it fits, and ends with a disclosure line. Plus pitches, YouTube outreach + 3 angles, and a page draft (direct answers, comparison table, specs, FAQ JSON-LD).
+
+═══ FINISH ═══
+- `audit-report.html`: one file, Chart.js (cdnjs), light/dark, tabs Summary · Steps 1-4 · Glossary, every external item linked. Summary: tiles, top 5 competitors/sites/targets/actions, spend vs budget.
+- `audit.md`: tables, drafts, baseline appendix (date, locale, brand, domain, facts, verbatim questions, endpoints + params, brand dictionary, raw answers). CSVs alongside.
+- Final message: 3 findings + next action + "Come back in 3-4 weeks and run this prompt again for Step 5."
+
+═══ STEP 5 · Did AI start recommending you? ═══ ~$0.15
+1. Load the baseline; change nothing (questions, engines, params, dictionary).
+2. Ask each action's status: done | partial | not done. ◆ G9: show days since baseline (&lt;21 → warn). run | wait | stop
+3. Noise = mean per engine of (max − min VS) over 3 runs of Q1. |Δ| ≤ Noise → "could be chance".
+4. Re-run everything, recompute Step 2 metrics, Δ for each. Gained/Lost = answers flipping named ↔ not named. NewCites = target pages newly quoted. Credit an action only if its target is newly quoted or linked.
+◆ G10: "AI now recommends you in X of Y answers (was A of B)" · before → now cards with a noise tag · per AI · per question · leaderboard · site movement · what worked · next 3 actions.
+Append to the report and audit.md as the new baseline.</div>
+  </div>
+</section>
+
+<section class="section rv" id="pricing">
+  <h2>No subscription. No contract.<br><span class="hl2">$0.31</span> an AEO workflow.</h2>
+  <p class="lede">Every call is metered at the provider's own rate from a prepaid balance, and the prompt quotes each step's cost before it spends.</p>
+  <div class="bill">
+    <div><span>Step 1 · What customers ask<small>keyword ideas, volume, search intent, Google results</small></span><span class="m">~$0.04</span></div>
+    <div><span>Step 2 · Who AI recommends<small>10 questions × ChatGPT, Gemini, AI Mode, Perplexity at ~$0.015 a question</small></span><span class="m">~$0.15</span></div>
+    <div><span>Step 3 · Websites AI reads<small>page and site strength, linking domains, 15 page reads</small></span><span class="m">~$0.09</span></div>
+    <div><span>Step 4 · Find the people behind the sites<small>Reddit and YouTube search, your own page</small></span><span class="m">~$0.03</span></div>
+    <div class="tot"><span>One full AEO workflow</span><span class="m">≈ $0.31</span></div>
+  </div>
+  <p class="fineprint">Estimates from the prompt's own cost card. The step 5 re-check, 3 to 4 weeks later, is about $0.15 more. New teams start with $1.00 free.</p>
+</section>
+
+<section class="section tools-sec rv" id="tools">
+  <h2>One token. {ENDPOINTS} data &amp; tools.</h2>
+  <p class="lede">AEO is one aisle. The same token reaches keyword data, the AI engines, backlinks, page reads and social search, and your own keys always win over treg's.</p>
+  <div class="catwrap">
+    <div class="pgrid">
+      <div class="pcard hl"><span class="ph"><img src="logos/cloro.svg" alt=""></span><span class="pt"><b>cloro</b><s><img src="media/aeo/logos/chatgpt.svg" alt="">ChatGPT answers</s></span></div>
+      <div class="pcard hl"><span class="ph"><img src="logos/cloro.svg" alt=""></span><span class="pt"><b>cloro</b><s><img src="media/aeo/logos/gemini.svg" alt="">Gemini answers</s></span></div>
+      <div class="pcard hl"><span class="ph"><img src="logos/cloro.svg" alt=""></span><span class="pt"><b>cloro</b><s><img src="media/aeo/logos/google.svg" alt="">Google AI Mode</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/perplexity.svg" alt=""></span><span class="pt"><b>Perplexity answers</b><s>with sources</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/seranking.svg" alt=""></span><span class="pt"><b>Keyword ideas</b><s>SE Ranking</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/dataforseo.svg" alt=""></span><span class="pt"><b>Search intent</b><s>DataForSEO</s></span></div>
+      <div class="pcard"><span class="ph"><img src="media/aeo/logos/google.svg" alt=""></span><span class="pt"><b>Google results</b><s>People also ask</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/seranking.svg" alt=""></span><span class="pt"><b>Page &amp; site strength</b><s>URL metrics</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/seranking.svg" alt=""></span><span class="pt"><b>Linking domains</b><s>SE Ranking</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/dataforseo.svg" alt=""></span><span class="pt"><b>Page extractor</b><s>text of any page</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/scrapecreators.svg" alt=""></span><span class="pt"><b>Reddit search</b><s>Scrape Creators</s></span></div>
+      <div class="pcard"><span class="ph"><img src="logos/youtube.svg" alt=""></span><span class="pt"><b>YouTube search</b><s>videos &amp; channels</s></span></div>
+    </div>
+    <div class="moreline" style="margin-top:16px">+ many more across {PROVIDERS} providers</div>
+    <div class="ctas" style="justify-content:center;margin-top:20px"><a class="pill dark" href="/catalog">Browse the catalog →</a></div>
+  </div>
+</section>
+
+<section class="rv final">
+  <div class="final-in">
+    <h2>Get AI to recommend you, from <span class="hero-agents"><img src="media/people-search/claude-code.png" alt="Claude Code"><img src="media/people-search/codex.png" alt="Codex"><img src="media/people-search/openclaw.png" alt="OpenClaw"><img src="media/people-search/hermes.png" alt="Hermes"></span></h2>
+    <div class="copybox">
+      <div class="h">paste this into your agent</div>
+      <div class="line"><span id="llmsUrl">{BASE}/llms.txt</span><button type="button" id="copyLlms">Copy</button></div>
+      <div class="then">then paste <a href="#prompt" style="color:#8FD4F2;text-decoration:none">the meta prompt</a> and answer its first question: your product.</div>
+    </div>
+    <div class="ctas">
+      <a class="pill light" href="/app?ref=aeo" id="ctaFinal">Set up treg</a>
+      <a class="pill" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a>
+    </div>
+  </div>
+</section>
+
+<footer class="bigfoot">
+  <div class="bigfoot-in">
+    <div class="bf-brand">
+      <span class="bfb"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+      <div class="note">100% open source</div>
+    </div>
+    <nav class="bf-cols" aria-label="Site">
+      <div class="bf-col"><div class="lab">Explore</div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/blog">Launches</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><a href="/agents/claude-code">Agents</a></div>
+      <div class="bf-col"><div class="lab">Build</div>
+        <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
+      <div class="bf-col"><div class="lab">Company</div>
+        <a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </nav>
+  </div>
+  <div class="bf-tag">© 2026 treg — OpenRouter for agent tools.</div>
+</footer>
+
+<div class="scrim" id="signin-scrim">
+  <div class="smodal" role="dialog" aria-label="Sign in">
+    <button class="cls" id="signinClose" aria-label="Close">✕</button>
+    <h3>Sign in to treg</h3>
+    <p>first sign-in creates your account</p>
+    <a class="pill dark" href="/auth/github" style="text-decoration:none">Continue with GitHub</a>
+    <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
+    <div class="div">or email a code</div>
+    <div id="em-step1">
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
+      <button class="pill" id="em-btn1">Email me a sign-in code</button>
+    </div>
+    <div id="em-step2" style="display:none">
+      <input id="em-code" inputmode="numeric" placeholder="6-digit code"/>
+      <button class="pill dark" id="em-btn2">Sign in</button>
+    </div>
+    <div class="err" id="em-err"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* hero intro: copy rises, the mist clears, the "you." dot pops; then the harness name rolls */
+  var heroEl = document.querySelector('.hero');
+  requestAnimationFrame(function () { requestAnimationFrame(function () { heroEl.classList.add('in'); }); });
+  var roll = $('roll'), names = ['Claude', 'ChatGPT', 'Codex', 'Cursor', 'Hermes', 'Gemini', 'Copilot'], ni = 0;
+  function fitRoll() { roll.style.width = roll.firstChild.offsetWidth + 'px'; }
+  fitRoll(); if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitRoll);
+  if (!reduced) setInterval(function () {
+    var old = roll.firstChild, nb = document.createElement('b');
+    ni = (ni + 1) % names.length; nb.textContent = names[ni]; nb.className = 'pre';
+    old.classList.add('out');
+    roll.appendChild(nb); roll.setAttribute('aria-label', names[ni]);
+    roll.style.width = nb.offsetWidth + 'px'; /* the read also commits .pre before it is lifted */
+    nb.className = '';
+    setTimeout(function () { if (old.parentNode) roll.removeChild(old); }, 500);
+  }, 1600);
+
+  /* the arrow: from the right of "find." curving out and back into the right of "you." */
+  function drawArrow() {
+    var box = $('arrow').getBoundingClientRect(), f = $('fFind').getBoundingClientRect(), y = $('fYou').getBoundingClientRect();
+    var x1 = f.right - box.left + 10, y1 = f.top + f.height / 2 - box.top;
+    var x2 = y.right - box.left + 10, y2 = y.top + y.height / 2 - box.top;
+    var bulge = Math.max(x1, x2) + 46;
+    var d = 'M' + x1 + ' ' + y1 + ' C' + bulge + ' ' + y1 + ' ' + bulge + ' ' + y2 + ' ' + x2 + ' ' + y2;
+    var p = $('arrowPath'); p.setAttribute('d', d);
+    p.style.setProperty('--len', Math.ceil(p.getTotalLength()) + 'px');
+    $('arrowHead').setAttribute('d', 'M' + (x2 + 9) + ' ' + (y2 - 7) + ' L' + x2 + ' ' + y2 + ' L' + (x2 + 9) + ' ' + (y2 + 7));
+  }
+  drawArrow(); addEventListener('resize', drawArrow);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawArrow);
+
+  /* layout offset of el inside root (ignores transforms, so slide-ins never skew a measurement) */
+  function sceneOffset(el, root) {
+    var x = 0, y = 0;
+    for (var n = el; n && n !== root; n = n.offsetParent) { x += n.offsetLeft; y += n.offsetTop; }
+    return { x: x, y: y, w: el.offsetWidth, h: el.offsetHeight };
+  }
+  /* callouts: one curve from each bubble's top to its chip's bottom, bowed outward, head along the curve.
+     Positions come from offsets (layout, not transforms), so the slide-in animations can't skew them. */
+  function drawCallouts() {
+    var root = $('ask').querySelector('.ask-in');
+    [['bubTop', 'chipTop', 'arTop', -1], ['bubYou', 'chipYou', 'arYou', 1]].forEach(function (c) {
+      var b = sceneOffset($(c[0]), root), k = sceneOffset($(c[1]), root);
+      var x1 = b.x + b.w / 2, y1 = b.y - 8, x2 = k.x + k.w / 2, y2 = k.y + k.h + 8;
+      var cx = (x1 + x2) / 2 + c[3] * 46, cy = (y1 + y2) / 2;
+      var p = $(c[2]);
+      p.setAttribute('d', 'M' + x1 + ' ' + y1 + ' Q' + cx + ' ' + cy + ' ' + x2 + ' ' + y2);
+      p.style.setProperty('--len', Math.ceil(p.getTotalLength()) + 'px');
+      var a = Math.atan2(y2 - cy, x2 - cx), L = 15, s = 0.6;
+      $(c[2] + 'Head').setAttribute('d', 'M' + (x2 - L * Math.cos(a - s)) + ' ' + (y2 - L * Math.sin(a - s)) + ' L' + x2 + ' ' + y2 + ' L' + (x2 - L * Math.cos(a + s)) + ' ' + (y2 - L * Math.sin(a + s)));
+    });
+  }
+  drawCallouts(); addEventListener('resize', drawCallouts);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawCallouts);
+
+  /* step scenes (the launch film's step animations): each plays when it scrolls into view and replays
+     after it has left the screen. Timings are the film's frames at 30 fps, in ms. */
+  var BRANDS = ['Northdesk', 'Pipewell', 'Clientry'];
+  function boldBrands(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(new RegExp('(' + BRANDS.join('|') + ')', 'g'), '<b>$1</b>');
+  }
+  function playScene(st) {
+    (st._timers || []).forEach(clearTimeout);
+    (st._rafs || []).forEach(cancelAnimationFrame);
+    var timers = st._timers = [], rafs = st._rafs = [];
+    function at(ms, fn) { timers.push(setTimeout(fn, reduced ? 0 : ms)); }
+    var q = function (s) { return Array.prototype.slice.call(st.querySelectorAll(s)); };
+    var ck = '<svg class="ck" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6 12-12-1.4-1.4z"/></svg>';
+    /* reset */
+    q('.sx').forEach(function (e) { e.classList.remove('on'); });
+    q('[data-type]').forEach(function (e) { e.textContent = ''; e.classList.remove('typing'); });
+    q('[data-stream]').forEach(function (e) { e.innerHTML = ''; });
+    q('.stat').forEach(function (e) { e.innerHTML = ''; });
+    q('.bar i').forEach(function (e) { e.style.width = '0'; });
+    q('.found').forEach(function (e) { e.classList.remove('found'); });
+    q('.send, .sendb').forEach(function (e) { e.classList.remove('on', 'press', 'sent'); });
+    q('.sendb .lbl').forEach(function (e) { e.textContent = 'Save draft'; });
+    q('[data-sent]').forEach(function (e, k) { e.className = 'state mono mut'; e.textContent = k ? 'queued' : 'drafting'; });
+    var svg = st.querySelector('.links'); if (svg) svg.innerHTML = '';
+    var cam = st.querySelector('.cam'); if (cam) cam.style.transform = '';
+    /* rise in */
+    q('.sx').forEach(function (e) { at(+e.dataset.at, function () { e.classList.add('on'); }); });
+    /* typing */
+    q('[data-type]').forEach(function (e) {
+      var s = e.dataset.type, step = reduced ? 0 : +(e.dataset.speed || 15);
+      at(+e.dataset.at, function () {
+        if (!step) { e.textContent = s; return; }
+        var i = 0; e.classList.add('typing');
+        var iv = setInterval(function () { e.textContent = s.slice(0, ++i); if (i >= s.length) { clearInterval(iv); e.classList.remove('typing'); } }, step);
+        timers.push(iv);
+      });
+    });
+    /* four answers: send pulse, each answer streams with a spinner, then a check */
+    q('.send').forEach(function (e) { at(+e.dataset.at, function () { e.classList.add('on'); at(150, function () { e.classList.remove('on'); }); }); });
+    q('[data-stream]').forEach(function (e) {
+      var s = e.dataset.stream, stat = e.parentNode.querySelector('.stat');
+      at(+e.dataset.at - 150, function () { stat.innerHTML = '<span class="spin"></span>'; });
+      at(+e.dataset.at, function () {
+        if (reduced) { e.innerHTML = boldBrands(s); stat.innerHTML = ck; return; }
+        var i = 0;
+        var iv = setInterval(function () { i += 2; e.innerHTML = boldBrands(s.slice(0, i)); if (i >= s.length) { clearInterval(iv); stat.innerHTML = ck; } }, 13);
+        timers.push(iv);
+      });
+    });
+    /* bars fill after their row lands */
+    q('.bar i').forEach(function (b) { at(+b.closest('.sx').dataset.at + 250, function () { b.style.width = b.dataset.w + '%'; }); });
+    /* connectors: drawn from the parent card to the child as the child arrives, a white dot riding the tip */
+    if (svg) {
+      var box = svg.parentNode, NS = 'http://www.w3.org/2000/svg';
+      q('[data-link]').forEach(function (child) {
+        var parent = st.querySelector('#' + child.dataset.link);
+        var a = sceneOffset(parent, box), b = sceneOffset(child, box), d;
+        if (st.dataset.scene === 'chain') {
+          var x1 = a.x + a.w / 2, y1 = a.y + a.h + 2, x2 = b.x + b.w / 2, y2 = b.y - 2, m = (y1 + y2) / 2;
+          d = 'M' + x1 + ' ' + y1 + ' C' + x1 + ' ' + m + ' ' + x2 + ' ' + m + ' ' + x2 + ' ' + y2;
+        } else {
+          var sx = a.x + 14, sy = a.y + a.h, ex = b.x, ey = b.y + b.h / 2;
+          d = 'M' + sx + ' ' + sy + ' V' + (ey - 10) + ' Q' + sx + ' ' + ey + ' ' + (sx + 10) + ' ' + ey + ' H' + ex;
+        }
+        var p = document.createElementNS(NS, 'path'); p.setAttribute('d', d); svg.appendChild(p);
+        var len = p.getTotalLength(); p.style.strokeDasharray = len; p.style.strokeDashoffset = len;
+        var dot = document.createElementNS(NS, 'circle'); dot.setAttribute('r', 4.5); dot.style.opacity = 0; svg.appendChild(dot);
+        at(+child.dataset.at - 300, function () {
+          if (reduced) { p.style.strokeDashoffset = 0; return; }
+          var t0 = performance.now(), D = 340;
+          (function tick(now) {
+            var k = Math.min(1, (now - t0) / D), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2, pt = p.getPointAtLength(len * e);
+            p.style.strokeDashoffset = len * (1 - e);
+            dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y); dot.style.opacity = k < 1 ? 1 : 0;
+            if (k < 1) rafs.push(requestAnimationFrame(tick));
+          })(t0);
+        });
+      });
+    }
+    /* chain: people search resolves, the camera travels down row by row */
+    q('[data-found]').forEach(function (e) { at(+e.dataset.found, function () { e.classList.add('found'); }); });
+    q('[data-cut]').forEach(function (e) { e.classList.remove('cut'); at(+e.dataset.cut, function () { e.classList.add('cut'); }); });
+    if (cam) {
+      var rows = q('.ch-lab'), maxY = Math.max(0, cam.offsetHeight - st.clientHeight);
+      [[0, 0], [1700, rows[1]], [2500, rows[2]], [3200, rows[3]]].forEach(function (c) {
+        at(c[0], function () { var y = c[1] ? Math.min(maxY, c[1].offsetTop - 34) : 0; cam.style.transform = 'translateY(' + (-y) + 'px)'; });
+      });
+    }
+    /* pitch: the draft is saved, then each author's draft is ready; the user sends them */
+    q('.sendb').forEach(function (e) {
+      at(+e.dataset.at, function () { e.classList.add('press'); });
+      at(+e.dataset.at + 120, function () { e.classList.remove('press'); e.classList.add('sent'); e.querySelector('.lbl').textContent = 'Draft saved'; });
+    });
+    q('[data-sent]').forEach(function (e) { at(+e.dataset.sent, function () { e.className = 'state sent'; e.innerHTML = 'draft ready ' + ck; }); });
+  }
+  var stages = Array.prototype.slice.call(document.querySelectorAll('.stage[data-scene]'));
+  if ('IntersectionObserver' in window) {
+    var stIO = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        var st = e.target;
+        if (e.intersectionRatio >= .35 && !st._shown) { st._shown = true; playScene(st); }
+        else if (!e.isIntersecting && e.intersectionRatio === 0) st._shown = false;
+      });
+    }, { threshold: [0, .35] });
+    stages.forEach(function (s) { stIO.observe(s); });
+  } else stages.forEach(playScene);
+
+  /* the CRM question types itself, then the answer and its brands come back */
+  var q = "What's the best CRM for a small business?";
+  function runAsk() {
+    var el = $('qText'), i = 0;
+    if (reduced) { el.textContent = q; $('ans').classList.add('on'); $('callouts').classList.add('on'); return; }
+    var t = setInterval(function () {
+      el.textContent = q.slice(0, ++i);
+      if (i >= q.length) { clearInterval(t); setTimeout(function () { $('ans').classList.add('on'); setTimeout(function () { drawCallouts(); $('callouts').classList.add('on'); }, 700); }, 150); }
+    }, 14);
+  }
+  document.querySelectorAll('.brands span').forEach(function (s, i) { s.style.transitionDelay = (0.15 + i * 0.07) + 's'; });
+  if ('IntersectionObserver' in window) {
+    var ao = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { ao.disconnect(); runAsk(); } }, { threshold: .5 });
+    ao.observe($('ask'));
+  } else runAsk();
+
+  /* each step's session types in as it scrolls into view */
+  var started = {};
+  function startSession(card) {
+    if (!card || started[card.dataset.k]) return; started[card.dataset.k] = 1;
+    var lines = Array.prototype.slice.call(card.querySelectorAll('.ln')), stt = card.querySelector('.stt');
+    if (reduced) { card.classList.add('done'); stt.textContent = 'done'; return; }
+    card.classList.add('run');
+    lines.forEach(function (ln, i) {
+      setTimeout(function () {
+        lines.forEach(function (o) { o.classList.remove('cur'); });
+        ln.classList.add('on'); if (i < lines.length - 1) ln.classList.add('cur');
+        if (i === lines.length - 1) { card.classList.add('done'); stt.textContent = 'done'; }
+      }, 350 + i * 650);
+    });
+  }
+  document.querySelectorAll('.sess').forEach(function (c, i) { c.dataset.k = i; });
+  if ('IntersectionObserver' in window) {
+    var sio = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { sio.unobserve(e.target); startSession(e.target); } }); }, { threshold: .5 });
+    document.querySelectorAll('.sess').forEach(function (el) { sio.observe(el); });
+  } else { document.querySelectorAll('.sess').forEach(startSession); }
+
+  /* reveal on scroll */
+  if ('IntersectionObserver' in window && !reduced) {
+    var ro = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); ro.unobserve(e.target); } }); }, { rootMargin: '0px 0px -10% 0px' });
+    document.querySelectorAll('.rv').forEach(function (el) { ro.observe(el); });
+  } else { document.querySelectorAll('.rv').forEach(function (el) { el.classList.add('in'); }); }
+
+  var nav = $('nav');
+  addEventListener('scroll', function () { nav.classList.toggle('scrolled', scrollY > 8); }, { passive: true });
+
+  /* copy buttons: llms.txt and the meta prompt */
+  function copy(btn, txt, label) {
+    function done() { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = label; }, 1600); }
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(done, function () {
+      var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
+      ta.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta);
+      if (ok) done(); else { btn.textContent = 'Copy failed'; setTimeout(function () { btn.textContent = label; }, 1600); }
+    });
+  }
+  $('copyLlms').addEventListener('click', function () { copy(this, $('llmsUrl').textContent, 'Copy'); });
+  $('copyPrompt').addEventListener('click', function () { copy(this, $('promptText').textContent, 'Copy prompt'); });
+  $('togPrompt').addEventListener('click', function () {
+    var open = $('promptText').hidden;
+    $('promptText').hidden = !open; $('metaPrompt').classList.toggle('open', open);
+    this.setAttribute('aria-expanded', open); this.textContent = open ? 'Hide prompt ▴' : 'Show prompt ▾';
+  });
+  document.querySelectorAll('.copyStep').forEach(function (b) {
+    b.addEventListener('click', function () { copy(b, b.closest('.step-p').querySelector('.code').textContent, 'Copy'); });
+  });
+
+  /* Setup CTAs: signed in → the app; signed out → the sign-in modal */
+  var APP = '/app?ref=aeo'; /* the CTAs' href; boot.js keeps the ref through sign-in */
+  var scrim = $('signin-scrim');
+  function openSignin() { scrim.classList.add('open'); $('em-input').focus(); }
+  function closeSignin() { scrim.classList.remove('open'); }
+  $('signinClose').addEventListener('click', closeSignin);
+  scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSignin(); });
+  addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSignin(); });
+  ['ctaNav', 'ctaHero', 'ctaFinal'].forEach(function (id) {
+    var el = $(id);
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+      e.preventDefault();
+      fetch('/auth/me', { credentials: 'same-origin' }).then(function (r) {
+        if (r.ok) location.href = APP; else openSignin();
+      }).catch(openSignin);
+    });
+  });
+  $('em-btn1').addEventListener('click', emailStart);
+  $('em-input').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailStart(); });
+  $('em-btn2').addEventListener('click', emailVerify);
+  $('em-code').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailVerify(); });
+  function emailStart() {
+    var em = $('em-input').value.trim(), err = $('em-err');
+    if (!em) { err.textContent = 'Enter your email address.'; return; }
+    if ($('em-btn1').disabled) return; $('em-btn1').disabled = true; $('em-btn1').textContent = 'Sending…'; err.textContent = '';
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.detail || 'could not send the code'); return d; }); })
+      .then(function (d) {
+        $('em-step1').style.display = 'none'; $('em-step2').style.display = 'block';
+        if (d.dev_code) { $('em-code').value = d.dev_code; err.style.color = 'var(--green)'; err.textContent = 'dev mode — your code: ' + d.dev_code; }
+        else { err.style.color = ''; }
+        $('em-code').focus();
+      })
+      .catch(function (e2) { err.textContent = e2.message; $('em-btn1').disabled = false; $('em-btn1').textContent = 'Email me a sign-in code'; });
+  }
+  function emailVerify() {
+    var em = $('em-input').value.trim(), code = $('em-code').value.trim(), err = $('em-err');
+    if (!code || $('em-btn2').disabled) return;
+    $('em-btn2').disabled = true; $('em-btn2').textContent = 'Verifying…'; err.textContent = '';
+    fetch('/auth/email/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, code: code }) })
+      .then(function (r) { if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.detail || "that code didn't work"); }); location.href = APP; })
+      .catch(function (e2) { err.textContent = e2.message; $('em-btn2').disabled = false; $('em-btn2').textContent = 'Sign in'; });
+  }
+})();
+</script>
+<script src="/sitetrack.js"></script>
+<script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
+</body>
+</html>
