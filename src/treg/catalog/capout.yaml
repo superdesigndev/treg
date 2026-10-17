@@ -1,0 +1,154 @@
+# CapOut keys and every resource returned here are scoped to one organization. The catalog is
+# therefore BYOK-only: a shared treg key could not safely expose one organization's estimates,
+# documents, Xactimate addresses, claim balance, or realtime subscriptions to another team.
+provider: capout
+source:
+  docs: https://api.capout.ai/docs
+  openapi: https://api.capout.ai/openapi.json
+  curated: '2026-10-17'
+pricing_url: https://app.capout.ai/plans?iframe=true
+cache: forbidden
+
+proposed_capabilities:
+  capout.estimates.convert: "Convert an insurance estimate PDF to ESX"
+  capout.uploads.stage: "Create a staged PDF upload URL"
+  capout.documents.list: "List your organization's converted documents"
+  capout.xactimate-addresses.list: "List your organization's saved Xactimate addresses"
+  capout.realtime.token.create: "Create a short-lived token for conversion status updates"
+
+endpoints:
+  - id: capout.estimates.convert
+    added: '2026-10-17'
+    kind: action
+    capability: capout.estimates.convert
+    platform: capout
+    domain: estimates
+    scope: own_account
+    method: POST
+    path: /upload
+    name: "Convert an estimate PDF to ESX"
+    summary: "Upload a PDF document for processing. Exactly one of file_base64, url, or s3_path must be provided."
+    input:
+      bodyType: json
+      body:
+        file_base64: {type: string, required: false, note: "Base64-encoded PDF file. Supply exactly one of file_base64, url, or s3_path."}
+        url: {type: string, required: false, note: "Downloadable HTTPS URL to a PDF that the server can fetch immediately. Supply exactly one of file_base64, url, or s3_path."}
+        s3_path: {type: string, required: false, note: "Existing protected S3 path previously created by POST /upload-url. Supply exactly one of file_base64, url, or s3_path."}
+        file_name: {type: string, required: true, example: "estimate.pdf", note: "Original filename, including the .pdf extension."}
+        xn_address: {type: string, required: false, note: "Deprecated optional XactNet recipient address. Direct ESX generation does not send files through XactNet."}
+        profile_code: {type: string, required: false, enum: [5L, 8D], note: "Deprecated. Both Carrier (5L) and Contractor (8D) files are generated; select a profile when downloading."}
+      note: "The response returns document_id plus stable status and ESX download paths. Poll capout.documents.status until terminal is true. The download paths authorize with the same CapOut key, then return a 307 to a signed object URL; treg's proxy deliberately does not follow upstream redirects."
+    cost:
+      type: per_success
+      value: null
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://app.capout.ai/plans?iframe=true
+      checked: '2026-10-17'
+      confidence: unknown
+      note: "One successful conversion consumes one claim. The effective USD price depends on the connected organization's plan: Pay As You Go lists $35 per claim, while Pro lists $349/month including 15 claims ($23.27 each when fully used), so no single per-call USD amount is honest. API test keys create real ESX output without debiting a claim."
+    untestable: "A useful test creates a real ESX conversion and requires a synthetic or vendor-owned estimate PDF; no vetted public estimate fixture is available."
+    docs_url: https://api.capout.ai/docs#/Upload/upload_document_upload_post
+
+  - id: capout.uploads.stage
+    added: '2026-10-17'
+    kind: action
+    capability: capout.uploads.stage
+    platform: capout
+    domain: estimates
+    scope: own_account
+    method: POST
+    path: /upload-url
+    name: "Create a staged PDF upload URL by filename"
+    summary: "Create a short staged PUT URL for MCP/local clients."
+    input:
+      bodyType: json
+      body:
+        file_name: {type: string, required: true, example: "estimate.pdf", note: "Original PDF filename."}
+        file_size_bytes: {type: integer, required: false, note: "Optional PDF size in bytes for early size validation."}
+      note: "PUT the PDF bytes to friendly_upload_url using the returned headers, then pass the returned s3_path to capout.estimates.convert. The friendly PUT is intentionally not a separate catalog tool because its slug and authorization are minted by this call."
+    test_request:
+      body: {file_name: "treg-capout-verification.pdf", file_size_bytes: 1024}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://api.capout.ai/docs", checked: '2026-10-17', confidence: documented, note: "Creating a staged upload URL consumes no claim."}
+    docs_url: https://api.capout.ai/docs#/Staged%20Uploads/create_upload_url_upload_url_post
+
+  - id: capout.documents.status
+    added: '2026-10-17'
+    kind: utility
+    capability: account.jobs.get
+    platform: account
+    domain: documents
+    scope: own_account
+    method: GET
+    path: /status/{document_id}
+    name: "Check an estimate conversion by document ID"
+    summary: "Get the current processing status of a document (one-shot poll)."
+    input:
+      pathParams:
+        document_id: {type: string, required: true, note: "Document ID returned by capout.estimates.convert."}
+      note: "terminal true means processing has ended. A successful export includes stable Contractor and Carrier download paths; those paths return a 307 to freshly signed object URLs."
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://api.capout.ai/docs", checked: '2026-10-17', confidence: documented, note: "Polling a conversion consumes no claim."}
+    untestable: "Requires a document_id created by the connected organization; use the ID from a live capout.estimates.convert response rather than a fake fixture."
+    docs_url: https://api.capout.ai/docs#/Status/get_document_status_status__document_id__get
+
+  - id: capout.documents.list
+    added: '2026-10-17'
+    capability: capout.documents.list
+    platform: capout
+    domain: documents
+    scope: own_account
+    method: GET
+    path: /documents
+    name: "List your API-submitted estimate documents"
+    summary: "List all API-submitted documents for the authenticated organization."
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://api.capout.ai/docs", checked: '2026-10-17', confidence: documented, note: "Listing the organization's documents consumes no claim."}
+    docs_url: https://api.capout.ai/docs#/Status/list_documents_documents_get
+
+  - id: capout.account.claims
+    added: '2026-10-17'
+    kind: account
+    capability: account.usage
+    platform: account
+    domain: account
+    scope: own_account
+    method: GET
+    path: /claims
+    name: "Check your claim balance and expiration"
+    summary: "Check claim balance for the authenticated organization."
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://api.capout.ai/docs", checked: '2026-10-17', confidence: documented, note: "Reading the claim balance consumes no claim and is also the connection probe."}
+    docs_url: https://api.capout.ai/docs#/Claims/get_claims_claims_get
+
+  - id: capout.xactimate-addresses.list
+    added: '2026-10-17'
+    capability: capout.xactimate-addresses.list
+    platform: capout
+    domain: xactimate
+    scope: own_account
+    method: GET
+    path: /xactimate-addresses
+    name: "List your saved Xactimate addresses"
+    summary: "List saved Xactimate/XactNet addresses for the authenticated organization."
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://api.capout.ai/docs", checked: '2026-10-17', confidence: documented, note: "Listing saved Xactimate addresses consumes no claim."}
+    docs_url: https://api.capout.ai/docs#/Xactimate%20Addresses/get_xactimate_addresses_xactimate_addresses_get
+
+  - id: capout.realtime.token.create
+    added: '2026-10-17'
+    kind: utility
+    capability: capout.realtime.token.create
+    platform: capout
+    domain: realtime
+    scope: own_account
+    method: POST
+    path: /ws/token
+    name: "Create a token for realtime conversion status"
+    summary: "Mint a short-lived realtime token for WebSocket or SSE authentication."
+    input:
+      note: "Use the returned token with ws_url or sse_url and subscribe by document_id or recent count. WebSocket and SSE connections are not catalog tools because they use this short-lived query token and remain open for status events."
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://api.capout.ai/docs", checked: '2026-10-17', confidence: documented, note: "Minting a realtime token consumes no claim."}
+    docs_url: https://api.capout.ai/docs#/WebSocket/create_realtime_ws_token_ws_token_post

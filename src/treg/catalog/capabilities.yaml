@@ -144,6 +144,7 @@ platforms:
   substack: {label: "Substack", category: "Research & public data", summary: "Latest posts of a Substack publication."}
   wikipedia: {label: "Wikipedia", category: "Research & public data", summary: "Article summaries, sections and search from Wikipedia."}
   weather: {label: "Weather", category: "Research & public data", summary: "Daily weather forecasts for a place."}
+  capout: {label: "CapOut", category: "Document processing", summary: "Convert insurance estimate PDFs to ESX and manage your organization's conversions."}
   account: {label: "The provider account itself — usage, quota, balance (not a content platform)", category: "Other"}
 
   # --- Market data: prices & financial markets --------------------------------------------------

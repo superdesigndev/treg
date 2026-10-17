@@ -1297,6 +1297,31 @@ AKTA = OAuthProvider(
     probe_path="/v1/company/search/?query=canva.com",
 )
 
+CAPOUT = OAuthProvider(
+    service="capout",
+    display_name="CapOut",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your CapOut organization API key",
+    token_header="capout-api-key",
+    token_format="{secret}",
+    setup_url="https://app.capout.ai/settings/api-keys",
+    setup_action_label="Get your CapOut API key",
+    setup_steps=(
+        "Sign in to CapOut and open Settings → API Keys as an owner or billing admin.",
+        "Select an eligible paid plan, create an organization API key, and copy it.",
+    ),
+    setup_note="Live ESX generation uses one claim for both profiles. Test keys generate real files without consuming claims; the claim-balance check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Document processing",
+    summary="Convert insurance estimate PDFs to Contractor and Carrier Xactimate ESX files and track processing.",
+    base_url="https://api.capout.ai",
+    docs_url="https://docs.capout.ai",
+    probe_path="/claims",
+)
+
 HUNTER = OAuthProvider(
     service="hunter",
     display_name="Hunter",
@@ -3982,7 +4007,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, CAPOUT, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
@@ -4010,7 +4035,7 @@ DEFAULT_CAPABILITY = "read"
 
 # Shelf order in the marketplace. Anything carrying a category not named here sorts last, so a
 # provider added without one is visible rather than lost between the shelves.
-CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Enrichment",
+CATEGORY_ORDER = ("AI generation", "Document processing", "SEO", "Advertising", "Social media", "Enrichment",
                   "Market data", "Research & public data", "Community", "Other")
 
 

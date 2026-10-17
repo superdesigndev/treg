@@ -30,6 +30,34 @@ def test_key_providers_are_offerable_without_deployment_credentials():
         assert P.is_configured(p) is True, p.service
 
 
+async def test_capout_key_uses_claim_balance_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://api.capout.ai/claims"
+        assert request.headers["capout-api-key"] == "own-key"
+        assert "authorization" not in request.headers
+        return httpx.Response(200, json={"organization_id": "test-org", "available_claims": 1})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "capout", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+
+async def test_capout_rejects_an_unknown_organization_key(clients, monkeypatch):
+    async with AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(
+        401, json={"detail": "API key was not found in the AppSync OrganizationApiKey collection"},
+    ))) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "capout", "token": "bogus-key"},
+        )
+    assert response.status_code == 422, response.text
+    assert "rejected" in response.text
+
+
 async def test_spidercloud_key_uses_free_balance_probe(clients, monkeypatch):
     def probe(request):
         assert request.method == "GET"
