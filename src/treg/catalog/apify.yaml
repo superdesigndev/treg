@@ -151,6 +151,48 @@ endpoints:
     example_response: examples/apify.linkedin.search.jobs.json
     docs_url: https://apify.com/harvestapi/linkedin-job-search
 
+  - id: apify.companies.jobs.search
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /actors/pk07007~ats-jobs-api/run-sync-get-dataset-items
+    name: "Jobs from 30,000+ company career sites, by filter or company"
+    summary: "Search ~1 Million live jobs read daily from company career sites and ATS job boards (Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Workable, Keka, greytHR and more, plus Amazon, Accenture, Infosys, Wipro) — filter by category and subcategory, experience level, country/state/city, remote, company and posting date; every row has the direct apply URL on the employer's own site"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "row cap; the actor honours it (it sets the run's paid-items limit) as well as the body maxItems, whichever is lower", example: 25}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars; the actor also stops fetching once it is reached. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.1}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90; a run usually finishes in 3-10 s because it reads a ready index, it does not scrape live", example: 90}
+      body:
+        keywords: {type: string, required: false, note: "comma-separated terms matched against title + company, prefix match ('engineer' finds 'Engineering'); a job matches ANY term", example: "data engineer"}
+        excludeKeywords: {type: string, required: false, note: "comma-separated terms; a job whose title or company has ANY of them is dropped", example: "intern, contract"}
+        categories: {type: "array[string]", required: false, note: "kind of work, by label: Software Engineering | DevOps, Cloud & Infrastructure | Data & AI | Security | IT & Support | Product & Design | Sales & Business Development | Marketing & Content | Customer Support & Success | Finance & Accounting | HR & Recruiting | Legal & Compliance | Operations & Admin | Logistics & Transport | Engineering (non-software) | Healthcare & Life Sciences | Retail, Hospitality & Food | Education & Training | Executive Leadership", example: ["Data & AI"]}
+        subcategories: {type: "array[string]", required: false, note: "narrower role, by label, e.g. Backend, Mobile, Machine learning & AI, Nursing, Recruiting & talent acquisition (114 in all; the list is GET https://job-feed-api.pk2732004.workers.dev/api/public/v1/categories). A subcategory narrows its category; picking one alone is enough", example: ["Backend"]}
+        experienceLevels: {type: "array[string]", required: false, note: "Fresher | Junior | Mid-level | Senior | Staff+ | Not specified", example: ["Mid-level", "Senior"]}
+        countries: {type: "array[string]", required: false, note: "country names; case-insensitive, aliases work (usa, uk, uae)", example: ["India"]}
+        states: {type: "array[string]", required: false, note: "state or province names; narrow the countries", example: ["Karnataka"]}
+        city: {type: "array[string]", required: false, note: "city names; spelling variants match (Bangalore = Bengaluru, Gurgaon = Gurugram)", example: ["Bengaluru"]}
+        includeWorldwideRemote: {type: boolean, required: false, note: "also return remote jobs open to anyone anywhere (they carry no country, so a country filter alone leaves them out)", example: false}
+        includeUnspecifiedLocation: {type: boolean, required: false, note: "also return jobs whose posting gives no usable location", example: false}
+        workModes: {type: "array[string]", required: false, note: "remote | hybrid | onsite", example: ["remote"]}
+        company: {type: "array[string]", required: false, note: "company names, case-insensitive full name — the 'what is this company hiring for' query", example: ["Stripe"]}
+        ats: {type: "array[string]", required: false, note: "source: greenhouse, lever, ashby, workday, smartrecruiters, workable, recruitee, teamtailor, keka, greythr, zohorecruit, himalayas, amazon, accenture, infosys, wipro, hcltech, capgemini, … (25 in all)", example: ["greenhouse", "lever"]}
+        postedWithinDays: {type: integer, required: false, note: "only jobs posted in the last N days", example: 7}
+        postedAfter: {type: string, required: false, note: "YYYY-MM-DD, inclusive — the field for 'only what is new since my last call'", example: "2026-10-16"}
+        maxItems: {type: integer, required: false, note: "jobs to return; default 25. You pay per job, so cap it here or in the query string", example: 25}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. Newest first. Each row: id (stable md5 of applyUrl, a dedupe key), title, company, companyDomain, companyLogo, applyUrl (the job's page on the career site or ATS board it was read from — the employer's own posting for every ATS and company-site source; jobs with source himalayas link to that remote-jobs board's page), category, subcategory, experienceLevel, experienceMin, workMode, isRemote, remoteScope (worldwide | region | country | unknown, remote jobs only), location (as posted), locations [{country, state, city}], city, country, source, postedAt, lastSeenAt. Fields that are unknown are left out. No job descriptions or salaries. The index is rebuilt once a day from the career sites, so the data is up to a day old; the same opening listed on two sources can appear twice. A miss (no matching jobs) returns [] and bills only the start event"
+    body_allowlist: true
+    platform_request: {queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {company: ["Stripe"], maxItems: 1}
+    cost: {type: per_result, value: 0.0025, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/pk07007~ats-jobs-api', checked: '2026-10-17', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers), read live 2026-10-17 from the actor pricingInfos: one apify-default-dataset-item event per job returned at $0.0025 ($2.50 per 1,000 jobs), PLUS one apify-actor-start event at $0.00005 per GB of run memory (min 1 GB; the actor runs at 512 MB, so one event) — the call_fee. No run-compute charge to the caller. apifyMarginPercentage 0.20. A miss returns [] and bills the start event only. Vendor self-check 2026-10-17 on the actor owner''s key (which Apify does not bill for its own per-result events, so dollars must be confirmed on a non-owner key): the five test runs returned 1, 0, 10, 5 and 3 rows in 3.7-6.2 s with chargedEventCounts apify-actor-start 1 each; the query-string maxItems capped a body maxItems of 25 at 3. Charged per job produced — cap every call with maxTotalChargeUsd'}
+    added: '2026-10-17'
+    example_response: examples/apify.companies.jobs.search.json
+    docs_url: https://apify.com/pk07007/ats-jobs-api
+
   - id: apify.web.scrape.job.start
     kind: utility
     capability: web.scrape.job.start
