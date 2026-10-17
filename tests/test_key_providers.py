@@ -144,6 +144,27 @@ async def test_perplexity_key_uses_free_model_list_probe(clients, monkeypatch):
     assert response.status_code == 200, response.text
 
 
+async def test_mapleai_key_uses_free_prepaid_status_probe(clients, monkeypatch):
+    """Prepaid keys are scoped to one model; /prepaid/status is a free GET that reports token usage."""
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/prepaid/status"
+        assert request.headers["authorization"] == "Bearer oms_buy_testkey123"
+        return httpx.Response(200, json={
+            "allowedModels": ["gpt-4o-mini"],
+            "total": 1_000_000,
+            "used": 0,
+            "remaining": 1_000_000,
+        })
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "mapleai", "token": "oms_buy_testkey123"},
+        )
+    assert response.status_code == 200, response.text
+
+
 async def test_octen_key_uses_unbilled_validation_probe(clients, monkeypatch):
     def probe(request):
         assert request.method == "POST"
