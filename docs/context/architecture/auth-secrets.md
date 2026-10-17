@@ -40,6 +40,11 @@ related:
 
 # Auth & secrets
 
+`TREG_PLATFORM_KEY_PRERENDERBUDDY` is an optional Bearer binding for funded standalone
+prompt checks. Supply a key with only the `marketplace` scope. It must not carry private
+workspace evidence permissions. Provider registration and catalog activation remain
+separate; the existing own-key-first and deployment allow-list rules apply.
+
 Fetchin uses a pasted `X-API-Key` at `https://api.fetchin.io`. Its free internal
 `GET /api/v1/subscription` probe rejects invalid credentials and accepts a valid account even when
 its credit balance is zero. `TREG_PLATFORM_KEY_FETCHINIO` supplies the optional shared binding;
