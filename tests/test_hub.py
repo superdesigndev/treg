@@ -1717,3 +1717,152 @@ async def test_an_open_route_looks_up_a_key_once_a_minute(clients: AsyncClient, 
         hub_gate._readers.clear()
         monkeypatch.delenv("TREG_HUB_USERS", raising=False)
         get_settings.cache_clear()
+
+
+# Template replacements use original reference positions, preserving inserted literal text.
+
+
+@pytest.mark.parametrize(
+    "template,inputs,expected",
+    [
+        pytest.param(
+            "Names: $input.a then $input.b",
+            {"a": "$input.b", "b": "B"},
+            "Names: $input.b then B",
+            id="inserted-text-does-not-steal-later-reference",
+        ),
+        pytest.param(
+            "$input.a / $input.a",
+            {"a": "$input.a!", "b": "B"},
+            "$input.a! / $input.a!",
+            id="each-original-repeated-reference-is-substituted",
+        ),
+    ],
+)
+def test_template_uses_original_reference_positions(template, inputs, expected):
+    assert refs.resolve(template, {"input": inputs}) == expected
+
+
+def test_exact_references_keep_types_and_template_rendering_stays_compatible():
+    scope = {
+        "input": {
+            "a": "$input.b",
+            "b": "B",
+            "n": 3,
+            "ok": True,
+            "rows": [{"label": "$input.b"}],
+        }
+    }
+    assert refs.resolve("$input.a", scope) == "$input.b"
+    assert refs.resolve("$input.rows", scope) == [{"label": "$input.b"}]
+    assert (
+        refs.resolve("$input.n/$input.ok/$input.missing/$input.rows", scope)
+        == '3/true//[{"label":"$input.b"}]'
+    )
+    assert refs.resolve({"row": ["$input.n", "$input.missing"]}, scope) == {
+        "row": [3, None]
+    }
+    with pytest.raises(refs.RefError):
+        refs.resolve("text $unknown.x", scope)
+
+
+@pytest.mark.parametrize(
+    "template,inputs,expected",
+    [
+        pytest.param(
+            "Names: $input.a then $input.b",
+            {"a": "$input.b", "b": "B"},
+            "Names: $input.b then B",
+            id="literal-input-in-child-json",
+        ),
+        pytest.param(
+            "$input.a / $input.a",
+            {"a": "$input.a!", "b": "B"},
+            "$input.a! / $input.a!",
+            id="repeated-reference-in-child-json",
+        ),
+        pytest.param(
+            "Names: $input.a then $input.b",
+            {"a": "A", "b": "B"},
+            "Names: A then B",
+            id="ordinary-template-control",
+        ),
+    ],
+)
+async def test_public_call_preserves_literal_template_inputs(
+    clients: AsyncClient, hub_on, monkeypatch, template, inputs, expected
+):
+    sent = []
+
+    async def echo_child(
+        request,
+        upstream_url,
+        tool,
+        secrets,
+        client,
+        drop_params=None,
+        force_identity=False,
+    ):
+        assert request.method == "POST" and request.has_body
+        assert request.body_read is not None
+        payload = json.loads(await request.body_read())
+        sent.append(payload)
+        relay = _fake_relay(200, json.dumps({"data": payload}).encode())
+        return await relay(
+            request,
+            upstream_url,
+            tool,
+            secrets,
+            client,
+            drop_params=drop_params,
+            force_identity=force_identity,
+        )
+
+    monkeypatch.setattr(call_service, "relay", echo_child)
+    await _own_supabase(clients)
+    manifest = {
+        "name": "literal-inputs",
+        "summary": "Return the JSON sent to an own-tool step.",
+        "inputs": {
+            "a": {"type": "string", "example": "A"},
+            "b": {"type": "string", "example": "B"},
+        },
+        "uses": ["supabase"],
+        "steps": [
+            {
+                "name": "echo",
+                "call": "supabase/echo",
+                "method": "POST",
+                "input": {"q": template},
+            }
+        ],
+        "output": {"result": "$echo.data.q", "literal": "$input.a"},
+    }
+    publication = await clients.post(
+        "/hub/tools",
+        json={
+            "manifest": manifest,
+            "check": {"inputs": {"a": "A", "b": "B"}, "fields": ["result"]},
+            "readme": "Return the child request.",
+        },
+    )
+    assert publication.status_code == 201, publication.text
+    published = publication.json()
+    assert published["status"] == "live" and published["check"]["status"] == "passed"
+    assert len(sent) == 1
+    sent.clear()
+
+    response = await clients.post(f"/call/{published['tool_id']}", json=inputs)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["trace"][0]["outcome"] == "ok"
+    assert body["trace"][0]["status"] == 200
+    assert body["usage"]["steps"] == 1 and body["usage"]["cost_micro"] == 0
+    assert body["output"]["literal"] == inputs["a"]
+    assert sent == [{"q": expected}]
+    assert body["output"]["result"] == expected
+
+    saved = await clients.get(f"/hub/runs/{body['run_id']}")
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["output"] == body["output"]
+    assert saved.json()["inputs"] == inputs

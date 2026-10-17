@@ -130,8 +130,9 @@ publish, so a cycle or an unknown step is refused before anyone pays. `validate_
 `domain/hub/refs.py` is complete and deliberately small: `$input.<field>`, `$<step>.<path>`
 (any depth, `[0]` for one item), `$<step>[]` (every answer of a repeated step),
 `$<step>.length`, `$0.<path>` (the position alias), `$<as>.<field>` inside a repeat. A string
-that is exactly one reference resolves to the value; a template resolves to text. A missing
-field reads as `None`; an unknown root is refused at publish. No arithmetic, no condition, no
+that is exactly one reference resolves to the value; a template resolves to text. Only the
+references written in the template are substituted; reference-looking text inside a resolved
+value remains literal. A missing field reads as `None`; an unknown root is refused at publish. No arithmetic, no condition, no
 function: a recipe that needs those is a script. `domain/hub/graph.py` derives the edges from the
 references (never declared), refuses cycles and unknown steps, and keeps each step's `wave`
 (its depth) for the trace.
