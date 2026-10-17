@@ -146,6 +146,9 @@ platforms:
   weather: {label: "Weather", category: "Research & public data", summary: "Daily weather forecasts for a place."}
   account: {label: "The provider account itself — usage, quota, balance (not a content platform)", category: "Other"}
 
+  # --- Phone: calls placed for the user ---------------------------------------------------------
+  phone: {label: "Phone calls", category: "Communication", summary: "Have a caller phone a business for you (book, reschedule, cancel, ask) and get back the outcome and transcript."}
+
   # --- Market data: prices & financial markets --------------------------------------------------
   crypto: {label: "Crypto Market Data", category: "Market data", featured: 1, summary: "Live and historical prices, market caps, trends and exchanges across 17,000+ coins."}
   stocks: {label: "Stock Market Data", category: "Market data", featured: 2, summary: "End-of-day and intraday stock prices, tickers, splits and dividends across global exchanges."}
