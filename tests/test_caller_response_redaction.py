@@ -397,3 +397,56 @@ class TestEvidenceModuleDirectly:
         body, was_redacted = call_evidence._redact_caller_response(original, [])
         assert body == original
         assert not was_redacted
+
+
+class TestCfEdgeBlockSummarization:
+    """Cloudflare edge-block HTML pages (~290 KB) are summarized to short JSON."""
+
+    def test_cf_error_1000_html_is_summarized(self):
+        """A CF error 1000 HTML page is replaced with a short JSON summary."""
+        cf_html = (
+            b'<!DOCTYPE html><html><head><title>DNS error | Cloudflare</title></head>'
+            b'<body class="cf-error"><h1>Error 1000</h1>'
+            b'<p>DNS points to prohibited IP</p>'
+            b'<p>Ray ID: abc123-def456</p>'
+            + b' ' * 1000 +  # simulate the ~290KB of padding
+            b'</body></html>'
+        )
+        result = call_evidence.summarize_cf_edge_block(cf_html, 403)
+        assert result is not None
+        import json
+        doc = json.loads(result)
+        assert doc["error"] == "cloudflare_edge_block"
+        assert doc["cf_error_code"] == "1000"
+        assert doc["message"] == "DNS points to prohibited IP"
+        assert "abc123-def456" in doc.get("cf_ray_id", "")
+        assert len(result) < 500  # much smaller than 290KB
+
+    def test_cf_error_1020_json_is_summarized(self):
+        """A CF error 1020 JSON response is also summarized."""
+        cf_json = b'{"type":"error","error":1020,"message":"Access denied","cloudflare":true}'
+        result = call_evidence.summarize_cf_edge_block(cf_json, 403)
+        assert result is not None
+        import json
+        doc = json.loads(result)
+        assert doc["error"] == "cloudflare_edge_block"
+        assert doc["cf_error_code"] == "1020"
+        assert doc["message"] == "Access denied"
+
+    def test_large_non_cf_html_unchanged(self):
+        """Large HTML without CF markers is not summarized."""
+        large_html = b'<html><body>' + b'x' * 1000 + b'</body></html>'
+        result = call_evidence.summarize_cf_edge_block(large_html, 403)
+        assert result is None  # no CF markers
+
+    def test_short_html_unchanged(self):
+        """Short HTML (< 500 bytes) is not summarized even if it mentions cloudflare."""
+        short_html = b'<html><body>cloudflare error</body></html>'
+        result = call_evidence.summarize_cf_edge_block(short_html, 403)
+        assert result is None  # too short to be a real CF error page
+
+    def test_non_cf_json_unchanged(self):
+        """JSON without CF error codes or markers is not summarized."""
+        provider_json = b'{"error":"rate_limit_exceeded","retry_after":60}'
+        result = call_evidence.summarize_cf_edge_block(provider_json, 429)
+        assert result is None

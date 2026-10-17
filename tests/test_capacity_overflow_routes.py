@@ -365,6 +365,16 @@ def test_a_cdn_block_page_is_an_edge_block_not_an_account_signal():
                b'cloudflare-1xxx-errors/error-1010/","title":"Error 1010: Access denied","status":403}')
     sig = S.classify("anyone", 403, {"content-type": "application/problem+json"}, cf_json)
     assert sig.kind == "edge_block" and not S.is_exhausting(sig)
+    # CF error 1000 ("DNS points to prohibited IP"): occurs when the outbound request is proxied
+    # through a Cloudflare-fronted egress to another Cloudflare-protected site (incident 2026-10-13).
+    cf_1000 = b'{"type":"error","error":1000,"message":"DNS points to prohibited IP"}'
+    sig = S.classify("anyone", 403, {"content-type": "application/json"}, cf_1000)
+    assert sig.kind == "edge_block" and not S.is_exhausting(sig)
+    # Error 1000 can also appear in an HTML page from Cloudflare.
+    cf_1000_html = (b'<!DOCTYPE html><html><head><title>DNS error | Cloudflare</title></head>'
+                    b'<body><h1>Error 1000</h1><p>DNS points to prohibited IP</p></body></html>')
+    sig = S.classify("anyone", 403, {"server": "cloudflare", "content-type": "text/html"}, cf_1000_html)
+    assert sig.kind == "edge_block" and not S.is_exhausting(sig)
 
 
 # ---- aggregator envelopes round-trip their fixtures --------------------------------------------

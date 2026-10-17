@@ -364,3 +364,71 @@ def redact_error_response(
         return (UNSCANNABLE_ERROR_BODY, True) if renderings else (body, False)
     redacted, masked = _redact_caller_response(plain, renderings)
     return (redacted, True) if masked else (body, False)
+
+
+# ---- Cloudflare edge-block body summarization ------------------------------------------------
+# CF error pages are ~290 KB of HTML that flood agent context. Replace them with a short summary
+# that preserves the error code and actionable detail without the boilerplate.
+
+_CF_ERROR_CODE_RE = re.compile(r"error[\"'\s:]+(\d{4})\b", re.IGNORECASE)
+_CF_BLOCKED_RE = re.compile(
+    r"cloudflare|cf-error|cf-wrapper|ray\s+id|"
+    r"dns\s+points\s+to\s+prohibited|"
+    r"access\s+denied|browser\s+.*blocked|"
+    r"sorry.*you.*have.*been.*blocked",
+    re.IGNORECASE,
+)
+_CF_RAY_ID_RE = re.compile(r"ray\s*(?:id)?[:\s]+([a-f0-9-]+)", re.IGNORECASE)
+
+_CF_ERROR_MESSAGES = {
+    "1000": "DNS points to prohibited IP",
+    "1001": "DNS resolution error",
+    "1002": "DNS points to prohibited IP (restricted)",
+    "1003": "Direct IP access not allowed",
+    "1010": "Access denied: browser signature blocked",
+    "1012": "Access suspended",
+    "1015": "Rate limited",
+    "1016": "Origin DNS error",
+    "1020": "Access denied",
+}
+
+
+def summarize_cf_edge_block(body: bytes, status_code: int) -> bytes | None:
+    """If `body` is a Cloudflare edge-block page, return a short JSON summary; else None.
+
+    CF error pages (~290 KB of HTML) flood agent context. This replaces them with a compact JSON
+    body that preserves the error code, a human-readable message, and any ray ID for support.
+    Only summarizes bodies that are clearly CF responses: HTML pages over 500 bytes with CF markers,
+    or JSON bodies with CF error codes (which are already compact but benefit from a consistent shape).
+    """
+    try:
+        text = body.decode("utf-8", "replace")
+    except Exception:  # noqa: BLE001
+        return None
+    code_match = _CF_ERROR_CODE_RE.search(text)
+    error_code = code_match.group(1) if code_match else None
+    is_html = text.lstrip()[:15].lower().startswith(("<!doctype", "<html", "<head", "<body"))
+    if is_html:
+        if len(body) < 500 or not _CF_BLOCKED_RE.search(text):
+            return None
+    else:
+        if error_code is None or not _CF_BLOCKED_RE.search(text):
+            return None
+    ray_match = _CF_RAY_ID_RE.search(text)
+    ray_id = ray_match.group(1) if ray_match else None
+    message = _CF_ERROR_MESSAGES.get(error_code, "Cloudflare edge block")
+    summary = {
+        "error": "cloudflare_edge_block",
+        "status": status_code,
+        "message": message,
+    }
+    if error_code:
+        summary["cf_error_code"] = error_code
+    if ray_id:
+        summary["cf_ray_id"] = ray_id
+    summary["detail"] = (
+        "The request was blocked by Cloudflare before reaching the upstream provider. "
+        "This typically indicates the egress IP is flagged or misconfigured. "
+        "Contact support with the cf_ray_id for diagnosis."
+    )
+    return json.dumps(summary, separators=(",", ":")).encode("utf-8")

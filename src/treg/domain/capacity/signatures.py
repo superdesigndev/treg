@@ -151,13 +151,16 @@ def _retry_after(headers, now: datetime) -> int | None:
     return None
 
 
-_CF_1XXX = re.compile(r"cloudflare-1xxx-errors|error 10\d\d: access denied")
+_CF_1XXX = re.compile(
+    r"cloudflare-1xxx-errors"
+    r'|error["\s:]+10\d\d\b'  # error 1000 (DNS prohibited IP), 1010 (browser signature), 1020, etc.
+)
 
 
 def _edge_block(status: int, headers, text_l: str) -> bool:
     """Never the User-Agent: Cloudflare's `cf-mitigated` marker, its HTML block page where the
-    vendor's app would have answered JSON, or its 1xxx problem-JSON (error 1010 is the browser
-    signature block)."""
+    vendor's app would have answered JSON, or its 1xxx problem-JSON (error 1000 is proxy-through-CF,
+    error 1010 is the browser signature block)."""
     if status in (403, 503) and _header(headers, "cf-mitigated") is not None:
         return True
     if status != 403:
