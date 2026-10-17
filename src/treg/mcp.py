@@ -2087,7 +2087,23 @@ class RequireAuthForProtectedTools:
         self.resource_version = resource_version
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http" or scope.get("method") != "POST":
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        method = scope.get("method")
+
+        # GET requests (typically SSE probes) have no body, so challenge based on headers alone.
+        # The transport is stateless_http=True with json_response=True — there is no SSE stream to
+        # open — but an uncredentialed or dead-token GET should return 401 + WWW-Authenticate so
+        # OAuth discovery sees the same challenge a POST would, rather than an SSE stream that never
+        # closes (issue #1064).
+        if method == "GET":
+            verdict = self._auth_verdict_from_headers(scope)
+            if verdict is not None:
+                return await self._challenge(send, invalid=(verdict == "invalid"))
+            return await self.app(scope, receive, send)
+
+        if method != "POST":
             return await self.app(scope, receive, send)
 
         chunks: list[bytes] = []
@@ -2166,6 +2182,28 @@ class RequireAuthForProtectedTools:
                 mcp_oauth.read_access_token_any(token, self.resource_version) is None:
             return "invalid"
         return None             # a live access token, or a per-org token the tool validates itself
+
+    def _auth_verdict_from_headers(self, scope) -> str | None:
+        """Like `_auth_verdict`, but for GET requests which carry no JSON-RPC body.
+
+        A GET to the MCP endpoint (typically an SSE probe) should receive the same 401 +
+        WWW-Authenticate challenge as an uncredentialed POST, so OAuth discovery works and clients
+        don't hang on an SSE stream they cannot use. Every GET is challenged because there is no
+        notification/ping carve-out without a body to inspect.
+        """
+        token = ""
+        for k, v in scope.get("headers", []):
+            if k.lower() == b"authorization" and v.strip():
+                token = v.decode("latin-1").strip()
+                token = token[7:].strip() if token.lower().startswith("bearer ") else token
+                break
+        if not token:
+            return "missing"
+        from .domain.identity import mcp_oauth
+        if mcp_oauth.looks_like_access_token(token) and \
+                mcp_oauth.read_access_token_any(token, self.resource_version) is None:
+            return "invalid"
+        return None
 
     async def _challenge(self, send, *, invalid: bool = False) -> None:
         from .domain.identity import mcp_oauth

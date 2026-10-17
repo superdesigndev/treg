@@ -718,6 +718,72 @@ async def test_EAGER_auth_challenges_initialize_itself(clients):
             assert "resource_metadata=" in challenge and 'scope="' in challenge, challenge
 
 
+@pytest.mark.parametrize("path", ["/mcp/", "/mcp/v2/"])
+async def test_uncredentialed_GET_is_challenged_same_as_POST(clients, path):
+    """Issue #1064: an uncredentialed GET opened an SSE stream instead of returning 401. OAuth
+    discovery clients probe with GET (Accept: text/event-stream) and must receive the same
+    WWW-Authenticate challenge as a POST, not a stream that hangs."""
+    async with mcp_session(clients) as c:
+        r = await c.get(f"http://localhost{path}",
+                        headers={"Accept": "text/event-stream"})
+    assert r.status_code == 401, r.text
+    challenge = r.headers.get("www-authenticate", "")
+    assert challenge.startswith("Bearer "), challenge
+    assert "resource_metadata=" in challenge
+    assert "/.well-known/oauth-protected-resource" in challenge
+    assert r.json()["error"] == "unauthorized"
+
+
+@pytest.mark.parametrize("path", ["/mcp/", "/mcp/v2/"])
+async def test_invalid_token_GET_returns_401_invalid_token(clients, path):
+    """Issue #1064: a GET with an expired or wrong-audience OAuth token opened an SSE stream.
+    It should get 401 with error="invalid_token", same as an invalid-token POST."""
+    from treg.domain.identity import mcp_oauth
+
+    dead = mcp_oauth.make_access_token(user_id=7, org_id=3, audience=mcp_oauth.mcp_resource_url(),
+                                       scope="treg:call", ttl=-60)  # born expired
+    async with mcp_session(clients) as c:
+        r = await c.get(f"http://localhost{path}",
+                        headers={"Accept": "text/event-stream",
+                                 "Authorization": f"Bearer {dead}"})
+    assert r.status_code == 401, r.text
+    challenge = r.headers.get("www-authenticate", "")
+    assert 'error="invalid_token"' in challenge, challenge
+    assert "resource_metadata=" in challenge
+    assert r.json()["error"] == "invalid_token"
+
+
+async def test_GET_with_valid_token_passes_through():
+    """A GET with a valid credential is passed through to the transport. The auth middleware only
+    challenges missing/invalid credentials; verifying the token is valid is the transport's job."""
+    from treg.mcp import RequireAuthForProtectedTools
+    from treg.domain.identity import mcp_oauth
+
+    valid = mcp_oauth.make_access_token(user_id=7, org_id=3, audience=mcp_oauth.mcp_resource_url(),
+                                        scope="treg:call")
+    downstream_called = False
+    sent = []
+
+    async def downstream(scope, receive, send):
+        nonlocal downstream_called
+        downstream_called = True
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {"type": "http", "method": "GET",
+             "headers": [(b"authorization", f"Bearer {valid}".encode())]}
+    await RequireAuthForProtectedTools(downstream)(scope, receive, send)
+
+    assert downstream_called, "Valid token should pass through to downstream"
+    assert sent[0]["status"] == 200, "Should get downstream's response, not a 401"
+
+
 async def test_a_notification_and_ping_pass_without_a_token(clients):
     """Not everything is challenged: a JSON-RPC notification carries no id and expects no response,
     and `ping` is the liveness check — 401ing either would be a challenge nobody can act on. Only

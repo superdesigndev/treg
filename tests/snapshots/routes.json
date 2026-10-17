@@ -1190,6 +1190,15 @@
       "HEAD"
     ],
     "name": "oauth_protected_resource",
+    "path": "/.well-known/oauth-protected-resource/mcp/"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "oauth_protected_resource",
     "path": "/.well-known/oauth-protected-resource/mcp"
   },
   {
@@ -1200,6 +1209,15 @@
     ],
     "name": "oauth_protected_resource",
     "path": "/.well-known/oauth-protected-resource"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "oauth_protected_resource_v2",
+    "path": "/.well-known/oauth-protected-resource/mcp/v2/"
   },
   {
     "kind": "APIRoute",

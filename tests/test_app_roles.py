@@ -37,7 +37,9 @@ _DATAPLANE_ONLY = (
     _CATALOG_CALL_ROUTE,
     _TABLE_ROUTE,
     "GET,HEAD /.well-known/oauth-protected-resource/mcp",
+    "GET,HEAD /.well-known/oauth-protected-resource/mcp/",
     "GET,HEAD /.well-known/oauth-protected-resource/mcp/v2",
+    "GET,HEAD /.well-known/oauth-protected-resource/mcp/v2/",
     "MOUNT /mcp/v2",
     "MOUNT /mcp",
 )
