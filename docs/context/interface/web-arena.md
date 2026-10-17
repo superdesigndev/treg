@@ -194,7 +194,11 @@ and the shared fact-list generation time. Card and table views both call the fet
 coverage and explain its relative scope in a tooltip. Sitemap checks URL syntax, exact host, and duplicates
 without Jev. It shows coverage only
 when a separate known URL list exists. Results save before checks; a check failure leaves the
-provider data visible. `WebArenaJudgeBudget` admits external quality calls under a daily user
+provider data visible. `web_arena_quality._probability` requires Boolean probabilities to be finite
+and between 0 and 1. Search validates all link and recency answers before saving an intent estimate;
+an invalid answer leaves the check unknown. Fetch leaves that provider's fact check unscored when
+an answer is invalid, while other providers can still be checked.
+`WebArenaJudgeBudget` admits external quality calls under a daily user
 and operations cap before network I/O. Treg pays those calls separately from provider charges.
 Local development with a SQLite database and loopback public URL skips the quality-call caps
 for testing. It still needs an AI gateway key.
