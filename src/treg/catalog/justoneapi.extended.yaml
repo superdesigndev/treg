@@ -8645,6 +8645,8 @@ endpoints:
   skipped: skipped to conserve balance (¥1.5/call); family verified via justoneapi.x.weixin-search-account-v1
 - id: justoneapi.x.weixin-search-article-hot-v1
   tier: extended
+  status: broken
+  status_note: "Just One API answers every request with code 301 'COLLECT FAILED, SEND REQUEST AGAIN' and no data, including the listing's own test request and retries (live 2026-10-16). Search WeChat articles with justoneapi.x.weixin-search-article-v1 (form-encoded body) instead."
   capability: wechat-mp.search.hot_articles
   platform: wechat-mp
   method: GET
