@@ -1,0 +1,241 @@
+provider: leadscart
+source:
+  docs: https://leadscart.io/docs
+  openapi: https://leadscart.io/api/v1/openapi.json
+  curated: '2026-10-18'
+# Curated from Leadscart OpenAPI 1.0.0 (live at /api/v1/openapi.json). Every JSON success response
+# wraps the payload as { data, credits: { spent, remaining } }; credits.spent is the money meter.
+#
+# Auth: Authorization: Bearer lc_live_… (self-serve keys in Settings → API & MCP). Invalid keys on
+# GET /api/v1/credits answer HTTP 401 with error.code "unauthorized" (observed 2026-10-18).
+#
+# Billing: credit-gated, no plan gate on the API itself. Published unit costs: people search 0;
+# verified work email 1 credit per deliverable hit; signal-qualified lead 3 credits (Signals routes
+# are implemented but return 404 while SIGNALS_ENABLED is off on a deployment — excluded below until
+# the public API enables them). List create/add and JSON export of already-paid rows are free.
+#
+# Fair use: daily search pages and export rows per workspace (returned in data.fair_use on GET
+# credits). Per-key rate limit 120 requests/minute (documented in /docs).
+
+limits: "120 requests/minute per API key; daily people-search pages and export-row caps per workspace (see GET /api/v1/credits data.fair_use)"
+pricing_url: https://leadscart.io/pricing
+proposed_capabilities:
+  people.lists.create: Create a named List to hold leads for export and email find
+  people.lists.list: List saved Lists in the workspace
+  people.lists.items.add: Add people by LinkedIn URL and/or signal recommendation ids to a List
+  people.lists.export: Export a List as JSON or CSV with credit rules for unpaid plain rows
+endpoints:
+  - id: leadscart.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /api/v1/credits
+    name: Credit balance and fair-use counters
+    summary: Check spendable credits, plan tier and today's search/export allowances (free)
+    input:
+      note: "no parameters — Bearer lc_live_… in Authorization. Returns balance, lists_equivalent, expiring_within_7_days, next_expiry, plan, and fair_use counters."
+    test_request: {queryParams: {}}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://leadscart.io/docs
+      checked: '2026-10-18'
+      confidence: documented
+      note: free — consumes no credits; this is the registry probe. credits.spent is 0.
+    docs_url: https://leadscart.io/docs
+    added: '2026-10-18'
+
+  - id: leadscart.people.search
+    domain: contacts
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    path: /api/v1/people/search
+    name: Search people by title, company, or filters
+    summary: Search people by job title, company, industry, company size, country or technology — no emails in results
+    input:
+      bodyType: json
+      body:
+        filters: {type: object, required: true, note: "friendly keys titles, countries, industries, employee_ranges, company_domains, company_names, revenue_ranges, technologies (plus exclude_*), or canonical { title: { include, exclude }, … }; optional has_email / has_phone booleans narrow results"}
+        page: {type: integer, required: false, note: "1-5, 100 people per page", example: 1}
+      note: "free (0 credits) but uses one page of the workspace daily search budget. data.status may be ok, too_broad, no_matches, invalid_filters or empty_filters; too_broad returns suggestions[].filters to retry."
+    test_request:
+      body:
+        filters: {company_domains: ["stripe.com"], titles: ["Chief Executive Officer"]}
+        page: 1
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://leadscart.io/pricing
+      checked: '2026-10-18'
+      confidence: documented
+      note: 0 credits per call; credits.spent stays 0. Subject to daily search fair-use (429 rate_limited with details.fair_use when exhausted).
+    docs_url: https://leadscart.io/docs
+    added: '2026-10-18'
+
+  - id: leadscart.people.email.find
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /api/v1/emails/find
+    name: Find verified work emails for people or list leads
+    summary: Find verified work emails from LinkedIn URL or name plus company domain, and/or lead_ids from a List
+    input:
+      bodyType: json
+      body:
+        people: {type: array, required: false, note: "up to 50 total with lead_ids; each entry needs linkedin_url OR (name or first_name+last_name) AND company_domain"}
+        lead_ids: {type: array, required: false, note: "UUIDs from POST /api/v1/lists/{id}/items"}
+        idempotency_key: {type: string, required: false, note: "optional retry-safe key; same-day replays without double charge when omitted derive from lead ids + UTC date"}
+      note: "charges only for deliverable emails (status verified). Skipped, suppressed, unidentifiable and recent attempts are free."
+    test_request:
+      body:
+        people:
+          - {first_name: Treg, last_name: CatalogProbe, company_domain: example.invalid}
+    miss:
+      status: 200
+      means: "results[].status is not_found, unidentifiable or skipped with charged false and credits.spent 0 — deliberate miss target above"
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://leadscart.io/pricing
+      checked: '2026-10-18'
+      confidence: documented
+      note: 1 credit per deliverable work email; misses and skips are free. credits.spent in the response envelope is authoritative.
+    docs_url: https://leadscart.io/docs
+    added: '2026-10-18'
+
+  - id: leadscart.lists.create
+    domain: contacts
+    capability: people.lists.create
+    platform: people
+    scope: own_account
+    method: POST
+    path: /api/v1/lists
+    name: Create a List
+    summary: Create an empty List to hold leads for export and email find
+    input:
+      bodyType: json
+      body:
+        name: {type: string, required: true, example: "Q4 outbound"}
+        description: {type: string, required: false}
+    test_request:
+      body: {name: "treg catalog probe list"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://leadscart.io/pricing
+      checked: '2026-10-18'
+      confidence: documented
+      note: free — credits.spent 0
+    docs_url: https://leadscart.io/docs
+    added: '2026-10-18'
+
+  - id: leadscart.lists.list
+    domain: contacts
+    capability: people.lists.list
+    platform: people
+    scope: own_account
+    method: GET
+    path: /api/v1/lists
+    name: List Lists
+    summary: List the workspace Lists, most recently updated first
+    input:
+      queryParams:
+        include_archived: {type: boolean, required: false, example: false}
+    test_request:
+      queryParams: {include_archived: false}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://leadscart.io/docs
+      checked: '2026-10-18'
+      confidence: documented
+      note: free — credits.spent 0
+    docs_url: https://leadscart.io/docs
+    added: '2026-10-18'
+
+  - id: leadscart.lists.items.add
+    domain: contacts
+    capability: people.lists.items.add
+    platform: people
+    scope: own_account
+    method: POST
+    path: /api/v1/lists/{id}/items
+    name: Add people to a List
+    summary: Add people by LinkedIn /in/ URL and/or signal recommendation_ids; returns lead_ids for email find
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "List UUID", example: "00000000-0000-0000-0000-000000000000"}
+      bodyType: json
+      body:
+        linkedin_urls: {type: array, required: false, note: "LinkedIn /in/ profile URLs"}
+        recommendation_ids: {type: array, required: false, note: "from GET /api/v1/signals when Signals is enabled"}
+      note: "invalid LinkedIn URLs reject the whole request (400). Suppressed people are skipped."
+    test_request:
+      pathParams: {id: "00000000-0000-0000-0000-000000000000"}
+      body: {linkedin_urls: ["https://www.linkedin.com/in/treg-catalog-probe-nonexistent"]}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://leadscart.io/docs
+      checked: '2026-10-18'
+      confidence: documented
+      note: free when the List exists; a missing List answers 404 (no charge). credits.spent 0 on success.
+    docs_url: https://leadscart.io/docs
+    added: '2026-10-18'
+
+  - id: leadscart.lists.export
+    domain: contacts
+    capability: people.lists.export
+    platform: people
+    scope: own_account
+    method: GET
+    path: /api/v1/lists/{id}/export
+    name: Export a List as JSON or CSV
+    summary: Export List rows; signal leads and verified emails are already paid, plain rows currently free
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "00000000-0000-0000-0000-000000000000"}
+      queryParams:
+        format: {type: string, required: false, note: "json (default) or csv", example: json}
+        include_emails: {type: boolean, required: false, example: true}
+        idempotency_key: {type: string, required: false, note: "replay same export within 24h without re-charging"}
+    test_request:
+      pathParams: {id: "00000000-0000-0000-0000-000000000000"}
+      queryParams: {format: json, include_emails: true}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://leadscart.io/pricing
+      checked: '2026-10-18'
+      confidence: documented
+      note: plain export rows are 0 credits in the current product (plainExportRow 0). Re-exporting the same paid rows within 24h is free. credits.spent reports any charge.
+    docs_url: https://leadscart.io/docs
+    added: '2026-10-18'
