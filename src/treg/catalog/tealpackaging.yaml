@@ -1,0 +1,231 @@
+# Paths, summaries and parameters ingested from the published OpenAPI document.
+# Curated surface: five read-only product operations. Key/account plumbing stays outside discovery.
+provider: tealpackaging
+source:
+  docs: https://tealpackaging.com/api-catalog.md
+  openapi: https://tealpackaging.com/catalog-openapi.json
+  curated: '2026-10-18'
+limits: 60 requests per 60 seconds per catalog key. HTTP 429 includes Retry-After. Registration allows
+  5 keys per hour per client IP.
+pricing_url: https://tealpackaging.com/api-catalog.md#api-usage-pricing
+proposed_capabilities:
+  packaging.products.search: Search packaging products by keyword
+  packaging.product.detail: Read packaging product details
+  packaging.product.price: Read a packaging product price for a quantity
+  packaging.product.checkout_link: Read a hosted packaging product checkout link without creating an order
+endpoints:
+- id: tealpackaging.packaging.products.search
+  domain: products
+  capability: packaging.products.search
+  platform: packaging
+  scope: any_account
+  method: GET
+  path: /products/search
+  name: Search packaging products
+  summary: Search shop and custom-made products
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 200
+        example: mailer boxes
+        note: Nonblank search text, 1 to 200 UTF-8 bytes before trimming. Leading and trailing whitespace
+          is trimmed.
+      limit:
+        type: integer
+        required: false
+        default: 5
+        minimum: 1
+        maximum: 10
+        example: 5
+        note: Maximum results per lane. Shop and custom-made lanes can each return this many, up to twice
+          this total. Supply positive decimal digits without a sign, decimal point, or leading zero.
+    note: Returns shop results first, then custom-made products. The limit applies to each lane, so the
+      total may reach twice the requested limit. No matches returns HTTP 200 with an empty products array.
+  test_request:
+    queryParams:
+      query: mailer boxes
+      limit: 1
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: rate_card_api
+    source_url: https://tealpackaging.com/api/catalog/v1/pricing
+    checked: '2026-10-18'
+    confidence: documented
+    note: All catalog API calls, including errors, cost $0. Merchandise prices are separate from API usage.
+  added: '2026-10-18'
+  docs_url: https://tealpackaging.com/api-catalog.md#catalog-operations
+- id: tealpackaging.packaging.product.detail
+  domain: products
+  capability: packaging.product.detail
+  platform: packaging
+  scope: any_account
+  method: GET
+  path: /products/{slug}
+  name: Read a custom-made packaging product
+  summary: Read a custom-made product
+  input:
+    pathParams:
+      slug:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 150
+        pattern: ^[a-z0-9-]+$
+        example: custom-brownie-boxes
+        note: Custom-made product slug from /products/search, at most 150 characters. This route does
+          not return shop product details.
+    note: Returns the name, canonical page URL, and description for a custom-made product. Use a custom-made
+      search result. A missing product returns HTTP 404.
+  test_request:
+    pathParams:
+      slug: custom-brownie-boxes
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: rate_card_api
+    source_url: https://tealpackaging.com/api/catalog/v1/pricing
+    checked: '2026-10-18'
+    confidence: documented
+    note: All catalog API calls, including errors, cost $0. Merchandise prices are separate from API usage.
+  added: '2026-10-18'
+  docs_url: https://tealpackaging.com/api-catalog.md#catalog-operations
+- id: tealpackaging.packaging.products.search.shop
+  domain: products
+  capability: packaging.products.search
+  platform: packaging
+  scope: any_account
+  method: GET
+  path: /shop/search
+  name: Search packaging shop products
+  summary: Search products available in the shop
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 200
+        example: mailer boxes
+        note: Nonblank search text, 1 to 200 UTF-8 bytes before trimming. Leading and trailing whitespace
+          is trimmed.
+    note: Returns up to 10 matching shop products with merchandise volume price descriptions and minimum
+      orders. No matches returns HTTP 200 with an empty products array.
+  test_request:
+    queryParams:
+      query: mailer boxes
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: rate_card_api
+    source_url: https://tealpackaging.com/api/catalog/v1/pricing
+    checked: '2026-10-18'
+    confidence: documented
+    note: All catalog API calls, including errors, cost $0. Merchandise prices are separate from API usage.
+  added: '2026-10-18'
+  docs_url: https://tealpackaging.com/api-catalog.md#catalog-operations
+- id: tealpackaging.packaging.product.price
+  domain: products
+  capability: packaging.product.price
+  platform: packaging
+  scope: any_account
+  method: GET
+  path: /shop/{slug}/price
+  name: Read a packaging quantity price
+  summary: Read the exact live price at a quantity
+  input:
+    pathParams:
+      slug:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 150
+        pattern: ^[a-z0-9-]+$
+        example: custom-mailer-boxes
+        note: Lowercase product slug from a matching search result, at most 150 characters.
+    queryParams:
+      quantity:
+        type: integer
+        required: true
+        minimum: 1
+        maximum: 1000000
+        example: 150
+        note: Quantity of merchandise units. Supply a positive decimal integer with no sign, decimal point,
+          or leading zero.
+    note: Selects the cheapest live configuration at the requested quantity using US pricing and returns
+      its quantity price ladder. Prices are merchandise prices, not API fees. Quantities below the product
+      minimum or without an available price return HTTP 422. A missing product returns HTTP 404.
+  test_request:
+    pathParams:
+      slug: custom-mailer-boxes
+    queryParams:
+      quantity: 150
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: rate_card_api
+    source_url: https://tealpackaging.com/api/catalog/v1/pricing
+    checked: '2026-10-18'
+    confidence: documented
+    note: All catalog API calls, including errors, cost $0. Merchandise prices are separate from API usage.
+  added: '2026-10-18'
+  docs_url: https://tealpackaging.com/api-catalog.md#catalog-operations
+- id: tealpackaging.packaging.product.checkout_link
+  domain: products
+  capability: packaging.product.checkout_link
+  platform: packaging
+  scope: any_account
+  method: GET
+  path: /shop/{slug}/checkout-link
+  name: Read a packaging checkout link
+  summary: Read a hosted checkout link
+  input:
+    pathParams:
+      slug:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 150
+        pattern: ^[a-z0-9-]+$
+        example: custom-mailer-boxes
+        note: Lowercase product slug from a matching search result, at most 150 characters.
+    queryParams:
+      quantity:
+        type: integer
+        required: true
+        minimum: 1
+        maximum: 1000000
+        example: 150
+        note: Quantity of merchandise units. Supply a positive decimal integer with no sign, decimal point,
+          or leading zero.
+    note: Returns a Teal-hosted product URL with quantity prefilled. Below-minimum requests use the product
+      minimum instead, with an explanatory note. No quote, inventory reservation, order, or payment is
+      created. If no supported configuration can be resolved, returns HTTP 422.
+  test_request:
+    pathParams:
+      slug: custom-mailer-boxes
+    queryParams:
+      quantity: 150
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: rate_card_api
+    source_url: https://tealpackaging.com/api/catalog/v1/pricing
+    checked: '2026-10-18'
+    confidence: documented
+    note: All catalog API calls, including errors, cost $0. Merchandise prices are separate from API usage.
+  added: '2026-10-18'
+  docs_url: https://tealpackaging.com/api-catalog.md#catalog-operations

@@ -318,6 +318,7 @@ _UNRECORDED_SIGNATURE = {
     "sixtyfour",  # credits remain; documented 402 insufficient credit was not forced
     "blitzapi",  # monthly records remain; an exhausted-key response was not forced
     "enrichlayer",  # PAYG auto top-up remains funded; the docs name 403 but not its response body
+    "tealpackaging",  # free catalog API; no credit balance or credit-exhaustion response
 
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "tomba", "twelvedata",
 }
