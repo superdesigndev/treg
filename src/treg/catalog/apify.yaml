@@ -553,5 +553,188 @@ endpoints:
     example_response: examples/apify.weibo.post.comments.json
     docs_url: https://apify.com/herus13/weibo-scraper
 
+  - id: apify.trustpilot.business.reviews
+    capability: trustpilot.business.reviews
+    platform: trustpilot
+    scope: any_account
+    method: POST
+    path: /actors/kaix~trustpilot-reviews-scraper/run-sync-get-dataset-items
+    name: "Trustpilot reviews for a business"
+    summary: "Scrape a business's Trustpilot reviews: star rating, title, full text, language, reviewer, verification flag and the business reply, filterable by stars, language, date range and keyword"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; the actor's own maxReviews sets how many reviews run, so maxTotalChargeUsd is the spend limit", example: 20}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.05}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        businesses: {type: "array[string]", required: true, note: "business review-page URLs (https://www.trustpilot.com/review/amazon.com) or plain domains (amazon.com); each business is read in turn", example: ["amazon.com"]}
+        maxReviews: {type: integer, required: false, note: "reviews per business; 0 means as many as Trustpilot serves (about 1,000). You pay per review returned, so set this to cap the bill; default 20", example: 20}
+        sort: {type: string, required: false, enum: ["createdAt:desc", "relevancy:desc"], note: "newest first (default) or by relevancy", example: "createdAt:desc"}
+        stars: {type: "array[integer]", required: false, note: "keep only these star ratings, 1-5; empty keeps all", example: [1, 2]}
+        language: {type: string, required: false, note: "'all' (default) or a language code such as en, de, fr", example: "en"}
+        date: {type: string, required: false, enum: [all, last30days, last3months, last6months, last12months], note: "only reviews from this window; default all", example: "last30days"}
+        search: {type: string, required: false, note: "full-text search over review title and body", example: "refund"}
+        onlyVerified: {type: boolean, required: false, note: "only reviews from verified reviewers", example: false}
+        onlyWithReplies: {type: boolean, required: false, note: "only reviews the business answered; Trustpilot applies this strictly, so it can return zero rows for a business that replies often", example: false}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. Each row carries id, businessUnitId, stars, title, text, language, createdAt and experiencedDate (epoch seconds), numberOfLikes, isVerified, consumer {id, displayName, countryCode, numberOfReviews}, reply and source. Only the declared body fields are accepted, so the actor's proxy settings stay at its default and the separate business-profiles dataset is never produced"
+    body_allowlist: true
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 2, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {businesses: ["apple.com"], maxReviews: 2}
+    cost: {type: per_result, value: 0.00005, call_fee: 0.00005, currency: USD, per: 1, unit: review, source: observed, source_url: 'https://api.apify.com/v2/acts/kaix~trustpilot-reviews-scraper', checked: '2026-10-18', confidence: verified, note: 'pay-per-event: one apify-default-dataset-item event per review (FREE and BRONZE 0.00005, SILVER and above 0.00004) plus one apify-actor-start event per GB of run memory (0.00005, the call_fee at the pinned 1 GB). OBSERVED 2026-10-18: a 2-review run billed chargedEventCounts {apify-actor-start: 1, apify-default-dataset-item: 2}, usageTotalUsd 0.00013. Charged per review produced, so cap every call with maxTotalChargeUsd'}
+    verified: 2026-10-18
+    added: '2026-10-18'
+    example_response: examples/apify.trustpilot.business.reviews.json
+    docs_url: https://apify.com/kaix/trustpilot-reviews-scraper
+
+  - id: apify.tripadvisor.business.reviews
+    capability: tripadvisor.business.reviews
+    platform: tripadvisor
+    scope: any_account
+    method: POST
+    path: /actors/kaix~tripadvisor-reviews-scraper/run-sync-get-dataset-items
+    name: "Tripadvisor reviews for a business"
+    summary: "Scrape the Tripadvisor reviews of a restaurant, hotel, attraction or cruise: rating, title, full text, trip type, category ratings, photos, reviewer and the owner reply, filterable by rating, trip type, language, month, date and keyword"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; the actor's own maxReviews sets how many reviews run, so maxTotalChargeUsd is the spend limit", example: 20}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.05}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        businesses: {type: "array[string]", required: true, note: "Tripadvisor review-page URLs (restaurant, hotel, attraction or cruise, any Tripadvisor domain) or numeric location IDs, the number after -d in the URL; you can mix both and each business is read in turn. A page with no -d number, such as a city page, is skipped", example: ["5572598"]}
+        maxReviews: {type: integer, required: false, min: 0, note: "reviews per business; 0 means every review Tripadvisor serves, which can be tens of thousands for a big place. You pay per review returned, so set this to cap the bill; default 20", example: 20}
+        sortBy: {type: string, required: false, enum: [recent, detailed, highest], note: "newest first (default), Tripadvisor's detailed order, or highest rating first (five stars, then four down to one, newest first within each). A since date always uses newest order", example: "recent"}
+        language: {type: string, required: false, note: "'all' (default) or a language code such as en, fr, de, ja. Results include Tripadvisor's machine translations into that language; isTranslated and originalLanguage tell them apart", example: "en"}
+        rating: {type: "array[string]", required: false, note: "keep only these traveler ratings; values are the strings 1 to 5, and a review may match any of them. Empty keeps all", example: ["1", "2"]}
+        tripType: {type: "array[string]", required: false, note: "keep only these visit types: Business, Couples, Family, Friends, Solo. Most cruise reviews have no trip type. Empty keeps all", example: ["Couples"]}
+        since: {type: string, required: false, note: "only reviews published on or after this date, YYYY-MM-DD", example: "2026-08-01"}
+        months: {type: "array[string]", required: false, note: "keep only reviews published in these calendar months; values are the strings 1 to 12. Empty keeps all", example: ["6", "7", "8"]}
+        searchQuery: {type: string, required: false, note: "only reviews that match this text", example: "service"}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. Filters combine: a review must match every filter you set. Each row carries id, locationId, businessName, businessUrl, placeType, rating, title, text, language, originalLanguage, isTranslated, publishedDate and publishedDateISO, dateVisited and dateVisitedISO, tripType, subratings [{label, value}], photos, helpfulVotes, author {displayName, userId, profileUrl, totalContributions, isVerified, hometown}, ownerResponse and ownerResponseDetail, reviewTips and reviewUrl. A field with no data is null or []; attraction reviews have no subratings and owner replies are mostly on hotels. Only the declared body fields are accepted, so the actor's proxy settings stay at its default"
+    body_allowlist: true
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 2, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {businesses: ["5572598"], maxReviews: 2}
+    cost: {type: per_result, value: 0.00005, call_fee: 0.00005, currency: USD, per: 1, unit: review, source: observed, source_url: 'https://api.apify.com/v2/acts/kaix~tripadvisor-reviews-scraper', checked: '2026-10-18', confidence: verified, note: 'pay-per-event: one apify-default-dataset-item event per review (FREE and BRONZE 0.00005, SILVER and above 0.00004) plus one apify-actor-start event per GB of run memory (0.00005, the call_fee at the pinned 1 GB). OBSERVED 2026-10-18: a 2-review run billed chargedEventCounts {apify-actor-start: 1, apify-default-dataset-item: 2}, usageTotalUsd 0.00013. Charged per review produced, so cap every call with maxTotalChargeUsd'}
+    verified: 2026-10-18
+    added: '2026-10-18'
+    example_response: examples/apify.tripadvisor.business.reviews.json
+    docs_url: https://apify.com/kaix/tripadvisor-reviews-scraper
+
+  - id: apify.yelp.business.reviews
+    capability: yelp.business.reviews
+    platform: yelp
+    scope: any_account
+    method: POST
+    path: /actors/kaix~yelp-reviews-scraper/run-sync-get-dataset-items
+    name: "Yelp reviews for a business"
+    summary: "Scrape a business's Yelp reviews: star rating, full text, language, dates, reviewer with Elite status, votes, reactions, photos, videos, owner reply and tags, sortable and filterable by stars, language and keyword"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; the actor's own maxReviewsPerBusiness sets how many reviews run per business, so maxTotalChargeUsd is the spend limit", example: 20}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.05}
+        memory: {type: integer, required: false, enum: [256], note: "MB of run memory. treg's key requires 256, the actor's default, which fixes the actor-start charge; your own key may set any size", example: 256}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        businesses: {type: "array[string]", required: true, note: "Yelp business URLs (https://www.yelp.com/biz/gary-danko-san-francisco, any Yelp domain), aliases (the text after /biz/) or 22-character business IDs; mix them freely. Each business is read in turn and its reviews come as one block. An empty list returns no rows", example: ["gary-danko-san-francisco"]}
+        maxReviewsPerBusiness: {type: integer, required: false, note: "reviews per business, 0 or more; 0 means every review Yelp serves, which can be thousands and outruns the 90 second run timeout. You pay per review returned, so set this to cap the bill; default 20", example: 20}
+        sortBy: {type: string, required: false, enum: [DATE_DESC, DATE_ASC, RATING_DESC, RATING_ASC, ELITES_DESC], note: "newest first (default), oldest first, highest rated, lowest rated, or Elite reviewers first; ignored when query is set", example: "DATE_DESC"}
+        ratings: {type: "array[string]", required: false, note: "keep only these star ratings, each one of \"1\" to \"5\" as a string; empty keeps all; ignored when query is set", example: ["1", "2"]}
+        query: {type: string, required: false, note: "keep only reviews matching this text, in Yelp's relevance order; overrides sortBy and ratings", example: "parking"}
+        languageCode: {type: string, required: false, note: "language the reviews were written in, such as en, de, zh; default en. Never send an empty string. A non-English search can match nothing", example: "en"}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. Each row carries id, businessAlias, businessName, businessEncId, rating, text, translatedText, language, createdAt and localDateTime (ISO 8601), author {id, displayName, displayLocation, reviewCount, friendCount, photoCount, eliteYear, profilePhotoUrl, isEliteAllStar}, feedback {usefulCount, funnyCount, coolCount}, reactions, photos, videos, ownerReply, previousReviewIds, tags, expertRecognition, userSpecifiedTimeOfExperience and scrapedAt. Only the declared body fields are accepted, so the actor's proxy settings stay at its default. The actor also writes one profile record per business to a second dataset, which this endpoint never returns and the actor never bills"
+    body_allowlist: true
+    platform_request: {queryParams.memory: 256, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 2, memory: 256, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {businesses: ["gary-danko-san-francisco"], maxReviewsPerBusiness: 2}
+    cost: {type: per_result, value: 0.00005, call_fee: 0.00005, currency: USD, per: 1, unit: review, source: observed, source_url: 'https://api.apify.com/v2/acts/kaix~yelp-reviews-scraper', checked: '2026-10-18', confidence: verified, note: 'pay-per-event: one apify-default-dataset-item event per review (FREE and BRONZE 0.00005, SILVER and above 0.00004) plus one apify-actor-start event per GB of run memory, minimum one (0.00005, the call_fee at the pinned 256 MB). OBSERVED 2026-10-18 (run eG5YDTTycck0IN7c9): a 2-review run billed chargedEventCounts {apify-actor-start: 1, apify-default-dataset-item: 2}, usageTotalUsd 0.00013. The business profile record is not billed. Charged per review produced, so cap every call with maxTotalChargeUsd'}
+    verified: 2026-10-18
+    added: '2026-10-18'
+    example_response: examples/apify.yelp.business.reviews.json
+    docs_url: https://apify.com/kaix/yelp-reviews-scraper
+
+  - id: apify.stocks.quote.live
+    capability: stocks.quote.live
+    platform: stocks
+    scope: any_account
+    method: POST
+    path: /actors/kaix~google-finance-scraper/run-sync-get-dataset-items
+    name: "Google Finance quote for a ticker"
+    summary: "Get the current Google Finance quote for stocks, ETFs, indices, crypto, currency pairs and futures: price, change, day and 52-week range, volume, market cap, P/E, market state, plus optional financials, chart, news and related instruments"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; one row is returned per ticker in stocks, so maxTotalChargeUsd is the spend limit", example: 3}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.05}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        stocks: {type: "array[string]", required: true, note: "Google Finance identifiers or quote URLs: TICKER:EXCHANGE (GOOGL:NASDAQ, 7203:TYO), crypto (BTC-USD), currency pairs (EUR-USD), futures (GCW00:COMEX for gold). Use Google's format, not Yahoo's (GCW00:COMEX, not GC=F). One row per entry, in the order given, duplicates kept", example: ["GOOGL:NASDAQ"]}
+        includeFinancials: {type: boolean, required: false, note: "add quarterly and annual income statement, balance sheet and cash flow; default true. Set false for a quote-only row", example: false}
+        includeChart: {type: boolean, required: false, note: "add price and volume points for chartWindow; default true. Set false for a quote-only row", example: false}
+        includeNews: {type: boolean, required: false, note: "add news headlines and related quotes; default true. Set false for a quote-only row", example: false}
+        includeRelated: {type: boolean, required: false, note: "add related instruments with their quotes; default true. Set false for a quote-only row", example: false}
+        chartWindow: {type: string, required: false, enum: ["1D", "5D", "1M", "6M", "YTD", "1Y", "5Y", "MAX"], note: "chart range, used only when includeChart is true; 1D is intraday, the others are daily points. Default 1M", example: "1M"}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope, one stock record per ticker. Every record carries recordType, ticker, exchange, name, type, currency, price, previousClose, open, high, low, change, changePercent, fiftyTwoWeekHigh, fiftyTwoWeekLow, marketCap, peRatio, volume, isDelayed, lastUpdateTimestamp (epoch seconds), afterHours, company and classification; the include flags add financials, chart, news and relatedStocks. A ticker Google cannot resolve is logged and skipped, so it returns no row and bills only the start event (observed 2026-10-18: 0 rows, chargedEventCounts {apify-actor-start: 1, apify-default-dataset-item: 0}). Only the declared body fields are accepted, so the actor's proxy settings stay at their default. The search, market-page and earnings-calendar inputs are left out because they bill extra search_result, market_news and earnings_calendar rows"
+    body_allowlist: true
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {stocks: ["GOOGL:NASDAQ"], includeFinancials: false, includeChart: false, includeNews: false, includeRelated: false}
+    cost: {type: per_result, value: 0.0001, call_fee: 0.00005, currency: USD, per: 1, unit: record, source: observed, source_url: 'https://api.apify.com/v2/acts/kaix~google-finance-scraper', checked: '2026-10-18', confidence: verified, note: 'pay-per-event: one apify-default-dataset-item event per stock record (FREE and BRONZE 0.0001, SILVER and above 0.00008) plus one apify-actor-start event per GB of run memory (0.00005, the call_fee at the pinned 1 GB). The include flags add sections inside the same record and bill no extra event. OBSERVED 2026-10-18: a 1-ticker run billed chargedEventCounts {apify-actor-start: 1, apify-default-dataset-item: 1}, usageTotalUsd 0.00013. Charged per ticker produced, so cap every call with maxTotalChargeUsd'}
+    verified: 2026-10-18
+    added: '2026-10-18'
+    example_response: examples/apify.stocks.quote.live.json
+    docs_url: https://apify.com/kaix/google-finance-scraper
+
+  - id: apify.stocks.eod.history
+    capability: stocks.eod.history
+    platform: stocks
+    scope: any_account
+    method: POST
+    path: /actors/kaix~yahoo-finance-scraper/run-sync-get-dataset-items
+    name: "Daily price history for a ticker from Yahoo Finance"
+    summary: "Daily, weekly or monthly OHLCV history for one or more Yahoo Finance symbols (stocks, ETFs, indices, crypto, currencies, futures, mutual funds): open, high, low, close, volume and adjusted close per bar, with dividend and split events, over a preset range or a start and end date. One record per symbol"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional record cap, one record per symbol; maxTotalChargeUsd is the spend limit", example: 5}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.05}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        symbols: {type: "array[string]", required: true, note: "Yahoo Finance symbols: AAPL, 7203.T, SPY, ^GSPC, BTC-USD, EURUSD=X, GC=F, VFIAX. Each symbol is one billed record, in the order given, repeats included", example: ["AAPL"]}
+        chartRange: {type: string, required: false, enum: ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", ytd, max], note: "preset window ending today; default 1mo. Ignored when both chartStartDate and chartEndDate are set", example: "1mo"}
+        chartStartDate: {type: string, required: false, note: "YYYY-MM-DD. Replaces chartRange only when chartEndDate is also set; the actor does not check the format or the order, and Yahoo rejects what it cannot serve", example: "2026-10-05"}
+        chartEndDate: {type: string, required: false, note: "YYYY-MM-DD, see chartStartDate", example: "2026-10-16"}
+        chartInterval: {type: string, required: false, enum: ["1d", "1wk", "1mo"], note: "bar size, default 1d. The actor also takes 1m to 1h bars, left out here because intraday bars belong to stocks.intraday", example: "1d"}
+        includeChart: {type: boolean, required: false, enum: [true], note: "the price series this row returns; treg's key requires true", example: true}
+        includeQuote: {type: boolean, required: false, enum: [false], note: "treg's key requires false so the record stays a price history; your own key may enable it at no extra charge", example: false}
+        includeProfile: {type: boolean, required: false, enum: [false], note: "treg's key requires false, see includeQuote", example: false}
+        includeFinancials: {type: boolean, required: false, enum: [false], note: "treg's key requires false, see includeQuote", example: false}
+        includeNews: {type: boolean, required: false, enum: [false], note: "treg's key requires false, see includeQuote", example: false}
+        includeRecommendations: {type: boolean, required: false, enum: [false], note: "treg's key requires false, see includeQuote", example: false}
+        includeInsights: {type: boolean, required: false, enum: [false], note: "treg's key requires false, see includeQuote", example: false}
+        includeAnalyst: {type: boolean, required: false, enum: [false], note: "treg's key requires false, see includeQuote", example: false}
+      bodyType: json
+      note: "the response is the dataset items array directly, no run envelope. Each record carries symbol, status, failedSections and chart {meta, series[{timestamp, date, open, high, low, close, volume, adjclose}], events when a dividend or split falls in the window}. The other sections are null. marketSummary and sectors, the market-wide context the actor always adds, ride on every record and cannot be switched off. The price is per symbol, not per bar, so a long range costs the same but returns a large payload. Only the declared body fields are accepted: the actor's proxy settings stay at its default, and the symbol-discovery inputs (searchQuery, trending, screener) and options and ownership are left out"
+    body_allowlist: true
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90, body.includeChart: true, body.includeQuote: false, body.includeProfile: false, body.includeFinancials: false, body.includeNews: false, body.includeRecommendations: false, body.includeInsights: false, body.includeAnalyst: false}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {symbols: ["AAPL"], chartStartDate: "2026-10-05", chartEndDate: "2026-10-16", chartInterval: "1d", includeChart: true, includeQuote: false, includeProfile: false, includeFinancials: false, includeNews: false, includeRecommendations: false, includeInsights: false, includeAnalyst: false}
+    cost: {type: per_result, value: 0.0005, call_fee: 0.00005, currency: USD, per: 1, unit: record, source: observed, source_url: 'https://api.apify.com/v2/acts/kaix~yahoo-finance-scraper', checked: '2026-10-18', confidence: verified, note: 'pay-per-event: one apify-default-dataset-item event per symbol record (the actor titles it Stock; FREE and BRONZE 0.0005, SILVER and above 0.0004) plus one apify-actor-start event per GB of run memory (0.00005, the call_fee at the pinned 1 GB). OBSERVED 2026-10-18: a 1-symbol run billed chargedEventCounts {apify-actor-start: 1, apify-default-dataset-item: 1}, usageTotalUsd 0.00045, which is the SILVER-and-above price of 0.0004 plus the start event. Charged per symbol produced whatever the number of bars, so cap every call with maxTotalChargeUsd'}
+    verified: 2026-10-18
+    added: '2026-10-18'
+    example_response: examples/apify.stocks.eod.history.json
+    docs_url: https://apify.com/kaix/yahoo-finance-scraper
+
 proposed_capabilities:
   lazada.search.products: "Search Lazada products by keyword across Southeast Asia (SG, MY, VN, TH, PH, ID)"
