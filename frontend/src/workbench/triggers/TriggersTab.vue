@@ -6,11 +6,11 @@ import AgentLine from '../AgentLine.vue'
 import { ago, usd, when } from '../format'
 
 type Row = Trigger & { install: string }
-const props = defineProps<{ triggers: Row[] | null, unattended: UnattendedBudget | null }>()
+const props = defineProps<{ triggers: Row[] | null, unattended: UnattendedBudget | null, embedded?: boolean }>()
 const emit = defineEmits<{ toast: [string] }>()
 
 const columns: Column<Row>[] = [
-  { key: 'install', header: 'Install', mobile: 'primary', value: r => r.install },
+  ...(props.embedded ? [] : [{ key: 'install', header: 'Install', mobile: 'primary' as const, value: (r: Row) => r.install }]),
   { key: 'key', header: 'Trigger', mobile: 'field' },
   { key: 'when', header: 'When', mobile: 'wide', width: '210px', truncate: true, value: r => `${r.kind === 'schedule' ? r.cron : r.webhook_url} ${r.timezone || ''}` },
   { key: 'mode', header: 'Mode', mobile: 'field', value: r => r.mode || '' },
@@ -45,6 +45,6 @@ const pct = () => props.unattended && props.unattended.cap_micro ? Math.min(100,
     <div><h4 class="wb-h4">Unattended spend this month</h4><span class="wb-bar wide"><i :style="{ width: pct() + '%' }"></i></span><span class="num">{{ usd(unattended.spent_micro) }} of {{ usd(unattended.cap_micro) }}</span></div>
     <p class="wb-hint">Reaching the cap blocks every trigger in the team and notifies it. Set in Team settings.</p>
   </div>
-  <AgentLine cli='treg install <name> --trigger weekly --cron "0 9 * * MON" --net-new' mcp="install_save { name, triggers: [{ key, cron, timezone, mode }] }" />
+  <AgentLine v-if="!embedded" cli='treg install <name> --trigger weekly --cron "0 9 * * MON" --net-new' mcp="install_save { name, triggers: [{ key, cron, timezone, mode }] }" />
 </template>
 </template>

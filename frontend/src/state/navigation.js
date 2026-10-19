@@ -33,9 +33,10 @@ tabUrl(view){
         return '/app#activity/'+(TAB_SLUGS.activity[this.actTab]||'calls')+(key ? '?key='+key : ''); }
       if(view==='orgs') return '/app#orgs/'+(TAB_SLUGS.orgs[this.orgTab]||'members');
       if(view==='workbench') return this.workbenchUrl();
+      if(view==='wbtool' || view==='wbinstall') return this.toolsUrl();
       return '/app#'+view; },
 // A tab or key change rewrites the current entry: Back leaves the page, it does not replay tabs.
-syncTabUrl(){ if(!['activity','orgs','workbench'].includes(this.view) || this.publicCatalog) return;
+syncTabUrl(){ if(!['activity','orgs','workbench','wbtool','wbinstall'].includes(this.view) || this.publicCatalog) return;
       const url=this.tabUrl(this.view);
       if(location.pathname+location.hash!==url) history.replaceState({view:this.view}, '', url); },
 go(v, fromPop){ this.resetConfirms(); this.mobileNav=false; this.drawerTool=null;  // stale inline "Confirm" states must not survive a view switch (accidental-delete risk)
@@ -49,13 +50,14 @@ go(v, fromPop){ this.resetConfirms(); this.mobileNav=false; this.drawerTool=null
       if(v==='activity' && route && route.key && this.actTab==='feed') this.activityKey=route.key;
       if(v==='orgs' && route && route.tab) this.orgTab=route.tab;
       if(v==='workbench'){ const wb=this._wbRoute; this._wbRoute=null; if(wb) this.wb={...this.wb, ...wb}; }
+      if(v==='wbtool' || v==='wbinstall'){ const r=this._wbToolsRoute; this._wbToolsRoute=null; if(r) this.wbTools={...this.wbTools, ...r}; }
       if(v==='activity' && this.actTab==='usage') this.loadUsage();
       this.detail=null; this.view=v; if(v==='activity')this.loadCalls(); if(v==='admin')this.loadAdmin(); if(v==='orgs'){this.loadOrgAdmin(); this.loadMyUsage(); this.loadBilling();} if(v==='usage')this.loadUsage(); if(v==='secrets'){this.loadSecrets(); if(!this.providers.length)this.loadConnections();} if(v==='resources')this.loadTeamResources(); if(v==='catalog')this.loadConnections(); if(v==='connections')this.loadConnections(); if(v==='referrals')this.loadReferrals(); if(v==='hub')this.loadHub();
       // push history so browser Back navigates BETWEEN views instead of leaving the app; the '/app'
       // pathname also walks back from a /app/skills/<x> detail URL so reload doesn't reopen the detail
       if(!fromPop) history.pushState({view:v}, '',
         this.publicCatalog && v==='catalog' ? '/catalog' : this.tabUrl(v));
-      else if(v==='activity' || v==='orgs' || v==='workbench') this.syncTabUrl();  // e.g. '#usage' or '#billing' landed: name the tab
+      else if(['activity','orgs','workbench','wbtool','wbinstall'].includes(v)) this.syncTabUrl();  // e.g. '#usage' or '#billing' landed: name the tab
       if(!fromPop) window.scrollTo(0,0);
       this.startAgentOpen=false; this.orgMenu=false;
       if(this.elements.accountMenu) this.elements.accountMenu.open=false; },

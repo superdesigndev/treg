@@ -1,5 +1,5 @@
 import { parseTabHash } from './navigation.js'
-import { parseWorkbenchHash } from '../workbench/routes'
+import { parseWorkbenchHash, parseToolsHash } from '../workbench/routes'
 import { storageGet, storageSet, storageRemove } from './storage.js'
 export default async function boot(){
     const lifecycle = new AbortController();
@@ -41,8 +41,10 @@ export default async function boot(){
       if(tabbed){ this._tabRoute=tabbed; v=tabbed.view; }
       const wb=parseWorkbenchHash(location.hash);
       if(wb){ this._wbRoute=wb; v='workbench'; }
+      const wt=parseToolsHash(location.hash);
+      if(wt){ this._wbToolsRoute=wt; v=wt.kind==='tool' ? 'wbtool' : 'wbinstall'; }
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
-      if(['tools','orgs','activity','usage','admin','help','secrets','start','resources','catalog','connections','referrals','hub','workbench'].includes(v)) this.go(v, true);
+      if(['tools','orgs','activity','usage','admin','help','secrets','start','resources','catalog','connections','referrals','hub','workbench','wbtool','wbinstall'].includes(v)) this.go(v, true);
     });
     // Catalog data does not depend on the session, so a view that shows it starts fetching now,
     // alongside /meta and /auth/me, instead of after them (the shelves used to arrive last).

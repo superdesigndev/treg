@@ -10,7 +10,7 @@ export default function data(){
       hubOn:false, hub:{loading:false, tools:[], tool:null, tab:'overview', earnings:null, health:null, err:'', note:'', confirmRetire:null, runOpen:null},
       run:{loading:false, data:null, err:''},
       // the Workbench (interface/workbench.md): shown when /meta.workbench is on; wb is the open address
-      workbenchOn:false, wb:{tab:'tables', tableId:null, runId:null, cell:null, panel:null},
+      workbenchOn:false, wb:{tab:'tables', tableId:null, runId:null, cell:null, panel:null}, wbTools:{kind:'tool', id:'', tab:'overview'},
       elements: createElements(),
       bootReady: false, bootFailed: false,
       bootStartedAt: performance.now(),  // ms since navigation: where the loader's animations already are (App.vue)

@@ -48,3 +48,14 @@ export function workbenchHash(route: Partial<WorkbenchRoute>): string {
 }
 
 export const EMPTY_ROUTE: WorkbenchRoute = { tab: 'tables', tableId: null, runId: null, cell: null, panel: null }
+
+export interface ToolsRoute { kind: 'tool' | 'install', id: string, tab: string }
+const TOOLS = new RegExp(`^#?tools/(t|i)/(${ID})(?:\\?tab=([a-z]+))?$`)
+export function parseToolsHash(hash: string): ToolsRoute | null {
+  const m = TOOLS.exec(hash || '')
+  if (!m) return null
+  return { kind: m[1] === 't' ? 'tool' : 'install', id: decodeURIComponent(m[2]), tab: m[3] || (m[1] === 't' ? 'overview' : 'settings') }
+}
+export function toolsHash(route: ToolsRoute): string {
+  return `#tools/${route.kind === 'tool' ? 't' : 'i'}/${encodeURIComponent(route.id)}?tab=${route.tab}`
+}

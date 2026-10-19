@@ -9,6 +9,8 @@ sources:
   - frontend/src/workbench/tables/TableSheet.vue
   - frontend/src/workbench/runs/RunDetail.vue
   - frontend/src/workbench/triggers/TriggersTab.vue
+  - frontend/src/workbench/tools/ToolDetailPage.vue
+  - frontend/src/workbench/tools/InstallDetailPage.vue
   - frontend/src/components/DataGrid.vue
   - frontend/src/components/Inspector.vue
   - frontend/src/state/workbench.js
@@ -48,7 +50,8 @@ data anywhere.
 
 ## Addresses
 
-`#workbench/<tab>` with the table, run or cell carried the way `routes.ts` parses and prints it.
+`#workbench/<tab>` with the table, run or cell, and `#tools/t/<id>` or `#tools/i/<name>` for a tool
+definition or an install, carried the way `routes.ts` parses and prints them.
 The view is in both hash whitelists, like every other view ([dashboard](dashboard.md)), and
 `syncTabUrl` keeps the address current as the tab or the open object changes.
 

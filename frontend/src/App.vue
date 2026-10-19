@@ -11,9 +11,9 @@ import SignInDialog from './components/SignInDialog.vue'
 const {
   catalog: CatalogPage, connections: ConnectionsPage, find: SearchPage, provider: ProviderPage, platform: PlatformPage, tools: ToolsPage,
   detail: DetailPage, secrets: SecretsPage, resources: TeamResourcesPage, orgs: TeamPage, activity: ActivityPage,
-  admin: AdminPage, start: GettingStartedPage, referrals: ReferralsPage, hub: HubPage, run: HubRunPage, help: HelpPage, workbench: WorkbenchPage,
+  admin: AdminPage, start: GettingStartedPage, referrals: ReferralsPage, hub: HubPage, run: HubRunPage, help: HelpPage, workbench: WorkbenchPage, wbtool: WorkbenchToolPage, wbinstall: WorkbenchInstallPage,
 } = pages
-export default { ...controller, components: { ...controller.components, ...dialogs, TeamResourcesPage, CatalogPage, ConnectionsPage, ProviderPage, PlatformPage, ToolsPage, DetailPage, SecretsPage, TeamPage, ActivityPage, AdminPage, GettingStartedPage, ReferralsPage, HelpPage, SearchPage, HubPage, HubRunPage, WorkbenchPage, SignedOutPage, BrandMark, PublicNavigation, LandingNavigation, DashboardNavigation, SignInDialog } }
+export default { ...controller, components: { ...controller.components, ...dialogs, TeamResourcesPage, CatalogPage, ConnectionsPage, ProviderPage, PlatformPage, ToolsPage, DetailPage, SecretsPage, TeamPage, ActivityPage, AdminPage, GettingStartedPage, ReferralsPage, HelpPage, SearchPage, HubPage, HubRunPage, WorkbenchPage, WorkbenchToolPage, WorkbenchInstallPage, SignedOutPage, BrandMark, PublicNavigation, LandingNavigation, DashboardNavigation, SignInDialog } }
 </script>
 
 <template>
@@ -98,6 +98,8 @@ export default { ...controller, components: { ...controller.components, ...dialo
         <HubPage v-if="view==='hub'" />
         <HubRunPage v-if="view==='run'" />
         <WorkbenchPage v-if="view==='workbench'" />
+        <WorkbenchToolPage v-if="view==='wbtool'" />
+        <WorkbenchInstallPage v-if="view==='wbinstall'" />
 
         <!-- HELP -->
         <HelpPage v-if="view==='help'" />
