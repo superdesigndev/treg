@@ -1,12 +1,14 @@
 ---
 title: The Workbench — tables, runs and triggers in the dashboard
-status: behind TREG_WORKBENCH_ENABLED; Tables built on fixtures, Runs and Triggers still counts
+status: behind TREG_WORKBENCH_ENABLED; all three tabs built on fixtures
 sources:
   - contracts/workbench/openapi.yaml
   - frontend/src/workbench/WorkbenchPage.vue
   - frontend/src/workbench/routes.ts
   - frontend/src/workbench/api/client.ts
   - frontend/src/workbench/tables/TableSheet.vue
+  - frontend/src/workbench/runs/RunDetail.vue
+  - frontend/src/workbench/triggers/TriggersTab.vue
   - frontend/src/components/DataGrid.vue
   - frontend/src/components/Inspector.vue
   - frontend/src/state/workbench.js

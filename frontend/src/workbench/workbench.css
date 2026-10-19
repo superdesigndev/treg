@@ -41,3 +41,24 @@
 .wb-timeline time{color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums}
 .wb .btn.on{background:var(--inverse);color:var(--inverse-ink);border-color:var(--inverse)}
 @media (max-width:980px){.wb-layout{flex-direction:column}.wb-gridcol{width:100%}}
+
+.wb-seg{margin:0 0 12px}
+.wb-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:2px 0 6px}
+span.wb-bar{display:inline-block;height:6px;width:120px;border-radius:999px;background:var(--panel2);overflow:hidden;vertical-align:middle;margin-right:8px;padding:0}
+span.wb-bar.wide{width:220px}
+span.wb-bar i{display:block;height:100%;background:var(--teal);border-radius:999px}
+span.wb-bar.succeeded i{background:var(--green)}
+span.wb-bar.failed i{background:var(--red)}
+span.wb-bar.partial i{background:var(--amber)}
+.wb-h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.wb-stats .stat .n small{font-size:14px;color:var(--muted)}
+.wb-note{margin:0 0 12px;padding:10px 14px;border-radius:var(--rb);background:var(--surface);box-shadow:0 0 0 1px var(--line)}
+.wb-note.bad{box-shadow:0 0 0 1px color-mix(in srgb,var(--red) 40%,transparent)}
+.wb-note.bad b{color:var(--red)}
+.wb-note.warn{box-shadow:0 0 0 1px color-mix(in srgb,var(--amber) 50%,transparent)}
+.wb-note.warn b{color:var(--amber)}
+.wb .ok{color:var(--green)}
+.wb .bad{color:var(--red)}
+.wb-warn{color:var(--amber)}
+.wb-budget{margin:16px 0 0;padding:12px 16px;border-radius:var(--r);background:var(--surface);box-shadow:0 0 0 1px var(--line);display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.wb-budget .wb-hint{margin-left:auto}
