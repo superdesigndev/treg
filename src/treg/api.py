@@ -219,6 +219,7 @@ async def meta() -> dict:
             # Whether the hub routes exist here at all (TREG_HUB_ENABLED), so the dashboard asks
             # them nothing when they would only answer 404. Per-team access is still probed.
             "hub": bool(s.hub_enabled),
+            "workbench": bool(s.workbench_enabled),
             # Providers this deployment paused (TREG_PAUSED_PROVIDERS), with the message to show.
             "paused_providers": oauth_providers.paused_listing(),
             # Config only, no database: lets the top-bar referral entry name the reward on every page

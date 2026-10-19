@@ -1,0 +1,5 @@
+{
+  "detail": "A table was already created with this Idempotency-Key, with different columns.",
+  "code": "idempotency_conflict",
+  "hint": "Use a new key for a new table, or repeat the original request to get the existing one."
+}

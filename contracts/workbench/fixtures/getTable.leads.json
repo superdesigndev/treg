@@ -1,0 +1,97 @@
+{
+  "id": "tbl_01HZX1LEADS",
+  "name": "leads",
+  "kind": "people",
+  "status": "ready",
+  "row_count": 1240,
+  "column_count": 8,
+  "updated_at": "2026-10-19T09:14:08Z",
+  "bound_by": [
+    "lead-emails",
+    "leads.email"
+  ],
+  "columns": [
+    {
+      "id": "col_full_name",
+      "name": "Full name",
+      "type": "person_name",
+      "sql_name": "full_name",
+      "storage_type": "TEXT",
+      "nullable": true
+    },
+    {
+      "id": "col_company_domain",
+      "name": "Company domain",
+      "type": "domain",
+      "sql_name": "company_domain",
+      "storage_type": "TEXT",
+      "nullable": true
+    },
+    {
+      "id": "col_title",
+      "name": "Title",
+      "type": "job_title",
+      "sql_name": "title",
+      "storage_type": "TEXT",
+      "nullable": true
+    },
+    {
+      "id": "col_email",
+      "name": "Email",
+      "type": "email",
+      "filled_by": "lead-emails",
+      "sql_name": "email",
+      "storage_type": "TEXT",
+      "nullable": true
+    },
+    {
+      "id": "col_verified",
+      "name": "Verified",
+      "type": "boolean",
+      "filled_by": "lead-emails",
+      "sql_name": "verified",
+      "storage_type": "TEXT",
+      "nullable": true
+    },
+    {
+      "id": "col_linkedin",
+      "name": "LinkedIn",
+      "type": "linkedin_person",
+      "filled_by": "leads.email",
+      "sql_name": "linkedin",
+      "storage_type": "TEXT",
+      "nullable": true
+    },
+    {
+      "id": "col_hq",
+      "name": "HQ country",
+      "type": "country",
+      "filled_by": "leads.email",
+      "sql_name": "hq",
+      "storage_type": "TEXT",
+      "nullable": true
+    },
+    {
+      "id": "col_icp",
+      "name": "ICP fit",
+      "type": "text",
+      "filled_by": "q4-accounts.people",
+      "sql_name": "icp",
+      "storage_type": "TEXT",
+      "nullable": true
+    }
+  ],
+  "metadata_revision": 7,
+  "source": {
+    "tool": "treg.people.search",
+    "body": {
+      "title": "founder",
+      "industry": "B2B SaaS",
+      "country": "US"
+    },
+    "page": 4
+  },
+  "sql_name": "leads",
+  "database_generation": 1,
+  "schema_version": 1
+}

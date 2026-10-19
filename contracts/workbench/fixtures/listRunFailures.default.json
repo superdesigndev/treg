@@ -1,0 +1,74 @@
+{
+  "run_id": "r_8e90",
+  "selection_id": "failset_8e90",
+  "expires_at": "2026-11-18T14:40:00Z",
+  "items": [
+    {
+      "item_id": "item_8e90_1",
+      "table_id": "tbl_01HZX1Q4",
+      "row_id": "row_001",
+      "error": {
+        "code": "invalid_input",
+        "message": "Company domain is missing."
+      },
+      "retry": {
+        "eligible": true,
+        "reason": null
+      }
+    },
+    {
+      "item_id": "item_8e90_2",
+      "table_id": "tbl_01HZX1Q4",
+      "row_id": "row_002",
+      "error": {
+        "code": "invalid_input",
+        "message": "Company domain is missing."
+      },
+      "retry": {
+        "eligible": true,
+        "reason": null
+      }
+    },
+    {
+      "item_id": "item_8e90_3",
+      "table_id": "tbl_01HZX1Q4",
+      "row_id": "row_003",
+      "error": {
+        "code": "invalid_input",
+        "message": "Company domain is missing."
+      },
+      "retry": {
+        "eligible": true,
+        "reason": null
+      }
+    },
+    {
+      "item_id": "item_8e90_4",
+      "table_id": "tbl_01HZX1Q4",
+      "row_id": "row_004",
+      "error": {
+        "code": "invalid_input",
+        "message": "Company domain is missing."
+      },
+      "retry": {
+        "eligible": true,
+        "reason": null
+      }
+    },
+    {
+      "item_id": "item_8e90_5",
+      "table_id": "tbl_01HZX1Q4",
+      "row_id": "row_005",
+      "error": {
+        "code": "outcome_unknown",
+        "message": "Provider outcome requires reconciliation."
+      },
+      "retry": {
+        "eligible": false,
+        "reason": "outcome_unknown"
+      }
+    }
+  ],
+  "next_cursor": null,
+  "has_more": false
+}

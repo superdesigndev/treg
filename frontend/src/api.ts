@@ -5,7 +5,7 @@ export interface RequestOptions extends Omit<RequestInit, 'headers'> {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, public detail: unknown = undefined) {
+  constructor(public status: number, public detail: unknown = undefined, public body: unknown = undefined) {
     super(typeof detail === 'string' ? detail : `HTTP ${status}`)
   }
 }
@@ -55,7 +55,7 @@ export async function requestJson<T = unknown>(
   }
   if (!response.ok) {
     const body = await response.json().catch(() => null)
-    throw new ApiError(response.status, body?.detail)
+    throw new ApiError(response.status, body?.detail, body)
   }
   return response.json()
 }

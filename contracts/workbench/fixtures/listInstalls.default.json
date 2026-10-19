@@ -1,0 +1,178 @@
+{
+  "installs": [
+    {
+      "name": "lead-emails",
+      "tool": "superdesign.lead-emails",
+      "version": 3,
+      "latest_version": 3,
+      "origin": "own",
+      "default_inputs": {},
+      "table_bindings": {
+        "leads": "tbl_01HZX1LEADS"
+      },
+      "max_cost_micro": 5000000,
+      "paused": false,
+      "config_revision": 4,
+      "triggers": [
+        {
+          "key": "weekly",
+          "kind": "schedule",
+          "status": "active",
+          "pause_reason": null,
+          "pause_detail": null,
+          "input_overrides": {},
+          "config_revision": 2,
+          "cron": "0 9 * * MON",
+          "timezone": "Europe/Amsterdam",
+          "mode": "net_new",
+          "next_fire_at": "2026-10-26T07:00:00Z",
+          "last_run": {
+            "run_id": "r_8d02",
+            "status": "succeeded",
+            "at": "2026-10-12T07:00:00Z",
+            "spent_micro": 20000
+          },
+          "id": "trg_lead-emails_weekly",
+          "install_id": "ins_lead-emails",
+          "run_as_membership_id": 87
+        },
+        {
+          "key": "inbound",
+          "kind": "webhook",
+          "status": "active",
+          "pause_reason": null,
+          "pause_detail": null,
+          "input_overrides": {},
+          "config_revision": 1,
+          "webhook_url": "https://treg.example/hooks/9f3a1c21",
+          "last_run": null,
+          "id": "trg_lead-emails_inbound",
+          "install_id": "ins_lead-emails",
+          "run_as_membership_id": 87
+        }
+      ],
+      "last_run": {
+        "run_id": "r_8f21",
+        "status": "running",
+        "at": "2026-10-19T07:00:00Z"
+      },
+      "updated_at": "2026-10-14T10:12:00Z",
+      "id": "ins_lead-emails"
+    },
+    {
+      "name": "partner-emails",
+      "tool": "superdesign.lead-emails",
+      "version": 2,
+      "latest_version": 3,
+      "origin": "own",
+      "default_inputs": {},
+      "table_bindings": {
+        "leads": "tbl_01HZX1Q4"
+      },
+      "max_cost_micro": 2000000,
+      "paused": false,
+      "config_revision": 1,
+      "triggers": [],
+      "last_run": null,
+      "updated_at": "2026-10-09T17:40:00Z",
+      "id": "ins_partner-emails"
+    },
+    {
+      "name": "competitor-watch",
+      "tool": "maker.competitor-watch",
+      "version": 3,
+      "latest_version": 3,
+      "origin": "hub",
+      "default_inputs": {
+        "domain": "superdesign.example"
+      },
+      "table_bindings": {
+        "results": "tbl_01HZX1COMP",
+        "seen": "tbl_01HZX1SEEN"
+      },
+      "max_cost_micro": 1000000,
+      "paused": false,
+      "config_revision": 2,
+      "triggers": [
+        {
+          "key": "daily",
+          "kind": "schedule",
+          "status": "paused",
+          "pause_reason": "failed",
+          "pause_detail": "crawl4ai.scrape answered 429 (paced) for 12 rows in a row; the run stopped at $0.20 of $1.00.",
+          "input_overrides": {},
+          "config_revision": 3,
+          "cron": "0 9 * * *",
+          "timezone": "Europe/Amsterdam",
+          "mode": "net_new",
+          "next_fire_at": null,
+          "last_run": {
+            "run_id": "r_8f1c",
+            "status": "failed",
+            "at": "2026-10-19T07:02:00Z",
+            "spent_micro": 200000
+          },
+          "id": "trg_competitor-watch_daily",
+          "install_id": "ins_competitor-watch",
+          "run_as_membership_id": 87
+        }
+      ],
+      "last_run": {
+        "run_id": "r_8f1c",
+        "status": "failed",
+        "at": "2026-10-19T07:02:00Z"
+      },
+      "updated_at": "2026-10-11T08:00:00Z",
+      "id": "ins_competitor-watch"
+    },
+    {
+      "name": "leads.email",
+      "tool": "treg.enrich.email",
+      "version": 1,
+      "latest_version": 1,
+      "origin": "builtin",
+      "default_inputs": {
+        "full_name": "{full_name}",
+        "domain": "{company_domain}"
+      },
+      "table_bindings": {
+        "table": "tbl_01HZX1LEADS"
+      },
+      "max_cost_micro": 500000,
+      "paused": false,
+      "config_revision": 1,
+      "triggers": [],
+      "last_run": null,
+      "updated_at": "2026-10-15T12:00:00Z",
+      "id": "ins_leads_email"
+    },
+    {
+      "name": "q4-accounts.people",
+      "tool": "treg.enrich.people",
+      "version": 1,
+      "latest_version": 1,
+      "origin": "builtin",
+      "default_inputs": {
+        "domain": "{domain}",
+        "title": "founder",
+        "limit": 3
+      },
+      "table_bindings": {
+        "table": "tbl_01HZX1Q4"
+      },
+      "max_cost_micro": 3000000,
+      "paused": false,
+      "config_revision": 1,
+      "triggers": [],
+      "last_run": {
+        "run_id": "r_8e90",
+        "status": "partial",
+        "at": "2026-10-18T14:40:00Z"
+      },
+      "updated_at": "2026-10-16T16:00:00Z",
+      "id": "ins_q4-accounts_people"
+    }
+  ],
+  "next_cursor": null,
+  "has_more": false
+}

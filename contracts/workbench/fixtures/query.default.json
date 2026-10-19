@@ -1,0 +1,32 @@
+{
+  "columns": [
+    "company_domain",
+    "people",
+    "verified"
+  ],
+  "rows": [
+    [
+      "ramp.example",
+      14,
+      11
+    ],
+    [
+      "linear.example",
+      9,
+      7
+    ],
+    [
+      "vercel.example",
+      8,
+      8
+    ],
+    [
+      "notion.example",
+      6,
+      4
+    ]
+  ],
+  "truncated": false,
+  "elapsed_ms": 38,
+  "database_generation": 1
+}

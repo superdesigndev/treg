@@ -1,0 +1,14 @@
+{
+  "dry_run": true,
+  "changes": [
+    {
+      "op": "add_column",
+      "column": {
+        "sql_name": "review_note",
+        "storage_type": "TEXT",
+        "nullable": true
+      }
+    }
+  ],
+  "conflicts": []
+}

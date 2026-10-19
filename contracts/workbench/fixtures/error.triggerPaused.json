@@ -1,0 +1,5 @@
+{
+  "detail": "Trigger inbound is paused after a failed run; this event was not accepted.",
+  "code": "trigger_paused",
+  "hint": "Resume the trigger, then send the event again."
+}

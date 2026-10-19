@@ -1,4 +1,5 @@
 import { parseTabHash } from './navigation.js'
+import { parseWorkbenchHash } from '../workbench/routes'
 import { markRaw } from 'vue'
 
 // Agents' verdicts read the way Steam reads user reviews: the positive share (a partly useful verdict
@@ -58,6 +59,8 @@ platUrl(slug, cap){ const tail=cap ? '/'+encodeURIComponent(cap) : '';
     viewFromHash(){ let v=(location.hash||'').replace('#','');
       const tabbed=parseTabHash(location.hash);
       if(tabbed){ this._tabRoute=tabbed; return tabbed.view; }
+      const wb=parseWorkbenchHash(location.hash);
+      if(wb){ this._wbRoute=wb; return 'workbench'; }
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
       return ['tools','orgs','activity','usage','admin','help','secrets','start','resources','catalog','connections','referrals','hub'].includes(v)?v:null; },
 // Land on a public catalog URL (see catalogFromPath): the finder page, a platform shelf, or the index.

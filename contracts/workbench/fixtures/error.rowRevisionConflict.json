@@ -1,0 +1,12 @@
+{
+  "detail": "The batch was not committed.",
+  "code": "row_revision_conflict",
+  "committed": false,
+  "conflicts": [
+    {
+      "row_id": "row_001",
+      "expected_revision": 1,
+      "current_revision": 2
+    }
+  ]
+}

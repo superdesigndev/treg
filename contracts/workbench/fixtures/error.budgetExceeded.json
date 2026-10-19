@@ -1,0 +1,5 @@
+{
+  "detail": "This run would need about $5.66; the install's cap is $5.00.",
+  "code": "budget_exceeded",
+  "hint": "Raise max_cost_micro on the install, or run fewer rows."
+}

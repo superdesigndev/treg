@@ -1,0 +1,113 @@
+{
+  "id": "r_8e90",
+  "status": "partial",
+  "install": "q4-accounts.people",
+  "tool": "treg.enrich.people@1",
+  "tables": [
+    "tbl_01HZX1Q4"
+  ],
+  "source": "manual",
+  "trigger": null,
+  "started_by": "stonex@example.test",
+  "progress": {
+    "unit": "rows",
+    "total": 310,
+    "completed": 310,
+    "succeeded": 305,
+    "failed": 5,
+    "skipped": 0,
+    "selected": 310,
+    "not_started": 0,
+    "in_progress": 0,
+    "interrupted": 0
+  },
+  "spent_micro": 2100000,
+  "max_cost_micro": 3000000,
+  "retry_of_run_id": null,
+  "failed_rows_until": "2026-11-18T14:40:00Z",
+  "error": null,
+  "started_at": "2026-10-18T14:40:00Z",
+  "finished_at": "2026-10-18T15:02:00Z",
+  "snapshot": {
+    "config_revision": 1,
+    "version": 1,
+    "table_bindings": {
+      "table": "tbl_01HZX1Q4"
+    },
+    "database_generation": 1,
+    "schema_versions": {
+      "tbl_01HZX1Q4": 1
+    }
+  },
+  "trace": [
+    {
+      "row": 1,
+      "row_label": "Eric Glyman",
+      "call": "treg.people.email.find",
+      "outcome": "ok",
+      "provider": "findymail",
+      "cost_micro": 4800,
+      "ms": 812
+    },
+    {
+      "row": 2,
+      "row_label": "Mira Patel",
+      "call": "treg.people.email.find",
+      "outcome": "ok",
+      "provider": "prospeo",
+      "cost_micro": 6000,
+      "ms": 640
+    },
+    {
+      "row": 3,
+      "row_label": "Jonas Weber",
+      "call": "treg.people.email.find",
+      "outcome": "ok",
+      "provider": "hunter",
+      "cost_micro": 9000,
+      "ms": 1210
+    },
+    {
+      "row": 4,
+      "row_label": "Aiko Tanaka",
+      "call": "treg.people.email.find",
+      "outcome": "ok",
+      "provider": "findymail",
+      "cost_micro": 4800,
+      "ms": 590
+    },
+    {
+      "row": 5,
+      "row_label": "Sam Okafor",
+      "call": "treg.people.email.find",
+      "outcome": "ok",
+      "provider": "prospeo",
+      "cost_micro": 6000,
+      "ms": 2300
+    }
+  ],
+  "trace_next_cursor": "eyJyb3ciOjZ9",
+  "log": [
+    "14:40:01 310 rows",
+    "15:02:00 305 done, 5 failed, $2.10"
+  ],
+  "terminal": true,
+  "reserved_micro": 0,
+  "usage_final": true,
+  "links": {
+    "self": "/api/workbench/runs/r_8e90",
+    "failures": "/api/workbench/runs/r_8e90/failures"
+  },
+  "created_at": "2026-10-18T14:40:00Z",
+  "install_id": "ins_q4-accounts_people",
+  "trigger_id": null,
+  "failure_selection": {
+    "selection_id": "failset_8e90",
+    "failed_count": 5,
+    "eligible_count": 4,
+    "blocked_count": 1,
+    "expires_at": "2026-11-18T14:40:00Z"
+  },
+  "kind": "run",
+  "run_id": "r_8e90"
+}

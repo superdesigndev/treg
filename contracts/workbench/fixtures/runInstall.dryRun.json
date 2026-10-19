@@ -1,0 +1,17 @@
+{
+  "dry_run": true,
+  "rows": 60,
+  "estimate_micro": 288000,
+  "max_cost_micro": 5000000,
+  "confirm_token": "cft_example_1a2b3c",
+  "preview": [
+    {
+      "full_name": "Zoe Lin",
+      "company_domain": "warp.example"
+    },
+    {
+      "full_name": "Omar Siddiqui",
+      "company_domain": "raycast.example"
+    }
+  ]
+}

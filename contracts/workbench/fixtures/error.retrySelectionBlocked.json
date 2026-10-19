@@ -1,0 +1,5 @@
+{
+  "detail": "One selected item has an unresolved provider outcome.",
+  "code": "retry_selection_blocked",
+  "hint": "Reconcile it or explicitly select the four eligible item IDs."
+}

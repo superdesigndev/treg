@@ -1,0 +1,33 @@
+{
+  "run_id": "r_8f31",
+  "status": "queued",
+  "progress": {
+    "unit": "rows",
+    "total": 4,
+    "completed": 0,
+    "succeeded": 0,
+    "failed": 0,
+    "skipped": 0,
+    "selected": 4,
+    "not_started": 4,
+    "in_progress": 0,
+    "interrupted": 0
+  },
+  "spent_micro": 0,
+  "next": [
+    "treg run status r_8f31"
+  ],
+  "terminal": false,
+  "reserved_micro": 24000,
+  "usage_final": false,
+  "links": {
+    "self": "/api/workbench/runs/r_8f31"
+  },
+  "kind": "run",
+  "retry_of_run_id": "r_8e90",
+  "retry_selection": {
+    "selection_id": "failset_8e90",
+    "selected_count": 4,
+    "input_mode": "current_rows"
+  }
+}

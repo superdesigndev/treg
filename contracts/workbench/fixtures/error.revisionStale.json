@@ -1,0 +1,5 @@
+{
+  "detail": "The install changed since you read it (revision 4, you sent 3).",
+  "code": "revision_stale",
+  "hint": "Read the install again and resend with config_revision 4."
+}

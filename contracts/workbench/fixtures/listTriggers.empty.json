@@ -1,0 +1,10 @@
+{
+  "triggers": [],
+  "unattended": {
+    "spent_micro": 0,
+    "cap_micro": 20000000,
+    "period": "month"
+  },
+  "next_cursor": null,
+  "has_more": false
+}

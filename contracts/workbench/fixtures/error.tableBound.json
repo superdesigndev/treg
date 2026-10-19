@@ -1,0 +1,9 @@
+{
+  "detail": "Table leads is bound by two installs and cannot be deleted.",
+  "code": "table_bound",
+  "hint": "Remove or rebind the installs first.",
+  "installs": [
+    "lead-emails",
+    "leads.email"
+  ]
+}

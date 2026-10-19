@@ -1,0 +1,151 @@
+{
+  "tools": [
+    {
+      "id": "superdesign.lead-emails",
+      "name": "lead-emails",
+      "kind": "script",
+      "summary": "Finds a work email for every lead whose email is empty, verified.",
+      "uses": [
+        "treg.people.email.find",
+        "treg.people.email.verify"
+      ],
+      "latest_version": 3,
+      "versions": [
+        {
+          "version": 3,
+          "status": "live",
+          "published_at": "2026-10-14T10:12:00Z",
+          "published_by": "agent · Claude Code",
+          "check": "passed · 3 rows · $0.01",
+          "table_slots": {
+            "leads": {
+              "access": "read_write",
+              "read": [
+                "full_name",
+                "company_domain"
+              ],
+              "write": [
+                "email",
+                "verified"
+              ]
+            }
+          },
+          "install_count": 1,
+          "build_status": "ready",
+          "check_status": "passed",
+          "created_at": "2026-10-14T10:12:00Z"
+        },
+        {
+          "version": 2,
+          "status": "live",
+          "published_at": "2026-10-09T17:40:00Z",
+          "published_by": "agent · Claude Code",
+          "check": "passed",
+          "table_slots": {
+            "leads": {
+              "access": "read_write",
+              "read": [
+                "full_name",
+                "company_domain"
+              ],
+              "write": [
+                "email"
+              ]
+            }
+          },
+          "install_count": 1,
+          "build_status": "ready",
+          "check_status": "passed",
+          "created_at": "2026-10-09T17:40:00Z"
+        },
+        {
+          "version": 1,
+          "status": "archived",
+          "published_at": "2026-10-07T09:03:00Z",
+          "published_by": "stonex@example.test",
+          "check": "passed",
+          "table_slots": {
+            "leads": {
+              "access": "read_write",
+              "write": [
+                "email"
+              ]
+            }
+          },
+          "install_count": 0,
+          "build_status": "ready",
+          "check_status": "passed",
+          "created_at": "2026-10-07T09:03:00Z"
+        }
+      ],
+      "listing": null,
+      "installs": [
+        "lead-emails",
+        "partner-emails"
+      ],
+      "health": "ok",
+      "serving_version": 3
+    },
+    {
+      "id": "superdesign.seo-domain-snapshot",
+      "name": "seo-domain-snapshot",
+      "kind": "workflow",
+      "summary": "Six catalog steps: authority, backlinks, top keywords, traffic estimate.",
+      "uses": [
+        "dataforseo.backlinks.summary",
+        "dataforseo.labs.ranked-keywords",
+        "similarweb.traffic"
+      ],
+      "latest_version": 1,
+      "versions": [
+        {
+          "version": 1,
+          "status": "live",
+          "published_at": "2026-10-01T09:00:00Z",
+          "published_by": "stonex@example.test",
+          "check": "passed",
+          "table_slots": {},
+          "install_count": 0,
+          "build_status": "ready",
+          "check_status": "passed",
+          "created_at": "2026-10-01T09:00:00Z"
+        }
+      ],
+      "listing": null,
+      "installs": [],
+      "health": "ok",
+      "serving_version": 1
+    },
+    {
+      "id": "superdesign.engineering-team-size",
+      "name": "engineering-team-size",
+      "kind": "script",
+      "summary": "Engineering headcount class from three catalog tools, cheapest first.",
+      "uses": [
+        "crustdata.company.headcount",
+        "pdl.company.enrich"
+      ],
+      "latest_version": 2,
+      "versions": [
+        {
+          "version": 2,
+          "status": "live",
+          "published_at": "2026-09-30T12:00:00Z",
+          "published_by": "stonex@example.test",
+          "check": "passed",
+          "table_slots": {},
+          "install_count": 0,
+          "build_status": "ready",
+          "check_status": "passed",
+          "created_at": "2026-09-30T12:00:00Z"
+        }
+      ],
+      "listing": "approved",
+      "installs": [],
+      "health": "ok",
+      "serving_version": 2
+    }
+  ],
+  "next_cursor": null,
+  "has_more": false
+}

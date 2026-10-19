@@ -1,0 +1,77 @@
+{
+  "name": "competitor-watch",
+  "tool": "maker.competitor-watch",
+  "version": 3,
+  "latest_version": 3,
+  "origin": "hub",
+  "default_inputs": {
+    "domain": "superdesign.example"
+  },
+  "table_bindings": {
+    "results": "tbl_01HZX1COMP",
+    "seen": "tbl_01HZX1SEEN"
+  },
+  "max_cost_micro": 1000000,
+  "paused": false,
+  "config_revision": 2,
+  "triggers": [
+    {
+      "key": "daily",
+      "kind": "schedule",
+      "status": "paused",
+      "pause_reason": "failed",
+      "pause_detail": "crawl4ai.scrape answered 429 (paced) for 12 rows in a row; the run stopped at $0.20 of $1.00.",
+      "input_overrides": {},
+      "config_revision": 3,
+      "cron": "0 9 * * *",
+      "timezone": "Europe/Amsterdam",
+      "mode": "net_new",
+      "next_fire_at": null,
+      "last_run": {
+        "run_id": "r_8f1c",
+        "status": "failed",
+        "at": "2026-10-19T07:02:00Z",
+        "spent_micro": 200000
+      },
+      "id": "trg_competitor-watch_daily",
+      "install_id": "ins_competitor-watch",
+      "run_as_membership_id": 87
+    }
+  ],
+  "last_run": {
+    "run_id": "r_8f1c",
+    "status": "failed",
+    "at": "2026-10-19T07:02:00Z"
+  },
+  "updated_at": "2026-10-11T08:00:00Z",
+  "table_slots": {
+    "results": {
+      "access": "write",
+      "write": [
+        "url",
+        "change",
+        "seen_at"
+      ]
+    },
+    "seen": {
+      "access": "read_write"
+    }
+  },
+  "input_schema": {
+    "domain": {
+      "type": "string",
+      "example": "example.com"
+    }
+  },
+  "credentials": [
+    {
+      "name": "crawl4ai.scrape",
+      "status": "treg_key"
+    },
+    {
+      "name": "maker's own tool: snapshots",
+      "status": "maker_key"
+    }
+  ],
+  "id": "ins_competitor-watch"
+}

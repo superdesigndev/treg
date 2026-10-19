@@ -33,6 +33,37 @@ test('an upstream JSON refusal is never retried', async () => {
   expect(fetcher).toHaveBeenCalledTimes(1)
 })
 
+test('a structured refusal retains recovery fields and its legacy detail', async () => {
+  const body = {
+    detail: 'Table leads is bound by two installs and cannot be deleted.',
+    code: 'table_bound',
+    hint: 'Remove or rebind the installs first.',
+    installs: ['lead-emails', 'leads.email'],
+    recovery: { metadata_revision: 4 },
+  }
+  const fetcher = vi.fn().mockResolvedValue(Response.json(body, { status: 409 }))
+  vi.stubGlobal('fetch', fetcher)
+  await expect(requestJson('/api/workbench/tables/leads', { method: 'DELETE' }, {}, vi.fn(), () => false))
+    .rejects.toMatchObject({ status: 409, detail: body.detail, message: body.detail, body })
+  expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+test.each([
+  { error: 'manifest_invalid', field: 'name', rule: 'A name is required' },
+  [{ loc: ['body', 'name'], msg: 'Field required', type: 'missing' }],
+])('a legacy structured detail remains available without changing its message', async (detail) => {
+  const body = { detail }
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(body, { status: 422 })))
+  await expect(requestJson('/hub/tools', { method: 'POST', body: '{}' }, {}, vi.fn(), () => false))
+    .rejects.toMatchObject({ status: 422, detail, message: 'HTTP 422', body })
+})
+
+test('a non-JSON error still reports its HTTP status', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Bad gateway', { status: 502 })))
+  await expect(requestJson('/tools', {}, {}, vi.fn(), () => false))
+    .rejects.toMatchObject({ status: 502, detail: undefined, message: 'HTTP 502', body: null })
+})
+
 test('login 401 is an ordinary error, not a reload loop', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ detail: 'expired' }, { status: 401 })))
   const expired = vi.fn()

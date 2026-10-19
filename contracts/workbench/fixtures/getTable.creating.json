@@ -1,0 +1,43 @@
+{
+  "id": "tbl_01HZX1NEW",
+  "name": "imported-list",
+  "kind": "people",
+  "status": "creating",
+  "row_count": 0,
+  "column_count": 3,
+  "updated_at": "2026-10-19T09:14:08Z",
+  "bound_by": [],
+  "columns": [
+    {
+      "id": "col_full_name",
+      "name": "Full name",
+      "type": "person_name",
+      "sql_name": "full_name",
+      "storage_type": "TEXT",
+      "nullable": true
+    },
+    {
+      "id": "col_company_domain",
+      "name": "Company domain",
+      "type": "domain",
+      "sql_name": "company_domain",
+      "storage_type": "TEXT",
+      "nullable": true
+    },
+    {
+      "id": "col_title",
+      "name": "Title",
+      "type": "job_title",
+      "sql_name": "title",
+      "storage_type": "TEXT",
+      "nullable": true
+    }
+  ],
+  "metadata_revision": 1,
+  "source": {
+    "file": "imported-list.csv"
+  },
+  "sql_name": "imported_list",
+  "database_generation": null,
+  "schema_version": null
+}

@@ -1,0 +1,13 @@
+{
+  "kind": "table_operation",
+  "operation_id": "top_schema_002",
+  "table_id": "tbl_01HZX1LEADS",
+  "type": "alter_table",
+  "status": "running",
+  "phase": "draining",
+  "base_schema_version": 1,
+  "target_schema_version": 2,
+  "links": {
+    "self": "/api/workbench/table-operations/top_schema_002"
+  }
+}

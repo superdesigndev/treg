@@ -1,0 +1,20 @@
+{
+  "operation_id": "deleteRows_default",
+  "table_id": "tbl_01HZX1LEADS",
+  "database_generation": 1,
+  "schema_version": 1,
+  "committed": true,
+  "counts": {
+    "inserted": 0,
+    "updated": 0,
+    "skipped": 0,
+    "deleted": 1
+  },
+  "rows": [
+    {
+      "id": "row_002",
+      "status": "deleted",
+      "revision": null
+    }
+  ]
+}

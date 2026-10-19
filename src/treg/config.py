@@ -674,6 +674,9 @@ class Settings(BaseSettings):
     table_enabled: bool = False
     table_teams: str = ""
     table_users: str = ""
+    # The Workbench (docs/context/interface/workbench.md): the team's tables, runs and triggers in the
+    # dashboard. Off by default; `/meta.workbench` tells the dashboard whether to show the entry.
+    workbench_enabled: bool = False
     # The redirect URIs of "treg for Sheets" (the add-on's OAuth client `treg-sheets`), comma-separated
     # and matched exactly: one per Apps Script project (`.../macros/d/<script id>/usercallback`). A new
     # script id is a setting, not a code change. Empty = the client does not exist.

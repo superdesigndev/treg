@@ -1,0 +1,108 @@
+{
+  "id": "superdesign.lead-emails",
+  "name": "lead-emails",
+  "kind": "script",
+  "summary": "Finds a work email for every lead whose email is empty, verified.",
+  "uses": [
+    "treg.people.email.find",
+    "treg.people.email.verify"
+  ],
+  "latest_version": 4,
+  "versions": [
+    {
+      "version": 4,
+      "status": "saved",
+      "published_at": null,
+      "table_slots": {
+        "leads": {
+          "access": "read_write",
+          "read": [
+            "full_name",
+            "company_domain"
+          ],
+          "write": [
+            "email",
+            "verified"
+          ]
+        }
+      },
+      "install_count": 0,
+      "build_status": "queued",
+      "check_status": "not_run",
+      "created_at": "2026-10-19T09:30:00Z"
+    },
+    {
+      "version": 3,
+      "status": "live",
+      "published_at": "2026-10-14T10:12:00Z",
+      "published_by": "agent · Claude Code",
+      "check": "passed · 3 rows · $0.01",
+      "table_slots": {
+        "leads": {
+          "access": "read_write",
+          "read": [
+            "full_name",
+            "company_domain"
+          ],
+          "write": [
+            "email",
+            "verified"
+          ]
+        }
+      },
+      "install_count": 1,
+      "build_status": "ready",
+      "check_status": "passed",
+      "created_at": "2026-10-14T10:12:00Z"
+    },
+    {
+      "version": 2,
+      "status": "live",
+      "published_at": "2026-10-09T17:40:00Z",
+      "published_by": "agent · Claude Code",
+      "check": "passed",
+      "table_slots": {
+        "leads": {
+          "access": "read_write",
+          "read": [
+            "full_name",
+            "company_domain"
+          ],
+          "write": [
+            "email"
+          ]
+        }
+      },
+      "install_count": 1,
+      "build_status": "ready",
+      "check_status": "passed",
+      "created_at": "2026-10-09T17:40:00Z"
+    },
+    {
+      "version": 1,
+      "status": "archived",
+      "published_at": "2026-10-07T09:03:00Z",
+      "published_by": "stonex@example.test",
+      "check": "passed",
+      "table_slots": {
+        "leads": {
+          "access": "read_write",
+          "write": [
+            "email"
+          ]
+        }
+      },
+      "install_count": 0,
+      "build_status": "ready",
+      "check_status": "passed",
+      "created_at": "2026-10-07T09:03:00Z"
+    }
+  ],
+  "listing": null,
+  "installs": [
+    "lead-emails",
+    "partner-emails"
+  ],
+  "health": "ok",
+  "serving_version": 3
+}

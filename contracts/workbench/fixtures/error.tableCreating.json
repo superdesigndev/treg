@@ -1,0 +1,5 @@
+{
+  "detail": "Table imported-list is still being created.",
+  "code": "table_creating",
+  "hint": "Try again in a few seconds; the first table of a team also creates its database."
+}

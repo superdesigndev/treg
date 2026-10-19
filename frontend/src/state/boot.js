@@ -1,4 +1,5 @@
 import { parseTabHash } from './navigation.js'
+import { parseWorkbenchHash } from '../workbench/routes'
 import { storageGet, storageSet, storageRemove } from './storage.js'
 export default async function boot(){
     const lifecycle = new AbortController();
@@ -38,8 +39,10 @@ export default async function boot(){
       let v=(e.state&&e.state.view)||(location.hash||'').replace('#','')||'tools';
       const tabbed=parseTabHash(location.hash);
       if(tabbed){ this._tabRoute=tabbed; v=tabbed.view; }
+      const wb=parseWorkbenchHash(location.hash);
+      if(wb){ this._wbRoute=wb; v='workbench'; }
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
-      if(['tools','orgs','activity','usage','admin','help','secrets','start','resources','catalog','connections','referrals','hub'].includes(v)) this.go(v, true);
+      if(['tools','orgs','activity','usage','admin','help','secrets','start','resources','catalog','connections','referrals','hub','workbench'].includes(v)) this.go(v, true);
     });
     // Catalog data does not depend on the session, so a view that shows it starts fetching now,
     // alongside /meta and /auth/me, instead of after them (the shelves used to arrive last).
@@ -56,6 +59,7 @@ export default async function boot(){
     const metaReq=early.meta||fetch('/meta',{headers}).then(r=>r.json());
     const meReq=early.me||fetch('/auth/me',{credentials:'include',headers}).then(r=>r.ok?r.json():null);
     this.meta = await metaReq.catch(()=>this.meta);
+    this.workbenchOn=!!this.meta.workbench;
     this.proxy = this.meta.public_url || location.origin;
     this.initAnalytics();
     // deploy detection: long-lived tabs learn about a new bundle on tab focus + a slow poll,

@@ -1,0 +1,72 @@
+{
+  "triggers": [
+    {
+      "key": "weekly",
+      "kind": "schedule",
+      "status": "active",
+      "pause_reason": null,
+      "pause_detail": null,
+      "input_overrides": {},
+      "config_revision": 2,
+      "cron": "0 9 * * MON",
+      "timezone": "Europe/Amsterdam",
+      "mode": "net_new",
+      "next_fire_at": "2026-10-26T07:00:00Z",
+      "last_run": {
+        "run_id": "r_8d02",
+        "status": "succeeded",
+        "at": "2026-10-12T07:00:00Z",
+        "spent_micro": 20000
+      },
+      "install": "lead-emails",
+      "id": "trg_lead-emails_weekly",
+      "install_id": "ins_lead-emails",
+      "run_as_membership_id": 87
+    },
+    {
+      "key": "inbound",
+      "kind": "webhook",
+      "status": "active",
+      "pause_reason": null,
+      "pause_detail": null,
+      "input_overrides": {},
+      "config_revision": 1,
+      "webhook_url": "https://treg.example/hooks/9f3a1c21",
+      "last_run": null,
+      "install": "lead-emails",
+      "id": "trg_lead-emails_inbound",
+      "install_id": "ins_lead-emails",
+      "run_as_membership_id": 87
+    },
+    {
+      "key": "daily",
+      "kind": "schedule",
+      "status": "paused",
+      "pause_reason": "failed",
+      "pause_detail": "crawl4ai.scrape answered 429 (paced) for 12 rows in a row; the run stopped at $0.20 of $1.00.",
+      "input_overrides": {},
+      "config_revision": 3,
+      "cron": "0 9 * * *",
+      "timezone": "Europe/Amsterdam",
+      "mode": "net_new",
+      "next_fire_at": null,
+      "last_run": {
+        "run_id": "r_8f1c",
+        "status": "failed",
+        "at": "2026-10-19T07:02:00Z",
+        "spent_micro": 200000
+      },
+      "install": "competitor-watch",
+      "id": "trg_competitor-watch_daily",
+      "install_id": "ins_competitor-watch",
+      "run_as_membership_id": 87
+    }
+  ],
+  "unattended": {
+    "spent_micro": 6200000,
+    "cap_micro": 20000000,
+    "period": "month"
+  },
+  "next_cursor": null,
+  "has_more": false
+}

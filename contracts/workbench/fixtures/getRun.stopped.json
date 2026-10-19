@@ -1,0 +1,45 @@
+{
+  "id": "r_8f21",
+  "status": "stopped",
+  "install": "lead-emails",
+  "tool": "superdesign.lead-emails@3",
+  "tables": [
+    "tbl_01HZX1LEADS"
+  ],
+  "source": "schedule",
+  "trigger": "weekly",
+  "started_by": "trigger weekly",
+  "progress": {
+    "unit": "rows",
+    "total": 1240,
+    "completed": 1180,
+    "succeeded": 1176,
+    "failed": 4,
+    "skipped": 0,
+    "selected": 1240,
+    "not_started": 55,
+    "in_progress": 0,
+    "interrupted": 5
+  },
+  "spent_micro": 390000,
+  "max_cost_micro": 5000000,
+  "retry_of_run_id": null,
+  "failed_rows_until": null,
+  "error": null,
+  "started_at": "2026-10-19T07:00:00Z",
+  "finished_at": "2026-10-19T09:20:00Z",
+  "terminal": true,
+  "reserved_micro": 0,
+  "usage_final": true,
+  "links": {
+    "self": "/api/workbench/runs/r_8f21"
+  },
+  "created_at": "2026-10-19T07:00:00Z",
+  "install_id": "ins_lead-emails",
+  "trigger_id": "trg_lead-emails_weekly",
+  "stop_reason": "user_requested",
+  "trace": [],
+  "log": [],
+  "kind": "run",
+  "run_id": "r_8f21"
+}

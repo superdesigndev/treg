@@ -1,0 +1,25 @@
+{
+  "operation_id": "writeRows_netNew",
+  "table_id": "tbl_01HZX1LEADS",
+  "database_generation": 1,
+  "schema_version": 1,
+  "committed": true,
+  "counts": {
+    "inserted": 1,
+    "updated": 0,
+    "skipped": 1,
+    "deleted": 0
+  },
+  "rows": [
+    {
+      "id": "row_001",
+      "status": "skipped",
+      "revision": 2
+    },
+    {
+      "id": "row_003",
+      "status": "inserted",
+      "revision": 1
+    }
+  ]
+}

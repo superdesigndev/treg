@@ -1,0 +1,11 @@
+{
+  "kind": "table_operation",
+  "operation_id": "top_create_001",
+  "table_id": "tbl_01HZX1NEW",
+  "type": "create_table",
+  "status": "running",
+  "phase": "creating_table",
+  "links": {
+    "self": "/api/workbench/table-operations/top_create_001"
+  }
+}

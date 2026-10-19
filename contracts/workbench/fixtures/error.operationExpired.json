@@ -1,0 +1,5 @@
+{
+  "detail": "The original write identity has expired.",
+  "code": "operation_expired",
+  "hint": "Inspect the recorded outcome and current data before issuing new intent."
+}

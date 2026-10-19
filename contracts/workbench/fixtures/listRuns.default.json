@@ -1,0 +1,215 @@
+{
+  "runs": [
+    {
+      "id": "r_8f21",
+      "status": "running",
+      "install": "lead-emails",
+      "tool": "superdesign.lead-emails@3",
+      "tables": [
+        "tbl_01HZX1LEADS"
+      ],
+      "source": "schedule",
+      "trigger": "weekly",
+      "started_by": "trigger weekly",
+      "progress": {
+        "unit": "rows",
+        "total": 1240,
+        "completed": 1180,
+        "succeeded": 1176,
+        "failed": 4,
+        "skipped": 0,
+        "selected": 1240,
+        "not_started": 55,
+        "in_progress": 5,
+        "interrupted": 0
+      },
+      "spent_micro": 390000,
+      "max_cost_micro": 5000000,
+      "retry_of_run_id": null,
+      "failed_rows_until": null,
+      "error": null,
+      "started_at": "2026-10-19T07:00:00Z",
+      "finished_at": null,
+      "terminal": false,
+      "reserved_micro": 24000,
+      "usage_final": false,
+      "links": {
+        "self": "/api/workbench/runs/r_8f21"
+      },
+      "created_at": "2026-10-19T07:00:00Z",
+      "install_id": "ins_lead-emails",
+      "trigger_id": "trg_lead-emails_weekly",
+      "kind": "run",
+      "run_id": "r_8f21"
+    },
+    {
+      "id": "r_8f1c",
+      "status": "failed",
+      "install": "competitor-watch",
+      "tool": "maker.competitor-watch@3",
+      "tables": [
+        "tbl_01HZX1COMP",
+        "tbl_01HZX1SEEN"
+      ],
+      "source": "schedule",
+      "trigger": "daily",
+      "started_by": "trigger daily",
+      "progress": {
+        "unit": "rows",
+        "total": 48,
+        "completed": 12,
+        "succeeded": 0,
+        "failed": 12,
+        "skipped": 0,
+        "selected": 48,
+        "not_started": 0,
+        "in_progress": 0,
+        "interrupted": 36
+      },
+      "spent_micro": 200000,
+      "max_cost_micro": 1000000,
+      "retry_of_run_id": null,
+      "failed_rows_until": "2026-11-18T07:02:00Z",
+      "error": "12 rows failed in a row: crawl4ai.scrape answered 429 (paced)",
+      "started_at": "2026-10-19T07:02:00Z",
+      "finished_at": "2026-10-19T07:06:30Z",
+      "terminal": true,
+      "reserved_micro": 0,
+      "usage_final": true,
+      "links": {
+        "self": "/api/workbench/runs/r_8f1c"
+      },
+      "created_at": "2026-10-19T07:02:00Z",
+      "install_id": "ins_competitor-watch",
+      "trigger_id": "trg_competitor-watch_daily",
+      "kind": "run",
+      "run_id": "r_8f1c"
+    },
+    {
+      "id": "r_8e90",
+      "status": "partial",
+      "install": "q4-accounts.people",
+      "tool": "treg.enrich.people@1",
+      "tables": [
+        "tbl_01HZX1Q4"
+      ],
+      "source": "manual",
+      "trigger": null,
+      "started_by": "stonex@example.test",
+      "progress": {
+        "unit": "rows",
+        "total": 310,
+        "completed": 310,
+        "succeeded": 305,
+        "failed": 5,
+        "skipped": 0,
+        "selected": 310,
+        "not_started": 0,
+        "in_progress": 0,
+        "interrupted": 0
+      },
+      "spent_micro": 2100000,
+      "max_cost_micro": 3000000,
+      "retry_of_run_id": null,
+      "failed_rows_until": "2026-11-18T14:40:00Z",
+      "error": null,
+      "started_at": "2026-10-18T14:40:00Z",
+      "finished_at": "2026-10-18T15:02:00Z",
+      "terminal": true,
+      "reserved_micro": 0,
+      "usage_final": true,
+      "links": {
+        "self": "/api/workbench/runs/r_8e90"
+      },
+      "created_at": "2026-10-18T14:40:00Z",
+      "install_id": "ins_q4-accounts_people",
+      "trigger_id": null,
+      "kind": "run",
+      "run_id": "r_8e90"
+    },
+    {
+      "id": "r_8e71",
+      "status": "succeeded",
+      "install": null,
+      "tool": "superdesign.seo-domain-snapshot@1",
+      "tables": [],
+      "source": "agent",
+      "trigger": null,
+      "started_by": "agent · Claude Code",
+      "progress": {
+        "unit": "rows",
+        "total": 1,
+        "completed": 1,
+        "succeeded": 1,
+        "failed": 0,
+        "skipped": 0,
+        "selected": 1,
+        "not_started": 0,
+        "in_progress": 0,
+        "interrupted": 0
+      },
+      "spent_micro": 80000,
+      "max_cost_micro": 500000,
+      "retry_of_run_id": null,
+      "failed_rows_until": null,
+      "error": null,
+      "started_at": "2026-10-18T09:05:00Z",
+      "finished_at": "2026-10-18T09:05:41Z",
+      "terminal": true,
+      "reserved_micro": 0,
+      "usage_final": true,
+      "links": {
+        "self": "/api/workbench/runs/r_8e71"
+      },
+      "created_at": "2026-10-18T09:05:00Z",
+      "install_id": null,
+      "trigger_id": null,
+      "kind": "run",
+      "run_id": "r_8e71"
+    },
+    {
+      "id": "r_8d02",
+      "status": "succeeded",
+      "install": "lead-emails",
+      "tool": "superdesign.lead-emails@3",
+      "tables": [
+        "tbl_01HZX1LEADS"
+      ],
+      "source": "schedule",
+      "trigger": "weekly",
+      "started_by": "trigger weekly",
+      "progress": {
+        "unit": "rows",
+        "total": 3,
+        "completed": 3,
+        "succeeded": 3,
+        "failed": 0,
+        "skipped": 0,
+        "selected": 3,
+        "not_started": 0,
+        "in_progress": 0,
+        "interrupted": 0
+      },
+      "spent_micro": 20000,
+      "max_cost_micro": 5000000,
+      "retry_of_run_id": null,
+      "failed_rows_until": null,
+      "error": null,
+      "started_at": "2026-10-12T07:00:00Z",
+      "finished_at": "2026-10-12T07:00:19Z",
+      "terminal": true,
+      "reserved_micro": 0,
+      "usage_final": true,
+      "links": {
+        "self": "/api/workbench/runs/r_8d02"
+      },
+      "created_at": "2026-10-12T07:00:00Z",
+      "install_id": "ins_lead-emails",
+      "trigger_id": "trg_lead-emails_weekly",
+      "kind": "run",
+      "run_id": "r_8d02"
+    }
+  ],
+  "next_cursor": null,
+  "has_more": false
+}

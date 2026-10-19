@@ -1,0 +1,28 @@
+{
+  "run_id": "r_8f32",
+  "status": "running",
+  "progress": {
+    "unit": "rows",
+    "total": 60,
+    "completed": 5,
+    "succeeded": 5,
+    "failed": 0,
+    "skipped": 0,
+    "selected": 60,
+    "not_started": 50,
+    "in_progress": 5,
+    "interrupted": 0
+  },
+  "spent_micro": 24000,
+  "next": [
+    "treg run status r_8f32",
+    "treg run stop r_8f32"
+  ],
+  "terminal": false,
+  "reserved_micro": 24000,
+  "usage_final": false,
+  "links": {
+    "self": "/api/workbench/runs/r_8f32"
+  },
+  "kind": "run"
+}

@@ -33,6 +33,7 @@ import find from './find.js'
 import findComputed from './findComputed.js'
 import lifecycle from './lifecycle.js'
 import hub from './hub.js'
+import workbench from './workbench.js'
 import tickets from './tickets.js'
 import credentialIssues, { credentialIssueComputed } from './credentialIssues.js'
 import billingComputed from './billingComputed.js'
@@ -45,7 +46,7 @@ import detailsComputed from './detailsComputed.js'
 export default {
  data,
  computed: {...resourcesComputed, ...billingComputed, ...connectionsComputed, ...catalogComputed, ...sessionComputed, ...agentsComputed, ...onboardingComputed, ...detailsComputed, ...findComputed, ...credentialIssueComputed},
- methods: {...resources, setElement(name, element) { this.elements[name] = element }, ...session, ...team, ...keys, ...agents, ...projects, ...governance, ...activity, ...billing, ...referrals, ...secrets, ...tools, ...skills, ...format, ...onboarding, ...analytics, ...help, ...connections, ...sharing, ...navigation, ...catalog, ...catalogEvents, ...details, ...admin, ...snippets, ...tryTool, ...find, ...lifecycle, ...hub, ...tickets, ...credentialIssues},
+ methods: {...resources, setElement(name, element) { this.elements[name] = element }, ...session, ...team, ...keys, ...agents, ...projects, ...governance, ...activity, ...billing, ...referrals, ...secrets, ...tools, ...skills, ...format, ...onboarding, ...analytics, ...help, ...connections, ...sharing, ...navigation, ...catalog, ...catalogEvents, ...details, ...admin, ...snippets, ...tryTool, ...find, ...lifecycle, ...hub, ...workbench, ...tickets, ...credentialIssues},
  watch:{
     // Dialog focus (in on open, trapped, back to the trigger on close) and Escape: v-dialog (dialogs/dialog.ts)
     'welcome.agent'(v){ storageSet('treg-agent', v); },  // see _restoreAgent

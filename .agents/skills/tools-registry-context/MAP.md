@@ -18,6 +18,7 @@ Regenerate via `scripts/build-map.py`.
 | `README.md` | foundation/charter.md |
 | `alembic.ini` | architecture/data-model.md |
 | `assets/brand/og-card.html` | interface/seo.md |
+| `contracts/workbench/openapi.yaml` | interface/workbench.md |
 | `deploy/render.example.yaml` | ops/deploy.md |
 | `docs/hub-recipes/data-csv/run.js` | architecture/hub.md |
 | `docs/hub-recipes/data-sheets/run.js` | architecture/hub.md |
@@ -32,8 +33,10 @@ Regenerate via `scripts/build-map.py`.
 | `frontend/e2e/landing.spec.ts` | interface/seo.md |
 | `frontend/e2e/layout.spec.ts` | interface/dashboard.md |
 | `frontend/index.html` | interface/seo.md |
+| `frontend/scripts/fixture-plugin.mjs` | interface/workbench.md |
 | `frontend/src/App.vue` | interface/dashboard.md, interface/seo.md |
 | `frontend/src/agent-setup/index.ts` | interface/enrich-arena.md |
+| `frontend/src/api.ts` | interface/dashboard.md |
 | `frontend/src/components/CatalogSearch.vue` | architecture/find.md |
 | `frontend/src/components/FindAnswer.vue` | architecture/find.md |
 | `frontend/src/components/PublicNavigation.vue` | interface/seo.md |
@@ -67,8 +70,13 @@ Regenerate via `scripts/build-map.py`.
 | `frontend/src/state/onboarding.js` | interface/onboarding.md |
 | `frontend/src/state/session.js` | architecture/auth-secrets.md, interface/dashboard.md |
 | `frontend/src/state/team.js` | interface/dashboard.md |
+| `frontend/src/state/workbench.js` | interface/workbench.md |
 | `frontend/src/styles/base.css` | interface/dashboard.md |
 | `frontend/src/views.ts` | interface/dashboard.md |
+| `frontend/src/workbench/WorkbenchPage.vue` | interface/workbench.md |
+| `frontend/src/workbench/api/client.ts` | interface/workbench.md |
+| `frontend/src/workbench/api/types.gen.ts` | interface/workbench.md |
+| `frontend/src/workbench/routes.ts` | interface/workbench.md |
 | `frontend/tests/agents.test.ts` | interface/dashboard.md |
 | `frontend/tests/captcha.test.ts` | architecture/multi-tenancy.md |
 | `hatch_build.py` | ops/deploy.md |
@@ -774,7 +782,7 @@ Regenerate via `scripts/build-map.py`.
 | `interface/api.md` | `key_spend.py`, `media.py`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py`, `test_cli_pairing.py` |
 | `interface/catalog-review-proposal.md` | _(no source files — narrative/reference)_ |
 | `interface/cli.md` | `cli.py`, `test_released_cli_compat.py`, `test_cli_key_compatibility.py`, `auth_helpers.py`, `cli_analytics.py`, `convert.py`, `agents.py`, `api_keys.py`, `test_api_keys.py` |
-| `interface/dashboard.md` | `App.vue`, `TeamShowcase.vue`, `TeamAvatar.vue`, `UserAvatarDialog.vue`, `Avatar.vue`, `images.ts`, `views.ts`, `controller.js`, `agents.js`, `agentsComputed.js`, `credentialIssues.js`, `data.js`, `keys.js`, `session.js`, `team.js`, `TeamPage.vue`, `agents.test.ts`, `agents.spec.ts`, `catalog.js`, `base.css`, `layout.spec.ts`, `dashboard.css`, `web.py`, `tutorial.js`, `tour.js` |
+| `interface/dashboard.md` | `api.ts`, `App.vue`, `TeamShowcase.vue`, `TeamAvatar.vue`, `UserAvatarDialog.vue`, `Avatar.vue`, `images.ts`, `views.ts`, `controller.js`, `agents.js`, `agentsComputed.js`, `credentialIssues.js`, `data.js`, `keys.js`, `session.js`, `team.js`, `TeamPage.vue`, `agents.test.ts`, `agents.spec.ts`, `catalog.js`, `base.css`, `layout.spec.ts`, `dashboard.css`, `web.py`, `tutorial.js`, `tour.js` |
 | `interface/enrich-arena.md` | `arena.py`, `arena.py`, `arena.py`, `models.py`, `0027_enrich_arena.py`, `teams.py`, `auth.py`, `bootstrap.py`, `enrich-arena.html`, `arena.js`, `bench.js`, `arena.css`, `index.ts`, `arena_verification_insights.py`, `0029_arena_verification_snapshot.py`, `import_arena_verification.py`, `test_arena_verification_insights.py`, `arena_insights.py`, `arena_insights.py`, `0028_arena_insights.py`, `test_arena_insights.py`, `apollo.svg`, `branddev.svg`, `companyenrich.svg`, `findymail.svg`, `hunter.svg`, `icypeas.svg`, `leadmagic.svg`, `leadsforge.svg`, `lusha.svg`, `pdl.svg`, `predictleads.svg`, `thecompaniesapi.svg`, `tomba.svg`, `sitetrack.js`, `test_enrich_arena.py` |
 | `interface/env-import.md` | `providers.py`, `skills.py` |
 | `interface/landing-sandbox.md` | `sandbox.py`, `sandbox_identity.py`, `pubfeed.py`, `sandbox.py`, `__init__.py`, `sandbox.py`, `api.py`, `onboard.py`, `web.py`, `boot.js`, `SignedOutPage.vue`, `install.sh` |
@@ -785,6 +793,7 @@ Regenerate via `scripts/build-map.py`.
 | `interface/skill-openai-tool-justifications.md` | _(no source files — narrative/reference)_ |
 | `interface/skill.md` | `skill.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `jev-memory.mjs`, `web.py`, `mcp_install.py`, `build_plugin.py`, `plugin.json`, `marketplace.json`, `plugin.json`, `plugin.json`, `package.json`, `cordis.patch.yml`, `index.js`, `plugin.json`, `minimax_plugin.py` |
 | `interface/web-arena.md` | `web_arena.py`, `web_arena_scores.py`, `web_arena.py`, `web_arena_quality.py`, `web_arena_publications.py`, `web_arena_calls.py`, `web_arena.py`, `models.py`, `0057_web_arena.py`, `0058_web_arena_call_stats.py`, `0059_web_arena_seed_start.py`, `0060_web_arena_seed_progress.py`, `config.py`, `bootstrap.py`, `worker.py`, `web-arena.html`, `arena.js`, `arena.css`, `test_web_arena.py`, `test_web_arena_calls.py` |
+| `interface/workbench.md` | `openapi.yaml`, `WorkbenchPage.vue`, `routes.ts`, `client.ts`, `types.gen.ts`, `workbench.js`, `fixture-plugin.mjs` |
 | `ops/capacity.md` | `__init__.py`, `collectors.py`, `policy.py`, `sweep.py`, `view.py`, `routes.py`, `signatures.py`, `verify.py`, `marks.py`, `events.py`, `test_capacity_protect.py`, `limiter.py`, `overflow_spend.py`, `routes_view.py`, `overflow.py`, `0007_overflow_spend.py`, `test_capacity_overflow.py`, `test_capacity_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `test_capacity_smoothing.py`, `fair_share.py`, `test_capacity_fair_share.py`, `overflow_seed.json`, `__init__.py`, `orthogonal.py`, `monid.py`, `catalogs.py`, `0006_overflow_route.py`, `test_capacity_overflow_routes.py`, `test_influencersclub_overflow.py`, `worker.py`, `provider_balances.py`, `0005_capacity_policy_snapshot.py`, `test_capacity_know.py`, `test_capacity_collectors.py`, `test_financialdatasets.py`, `test_tinyfish.py` |
 | `ops/deploy.md` | `pyproject.toml`, `hatch_build.py`, `build-dashboard.sh`, `build-web.sh`, `frontend-e2e-server.sh`, `__main__.py`, `maintenance.py`, `env.py`, `0034_managed_api_keys.py`, `0035_default_key_generation.py`, `0036_activity_key_indexes.py`, `worker.py`, `selfhost.sh`, `config.py`, `db.py`, `money_admission.py`, `bench_money_admission.py`, `email.py`, `audit.py`, `dev-local.sh`, `render.example.yaml` |
 | `reference/glossary.md` | `2026-06-30-jason-tools-registry.md` |

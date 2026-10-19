@@ -69,6 +69,7 @@ export const pages = {
   referrals: lazy(() => import('./pages/ReferralsPage.vue')),
   hub: lazy(() => import('./pages/HubPage.vue')),
   run: lazy(() => import('./pages/HubRunPage.vue')),
+  workbench: lazy(() => import('./workbench/WorkbenchPage.vue')),
   help: lazy(() => Promise.all([
     import('./pages/HelpPage.vue'), loadScript('/tutorial.js'), loadScript('/dashboard-tour/tour.js'),
   ]).then(([page]) => page)),
@@ -139,7 +140,7 @@ export function prefetchAfterBoot(vm: Dashboard) {
     const member = vm.authed && !vm.publicCatalog
     const views: View[] = member
       ? ['start', 'catalog', 'connections', 'tools', 'activity', 'orgs', 'platform', 'provider', 'detail', 'secrets',
-         'resources', 'referrals', 'hub', 'run', ...(vm.isAdmin ? ['admin' as const] : [])]
+         'resources', 'referrals', 'hub', 'run', ...(vm.workbenchOn ? ['workbench' as const] : []), ...(vm.isAdmin ? ['admin' as const] : [])]
       : ['catalog', 'platform']
     const queue: Lazy[] = [...views.map(v => pages[v]), ...(member ? Object.values(dialogs) : [])]
     for (const component of queue) { await idle(); await prefetch(component) }

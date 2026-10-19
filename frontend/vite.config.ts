@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath } from 'node:url'
+import { workbenchFixtures } from './scripts/fixture-plugin.mjs'
 
 export default defineConfig({
-  plugins: [vue({ template: { transformAssetUrls: { includeAbsolute: false } } })],
+  plugins: [vue({ template: { transformAssetUrls: { includeAbsolute: false } } }), ...(process.env.TREG_FIXTURES ? [workbenchFixtures()] : [])],
   base: '/app/ui/',
   build: {
     outDir: fileURLToPath(new URL('../src/treg/web/dashboard', import.meta.url)),

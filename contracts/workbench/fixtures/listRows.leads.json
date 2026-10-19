@@ -1,0 +1,520 @@
+{
+  "rows": [
+    {
+      "id": "row_000",
+      "cells": {
+        "full_name": "Eric Glyman",
+        "company_domain": "ramp.example",
+        "title": "CEO",
+        "email": "eric@ramp.example",
+        "verified": false,
+        "linkedin": "linkedin.example/in/eric-glyman",
+        "hq": "US",
+        "icp": "Strong"
+      },
+      "meta": {
+        "email": {
+          "value_source": {
+            "run_id": "r_8d02",
+            "call_id": "c_7b13e8",
+            "install": "lead-emails",
+            "tool": "treg.people.email.find",
+            "provider": "findymail",
+            "cost_micro": 4800,
+            "confidence": 0.96,
+            "at": "2026-10-12T07:00:00Z"
+          },
+          "latest_attempt": {
+            "run_id": "r_8d02",
+            "status": "succeeded",
+            "at": "2026-10-12T07:00:00Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_001",
+      "cells": {
+        "full_name": "Mira Patel",
+        "company_domain": "linear.example",
+        "title": "Head of Growth",
+        "email": "mira@linear.example",
+        "verified": true,
+        "linkedin": "linkedin.example/in/mira-patel",
+        "hq": "DE",
+        "icp": "Medium"
+      },
+      "meta": {
+        "email": {
+          "value_source": {
+            "run_id": "r_8d02",
+            "call_id": "c_7b140d",
+            "install": "lead-emails",
+            "tool": "treg.people.email.find",
+            "provider": "prospeo",
+            "cost_micro": 6000,
+            "confidence": 0.88,
+            "at": "2026-10-12T07:00:01Z"
+          },
+          "latest_attempt": {
+            "run_id": "r_8d02",
+            "status": "succeeded",
+            "at": "2026-10-12T07:00:01Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_002",
+      "cells": {
+        "full_name": "Jonas Weber",
+        "company_domain": "vercel.example",
+        "title": "VP Engineering",
+        "email": "jonas@vercel.example",
+        "verified": true,
+        "linkedin": "linkedin.example/in/jonas-weber",
+        "hq": "US",
+        "icp": "Weak"
+      },
+      "meta": {
+        "email": {
+          "value_source": {
+            "run_id": "r_8d02",
+            "call_id": "c_7b1432",
+            "install": "lead-emails",
+            "tool": "treg.people.email.find",
+            "provider": "hunter",
+            "cost_micro": 9000,
+            "confidence": 0.71,
+            "at": "2026-10-12T07:00:02Z"
+          },
+          "latest_attempt": {
+            "run_id": "r_8d02",
+            "status": "succeeded",
+            "at": "2026-10-12T07:00:02Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_003",
+      "cells": {
+        "full_name": "Aiko Tanaka",
+        "company_domain": "notion.example",
+        "title": "Product Lead",
+        "email": "aiko@notion.example",
+        "verified": true,
+        "linkedin": "linkedin.example/in/aiko-tanaka",
+        "hq": "US",
+        "icp": "Strong"
+      },
+      "meta": {
+        "email": {
+          "value_source": {
+            "run_id": "r_8d02",
+            "call_id": "c_7b1457",
+            "install": "lead-emails",
+            "tool": "treg.people.email.find",
+            "provider": "findymail",
+            "cost_micro": 4800,
+            "confidence": 0.96,
+            "at": "2026-10-12T07:00:03Z"
+          },
+          "latest_attempt": {
+            "run_id": "r_8d02",
+            "status": "succeeded",
+            "at": "2026-10-12T07:00:03Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_004",
+      "cells": {
+        "full_name": "Sam Okafor",
+        "company_domain": "figma.example",
+        "title": "Founder",
+        "email": "sam@figma.example",
+        "verified": false,
+        "linkedin": "linkedin.example/in/sam-okafor",
+        "hq": "US",
+        "icp": "Medium"
+      },
+      "meta": {
+        "email": {
+          "value_source": {
+            "run_id": "r_8d02",
+            "call_id": "c_7b147c",
+            "install": "lead-emails",
+            "tool": "treg.people.email.find",
+            "provider": "prospeo",
+            "cost_micro": 6000,
+            "confidence": 0.88,
+            "at": "2026-10-12T07:00:04Z"
+          },
+          "latest_attempt": {
+            "run_id": "r_8d02",
+            "status": "succeeded",
+            "at": "2026-10-12T07:00:04Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_005",
+      "cells": {
+        "full_name": "Lena Fischer",
+        "company_domain": "posthog.example",
+        "title": "CTO",
+        "email": null,
+        "verified": null,
+        "linkedin": "linkedin.example/in/lena-fischer",
+        "hq": "UK",
+        "icp": "Weak"
+      },
+      "meta": {
+        "email": {
+          "latest_attempt": {
+            "run_id": "r_8f21",
+            "status": "no_result",
+            "at": "2026-10-19T07:04:00Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_006",
+      "cells": {
+        "full_name": "Diego Ruiz",
+        "company_domain": "supabase.example",
+        "title": "Head of Sales",
+        "email": "diego@supabase.example",
+        "verified": true,
+        "linkedin": "linkedin.example/in/diego-ruiz",
+        "hq": "US",
+        "icp": "Strong"
+      },
+      "meta": {
+        "email": {
+          "value_source": {
+            "run_id": "r_8d02",
+            "call_id": "c_7b14c6",
+            "install": "lead-emails",
+            "tool": "treg.people.email.find",
+            "provider": "findymail",
+            "cost_micro": 4800,
+            "confidence": 0.96,
+            "at": "2026-10-12T07:00:06Z"
+          },
+          "latest_attempt": {
+            "run_id": "r_8d02",
+            "status": "succeeded",
+            "at": "2026-10-12T07:00:06Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_007",
+      "cells": {
+        "full_name": "Priya Nair",
+        "company_domain": "render.example",
+        "title": "Marketing Lead",
+        "email": "priya@render.example",
+        "verified": true,
+        "linkedin": "linkedin.example/in/priya-nair",
+        "hq": "IN",
+        "icp": "Medium"
+      },
+      "meta": {
+        "email": {
+          "value_source": {
+            "run_id": "r_8d02",
+            "call_id": "c_7b14eb",
+            "install": "lead-emails",
+            "tool": "treg.people.email.find",
+            "provider": "prospeo",
+            "cost_micro": 6000,
+            "confidence": 0.88,
+            "at": "2026-10-12T07:00:07Z"
+          },
+          "latest_attempt": {
+            "run_id": "r_8d02",
+            "status": "succeeded",
+            "at": "2026-10-12T07:00:07Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_008",
+      "cells": {
+        "full_name": "Tom Hale",
+        "company_domain": "cal.example",
+        "title": "CEO",
+        "email": "tom@cal.example",
+        "verified": false,
+        "linkedin": "linkedin.example/in/tom-hale",
+        "hq": "US",
+        "icp": "Weak"
+      },
+      "meta": {
+        "email": {
+          "value_source": {
+            "run_id": "r_8d02",
+            "call_id": "c_7b1510",
+            "install": "lead-emails",
+            "tool": "treg.people.email.find",
+            "provider": "hunter",
+            "cost_micro": 9000,
+            "confidence": 0.71,
+            "at": "2026-10-12T07:00:08Z"
+          },
+          "latest_attempt": {
+            "run_id": "r_8d02",
+            "status": "succeeded",
+            "at": "2026-10-12T07:00:08Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_009",
+      "cells": {
+        "full_name": "Yuki Mori",
+        "company_domain": "resend.example",
+        "title": "Head of Growth",
+        "email": null,
+        "verified": null,
+        "linkedin": null,
+        "hq": "JP",
+        "icp": "Strong"
+      },
+      "meta": {
+        "email": {
+          "latest_attempt": {
+            "run_id": "r_8f21",
+            "status": "failed",
+            "error": "provider timeout after 20 s",
+            "at": "2026-10-19T07:11:40Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_010",
+      "cells": {
+        "full_name": "Noor Haddad",
+        "company_domain": "clerk.example",
+        "title": "VP Engineering",
+        "email": "noor@clerk.example",
+        "verified": true,
+        "linkedin": "linkedin.example/in/noor-haddad",
+        "hq": "AE",
+        "icp": "Medium"
+      },
+      "meta": {
+        "email": {
+          "value_source": {
+            "run_id": "r_8d02",
+            "call_id": "c_7b155a",
+            "install": "lead-emails",
+            "tool": "treg.people.email.find",
+            "provider": "prospeo",
+            "cost_micro": 6000,
+            "confidence": 0.88,
+            "at": "2026-10-12T07:00:00Z"
+          },
+          "latest_attempt": {
+            "run_id": "r_8d02",
+            "status": "succeeded",
+            "at": "2026-10-12T07:00:00Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_011",
+      "cells": {
+        "full_name": "Ben Carter",
+        "company_domain": "loops.example",
+        "title": "Product Lead",
+        "email": "ben@loops.example",
+        "verified": true,
+        "linkedin": "linkedin.example/in/ben-carter",
+        "hq": "US",
+        "icp": "Weak"
+      },
+      "meta": {
+        "email": {
+          "value_source": {
+            "run_id": "r_8d02",
+            "call_id": "c_7b157f",
+            "install": "lead-emails",
+            "tool": "treg.people.email.find",
+            "provider": "hunter",
+            "cost_micro": 9000,
+            "confidence": 0.71,
+            "at": "2026-10-12T07:00:01Z"
+          },
+          "latest_attempt": {
+            "run_id": "r_8d02",
+            "status": "succeeded",
+            "at": "2026-10-12T07:00:01Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_012",
+      "cells": {
+        "full_name": "Ines Costa",
+        "company_domain": "mintlify.example",
+        "title": "Founder",
+        "email": "ines@mintlify.example",
+        "verified": false,
+        "linkedin": "linkedin.example/in/ines-costa",
+        "hq": "PT",
+        "icp": "Strong"
+      },
+      "meta": {
+        "email": {
+          "value_source": {
+            "run_id": "r_8d02",
+            "call_id": "c_7b15a4",
+            "install": "lead-emails",
+            "tool": "treg.people.email.find",
+            "provider": "findymail",
+            "cost_micro": 4800,
+            "confidence": 0.96,
+            "at": "2026-10-12T07:00:02Z"
+          },
+          "latest_attempt": {
+            "run_id": "r_8d02",
+            "status": "succeeded",
+            "at": "2026-10-12T07:00:02Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_013",
+      "cells": {
+        "full_name": "Kai Jensen",
+        "company_domain": "railway.example",
+        "title": "CTO",
+        "email": null,
+        "verified": null,
+        "linkedin": null,
+        "hq": "DK",
+        "icp": "Medium"
+      },
+      "meta": {
+        "email": {
+          "latest_attempt": {
+            "run_id": "r_8f21",
+            "status": "queued",
+            "at": "2026-10-19T07:00:02Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_014",
+      "cells": {
+        "full_name": "Zoe Lin",
+        "company_domain": "warp.example",
+        "title": "Head of Sales",
+        "email": null,
+        "verified": null,
+        "linkedin": null,
+        "hq": "US",
+        "icp": "Weak"
+      },
+      "meta": {
+        "email": {
+          "latest_attempt": {
+            "run_id": "r_8f21",
+            "status": "queued",
+            "at": "2026-10-19T07:00:02Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    },
+    {
+      "id": "row_015",
+      "cells": {
+        "full_name": "Omar Siddiqui",
+        "company_domain": "raycast.example",
+        "title": "Marketing Lead",
+        "email": null,
+        "verified": null,
+        "linkedin": null,
+        "hq": "US",
+        "icp": "Strong"
+      },
+      "meta": {
+        "email": {
+          "latest_attempt": {
+            "run_id": "r_8f21",
+            "status": "queued",
+            "at": "2026-10-19T07:00:02Z"
+          }
+        }
+      },
+      "created_at": "2026-10-07T10:00:00Z",
+      "updated_at": "2026-10-19T07:11:40Z",
+      "revision": 1
+    }
+  ],
+  "next_cursor": null,
+  "table_id": "tbl_01HZX1LEADS",
+  "database_generation": 1,
+  "schema_version": 1,
+  "has_more": false
+}

@@ -1,0 +1,81 @@
+{
+  "name": "lead-emails",
+  "tool": "superdesign.lead-emails",
+  "version": 3,
+  "latest_version": 3,
+  "origin": "own",
+  "default_inputs": {},
+  "table_bindings": {
+    "leads": "tbl_01HZX1LEADS"
+  },
+  "max_cost_micro": 5000000,
+  "paused": false,
+  "config_revision": 4,
+  "triggers": [
+    {
+      "key": "weekly",
+      "kind": "schedule",
+      "status": "active",
+      "pause_reason": null,
+      "pause_detail": null,
+      "input_overrides": {},
+      "config_revision": 2,
+      "cron": "0 9 * * MON",
+      "timezone": "Europe/Amsterdam",
+      "mode": "net_new",
+      "next_fire_at": "2026-10-26T07:00:00Z",
+      "last_run": {
+        "run_id": "r_8d02",
+        "status": "succeeded",
+        "at": "2026-10-12T07:00:00Z",
+        "spent_micro": 20000
+      },
+      "id": "trg_lead-emails_weekly",
+      "install_id": "ins_lead-emails",
+      "run_as_membership_id": 87
+    },
+    {
+      "key": "inbound",
+      "kind": "webhook",
+      "status": "active",
+      "pause_reason": null,
+      "pause_detail": null,
+      "input_overrides": {},
+      "config_revision": 1,
+      "webhook_url": "https://treg.example/hooks/9f3a1c21",
+      "last_run": null,
+      "id": "trg_lead-emails_inbound",
+      "install_id": "ins_lead-emails",
+      "run_as_membership_id": 87
+    }
+  ],
+  "last_run": {
+    "run_id": "r_8f21",
+    "status": "running",
+    "at": "2026-10-19T07:00:00Z"
+  },
+  "updated_at": "2026-10-14T10:12:00Z",
+  "table_slots": {
+    "leads": {
+      "access": "read_write",
+      "read": [
+        "full_name",
+        "company_domain"
+      ],
+      "write": [
+        "email",
+        "verified"
+      ]
+    }
+  },
+  "credentials": [
+    {
+      "name": "treg.people.email.find",
+      "status": "treg_key"
+    }
+  ],
+  "webhook_secrets": {
+    "inbound": "whsec_example_shown_once_7f3c9a"
+  },
+  "id": "ins_lead-emails"
+}

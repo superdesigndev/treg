@@ -5,8 +5,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build && vite build -c vite.agent-setup.config.ts && node scripts/copy-runtime.mjs",
-    "test": "vitest run",
+    "test": "npm run check:contracts && vitest run",
+    "check:contracts": "tsc --noEmit -p tsconfig.contracts.json",
     "check": "vue-tsc --noEmit",
+    "contract:types": "openapi-typescript ../contracts/workbench/openapi.yaml --default-non-nullable false -o src/workbench/api/types.gen.ts",
     "test:e2e": "playwright test",
     "predev": "vite build -c vite.agent-setup.config.ts && node scripts/copy-runtime.mjs"
   },
@@ -23,6 +25,7 @@
     "@types/matter-js": "0.20.2",
     "@types/node": "26.6.2",
     "@vitejs/plugin-vue": "6.0.9",
+    "openapi-typescript": "7.13.0",
     "typescript": "5.9.3",
     "vite": "8.3.0",
     "vitest": "5.0.1",

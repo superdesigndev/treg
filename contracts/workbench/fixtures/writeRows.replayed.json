@@ -1,0 +1,25 @@
+{
+  "operation_id": "write_001",
+  "table_id": "tbl_01HZX1LEADS",
+  "database_generation": 1,
+  "schema_version": 1,
+  "committed": true,
+  "counts": {
+    "inserted": 1,
+    "updated": 1,
+    "skipped": 0,
+    "deleted": 0
+  },
+  "rows": [
+    {
+      "id": "row_001",
+      "status": "updated",
+      "revision": 2
+    },
+    {
+      "id": "row_002",
+      "status": "inserted",
+      "revision": 1
+    }
+  ]
+}
