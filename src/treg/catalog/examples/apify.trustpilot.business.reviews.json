@@ -1,0 +1,40 @@
+[{
+  "id": "6ad4693a67a9270c904f1f7e",
+  "businessUnitId": "46aa1826000064000500920e",
+  "stars": 1,
+  "title": "Recent update is not working.",
+  "text": "After the most recent update I need to verify being 18+ to access certain apps & websites. I have no credit card or passport & when I upload my proof of age card it never registers so now I can’t access what I got this useless IPad for. Changing to Samsung ASAP, at least they don’t support pedophile presidents like Apple’s CEO.",
+  "language": "en",
+  "createdAt": 1792312666,
+  "experiencedDate": 1792281600,
+  "numberOfLikes": 0,
+  "isVerified": false,
+  "consumer": {
+    "id": "6ad4691a8da192929a4efcd0",
+    "displayName": "Stoic Oak",
+    "countryCode": "AU",
+    "numberOfReviews": 1
+  },
+  "reply": null,
+  "source": "Organic"
+},
+{
+  "id": "6ad4129fee7a73efdb63b5d9",
+  "businessUnitId": "46aa1826000064000500920e",
+  "stars": 1,
+  "title": "Apple Ipad",
+  "text": "Apple Ipad, barely lasted 4 years, £279 to fix a charging fault rendering my device usable. First Apple product and definitely the last, terrible company ",
+  "language": "en",
+  "createdAt": 1792290495,
+  "experiencedDate": 1792195200,
+  "numberOfLikes": 0,
+  "isVerified": false,
+  "consumer": {
+    "id": "5c924d4fdd5db244d18b60b0",
+    "displayName": "Nat",
+    "countryCode": "GB",
+    "numberOfReviews": 20
+  },
+  "reply": null,
+  "source": "Organic"
+}]
