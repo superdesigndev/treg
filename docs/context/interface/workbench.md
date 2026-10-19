@@ -1,11 +1,14 @@
 ---
 title: The Workbench — tables, runs and triggers in the dashboard
-status: shell behind TREG_WORKBENCH_ENABLED; the tabs fill in over the next changes
+status: behind TREG_WORKBENCH_ENABLED; Tables built on fixtures, Runs and Triggers still counts
 sources:
   - contracts/workbench/openapi.yaml
   - frontend/src/workbench/WorkbenchPage.vue
   - frontend/src/workbench/routes.ts
   - frontend/src/workbench/api/client.ts
+  - frontend/src/workbench/tables/TableSheet.vue
+  - frontend/src/components/DataGrid.vue
+  - frontend/src/components/Inspector.vue
   - frontend/src/state/workbench.js
   - frontend/scripts/fixture-plugin.mjs
 related:
@@ -46,3 +49,12 @@ data anywhere.
 `#workbench/<tab>` with the table, run or cell carried the way `routes.ts` parses and prints it.
 The view is in both hash whitelists, like every other view ([dashboard](dashboard.md)), and
 `syncTabUrl` keeps the address current as the tab or the open object changes.
+
+## The sheet and its one rail
+
+A table opens as `DataGrid` (the rows, a column header per `ColumnMetadata`, a chip where a
+tool-filled cell is empty and the latest attempt says why) beside one `Inspector`. The rail shows
+whichever the address names: a cell (`?cell=<row>:<column>`: the value, then the value's source and,
+when it differs, the latest attempt), the SQL box (`/sql`), or the table itself. Nothing opens in a
+dialog. Row provenance comes from the row's bounded `meta`, keyed by column group, so the panel
+never sums costs or reconstructs a history.

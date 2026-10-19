@@ -7,6 +7,8 @@ import { WORKBENCH_TABS, type WorkbenchTab } from './routes'
 import TablesTab from './tables/TablesTab.vue'
 import RunsTab from './runs/RunsTab.vue'
 import TriggersTab from './triggers/TriggersTab.vue'
+import TableSheet from './tables/TableSheet.vue'
+import './workbench.css'
 
 const dash = useDashboard()
 const client = workbenchClient((path, opts) => dash.api(path, opts))
@@ -48,6 +50,7 @@ watch(() => dash.activeSlugNow, () => { tables.value = null; runs.value = null; 
   </header>
   <PageTabs label="Workbench" :tabs="WORKBENCH_TABS" :current="tab" @select="dash.goWorkbench({ tab: $event })" />
   <p v-if="error" class="banner cn-banner"><span>{{ error }}</span></p>
+  <TableSheet v-else-if="tab === 'tables' && dash.wb.tableId" :table-id="dash.wb.tableId" />
   <TablesTab v-else-if="tab === 'tables'" :tables="tables" />
   <RunsTab v-else-if="tab === 'runs'" :runs="runs" />
   <TriggersTab v-else :triggers="triggers" :unattended="unattended" />
