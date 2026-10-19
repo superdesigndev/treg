@@ -1324,6 +1324,35 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+VIGILBASE = OAuthProvider(
+    service="vigilbase",
+    display_name="Vigilbase",
+    auth_kind="key",
+    token_label="Developer API key",
+    token_placeholder="vb_dev_…",
+    # Vigilbase accepts the key as `X-Api-Key` or `Authorization: Bearer`. Use the header form so the
+    # key never lands in a URL. Anonymous calls also work (10 req/min per IP); a key raises it to 30.
+    token_header="X-Api-Key",
+    token_format="{secret}",
+    setup_url="https://one.vigilbase.com/developers",
+    setup_action_label="Get your Vigilbase developer API key",
+    setup_steps=(
+        "Sign up or sign in at one.vigilbase.com (free, no sales call).",
+        "Open Developers and create an API key.",
+        "Copy the key — it is shown once.",
+    ),
+    setup_note="Every scan is free. A key raises the rate limit from 10 to 30 requests per minute.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Grade a website's HTTP security headers and a domain's email security (SPF, DKIM, DMARC, MTA-STS) A–F.",
+    base_url="https://vigilbase.com/api/v1/agent",
+    docs_url="https://vigilbase.com/developers",
+    probe_path="/tools",  # free — a bad key gets 401, a key without tools:read 403
+    probe_reject_statuses=(401, 403),  # a valid key past its 30/min allowance answers 429
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -3997,6 +4026,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB,
+        # Security checks API-key providers
+        VIGILBASE,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,

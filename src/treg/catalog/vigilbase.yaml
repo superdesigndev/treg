@@ -1,0 +1,82 @@
+provider: vigilbase
+source:
+  docs: https://vigilbase.com/developers
+  openapi: https://vigilbase.com/openapi.json
+  curated: 2026-10-17
+# Vigilbase's public agent API: free, non-intrusive security checks that read only public
+# information (HTTP response headers, DNS records, the MTA-STS policy file). Both scans and the
+# tool catalog are FREE — there is no paid tier on these routes and no meter to reconcile.
+#
+# Auth: `X-Api-Key: <key>` or `Authorization: Bearer <key>`. Keys are free and self-serve at
+# https://one.vigilbase.com/developers. Calls WITHOUT a key also work (anonymous free tier, 10
+# req/min per IP); a valid key raises that to 30 req/min. A WRONG key is never downgraded to
+# anonymous: it is refused with 401 on every route, which is what makes GET /tools a usable probe.
+#
+# Scan quota (separate from the request rate limit, with or without a key): 20 scans per hour per
+# client IP and per target, 1,000 per hour overall. A spent quota answers 429 with Retry-After.
+# Every call from treg's proxy shares one client IP, so treg-wide that is 20 scans an hour.
+#
+# Not listed: Website Security, React2Shell and FortiBleed are intrusive or sensitive and run only
+# in the browser with email verification or through a signed-in Vigilbase One CLI; the execute route
+# answers them with 404 and that explanation. GET /api/badge/{domain} returns an SVG badge for
+# sites verified through the browser scanner — an image, not data an agent can use.
+limits: "10 req/min anonymous, 30 req/min per developer key; scans additionally 20/hour per client IP and per target, 1,000/hour overall (429 + Retry-After)"
+pricing_url: https://vigilbase.com/developers  # every agent tool and developer key is free; no paid tier on these routes
+proposed_capabilities:
+  web.security.headers: "Grade a website's HTTP security headers"
+  web.domain.email_security: "Check a domain's email security records (SPF, DKIM, DMARC, MTA-STS)"
+endpoints:
+  - id: vigilbase.account.tools.list
+    added: '2026-10-17'
+    domain: other
+    capability: account.datasets.list
+    platform: account
+    scope: any_account
+    kind: account
+    method: GET
+    path: /tools
+    name: "List the security tools an agent can run"
+    summary: "List agent-executable tools with their execute URLs, plus the caller's rate-limit tier and scan quota"
+    input:
+      note: "no parameters. Also the registry's health probe: a valid key or no key answers 200, an invalid key 401"
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: https://vigilbase.com/developers, checked: '2026-10-17', confidence: documented, note: 'free on every tier'}
+    docs_url: https://vigilbase.com/developers
+
+  - id: vigilbase.web.security.headers
+    added: '2026-10-17'
+    domain: other
+    capability: web.security.headers
+    platform: web
+    scope: any_account
+    method: POST
+    path: /tools/security-headers/execute
+    name: "Grade a website's HTTP security headers"
+    summary: "Fetch a URL's HTTP response headers and grade them against the OWASP Secure Headers Project"
+    input:
+      body:
+        target: {type: string, required: true, note: "an https URL or bare hostname; port 443 only, private and IP-literal hosts are refused. 1-2048 chars", example: "https://github.com"}
+      note: "POST with Content-Type: application/json. Answers grade (A–F), gradeScore (0–100) and result.details per header; a site that could not be graded (challenge page, HTTP error, unreachable) answers 422 with grade null"
+    test_request:
+      body: {target: "https://github.com"}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: https://vigilbase.com/developers, checked: '2026-10-17', confidence: documented, note: 'free on every tier; counts against the 20 scans/hour per client IP and per target quota'}
+    docs_url: https://vigilbase.com/agent-skills/security-headers.md
+
+  - id: vigilbase.web.domain.email_security
+    added: '2026-10-17'
+    domain: other
+    capability: web.domain.email_security
+    platform: web
+    scope: any_account
+    method: POST
+    path: /tools/email-security/execute
+    name: "Check a domain's email security (SPF, DKIM, DMARC, MTA-STS)"
+    summary: "Inspect public DNS email authentication records (SPF, DKIM, DMARC, MX, DNSSEC, MTA-STS, TLS-RPT) and return an A–F grade"
+    input:
+      body:
+        target: {type: string, required: true, note: "a domain name, no scheme or path. 1-2048 chars", example: "github.com"}
+      note: "POST with Content-Type: application/json. Answers grade (A–F), gradeScore (0–100) and result.details per record; takes ~5-15 s. A domain that does not resolve answers 422 with grade null"
+    test_request:
+      body: {target: "github.com"}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: https://vigilbase.com/developers, checked: '2026-10-17', confidence: documented, note: 'free on every tier; counts against the 20 scans/hour per client IP and per target quota'}
+    docs_url: https://vigilbase.com/agent-skills/email-security.md

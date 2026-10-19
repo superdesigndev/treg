@@ -1084,6 +1084,8 @@ NO_BALANCE_API = {
                   "dashboard only",
     "exa": "no balance endpoint (checked exa.ai/docs 2026-08-31) — GET /team-management/api-keys/{id}/usage "
            "returns historical costs, not remaining balance; dashboard only",
+    "vigilbase": "every route is free — nothing to spend down; GET /tools reports the per-minute "
+                 "RateLimit headers and the hourly scan quota, not a balance (checked 2026-10-17)",
     "finnhub": "no account/usage endpoint and no rate-limit headers (checked 2026-08-31) — "
                "per-minute limits only, nothing to read back",
     "financialdatasets": "no free balance or usage endpoint in the official API "

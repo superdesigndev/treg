@@ -325,6 +325,7 @@ _UNRECORDED_SIGNATURE = {
     "sixtyfour",  # credits remain; documented 402 insufficient credit was not forced
     "blitzapi",  # monthly records remain; an exhausted-key response was not forced
     "enrichlayer",  # PAYG auto top-up remains funded; the docs name 403 but not its response body
+    "vigilbase",  # every route is free; a spent scan quota is a 429 rate limit, not an empty wallet
 
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "tomba", "twelvedata",
 }
