@@ -61,7 +61,7 @@ const toast = (m: string) => { note.value = m }
 
 <template>
 <div class="pl wb">
-  <p class="wb-crumb" style="margin:18px 0 0"><a href="#workbench/tables" @click.prevent="dash.go('workbench')">← Workbench</a><template v-if="install"> · <a :href="`#tools/t/${install.tool}?tab=installs`" @click.prevent="dash.goTools({ kind: 'tool', id: install.tool, tab: 'installs' })">{{ install.tool }}</a></template></p>
+  <p class="wb-crumb" style="margin:18px 0 0"><a href="#tools" @click.prevent="dash.go('tools')">← Your own tools</a><template v-if="install"> · <a :href="`#tools/t/${install.tool}?tab=installs`" @click.prevent="dash.goTools({ kind: 'tool', id: install.tool, tab: 'installs' })">{{ install.tool }}</a></template></p>
   <p v-if="error" class="banner cn-banner"><span>{{ error }}</span></p>
   <template v-else-if="install">
     <header class="pl-hero pl-hero-row" style="padding-top:8px">

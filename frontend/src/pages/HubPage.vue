@@ -4,8 +4,9 @@ export default { setup: useDashboard }
 </script>
 
 <template>
+<div class="pl hub">
           <template v-if="!hub.tool">
-            <h1>Hub - {{activeName}}</h1>
+            <h1 class="hub-title">Hub - {{activeName}}</h1>
             <p class="sub">Tools your team published for other people's agents: a JSON steps recipe or a script in a sandbox. Every step runs through your own tools and keys; callers pay the steps and your price.</p>
             <p v-if="hub.err" class="err">{{hub.err}}</p>
             <p v-if="hub.note" class="sub">{{hub.note}}</p>
@@ -181,6 +182,7 @@ POST {{proxy}}/call/{{hub.tool.tool_id}}    X-Treg-Token · JSON body of inputs<
               </template>
             </template>
           </template>
+</div>
 </template>
 
 <style scoped>

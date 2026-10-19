@@ -4,6 +4,7 @@ export default { setup: useDashboard }
 </script>
 
 <template>
+<div class="pl hub">
           <div style="margin-bottom:8px"><button class="btn sm" @click="go('hub')">← Hub</button></div>
           <p v-if="run.loading" class="sub">Loading…</p>
           <p v-else-if="run.err" class="err">{{run.err}}</p>
@@ -37,6 +38,7 @@ export default { setup: useDashboard }
               <pre style="white-space:pre-wrap;word-break:break-all;max-height:480px;overflow:auto">{{JSON.stringify(run.data.output, null, 2)}}</pre>
             </template>
           </template>
+</div>
 </template>
 
 <style scoped>

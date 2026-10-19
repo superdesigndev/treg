@@ -43,12 +43,13 @@ export default {
 
       </div>
       <nav class="rd-navs" aria-label="Primary navigation"><button v-if="authed" class="rd-nav" :class="{active:view==='start'}" :aria-current="(view==='start')?'page':null" @click="go('start')">Getting started</button>
-<button v-if="canRegister" class="rd-nav" :class="{active:view==='catalog'}" :aria-current="(view==='catalog')?'page':null" @click="go('catalog')">Catalog</button>
+<button v-if="workbenchOn && authed" class="rd-nav" :class="{active:['catalog','platform','provider','tools','secrets','resources','detail','hub','run','wbtool','wbinstall'].includes(view)}" :aria-current="['catalog','platform','provider','tools','secrets','resources','detail','hub','run','wbtool','wbinstall'].includes(view)?'page':null" @click="go('catalog')">Tools</button>
+<button v-if="canRegister && !workbenchOn" class="rd-nav" :class="{active:view==='catalog'}" :aria-current="(view==='catalog')?'page':null" @click="go('catalog')">Catalog</button>
 <button v-if="authed" class="rd-nav" :class="{active:view==='connections'||view==='provider'}" :aria-current="(view==='connections'||view==='provider')?'page':null" @click="go('connections')">Connections</button>
-<button v-if="authed" class="rd-nav" :class="{active:view==='tools'||view==='secrets'||view==='resources'}" :aria-current="(view==='tools'||view==='secrets'||view==='resources')?'page':null" @click="go('tools')">Your own tools</button>
+<button v-if="authed && !workbenchOn" class="rd-nav" :class="{active:view==='tools'||view==='secrets'||view==='resources'}" :aria-current="(view==='tools'||view==='secrets'||view==='resources')?'page':null" @click="go('tools')">Your own tools</button>
 <button v-if="authed" class="rd-nav" :class="{active:view==='activity'}" :aria-current="(view==='activity')?'page':null" @click="go('activity')">Activity</button>
-<button v-if="authed && hubOn" class="rd-nav" :class="{active:view==='hub'||view==='run'}" :aria-current="(view==='hub'||view==='run')?'page':null" @click="go('hub')">Hub</button>
-<button v-if="authed && workbenchOn" class="rd-nav" :class="{active:view==='workbench'||view==='wbtool'||view==='wbinstall'}" :aria-current="(view==='workbench'||view==='wbtool'||view==='wbinstall')?'page':null" @click="go('workbench')">Workbench</button>
+<button v-if="authed && hubOn && !workbenchOn" class="rd-nav" :class="{active:view==='hub'||view==='run'}" :aria-current="(view==='hub'||view==='run')?'page':null" @click="go('hub')">Hub</button>
+<button v-if="authed && workbenchOn" class="rd-nav" :class="{active:view==='workbench'}" :aria-current="(view==='workbench')?'page':null" @click="go('workbench')">Workbench</button>
 <button v-if="authed" class="rd-nav" :class="{active:view==='orgs'}" :aria-current="(view==='orgs')?'page':null" @click="go('orgs')">Team</button></nav>
       <div class="rd-account">
         <a v-if="authed" class="rd-referral" href="#referrals" @click.prevent="go('referrals')" :aria-current="view==='referrals'?'page':null" :title="refEntryTitle()" :aria-label="'Referral: '+refEntryTitle()"><img src="/media/redesign/referral-gift.svg" alt=""><span>Referral</span></a>

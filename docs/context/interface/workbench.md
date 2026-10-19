@@ -11,6 +11,7 @@ sources:
   - frontend/src/workbench/triggers/TriggersTab.vue
   - frontend/src/workbench/tools/ToolDetailPage.vue
   - frontend/src/workbench/tools/InstallDetailPage.vue
+  - frontend/src/components/ToolsScope.vue
   - frontend/src/components/DataGrid.vue
   - frontend/src/components/Inspector.vue
   - frontend/src/state/workbench.js
@@ -63,3 +64,8 @@ whichever the address names: a cell (`?cell=<row>:<column>`: the value, then the
 when it differs, the latest attempt), the SQL box (`/sql`), or the table itself. Nothing opens in a
 dialog. Row provenance comes from the row's bounded `meta`, keyed by column group, so the panel
 never sums costs or reconstructs a history.
+
+## One Tools entry
+
+With the flag on, Catalog, Your own tools and the Hub become three scopes of one Tools item in the
+navigation (`ToolsScope`); the pages, their addresses and the flag-off dashboard are unchanged.
