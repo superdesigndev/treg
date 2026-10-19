@@ -1839,6 +1839,30 @@ FISHAUDIO = OAuthProvider(
     probe_reject_statuses=(401, 403),
 )
 
+MAPLEAI = OAuthProvider(
+    service="mapleai",
+    display_name="MapleAI",
+    auth_kind="token",
+    token_label="Prepaid key",
+    token_placeholder="your MapleAI key (oms_buy_…)",
+    setup_url="https://base.mapleai.shop/",
+    setup_action_label="Get your MapleAI prepaid key",
+    setup_steps=(
+        "Open the MapleAI shop (base.mapleai.shop) or its MCP `buy_prepaid_tap` tool.",
+        "Buy a prepaid pack for the model you need — each key is scoped to one model.",
+        "Copy the issued oms_buy_… key.",
+    ),
+    setup_note="Prepaid keys meter tokens and are checked against /prepaid/status; x402 pay-per-request keys are not accepted on the prepaid routes.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Chat, judged decisions (Jev), image, speech and live web/X search through one prepaid gateway.",
+    base_url="https://base.mapleai.shop",
+    docs_url="https://base.mapleai.shop/developers",
+    probe_path="/prepaid/status",  # free GET; reports tokens total/used/remaining for the key
+    probe_reject_statuses=(401, 403),
+)
+
 OPENROUTER = OAuthProvider(
     service="openrouter",
     display_name="OpenRouter",
@@ -3985,7 +4009,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
-        OPENROUTER,
+        MAPLEAI, OPENROUTER,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,

@@ -1,0 +1,339 @@
+﻿provider: mapleai
+source:
+  docs: https://base.mapleai.shop/developers
+  openapi: https://base.mapleai.shop/openapi.json
+  curated: 2026-10-16
+pricing_url: https://base.mapleai.shop/v1/models
+limits: >-
+  Prepaid buyer keys (oms_buy_...) are scoped to ONE model each and metered in
+  tokens: GET /prepaid/status shows total/used/remaining for the key. A call to
+  a model outside the key's allowedModels is refused without spending. The
+  gateway relays the upstream provider's own rate limits.
+proposed_capabilities:
+  voice-gen.openai-tts.generate: "OpenAI tts-1 / tts-1-hd through MapleAI's prepaid gateway"
+endpoints:
+  # --- AI judgment -----------------------------------------------------------------------------
+  # Jev through MapleAI's prepaid bypass. Live 2026-10-16, jev prepaid key:
+  # POST /jev -> 402 Payment required (the x402 challenge, with schema + free-trial links);
+  # POST /api/v1/jev with `Authorization: Bearer oms_buy_...` -> 200 judged in 20 output tokens.
+  # The dedicated prepaid prefix also carries POST /prepaid/v1/jev (no x402 fallback).
+  - id: mapleai.ai-judge.decide
+    capability: ai-judge.decide
+    platform: ai-judge
+    domain: models
+    scope: any_account
+    method: POST
+    path: /api/v1/jev
+    name: "MapleAI: judge evidence with Jev"
+    summary: "One typed decision over a bounded Markdown state - a `choice`, a `score` or a `noul` probability. Several named questions in one request are judged independently. A judge, never a writer."
+    input:
+      bodyType: json
+      body:
+        model: {type: string, required: true, enum: [jev-latest], example: jev-latest}
+        state: {type: string, required: true, note: "the evidence, as bounded Markdown; under ~10 KB", example: "The customer was charged twice for one order."}
+        questions: {type: object, required: true, note: "id -> {type: choice|score|noul, ...}"}
+    test_request:
+      body: {model: jev-latest, state: "The customer was charged twice for one order.", questions: {q1: {type: choice, options: [yes, no]}}}
+    cost:
+      type: per_success
+      value: 0.02
+      currency: USD
+      settle: usage
+      usage:
+        unit: usd
+        terms:
+          - {path: usage.input_tokens, rate: 0.00006}
+      fallback: {value: 0.05, note: "Hold for ~800 input tokens at $0.06/M; the reply's usage.input_tokens settles at the rate card's jev-latest price."}
+      source: docs
+      source_url: https://base.mapleai.shop/v1/models
+      checked: 2026-10-16
+      confidence: verified
+    verified: 2026-10-16
+    added: '2026-10-16'
+    docs_url: https://base.mapleai.shop/developers
+    example_response: examples/mapleai.ai-judge.decide.json
+
+  # --- Web -------------------------------------------------------------------------------------
+  # Live 2026-10-16: POST /v1/web/search (native x402 surface) and POST /api/v1/web/search (the
+  # prepaid-forwarded variant of the same handler) are both registered in the gateway's OpenAPI.
+  - id: mapleai.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v1/web/search
+    body_allowlist: true
+    name: "MapleAI: search the web"
+    summary: "Live web search with snippets over MapleAI's search backend; x402 pay-per-request or a prepaid buyer key."
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "IANA reserved example domains"}
+        max_results: {type: integer, required: false, min: 1, max: 10, example: 3}
+    test_request: {body: {query: "IANA reserved example domains", max_results: 3}}
+    cost:
+      type: per_success
+      value: 0.01
+      currency: USD
+      settle: usage
+      usage: {path: headers.x-mapleai-response-cost, unit: usd}
+      fallback: {value: 0.01, note: "Held until the gateway's x-mapleai-response-cost header settles the exact charge."}
+      source: docs
+      source_url: https://base.mapleai.shop/v1/models
+      checked: 2026-10-16
+      confidence: documented
+    verified: 2026-10-16
+    added: '2026-10-16'
+    docs_url: https://base.mapleai.shop/developers
+    example_response: examples/mapleai.web.search.json
+
+  - id: mapleai.web.answer
+    capability: web.answer
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /v1/web/search
+    body_allowlist: true
+    name: "MapleAI: answer a web question"
+    summary: "A cited answer over live web results, with usage-metered tokens settled against the rate card."
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "What is example.com used for?"}
+        max_results: {type: integer, required: false, min: 1, max: 10, example: 3}
+        analysis: {type: boolean, required: false, default: true, example: true, note: "When true the backend runs an answer model over the results; when false only ranked links return."}
+    test_request: {body: {query: "What is example.com used for? Answer in one sentence.", max_results: 3}}
+    cost:
+      type: per_success
+      value: 0.02
+      currency: USD
+      settle: usage
+      usage:
+        unit: usd
+        terms:
+          - {path: usage.prompt_tokens, rate: 0.0028}
+          - {path: usage.completion_tokens, rate: 0.014}
+      fallback: {value: 0.02, note: "Hold until the reply's usage settles; the dearest chat tier is the reservation ceiling."}
+      source: docs
+      source_url: https://base.mapleai.shop/v1/models
+      checked: 2026-10-16
+      confidence: documented
+    verified: 2026-10-16
+    added: '2026-10-16'
+    docs_url: https://base.mapleai.shop/developers
+    example_response: examples/mapleai.web.answer.json
+
+  # --- X / Twitter -----------------------------------------------------------------------------
+  # All three X handlers live on the x402 surface and mirror under /api/v1/x/* for prepaid keys.
+  - id: mapleai.x.search.posts
+    capability: x.search.posts
+    platform: x
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v1/x/search
+    body_allowlist: true
+    name: "MapleAI: search X posts"
+    summary: "Search X posts through MapleAI's live index; x402 pay-per-request or a prepaid buyer key."
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "x402 protocol"}
+        max_results: {type: integer, required: false, min: 1, max: 20, example: 10}
+    test_request: {body: {query: "x402 protocol", max_results: 3}}
+    cost:
+      type: per_success
+      value: 0.02
+      currency: USD
+      settle: usage
+      usage: {path: headers.x-mapleai-response-cost, unit: usd}
+      fallback: {value: 0.02, note: "Held until the gateway's x-mapleai-response-cost header settles the exact charge."}
+      source: docs
+      source_url: https://base.mapleai.shop/v1/models
+      checked: 2026-10-16
+      confidence: documented
+    verified: 2026-10-16
+    added: '2026-10-16'
+    docs_url: https://base.mapleai.shop/developers
+    example_response: examples/mapleai.x.search.posts.json
+
+  - id: mapleai.x.user.profile
+    capability: x.user.profile
+    platform: x
+    domain: profile
+    scope: any_account
+    method: POST
+    path: /v1/x/profile
+    body_allowlist: true
+    name: "MapleAI: look up an X profile"
+    summary: "Public profile fields for one X handle through MapleAI's live index."
+    input:
+      bodyType: json
+      body:
+        username: {type: string, required: true, example: x402}
+    test_request: {body: {username: x402}}
+    cost:
+      type: per_success
+      value: 0.01
+      currency: USD
+      settle: usage
+      usage: {path: headers.x-mapleai-response-cost, unit: usd}
+      fallback: {value: 0.01, note: "Held until the gateway's x-mapleai-response-cost header settles the exact charge."}
+      source: docs
+      source_url: https://base.mapleai.shop/v1/models
+      checked: 2026-10-16
+      confidence: documented
+    verified: 2026-10-16
+    added: '2026-10-16'
+    docs_url: https://base.mapleai.shop/developers
+    example_response: examples/mapleai.x.user.profile.json
+
+  - id: mapleai.x.post.comments
+    capability: x.post.comments
+    platform: x
+    domain: comments
+    scope: any_account
+    method: POST
+    path: /v1/x/digest
+    body_allowlist: true
+    name: "MapleAI: replies for one X post"
+    summary: "The reply thread for one post, via the digest route of MapleAI's X backend."
+    input:
+      bodyType: json
+      body:
+        post_id: {type: string, required: true, example: "1234567890123456789"}
+        max_results: {type: integer, required: false, min: 1, max: 100, example: 20}
+    test_request: {body: {post_id: "1234567890123456789"}}
+    cost:
+      type: per_success
+      value: 0.01
+      currency: USD
+      settle: usage
+      usage: {path: headers.x-mapleai-response-cost, unit: usd}
+      fallback: {value: 0.01, note: "Held until the gateway's x-mapleai-response-cost header settles the exact charge."}
+      source: docs
+      source_url: https://base.mapleai.shop/v1/models
+      checked: 2026-10-16
+      confidence: documented
+    verified: 2026-10-16
+    added: '2026-10-16'
+    docs_url: https://base.mapleai.shop/developers
+    example_response: examples/mapleai.x.post.comments.json
+
+  # --- Image generation ------------------------------------------------------------------------
+  # Images run on the /api/v1/images/* pair (the OpenAPI lists no bare /v1/images alias), which the
+  # prepaid bypass forwards directly; a prepaid image-model key is required. Rate card prices
+  # per image: gpt-image-2 $0.02, gpt-image-2.5 family $0.04, gpt-image-2-2k $0.09,
+  # gpt-image-2.5-sunburst-2k $0.22, grok-imagine-image $0.045.
+  - id: mapleai.image-gen.gpt-image-2.generate
+    capability: image-gen.gpt-image-2.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /api/v1/images/generations
+    name: "MapleAI: generate an image (gpt-image-2)"
+    summary: "One gpt-image-2 generation through MapleAI's prepaid gateway; the image returns inline as base64."
+    input:
+      bodyType: json
+      body:
+        model: {type: string, required: true, enum: [gpt-image-2, gpt-image-2-2k], example: gpt-image-2, note: "gpt-image-2-2k is the 2K size at $0.09/image."}
+        prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
+        size: {type: string, required: false, enum: ["1024x1024", "1024x1536", "1536x1024", auto], example: "1024x1024"}
+        n: {type: integer, required: false, default: 1, min: 1, max: 4, example: 1}
+      note: "The key must be scoped to the requested model (allowedModels); the status endpoint names it."
+    test_request: {body: {model: gpt-image-2, prompt: "A clean editorial illustration of a paper airplane.", n: 1}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.model: gpt-image-2}, value: 0.02}
+        - {when: {body.model: gpt-image-2-2k}, value: 0.09}
+      fallback: {value: 0.09, note: "Unmatched model ids reserve the dearest listed gpt-image-2 tier."}
+      currency: USD
+      settle: table
+      source: docs
+      source_url: https://base.mapleai.shop/v1/models
+      checked: 2026-10-16
+      confidence: documented
+    verified: 2026-10-16
+    added: '2026-10-16'
+    docs_url: https://base.mapleai.shop/developers
+    example_response: examples/mapleai.image-gen.gpt-image-2.generate.json
+
+  - id: mapleai.image-gen.gpt-image-2-5.generate
+    capability: image-gen.gpt-image-2-5.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /api/v1/images/generations
+    name: "MapleAI: generate an image (gpt-image-2.5)"
+    summary: "One gpt-image-2.5 image (standard, flare, sunburst or 2K) through the prepaid gateway."
+    input:
+      bodyType: json
+      body:
+        model: {type: string, required: true, enum: [gpt-image-2.5, gpt-image-2.5-flare, gpt-image-2.5-sunburst, gpt-image-2.5-sunburst-2k], example: gpt-image-2.5}
+        prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
+        size: {type: string, required: false, enum: ["1024x1024", "1536x1024", "1024x1536", auto], example: "1024x1024"}
+        n: {type: integer, required: false, default: 1, min: 1, max: 4}
+    test_request: {body: {model: gpt-image-2.5, prompt: "A clean editorial illustration of a paper airplane."}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.model: gpt-image-2.5}, value: 0.04}
+        - {when: {body.model: gpt-image-2.5-flare}, value: 0.04}
+        - {when: {body.model: gpt-image-2.5-sunburst}, value: 0.04}
+        - {when: {body.model: gpt-image-2.5-sunburst-2k}, value: 0.22}
+      fallback: {value: 0.22, note: "Unmatched model ids reserve the dearest listed 2.5 tier."}
+      currency: USD
+      settle: table
+      source: docs
+      source_url: https://base.mapleai.shop/v1/models
+      checked: 2026-10-16
+      confidence: documented
+    verified: 2026-10-16
+    added: '2026-10-16'
+    docs_url: https://base.mapleai.shop/developers
+    example_response: examples/mapleai.image-gen.gpt-image-2-5.generate.json
+
+  # --- Voice generation ------------------------------------------------------------------------
+  # /v1/audio/speech is the x402 surface. Prepaid bypass does not match this path (only /api/v1/*
+  # and /prepaid/v1/*), so a prepaid key here goes through the x402 flow; a dedicated
+  # /prepaid/v1/audio/speech route also exists per the OpenAPI.
+  # Rate card: tts-1 $0.015/req, orpheus-english $0.015/req, whisper-1 $0.006/req.
+  - id: mapleai.voice-gen.openai-tts.generate
+    capability: voice-gen.openai-tts.generate
+    platform: voice-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /v1/audio/speech
+    name: "MapleAI: generate speech (tts-1 / orpheus)"
+    summary: "Text-to-speech from MapleAI's voice backend; OpenAI tts-1/tts-1-hd or Orpheus voices. x402 pay-per-request or a prepaid buyer key."
+    input:
+      bodyType: json
+      body:
+        model: {type: string, required: true, enum: [tts-1, tts-1-hd, orpheus-english, orpheus-arabic], example: tts-1}
+        input: {type: string, required: true, example: "Hello, world!"}
+        voice: {type: string, required: false, enum: [alloy, echo, fable, onyx, nova, shimmer], default: alloy}
+        response_format: {type: string, required: false, enum: [mp3, opus, flac, wav], default: mp3}
+      note: "The key must allow the requested model (or a free-form audio model). Live 2026-10-16 without a scoped audio key: 400 'No credentials for provider: openai' - no spend occurred."
+    test_request: {body: {model: tts-1, input: "Hello, world!"}}
+    cost:
+      type: per_call
+      currency: USD
+      value: 0.015
+      unit: call
+      per: 1
+      fallback: {value: 0.02, note: "Hold at the audio request tier ($0.015/req); a prepaid audio-model key settles the exact rate."}
+      source: docs
+      source_url: https://base.mapleai.shop/v1/models
+      checked: 2026-10-16
+      confidence: documented
+      note: "Rate card GET /v1/models: tts-1 $0.015/request, orpheus-english $0.015/request."
+    verified: 2026-10-16
+    added: '2026-10-16'
+    docs_url: https://base.mapleai.shop/developers
+    example_response: examples/mapleai.voice-gen.openai-tts.generate.json
