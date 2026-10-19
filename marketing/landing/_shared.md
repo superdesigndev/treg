@@ -59,8 +59,9 @@ Yes, and it takes precedence. Register the key once and every call to that provi
 those calls are never metered against your treg.to balance. Your key always wins over treg.to's. `F-05`
 
 ## `S-OBJ-FAILURE` What happens if a provider fails?
-treg.to does not silently reroute you. That is deliberate: only you know which inputs you actually hold,
-so treg.to relays your request rather than rewriting it. Failed calls are not billed. If a call
+treg.to does not silently reroute a call to a provider's own endpoint. That is deliberate: only you know which inputs you actually hold,
+so treg.to relays your request rather than rewriting it. To have treg.to pick and fall back for you, call the routed treg. tool for the job; it names the provider that answered.
+(usecase-ads.html keeps the shorter line without the routed sentence: ads has no routed tool.) Failed calls are not billed. If a call
 succeeded upstream but the answer was lost coming back, an `Idempotency-Key` returns the stored result
 without paying twice. `F-06` `F-07`
 

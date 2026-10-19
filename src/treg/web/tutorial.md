@@ -95,7 +95,8 @@ treg catalog search "backlinks for a domain"
 ```
 
 > Several providers usually serve one capability at different prices. treg shows them side by side
-> - **choosing is yours**; it does not silently pick or fail over for you.
+> - **choosing is yours**; a provider's own id never silently switches. A routed `treg.` tool is
+> the opt-in where treg picks and names the provider.
 
 ## Step 2 - Read the price before you spend
 

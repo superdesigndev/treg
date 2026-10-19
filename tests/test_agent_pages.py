@@ -263,7 +263,7 @@ async def test_focused_agent_pages_are_not_the_template_with_a_name_swapped(clie
     import difflib
     base = _visible_words((await clients.get("/agents/chatgpt")).text)
     focused = [a for a, s in agent_pages.AGENTS.items() if s.get("focus") and s.get("guide")]
-    assert {"claude-code", "hermes"} <= set(focused)
+    assert {"claude-code", "hermes", "codex"} <= set(focused)
     for agent in focused:
         words = _visible_words((await clients.get(f"/agents/{agent}")).text)
         ratio = difflib.SequenceMatcher(None, base, words, autojunk=False).ratio()
@@ -307,7 +307,8 @@ async def test_a_focused_agent_page_still_reaches_every_category(clients: AsyncC
 def test_the_hermes_page_and_treg_mcp_install_agree_on_the_server(monkeypatch):
     """`treg mcp install` detects Hermes but only prints a manual hint (the light CLI writes no YAML);
     the page shows the full block. Both must name the same MCP URL and the same config shape, and
-    the page must use Hermes's registered tool names (mcp__<server>__<tool>, double underscores)."""
+    the page must use Hermes's registered tool names (mcp_<server>_<tool>, single underscores, per
+    Hermes's MCP docs; the double-underscore form is Claude Code's)."""
     import re
     from treg import mcp_install
     monkeypatch.setitem(mcp_install.MANUAL_AGENTS["hermes"], "marker", lambda: True)
@@ -320,7 +321,25 @@ def test_the_hermes_page_and_treg_mcp_install_agree_on_the_server(monkeypatch):
     block = spec["guide"][0]["html"]
     assert "mcp_servers:" in block and f'url: "{out["mcp_url"]}"' in block and "Bearer" in block
     steps = " ".join(spec["install_steps"])
-    assert re.findall(r"mcp__treg__\w+", steps) and not re.findall(r"mcp_treg_\w+", steps)
+    assert re.findall(r"mcp_treg_\w+", steps) and not re.findall(r"mcp__treg__\w+", steps)
+
+
+def test_the_codex_page_shows_the_table_treg_mcp_install_writes(tmp_path):
+    """The Codex page prints the ~/.codex/config.toml table by hand; `treg mcp install` writes it.
+    They must be the same table, with the token inline (an env-var reference is how Codex once
+    dropped every treg tool after a restart)."""
+    import html
+    import re
+    import tomllib
+    from treg import mcp_install
+    path = tmp_path / "config.toml"
+    status, _ = mcp_install._write_toml_agent({"path": lambda: path}, "treg", "https://treg.to/mcp/", "TOKEN")
+    assert status == "ok"
+    written = tomllib.loads(path.read_text())["mcp_servers"]["treg"]
+    page = agent_pages.AGENTS["codex"]["guide"][0]["html"]
+    shown = html.unescape(re.search(r"<pre><code>(.*?)</code></pre>", page, re.S).group(1))
+    assert tomllib.loads(shown.replace("<your team token>", "TOKEN"))["mcp_servers"]["treg"] == written
+    assert "bearer_token_env_var" not in page
 
 
 def test_agent_titles_fit_a_search_result():
