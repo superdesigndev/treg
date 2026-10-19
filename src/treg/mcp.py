@@ -1596,7 +1596,12 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
         # Scoped to the MCP path deliberately. `/call/`'s 402 still carries `topup_url` for the CLI
         # and the dashboard, where no such policy applies and the shortcut is genuinely useful.
         out["body"] = _without_purchase_pointers(out.get("body"))
-        if not out.get("replayed"):
+        # The hint is only for treg's own balance checks (X-Treg-Error present). A relayed 402 from
+        # a provider (BYOK call where the customer's provider account is out of credit) is their
+        # provider account, not their treg balance—saying "team's prepaid balance" would be
+        # misleading. Incidents 2026-10-16..19: customers koloai, fellou-2, nunarra-team thought
+        # their own treg balance was the problem when TikHub/Litescrape platform accounts ran dry.
+        if not out.get("replayed") and r.headers.get("X-Treg-Error"):
             out["hint"] = "the team's prepaid balance is not enough for this call"
     elif r.status_code >= 400:
         # Whose fault it was matters to an agent deciding whether to retry elsewhere.

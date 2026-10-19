@@ -677,15 +677,19 @@ async def test_a_provider_credential_refusal_is_never_billed(clients: AsyncClien
     """A 4xx that means OUR key was rejected, exhausted or throttled must not be charged, even on a
     per_call endpoint. The provider bills nothing for these, and passing them on would turn an
     expired platform key into real spend on a team's balance — and, for a builder reselling treg,
-    onto their own customers' invoices."""
+    onto their own customers' invoices.
+    
+    Note: 402 balance exhaustion is now intercepted and returns 503 provider_capacity_unavailable
+    instead of relaying the vendor's body. All other statuses relay unchanged."""
     org_id = await _org_id(clients)
     before = (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"]
 
-    for status in (401, 402, 403, 407, 408, 429):
-        monkeypatch.setattr(call_service, "relay", _fake_relay(status, b'{"message":"out of credits"}'))
+    # 402 is now intercepted as 503 platform capacity exhaustion; others relay unchanged
+    for relay_status, expected_status in [(401, 401), (402, 503), (403, 403), (407, 407), (408, 408), (429, 429)]:
+        monkeypatch.setattr(call_service, "relay", _fake_relay(relay_status, b'{"message":"out of credits"}'))
         r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"X-Treg-Meta": "customer=cust_A"})
-        assert r.status_code == status, r.text
-        assert r.headers.get("X-Treg-Cost-Micro") == "0", f"{status} was billed"
+        assert r.status_code == expected_status, f"expected {expected_status}, got {r.status_code}: {r.text}"
+        assert r.headers.get("X-Treg-Cost-Micro") == "0", f"{relay_status} was billed"
 
     assert (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"] == before
     async with session_maker() as db:

@@ -313,7 +313,7 @@ _UNRECORDED_SIGNATURE = {
     "google-ai",  # postpaid Cloud project: 429 RESOURCE_EXHAUSTED is a tier rate/spend cap, not a wallet
     "piapi",  # prepaid wallet exhaustion not observed ($50 funded 2026-09-14); no overflow route
     "serper",  # funded credits remain; no provider-specific empty-balance response was forced
-    "litescrape",  # funded call balance remains; no empty-balance response was forced
+    # litescrape: now recorded - 402 {"error_code":"insufficient_credits"}
     "tinyfish",  # funded wallet remains; no provider-specific empty-wallet response was forced
     "spidercloud",  # funded dollar balance remains; no empty-balance response was forced
     "perplexity",  # auto top-up is enabled; no empty-credit response was forced
@@ -326,7 +326,8 @@ _UNRECORDED_SIGNATURE = {
     "blitzapi",  # monthly records remain; an exhausted-key response was not forced
     "enrichlayer",  # PAYG auto top-up remains funded; the docs name 403 but not its response body
 
-    "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "tomba", "twelvedata",
+    # tikhub: now recorded - 402 "insufficient balance"
+    "serpapi", "serpstat", "spyfu", "tiingo", "tomba", "twelvedata",
 }
 
 

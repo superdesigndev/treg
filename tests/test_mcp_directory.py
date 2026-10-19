@@ -678,7 +678,10 @@ async def test_review_hint_wins_over_feedback_and_replay_wins_over_review(client
 
 
 @pytest.mark.parametrize(('path', 'tool'), [('/mcp/', 'call'), ('/mcp/v2/', 'catalog_call_read')])
-async def test_balance_hint_wins_with_all_sampling_enabled(clients, monkeypatch, path, tool):
+async def test_platform_capacity_exhaustion_returns_503_not_balance_hint(clients, monkeypatch, path, tool):
+    """Platform capacity exhaustion returns 503 provider_capacity_unavailable, not the vendor's 402.
+    Incident 2026-10-16..19: TikHub/Litescrape platform accounts ran dry; the 'prepaid balance' hint
+    told customers their own balance was the problem, not treg's."""
     from treg import hints
     from treg.application.call import service as call_service
     from test_marketplace_call import _fake_relay
@@ -693,8 +696,8 @@ async def test_balance_hint_wins_with_all_sampling_enabled(clients, monkeypatch,
             result = await _call_tool(client, tool, {
                 'endpoint_id': 'tikhub.tiktok.video.comments', 'params': {'aweme_id': '7'},
             }, clients.headers['X-Treg-Token'], path=path)
-        assert result['status'] == 402
-        assert result['hint'] == "the team's prepaid balance is not enough for this call"
+        assert result['status'] == 503, "platform exhaustion returns 503, not the vendor's 402"
+        assert 'hint' not in result or 'prepaid balance' not in result.get('hint', '')
     finally:
         get_settings.cache_clear()
 

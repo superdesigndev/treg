@@ -54,10 +54,15 @@ def _fake_relay(status_code: int, body: bytes = b"{}", *, headers: dict | None =
 
 
 class TestTikHub402PlatformKeyRedaction:
-    """The incident case: TikHub 402 echoes Authorization header in detail.headers."""
+    """The incident case: TikHub 402 echoes Authorization header in detail.headers.
+    
+    Post 2026-10-16..19 incidents: platform-tier 402 capacity exhaustion is now intercepted
+    and returns 503 provider_capacity_unavailable, so the vendor body is never relayed.
+    The platform key cannot leak because the body is replaced entirely.
+    """
 
-    async def test_platform_key_is_masked_in_402_body(self, clients: AsyncClient, platform_on, monkeypatch):
-        """The platform key in TikHub's 402 body must be masked before reaching caller."""
+    async def test_platform_402_intercepted_not_relayed(self, clients: AsyncClient, platform_on, monkeypatch):
+        """Platform 402 capacity exhaustion returns 503, vendor body never reaches caller."""
         tikhub_402_body = json.dumps({
             "detail": {
                 "code": 402,
@@ -73,13 +78,15 @@ class TestTikHub402PlatformKeyRedaction:
         monkeypatch.setattr(call_service, "relay", _fake_relay(402, tikhub_402_body))
         r = await clients.get(f"/call/{EP}?aweme_id=7")
 
-        assert r.status_code == 402
+        # Platform capacity exhaustion is intercepted - vendor body is never relayed
+        assert r.status_code == 503
         response_body = r.content.decode()
-        assert PLATFORM_KEY not in response_body, "platform key leaked to caller"
-        assert "Insufficient balance" in response_body, "the error message should survive"
+        assert PLATFORM_KEY not in response_body, "platform key must not leak"
+        assert "Insufficient balance" not in response_body, "vendor message replaced"
+        assert "provider_capacity_unavailable" in response_body
 
-    async def test_tikhub_headers_echo_is_masked(self, clients: AsyncClient, platform_on, monkeypatch):
-        """TikHub's detail.headers field is removed as belt-and-braces protection."""
+    async def test_platform_402_body_never_relayed(self, clients: AsyncClient, platform_on, monkeypatch):
+        """Platform 402 with echoed headers is intercepted, vendor body discarded."""
         tikhub_402_body = json.dumps({
             "detail": {
                 "code": 402,
@@ -93,14 +100,15 @@ class TestTikHub402PlatformKeyRedaction:
         monkeypatch.setattr(call_service, "relay", _fake_relay(402, tikhub_402_body))
         r = await clients.get(f"/call/{EP}?aweme_id=7")
 
-        assert r.status_code == 402
+        # Platform capacity exhaustion intercepted - treg's typed error, not vendor body
+        assert r.status_code == 503
         body = r.json()
-        assert body["detail"]["headers"] == {"Authorization": "***"}
-        assert body["detail"]["message"] == "Insufficient balance"
+        assert body["detail"]["error"] == "provider_capacity_unavailable"
+        assert PLATFORM_KEY not in r.content.decode()
 
-    async def test_all_tikhub_error_statuses_are_redacted(self, clients: AsyncClient, platform_on, monkeypatch):
-        """Both 400 and 402 errors from TikHub should have credentials redacted."""
-        for status in (400, 401, 402, 403, 429, 500):
+    async def test_non_402_errors_are_still_redacted(self, clients: AsyncClient, platform_on, monkeypatch):
+        """Non-402 errors (400, 401, 403, 429, 500) still relay with credential redaction."""
+        for status in (400, 401, 403, 429, 500):
             body_with_key = json.dumps({
                 "error": f"Some error with key {PLATFORM_KEY}",
             }).encode()
@@ -108,8 +116,20 @@ class TestTikHub402PlatformKeyRedaction:
             monkeypatch.setattr(call_service, "relay", _fake_relay(status, body_with_key))
             r = await clients.get(f"/call/{EP}?aweme_id=7")
 
-            assert r.status_code == status
+            assert r.status_code == status, f"expected {status}, got {r.status_code}"
             assert PLATFORM_KEY not in r.content.decode(), f"key leaked in {status} response"
+
+    async def test_platform_402_intercepted_returns_503(self, clients: AsyncClient, platform_on, monkeypatch):
+        """Platform 402 is intercepted and returns 503, not relayed with redaction."""
+        body_with_key = json.dumps({
+            "error": f"Some error with key {PLATFORM_KEY}",
+        }).encode()
+
+        monkeypatch.setattr(call_service, "relay", _fake_relay(402, body_with_key))
+        r = await clients.get(f"/call/{EP}?aweme_id=7")
+
+        assert r.status_code == 503, "platform 402 intercepted as 503"
+        assert PLATFORM_KEY not in r.content.decode(), "key must not leak"
 
 
 class TestToolSecretRedaction:
@@ -200,29 +220,32 @@ class TestIdempotentStorageRedaction:
         """A replayed idempotent call returns the redacted body, not the original.
 
         This test verifies that the body stored for idempotent replay is the redacted version.
-        The redaction happens at line 1614-1615 in service.py, BEFORE the idempotent storage
-        at line 1621. Even if idempotent replay doesn't trigger in the test environment
-        (e.g. due to metered call windowing or test isolation), the first request being
-        properly redacted proves the stored body would also be redacted.
+        The redaction happens in service.py BEFORE the idempotent storage. Even if idempotent
+        replay doesn't trigger in the test environment (e.g. due to metered call windowing
+        or test isolation), the first request being properly redacted proves the stored body
+        would also be redacted.
+        
+        Note: 402 is intercepted for platform capacity exhaustion and returns 503, so we use
+        401 (authentication error) to test the redaction + idempotent replay path.
         """
-        tikhub_402_body = json.dumps({
+        tikhub_401_body = json.dumps({
             "detail": {
-                "code": 402,
-                "message": "Insufficient balance",
+                "code": 401,
+                "message": "Authentication failed",
                 "headers": {
                     "Authorization": f"Bearer {PLATFORM_KEY}",
                 },
             },
         }).encode()
 
-        monkeypatch.setattr(call_service, "relay", _fake_relay(402, tikhub_402_body))
+        monkeypatch.setattr(call_service, "relay", _fake_relay(401, tikhub_401_body))
 
         idem_key = "test-idem-key-redaction-002"  # unique key per test run
         r1 = await clients.get(
             f"/call/{EP}?aweme_id=7",
             headers={"Idempotency-Key": idem_key},
         )
-        assert r1.status_code == 402
+        assert r1.status_code == 401
         # The critical security assertion: the key must not reach the caller
         assert PLATFORM_KEY not in r1.content.decode(), "platform key leaked to caller"
         assert r1.json()["detail"]["headers"] == {"Authorization": "***"}
@@ -232,7 +255,7 @@ class TestIdempotentStorageRedaction:
             f"/call/{EP}?aweme_id=7",
             headers={"Idempotency-Key": idem_key},
         )
-        assert r2.status_code == 402
+        assert r2.status_code == 401
         # Whether this is a replay or a new call, the key must never leak
         assert PLATFORM_KEY not in r2.content.decode(), "key leaked in second request"
         assert r2.json()["detail"]["headers"] == {"Authorization": "***"}

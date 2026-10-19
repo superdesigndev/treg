@@ -1716,6 +1716,36 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 _capture(_overflow_event(pending, outcome, charged))
             else:
                 _capture(pending)  # the vendor's own answer stands
+                # Platform balance exhaustion on 4xx errors: replace the vendor's error with treg's
+                # typed 503. The upstream body may contain provider account links, top-up URLs, or
+                # treg's injected credentials echoed back—none of which belong in a customer-facing
+                # error. Incidents 2026-10-16..19: TikHub 402 "Insufficient balance" with tikhub.io
+                # links, Litescrape 402 {"error_code":"insufficient_credits"}—customers thought
+                # their own balance was the problem, not treg's platform account.
+                # Only intercept "balance" signals on 4xx: 429 "quota" tells users to slow down (a
+                # useful signal), 200s with capacity signals are empty results, not misleading pages.
+                classified = capacity_signatures.classify(
+                    mk.provider, response.status, httpx.Headers(response.raw_headers), body[:4096])
+                if (response.status >= 400
+                        and capacity_signal is not None
+                        and classified is not None
+                        and classified.kind == "balance"):
+                    from .resolve import _provider_capacity_unavailable
+                    from ...domain.capacity import events as capacity_events
+                    await response.close()
+                    request.state.call_cost_micro = 0
+                    # Emit event so ops notices platform account exhaustion immediately.
+                    # The lock_opened event may have fired already; this confirms the call was
+                    # intercepted rather than relayed with the misleading upstream body.
+                    capacity_events.emit("platform_exhaustion_intercepted",
+                                         provider=mk.provider, endpoint_id=mk.endpoint_id,
+                                         upstream_status=response.status, signal_kind=capacity_signal)
+                    raise _provider_capacity_unavailable(
+                        _catalog_endpoint_for(mk.endpoint_id) or {"id": mk.endpoint_id},
+                        mk.provider, capacity_view.exhausted_until(
+                            mk.provider, mk.endpoint_id,
+                            keyslots.capacity_slot(mk.key_slot),
+                            metered=capacity_marks.spends_balance(mk.cost_type)))
         # Redact credentials from error response bodies before returning to caller or storing
         # in idempotency. This prevents platform keys or org secrets from leaking when upstream
         # providers echo request headers in error bodies (e.g. TikHub's 402 "Insufficient balance").

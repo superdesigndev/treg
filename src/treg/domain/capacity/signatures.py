@@ -92,6 +92,14 @@ _TABLE: list[tuple[str, int, str, str]] = [
     # HLR Lookup answers an empty account with a 200 whose `results[0].error` is
     # INSUFFICIENT_CREDIT (its docs; the catalog row's `expect` already keeps it unbilled).
     ("hlrlookup", 200, r'"error"\s*:\s*"insufficient_credit"', "balance"),
+    # Litescrape: an empty prepaid balance is 402 {"error_code":"insufficient_credits"} (observed
+    # 2026-10-18 when treg's platform account ran out). The generic 402 row would match but this
+    # explicit signature keeps the provider-specific pattern visible for the capacity runbook.
+    ("litescrape", 402, r'"error_code"\s*:\s*"insufficient_credits"', "balance"),
+    # TikHub: an empty prepaid balance is 402 with "Insufficient balance" in the body, often with
+    # a tikhub.io top-up link (observed 2026-10-16 when treg's platform account ran out). Explicit
+    # signature rather than the generic 402 for clarity and to ensure proper capacity marking.
+    ("tikhub", 402, r"insufficient balance", "balance"),
     ("*", 402, r"", "balance"),
 ]
 
@@ -108,7 +116,7 @@ CAPACITY_PHRASES = (
     r"(?:account |api |credit )?(?:balance|quota)(?: (?:has been|is|was))? (?:exceeded|reached|exhausted|limit)",
     r"upgrade your plan", r"insufficient-quota", r"not have enough quota",
     r"discovery api credit limit reached", r"exceeds your plan's set usage limit",
-    r"exceeds the pay-as-you-go limit", r"no_credit",
+    r"exceeds the pay-as-you-go limit", r"no_credit", r"insufficient balance",
 )
 _UNRECORDED = re.compile(r"\b(?:" + "|".join(f"(?:{p})" for p in CAPACITY_PHRASES) + r")\b", re.IGNORECASE)
 

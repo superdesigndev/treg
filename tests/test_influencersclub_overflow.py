@@ -152,9 +152,13 @@ async def test_known_empty_account_skips_direct_and_serves_any_page_size_via_ove
     assert len(seen) == 1
 
 
-@pytest.mark.parametrize("case,status", [("own_key", 402), ("opt_out", 402), ("validation", 400)])
+@pytest.mark.parametrize("case,relay_status,expected_status", [
+    ("own_key", 402, 402),  # BYOK relays vendor 402 unchanged
+    ("opt_out", 402, 503),  # Platform 402 intercepted as 503
+    ("validation", 400, 400),  # Validation error relays unchanged
+])
 async def test_no_fallback_or_charge_when_call_is_ineligible(
-    clients, influencers_on, monkeypatch, case, status,
+    clients, influencers_on, monkeypatch, case, relay_status, expected_status,
 ):
     await _sync()
     if case == "own_key":
@@ -164,13 +168,15 @@ async def test_no_fallback_or_charge_when_call_is_ineligible(
         org = (await clients.get("/orgs")).json()[0]["org_id"]
         response = await clients.patch(f"/orgs/{org}/settings", json={"platform_overflow": False})
         assert response.status_code == 200
-    error = b'{"message":"Invalid platform value"}' if status == 400 else b'{"detail":"Insufficient credits"}'
-    monkeypatch.setattr(call_service, "relay", _fake_relay(status, error))
+    error = b'{"message":"Invalid platform value"}' if relay_status == 400 else b'{"detail":"Insufficient credits"}'
+    monkeypatch.setattr(call_service, "relay", _fake_relay(relay_status, error))
     seen = []
     monkeypatch.setattr(O, "_send", _orthogonal([(200, ENVELOPE)], seen))
     before = await _balance(clients)
     response = await clients.post(f"/call/{SEARCH}", json=_body(limit=2))
-    assert response.status_code == status and response.content == error
+    assert response.status_code == expected_status
+    if expected_status == relay_status:
+        assert response.content == error  # Relayed unchanged
     assert seen == [] and before == await _balance(clients) and await _holds() == []
 
 

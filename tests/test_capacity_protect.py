@@ -73,9 +73,10 @@ def _relay(status: int, body: bytes, headers=()):
 async def _lock_by_two_signals(clients: AsyncClient, monkeypatch, relay=None) -> Lock:
     monkeypatch.setattr(capacity_marks, "STRIKE_MIN_GAP", timedelta(0))  # two calls, seconds apart
     monkeypatch.setattr(call_service, "relay", relay or _fake_relay(402, OUT))
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code in (402, 429)
+    # Platform capacity exhaustion returns 503 (not the vendor's 402/429), but still records strikes
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code in (402, 429, 503)
     assert not (await _lock("tikhub") or await _lock(EP)).is_active(), "one strike never locks"
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code in (402, 429)
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code in (402, 429, 503)
     lock = await _lock("tikhub") or await _lock(EP)
     assert lock.is_active()
     return lock
@@ -121,6 +122,59 @@ async def test_own_key_is_never_affected_by_an_exhausted_platform_account(client
     assert r.json()["auth"] == "Bearer MKKEY"
 
 
+async def test_own_key_402_is_relayed_not_intercepted(clients: AsyncClient, platform_on, monkeypatch):
+    """BYOK calls relay the vendor's 402 unchanged: it's the customer's own provider account,
+    not treg's platform account. The 'insufficient credits' body is their signal to top up."""
+    await clients.post("/secrets", json={"name": "tikhub", "value": "BYOK-KEY"})
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
+    before = await _balance(clients)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 402, "BYOK 402 is relayed, not converted to 503"
+    assert await _balance(clients) == before, "no charge for relayed BYOK error"
+    # The vendor body is relayed (though redacted of any echoed credentials).
+    assert b"Your daily" in r.content or b"Insufficient" in r.content
+
+
+LITESCRAPE_EP = "litescrape.google.serp.organic"
+LITESCRAPE_OUT = b'{"error_code":"insufficient_credits","message":"Not enough credits"}'
+
+
+async def test_litescrape_insufficient_credits_platform_returns_503(clients: AsyncClient, monkeypatch):
+    """Litescrape 402 {"error_code":"insufficient_credits"} on platform tier returns 503.
+    Incident 2026-10-18: treg's Litescrape account ran dry; customers saw the raw error."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LITESCRAPE", "PLATFORM-LITESCRAPE")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "litescrape")
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, LITESCRAPE_OUT))
+    try:
+        before = await _balance(clients)
+        r = await clients.get(f"/call/{LITESCRAPE_EP}", params={"q": "example"})
+        assert r.status_code == 503, "platform capacity exhaustion returns 503"
+        assert r.headers["X-Treg-Error"] == "1"
+        body = r.json()["detail"]
+        assert body["error"] == "provider_capacity_unavailable" and body["provider"] == "litescrape"
+        assert r.headers["X-Treg-Cost-Micro"] == "0" and await _balance(clients) == before
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_litescrape_insufficient_credits_byok_relays(clients: AsyncClient, monkeypatch):
+    """BYOK Litescrape 402 is relayed unchanged: the customer's own account is out."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LITESCRAPE", "PLATFORM-LITESCRAPE")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "litescrape")
+    get_settings.cache_clear()
+    await clients.post("/secrets", json={"name": "litescrape", "value": "BYOK-LITESCRAPE"})
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, LITESCRAPE_OUT))
+    try:
+        before = await _balance(clients)
+        r = await clients.get(f"/call/{LITESCRAPE_EP}", params={"q": "example"})
+        assert r.status_code == 402, "BYOK 402 is relayed unchanged"
+        assert await _balance(clients) == before, "no charge for relayed BYOK error"
+        assert b"insufficient_credits" in r.content
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_a_stale_or_ok_view_never_refuses(clients: AsyncClient, platform_on, monkeypatch):
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
     await _publish("tikhub", exhausted=False)
@@ -135,14 +189,19 @@ async def test_a_stale_or_ok_view_never_refuses(clients: AsyncClient, platform_o
 
 
 async def test_one_signature_is_a_strike_that_a_2xx_erases(clients: AsyncClient, platform_on, monkeypatch):
+    # A capacity exhaustion signal on a platform-tier call returns 503 immediately (not the vendor's
+    # 402), but still records a strike so the breaker can lock after repeated failures.
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
     before = await _balance(clients)
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 402, "the vendor's answer relays unchanged"
-    assert "X-Treg-Error" not in r.headers
+    assert r.status_code == 503, "platform capacity exhaustion returns 503, not the vendor's 402"
+    assert r.headers["X-Treg-Error"] == "1"
+    body = r.json()["detail"]
+    assert body["error"] == "provider_capacity_unavailable" and body["provider"] == "tikhub"
+    assert "nothing about your plan or balance changed" in body["message"]
     assert r.headers["X-Treg-Cost-Micro"] == "0" and await _balance(clients) == before
     lock = await _lock("tikhub")
-    assert lock.strikes == 1 and not lock.is_active()
+    assert lock.strikes == 1 and not lock.is_active(), "still a strike even though we returned 503"
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
     assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 200, "never refused"
     assert await _lock("tikhub") is None, "a success between two signals resets the count"
@@ -172,7 +231,8 @@ async def test_a_probe_a_minute_goes_through_and_its_2xx_clears_the_lock(clients
 async def test_a_probe_that_fails_again_keeps_the_lock(clients: AsyncClient, platform_on, monkeypatch):
     lock = await _lock_by_two_signals(clients, monkeypatch)
     capacity_marks._last_probe.clear()
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 402, "the probe relays"
+    # The probe's capacity exhaustion is also intercepted and returned as 503
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503, "probe also returns 503"
     assert (await _lock(lock.key)).lock_id == lock.lock_id
     assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503
 
@@ -192,19 +252,24 @@ async def test_events_name_each_transition_once_and_never_the_body(
         clients: AsyncClient, platform_on, monkeypatch, capacity_events_log):
     lock = await _lock_by_two_signals(clients, monkeypatch, _fake_relay(402, b'{"detail":"Insufficient balance","q":"secret-query"}'))
     capacity_marks._last_probe.clear()
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 402, "a probe that fails again"
+    # The probe's capacity exhaustion is intercepted and returned as 503 (not the vendor's 402)
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503, "probe also returns 503"
     assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
     capacity_marks._last_probe.clear()
     assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 200
     events = capacity_events_log()
-    assert [e["event"] for e in events] == ["strike", "lock_opened", "lock_cleared"], \
-        "the failed probe meets the lock in place: no second opening"
-    opened = events[1]
+    # The new `platform_exhaustion_intercepted` events are emitted when we convert to 503
+    event_names = [e["event"] for e in events]
+    assert "strike" in event_names and "lock_opened" in event_names and "lock_cleared" in event_names
+    intercepted_events = [e for e in events if e["event"] == "platform_exhaustion_intercepted"]
+    assert len(intercepted_events) >= 1, "at least one interception event"
+    opened = next(e for e in events if e["event"] == "lock_opened")
     assert opened["provider"] == "tikhub" and opened["kind"] == "balance" and opened["status"] == 402
     assert opened["key"] == lock.key and opened["lock_id"] == lock.lock_id and opened["until"]
-    assert events[2]["lock_id"] == lock.lock_id and events[2]["via"] == "probe"
-    assert events[2]["locked_s"] >= 0
+    cleared = next(e for e in events if e["event"] == "lock_cleared")
+    assert cleared["lock_id"] == lock.lock_id and cleared["via"] == "probe"
+    assert cleared["locked_s"] >= 0
     assert "secret-query" not in json.dumps(events)
 
 
@@ -213,7 +278,8 @@ async def test_a_lock_is_aged_from_its_opening_not_its_first_strike(
     await capacity_marks.strike("tikhub", endpoint_id=EP, kind="balance", resets_at=None,
                                 now=utcnow_naive() - timedelta(minutes=8))
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 402
+    # Capacity exhaustion is intercepted and returned as 503, but still triggers the lock
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503
     lock = await _lock("tikhub")
     assert lock.is_active() and lock.opened_at - lock.first_signal_at >= timedelta(minutes=7)
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
@@ -226,14 +292,16 @@ async def test_a_lock_is_aged_from_its_opening_not_its_first_strike(
 async def test_a_vendor_500_or_caller_400_neither_strikes_nor_clears(clients: AsyncClient, platform_on, monkeypatch):
     monkeypatch.setattr(capacity_marks, "STRIKE_MIN_GAP", timedelta(0))
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 402
+    # The first capacity exhaustion is intercepted as 503
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503
     for status, body in ((500, b"down"), (400, b'{"detail":"bad aweme_id"}'), (429, b'{"detail":"slow down"}')):
         monkeypatch.setattr(call_service, "relay", _fake_relay(status, body))
         assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == status
         assert (await _lock("tikhub")).strikes == 1, "only a 2xx is evidence of capacity"
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 402
-    assert (await _lock("tikhub")).is_active(), "402, 500, 402 is still two strikes in a row"
+    # The second capacity exhaustion is also intercepted as 503, but still records a strike
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503
+    assert (await _lock("tikhub")).is_active(), "503, 500, 503 is still two strikes in a row"
 
 
 async def test_quota_429_locks_the_endpoint_only_until_the_reset(clients: AsyncClient, platform_on, monkeypatch):
@@ -336,7 +404,9 @@ async def test_a_sweep_reading_admits_a_probe_a_minute_and_its_2xx_lifts_it(clie
 async def test_a_probe_through_a_sweep_reading_that_fails_keeps_it(clients: AsyncClient, platform_on, monkeypatch):
     monkeypatch.setattr(call_service, "relay", _fake_relay(402, OUT))
     await _publish("tikhub", exhausted=True, ago=timedelta(minutes=2))
-    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 402, "the probe relays"
+    # Even probes return 503 to avoid leaking the vendor's misleading body to customers.
+    # The probe's 402 signal is still recorded, keeping the exhausted state.
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503, "probe intercepted"
     assert (await _state("tikhub")).exhausted_until is not None
     assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 503, "one probe a minute"
 
@@ -364,9 +434,10 @@ async def test_a_failed_strike_never_fails_the_call(clients: AsyncClient, platfo
     async def boom(*a, **k):
         raise RuntimeError("db gone")
     monkeypatch.setattr(call_settle.capacity_marks, "strike", boom)
-    # strike itself swallows; simulate the seam above it raising to prove the guard
+    # Strike recording may fail, but we still intercept to protect customers from the vendor's
+    # misleading body. The call returns 503 provider_capacity_unavailable, not the raw 402.
     r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 402 and r.headers["X-Treg-Cost-Micro"] == "0"
+    assert r.status_code == 503 and r.headers["X-Treg-Cost-Micro"] == "0"
 
 
 DL_PHONE, DL_SEARCH = "dropleads.people.phone.find", "dropleads.people.search"  # per_success / free
@@ -398,11 +469,12 @@ async def test_a_free_route_neither_lifts_nor_is_held_by_a_balance_mark(clients:
     monkeypatch.setattr(call_service, "relay", _by_path({
         "/mobile-finder": (402, DL_OUT), "/leads/search": (200, b'{"data":[]}')}))
     try:
-        assert (await _dl(clients, DL_PHONE)).status_code == 402
+        # Platform capacity exhaustion returns 503, but still records strikes.
+        assert (await _dl(clients, DL_PHONE)).status_code == 503
         assert (await _lock("dropleads")).strikes == 1
         assert (await _dl(clients, DL_SEARCH)).status_code == 200
         assert (await _lock("dropleads")).strikes == 1, "a free 2xx keeps the paid route's strike"
-        assert (await _dl(clients, DL_PHONE)).status_code == 402
+        assert (await _dl(clients, DL_PHONE)).status_code == 503
         assert (await _lock("dropleads")).is_active(), "the second strike locks"
         assert (await _dl(clients, DL_PHONE)).status_code == 503
         capacity_marks._last_probe.clear()
@@ -413,7 +485,8 @@ async def test_a_free_route_neither_lifts_nor_is_held_by_a_balance_mark(clients:
         await _publish("dropleads", exhausted=True, ago=timedelta(minutes=2))
         assert (await _dl(clients, DL_SEARCH)).status_code == 200
         assert (await _state("dropleads")).exhausted_until is not None, "nor lifts the sweep's zero"
-        assert (await _dl(clients, DL_PHONE)).status_code == 402, "the paid probe still relays"
+        # Platform capacity exhaustion returns 503—probes no longer relay the vendor's 402.
+        assert (await _dl(clients, DL_PHONE)).status_code == 503, "platform exhaustion probe returns 503"
         assert (await _dl(clients, DL_PHONE)).status_code == 503
     finally:
         get_settings.cache_clear()
