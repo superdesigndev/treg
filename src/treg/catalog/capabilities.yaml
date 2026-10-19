@@ -75,6 +75,7 @@ platforms:
   wechat-search: {label: "WeChat Search (搜一搜)", category: "Social", summary: "WeChat 搜一搜 results and indexes."}
 
   # --- E-commerce: marketplaces & product data -------------------------------------------------
+  packaging: {label: "Packaging", category: "E-commerce", summary: "Packaging product search, details, quantity prices and hosted checkout links."}
   amazon: {label: "Amazon", category: "E-commerce", featured: 1, summary: "Products, best-sellers, reviews, categories and search results from Amazon."}
   taobao: {label: "Taobao / Tmall", category: "E-commerce", featured: 2, summary: "Item details, shop listings, comments and search from Taobao and Tmall."}
   jd: {label: "JD.com", category: "E-commerce", featured: 3, summary: "Products, prices, comments and search from JD.com."}

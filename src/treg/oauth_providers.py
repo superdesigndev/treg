@@ -1324,6 +1324,29 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+TEALPACKAGING = OAuthProvider(
+    service="tealpackaging",
+    display_name="Teal Packaging",
+    auth_kind="key",
+    token_label="Catalog API key",
+    token_placeholder="teal_catalog_...",
+    setup_url="https://tealpackaging.com/api-catalog.md#register-and-validate-a-key",
+    setup_action_label="Get a free catalog API key",
+    setup_steps=(
+        "POST https://tealpackaging.com/api/catalog/v1/keys with a JSON client_name.",
+        "Copy data.api_key from the response and paste it here.",
+    ),
+    setup_note="No card is required. Catalog API calls are free; merchandise purchases are separate.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="E-commerce",
+    summary="Search packaging products, read product details and quantity prices, and get hosted checkout links.",
+    base_url="https://tealpackaging.com/api/catalog/v1",
+    docs_url="https://tealpackaging.com/api-catalog.md",
+    probe_path="/me",  # free; invalid or revoked keys return 401
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -3997,6 +4020,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB,
+        # E-commerce API-key providers
+        TEALPACKAGING,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
@@ -4010,7 +4035,7 @@ DEFAULT_CAPABILITY = "read"
 
 # Shelf order in the marketplace. Anything carrying a category not named here sorts last, so a
 # provider added without one is visible rather than lost between the shelves.
-CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Enrichment",
+CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Enrichment", "E-commerce",
                   "Market data", "Research & public data", "Community", "Other")
 
 
