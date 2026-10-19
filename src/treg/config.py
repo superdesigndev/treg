@@ -396,6 +396,7 @@ class Settings(BaseSettings):
     # Capacity sweep only (ops/deploy.md); not another platform-provider slot.
     platform_openrouter_management_key: str = ""
     platform_key_replicate: str = ""  # Bearer token for official asynchronous models
+    platform_key_photostudio: str = ""  # X-API-Key; prepaid credits, dearest public pack $0.19/credit
     platform_key_reapi: str = ""      # Bearer key; prepaid credits at $0.001, Seedance 2.5 + image models
     platform_key_google_ai: str = ""  # x-goog-api-key; token-billed Gemini API project (image output $120/M tokens)
     platform_key_piapi: str = ""      # X-API-Key; prepaid USD balance, Seedance 2.5 less-restriction + image models

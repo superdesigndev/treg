@@ -3975,6 +3975,40 @@ PINTEREST_ADS = OAuthProvider(
     probe_path="/user_account",  # cheap token check once configured; auto-provisions a Bearer tool
 )
 
+PHOTOSTUDIO = OAuthProvider(
+    service="photostudio",
+    display_name="Photostudio",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="ps_live_…",
+    # Photostudio also accepts Authorization: Bearer. The header form keeps the key out of URLs.
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://photostudio.io/api-settings",
+    setup_action_label="Get your Photostudio API key",
+    setup_steps=(
+        "Sign up at photostudio.io (no sales call) and open API settings.",
+        "Create a key and enable both Ghost mannequin and API access.",
+        "Copy the key. It is shown once and starts with ps_live_.",
+    ),
+    setup_note=(
+        "Standard product images cost 2 credits and social exports cost 1 credit per format. "
+        "Failures are refunded. The connect check calls a free status route with an unknown job id: "
+        "a valid key gets 404 Job not found, and only 401 means the key is bad."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Turn a garment photo into ghost-mannequin, flat-lay, on-model, and social export images.",
+    base_url="https://dfqtcthccvwtutgxonym.supabase.co/functions/v1",
+    docs_url="https://photostudio.io/docs/api/generators",
+    # Free. Unknown job id: valid key → 404, missing/invalid key → 401. Any live key works,
+    # including a ghost-only key. 404 must not be treated as rejection.
+    probe_path="/api-generation-status?job_id=treg-connect-probe",
+    probe_reject_statuses=(401,),
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -3987,7 +4021,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
         REPLICATE,
-        REAPI, PIAPI, GOOGLE_AI, TINYFISH,
+        REAPI, PIAPI, GOOGLE_AI, TINYFISH, PHOTOSTUDIO,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
