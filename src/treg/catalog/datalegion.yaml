@@ -1,0 +1,220 @@
+provider: datalegion
+source:
+  docs: https://www.datalegion.ai/docs/api-reference/overview
+  openapi: https://www.datalegion.ai/docs/api-reference/openapi.json
+  curated: '2026-11-25'
+# Every billed answer carries a Credits-Used header: the records returned (1 on an Enrichment match, the
+# page's length on a Search), 0 on a miss. A person record is $0.05 and a company record $0.01 at
+# the self-serve rate. Enrichment answers a no-match with a free 404; Search and Discover answer an
+# empty `matches` list, also free.
+limits: "Per key and endpoint, stated on every answer (RateLimit-Policy, RateLimit-Remaining); 429 with Retry-After above them. Search and Discover pages hold up to 100 records."
+pricing_url: https://www.datalegion.ai/pricing
+
+proposed_capabilities:
+  people.search.natural_language: "Search people from a plain-English description"
+  companies.search.natural_language: "Search companies from a plain-English description"
+
+defaults:
+  provenance: {source: docs, source_url: 'https://www.datalegion.ai/pricing', checked: '2026-11-25', confidence: documented}
+
+endpoints:
+  - id: datalegion.account.usage
+    added: '2026-11-26'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /credits
+    name: "Credit balance and contracts"
+    summary: "Show the key's team, its contracts, and credits used and remaining"
+    test_request: {queryParams: {}}
+    price: {value: '0', currency: USD, unit: call}
+    docs_url: https://www.datalegion.ai/docs/api-reference/overview
+
+  - id: datalegion.people.enrich
+    added: '2026-11-26'
+    domain: contacts
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /person/enrich
+    name: "Enrich a person by email, phone, social URL or name"
+    summary: "Match a person from any identifier you hold and return their record: work history, education, location, social profiles and contact details"
+    input:
+      body:
+        email: {type: string, required: false, note: "primary identifier"}
+        phone: {type: string, required: false, note: "primary identifier; normalized to E.164"}
+        social_url: {type: string, required: false, note: "primary identifier; LinkedIn, X, GitHub or Facebook profile URL"}
+        linkedin_id: {type: string, required: false, note: "primary identifier; LinkedIn numeric id"}
+        email_hash: {type: string, required: false, note: "primary identifier; SHA-256, SHA-1 or MD5 of the normalized email"}
+        legion_id: {type: string, required: false, note: "primary identifier; Data Legion person id", example: "1eb88b4c-ce67-5d2f-8d40-b3fe8250222d"}
+        first_name: {type: string, required: false, note: "a name needs one context field: company, school, job_title, birth_date or a location"}
+        last_name: {type: string, required: false}
+        full_name: {type: string, required: false}
+        company: {type: string, required: false, note: "context; company name, website or social URL", example: "microsoft.com"}
+        school: {type: string, required: false, note: "context; school name, website or social URL"}
+        job_title: {type: string, required: false, note: "context"}
+        birth_date: {type: string, required: false, note: "context; YYYY-MM-DD, YYYY-MM or YYYY"}
+        address: {type: string, required: false, note: "context; parsed into city, state, postal code and country"}
+        city: {type: string, required: false}
+        state: {type: string, required: false}
+        country: {type: string, required: false}
+        postal_code: {type: string, required: false, note: "5-digit ZIP or ZIP+4"}
+        min_confidence: {type: string, required: false, enum: [high, moderate, low], note: "a match below this level is a free 404"}
+        required_fields: {type: string, required: false, note: "comma-separated fields the match must carry, else a free 404", example: "work_email,phones"}
+        include_fields: {type: string, required: false, note: "comma-separated fields to return; legion_id is always returned", example: "full_name,job_title,work_email"}
+        exclude_fields: {type: string, required: false, note: "comma-separated fields to drop, after include_fields"}
+        titlecase: {type: boolean, required: false, note: "title-case names, titles, companies and locations"}
+      note: "Send one primary identifier, or a name plus one context field; less is a free 400."
+    test_request:
+      body: {legion_id: "1eb88b4c-ce67-5d2f-8d40-b3fe8250222d", include_fields: "full_name,job_title,company_name"}
+    price: {value: '0.05', currency: USD, per: 1, unit: record, note: "Charged per matched person; a no-match 404 is free."}
+    miss: {status: [404], means: "no person matched the identifiers ({\"error\": \"not_found\"}, Credits-Used 0); do not retry the same input"}
+    docs_url: https://www.datalegion.ai/docs/api-reference/person-enrichment
+
+  - id: datalegion.people.search
+    added: '2026-11-26'
+    domain: contacts
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    path: /person/search
+    name: "Search people by filters, SQL or a query object"
+    summary: "Find people by title, employer, industry, location and other record fields, with work history, contact details and social profiles"
+    input:
+      body:
+        filters: {type: object, required: false, note: "the record's own field names: a value, a list (any of), or {gte, lte}", example: {company_domain: stripe.com}}
+        sql: {type: string, required: false, note: "a SELECT on the people table, with no LIMIT or OFFSET", example: "SELECT * FROM people WHERE company_domain = 'stripe.com'"}
+        es_query: {type: object, required: false, note: "an Elasticsearch query DSL object naming the record's field paths"}
+        limit: {type: integer, required: false, default: 1, min: 1, max: 100, example: 1}
+        offset: {type: integer, required: false, min: 0, max: 10000}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page, with the same query; reaches past offset 10,000"}
+        include_fields: {type: string, required: false, note: "comma-separated fields to return", example: "full_name,job_title,company_name"}
+        exclude_fields: {type: string, required: false}
+        titlecase: {type: boolean, required: false}
+      note: "Send one of filters, sql or es_query. Pair a job title with a company or place, or a broad search can time out (408)."
+    test_request:
+      body: {filters: {company_domain: stripe.com}, limit: 1, include_fields: "job_title,company_name"}
+    price: {value: '0.05', currency: USD, per: 1, unit: result, note: "Charged per person returned; an empty page is free."}
+    reserve: {rows: {param: body.limit, default: {value: 1, source: docs}, max: 100}}
+    settle: {count: {path: response.matches}}
+    miss: {when: {path: response.matches, op: empty}}
+    docs_url: https://www.datalegion.ai/docs/api-reference/person-search
+
+  - id: datalegion.people.search.natural_language
+    added: '2026-11-26'
+    domain: contacts
+    capability: people.search.natural_language
+    platform: people
+    scope: any_account
+    method: POST
+    path: /person/discover
+    name: "Discover people from a plain-English description"
+    summary: "Describe the people you want in plain words; Data Legion writes the search and returns matching people"
+    input:
+      body:
+        query: {type: string, required: true, example: "chief executive officer of Stripe"}
+        limit: {type: integer, required: false, default: 1, min: 1, max: 100, example: 1}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page: the same search, not rewritten"}
+        include_fields: {type: string, required: false, example: "full_name,job_title,company_name"}
+        exclude_fields: {type: string, required: false}
+        titlecase: {type: boolean, required: false}
+      note: "Beta. A part of the request it cannot search on is a free 400 naming that part."
+    test_request:
+      body: {query: "chief executive officer of Stripe", limit: 1, include_fields: "job_title,company_name"}
+    price: {value: '0.05', currency: USD, per: 1, unit: result, note: "Charged per person returned; an empty page is free."}
+    reserve: {rows: {param: body.limit, default: {value: 1, source: docs}, max: 100}}
+    settle: {count: {path: response.matches}}
+    miss: {when: {path: response.matches, op: empty}}
+    docs_url: https://www.datalegion.ai/docs/api-reference/person-discovery
+
+  - id: datalegion.companies.enrich
+    added: '2026-11-26'
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company/enrich
+    name: "Enrich a company by domain, name, social URL or ticker"
+    summary: "Match a company and return its industry, size range, type, founding year, locations, domains, social profiles and description"
+    input:
+      body:
+        domain: {type: string, required: false, note: "website domain, the strongest identifier", example: "stripe.com"}
+        name: {type: string, required: false, note: "company name; add industry to narrow"}
+        industry: {type: string, required: false}
+        social_url: {type: string, required: false, note: "LinkedIn, Facebook, Crunchbase, X or GitHub company URL"}
+        linkedin_id: {type: string, required: false}
+        ticker_symbol: {type: string, required: false, example: "GOOGL"}
+        legion_id: {type: string, required: false, note: "Data Legion company id"}
+        min_confidence: {type: string, required: false, enum: [high, moderate, low], note: "a match below this level is a free 404"}
+        required_fields: {type: string, required: false, note: "comma-separated fields the match must carry, else a free 404"}
+        include_fields: {type: string, required: false, note: "comma-separated fields to return; legion_id is always returned", example: "name,domain,industry"}
+        exclude_fields: {type: string, required: false}
+        titlecase: {type: boolean, required: false}
+      note: "Send at least one identifier; a domain matches most precisely."
+    test_request:
+      body: {domain: "stripe.com", include_fields: "name,domain,industry"}
+    price: {value: '0.01', currency: USD, per: 1, unit: record, note: "Charged per matched company; a no-match 404 is free."}
+    miss: {status: [404], means: "no company matched the identifiers ({\"error\": \"not_found\"}, Credits-Used 0); do not retry the same input"}
+    docs_url: https://www.datalegion.ai/docs/api-reference/company-enrichment
+
+  - id: datalegion.companies.search
+    added: '2026-11-26'
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company/search
+    name: "Search companies by filters, SQL or a query object"
+    summary: "Find companies by industry, size, type, location, founding year and other record fields, with domains and social profiles"
+    input:
+      body:
+        filters: {type: object, required: false, note: "the record's own field names: a value, a list (any of), or {gte, lte}", example: {industry: financial services, locations.state_code: CA}}
+        sql: {type: string, required: false, note: "a SELECT on the companies table, with no LIMIT or OFFSET"}
+        es_query: {type: object, required: false}
+        limit: {type: integer, required: false, default: 1, min: 1, max: 100, example: 1}
+        offset: {type: integer, required: false, min: 0, max: 10000}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page, with the same query"}
+        include_fields: {type: string, required: false, example: "name,domain,size"}
+        exclude_fields: {type: string, required: false}
+        titlecase: {type: boolean, required: false}
+      note: "Send one of filters, sql or es_query."
+    test_request:
+      body: {filters: {linkedin_url: "https://www.linkedin.com/company/stripe"}, limit: 1, include_fields: "name,domain,size"}
+    price: {value: '0.01', currency: USD, per: 1, unit: result, note: "Charged per company returned; an empty page is free."}
+    reserve: {rows: {param: body.limit, default: {value: 1, source: docs}, max: 100}}
+    settle: {count: {path: response.matches}}
+    miss: {when: {path: response.matches, op: empty}}
+    docs_url: https://www.datalegion.ai/docs/api-reference/company-search
+
+  - id: datalegion.companies.search.natural_language
+    added: '2026-11-26'
+    domain: companies
+    capability: companies.search.natural_language
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company/discover
+    name: "Discover companies from a plain-English description"
+    summary: "Describe the companies you want in plain words; Data Legion writes the search and returns matching companies"
+    input:
+      body:
+        query: {type: string, required: true, example: "payment processing companies in San Francisco"}
+        limit: {type: integer, required: false, default: 1, min: 1, max: 100, example: 1}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page: the same search, not rewritten"}
+        include_fields: {type: string, required: false, example: "name,domain,industry"}
+        exclude_fields: {type: string, required: false}
+        titlecase: {type: boolean, required: false}
+      note: "Beta. A part of the request it cannot search on, such as funding, is a free 400 naming that part."
+    test_request:
+      body: {query: "payment processing companies in San Francisco", limit: 1, include_fields: "name,domain,industry"}
+    price: {value: '0.01', currency: USD, per: 1, unit: result, note: "Charged per company returned; an empty page is free."}
+    reserve: {rows: {param: body.limit, default: {value: 1, source: docs}, max: 100}}
+    settle: {count: {path: response.matches}}
+    miss: {when: {path: response.matches, op: empty}}
+    docs_url: https://www.datalegion.ai/docs/api-reference/company-discovery
