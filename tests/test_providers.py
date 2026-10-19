@@ -457,3 +457,13 @@ def test_classify_config_file_cli():
 def test_classify_device_cli_is_unsupported_even_if_installed():
     d = prov.classify_cli(_DEVICE_CLI, installed=True, secret_present=True, logged_in=True)
     assert d["status"] == "unsupported" and "device" in d["reason"]
+
+
+def test_viktron_env_key_is_detected_as_bearer(tmp_path):
+    env = _write_env(tmp_path, "VIKTRON_API_KEY=vk_example\n")
+    [detected] = prov.scan_env(env)
+    assert detected.provider == "Viktron"
+    assert detected.auth == {"shape": "bearer"}
+    assert detected.base_url == "https://api.viktron.ai"
+    assert detected.probe == "api/teams"
+
