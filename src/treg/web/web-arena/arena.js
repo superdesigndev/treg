@@ -267,7 +267,20 @@
           .map(row=>({...row,x:row[fields[0]],y:row[fields[1]]}));
       },
       leaderboardMax(){return this.leaderboardView==='price'?Math.max(.0001,...this.leaderboardBars.map(row=>row.value)):100;},
-      leaderboardXMax(){return this.leaderboardView==='price_rate'?Math.max(.0001,...this.leaderboardPoints.map(row=>row.x)):100;},
+      scatterScale(){
+        // Prices span orders of magnitude, so one expensive provider would squash the rest into a corner:
+        // price runs on a log axis (free sits on the left edge) and the y axis starts just under the lowest point.
+        const points=this.leaderboardPoints,price=this.leaderboardView==='price_rate';
+        const paid=points.map(row=>row.x).filter(x=>x>0),lo=Math.min(...paid),hi=Math.max(...paid);
+        const log=price&&paid.length&&hi>lo;
+        const x=price?(log?v=>v>0?Math.log(v/lo)/Math.log(hi/lo):0:v=>v/Math.max(.0001,hi||0)):v=>v/100;
+        const xAt=f=>price?(log?lo*(hi/lo)**f:f*Math.max(.0001,hi||0)):100*f;
+        const yFloor=Math.min(60,Math.min(100,...points.map(row=>row.y))-5),step=100-yFloor>40?20:10,yLo=Math.max(0,Math.floor(yFloor/step)*step);
+        const fractions=[0,.25,.5,.75,1];
+        return {x,y:v=>(v-yLo)/(100-yLo),
+          xTicks:fractions.map(f=>({at:f,label:price?'$'+Number(xAt(f)).toPrecision(2):Math.round(xAt(f))+'%'})),
+          yTicks:Array.from({length:Math.floor((100-yLo)/step)+1},(_,i)=>yLo+i*step).map(v=>({at:(v-yLo)/(100-yLo),label:v+'%'}))};
+      },
       leaderboardDetail(){return this.leaderboardChartRows.find(row=>row.provider===this.chartFocus)||null;},
       leaderboardSubtitle(){return ({rate:'Returned usable results · higher is better',relevance:'Jev estimated intent match · higher is better',
         price:'Current catalog price · cheapest first',price_rate:'Lower catalog price ← · ↑ higher hit rate',
