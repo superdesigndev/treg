@@ -2411,6 +2411,38 @@ THECOMPANIESAPI = OAuthProvider(
     probe_path="/companies?simplified=true&size=1",  # free (no credits), auth required
 )
 
+LEADSCART = OAuthProvider(
+    service="leadscart",
+    display_name="Leadscart",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Leadscart API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://leadscart.io/settings/api",
+    setup_action_label="Get your Leadscart API key",
+    setup_steps=(
+        "Sign in to Leadscart and open Settings → API & MCP.",
+        "Create an API key (shown once; it starts with lc_live_).",
+        "Copy the key and paste it here.",
+    ),
+    setup_note=(
+        "People search is free (daily fair-use limits apply). Verified work emails cost 1 credit each, "
+        "charged only on a deliverable hit. GET /api/v1/credits is free and is the connection probe."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Search B2B people, find verified work emails, and manage Lists — the same REST API and MCP "
+        "tools as the app, gated by credits on every plan."
+    ),
+    base_url="https://leadscart.io",
+    docs_url="https://leadscart.io/docs",
+    probe_path="/api/v1/credits",  # free — invalid keys answer 401 unauthorized
+)
+
 LEADMAGIC = OAuthProvider(
     service="leadmagic",
     display_name="LeadMagic",
@@ -3994,7 +4026,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
-        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
+        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, LEADSCART, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB,
         # Market data API-key providers

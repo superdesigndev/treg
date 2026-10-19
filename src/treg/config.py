@@ -325,6 +325,7 @@ class Settings(BaseSettings):
     platform_key_zerobounce: str = ""  # api_key query param; PAYG validation credits, Auto-Pay managed upstream
     platform_key_datagma: str = ""  # apiId query param; prepaid purchased credits, replenished manually
     platform_key_leadmagic: str = ""
+    platform_key_leadscart: str = ""  # Bearer lc_live_…; credits priced in fx.yaml (List-pack rate)
     platform_key_lusha: str = ""
     platform_key_pdl: str = ""
     platform_key_diffbot: str = ""
