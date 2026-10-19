@@ -2680,9 +2680,24 @@ def cmd_call(args, cfg) -> None:
         _enc.read()
         content = _enc.content
         upload_ctype = _enc.headers["content-type"]  # multipart/form-data; boundary=…
-    # Content-Type: --upload's multipart type wins; else explicit flag; else sniff JSON so
-    # `--data '{...}'` / `--file doc.json` reach upstreams that require `application/json`.
-    ctype = upload_ctype or args.content_type
+    # Some APIs need a caller-supplied header the binding can't know: Google Ads wants
+    # `login-customer-id` naming the manager account whenever you act on a client under an MCC,
+    # and it changes per call, so it can't live on the tool. Injected bindings still win — a
+    # --header must never be able to overwrite the credential the proxy is about to inject.
+    extra_headers: dict[str, str] = {}
+    for kv in args.header:
+        if ":" not in kv:
+            sys.exit(f"--header expects 'Name: value', got: {kv!r}")
+        name, _, value = kv.partition(":")
+        name = name.strip()
+        if not name:
+            sys.exit(f"--header needs a name before the colon, got: {kv!r}")
+        extra_headers[name] = value.strip()
+    # Content-Type: --upload's multipart type wins; else explicit flag or a `--header
+    # 'Content-Type: …'` (curl's -H habit; sent once, never beside a sniffed type); else sniff JSON
+    # so `--data '{...}'` / `--file doc.json` reach upstreams that require `application/json`.
+    header_ctype = next((v for k, v in extra_headers.items() if k.lower() == "content-type"), None)
+    ctype = upload_ctype or args.content_type or header_ctype
     if ctype is None and content:
         try:
             json.loads(content)
@@ -2699,18 +2714,7 @@ def cmd_call(args, cfg) -> None:
     headers = {"content-type": ctype} if ctype else {}
     if authorization_method := getattr(args, "authorization_method", None):
         headers["X-Treg-Authorization-Method"] = authorization_method
-    # Some APIs need a caller-supplied header the binding can't know: Google Ads wants
-    # `login-customer-id` naming the manager account whenever you act on a client under an MCC,
-    # and it changes per call, so it can't live on the tool. Injected bindings still win — a
-    # --header must never be able to overwrite the credential the proxy is about to inject.
-    for kv in args.header:
-        if ":" not in kv:
-            sys.exit(f"--header expects 'Name: value', got: {kv!r}")
-        name, _, value = kv.partition(":")
-        name = name.strip()
-        if not name:
-            sys.exit(f"--header needs a name before the colon, got: {kv!r}")
-        headers[name] = value.strip()
+    headers.update({k: v for k, v in extra_headers.items() if k.lower() != "content-type"})
     rest = args.target.rstrip("/")
     if args.path:
         rest += "/" + args.path.lstrip("/")

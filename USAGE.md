@@ -307,8 +307,8 @@ treg call dataforseo.google.keywords.volume --data @body.json   # @PATH reads a 
 A body that starts like JSON but does not parse is refused rather than sent: PowerShell strips the
 quotes inside a quoted argument, so put the body in a file (`--file PATH` or `--data @PATH`). A JSON
 file saved with a byte-order mark (PowerShell's `>` writes UTF-16) is sent as UTF-8 JSON, with a note
-on stderr; any other file is sent byte for byte. Pass `--content-type` to send a body exactly as
-written.
+on stderr; any other file is sent byte for byte. Pass `--content-type` (or `--header 'Content-Type: …'`)
+to send a body exactly as written.
 
 **Agent-native (raw HTTP) form** — build the real upstream URL and prefix it; no CLI needed:
 
