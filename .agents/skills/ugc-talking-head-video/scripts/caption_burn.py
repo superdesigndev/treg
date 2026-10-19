@@ -9,21 +9,43 @@ Usage:
 - --phrases: one caption per line, in order; every word of the transcript must be covered (asserted).
   Without it, words are auto-chunked (max 3, break on punctuation / long gaps / width) — worse than hand phrases.
 - Header lines are split on "|". Emoji render through Apple Color Emoji.
-- Audio is copied untouched.
+- Audio is copied untouched, when the take has any: a silent take has no audio stream, so the map
+  is conditional. Mapping 0:a on a video-only file fails the whole render.
 
 Lessons baked in:
 - ffmpeg between() is inclusive on both ends -> two captions render for one frame at every boundary. We subtract 2 ms.
 - Whisper normalises "gonna" -> "going to"; captions follow the transcript, not the script.
 - Never chunk by count alone: "you step by" / "lucky but do" read badly. Hand phrases win.
+- -filter_complex_script was removed in FFmpeg 9. The graph is passed inline instead: the file-reading
+  replacement, -/filter_complex, is absent from `ffmpeg -h full` and can only be found by running ffmpeg.
 """
 import argparse, json, os, re, subprocess, sys, tempfile, urllib.request
-from PIL import Image, ImageDraw, ImageFont
+try:  # only drawing needs Pillow; the caption graph and the ffmpeg command do not
+    from PIL import Image, ImageDraw, ImageFont
+except ModuleNotFoundError:
+    Image = ImageDraw = ImageFont = None
 
 W, H = 720, 1280; MAXW = 580; HEADER_Y = 0.12; CAPTION_Y = 0.78
 FONT = "/System/Library/Fonts/Helvetica.ttc"; EMOJI = "/System/Library/Fonts/Apple Color Emoji.ttc"
-meas = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+meas = None
+
+def _require_pillow():
+    """Drawing is the only part that needs Pillow, and a measuring canvas is built on first use so
+    the module still imports on a machine (or CI) without it."""
+    if Image is None:
+        sys.exit("caption_burn.py needs Pillow to draw overlays: python3 -m pip install pillow")
+
+def text_img(txt, sz, stroke):
+    _require_pillow()
+    global meas
+    if meas is None: meas = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    f = bold(sz); x0, y0, x1, y1 = meas.textbbox((0, 0), txt, font=f, stroke_width=stroke)
+    im = Image.new("RGBA", (x1 - x0 + 2 * stroke + 8, y1 - y0 + 2 * stroke + 8), (0, 0, 0, 0))
+    ImageDraw.Draw(im).text((stroke + 4 - x0, stroke + 4 - y0), txt, font=f, fill="white", stroke_width=stroke, stroke_fill=(0, 0, 0, 235))
+    return im
 
 def bold(sz):
+    _require_pillow()
     for idx in (1, 2, 3, 0):
         try:
             f = ImageFont.truetype(FONT, sz, index=idx)
@@ -31,13 +53,8 @@ def bold(sz):
         except Exception: pass
     return ImageFont.truetype(FONT, sz)
 
-def text_img(txt, sz, stroke):
-    f = bold(sz); x0, y0, x1, y1 = meas.textbbox((0, 0), txt, font=f, stroke_width=stroke)
-    im = Image.new("RGBA", (x1 - x0 + 2 * stroke + 8, y1 - y0 + 2 * stroke + 8), (0, 0, 0, 0))
-    ImageDraw.Draw(im).text((stroke + 4 - x0, stroke + 4 - y0), txt, font=f, fill="white", stroke_width=stroke, stroke_fill=(0, 0, 0, 235))
-    return im
-
 def emoji_img(e, sz):
+    _require_pillow()
     f = ImageFont.truetype(EMOJI, 160); im = Image.new("RGBA", (200, 200), (0, 0, 0, 0))
     ImageDraw.Draw(im).text((20, 10), e, font=f, embedded_color=True); im = im.crop(im.getbbox())
     return im.resize((sz, sz), Image.LANCZOS)
@@ -92,6 +109,28 @@ def chunk_auto(words):
     if cur: out.append((" ".join(x["word"] for x in cur), cur))
     return out
 
+def has_audio(path):
+    """ffprobe the file for an audio stream. A video-only take is normal here, not an error."""
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+                        "-of", "csv=p=0", path], capture_output=True, text=True)
+    return bool(r.stdout.strip())
+
+
+def ffmpeg_command(video, overlay_inputs, graph, chunk_count, out, *, audio):
+    """The render argv, kept separate from the drawing so it is checkable without ffmpeg.
+
+    Two constraints are load-bearing here and both regressed once:
+    - the graph is passed INLINE via -filter_complex. -filter_complex_script was removed in FFmpeg 9
+      and its replacement (-/filter_complex) does not appear in `ffmpeg -h full`.
+    - audio is mapped only when the take actually has a stream. A silent take has none, and mapping
+      0:a anyway aborts the whole render.
+    """
+    audio_args = ["-map", "0:a", "-c:a", "copy"] if audio else []
+    return ["ffmpeg", "-v", "error", "-y", "-i", video, *overlay_inputs, "-filter_complex", graph,
+            "-map", f"[v{chunk_count}]", *audio_args, "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+            "-pix_fmt", "yuv420p", "-movflags", "+faststart", out]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--video", required=True); ap.add_argument("--header", required=True); ap.add_argument("--out", required=True)
@@ -109,10 +148,8 @@ def main():
         p = f"{tmp}/c{k:03d}.png"; im.save(p); inputs += ["-i", p]
         s = c[0]["start"]; e = (chunks[k + 1][1][0]["start"] if k + 1 < len(chunks) else c[-1]["end"] + 0.3) - 0.002
         parts.append(f"[v{k}][{k+2}:v]overlay=(W-w)/2:{int(H*CAPTION_Y)}-h/2:enable='between(t,{s:.3f},{max(e, s+0.15):.3f})'[v{k+1}]")
-    open(f"{tmp}/filter.txt", "w").write(";".join(parts))
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", a.video, *inputs, "-filter_complex_script", f"{tmp}/filter.txt",
-                    "-map", f"[v{len(chunks)}]", "-map", "0:a", "-c:v", "libx264", "-crf", "18", "-preset", "medium",
-                    "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", a.out], check=True)
+    subprocess.run(ffmpeg_command(a.video, inputs, ";".join(parts), len(chunks), a.out,
+                                  audio=has_audio(a.video)), check=True)
     print(f"[captions] {len(chunks)} chunks -> {a.out}", file=sys.stderr)
     print("\n".join(ph for ph, _ in chunks))
 
