@@ -1,0 +1,341 @@
+provider: call4me
+source:
+  docs: https://call4.me/api/openapi.json
+  openapi: https://call4.me/api/openapi.json
+  curated: 2026-10-16
+# call4me phones a business for the user and holds a natural conversation to get something done
+# (book, reschedule, cancel, ask), then returns the outcome, a recap and the transcript. The same
+# operations are an MCP server at https://call4.me/mcp; this file lists the REST surface.
+#
+# The flow an agent follows: GET the category's requirements, ask the user for every required
+# field not already known, POST /api/calls (422 "Not calling yet" lists anything still missing, and
+# dials nothing), then GET /api/calls/{call_id}?wait_seconds=30 until `finished`. A call can stop
+# to ask (open_questions): the business is waiting on the line, so answer at once.
+#
+# Billing: prepaid balance, $0.25/min in the US, Canada and Europe from pickup by a person or a
+# phone menu, rounded up to the minute; hold time is half price; unanswered calls are free. Other
+# destinations carry their own rate (GET /api/balance, price_per_minute_by_country). Credits for
+# max_minutes are held when the call is placed and settled at hangup; a finished call reports its
+# charge in cost_cents. Every other route is free.
+#
+# BYOK only, no platform-key slot: every route acts on the caller's own call4me account (its
+# balance, numbers, saved profile and calls), and a call rings real businesses on that user's
+# behalf, so a shared treg account would put one team's calls and callbacks in another's history.
+
+limits: "2 calls in progress at once per account"
+pricing_url: https://call4.me
+proposed_capabilities:
+  phone.call.place: Call a business by phone and get something done
+  phone.call.get: Check on a phone call and read its outcome
+  phone.call.list: List recent phone calls
+  phone.call.answer: Answer the caller's question during a live call
+  phone.call.connect: Patch yourself into a live phone call
+  phone.call.hang_up: End a live phone call
+  phone.call.schedule: Schedule a phone call for later
+  phone.call.schedule.cancel: Cancel a scheduled phone call
+  phone.call.categories: List the kinds of phone call that can be made
+  phone.call.requirements: See what a kind of phone call needs before dialing
+  phone.call.recordings: Get the recordings of a finished phone call
+  phone.profile.get: See the caller details saved for your calls
+  phone.profile.save: Save caller details reused on every call
+endpoints:
+  - id: call4me.phone.call.place
+    added: '2026-10-17'
+    kind: action
+    domain: calls
+    capability: phone.call.place
+    platform: phone
+    scope: own_account
+    method: POST
+    path: /api/calls
+    name: "Call a business for the user"
+    summary: "Call a business for the user and have a natural conversation to get something done (book, reschedule, cancel, ask)"
+    input:
+      body:
+        to: {type: string, required: true, note: "the number to call, E.164 or national format", example: "+13034997111"}
+        business: {type: string, required: true, max: 120, note: "who is called, as a person would say it", example: "NIST time of day line"}
+        goal: {type: string, required: true, min: 5, max: 1500, note: "what the call should achieve, in plain words", example: "Listen to the NIST time announcement and note the current UTC time it reads out."}
+        category: {type: string, required: true, note: "a slug from GET /api/requirements; decides what must be known first", example: "general"}
+        details: {type: object, required: false, note: "answers to the category's fields by key", example: {questions: "What UTC time does the announcement read?"}}
+        on_behalf_of: {type: string, required: false, max: 80, note: "who the call is for; the caller calls FOR this person, never as them", example: "treg review"}
+        facts: {type: string, required: false, max: 3000, note: "anything else the caller may share, one per line"}
+        flexibility: {type: string, required: false, max: 1500, note: "what the caller may accept without asking; anything outside it becomes an open question"}
+        timezone: {type: string, required: false, note: "IANA time zone of the business"}
+        connect_when: {type: string, required: false, max: 300, note: "when to ring the user and patch them in, e.g. \"as soon as a person picks up\""}
+        listen_in: {type: boolean, required: false, note: "ring the user to listen in from pickup"}
+        max_minutes: {type: integer, required: false, min: 1, note: "soft cap on the answered call; credits for it are held up front, and a call still talking at the cap holds 2 more minutes", example: 1}
+        voice: {type: string, required: false, enum: [marin, cedar, gleam, meridian, vesper, willow]}
+        caller_name: {type: string, required: false, max: 30}
+        calling_as: {type: string, required: false, max: 80, note: "a company the caller calls from"}
+        callback_number: {type: string, required: false, max: 40}
+        from: {type: string, required: false, max: 40, note: "which of the account's numbers to call from"}
+      note: "Returns 201 at once with the call (status dialing). 422 \"Not calling yet\" lists what to ask the user and dials nothing; 402 when the balance cannot cover a minute."
+    test_request:
+      body: {to: "+13034997111", business: "NIST time of day line", goal: "Listen to the NIST time announcement and note the current UTC time it reads out.", category: "general", details: {questions: "What UTC time does the announcement read?"}, on_behalf_of: "treg review", max_minutes: 1}
+    cost:
+      type: per_success
+      value: 0.25
+      currency: USD
+      per: 1
+      unit: minute
+      source: observed
+      source_url: https://call4.me
+      checked: '2026-10-16'
+      confidence: verified
+      note: "$0.25 per answered minute in the US, Canada and Europe, rounded up, counted from pickup by a person or phone menu; hold time half price; unanswered calls free. Other countries: GET /api/balance price_per_minute_by_country. max_minutes is a soft cap: a call still mid-conversation when it comes up holds 2 more minutes (15 more if on hold) while the balance covers them, up to 4 hours; it never bills past what was held. Observed 2026-10-16 on NIST's public talking clock with max_minutes 1: two runs charged 25 cents (cost_cents 25; ledger hold 25, release 25, call -25), a third ran about 3 minutes and charged 50 cents."
+    docs_url: https://call4.me/api/openapi.json
+
+  - id: call4me.phone.call.get
+    added: '2026-10-17'
+    kind: data
+    domain: calls
+    capability: phone.call.get
+    platform: phone
+    scope: own_account
+    method: GET
+    path: /api/calls/{call_id}
+    name: "Check on a call and read its outcome"
+    summary: "Status, open questions, live transcript and, once finished, the outcome and cost of a call; waits up to wait_seconds for a change"
+    input:
+      pathParams:
+        call_id: {type: string, required: true, note: "a call id (call_...) or a scheduled id (sched_...)", example: "call_l6d419accit1m98s"}
+      queryParams:
+        wait_seconds: {type: integer, required: false, min: 0, max: 50, default: 0, note: "wait for a new question or the call finishing; poll with 30"}
+    test_request:
+      pathParams: {call_id: "call_l6d419accit1m98s"}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://call4.me/api/openapi.json
+
+  - id: call4me.phone.call.list
+    added: '2026-10-17'
+    kind: data
+    domain: calls
+    capability: phone.call.list
+    platform: phone
+    scope: own_account
+    method: GET
+    path: /api/calls
+    name: "List recent calls"
+    summary: "Recent calls on the account, newest first, plus scheduled calls that have not dialed yet"
+    input:
+      queryParams:
+        limit: {type: integer, required: false, min: 1, max: 50, default: 10, example: 2}
+    test_request:
+      queryParams: {limit: 2}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://call4.me/api/openapi.json
+
+  - id: call4me.phone.call.answer
+    added: '2026-10-17'
+    kind: action
+    domain: calls
+    capability: phone.call.answer
+    platform: phone
+    scope: own_account
+    method: POST
+    path: /api/calls/{call_id}/answer
+    name: "Answer the caller's question mid-call"
+    summary: "Answer a question the caller asked mid-call (open_questions); the caller relays it on the line within a second or two"
+    input:
+      pathParams:
+        call_id: {type: string, required: true}
+      body:
+        question_id: {type: string, required: true}
+        answer: {type: string, required: true, max: 1000, note: "a few plain words, e.g. \"Yes, 8:15 works.\""}
+      note: "Needs a live call with an open question, so it has no replayable test request."
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://call4.me/api/openapi.json
+
+  - id: call4me.phone.call.connect
+    added: '2026-10-17'
+    kind: action
+    domain: calls
+    capability: phone.call.connect
+    platform: phone
+    scope: own_account
+    method: POST
+    path: /api/calls/{call_id}/connect
+    name: "Patch the user into a live call"
+    summary: "Ring the user and patch them into a live call; they press 1 to take over, or listen in with mode listen"
+    input:
+      pathParams:
+        call_id: {type: string, required: true}
+      body:
+        phone: {type: string, required: false, note: "a different number to ring than the profile's phone"}
+        mode: {type: string, required: false, enum: [join, listen], default: join}
+      note: "Rings a real phone on a live call, so it has no replayable test request."
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "the call's own minutes keep billing as usual"}
+    docs_url: https://call4.me/api/openapi.json
+
+  - id: call4me.phone.call.hang_up
+    added: '2026-10-17'
+    kind: action
+    domain: calls
+    capability: phone.call.hang_up
+    platform: phone
+    scope: own_account
+    method: POST
+    path: /api/calls/{call_id}/hang-up
+    name: "Hang up a live call"
+    summary: "End a call in progress now; talk time so far is billed as usual"
+    input:
+      pathParams:
+        call_id: {type: string, required: true}
+      note: "Needs a live call, so it has no replayable test request."
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://call4.me/api/openapi.json
+
+  - id: call4me.phone.call.schedule
+    added: '2026-10-17'
+    kind: action
+    domain: calls
+    capability: phone.call.schedule
+    platform: phone
+    scope: own_account
+    method: POST
+    path: /api/scheduled-calls
+    name: "Schedule a call for later"
+    summary: "Place a call later, when the business is open or at a set time; checked now, dialed then"
+    input:
+      body:
+        call_at: {type: string, required: true, note: "local time with timezone, or ISO with offset; up to 60 days ahead", example: "2026-10-20T09:15"}
+        to: {type: string, required: true}
+        business: {type: string, required: true}
+        goal: {type: string, required: true}
+        category: {type: string, required: true}
+        details: {type: object, required: false}
+        timezone: {type: string, required: false}
+        flexibility: {type: string, required: false}
+        facts: {type: string, required: false}
+      note: "Takes every field POST /api/calls takes, plus call_at. No replayable test request: it would dial later."
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free to schedule; the call bills like call4me.phone.call.place when it dials"}
+    docs_url: https://call4.me/api/openapi.json
+
+  - id: call4me.phone.call.schedule.cancel
+    added: '2026-10-17'
+    kind: action
+    domain: calls
+    capability: phone.call.schedule.cancel
+    platform: phone
+    scope: own_account
+    method: DELETE
+    path: /api/scheduled-calls/{scheduled_id}
+    name: "Cancel a scheduled call"
+    summary: "Cancel a scheduled call before it dials"
+    input:
+      pathParams:
+        scheduled_id: {type: string, required: true, note: "sched_..."}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://call4.me/api/openapi.json
+
+  - id: call4me.phone.call.categories
+    added: '2026-10-17'
+    kind: data
+    domain: setup
+    capability: phone.call.categories
+    platform: phone
+    scope: own_account
+    method: GET
+    path: /api/requirements
+    name: "List the kinds of call"
+    summary: "The kinds of call (category slugs) call4me places: medical, dental, restaurant, auto service, general questions and more"
+    input:
+      note: "no parameters"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://call4.me/api/openapi.json
+
+  - id: call4me.phone.call.requirements
+    added: '2026-10-17'
+    kind: data
+    domain: setup
+    capability: phone.call.requirements
+    platform: phone
+    scope: own_account
+    method: GET
+    path: /api/requirements/{category}
+    name: "What a kind of call needs before dialing"
+    summary: "The information a kind of call needs before dialing, and which of it the saved profile already has"
+    input:
+      pathParams:
+        category: {type: string, required: true, note: "a slug from call4me.phone.call.categories", example: "restaurant"}
+    test_request:
+      pathParams: {category: "restaurant"}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://call4.me/api/openapi.json
+
+  - id: call4me.phone.call.recordings
+    added: '2026-10-17'
+    kind: data
+    domain: calls
+    capability: phone.call.recordings
+    platform: phone
+    scope: own_account
+    method: GET
+    path: /api/calls/{call_id}/recordings
+    name: "Get a finished call's recordings"
+    summary: "Existing recordings of a finished call, with fresh download links"
+    input:
+      pathParams:
+        call_id: {type: string, required: true, example: "call_l6d419accit1m98s"}
+    test_request:
+      pathParams: {call_id: "call_l6d419accit1m98s"}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://call4.me/api/openapi.json
+
+  - id: call4me.phone.profile.get
+    added: '2026-10-17'
+    kind: account
+    domain: setup
+    capability: phone.profile.get
+    platform: phone
+    scope: own_account
+    method: GET
+    path: /api/profile
+    name: "Saved caller profile"
+    summary: "Details saved for reuse on calls (name, date of birth, phone, address, insurance, car); an incomplete profile is fine"
+    input:
+      note: "no parameters"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://call4.me/api/openapi.json
+
+  - id: call4me.phone.profile.save
+    added: '2026-10-17'
+    kind: action
+    domain: setup
+    capability: phone.profile.save
+    platform: phone
+    scope: own_account
+    method: PATCH
+    path: /api/profile
+    name: "Save caller profile"
+    summary: "Save details that are the same on every call; merges, and an empty string removes a field"
+    input:
+      body:
+        full_name: {type: string, required: false, max: 500, example: "treg review"}
+        phone: {type: string, required: false, max: 500}
+        email: {type: string, required: false, max: 500}
+        address: {type: string, required: false, max: 500}
+        date_of_birth: {type: string, required: false, max: 500}
+      note: "Also takes insurance_carrier, insurance_member_id, insurance_group_number, dental_insurance_carrier, dental_insurance_member_id, vehicle, vin, frequent_flyer_numbers, known_traveler_number, redress_number, assistant_name, name_pronunciation."
+    test_request:
+      body: {full_name: "treg review"}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://call4.me/api/openapi.json
+
+  - id: call4me.account.usage
+    added: '2026-10-17'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /api/balance
+    name: "Balance, per-minute prices and numbers"
+    summary: "The prepaid balance, the per-minute price (and destinations priced differently), and the account's call4me numbers (free)"
+    input:
+      note: "no parameters; the key rides as Authorization: Bearer"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free; the registry's health probe (a bad key gets 401)"}
+    docs_url: https://call4.me/api/openapi.json

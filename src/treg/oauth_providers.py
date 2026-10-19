@@ -1324,6 +1324,33 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+CALL4ME = OAuthProvider(
+    service="call4me",
+    display_name="call4me",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="cb_live_...",
+    # call4me takes the key (or an OAuth access token) as a Bearer header; there is no query form.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://call4.me/account",
+    setup_action_label="Get your call4me API key",
+    setup_steps=(
+        "Sign in at call4.me and open your account page.",
+        "Copy the API key (cb_live_...).",
+    ),
+    setup_note="Calls are billed per minute from pickup from your prepaid balance; unanswered calls "
+               "and every other route are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Other",
+    summary="Phone a business for your user (book, reschedule, cancel, ask) and get back the outcome.",
+    base_url="https://call4.me",
+    docs_url="https://call4.me/api/openapi.json",
+    probe_path="/api/balance",  # free; a bad key gets 401
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -3985,6 +4012,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
+        CALL4ME,
         OPENROUTER,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
