@@ -23,6 +23,8 @@ sources:
   - frontend/src/state/catalog.js
   - frontend/src/styles/base.css
   - frontend/e2e/layout.spec.ts
+  - scripts/frontend-e2e-server.sh
+  - tests/frontend_browser_server.py
   - src/treg/web/media/redesign/dashboard.css
   - src/treg/routers/web.py
   - src/treg/web/tutorial.js
@@ -53,6 +55,12 @@ this page keeps what no single file shows. The look follows the root `design.md`
   the rest in idle time, so navigation never shows a blank frame. Vue's runtime is bundled, no CDN.
 - `sitetrack.js` and `adtrack.js` load `defer` in `<head>` before the app, so attribution is captured
   before boot can redirect (`tests/test_adsconv.py`).
+
+The browser suite starts a disposable SQLite server through `frontend-e2e-server.sh` and the
+test-only `frontend_browser_server.py`. It binds to loopback and requires development email codes.
+Each scenario verifies a fresh inbox; the harness raises only the shared IP's OTP request budget
+to accommodate the whole suite. Real OTP verification and per-inbox limits remain in effect.
+Production authentication limits and entry points are unchanged.
 
 ## Views
 

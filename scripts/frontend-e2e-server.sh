@@ -22,4 +22,4 @@ export TREG_ONBOARDING_V2_EMAILS=@onboarding.test
 export PORT="$TREG_E2E_PORT"
 export TREG_SECRET_KEY="$(uv run --project "$ROOT" python -m treg keygen)"
 export TREG_SESSION_SECRET=local-disposable-browser-tests
-uv run --project "$ROOT" python -m treg
+uv run --project "$ROOT" python "$ROOT/tests/frontend_browser_server.py"
