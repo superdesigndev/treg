@@ -1309,10 +1309,10 @@ async def test_search_survives_missing_a_few_words_of_an_agent_sentence(clients)
     three, and idf weighting keeps the order on the rare words rather than the filler."""
     from treg.domain.catalog import store as cs
     cat = cs.load()
-    # the two logged SearchMiss queries, verbatim
-    # Enrichlayer, then a Crawl4AI recipe, add relevant job-search results ahead of the older
-    # ninth-place match.
-    rows, total = cs.search("company job postings hiring open jobs linkedin", cat, 10)
+    # the two logged SearchMiss queries, verbatim. The window is wider than the incumbents need:
+    # every new job-postings provider (Enrichlayer, a Crawl4AI recipe, JobsPipe) takes a slot above
+    # them, and that is recall working
+    rows, total = cs.search("company job postings hiring open jobs linkedin", cat, 12)
     assert total > 0
     assert {"apollo.companies.jobs", "apify.linkedin.search.jobs", "enrichlayer.jobs.search",
             "leadmagic.x.jobs-search-v3"} <= {ep["id"] for ep, _ in rows}

@@ -1,0 +1,321 @@
+provider: jobspipe
+source:
+  docs: https://docs.jobspipe.dev
+  openapi: https://jobspipe.dev/openapi.json # OpenAPI 3.1; every path/param below was read from it
+  curated: '2026-09-28'
+# Live job postings from 30+ job boards, public employment services and company career sites
+# (LinkedIn, Indeed, Greenhouse, Lever, Workday, Ashby, ...), normalized into one schema, plus the
+# company and technology records resolved from those postings. What it adds to the Enrichment
+# shelf is the POSTING itself: full description, parsed salary, seniority, work arrangement, visa
+# stance, ISCO occupation code and the canonical apply URL, searchable across boards at once.
+#
+# One credit pool, two billing shapes (both on https://jobspipe.dev/pricing.md):
+#   - search routes (/v1/jobs/search, /v1/jobs/agentic-search, /v1/companies/search) bill 1 credit
+#     per RETURNED record the account has not already paid for this calendar month (UTC). An empty
+#     result is free, a repeat of an already-paid page is free, a 5xx is refunded. `limit` IS the
+#     price dial. Every search response reports its own charge in metadata.credits_charged.
+#   - single-object reads (/v1/companies/{key}, /v1/companies/{key}/technologies,
+#     /v1/technologies, /v1/technologies/{slug}, /v1/stack/scan) bill 1 credit per call.
+# GET /v1/account is free, does not count against the rate limit, and reports credits_used /
+# credits_remaining for the month.
+#
+# Auth: `Authorization: Bearer jp_live_...`. A missing or unknown key gets HTTP 401 with a JSON
+# body, on every route including the probe.
+limits: "per API key: 2 requests/second on Free, 10 on Builder and Growth, 50 on Scale and Business; agentic search is also capped at 10 calls/minute per account. Max results per call: 25 Free, 100 Builder/Growth, 500 Scale/Business. Advertised on every response via RateLimit-Limit / RateLimit-Policy headers"
+pricing_url: https://jobspipe.dev/pricing
+
+endpoints:
+  - id: jobspipe.jobs.search
+    domain: companies
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/search
+    name: "Search live job postings across 30+ boards"
+    summary: "Returns live job postings matching the supplied filters, normalized into a single schema."
+    input:
+      bodyType: json
+      body:
+        job_title_or: {type: "array[string]", required: false, note: "match jobs whose title contains any of these", example: ["data engineer"]}
+        job_title_not: {type: "array[string]", required: false, note: "exclude titles containing any of these", example: ["intern"]}
+        description_or: {type: "array[string]", required: false, note: "match jobs whose description contains every word of any one of these phrases", example: ["snowflake dbt"]}
+        job_country_code_or: {type: "array[string]", required: false, note: "ISO 3166-1 alpha-2", example: ["US"]}
+        job_location_or: {type: "array[string]", required: false, note: "city or region contains any of these", example: ["Seattle, WA"]}
+        region_or: {type: "array[string]", required: false, note: "US states and Canadian provinces as ISO 3166-2", example: ["US-NY"]}
+        company_name_or: {type: "array[string]", required: false, note: "normalized exact company-name match", example: ["Stripe"]}
+        employment_type_or: {type: "array[string]", required: false, enum: [full-time, part-time, contract, temporary, internship], example: ["full-time"]}
+        work_arrangement_or: {type: "array[string]", required: false, enum: [remote, hybrid, onsite], example: ["remote"]}
+        visa_sponsorship_or: {type: "array[string]", required: false, enum: [offers, "no", citizenship_required], note: "parsed from the posting text", example: ["offers"]}
+        min_salary_usd: {type: integer, required: false, note: "annual USD; only postings that state pay", example: 150000}
+        skills_or: {type: "array[string]", required: false, note: "skill slugs", example: ["python"]}
+        occupation_code_or: {type: "array[string]", required: false, note: "ISCO-08; 4 digits exact, 1-3 digits roll up a group", example: ["2512"]}
+        source_or: {type: "array[string]", required: false, note: "collector sources, e.g. linkedin, indeed, greenhouse, lever, workday", example: ["greenhouse"]}
+        posted_at_max_age_days: {type: integer, required: false, note: "only postings newer than this many days", example: 7}
+        status: {type: string, required: false, enum: [active, closed, any], note: "defaults to active"}
+        limit: {type: integer, required: false, note: "default 25, capped by the plan's page size (25 Free, 100 Builder/Growth, 500 Scale+) — THIS IS THE PRICE DIAL: 1 credit per returned job not already paid for this month", example: 1}
+        cursor: {type: string, required: false, note: "metadata.next_cursor from the previous response"}
+      note: "all filters combine with AND; array filters ending in _or match any value. 40+ more filters (seniority, employer type, headcount, revenue, benefits, recruiter email, ghost score, language, metro code, ESCO skills) are in the OpenAPI spec. An empty body returns the most recent postings"
+    test_request:
+      body: {job_title_or: ["data engineer"], job_country_code_or: ["US"], limit: 1}
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      settle: usage
+      usage: {path: metadata.credits_charged, unit: credit}
+      fallback: {value: 500, note: "used only if metadata.credits_charged is missing: 500 is the largest self-serve page (Scale/Business), 1 credit per job"}
+      source: docs
+      source_url: https://jobspipe.dev/pricing.md
+      checked: '2026-09-28'
+      confidence: documented
+      note: "1 credit per returned job the account has not already paid for this calendar month (UTC); an empty result, an already-paid page and a 5xx cost 0. metadata.credits_charged and metadata.jobs_already_paid report each call's charge"
+    docs_url: https://docs.jobspipe.dev
+
+  - id: jobspipe.jobs.agentic_search
+    domain: companies
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/agentic-search
+    name: "Search job postings from a plain-language request, ranked"
+    summary: "Takes a request in plain language, plans structured searches from it, checks hard constraints (place, pay, dates) on the stored records, scores every candidate posting against the request from its text, and returns the best-matching postings first with a relevance score on each."
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, note: "what the caller is looking for, in plain language", example: "senior backend engineer in Berlin paying over 90k EUR"}
+        filters: {type: object, required: false, note: "hard filters applied to every planned search, in the filter names of /v1/jobs/search", example: {job_country_code_or: ["DE"]}}
+        limit: {type: integer, required: false, note: "at most 25 and never more than the plan's page size — PRICE DIAL: 1 credit per returned posting", example: 1}
+      note: "slower than jobspipe.jobs.search (the spec says typically 5-15 s; two live calls on 2026-09-28 took 11.6 s and 24.6 s, so allow 30 s) and limited to 10 calls a minute per account. Use it when the caller has a sentence rather than filters. Candidates considered but not returned cost nothing"
+    test_request:
+      body: {query: "senior backend engineer in Berlin", limit: 1}
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      settle: usage
+      usage: {path: metadata.credits_charged, unit: credit}
+      fallback: {value: 25, note: "used only if metadata.credits_charged is missing: agentic search returns at most 25 postings, 1 credit each"}
+      source: docs
+      source_url: https://jobspipe.dev/openapi.json
+      checked: '2026-09-28'
+      confidence: documented
+      note: "OpenAPI x-side-effects: 1 credit per job returned that the account has not already paid for this calendar month; candidates considered but not returned cost nothing"
+    docs_url: https://docs.jobspipe.dev
+
+  - id: jobspipe.companies.jobs
+    domain: companies
+    capability: companies.jobs
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/search
+    name: "A company's open job postings — hiring signal"
+    summary: "Returns live job postings matching the supplied filters, normalized into a single schema."
+    input:
+      bodyType: json
+      body:
+        company_name_or: {type: "array[string]", required: true, note: "company names; each is normalized (case, punctuation, legal suffixes) before an exact match", example: ["Stripe"]}
+        job_country_code_or: {type: "array[string]", required: false, note: "ISO 3166-1 alpha-2", example: ["US"]}
+        job_title_or: {type: "array[string]", required: false, note: "narrow to titles containing any of these", example: ["engineer"]}
+        posted_at_max_age_days: {type: integer, required: false, note: "only postings newer than this many days", example: 30}
+        include_total_results: {type: boolean, required: false, note: "adds metadata.total_results, the company's full open-posting count, at no extra cost", example: true}
+        limit: {type: integer, required: false, note: "default 25, capped by plan page size — PRICE DIAL: 1 credit per returned posting not already paid for this month", example: 1}
+        cursor: {type: string, required: false, note: "metadata.next_cursor from the previous response"}
+      note: "the same route as jobspipe.jobs.search, pinned to one employer. For a partial name match use company_name_partial_match_or instead"
+    test_request:
+      body: {company_name_or: ["Stripe"], include_total_results: true, limit: 1}
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      settle: usage
+      usage: {path: metadata.credits_charged, unit: credit}
+      fallback: {value: 500, note: "used only if metadata.credits_charged is missing: 500 is the largest self-serve page (Scale/Business), 1 credit per job"}
+      source: docs
+      source_url: https://jobspipe.dev/pricing.md
+      checked: '2026-09-28'
+      confidence: documented
+      note: "1 credit per returned job not already paid for this calendar month; metadata.total_results is free"
+    docs_url: https://docs.jobspipe.dev
+
+  - id: jobspipe.jobs.detail
+    domain: companies
+    capability: companies.jobs.detail
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/search
+    name: "Get job postings by id"
+    summary: "Returns live job postings matching the supplied filters, normalized into a single schema."
+    input:
+      bodyType: json
+      body:
+        job_ids: {type: "array[string]", required: true, note: "JobsPipe job ids or the source's native ids, from any search result", example: ["3542fb01-411a-4b2d-845a-eebdd70d9512"]}
+        status: {type: string, required: false, enum: [active, closed, any], note: "pass any to also return postings that have since closed", example: "any"}
+      note: "the same route as jobspipe.jobs.search, pinned to an id lookup; each returned posting carries the full description and the canonical apply URL"
+    test_request:
+      body: {job_ids: ["3542fb01-411a-4b2d-845a-eebdd70d9512"], status: "any"}
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      settle: usage
+      usage: {path: metadata.credits_charged, unit: credit}
+      fallback: {value: 500, note: "used only if metadata.credits_charged is missing: 500 is the largest self-serve page (Scale/Business), 1 credit per job"}
+      source: docs
+      source_url: https://jobspipe.dev/pricing.md
+      checked: '2026-09-28'
+      confidence: documented
+      note: "1 credit per returned job not already paid for this calendar month, so reading a posting a search already returned costs 0"
+    docs_url: https://docs.jobspipe.dev
+
+  - id: jobspipe.companies.enrich
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{key}
+    name: "Look up a company by domain, careers URL, email or name"
+    summary: "Returns the enriched record for a single company: domain, website, logo, headcount, headquarters, description, LinkedIn page and founding year."
+    input:
+      pathParams:
+        key: {type: string, required: true, note: "a domain (stripe.com), a careers URL, an email (andrew@stripe.com) or a company name; a careers subdomain resolves to its root company", example: "stripe.com"}
+      note: "a company only appears once it has been resolved from a job posting, so employers that have never posted a job are absent (404)"
+    test_request:
+      pathParams: {key: "stripe.com"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://jobspipe.dev/openapi.json", checked: '2026-09-28', confidence: documented, note: "OpenAPI: 'Costs one credit per call'"}
+    docs_url: https://docs.jobspipe.dev
+
+  - id: jobspipe.companies.technologies
+    domain: companies
+    capability: companies.tech_stack
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{key}/technologies
+    name: "A company's tech stack, from its own job postings"
+    summary: "Every technology one company's job postings name, graded by evidence tier, with counts and first and last dates."
+    input:
+      pathParams:
+        key: {type: string, required: true, note: "company domain or name", example: "stripe.com"}
+      queryParams:
+        tier_min: {type: string, required: false, enum: [confirmed, likely, mentioned], note: "weakest evidence tier that counts; confirmed = two independent checks agree on at least one posting", example: "likely"}
+        kind: {type: string, required: false, note: "comma-separated kinds to keep, e.g. product or product,certification", example: "product"}
+      note: "beta. Evidence is hiring-side (what the company asks candidates to use), so it sees internal tools a website scan cannot — Snowflake, dbt, Terraform. Each technology carries posting counts over 7/30/180 days and first/last seen dates"
+    test_request:
+      pathParams: {key: "stripe.com"}
+      queryParams: {tier_min: "likely"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://jobspipe.dev/openapi.json", checked: '2026-09-28', confidence: documented, note: "OpenAPI: 'Costs one credit per call'"}
+    docs_url: https://docs.jobspipe.dev
+
+  - id: jobspipe.companies.search.technology
+    domain: companies
+    capability: companies.tech_stack.users
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/companies/search
+    name: "Find companies whose job postings show they use a technology"
+    summary: "Companies whose own job postings show they use the technologies asked for, with graded evidence per technology."
+    input:
+      bodyType: json
+      body:
+        company_technology_slug_or: {type: "array[string]", required: false, note: "technology slugs from jobspipe.technologies.list; any of", example: ["snowflake"]}
+        company_technology_slug_and: {type: "array[string]", required: false, note: "all of", example: ["snowflake", "dbt"]}
+        company_technology_slug_not: {type: "array[string]", required: false, note: "none of"}
+        company_country_code_or: {type: "array[string]", required: false, note: "countries of the postings that name the technology", example: ["DE"]}
+        min_employee_count: {type: integer, required: false, example: 50}
+        max_employee_count: {type: integer, required: false, example: 5000}
+        tier_min: {type: string, required: false, enum: [confirmed, likely, mentioned], example: "likely"}
+        include_total_results: {type: boolean, required: false, note: "adds the full match count", example: true}
+        limit: {type: integer, required: false, note: "PRICE DIAL: 1 credit per returned company not already paid for this month", example: 1}
+        cursor: {type: string, required: false}
+      note: "beta. Filter and field names follow the TheirStack company search. A domain, website and logo are returned only where two independent sources agree on the company's domain"
+    test_request:
+      body: {company_technology_slug_or: ["snowflake"], company_country_code_or: ["DE"], tier_min: "likely", limit: 1}
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      settle: usage
+      usage: {path: metadata.credits_charged, unit: credit}
+      fallback: {value: 500, note: "used only if metadata.credits_charged is missing: 500 is the largest self-serve page (Scale/Business), 1 credit per company"}
+      source: docs
+      source_url: https://jobspipe.dev/openapi.json
+      checked: '2026-09-28'
+      confidence: documented
+      note: "OpenAPI x-side-effects: 1 credit per company returned that the account has not already paid for this calendar month"
+    docs_url: https://docs.jobspipe.dev
+
+  - id: jobspipe.technologies.list
+    domain: companies
+    capability: companies.technologies.list
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/technologies
+    name: "List technologies ranked by how many companies hire for them"
+    summary: "Technologies named in job postings, ranked by how many companies hire for them."
+    input:
+      queryParams:
+        kind: {type: string, required: false, note: "comma-separated kinds", example: "product"}
+        category: {type: string, required: false, note: "comma-separated category slugs"}
+        country: {type: string, required: false, note: "comma-separated ISO country codes of the postings", example: "US"}
+        limit: {type: integer, required: false, note: "page size; one call is 1 credit however many rows return", example: 5}
+        page: {type: integer, required: false}
+      note: "beta. Use it to find the slug for jobspipe.companies.search.technology and jobspipe.technologies.detail"
+    test_request:
+      queryParams: {country: "US", limit: 5}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://jobspipe.dev/openapi.json", checked: '2026-09-28', confidence: documented, note: "OpenAPI: 'Costs one credit per call'"}
+    docs_url: https://docs.jobspipe.dev
+
+  - id: jobspipe.technologies.detail
+    domain: companies
+    capability: companies.technologies.detail
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/technologies/{slug}
+    name: "One technology: adopters, countries and adoption trend"
+    summary: "Companies by evidence tier, top countries and occupations, the top companies, companies that recently started hiring for it, and a monthly adoption series."
+    input:
+      pathParams:
+        slug: {type: string, required: true, note: "technology slug from jobspipe.technologies.list", example: "snowflake"}
+      note: "beta. 'Recently started hiring for it' is the adoption signal: companies whose first posting naming the technology is recent"
+    test_request:
+      pathParams: {slug: "snowflake"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://jobspipe.dev/openapi.json", checked: '2026-09-28', confidence: documented, note: "OpenAPI: 'Costs one credit per call'"}
+    docs_url: https://docs.jobspipe.dev
+
+  - id: jobspipe.web.stack.scan
+    domain: companies
+    capability: companies.tech_stack
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/stack/scan
+    name: "Detect a website's tech stack"
+    summary: "Scans a single domain on demand and returns the technologies detected on it."
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: true, note: "the domain to scan", example: "stripe.com"}
+        mode: {type: string, required: false, enum: [auto, html, render], note: "defaults to auto; render runs a headless browser", example: "auto"}
+      note: "website-side detection (analytics, CDN, frameworks, tag managers). Results are cached for ~14 days, so a repeat scan of a fresh domain returns the cached record"
+    test_request:
+      body: {domain: "stripe.com"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://jobspipe.dev/openapi.json", checked: '2026-09-28', confidence: documented, note: "OpenAPI x-side-effects: 'consumes 1 credit'"}
+    docs_url: https://docs.jobspipe.dev
