@@ -72,6 +72,14 @@ async def _jev(state: dict, questions: dict, user_id: int) -> tuple[dict | None,
         return None, {"jev_ms": round((time.monotonic() - began) * 1000), "jev_cost_usd": None}
 
 
+def _probability(answer: dict) -> float:
+    """Read a Boolean probability without treating invalid answers as scores."""
+    value = float(answer["probability"])
+    if not 0 <= value <= 1:
+        raise ValueError("Boolean probability must be between zero and one.")
+    return value
+
+
 def _search_links(output: dict, task: str = "search") -> list[dict]:
     links = []
     for item in rules.result_items(task, output)[:5]:
@@ -124,13 +132,14 @@ async def search(input_value: str, output: dict, user_id: int, *, task: str = "s
     if not answers:
         return result
     try:
-        probs = [float(answers[f"link{i}"]["probability"]) for i in range(len(links))]
+        probs = [_probability(answers[f"link{i}"]) for i in range(len(links))]
+        recent = _probability(answers["recent"]) >= 0.5
         result["estimated_match"] = round(100 * sum(probs) / len(probs))
-        result["recent_data_needed"] = float(answers["recent"]["probability"]) >= 0.5
+        result["recent_data_needed"] = recent
         result["state"] = "checked"
         if not result["recent_data_needed"]:
             result["freshness_percent"] = None
-    except (KeyError, ValueError, TypeError):
+    except (KeyError, ValueError, TypeError, OverflowError):
         pass
     return result
 
@@ -179,8 +188,8 @@ async def fetch(attempts: list[dict], user_id: int) -> None:
         if not answers:
             continue
         try:
-            kept = sum(float(answers[f"fact{i}"]["probability"]) >= 0.5 for i in range(len(facts)))
-        except (KeyError, ValueError, TypeError):
+            kept = sum(_probability(answers[f"fact{i}"]) >= 0.5 for i in range(len(facts)))
+        except (KeyError, ValueError, TypeError, OverflowError):
             continue
         quality = attempt.setdefault("quality", {})
         quality.update(state="checked", relative_coverage=round(100 * kept / len(facts)),
