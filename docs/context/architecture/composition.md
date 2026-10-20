@@ -25,6 +25,7 @@ sources:
   - scripts/dump_surface.py
   - tests/test_app_roles.py
 related:
+  - interface/lens.md
   - architecture/import-boundaries.md
   - interface/api.md
   - architecture/mcp-oauth.md
@@ -32,6 +33,11 @@ related:
 ---
 
 # Application composition
+
+[Lens](../interface/lens.md)'s `/lens/*` routes belong to control/all and enforce
+`TREG_LENS_ENABLED` at the router and application boundaries. They reuse the normal call application
+for paid work. Bootstrap drains `lens.shutdown` before closing its shared HTTP client; no new
+always-running worker or startup schema write is introduced.
 
 The standalone [Enrich Arena](../interface/enrich-arena.md) pages (`/enrich-arena` and
 `/enrich-arena/leaderboard`) and `/arena/*` routes are control-role

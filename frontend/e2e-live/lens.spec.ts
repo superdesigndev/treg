@@ -1,0 +1,62 @@
+import { expect, test } from '@playwright/test'
+import { signIn, fitsWidth } from '../e2e/helpers'
+
+test('native login → research → reviewed project → four-engine audit → saved history', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await signIn(page, 'lens-native', 'Native Lens team')
+  await page.goto('/app#lens')
+  await expect(page.getByRole('heading', { name: 'Start with your website' })).toBeVisible()
+  await page.getByRole('textbox', { name: /^Website URL/ }).fill('acme.example')
+  await page.getByRole('button', { name: 'Get research estimate', exact: true }).click()
+  await expect(page.getByLabel('Research estimate')).toBeVisible()
+  await page.getByRole('button', { name: /Research my brand/ }).click()
+  await expect(page.getByRole('textbox', { name: 'Brand name', exact: true })).toHaveValue('Acme')
+  await expect(page.getByRole('textbox', { name: 'Competitor 1', exact: true })).toHaveValue('Rival')
+  await page.getByRole('button', { name: 'Choose buyer questions', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Buyer question 1', exact: true })).toHaveValue(
+    'Which project planning tools suit small teams?')
+  await page.getByRole('button', { name: 'Save brand profile', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Your first answers start here' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review your audit', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Get audit estimate', exact: true }).click()
+  await expect(page.getByText('Estimated audit charge', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: /Run audit — estimate/ }).click()
+  await expect(page.getByRole('heading', { name: 'Audit history', exact: true })).toBeVisible()
+  await expect(page.getByText('Acme helps small teams plan projects.', { exact: false }).first()).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Audit history', exact: true })).toBeVisible()
+  await expect(page.getByText('Acme helps small teams plan projects.', { exact: false }).first()).toBeVisible()
+  expect(await fitsWidth(page)).toBe(true)
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await fitsWidth(page)).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test('manual setup and a second login use independent real team workspaces', async ({ browser }) => {
+  const a = await browser.newContext()
+  const b = await browser.newContext()
+  try {
+    const first = await a.newPage()
+    await signIn(first, 'lens-first', 'First Lens team')
+    await first.goto('/app#lens')
+    await first.getByRole('textbox', { name: /^Website URL/ }).fill('manual.example')
+    await first.getByRole('button', { name: 'Set up manually — free', exact: true }).click()
+    await first.getByRole('textbox', { name: 'Brand name', exact: true }).fill('Private first brand')
+    await first.getByRole('button', { name: 'Choose buyer questions', exact: true }).click()
+    await first.getByRole('textbox', { name: 'Buyer question 1', exact: true }).fill('Which planning tool should I choose?')
+    await first.getByRole('button', { name: 'Save brand profile', exact: true }).click()
+    await expect(first.getByRole('heading', { name: 'Your first answers start here' })).toBeVisible()
+    const second = await b.newPage()
+    await signIn(second, 'lens-second', 'Second Lens team')
+    await second.goto('/app#lens')
+    await expect(second.getByRole('heading', { name: 'Start with your website' })).toBeVisible()
+    await expect(second.getByText('Private first brand', { exact: true })).toHaveCount(0)
+    await first.reload()
+    await expect(first.getByRole('heading', { name: 'Your first answers start here' })).toBeVisible()
+    await expect(first.getByRole('region', { name: 'Brand project' }).getByRole('strong')).toHaveText('Private first brand')
+  } finally {
+    await a.close()
+    await b.close()
+  }
+})

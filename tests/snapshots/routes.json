@@ -2937,6 +2937,65 @@
       "GET",
       "HEAD"
     ],
+    "name": "lens_projects",
+    "path": "/lens/projects"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "lens_create_project",
+    "path": "/lens/projects"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "lens_project",
+    "path": "/lens/projects/{project_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "lens_update_project",
+    "path": "/lens/projects/{project_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "lens_quote",
+    "path": "/lens/quotes"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "lens_start",
+    "path": "/lens/runs"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "lens_run",
+    "path": "/lens/runs/{run_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "web_arena_page",
     "path": "/web-arena"
   },

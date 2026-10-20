@@ -11,9 +11,9 @@ import SignInDialog from './components/SignInDialog.vue'
 const {
   catalog: CatalogPage, connections: ConnectionsPage, find: SearchPage, provider: ProviderPage, platform: PlatformPage, tools: ToolsPage,
   detail: DetailPage, secrets: SecretsPage, resources: TeamResourcesPage, orgs: TeamPage, activity: ActivityPage,
-  admin: AdminPage, start: GettingStartedPage, referrals: ReferralsPage, hub: HubPage, run: HubRunPage, help: HelpPage,
+  admin: AdminPage, start: GettingStartedPage, referrals: ReferralsPage, hub: HubPage, lens: LensPage, run: HubRunPage, help: HelpPage,
 } = pages
-export default { ...controller, components: { ...controller.components, ...dialogs, TeamResourcesPage, CatalogPage, ConnectionsPage, ProviderPage, PlatformPage, ToolsPage, DetailPage, SecretsPage, TeamPage, ActivityPage, AdminPage, GettingStartedPage, ReferralsPage, HelpPage, SearchPage, HubPage, HubRunPage, SignedOutPage, BrandMark, PublicNavigation, LandingNavigation, DashboardNavigation, SignInDialog } }
+export default { ...controller, components: { ...controller.components, ...dialogs, TeamResourcesPage, CatalogPage, ConnectionsPage, ProviderPage, PlatformPage, ToolsPage, DetailPage, SecretsPage, TeamPage, ActivityPage, AdminPage, GettingStartedPage, ReferralsPage, HelpPage, SearchPage, HubPage, LensPage, HubRunPage, SignedOutPage, BrandMark, PublicNavigation, LandingNavigation, DashboardNavigation, SignInDialog } }
 </script>
 
 <template>
@@ -96,6 +96,7 @@ export default { ...controller, components: { ...controller.components, ...dialo
              a view inside a view renders nowhere, and the nav button would look dead. -->
         <ReferralsPage v-if="view==='referrals'" />
         <HubPage v-if="view==='hub'" />
+        <LensPage v-if="view==='lens'" />
         <HubRunPage v-if="view==='run'" />
 
         <!-- HELP -->

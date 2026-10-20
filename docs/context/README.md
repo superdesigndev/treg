@@ -22,7 +22,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Call events — one pseudonymous event per call, to an Iceberg table outside Postgres](architecture/call-events.md) | building | call_events.py, call_events.py, contracts.yaml, test_call_events.py |
 | [Endpoint catalog — what you can DO with a connected key, and which provider should do it](architecture/catalog.md) | shipped | catalog_added.py, catalog_backfill_added.py, catalog-added.yml, fetchinio.yaml, … |
 | [Application composition and deployment roles](architecture/composition.md) | shipped | bootstrap.py, bootstrap_handlers.py, bootstrap_http.py, worker.py, … |
-| [Data model — the registry tables, async DB, audit writer](architecture/data-model.md) | shipped | 0042_pinned_read_scope.py, alembic.ini, env.py, 0001_baseline_current_schema.py, … |
+| [Data model — the registry tables, async DB, audit writer](architecture/data-model.md) | shipped | 0078_lens.py, 0042_pinned_read_scope.py, alembic.ini, env.py, … |
 | [Feedback - private intake for problems and suggestions](architecture/feedback.md) | shipped | feedback_contract.py, __init__.py, reports.py, reviews.py, … |
 | [Find tools for a job - /catalog/find, recall by job and one judge request](architecture/find.md) | building | catalog_find.py, find_recall.py, find_index.py, embed.py, … |
 | [The tool hub — tools a maker publishes, made of other tools](architecture/hub.md) | built (phases 1–10, 2026-09-09/14; pricing flexibility 9.1–9.5 (`docs/hub-pricing-decisions.md`), listing + public run log 10.1–10.5 (`docs/hub-listing-decisions.md`)); behind `hub_enabled` (TREG_HUB_ENABLED), off in production until the final merge | __init__.py, manifest.py, refs.py, graph.py, … |
@@ -56,6 +56,8 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Enrich Arena — paid comparisons, one-click feedback, and visible waterfalls](interface/enrich-arena.md) | shipped | arena.py, arena.py, arena.py, models.py, … |
 | [Import — scan a .env AND/OR a skills dir, auto-register as tools + bundles](interface/env-import.md) | in-progress | providers.py, skills.py |
 | [Landing sandbox backend - front-end entry removed](interface/landing-sandbox.md) | shipped | sandbox.py, sandbox_identity.py, pubfeed.py, sandbox.py, … |
+| [Lens API — profiles, quotes, execution and receipts](interface/lens-api.md) | built; behind TREG_LENS_ENABLED, disabled by default | lens.py, lens.py, types.ts, test_lens.py |
+| [Lens — native team brand research and answer-engine audits](interface/lens.md) | built; behind TREG_LENS_ENABLED, disabled by default | lens.py, lens.py, lens_execution.py, lens.py, … |
 | [Onboarding — the first-run demo team (dashboard + CLI)](interface/onboarding.md) | shipped | auth.py, __init__.py, demo.py, first_run.py, … |
 | [Search surfaces — robots, sitemap, the crawlable catalog, and the social card](interface/seo.md) | shipped | api.py, web.py, agent_pages.py, robots.txt, … |
 | [Shell mode (treg shell) — transparent CLI interception](interface/shell.md) | shipped | shell.py, cli.py |

@@ -66,7 +66,7 @@ async loadAll(){ const live=this.ticket('all', false); this.err=''; this.loading
         const invites=this.sessionMode ? this.api('/invites/mine').catch(()=>[]) : null;
         const orgs=await this.api('/orgs'); if(!live()) return;
         this.myOrgs=orgs;
-        if(!this.sessionMode && !this.me){ const who=await this.api('/auth/me').catch(()=>null); if(!live()) return; if(who){ this.me=who.email; this.isAdmin=!!who.is_superadmin; this.meAvatar=who.avatar_url||null; this.uploadsOn=!!who.uploads; } }  // token mode: learn our own email + superadmin flag (isPersonal / join-by-code)
+        if(!this.sessionMode && !this.me){ const who=await this.api('/auth/me').catch(()=>null); if(!live()) return; if(who){ this.me=who.email; this.isAdmin=!!who.is_superadmin; this.meAvatar=who.avatar_url||null; this.uploadsOn=!!who.uploads; this.lensEnabled=!!who.lens_enabled; } }  // token mode: learn our own email + superadmin flag (isPersonal / join-by-code)
         if(this.sessionMode && (!this.activeSlug || !this.myOrgs.some(o=>o.slug===this.activeSlug)) && this.myOrgs.length){
           // Land on the org that actually has tools (most first). Tie / all-empty -> prefer a TEAM over
           // the personal org (first-run confusion killer). Fixes: imports living in the personal space

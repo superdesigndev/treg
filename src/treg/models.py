@@ -1914,6 +1914,41 @@ class ArchiveKeyOrg(SQLModel, table=True):
     calls: int = Field(default=1)
 
 
+class LensProject(SQLModel, table=True):
+    """Team-owned brand profile; only application.lens writes it."""
+    __table_args__ = (
+        UniqueConstraint("org_id", "request_id", name="uq_lensproject_request"),
+        Index("ix_lensproject_org_updated", "org_id", "updated_at"),
+    )
+    id: str = Field(primary_key=True)
+    org_id: int = Field(foreign_key="org.id", index=True)
+    user_id: int
+    request_id: str
+    fingerprint: str
+    payload: str  # encrypted bounded brand profile; no caller credentials
+    revision: int = 1
+    created_at: NaiveUTC = Field(default_factory=_now)
+    updated_at: NaiveUTC = Field(default_factory=_now)
+
+
+class LensRun(SQLModel, table=True):
+    """A durable quote is also its one possible execution, never a retry queue."""
+    __table_args__ = (Index("ix_lensrun_org_created", "org_id", "created_at"),)
+    id: str = Field(primary_key=True)
+    org_id: int = Field(foreign_key="org.id", index=True)
+    user_id: int
+    project_id: str | None = Field(default=None, foreign_key="lensproject.id", index=True)
+    project_revision: int | None = None
+    kind: str
+    state: str = "quoted"
+    payload: str  # encrypted frozen plan and partial/final result
+    created_at: NaiveUTC = Field(default_factory=_now)
+    expires_at: NaiveUTC
+    deadline_at: NaiveUTC | None = None
+    started_at: NaiveUTC | None = None
+    completed_at: NaiveUTC | None = None
+
+
 class ArenaRun(SQLModel, table=True):
     """Private, bounded Arena run. Encrypted payload owns the frozen plan and result snapshots."""
     __table_args__ = (UniqueConstraint("org_id", "user_id", "request_key", name="uq_arena_request"),)

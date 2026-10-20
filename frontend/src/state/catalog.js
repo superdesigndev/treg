@@ -59,7 +59,7 @@ platUrl(slug, cap){ const tail=cap ? '/'+encodeURIComponent(cap) : '';
       const tabbed=parseTabHash(location.hash);
       if(tabbed){ this._tabRoute=tabbed; return tabbed.view; }
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
-      return ['tools','orgs','activity','usage','admin','help','secrets','start','resources','catalog','connections','referrals','hub'].includes(v)?v:null; },
+      return ['tools','orgs','activity','usage','admin','help','secrets','start','resources','catalog','connections','referrals','hub','lens'].includes(v)?v:null; },
 // Land on a public catalog URL (see catalogFromPath): the finder page, a platform shelf, or the index.
     openCatalogRoute(r){
       if(r.view==='find'){ this.view='find'; this.loadPlatforms(); return; }

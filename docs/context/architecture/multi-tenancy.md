@@ -50,6 +50,12 @@ related:
 
 # Multi-tenancy (orgs)
 
+[Lens](../interface/lens.md) profiles and runs belong to the active team rather than an API key.
+Unrestricted team viewers can read; member-or-higher callers can create and approve runs, while
+profile edits require the creating member or an admin/owner. Restricted memberships and pinned
+tags are refused because Lens does not partition its team-owned evidence by those scopes.
+Only a quote's creating user may claim it; another team's object ID always returns 404.
+
 The registry is **tenant-isolated**: an **Org** owns resources, a **User** is a global identity, and a
 **Membership** links them with a role and IS where the caller's token lives. A token = a `(user, org)`
 pair, so every list/create/mutation and the proxy are scoped to the caller's org. Design source:

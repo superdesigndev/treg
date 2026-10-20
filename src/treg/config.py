@@ -658,6 +658,7 @@ class Settings(BaseSettings):
     hub_enabled: bool = False
     # Web Arena is shown only after reviewed tests exist for all live tasks.
     web_arena_enabled: bool = False
+    lens_enabled: bool = False
     web_arena_jev_user_daily_cap: int = 20
     web_arena_jev_ops_daily_cap: int = 1000
     web_arena_fact_model: str = "openai/gpt-4o-mini"

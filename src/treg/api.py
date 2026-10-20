@@ -54,6 +54,7 @@ from .routers import admin as admin_routes
 from .routers import api_keys as api_key_routes
 
 from .routers import arena as arena_routes
+from .routers import lens as lens_routes
 from .routers import web_arena as web_arena_routes
 from .routers import showcase as showcase_routes
 from .routers import images as images_routes
@@ -879,6 +880,7 @@ router.routes.extend(call_routes.router.routes)
 router.routes.extend(table_routes.router.routes)
 router.routes.extend(activity_routes.app.routes)
 router.routes.extend(arena_routes.router.routes)
+router.routes.extend(lens_routes.router.routes)
 router.routes.extend(web_arena_routes.router.routes)
 router.routes.extend(showcase_routes.router.routes)
 router.routes.extend(images_routes.router.routes)

@@ -283,7 +283,7 @@ exclude = [
   ".import_linter_cache",   # build cache (nested .gitignore hides it from git, not from hatchling)
   ".codegraph",
   ".lavish",                # local visual review artifacts, not distributable product assets
-  "frontend/node_modules", "frontend/test-results", "frontend/playwright-report",
+  "frontend/node_modules", "frontend/test-results", "frontend/test-results-lens", "frontend/playwright-report",
   "videos",                 # git-excluded marketing renders
   "/src/treg/web/media/**/*.mp4",  # hosted-page demos stay in Git deployments, not PyPI
   "*.db", "*.sqlite3", "scratch*", "body.json",   # stray local artifacts
@@ -299,6 +299,10 @@ exclude = [
 # needed at runtime (favicon.svg, index.html, tutorial.*, tour/, llms.txt, install.sh) — hatchling includes
 # non-.py data files under a package by default. A force-include here would add each a SECOND
 # time and break the wheel build (`A second file is being added ... at the same path`).
+
+[tool.hatch.build.targets.wheel.force-include]
+# Preserve the MIT attribution for the adapted Lens modules in binary distributions too.
+"THIRD_PARTY_NOTICES.md" = "treg/THIRD_PARTY_NOTICES.md"
 
 [[tool.importlinter.contracts]]
 name = "Async task domain is a stdlib leaf shared with the light CLI"

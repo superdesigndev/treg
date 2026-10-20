@@ -39,7 +39,7 @@ export default async function boot(){
       const tabbed=parseTabHash(location.hash);
       if(tabbed){ this._tabRoute=tabbed; v=tabbed.view; }
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
-      if(['tools','orgs','activity','usage','admin','help','secrets','start','resources','catalog','connections','referrals','hub'].includes(v)) this.go(v, true);
+      if(['tools','orgs','activity','usage','admin','help','secrets','start','resources','catalog','connections','referrals','hub','lens'].includes(v)) this.go(v, true);
     });
     // Catalog data does not depend on the session, so a view that shows it starts fetching now,
     // alongside /meta and /auth/me, instead of after them (the shelves used to arrive last).
@@ -90,7 +90,7 @@ export default async function boot(){
     this._restoreAgent();
     const me = await meReq.catch(()=>null);
     this.sessionChecked=true;
-    if(me){ this.sessionMode=true; this.me=me.email; this.isAdmin=!!me.is_superadmin; this.onboarded=!!me.onboarded; this.onboardingV2=!!me.onboarding_v2; this.onboardingV2Exp=!!me.onboarding_v2_experiment; this.icHash=me.intercom_user_hash||''; this.meAvatar=me.avatar_url||null; this.uploadsOn=!!me.uploads; await this.loadAll(); this.analyticsIdentify(); this.initIntercom();
+    if(me){ this.sessionMode=true; this.me=me.email; this.isAdmin=!!me.is_superadmin; this.onboarded=!!me.onboarded; this.onboardingV2=!!me.onboarding_v2; this.onboardingV2Exp=!!me.onboarding_v2_experiment; this.icHash=me.intercom_user_hash||''; this.meAvatar=me.avatar_url||null; this.uploadsOn=!!me.uploads; this.lensEnabled=!!me.lens_enabled; await this.loadAll(); this.analyticsIdentify(); this.initIntercom();
       // /app#onboarding-preview: the first-run flow for any email, for the people allowed to run it.
       if(me.onboarding_preview){ const pv=()=>{ if(location.hash==='#onboarding-preview') this.onboardingPreviewOn=true; }; pv(); listen(window, 'hashchange', pv); }
       // Share-born arrival (/app/skills/x?invite_org=N from the invite email): accept silently and

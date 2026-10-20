@@ -158,6 +158,9 @@ jobs:
           tests/test_redundant_index_migration.py
           tests/test_callrecord_call_ref_index_migration.py
           tests/test_enrich_arena.py
+          tests/test_lens.py
+          tests/test_lens_execution.py
+          tests/test_lens_schema.py
           tests/test_arena_insights.py
           tests/test_arena_verification_insights.py
           tests/test_feedback.py
@@ -263,12 +266,15 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
       - run: npm --prefix frontend run test:e2e
+      - run: npm --prefix frontend run test:e2e:lens
       - name: Upload browser failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: frontend-test-results
-          path: frontend/test-results/
+          path: |
+            frontend/test-results/
+            frontend/test-results-lens/
           retention-days: 7
       - name: Check distributable assets
         run: |
@@ -290,6 +296,7 @@ jobs:
               for asset in re.findall(r'src="(/vendor/vue-[^"\s]+)"', arena):
                   assert wheel.read('treg/web' + asset)
               assert wheel.read('treg/web/vendor/LICENSE')
+              assert b'Treg Lens contributors' in wheel.read('treg/THIRD_PARTY_NOTICES.md')
           with open_tar(next(Path('dist').glob('*.tar.gz'))) as source:
               assert not [member.name for member in source.getmembers()
                           if member.name.endswith('.mp4')]

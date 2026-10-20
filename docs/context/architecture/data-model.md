@@ -2,6 +2,7 @@
 title: Data model — the registry tables, async DB, audit writer
 status: shipped
 sources:
+  - src/treg/alembic/versions/0078_lens.py
   - src/treg/alembic/versions/0042_pinned_read_scope.py
   - alembic.ini
   - src/treg/alembic/env.py
@@ -92,6 +93,12 @@ related:
 ---
 
 # Data model
+
+Revision `0078` adds [Lens](../interface/lens.md)'s empty `LensProject` and `LensRun` tables.
+`application.lens` owns their writes: a revisioned team brand profile and an encrypted, frozen quote
+that is atomically claimed for one execution. Runs retain partial results and receipts, with a
+durable deadline for interrupted-owner recovery. Team deletion removes runs before profiles;
+neither table writes balances or stores caller credentials.
 
 Revision `0077` adds the empty `TeamDatabase` and `TableDoc` control-plane tables for
 [Workbench table storage](workbench-storage.md#management-metadata). It does not provision remote

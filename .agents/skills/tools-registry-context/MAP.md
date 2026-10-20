@@ -12,10 +12,12 @@ Regenerate via `scripts/build-map.py`.
 |---|---|
 | `.claude-plugin/marketplace.json` | interface/skill.md |
 | `.claude-plugin/plugin.json` | interface/skill.md |
+| `.env.example` | interface/lens.md |
 | `.github/workflows/catalog-added.yml` | architecture/catalog.md |
 | `.github/workflows/catalog-drift.yml` | architecture/catalog.md |
-| `.github/workflows/ci.yml` | architecture/import-boundaries.md |
+| `.github/workflows/ci.yml` | architecture/import-boundaries.md, interface/lens.md |
 | `README.md` | foundation/charter.md |
+| `THIRD_PARTY_NOTICES.md` | interface/lens.md |
 | `alembic.ini` | architecture/data-model.md |
 | `assets/brand/og-card.html` | interface/seo.md |
 | `deploy/render.example.yaml` | ops/deploy.md |
@@ -27,14 +29,19 @@ Regenerate via `scripts/build-map.py`.
 | `examples/claude-code-mods/jev-memory/hooks/jev-memory.mjs` | interface/skill.md |
 | `examples/proxy-demo/server.js` | architecture/local-proxy.md |
 | `external:meetings/2026-06-30-jason-tools-registry.md` | foundation/charter.md, reference/glossary.md |
+| `frontend/e2e-live/lens.spec.ts` | interface/lens.md |
 | `frontend/e2e/agents.spec.ts` | interface/dashboard.md |
 | `frontend/e2e/catalog-find.spec.ts` | architecture/find.md |
 | `frontend/e2e/landing.spec.ts` | interface/seo.md |
 | `frontend/e2e/layout.spec.ts` | interface/dashboard.md |
+| `frontend/e2e/lens.spec.ts` | interface/lens.md |
 | `frontend/index.html` | interface/seo.md |
-| `frontend/src/App.vue` | interface/dashboard.md, interface/seo.md |
+| `frontend/package.json` | interface/lens.md |
+| `frontend/playwright.lens.config.ts` | interface/lens.md |
+| `frontend/src/App.vue` | interface/dashboard.md, interface/lens.md, interface/seo.md |
 | `frontend/src/agent-setup/index.ts` | interface/enrich-arena.md |
 | `frontend/src/components/CatalogSearch.vue` | architecture/find.md |
+| `frontend/src/components/DashboardNavigation.vue` | interface/lens.md |
 | `frontend/src/components/FindAnswer.vue` | architecture/find.md |
 | `frontend/src/components/PublicNavigation.vue` | interface/seo.md |
 | `frontend/src/components/SignedOutPage.vue` | interface/landing-sandbox.md |
@@ -42,12 +49,18 @@ Regenerate via `scripts/build-map.py`.
 | `frontend/src/dialogs/UserAvatarDialog.vue` | interface/dashboard.md |
 | `frontend/src/dialogs/WelcomeDialog.vue` | interface/onboarding.md |
 | `frontend/src/images.ts` | interface/dashboard.md |
+| `frontend/src/lens/LensResults.vue` | interface/lens.md |
+| `frontend/src/lens/client.ts` | interface/lens.md |
+| `frontend/src/lens/lens.css` | interface/lens.md |
+| `frontend/src/lens/state.ts` | interface/lens.md |
+| `frontend/src/lens/types.ts` | interface/lens-api.md, interface/lens.md |
 | `frontend/src/onboarding/OnboardingFlow.vue` | interface/onboarding.md |
 | `frontend/src/onboarding/calls.ts` | interface/onboarding.md |
 | `frontend/src/onboarding/extract.ts` | interface/onboarding.md |
 | `frontend/src/pages/GettingStartedPage.vue` | interface/onboarding.md |
 | `frontend/src/pages/HubPage.vue` | architecture/hub.md |
 | `frontend/src/pages/HubRunPage.vue` | architecture/hub.md |
+| `frontend/src/pages/LensPage.vue` | interface/lens.md |
 | `frontend/src/pages/ProviderPage.vue` | architecture/instagram-oauth.md |
 | `frontend/src/pages/SearchPage.vue` | architecture/find.md |
 | `frontend/src/pages/TeamPage.vue` | architecture/auth-secrets.md, interface/dashboard.md |
@@ -55,28 +68,29 @@ Regenerate via `scripts/build-map.py`.
 | `frontend/src/pages/team/TeamShowcase.vue` | interface/dashboard.md |
 | `frontend/src/state/agents.js` | interface/dashboard.md |
 | `frontend/src/state/agentsComputed.js` | interface/dashboard.md |
-| `frontend/src/state/boot.js` | interface/landing-sandbox.md, interface/seo.md |
-| `frontend/src/state/catalog.js` | interface/dashboard.md |
+| `frontend/src/state/boot.js` | interface/landing-sandbox.md, interface/lens.md, interface/seo.md |
+| `frontend/src/state/catalog.js` | interface/dashboard.md, interface/lens.md |
 | `frontend/src/state/connections.js` | architecture/instagram-oauth.md |
 | `frontend/src/state/controller.js` | interface/dashboard.md |
 | `frontend/src/state/credentialIssues.js` | interface/dashboard.md |
-| `frontend/src/state/data.js` | interface/dashboard.md |
+| `frontend/src/state/data.js` | interface/dashboard.md, interface/lens.md |
 | `frontend/src/state/find.js` | architecture/find.md |
 | `frontend/src/state/hub.js` | architecture/hub.md |
 | `frontend/src/state/keys.js` | architecture/auth-secrets.md, interface/dashboard.md |
 | `frontend/src/state/onboarding.js` | interface/onboarding.md |
-| `frontend/src/state/session.js` | architecture/auth-secrets.md, interface/dashboard.md |
+| `frontend/src/state/session.js` | architecture/auth-secrets.md, interface/dashboard.md, interface/lens.md |
 | `frontend/src/state/team.js` | interface/dashboard.md |
 | `frontend/src/styles/base.css` | interface/dashboard.md |
-| `frontend/src/views.ts` | interface/dashboard.md |
+| `frontend/src/views.ts` | interface/dashboard.md, interface/lens.md |
 | `frontend/tests/agents.test.ts` | interface/dashboard.md |
 | `frontend/tests/captcha.test.ts` | architecture/multi-tenancy.md |
+| `frontend/tests/lens.test.ts` | interface/lens.md |
 | `hatch_build.py` | ops/deploy.md |
 | `package.json` | interface/skill.md |
 | `plugin/.codex-plugin/plugin.json` | interface/skill.md |
 | `plugins/minimax/.minimax-plugin/plugin.json` | interface/skill.md |
 | `plugins/treg/.cursor-plugin/plugin.json` | interface/skill.md |
-| `pyproject.toml` | architecture/import-boundaries.md, ops/deploy.md |
+| `pyproject.toml` | architecture/import-boundaries.md, interface/lens.md, ops/deploy.md |
 | `scripts/backfill_call_archive_links.py` | architecture/archive.md |
 | `scripts/bench_money_admission.py` | architecture/money.md, ops/deploy.md |
 | `scripts/build-dashboard.sh` | ops/deploy.md |
@@ -88,10 +102,11 @@ Regenerate via `scripts/build-map.py`.
 | `scripts/catalog_ingest.py` | architecture/catalog.md, architecture/instagram-oauth.md |
 | `scripts/catalog_ingest_crawl4ai_recipes.py` | architecture/catalog.md |
 | `scripts/catalog_validate.py` | architecture/catalog.md |
-| `scripts/dev-local.sh` | ops/deploy.md |
+| `scripts/dev-local.sh` | interface/lens.md, ops/deploy.md |
 | `scripts/dump_surface.py` | architecture/composition.md |
 | `scripts/find_bench.py` | architecture/find.md |
 | `scripts/frontend-e2e-server.sh` | ops/deploy.md |
+| `scripts/frontend-lens-e2e-server.sh` | interface/lens.md |
 | `scripts/import_arena_verification.py` | interface/enrich-arena.md |
 | `scripts/indexnow_submit.py` | interface/seo.md |
 | `scripts/minimax_plugin.py` | interface/skill.md |
@@ -172,8 +187,9 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/alembic/versions/0075_ad_click_stash.py` | architecture/ads-conversions.md, architecture/data-model.md |
 | `src/treg/alembic/versions/0076_showcase_and_avatars.py` | architecture/showcase.md |
 | `src/treg/alembic/versions/0077_workbench_table_metadata.py` | architecture/workbench-storage.md |
+| `src/treg/alembic/versions/0078_lens.py` | architecture/data-model.md, interface/lens.md |
 | `src/treg/analytics.py` | architecture/data-model.md |
-| `src/treg/api.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/super-admin.md, interface/api.md, interface/landing-sandbox.md, interface/seo.md |
+| `src/treg/api.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/super-admin.md, interface/api.md, interface/landing-sandbox.md, interface/lens.md, interface/seo.md |
 | `src/treg/application/__init__.py` | architecture/import-boundaries.md |
 | `src/treg/application/archive_erasure.py` | architecture/archive.md |
 | `src/treg/application/arena.py` | interface/enrich-arena.md |
@@ -218,6 +234,8 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/jev_xboost.py` | interface/seo.md |
 | `src/treg/application/key_spend.py` | interface/api.md |
 | `src/treg/application/key_spend_rollup.py` | architecture/money.md |
+| `src/treg/application/lens.py` | interface/lens-api.md, interface/lens.md |
+| `src/treg/application/lens_execution.py` | interface/lens.md |
 | `src/treg/application/media.py` | architecture/media.md |
 | `src/treg/application/onboard/__init__.py` | interface/api.md, interface/landing-sandbox.md, interface/onboarding.md |
 | `src/treg/application/onboard/demo.py` | interface/onboarding.md |
@@ -240,7 +258,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/archive.py` | architecture/archive.md |
 | `src/treg/archive_bodies.py` | architecture/archive.md |
 | `src/treg/audit.py` | architecture/data-model.md, ops/deploy.md |
-| `src/treg/bootstrap.py` | architecture/archive.md, architecture/composition.md, architecture/find.md, architecture/org-traffic.md, architecture/policy-extensions.md, interface/enrich-arena.md, interface/web-arena.md |
+| `src/treg/bootstrap.py` | architecture/archive.md, architecture/composition.md, architecture/find.md, architecture/org-traffic.md, architecture/policy-extensions.md, interface/enrich-arena.md, interface/lens.md, interface/web-arena.md |
 | `src/treg/bootstrap_handlers.py` | architecture/composition.md, architecture/data-model.md, interface/api.md |
 | `src/treg/bootstrap_http.py` | architecture/composition.md, interface/api.md |
 | `src/treg/call_events.py` | architecture/call-events.md |
@@ -381,7 +399,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/cli_analytics.py` | interface/cli.md |
 | `src/treg/client_identity.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/client_ip.py` | architecture/multi-tenancy.md |
-| `src/treg/config.py` | architecture/archive.md, architecture/auth-secrets.md, architecture/feedback.md, architecture/org-concurrency.md, architecture/org-flow-control.md, architecture/super-admin.md, architecture/table.md, guides/expanding-a-category.md, interface/web-arena.md, ops/deploy.md |
+| `src/treg/config.py` | architecture/archive.md, architecture/auth-secrets.md, architecture/feedback.md, architecture/org-concurrency.md, architecture/org-flow-control.md, architecture/super-admin.md, architecture/table.md, guides/expanding-a-category.md, interface/lens.md, interface/web-arena.md, ops/deploy.md |
 | `src/treg/convert.py` | interface/cli.md |
 | `src/treg/crypto.py` | architecture/auth-secrets.md |
 | `src/treg/domain/__init__.py` | architecture/import-boundaries.md |
@@ -426,7 +444,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/domain/governance/budgets.py` | architecture/import-boundaries.md, architecture/money.md, architecture/multi-tenancy.md, interface/api.md |
 | `src/treg/domain/governance/publicdemo.py` | architecture/import-boundaries.md, architecture/multi-tenancy.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/domain/governance/sandbox.py` | interface/landing-sandbox.md |
-| `src/treg/domain/governance/teams.py` | architecture/import-boundaries.md, architecture/multi-tenancy.md, architecture/workbench-storage.md, interface/api.md, interface/enrich-arena.md |
+| `src/treg/domain/governance/teams.py` | architecture/import-boundaries.md, architecture/multi-tenancy.md, architecture/workbench-storage.md, interface/api.md, interface/enrich-arena.md, interface/lens.md |
 | `src/treg/domain/governance/usage.py` | architecture/import-boundaries.md, architecture/multi-tenancy.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/domain/hub/__init__.py` | architecture/hub.md |
 | `src/treg/domain/hub/graph.py` | architecture/hub.md |
@@ -440,6 +458,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/domain/identity/promotions.py` | architecture/money.md, architecture/multi-tenancy.md, architecture/policy-extensions.md |
 | `src/treg/domain/identity/session.py` | architecture/composition.md, architecture/mcp-oauth.md, architecture/multi-tenancy.md, interface/api.md |
 | `src/treg/domain/images/__init__.py` | architecture/showcase.md |
+| `src/treg/domain/lens.py` | interface/lens.md |
 | `src/treg/domain/money/__init__.py` | architecture/hub.md, architecture/import-boundaries.md, architecture/money.md |
 | `src/treg/domain/money/settlement.py` | architecture/catalog.md, architecture/money.md |
 | `src/treg/domain/provider_resources.py` | architecture/catalog.md, architecture/data-model.md, architecture/multi-tenancy.md |
@@ -499,7 +518,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/maintenance.py` | architecture/data-model.md, ops/deploy.md |
 | `src/treg/mcp.py` | architecture/catalog.md, architecture/hub.md, architecture/instagram-oauth.md, architecture/mcp-oauth.md, architecture/org-concurrency.md, architecture/org-traffic.md |
 | `src/treg/mcp_install.py` | interface/skill.md |
-| `src/treg/models.py` | architecture/data-model.md, architecture/hub.md, architecture/media.md, architecture/money.md, architecture/multi-tenancy.md, architecture/workbench-storage.md, interface/enrich-arena.md, interface/web-arena.md |
+| `src/treg/models.py` | architecture/data-model.md, architecture/hub.md, architecture/media.md, architecture/money.md, architecture/multi-tenancy.md, architecture/workbench-storage.md, interface/enrich-arena.md, interface/lens.md, interface/web-arena.md |
 | `src/treg/oauth.py` | architecture/auth-secrets.md |
 | `src/treg/oauth_providers.py` | architecture/auth-secrets.md, guides/expanding-a-category.md |
 | `src/treg/policy.py` | architecture/money.md, architecture/policy-extensions.md |
@@ -511,7 +530,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/routers/admin.py` | architecture/archive.md, architecture/composition.md, architecture/money.md, architecture/super-admin.md, interface/api.md |
 | `src/treg/routers/api_keys.py` | architecture/auth-secrets.md, architecture/mcp-oauth.md, interface/api.md, interface/cli.md |
 | `src/treg/routers/arena.py` | interface/enrich-arena.md |
-| `src/treg/routers/auth.py` | architecture/ads-conversions.md, architecture/composition.md, architecture/mcp-oauth.md, architecture/multi-tenancy.md, architecture/table.md, interface/api.md, interface/enrich-arena.md, interface/onboarding.md |
+| `src/treg/routers/auth.py` | architecture/ads-conversions.md, architecture/composition.md, architecture/mcp-oauth.md, architecture/multi-tenancy.md, architecture/table.md, interface/api.md, interface/enrich-arena.md, interface/lens.md, interface/onboarding.md |
 | `src/treg/routers/auth_helpers.py` | interface/api.md, interface/cli.md |
 | `src/treg/routers/billing.py` | architecture/composition.md, architecture/money.md, interface/api.md |
 | `src/treg/routers/call.py` | architecture/composition.md, architecture/feedback.md, architecture/instagram-oauth.md, architecture/money.md, architecture/org-concurrency.md, architecture/org-flow-control.md, architecture/org-traffic.md, architecture/proxy-model.md, architecture/table.md, interface/api.md |
@@ -521,6 +540,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/routers/hub.py` | architecture/hub.md |
 | `src/treg/routers/hub_gate.py` | architecture/hub.md |
 | `src/treg/routers/images.py` | architecture/showcase.md |
+| `src/treg/routers/lens.py` | interface/lens-api.md, interface/lens.md |
 | `src/treg/routers/media.py` | architecture/media.md, interface/api.md |
 | `src/treg/routers/onboard.py` | architecture/composition.md, interface/api.md, interface/landing-sandbox.md, interface/onboarding.md |
 | `src/treg/routers/orgs.py` | architecture/composition.md, architecture/money.md, architecture/multi-tenancy.md, interface/api.md |
@@ -634,6 +654,8 @@ Regenerate via `scripts/build-map.py`.
 | `tests/fixtures/find_bench.yaml` | architecture/find.md |
 | `tests/fixtures/org-flow-control/generate.ts` | architecture/org-flow-control.md |
 | `tests/fixtures/search_queries.yaml` | architecture/find.md |
+| `tests/lens_browser_server.py` | interface/lens.md |
+| `tests/lens_upstream.py` | interface/lens.md |
 | `tests/test_aigc_pr_b.py` | architecture/catalog.md |
 | `tests/test_alembic_expand_safety.py` | architecture/data-model.md |
 | `tests/test_api_keys.py` | architecture/auth-secrets.md, architecture/data-model.md, interface/cli.md |
@@ -690,6 +712,9 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_key_spend_rollup.py` | architecture/money.md |
 | `tests/test_kv.py` | architecture/feedback.md |
 | `tests/test_kv_lease_diagnostics.py` | architecture/data-model.md |
+| `tests/test_lens.py` | interface/lens-api.md, interface/lens.md |
+| `tests/test_lens_execution.py` | interface/lens.md |
+| `tests/test_lens_schema.py` | interface/lens.md |
 | `tests/test_marketplace_call.py` | architecture/mcp-oauth.md, architecture/money.md, architecture/proxy-model.md |
 | `tests/test_mcp.py` | architecture/mcp-oauth.md |
 | `tests/test_mcp_directory.py` | architecture/mcp-oauth.md |
@@ -755,7 +780,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/call-events.md` | `call_events.py`, `call_events.py`, `contracts.yaml`, `test_call_events.py` |
 | `architecture/catalog.md` | `catalog_added.py`, `catalog_backfill_added.py`, `catalog-added.yml`, `fetchinio.yaml`, `fetchinio.svg`, `fetchinio.linkedin.user.profile.json`, `fetchinio.linkedin.company.profile.json`, `fetchinio.linkedin.user.posts.json`, `fetchinio.linkedin.user.reactions.json`, `fetchinio.linkedin.post.comments.json`, `fetchinio.linkedin.post.reactions.json`, `fetchinio.linkedin.post.engagement.json`, `fishaudio.yaml`, `fishaudio.tts.s2-1-pro.json`, `fishaudio.voices.create.json`, `fishaudio.voices.discover.json`, `provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `tavily.yaml`, `octen.py`, `enrichlayer.py`, `enrichlayer.yaml`, `enrichlayer.companies.search.json`, `enrichlayer.company.employees.count.json`, `enrichlayer.company.employees.list.json`, `enrichlayer.company.employees.search.json`, `enrichlayer.company.lookup-id.json`, `enrichlayer.company.lookup.json`, `enrichlayer.company.profile-picture.json`, `enrichlayer.company.profile.json`, `enrichlayer.company.role.lookup.json`, `enrichlayer.contacts.personal-email.json`, `enrichlayer.contacts.personal-phone.json`, `enrichlayer.contacts.reverse-phone.json`, `enrichlayer.email.disposable-check.json`, `enrichlayer.jobs.profile.json`, `enrichlayer.jobs.search.json`, `enrichlayer.people.search.json`, `enrichlayer.person.lookup.json`, `enrichlayer.person.profile-picture.json`, `enrichlayer.person.profile.json`, `enrichlayer.person.reverse-email.json`, `enrichlayer.person.work-email.json`, `enrichlayer.school.profile.json`, `enrichlayer.svg`, `linkup.yaml`, `you.yaml`, `you.web.search.json`, `you.web.contents.json`, `you.svg`, `linkup.svg`, `linkup.web.search.json`, `linkup.web.fetch.json`, `linkup.web.fetch.structured.json`, `linkup.web.answer.json`, `linkup.web.answer.status.json`, `parallel.yaml`, `parallel.svg`, `parallel.web.search.json`, `parallel.web.search.advanced.json`, `parallel.web.extract.json`, `parallel.people.search.json`, `parallel.companies.search.json`, `keenable.yaml`, `olostep.yaml`, `spidercloud.yaml`, `spidercloud.web.scrape.json`, `spidercloud.web.crawl.json`, `spidercloud.web.search.json`, `spidercloud.web.links.json`, `spidercloud.web.unblock.json`, `spidercloud.web.screenshot.json`, `tinyfish.yaml`, `tinyfish.web.search.json`, `tinyfish.web.search.news.json`, `tinyfish.web.search.publications.json`, `tinyfish.web.fetch.json`, `tinyfish.web.agent.run.json`, `tinyfish.web.agent.run.get.json`, `tinyfish.web.agent.run.cancel.json`, `test_tinyfish.py`, `exa.yaml`, `anyapi.extended.yaml`, `adyntel.yaml`, `adyntel.meta-ads.library.advertiser.json`, `adyntel.meta-ads.library.search.json`, `adyntel.linkedin.search.ads.company.json`, `adyntel.linkedin.search.ads.keyword.json`, `adyntel.google.ads.transparency.json`, `adyntel.tiktok-ads.library.search.company.json`, `adyntel.google.domain.keywords.overview.json`, `adyntel.svg`, `trestleiq.yaml`, `financialdatasets.yaml`, `test_financialdatasets.py`, `quickenrich.yaml`, `influencersclub.yaml`, `quickenrich.extended.yaml`, `trykitt.yaml`, `contracts.yaml`, `millionverifier.yaml`, `adapters.yaml`, `capabilities.yaml`, `prospeo.yaml`, `test_route_cost_ceiling.py`, `tomba.yaml`, `__init__.py`, `contracts.py`, `paths.py`, `plan.py`, `synthetic.py`, `async_bridge.py`, `route.py`, `wiza.yaml`, `wiza.people.email.find.json`, `wiza.people.email.find.terminal.json`, `wiza.people.phone.find.json`, `wiza.people.phone.find.terminal.json`, `test_routing.py`, `test_wiza.py`, `catalog-drift.yml`, `catalog_drift.py`, `catalog_ingest.py`, `catalog_ingest_crawl4ai_recipes.py`, `catalog_validate.py`, `aliases.yaml`, `fx.yaml`, `cloro.yaml`, `aviato.yaml`, `crustdata.yaml`, `google-search-console.yaml`, `google-search-console.extended.yaml`, `google-tag-manager.yaml`, `google-tag-manager.extended.yaml`, `instagram.yaml`, `instagram.extended.yaml`, `justoneapi.extended.yaml`, `minimax.yaml`, `apify.yaml`, `brightdata.yaml`, `companyenrich.yaml`, `oceanio.yaml`, `akta.extended.yaml`, `dataforseo.yaml`, `dataforseo.extended.yaml`, `scrapecreators.yaml`, `scrapecreators.extended.yaml`, `serpapi.yaml`, `serpapi.extended.yaml`, `diffbot.yaml`, `diffbot.extended.yaml`, `tikhub.extended.yaml`, `lusha.extended.yaml`, `openrouter.yaml`, `openrouter.extended.yaml`, `replicate.yaml`, `replicate.extended.yaml`, `reapi.yaml`, `piapi.yaml`, `__init__.py`, `store.py`, `hunter.yaml`, `mcp.py`, `settlement.py`, `stats.py`, `catalog_observations.py`, `catalog_stat_dirty.py`, `catalog_stats.py`, `0038_endpoint_day_stats.py`, `0066_endpointdaystat_verdicts.py`, `catalog.py`, `test_aigc_pr_b.py`, `test_catalog_api.py`, `test_catalog_validate.py`, `test_call_verdict.py` |
 | `architecture/composition.md` | `bootstrap.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `worker.py`, `money_trace_runner.py`, `money_admission_reporting.py`, `call_surface.py`, `connect.py`, `mcp_oauth.py`, `session.py`, `admin.py`, `auth.py`, `billing.py`, `call.py`, `connections.py`, `onboard.py`, `orgs.py`, `resources.py`, `referrals.py`, `web.py`, `dump_surface.py`, `test_app_roles.py` |
-| `architecture/data-model.md` | `0042_pinned_read_scope.py`, `alembic.ini`, `env.py`, `0001_baseline_current_schema.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0005_capacity_policy_snapshot.py`, `0006_overflow_route.py`, `0007_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `0009_callrecord_hit.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `0020_callrecord_created_at_indexes.py`, `0021_ledgerentry_org_created_at_index.py`, `0022_org_spent_today_counter.py`, `0023_callrecord_org_user_created_at_index.py`, `0024_membership_calls_today_counter.py`, `0027_enrich_arena.py`, `0028_arena_insights.py`, `0029_arena_verification_snapshot.py`, `0011_callrecord_archive_link.py`, `0015_idempotentcall_membership_cascade.py`, `0053_idempotentcall_membership_expires_index.py`, `0054_callrecord_org_id_id.py`, `0061_remove_redundant_unique_indexes.py`, `0034_managed_api_keys.py`, `0035_default_key_generation.py`, `0036_activity_key_indexes.py`, `0038_endpoint_day_stats.py`, `0074_endpoint_stat_dirty.py`, `catalog_stat_dirty.py`, `maintenance.py`, `sitetrack.js`, `models.py`, `0052_async_task_hit.py`, `0031_archive_result_admission.py`, `0032_archive_body_storage.py`, `0039_archive_own_key_and_repeat_pricing.py`, `0043_provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `0033_signup_promo_eligibility.py`, `0071_signup_promo_claim.py`, `0041_searchlog.py`, `0055_find_v2_log.py`, `0056_searchlog_verdict.py`, `0065_call_verdict.py`, `0066_endpointdaystat_verdicts.py`, `0070_api_key_spend_rollup.py`, `0072_callrecord_call_ref_index.py`, `0073_org_flow_control_version.py`, `test_org_flow_control_schema.py`, `0075_ad_click_stash.py`, `timeutil.py`, `db.py`, `money_timing.py`, `money_admission.py`, `kv.py`, `money_admission_reporting.py`, `money_trace.py`, `money_trace_runner.py`, `referrals.py`, `audit.py`, `evidence_retention.py`, `analytics.py`, `bootstrap_handlers.py`, `ratestore.py`, `auth.py`, `test_postgres_reset.py`, `test_alembic_expand_safety.py`, `test_redundant_index_migration.py`, `test_api_keys.py`, `test_money_timing.py`, `test_money_admission_reporting.py`, `test_kv_lease_diagnostics.py`, `test_money_trace.py`, `test_money_trace_postgres.py`, `test_money_trace_runner.py` |
+| `architecture/data-model.md` | `0078_lens.py`, `0042_pinned_read_scope.py`, `alembic.ini`, `env.py`, `0001_baseline_current_schema.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0005_capacity_policy_snapshot.py`, `0006_overflow_route.py`, `0007_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `0009_callrecord_hit.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `0020_callrecord_created_at_indexes.py`, `0021_ledgerentry_org_created_at_index.py`, `0022_org_spent_today_counter.py`, `0023_callrecord_org_user_created_at_index.py`, `0024_membership_calls_today_counter.py`, `0027_enrich_arena.py`, `0028_arena_insights.py`, `0029_arena_verification_snapshot.py`, `0011_callrecord_archive_link.py`, `0015_idempotentcall_membership_cascade.py`, `0053_idempotentcall_membership_expires_index.py`, `0054_callrecord_org_id_id.py`, `0061_remove_redundant_unique_indexes.py`, `0034_managed_api_keys.py`, `0035_default_key_generation.py`, `0036_activity_key_indexes.py`, `0038_endpoint_day_stats.py`, `0074_endpoint_stat_dirty.py`, `catalog_stat_dirty.py`, `maintenance.py`, `sitetrack.js`, `models.py`, `0052_async_task_hit.py`, `0031_archive_result_admission.py`, `0032_archive_body_storage.py`, `0039_archive_own_key_and_repeat_pricing.py`, `0043_provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `0033_signup_promo_eligibility.py`, `0071_signup_promo_claim.py`, `0041_searchlog.py`, `0055_find_v2_log.py`, `0056_searchlog_verdict.py`, `0065_call_verdict.py`, `0066_endpointdaystat_verdicts.py`, `0070_api_key_spend_rollup.py`, `0072_callrecord_call_ref_index.py`, `0073_org_flow_control_version.py`, `test_org_flow_control_schema.py`, `0075_ad_click_stash.py`, `timeutil.py`, `db.py`, `money_timing.py`, `money_admission.py`, `kv.py`, `money_admission_reporting.py`, `money_trace.py`, `money_trace_runner.py`, `referrals.py`, `audit.py`, `evidence_retention.py`, `analytics.py`, `bootstrap_handlers.py`, `ratestore.py`, `auth.py`, `test_postgres_reset.py`, `test_alembic_expand_safety.py`, `test_redundant_index_migration.py`, `test_api_keys.py`, `test_money_timing.py`, `test_money_admission_reporting.py`, `test_kv_lease_diagnostics.py`, `test_money_trace.py`, `test_money_trace_postgres.py`, `test_money_trace_runner.py` |
 | `architecture/feedback.md` | `feedback_contract.py`, `__init__.py`, `reports.py`, `reviews.py`, `verdicts.py`, `hints.py`, `config.py`, `call.py`, `invite.py`, `kv.py`, `feedback.py`, `feedback.py`, `0025_feedback.py`, `0026_callreview.py`, `0030_feedback_handling.py`, `test_feedback_handling_schema.py`, `feedback.md`, `test_feedback.py`, `test_reviews.py`, `test_endpoint_verdicts.py`, `test_hints.py`, `test_kv.py` |
 | `architecture/find.md` | `catalog_find.py`, `find_recall.py`, `find_index.py`, `embed.py`, `bootstrap.py`, `test_find_index.py`, `test_embed.py`, `0055_find_v2_log.py`, `0056_searchlog_verdict.py`, `find_bench.py`, `find_bench.yaml`, `test_find_bench.py`, `test_find_recall.py`, `test_catalog_find.py`, `test_search_queries.py`, `search_queries.yaml`, `find.js`, `FindAnswer.vue`, `SearchPage.vue`, `CatalogSearch.vue`, `catalog-find.spec.ts` |
 | `architecture/hub.md` | `__init__.py`, `manifest.py`, `refs.py`, `graph.py`, `__init__.py`, `runner.py`, `sandbox.py`, `limits.py`, `health.py`, `hub_sandbox.py`, `hub.py`, `catalog.py`, `web.py`, `hub_gate.py`, `service.py`, `__init__.py`, `mcp.py`, `hub.js`, `HubPage.vue`, `HubRunPage.vue`, `cli.py`, `worker.py`, `models.py`, `index.html`, `skill.md`, `llms.txt`, `0044_hub_tools.py`, `0045_hub_runs.py`, `0046_hubtool_check_result.py`, `0047_hubrun_output.py`, `0048_hubtool_data.py`, `0049_hubtool_listed_public_log.py`, `0050_hub_listing.py`, `run.js`, `run.js`, `run.js`, `test_hub.py`, `test_hub_sandbox.py`, `test_hub_run.py` |
@@ -786,6 +811,8 @@ Regenerate via `scripts/build-map.py`.
 | `interface/enrich-arena.md` | `arena.py`, `arena.py`, `arena.py`, `models.py`, `0027_enrich_arena.py`, `teams.py`, `auth.py`, `bootstrap.py`, `enrich-arena.html`, `arena.js`, `bench.js`, `arena.css`, `index.ts`, `arena_verification_insights.py`, `0029_arena_verification_snapshot.py`, `import_arena_verification.py`, `test_arena_verification_insights.py`, `arena_insights.py`, `arena_insights.py`, `0028_arena_insights.py`, `test_arena_insights.py`, `apollo.svg`, `branddev.svg`, `companyenrich.svg`, `findymail.svg`, `hunter.svg`, `icypeas.svg`, `leadmagic.svg`, `leadsforge.svg`, `lusha.svg`, `pdl.svg`, `predictleads.svg`, `thecompaniesapi.svg`, `tomba.svg`, `sitetrack.js`, `test_enrich_arena.py` |
 | `interface/env-import.md` | `providers.py`, `skills.py` |
 | `interface/landing-sandbox.md` | `sandbox.py`, `sandbox_identity.py`, `pubfeed.py`, `sandbox.py`, `__init__.py`, `sandbox.py`, `api.py`, `onboard.py`, `web.py`, `boot.js`, `SignedOutPage.vue`, `install.sh` |
+| `interface/lens-api.md` | `lens.py`, `lens.py`, `types.ts`, `test_lens.py` |
+| `interface/lens.md` | `lens.py`, `lens.py`, `lens_execution.py`, `lens.py`, `models.py`, `0078_lens.py`, `config.py`, `api.py`, `bootstrap.py`, `auth.py`, `teams.py`, `LensPage.vue`, `state.ts`, `client.ts`, `types.ts`, `LensResults.vue`, `lens.css`, `DashboardNavigation.vue`, `boot.js`, `catalog.js`, `data.js`, `session.js`, `views.ts`, `App.vue`, `playwright.lens.config.ts`, `lens.test.ts`, `lens.spec.ts`, `lens.spec.ts`, `package.json`, `ci.yml`, `dev-local.sh`, `frontend-lens-e2e-server.sh`, `lens_browser_server.py`, `lens_upstream.py`, `test_lens.py`, `test_lens_execution.py`, `test_lens_schema.py`, `THIRD_PARTY_NOTICES.md`, `.env.example`, `pyproject.toml` |
 | `interface/onboarding.md` | `auth.py`, `__init__.py`, `demo.py`, `first_run.py`, `lookup.py`, `page.py`, `tasks.py`, `house_calls.py`, `llm.py`, `sitetrack.js`, `cli.py`, `auth.py`, `onboard.py`, `onboarding.js`, `WelcomeDialog.vue`, `OnboardingFlow.vue`, `calls.ts`, `extract.ts`, `GettingStartedPage.vue` |
 | `interface/seo.md` | `api.py`, `web.py`, `agent_pages.py`, `robots.txt`, `catalog.css`, `usecase.css`, `index.html`, `App.vue`, `PublicNavigation.vue`, `boot.js`, `landing.html`, `product-theme.css`, `refinement.css`, `gateway.css`, `hero-opening.js`, `refinement.js`, `catalog-drum.js`, `gateway.js`, `gateway-loader.js`, `gateway-3d.js`, `gateway-model.js`, `gateway-intro.js`, `hero-particles.js`, `command-beam.js`, `SOURCES.md`, `landing.spec.ts`, `terms.html`, `usecase-seo.html`, `usecase-company.html`, `usecase-enrichment.html`, `usecase-social.html`, `usecase-ads.html`, `people-search.html`, `leads-signals.html`, `recruit.html`, `web-access.html`, `gtm-engineering.html`, `grokbot.html`, `fable-gtm.html`, `ugc.html`, `aeo.html`, `start.html`, `jev.html`, `showcase.html`, `wall.json`, `jev_xboost.py`, `xboost-seed.json`, `triage.json`, `signals.json`, `astra.html`, `page.css`, `page.js`, `llms.txt`, `indexnow_submit.py`, `support.html`, `og-card.html` |
 | `interface/shell.md` | `shell.py`, `cli.py` |

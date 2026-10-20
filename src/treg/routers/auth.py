@@ -672,7 +672,7 @@ async def auth_me(
         raise HTTPException(status_code=401, detail="no session") from exc
     out = {"email": identity.email, "is_superadmin": identity.is_superadmin, "onboarded": identity.onboarded,
            "github": identity.github, "avatar_url": images.public_url(identity.avatar_key),
-           "uploads": images.enabled()}
+           "uploads": images.enabled(), "lens_enabled": bool(get_settings().lens_enabled)}
     if first_run.enabled(identity.email):
         out["onboarding_v2"] = True
     elif not identity.onboarded and first_run.in_experiment(identity.email):

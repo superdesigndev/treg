@@ -40,6 +40,9 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/provider_resources.py": {API},
     # Interactive paid runs: short transactions between legs, never across upstream waits.
     "application/arena.py": {API},
+    # Interactive Lens profiles/claims and fresh caller checks; receipts close before each call.
+    "application/lens.py": {API},
+    "application/lens_execution.py": {API},
     "application/web_arena.py": {API},
     "application/web_arena_quality.py": {API},
     "application/web_arena_publications.py": {API},

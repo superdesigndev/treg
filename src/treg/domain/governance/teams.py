@@ -43,6 +43,8 @@ from ...models import (
     IdempotentCall,
     Invite,
     LedgerEntry,
+    LensProject,
+    LensRun,
     Membership,
     OAuthCode,
     OAuthGrant,
@@ -262,6 +264,7 @@ async def list_user_orgs(
 # Order matters: LedgerEntry references a CreditBlock, so it goes first; `IdempotentCall.membership_id`
 # points at Membership, so Membership stays last and IdempotentCall sits above it.
 ORG_SCOPED_MODELS = (
+    LensRun, LensProject,
     ArenaEvaluation, ArenaRun, WebArenaRun,
     TableDoc, TeamDatabase,
     Tool, Secret, Bundle, PendingOAuth, CallRecord, RunRecord, Invite, DenyRule, Project,

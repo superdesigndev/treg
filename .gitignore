@@ -101,6 +101,7 @@ CLAUDE.md.arcterm-bak
 node_modules
 /src/treg/web/dashboard/
 /frontend/test-results/
+/frontend/test-results-lens/
 /frontend/playwright-report/
 
 # Global Vue runtime copied from the npm lockfile during the frontend build.
