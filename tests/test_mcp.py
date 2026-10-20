@@ -405,6 +405,9 @@ async def test_one_team_cannot_read_another_teams_tools(clients):
     assert names_a, f"org A saw no tools at all — the assertion below would pass for free: {seen_a}"
     assert "a-only-tool" in names_a
     assert "a-only-tool" not in names_b, f"org B saw org A's tool: {seen_b}"
+    # Each team also learns its own label for shared provider accounts, and only its own.
+    assert seen_a.get("team_label", "").startswith("team-") and seen_b.get("team_label", "").startswith("team-")
+    assert seen_a["team_label"] != seen_b["team_label"]
 
 
 async def test_call_refuses_an_endpoint_that_does_not_exist(clients):

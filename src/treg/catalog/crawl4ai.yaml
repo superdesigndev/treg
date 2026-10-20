@@ -585,6 +585,7 @@ endpoints:
   # label with no budget gets no checks, so its monitors stay paused until one is added.
   - id: crawl4ai.watch.create
     capability: web.monitor.create
+    kind: action
     platform: web
     domain: monitor
     scope: any_account
@@ -627,6 +628,7 @@ endpoints:
     docs_url: https://crawl4ai.com/llms.txt
   - id: crawl4ai.watch.budget.add
     capability: web.monitor.budget.add
+    kind: action
     platform: web
     domain: monitor
     scope: any_account
@@ -650,6 +652,7 @@ endpoints:
       unit: credit
       quantity: {field: body.credits, max: 100000, applied: added}
       settle: quantity
+      display: {unit: "credit bought"}
       source: docs
       source_url: https://crawl4ai.com/llms.txt
       checked: '2026-10-19'
@@ -660,6 +663,7 @@ endpoints:
     docs_url: https://crawl4ai.com/llms.txt
   - id: crawl4ai.watch.budget.get
     capability: web.monitor.budget.get
+    cache: forbidden
     platform: web
     domain: monitor
     scope: any_account
@@ -677,6 +681,7 @@ endpoints:
     docs_url: https://crawl4ai.com/llms.txt
   - id: crawl4ai.watch.changes
     capability: web.monitor.changes
+    kind: action
     platform: web
     domain: monitor
     scope: any_account
@@ -698,6 +703,7 @@ endpoints:
     docs_url: https://crawl4ai.com/llms.txt
   - id: crawl4ai.watch.list
     capability: web.monitor.list
+    cache: forbidden
     platform: web
     domain: monitor
     scope: any_account
@@ -715,6 +721,7 @@ endpoints:
     docs_url: https://crawl4ai.com/llms.txt
   - id: crawl4ai.watch.get
     capability: web.monitor.get
+    cache: forbidden
     platform: web
     domain: monitor
     scope: any_account
@@ -731,6 +738,7 @@ endpoints:
     docs_url: https://crawl4ai.com/llms.txt
   - id: crawl4ai.watch.update
     capability: web.monitor.update
+    kind: action
     platform: web
     domain: monitor
     scope: any_account
@@ -765,6 +773,7 @@ endpoints:
     docs_url: https://crawl4ai.com/llms.txt
   - id: crawl4ai.watch.events
     capability: web.monitor.activity
+    cache: forbidden
     platform: web
     domain: monitor
     scope: any_account
@@ -785,6 +794,7 @@ endpoints:
     docs_url: https://crawl4ai.com/llms.txt
   - id: crawl4ai.watch.version
     capability: web.monitor.version
+    cache: forbidden
     platform: web
     domain: monitor
     scope: any_account
@@ -802,6 +812,7 @@ endpoints:
     docs_url: https://crawl4ai.com/llms.txt
   - id: crawl4ai.watch.delete
     capability: web.monitor.delete
+    kind: action
     platform: web
     domain: monitor
     scope: any_account

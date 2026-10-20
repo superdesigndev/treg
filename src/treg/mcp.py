@@ -505,6 +505,7 @@ class TeamTool(TypedDict, total=False):
 
 class MyToolsOut(TypedDict, total=False):
     team: str | None
+    team_label: str | None   # the team's label on shared provider accounts (Watch's `agent`), for tools with team_label fields
     team_name: str | None
     identity: str | None
     count: int | None
@@ -1781,7 +1782,7 @@ async def my_tools(ctx: Context) -> MyToolsOut:
     if not token:
         return _need_token()
     async with _api(token) as client:
-        _, slug, problem = await _resolve_org(client)
+        org_id, slug, problem = await _resolve_org(client)
         if problem:
             return problem
         r = await client.get("/tools", headers={"X-Treg-Org": slug or ""})
@@ -1790,8 +1791,10 @@ async def my_tools(ctx: Context) -> MyToolsOut:
     if r.status_code != 200:
         return {"error": "could not list the team's tools", "detail": body}
     tools = body if isinstance(body, list) else body.get("tools", [])
+    from .application.call.resolve import team_label
     return {
         **whose,
+        **({"team_label": team_label(org_id)} if org_id is not None else {}),
         "count": len(tools),
         "tools": [{"name": t.get("name"), "base_url": t.get("base_url"),
                    "description": t.get("description")} for t in tools],

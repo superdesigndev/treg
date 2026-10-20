@@ -1385,8 +1385,17 @@ async def _finish_cancelled_call(
     response: UpstreamResponse | None = None,
     *,
     trusted_org_id: int | None = None,
+    sent: bool = False,
 ) -> None:
-    """Finish compensation before propagating cancellation from a call that may have reserved."""
+    """Finish compensation before propagating cancellation from a call that may have reserved.
+
+    A cancel normally returns the hold. A `settle: quantity` row (a budget bought from the provider)
+    is the exception once the request has `sent`: the provider may already have added the units,
+    and a retry with the same purchase id would then settle at 0, so the hold is charged instead."""
+    charge_hold = False
+    if sent and mk is not None and mk.metered:
+        ep = catalog_store.load().by_id.get(mk.endpoint_id) or {}
+        charge_hold = (ep.get("cost") or {}).get("settle") == "quantity"
     # A cancelled request cannot own this cleanup: another cancellation while it is returning the
     # first one would strand the upstream response, hold, or idempotency label halfway through.
     async def _cleanup() -> None:
@@ -1419,7 +1428,9 @@ async def _finish_cancelled_call(
                     # was already closed is a safe no-op, and both are released exactly once.
                     await ledger.close_holds_in_transaction(cleanup_db, [
                         ledger.HoldClose(
-                            hold_id, False, reason="call_cancelled",
+                            hold_id, charge_hold and hold_id == call_ref,
+                            reason=("call_cancelled_after_purchase_sent"
+                                    if charge_hold and hold_id == call_ref else "call_cancelled"),
                             meta={"provider": mk.provider, "cost_type": mk.cost_type,
                                   "status_code": None})
                         for hold_id in (call_ref, f"{call_ref}:overflow")

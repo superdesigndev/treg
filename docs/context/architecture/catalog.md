@@ -250,13 +250,21 @@ sent on the shared key, may only carry the caller's own verified email, compared
 another address is a 400 before reserve, and leaving the field out is fine. `_enforce_caller_email`
 checks without rewriting, so a shared provider account sends alerts only to the person who asked.
 
+For a signed-in reader, `GET /catalog/endpoints/{id}` (and so MCP `catalog_get`) adds
+`your_values` on rows with `team_label` or `caller_email` fields: the exact values that reader may
+send (its team's label, its own email), so an agent gets its first call right without a bounce. An
+anonymous reader gets nothing extra; the route is not cached at the edge. MCP `my_tools` also
+returns the team's `team_label`.
+
 `cost.quantity` prices a call by a whole number the caller chooses (a budget of provider credits):
 `{field, max}` names a declared integer body or query field and its ceiling. A missing or
 out-of-range value is a 400 before reserve, the hold is `quantity x price`, and `settle: quantity`
 settles exactly that on success, ignoring any provider-reported charge (adding room is often free on
 the provider's side and reported as 0). An optional `applied` JSON path names the answer field that
 says the units were added; when it is not `true` (a retry the provider recognised by its purchase
-id) the call settles at 0. The validator requires it on a `per_success` price with no
+id) the call settles at 0. A cancel after the request has left (`settle._finish_cancelled_call` with
+`sent`) charges the hold instead of returning it, because the provider may already have added the
+units; the retry with the same purchase id then settles at 0, so the team pays exactly once. The validator requires it on a `per_success` price with no
 `reported_charge`. Together they let a team buy a budget for background work under its own label.
 
 ## Authorization metadata

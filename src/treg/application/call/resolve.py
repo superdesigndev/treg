@@ -578,10 +578,14 @@ def _request_quantity(cost: dict, body: bytes, query) -> int | None:
     if not rule:
         return None
     values = _request_value(str(rule.get("field")), body, None, query)
-    if len(values) != 1 or not str(values[0]).strip().isdigit():
+    top = int(rule.get("max") or 0)
+    # Longer than the maximum's digits is out of range, and checked before int(): Python refuses
+    # to convert a very long digit string, which would answer 500 instead of this 400.
+    if (len(values) != 1 or not str(values[0]).strip().isdigit()
+            or len(str(values[0]).strip()) > len(str(top))):
         return None
     n = int(str(values[0]).strip())
-    return n if 1 <= n <= int(rule.get("max") or 0) else None
+    return n if 1 <= n <= top else None
 
 
 def _enforce_request_quantity(ep: dict, cost: dict, body: bytes, query) -> None:

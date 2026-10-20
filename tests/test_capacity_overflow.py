@@ -384,10 +384,10 @@ async def _watch_cancel(monkeypatch):
     observed: dict = {}
     original = call_service.finish_cancelled_call
 
-    async def spy(claim, mk, call_ref, response=None, *, trusted_org_id=None):
+    async def spy(claim, mk, call_ref, response=None, *, trusted_org_id=None, sent=False):
         observed["payer_org_id"] = None if mk is None else mk.payer_org_id
         observed["trusted_org_id"] = trusted_org_id
-        return await original(claim, mk, call_ref, response, trusted_org_id=trusted_org_id)
+        return await original(claim, mk, call_ref, response, trusted_org_id=trusted_org_id, sent=sent)
 
     monkeypatch.setattr(call_service, "finish_cancelled_call", spy)
     return observed

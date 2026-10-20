@@ -545,9 +545,35 @@ def _related_capabilities(ep: dict, cat) -> list[dict]:
     return sorted(out, key=lambda r: r["capability"])[:5]
 
 
+async def _your_values(request: Request, db: AsyncSession, ep: dict) -> dict:
+    """The values only this reader may send for a row's `team_label` and `caller_email` fields, so
+    a signed-in agent gets its first call right. The route stays open: an anonymous reader, or one
+    whose token does not resolve to a team, gets nothing extra. Not cached at the edge."""
+    token = request.headers.get("x-treg-token", "")
+    auth = request.headers.get("authorization", "")
+    if not token and auth.lower().startswith("bearer "):
+        token = auth[7:].strip()
+    cookie = request.cookies.get("treg_session", "")
+    if not token and not cookie:
+        return {}
+    from ..application.call.resolve import team_label
+    from ..domain.identity.access import require_member
+    try:
+        caller = await require_member(request, x_treg_token=token, x_treg_org=request.headers.get("x-treg-org", ""),
+                                      treg_session=cookie, db=db)
+    except HTTPException:
+        return {}
+    values = {path: team_label(caller.org_id) for path in ep.get("team_label") or ()}
+    values |= {path: caller.email for path in ep.get("caller_email") or ()}
+    return {"your_values": values,
+            "your_values_note": "On treg's key send these exactly: the label is your team's own; "
+                                "an alert email may only be yours."}
+
+
 @app.get("/catalog/endpoints/{endpoint_id}")
 async def catalog_endpoint(
     request: Request,
+    response: Response,
     endpoint_id: str,
     observations: endpoint_stats.EndpointObservationReader = Depends(
         _endpoint_observation_reader),
@@ -582,6 +608,13 @@ async def catalog_endpoint(
             ep["provider"], endpoint_id))
     view = (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat)
             | catalog_store.endpoint_context(ep, cat))
+    if ep.get("team_label") or ep.get("caller_email"):
+        personal = await _your_values(request, db, ep)
+        if personal:
+            # One reader's label and email: never stored by a shared cache, never served to another.
+            response.headers["Cache-Control"] = "private, no-store"
+            response.headers["Vary"] = "Authorization, X-Treg-Token, X-Treg-Org, Cookie"
+        view |= personal
     siblings = [
         catalog_store.endpoint_view(other, _provider_display(other["provider"]), cat)
         for other in sorted(cat.for_capability(ep["capability"]), key=lambda e: e["id"])

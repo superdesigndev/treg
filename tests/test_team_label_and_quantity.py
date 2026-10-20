@@ -96,6 +96,7 @@ async def test_a_budget_is_charged_exactly_once_even_when_the_provider_reports_z
     (lambda me: call_resolution.team_label(me), {"credits": 0}, "a zero quantity"),
     (lambda me: call_resolution.team_label(me), {"credits": 100_001}, "past the maximum"),
     (lambda me: call_resolution.team_label(me), {"credits": 10.5}, "not a whole number"),
+    (lambda me: call_resolution.team_label(me), {"credits": "9" * 5000}, "thousands of digits"),
 ])
 async def test_a_wrong_label_or_quantity_is_refused_before_any_money_moves(
     clients: AsyncClient, budget_row, monkeypatch, label_of, body, why,
@@ -183,3 +184,61 @@ async def test_a_strangers_alert_email_never_reaches_the_provider(
     r = await clients.post("/call/crawl4ai.test.watch", json={"agent": label, "notify": {"email": "tim@superdesign.dev"}})
     assert r.status_code == 200, r.text
     assert len(seen) == 1
+
+
+async def test_a_purchase_cancelled_after_it_was_sent_is_charged_and_its_retry_is_free(
+    clients: AsyncClient, budget_row, monkeypatch,
+):
+    """The caller drops the call after treg sent it: the provider may have added the credits, so
+    the hold is charged instead of returned. The retry with the same ref (`added: false`) is free,
+    so the team pays exactly once."""
+    import asyncio
+
+    async def cancelled(*args, **kwargs):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(call_service, "relay", cancelled)
+    org_id, before = await _team(clients)
+    label = call_resolution.team_label(org_id)
+    with pytest.raises(BaseException):
+        await clients.post(f"/call/{EP}?label={label}", json={"credits": 100, "ref": "p9"})
+    cv = catalog_store.load().cost_view(COST, "crawl4ai")
+    expected = ledger.with_margin(call_resolution._platform_estimate_micro(
+        cv, None, json.dumps({"credits": 100, "ref": "p9"}).encode()))
+    after_cancel = (await _team(clients))[1]
+    assert before - after_cancel == expected
+    seen: list = []
+    monkeypatch.setattr(call_service, "relay", _relay(200, seen, added=False))
+    r = await clients.post(f"/call/{EP}?label={label}", json={"credits": 100, "ref": "p9"})
+    assert r.status_code == 200 and (await _team(clients))[1] == after_cancel
+
+
+async def test_an_ordinary_call_cancelled_mid_relay_is_still_refunded(clients: AsyncClient, budget_row, monkeypatch):
+    """Only a bought quantity is charged on cancel; every other row keeps the full refund."""
+    import asyncio
+
+    async def cancelled(*args, **kwargs):
+        raise asyncio.CancelledError
+
+    cat = catalog_store.load()
+    plain = {**budget_row, "cost": {**COST, "settle": None, "quantity": None, "type": "per_success"}}
+    plain["cost"] = {k: v for k, v in plain["cost"].items() if v is not None}
+    monkeypatch.setitem(cat.by_id, EP, plain)
+    monkeypatch.setattr(call_service, "relay", cancelled)
+    org_id, before = await _team(clients)
+    with pytest.raises(BaseException):
+        await clients.post(f"/call/{EP}?label={call_resolution.team_label(org_id)}", json={"credits": 1000, "ref": "p8"})
+    assert (await _team(clients))[1] == before
+async def test_tool_details_tell_a_signed_in_team_its_own_values(clients: AsyncClient, budget_row, monkeypatch):
+    """catalog detail adds `your_values` for a row's team_label and caller_email fields when the
+    reader is a signed-in team, and nothing for an anonymous reader."""
+    cat = catalog_store.load()
+    monkeypatch.setitem(cat.by_id, EP, {**budget_row, "caller_email": ["body.ref"]})
+    org_id, _ = await _team(clients)
+    r = await clients.get(f"/catalog/endpoints/{EP}")
+    assert r.headers["cache-control"] == "private, no-store" and "X-Treg-Token" in r.headers["vary"]
+    body = r.json()
+    assert body["endpoint"]["your_values"] == {"pathParams.label": call_resolution.team_label(org_id),
+                                               "body.ref": "tim@superdesign.dev"}
+    anonymous = (await clients.get(f"/catalog/endpoints/{EP}", headers={"X-Treg-Token": ""})).json()
+    assert "your_values" not in anonymous["endpoint"]
