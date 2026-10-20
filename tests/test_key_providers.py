@@ -45,6 +45,26 @@ async def test_spidercloud_key_uses_free_balance_probe(clients, monkeypatch):
     assert response.status_code == 200, response.text
 
 
+async def test_transcriptyt_key_uses_free_usage_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v1/usage"
+        if request.headers["authorization"] != "Bearer own-key":
+            return httpx.Response(401, json={"error": {"code": "UNAUTHORIZED", "message": "Invalid or revoked API key."}})
+        return httpx.Response(200, json={"plan": "free", "credits_used": 0, "credits_remaining": 100})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post(
+            "/connections/token", json={"provider": "transcriptyt", "token": "bad"},
+        )
+        good = await clients.post(
+            "/connections/token", json={"provider": "transcriptyt", "token": "own-key"},
+        )
+    assert bad.status_code == 422, bad.text
+    assert good.status_code == 200, good.text
+
+
 async def test_crawl4ai_key_uses_free_balance_probe(clients, monkeypatch):
     def probe(request):
         assert request.method == "GET"

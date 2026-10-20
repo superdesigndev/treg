@@ -1480,6 +1480,25 @@ BLITZAPI = OAuthProvider(
     probe_path="/v2/account/key-info",
 )
 
+TRANSCRIPTYT = OAuthProvider(
+    service="transcriptyt", display_name="TranscriptYT", auth_kind="key",
+    token_label="API key", token_placeholder="ts_live_…",
+    # Bearer, matching every TranscriptYT doc example (x-api-key is also accepted). A bogus key
+    # answers 401 {"error": {"code": "UNAUTHORIZED", ...}} on the probe (live 2026-10-17).
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://transcript-yt.com/dashboard/keys",
+    setup_action_label="Get your TranscriptYT API key",
+    setup_steps=("Sign in to TranscriptYT and open Dashboard → API keys (100 free credits, no card).",
+                 "Create a key and paste it here."),
+    setup_note="Transcripts and summaries spend TranscriptYT credits; failed requests are free. Search, playlist "
+               "listing, caption languages and the usage check are free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="YouTube transcripts in 150+ languages, with AI transcription when a video has no captions.",
+    base_url="https://transcript-yt.com", docs_url="https://transcript-yt.com/docs",
+    probe_path="/v1/usage",  # free — a bad key gets a 401 here
+)
+
 DROPLEADS = OAuthProvider(
     service="dropleads", display_name="Dropleads", auth_kind="key",
     token_label="API key", token_placeholder="your Dropleads API key",
@@ -3982,7 +4001,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, TRANSCRIPTYT, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
