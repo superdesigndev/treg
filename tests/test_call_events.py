@@ -36,7 +36,7 @@ def events_on(monkeypatch):
     sink.reset()
     sent: list[dict] = []
 
-    async def capture(batch):
+    async def capture(batch, **_):
         sent.extend(json.loads(b"[" + b",".join(batch) + b"]"))
         sink.counters["sent"] += len(batch)
 
@@ -125,6 +125,93 @@ async def test_a_failed_post_drops_the_batch_and_never_raises(monkeypatch):
     finally:
         sink.reset()
         get_settings.cache_clear()
+
+
+@pytest.fixture
+def scripted_stream(monkeypatch):
+    """Events on, the real `_post`, and a stream that answers from a script (a status code, or
+    an exception to raise). Retries wait no time."""
+    monkeypatch.setenv("TREG_CALL_EVENTS_URL", "https://stream.example.invalid")
+    monkeypatch.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+    monkeypatch.setattr(sink, "_RETRY_DELAYS_S", (0.0, 0.0))
+    get_settings.cache_clear()
+    sink.reset()
+    script: list = []
+    seen: list = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        step = script.pop(0) if script else 200
+        if isinstance(step, Exception):
+            raise step
+        return httpx.Response(step)
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(sink.httpx, "AsyncClient",
+                        lambda **kw: real(transport=httpx.MockTransport(handler), **kw))
+    yield script, seen
+    sink.reset()
+    get_settings.cache_clear()
+
+
+async def test_a_transient_failure_is_retried_until_it_lands(scripted_stream):
+    script, seen = scripted_stream
+    script.extend([503, httpx.ReadTimeout("slow")])   # then 200
+    sink.emit({"call_ref": "a"})
+    await sink._flush_all()
+    assert seen == [[{"call_ref": "a"}]] * 3
+    assert sink.counters["sent"] == 1 and sink.counters["retried"] == 2
+    assert sink.counters["dropped_failed"] == 0
+
+
+async def test_a_refusal_is_not_retried(scripted_stream):
+    script, seen = scripted_stream
+    script.append(400)
+    sink.emit({"call_ref": "a"})
+    await sink._flush_all()
+    assert len(seen) == 1 and sink.counters["dropped_failed"] == 1 and sink.counters["retried"] == 0
+
+
+async def test_an_outage_costs_one_try_per_batch_until_a_batch_lands(scripted_stream, monkeypatch):
+    script, seen = scripted_stream
+    monkeypatch.setattr(sink, "_BATCH_MAX", 1)
+    script.extend([503, 503, 503, 503, 503])          # batch a: 3 tries; b: 1; c: 1
+    for ref in "abc":
+        sink.emit({"call_ref": ref})
+    await sink._flush_all()
+    assert [b[0]["call_ref"] for b in seen] == ["a", "a", "a", "b", "c"]
+    assert sink.counters["dropped_failed"] == 3
+    sink.emit({"call_ref": "d"})                      # the stream is back
+    script.extend([503])                              # d: one try (still marked unhealthy), dropped
+    sink.emit({"call_ref": "e"})                      # e lands and restores retries
+    await sink._flush_all()
+    assert sink.counters["sent"] == 1
+    script.extend([503])
+    sink.emit({"call_ref": "f"})                      # f gets its retries again
+    await sink._flush_all()
+    assert sink.counters["sent"] == 2 and [b[0]["call_ref"] for b in seen][-2:] == ["f", "f"]
+
+
+async def test_drain_never_retries(scripted_stream):
+    script, seen = scripted_stream
+    script.append(503)
+    sink.emit({"call_ref": "a"})
+    await sink.drain()
+    assert len(seen) == 1 and sink.counters["dropped_failed"] == 1
+
+
+async def test_counters_reach_the_log(scripted_stream, caplog, monkeypatch):
+    # A freshly booted host: monotonic time is still smaller than the interval.
+    monkeypatch.setattr(sink.time, "monotonic", lambda: 5.0)
+    sink.emit({"call_ref": "a"})
+    with caplog.at_level("INFO", logger="treg.call_events"):
+        await sink._flush_all()
+    assert "call events stats:" in caplog.text and "sent=1" in caplog.text
+    caplog.clear()
+    with caplog.at_level("INFO", logger="treg.call_events"):
+        sink.emit({"call_ref": "b"})
+        await sink._flush_all()                       # within the interval: no second line
+    assert "call events stats:" not in caplog.text
 
 
 async def test_the_flusher_sends_on_its_own(events_on, monkeypatch):

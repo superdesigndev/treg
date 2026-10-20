@@ -10,7 +10,13 @@ costs one sample, never money or a response, so every failure mode is a drop:
 - queue full (`_MAX_PENDING`)                 -> the new event is dropped and counted;
 - no running loop                             -> dropped and counted;
 - a builder raises                            -> the event goes out with its generic columns only;
-- the POST fails or answers non-2xx           -> the batch is dropped and counted.
+- the POST fails or answers non-2xx           -> a transient failure (timeout, transport error,
+                                                429, 5xx) is retried with backoff; then the batch
+                                                is dropped and counted.
+
+A retried POST whose first attempt timed out may already have been accepted, so the table can
+hold a batch twice: readers deduplicate on `event_id`. Each process logs its cumulative counters
+every `_STATS_INTERVAL_S` (`call events stats: ...`), so the loss rate is readable from logs.
 
 `emit()` is synchronous, takes no lock, opens no DB session and never raises. The expensive part
 of an event (parsing request and answer bodies, hashing identifiers) is a `build` callable that
@@ -28,6 +34,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Callable
@@ -44,6 +52,8 @@ _BATCH_MAX = 200               # events per POST
 _BATCH_BYTES = 900_000         # a POST stays under the stream's request size limit
 _FLUSH_INTERVAL_S = 2.0        # max staleness before a flush
 _POST_TIMEOUT_S = 10.0
+_RETRY_DELAYS_S = (1.0, 4.0)   # waits before the 2nd and 3rd attempt of one batch
+_STATS_INTERVAL_S = 300.0      # cumulative counters to the log, per process
 
 Build = Callable[[], dict]
 
@@ -58,7 +68,11 @@ class _Pending:
 _queue: deque[_Pending] = deque()
 _retained = 0
 _flusher: asyncio.Task | None = None
-counters = {"queued": 0, "sent": 0, "dropped_overflow": 0, "dropped_failed": 0,
+# False after a batch exhausted its retries: later batches get one attempt each until one lands,
+# so a stream outage costs one try per batch instead of stalling the flusher on backoffs.
+_healthy = True
+_last_stats: float | None = None   # monotonic time of the last stats line; None = never
+counters = {"queued": 0, "sent": 0, "retried": 0, "dropped_overflow": 0, "dropped_failed": 0,
             "dropped_unserializable": 0, "unbuilt": 0, "build_failed": 0}
 
 
@@ -154,33 +168,63 @@ async def _flush_loop() -> None:
         await _flush_all()
 
 
-async def _flush_all() -> None:
+async def _flush_all(*, retry: bool = True) -> None:
     while _queue:
         batch = _next_batch()
         if batch:
-            await _post(batch)
+            await _post(batch, retry=retry)
+    _log_stats()
 
 
-async def _post(batch: list[bytes]) -> None:
+def _log_stats(*, force: bool = False) -> None:
+    global _last_stats
+    now = time.monotonic()
+    # Not "0.0 = long ago": monotonic time counts from boot, so a freshly booted host would
+    # wait out the interval before its first line.
+    if not force and _last_stats is not None and now - _last_stats < _STATS_INTERVAL_S:
+        return
+    _last_stats = now
+    log.info("call events stats: pid=%d pending=%d %s", os.getpid(), len(_queue),
+             " ".join(f"{k}={v}" for k, v in counters.items()))
+
+
+def _transient(status: int) -> bool:
+    return status == 429 or status >= 500
+
+
+async def _post(batch: list[bytes], *, retry: bool = True) -> None:
+    global _healthy
     s = get_settings()
     headers = {"Content-Type": "application/json"}
     if s.call_events_token:
         headers["Authorization"] = f"Bearer {s.call_events_token}"
-    try:
-        async with httpx.AsyncClient(timeout=_POST_TIMEOUT_S) as client:
-            response = await client.post(s.call_events_url, headers=headers,
-                                         content=b"[" + b",".join(batch) + b"]")
+    content = b"[" + b",".join(batch) + b"]"
+    delays = _RETRY_DELAYS_S if retry and _healthy else ()
+    for attempt in range(len(delays) + 1):
+        if attempt:
+            counters["retried"] += 1
+            await asyncio.sleep(delays[attempt - 1])
+        try:
+            async with httpx.AsyncClient(timeout=_POST_TIMEOUT_S) as client:
+                response = await client.post(s.call_events_url, headers=headers, content=content)
+        except Exception as exc:  # noqa: BLE001 — a stream hiccup costs this batch, nothing else
+            log.warning("call events POST failed: %s (attempt %d)", type(exc).__name__, attempt + 1)
+            continue
         if 200 <= response.status_code < 300:
             counters["sent"] += len(batch)
+            _healthy = True
             return
-        log.warning("call events stream answered HTTP %s", response.status_code)
-    except Exception as exc:  # noqa: BLE001 — a stream hiccup costs this batch, nothing else
-        log.warning("call events POST failed: %s", type(exc).__name__)
+        log.warning("call events stream answered HTTP %s (attempt %d)",
+                    response.status_code, attempt + 1)
+        if not _transient(response.status_code):
+            break   # a refusal (bad schema, bad token) will not change on retry
+    _healthy = False
     _drop("dropped_failed", len(batch))
 
 
 async def drain() -> None:
-    """Best-effort flush of whatever is queued (shutdown / tests). One attempt per batch."""
+    """Best-effort flush of whatever is queued (shutdown / tests). One attempt per batch, so a
+    stream outage cannot hold up shutdown; the final counters go to the log."""
     global _flusher
     if _flusher is not None and not _flusher.done():
         _flusher.cancel()
@@ -190,14 +234,17 @@ async def drain() -> None:
             pass
     _flusher = None
     try:
-        await _flush_all()
+        await _flush_all(retry=False)
+        if counters["queued"]:
+            _log_stats(force=True)
     except Exception:  # noqa: BLE001 — drain runs in lifespan shutdown; never mask teardown
         pass
 
 
 def reset() -> None:
     """Tests: forget queued events and counters."""
-    global _retained, _flusher
+    global _retained, _flusher, _healthy, _last_stats
+    _healthy, _last_stats = True, None
     _queue.clear()
     _retained = 0
     if _flusher is not None and not _flusher.done():

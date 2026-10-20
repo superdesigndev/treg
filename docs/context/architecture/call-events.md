@@ -33,12 +33,22 @@ query on the call path.
   without input/answer columns), batched POSTs, drop-and-count on overflow, failure or a raising
   builder (`call_events.counters`, logged at ERROR on the first drop and every thousandth).
   Losing an event costs a sample, never money, a response or a hold.
+- **Retried, then dropped.** A transient POST failure (timeout, transport error, 429, 5xx) is
+  retried twice with backoff; a refusal (other 4xx) is not. Once a batch exhausts its retries,
+  later batches get one attempt each until one lands, so a stream outage never stalls the
+  flusher on backoffs. Shutdown drains with one attempt per batch.
+- **Duplicates are possible; deduplicate on `event_id`.** A timed-out attempt may still have been
+  accepted by the stream, so its retry can land the same batch twice. Every event carries a unique
+  `event_id`; readers count distinct ids.
+- **Loss is measurable.** Each process logs its cumulative counters every five minutes
+  (`call events stats: pid=… pending=… queued=… sent=… retried=… dropped_failed=…`), and once at
+  shutdown. The loss rate per process is `dropped_* / queued` from its latest line.
 - **Pseudonymous.** No raw email, name, domain, phone or URL is emitted. Identifiers are
   HMAC-SHA256 under the server-side secret (32 hex characters), so a reader of the table cannot
   test a guessed address without the secret. A team that opted out of the archive
   (`Org.archive_opt_out_at`) gets no answer columns; its input keys remain, since they are needed
   to count its calls per question and carry nothing readable.
-- **Exactly one terminal event per async task.** See below.
+- **Exactly one terminal event per async task** (one `event_id`; a retried POST may store it twice). See below.
 
 `archive_key_hash` and `archive_content_hash` are the archive's own identities (plain SHA-256,
 not keyed), carried so a sample can be traced to its stored body.
