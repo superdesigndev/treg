@@ -121,7 +121,7 @@ endpoints:
       bodyType: json
       body:
         dsl: {type: object, required: true, note: "{filters,limit,offset,sort?,nameQuery?}; filters use {columnPath:{operation,value,quantifier?}} and support AND/OR groups", example: {filters: [{name: {operation: "fts", value: "Stripe"}}], limit: 1, offset: 0, sort: []}}
-      note: "DSL limit is at most 250 and offset at most 10,000. Use a one-row query while developing because the public docs do not publish search credit counts."
+      note: "Effective page size is at most 100 items. A `dsl.limit` above 100 is accepted but silently capped, and the response does not echo the effective page size. Page with `offset` stepped by `len(items)` (or at most 100), not by a requested limit above 100. Offset is at most 10,000. Use a one-row query while developing because the public docs do not publish search credit counts."
     test_request:
       body:
         dsl: {filters: [{name: {operation: "fts", value: "Stripe"}}], limit: 10, offset: 0, sort: []}
@@ -616,7 +616,7 @@ endpoints:
       bodyType: json
       body:
         dsl: {type: object, required: true, note: "{filters,limit,offset,sort?}; filter objects use column paths and {operation,value,quantifier?}", example: {filters: [{country: {operation: "eq", value: "United States"}}, {headline: {operation: "fts", value: "software engineer"}}], limit: 1, offset: 0}}
-      note: "DSL limit is at most 250 and offset at most 10,000."
+      note: "Effective page size is at most 100 items. A `dsl.limit` above 100 is accepted but silently capped, and the response does not echo the effective page size. Page with `offset` stepped by `len(items)` (or at most 100), not by a requested limit above 100. Offset is at most 10,000."
     test_request:
       body:
         dsl: {filters: [{headline: {operation: "fts", value: "software engineer"}}], limit: 10, offset: 0, sort: []}
