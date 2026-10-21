@@ -1930,6 +1930,18 @@ async def test_topup_without_an_amount_uses_the_ladder_default(c: AsyncClient, m
     assert r.json()["amount_usd"] == 50
 
 
+async def test_a_monthly_cap_below_one_refill_is_refused_and_0_restores_the_default(c: AsyncClient, monkeypatch):
+    org_id, owner = await _org(c)
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    base = {"enabled": True, "consent": True, "threshold_usd": 5, "amount_usd": 100, "setup_url": False}
+    r = await c.post("/billing/autotopup", headers=_h(owner), json={**base, "monthly_cap_usd": 50})
+    assert r.status_code == 422 and "below one refill" in r.text, r.text
+    r = await c.post("/billing/autotopup", headers=_h(owner), json={**base, "monthly_cap_usd": 300})
+    assert r.json()["autotopup"]["monthly_cap_usd"] == 300
+    r = await c.post("/billing/autotopup", headers=_h(owner), json={**base, "monthly_cap_usd": 0})
+    assert r.json()["autotopup"]["monthly_cap_usd"] == billing.TOPUP_MAX_USD
+
+
 async def test_a_topup_checkout_arms_a_consented_policy_that_was_waiting_for_a_card(c: AsyncClient, monkeypatch):
     """The modal flow: consent is stored first (no card → `no_card`), then the top-up Checkout saves
     the card. The PAYMENT webhook must arm the policy — there is no setup_intent in this flow."""

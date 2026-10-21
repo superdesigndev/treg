@@ -1361,7 +1361,9 @@ async def handle_webhook_event(db: AsyncSession, event: dict) -> dict:
 def _capture_topup_completed(to: str | None, org_id: int, org_slug: str, props: dict) -> None:
     """One `topup_completed` shape for the webhook credit and the inline auto-top-up credit."""
     analytics.capture(to or f"org:{org_id}", "topup_completed",
-                      {"bonus_micro": 0, "bonus_pct": 0, **props,
+                      {"entry_surface": analytics.funnel_surface(""),
+                       "checkout_source": analytics.funnel_surface(""),
+                       "bonus_micro": 0, "bonus_pct": 0, **props,
                        "amount_usd": props["amount_micro"] / 1_000_000,  # display-only, never computed against
                        "org": org_slug},
                       groups={"team": org_slug})
@@ -1707,9 +1709,15 @@ async def set_autotopup(
     if amount_usd is not None:
         org.autotopup_amount_micro = usd_to_micro(validate_topup_usd(amount_usd))
     if monthly_cap_usd is not None:
-        org.autotopup_monthly_cap_micro = usd_to_micro(validate_topup_usd(monthly_cap_usd))
+        # 0 clears a chosen cap back to the default (`autotopup_prefs`).
+        org.autotopup_monthly_cap_micro = (
+            0 if monthly_cap_usd == 0 else usd_to_micro(validate_topup_usd(monthly_cap_usd)))
     if per_hour is not None:
         org.autotopup_max_per_hour = validate_per_hour(per_hour)
+    prefs = autotopup_prefs(org)
+    if prefs["monthly_cap_micro"] < prefs["amount_micro"]:
+        raise TopupRejected(f"the monthly limit (${ledger.usd(prefs['monthly_cap_micro']):g}) is below one "
+                            f"refill (${ledger.usd(prefs['amount_micro']):g}), so auto top-up could never charge")
     if enabled:
         if consent:
             org.autotopup_consented_at = _now()

@@ -328,7 +328,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                          f"drops below ${ledger.usd(prefs['threshold_micro']):g}, at most "
                          f"{prefs['per_hour']} times per hour and "
                          f"${ledger.usd(prefs['monthly_cap_micro']):g}/month. Raise the amount or the "
-                         f"cap if your burn outruns it: treg topup --auto on --amount 50 --cap 500")
+                         f"refills per hour if your burn outruns it: treg topup --auto on --amount 50 --per-hour 10")
         else:
             auto_line = "  auto top-up:    off — refill automatically instead: treg topup --auto on --threshold 5 --amount 20"
         raise ReservationFailed("insufficient_balance", status_code=402, detail={

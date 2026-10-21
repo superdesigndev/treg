@@ -746,8 +746,7 @@ that all notice the low balance produces exactly ONE charge.
 The monthly cap counts automatic top-ups only (`monthly_autotopup_spend`, from the ledger) and
 refuses a charge that would pass it (`autotopup_cap_reached`). Neither dashboard path names a cap,
 so a stored 0 resolves to the single-top-up ceiling (`TOPUP_MAX_USD`) and moves with it; `treg
-topup --cap` stores a lower one. A $100 default that only one of two arming paths overrode once
-stopped a team refilling $50 a day after two charges, with nothing on screen saying why. The
+topup --cap` stores a lower one (0 restores the default), and a cap below one refill is refused. The
 billing page shows the month's automatic spend against the limit, and a banner from
 `billing_state.autotopup.cap_reached` when the next charge would pass it. The inline credit in
 `attempt_auto_topup` emits `topup_completed` (`auto: true`) itself: the webhook that follows finds
@@ -784,7 +783,7 @@ the balance runs out. Refusing the number there while shipping it in an error wa
 
 The 402 also carries `autotopup_enabled` and an `auto top-up:` line in `message`. Off → the one
 command that turns it on. On → the amount, threshold, charges per hour and monthly cap, plus the flags that
-raise them - because a team that is out of money *with* auto top-up on is being held by the cooldown
+raise the refill rate (`--amount`, `--per-hour`) - because a team that is out of money *with* auto top-up on is being held by the cooldown
 or the cap, and "add funds" alone reads as "auto top-up is broken" (cobl.ai, 2026-08-25: ~1,500
 refusals between hourly $20 refills against a $60/day burn). The org fields are read **before**
 the application reservation transaction: its rollback cannot be a source for refusal rendering after

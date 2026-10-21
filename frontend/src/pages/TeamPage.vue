@@ -362,7 +362,7 @@ export default {
                       </template>
                     </div>
                     <div v-else-if="billing.autotopup.enabled&&billing.autotopup.cap_reached" class="banner" style="margin:14px 0 0">
-                      Auto top-up has reached this month's {{money(billing.autotopup.monthly_cap_micro)}} limit and resumes on the 1st (UTC). Until then, calls stop when the balance runs out.
+                      The next auto top-up would pass this month's {{money(billing.autotopup.monthly_cap_micro)}} limit, so none runs until the 1st (UTC). Until then, calls stop when the balance runs out.
                       <button class="btn primary" style="margin-left:10px" :disabled="billingBusy" @click="openTopup()">Make a manual top-up</button>
                     </div>
                     <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">

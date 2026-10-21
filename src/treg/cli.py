@@ -7299,7 +7299,8 @@ def build_parser() -> argparse.ArgumentParser:
     tu.add_argument("--amount", dest="auto_amount", type=float, default=None,
                     help="with --auto on: how many dollars to add on each automatic refill")
     tu.add_argument("--cap", dest="auto_cap", type=float, default=None,
-                    help="with --auto on: the most auto top-up may charge in a calendar month")
+                    help="with --auto on: the most auto top-up may charge in a calendar month "
+                         "(default 2000; 0 restores the default)")
     tu.add_argument("--per-hour", dest="auto_per_hour", type=int, default=None,
                     help="with --auto on: how many automatic refills may run in one hour (1-60, default 5)")
     tu.set_defaults(fn=cmd_topup)

@@ -79,7 +79,7 @@ class Org(SQLModel, table=True):
     autotopup_enabled: bool = Field(default=False)
     autotopup_threshold_micro: int = Field(default=0)   # 0 = "use the configured default"
     autotopup_amount_micro: int = Field(default=0)      # 0 = "use the configured default"
-    autotopup_monthly_cap_micro: int = Field(default=0)  # 0 = "use the configured default"
+    autotopup_monthly_cap_micro: int = Field(default=0)  # 0 = the default, `billing.TOPUP_MAX_USD`
     # How many automatic charges may run in one hour after a SUCCESSFUL one (0 = the configured
     # default). Part of the mandate the team agreed to, so it is stored next to the amounts.
     autotopup_max_per_hour: int = Field(default=0)
