@@ -361,6 +361,12 @@ export default {
                         Auto top-up switched itself off ({{billing.autotopup.disabled_reason}}). Once the balance runs out, calls will fail until it's funded.
                       </template>
                     </div>
+                    <!-- Still on, but the next charge would pass the monthly limit, so none fires. Said here
+                         because a policy that is on and silent reads as broken. -->
+                    <div v-else-if="autoCapReached" class="banner" style="margin:14px 0 0">
+                      Auto top-up has reached this month's {{money(billing.autotopup.monthly_cap_micro)}} limit and resumes on the 1st (UTC). Until then, calls stop when the balance runs out.
+                      <button class="btn primary" style="margin-left:10px" :disabled="billingBusy" @click="openTopup()">Make a manual top-up</button>
+                    </div>
                     <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
                       <label style="display:flex;gap:10px;align-items:center;cursor:pointer">
                         <span class="tswitch"><input type="checkbox" :checked="billing.autotopup.enabled||autoOpen" :disabled="billingBusy" @change="autoToggled"/><span class="knob"></span></span>
@@ -373,7 +379,7 @@ export default {
                         </span>
                       </label>
                       <p class="sub" style="margin:8px 0 0">
-                        <template v-if="billing.autotopup.enabled">On - we add {{money(billing.autotopup.amount_micro)}} whenever the balance drops below {{money(billing.autotopup.threshold_micro)}}, up to {{billing.autotopup.per_hour}} times per hour. This month: {{money(billing.autotopup.month_spend_micro)}}.
+                        <template v-if="billing.autotopup.enabled">On - we add {{money(billing.autotopup.amount_micro)}} whenever the balance drops below {{money(billing.autotopup.threshold_micro)}}, up to {{billing.autotopup.per_hour}} times per hour. This month: {{money(billing.autotopup.month_spend_micro)}} of the {{money(billing.autotopup.monthly_cap_micro)}} monthly limit.
                           <a href="#" @click.prevent="autoOpen=!autoOpen;autoConsent=false">{{autoOpen?'Cancel':'Edit'}}</a></template>
                         <template v-else>Keep agents running without watching the balance. We charge your saved card only when it dips below your threshold.</template>
                       </p>

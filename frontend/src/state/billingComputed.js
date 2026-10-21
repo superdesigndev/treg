@@ -4,7 +4,8 @@ topupValid(){ if(!this.billing||!this.topupUsd) return false; const t=this.billi
 topupBonusMicro(){ return this.tierBonus(this.topupUsd)+this.refPresetBonus(this.topupUsd); },
 maxBonusPct(){ const t=this.billing&&this.billing.topup.bonus_tiers; return t?Math.max(0,...Object.values(t)):0; },
 // The monthly cap is a server-side runaway guardrail, not something the payer is asked to pick:
-    // the modal sets it to the single-top-up ceiling (effectively unlimited) so a big payer is never
-    // locked out mid-month by a default sized for $10 refills. The manage panel below can lower it.
-    autoCapUsd(){ return this.billing?this.billing.topup.max_usd:0; }
+    // the modal stores the single-top-up ceiling, the server's default too. `treg topup --cap` lowers it.
+    autoCapUsd(){ return this.billing?this.billing.topup.max_usd:0; },
+// The same test `attempt_auto_topup` refuses on: this month's automatic spend plus one more charge.
+autoCapReached(){ const a=this.billing&&this.billing.autotopup; return !!a&&a.enabled&&a.month_spend_micro+a.amount_micro>a.monthly_cap_micro; }
 }

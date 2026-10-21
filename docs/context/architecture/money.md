@@ -743,6 +743,15 @@ cooldown stamped in the DB *before* the charge so a second web worker sees it, a
 limit, and an idempotency key derived from the threshold crossing - so a burst of concurrent calls
 that all notice the low balance produces exactly ONE charge.
 
+The monthly cap counts automatic top-ups only (`monthly_autotopup_spend`, from the ledger) and
+refuses a charge that would pass it. A stored 0 resolves to `autotopup_monthly_cap_usd`, the
+single-top-up ceiling (`TOPUP_MAX_USD`), the same figure the top-up dialog stores; `treg topup
+--cap` sets another. The default was once $100 while the billing page's policy form never named a
+cap, so a team refilling $50 a day was stopped after two charges with nothing on screen saying why.
+The billing page now shows the month's automatic spend against the limit, and says so when the
+next charge would pass it. The inline credit in `attempt_auto_topup` emits `topup_completed`
+(`auto: true`) itself: the webhook that follows finds the PaymentIntent credited and emits nothing.
+
 The stamp is a compare-and-set, not a plain write: `attempt_auto_topup` updates
 `autotopup_last_attempt_at` only where it still holds the value the attempt read. `_lock` is per
 process, so web processes and instances that read the same old stamp all reach this UPDATE; only

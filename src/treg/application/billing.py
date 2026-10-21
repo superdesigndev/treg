@@ -1190,12 +1190,17 @@ async def attempt_auto_topup(db: AsyncSession, org_id: int) -> dict:
         # A pause recorded while this attempt was paying is resolved by this payment. Blanking the
         # reason without re-arming left the policy off with no reason, like a deliberate off.
         _arm_if_waiting_for_card(org, card_proven=True, paid=True, auto_paid=True)
+        org_slug = org.slug
         db.add(org)
         await db.commit()
-        if to and not already:
+        if not already:
             balance_after = await ledger.balance_of(db, org_id)
             await db.rollback()  # release the read connection before sending the receipt
-            await email_mod.send_topup_receipt(to, org_name, credited, balance_after, auto=True)
+            if to:
+                await email_mod.send_topup_receipt(to, org_name, credited, balance_after, auto=True)
+            # The webhook that follows finds this PaymentIntent credited and emits nothing, so this
+            # is the only place an inline auto charge can report itself.
+            _capture_topup_completed(to, org_id, org_slug, credited, balance_after, auto=True)
         return {"ok": True, "payment_intent": pi["id"], "amount_micro": credited}
 
 
@@ -1348,6 +1353,18 @@ async def handle_webhook_event(db: AsyncSession, event: dict) -> dict:
     return {"handled": False, "type": kind}
 
 
+def _capture_topup_completed(to: str | None, org_id: int, org_slug: str, amount_micro: int,
+                             balance_after_micro: int, *, auto: bool, bonus_micro: int = 0,
+                             bonus_pct: int = 0, attribution: dict | None = None) -> None:
+    """One `topup_completed` shape for the webhook credit and the inline auto-top-up credit."""
+    analytics.capture(to or f"org:{org_id}", "topup_completed",
+                      {**(attribution or {}), "amount_micro": amount_micro,
+                       "amount_usd": amount_micro / 1_000_000,  # display-only, never computed against
+                       "auto": auto, "balance_after_micro": balance_after_micro,
+                       "bonus_micro": bonus_micro, "bonus_pct": bonus_pct, "org": org_slug},
+                      groups={"team": org_slug})
+
+
 async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, *, auto: bool,
                   fingerprint: str | None = None, attribution: dict | None = None) -> dict:
     """Credit a paid PaymentIntent to the org's balance, once. Emails a receipt only when this
@@ -1412,13 +1429,9 @@ async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, 
         # is org-scoped, so the owner's email is the best available person (the payer may differ);
         # the `team` group is what makes org-level revenue exact. capture() never raises — an
         # exception here would 500 the webhook and make Stripe retry an already-credited payment.
-        analytics.capture(to or f"org:{org_id}", "topup_completed",
-                          {**attribution, "amount_micro": amount_micro,
-                           "amount_usd": amount_micro / 1_000_000,  # display-only, never computed against
-                           "auto": auto, "balance_after_micro": after,
-                           "bonus_micro": bonus_micro, "bonus_pct": bonus_pct,
-                           "org": org.slug if org else ""},
-                          groups={"team": org.slug if org else ""})
+        _capture_topup_completed(to, org_id, org.slug if org else "", amount_micro, after,
+                                 auto=auto, bonus_micro=bonus_micro, bonus_pct=bonus_pct,
+                                 attribution=attribution)
         # First top-up only: `fresh` is already the "this delivery moved money" branch, and the
         # outbox's unique (org_id, action) makes a second top-up a silent no-op. We measure becoming
         # a payer, not revenue — value-based bidding needs volume treg does not have yet. Guarded like
