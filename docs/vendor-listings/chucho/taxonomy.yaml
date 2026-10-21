@@ -1,0 +1,6 @@
+# Proposed addition to src/treg/catalog/capabilities.yaml at activation.
+platforms:
+  travel:
+    label: Travel
+    category: Reviews & Apps
+    summary: Accommodation discovery, public facts and direct host booking destinations.
