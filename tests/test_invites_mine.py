@@ -179,13 +179,15 @@ async def test_invite_proof_obeys_the_same_grant_limit(client, sent_invites, mon
     from treg.infra.db import session_maker
     from treg.models import Org
 
+    monkeypatch.setattr(get_settings(), "promo_grant_ip_limit", 1)
     owner = await verified_identity(client, "tom@sd.io")
     team = await client.post("/orgs", json={"name": "owner-team"}, headers=_h(owner))
     assert team.status_code == 200, team.text
+    async with session_maker() as db:
+        assert (await db.get(Org, team.json()["org_id"])).balance_micro == get_settings().promo_grant_micro
     invited = await client.post(f"/orgs/{team.json()['org_id']}/invites",
                                 json={"email": "bob@x.io", "role": "member"}, headers=_h(team.json()["token"]))
     assert invited.status_code == 200, invited.text
-    monkeypatch.setattr(get_settings(), "promo_grant_ip_limit", 1)
     t = sent_invites[0]["email_token"]
     ids = []
     async with await _fresh() as visitor:
