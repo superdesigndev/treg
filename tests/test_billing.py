@@ -1376,40 +1376,39 @@ async def test_auto_topup_stops_at_the_monthly_cap(c: AsyncClient, monkeypatch):
 
 
 async def test_an_unchosen_monthly_cap_is_the_single_topup_ceiling(c: AsyncClient):
-    """A policy armed from the billing page never names a cap. Its default must not stop a team
-    refilling $50 at a time after two charges."""
     org_id, _ = await _org(c)
     await _armed(org_id, autotopup_monthly_cap_micro=0)
     async with session_maker() as db:
         org = await db.get(Org, org_id)
-        assert billing.autotopup_prefs(org)["monthly_cap_micro"] == billing.TOPUP_MAX_USD * 1_000_000
+        assert billing.autotopup_prefs(org)["monthly_cap_micro"] == billing.usd_to_micro(billing.TOPUP_MAX_USD)
 
 
-async def test_inline_auto_charge_emits_one_topup_completed(c: AsyncClient, monkeypatch):
-    """The inline credit is the only place an auto charge can report itself: the webhook that
-    follows finds the PaymentIntent credited and emits nothing."""
-    from treg import analytics
+async def test_inline_auto_charge_emits_one_topup_completed(c: AsyncClient, monkeypatch, posthog_events):
     org_id, _ = await _org(c)
     await _armed(org_id)
-    monkeypatch.setattr(get_settings(), "posthog_key", "phc_test_suite", raising=False)
-
-    async def _no_post(batch):  # the flusher must not reach the real PostHog host
-        pass
-    monkeypatch.setattr(analytics, "_post", _no_post)
-    analytics._queue.clear()
     monkeypatch.setattr(billing, "_sdk", _invoice_sdk("pi_auto_event"))
     assert (await _attempt(org_id))["ok"] is True
     monkeypatch.setattr(billing, "_sdk", _no_sdk)
     event = _pi_event(org_id, pi="pi_auto_event", cents=1000, auto="1")
     assert (await _deliver(c, event)).json()["credited"] is False
 
-    done = [e for e in analytics._queue if e["event"] == "topup_completed"]
+    done = await posthog_events("topup_completed")
     assert len(done) == 1, done
     props = done[0]["properties"]
     assert props["auto"] is True and props["amount_micro"] == 10_000_000
     assert props["balance_after_micro"] == 100 + 10_000_000
     assert props["$groups"] == {"team": props["org"]} and props["org"]
-    analytics._queue.clear()
+
+
+async def test_billing_state_says_when_the_monthly_cap_holds_the_next_charge(c: AsyncClient, monkeypatch):
+    org_id, _ = await _org(c)
+    await _armed(org_id, autotopup_monthly_cap_micro=15_000_000)
+    monkeypatch.setattr(billing, "_sdk", _invoice_sdk("pi_cap_state"))
+    async with session_maker() as db:
+        assert (await billing.billing_state(db, await db.get(Org, org_id)))["autotopup"]["cap_reached"] is False
+    assert (await _attempt(org_id))["ok"] is True          # $10 of $15: the next $10 would pass it
+    async with session_maker() as db:
+        assert (await billing.billing_state(db, await db.get(Org, org_id)))["autotopup"]["cap_reached"] is True
 
 
 async def test_monthly_spend_counts_only_automatic_topups(c: AsyncClient, monkeypatch):

@@ -361,9 +361,7 @@ export default {
                         Auto top-up switched itself off ({{billing.autotopup.disabled_reason}}). Once the balance runs out, calls will fail until it's funded.
                       </template>
                     </div>
-                    <!-- Still on, but the next charge would pass the monthly limit, so none fires. Said here
-                         because a policy that is on and silent reads as broken. -->
-                    <div v-else-if="autoCapReached" class="banner" style="margin:14px 0 0">
+                    <div v-else-if="billing.autotopup.enabled&&billing.autotopup.cap_reached" class="banner" style="margin:14px 0 0">
                       Auto top-up has reached this month's {{money(billing.autotopup.monthly_cap_micro)}} limit and resumes on the 1st (UTC). Until then, calls stop when the balance runs out.
                       <button class="btn primary" style="margin-left:10px" :disabled="billingBusy" @click="openTopup()">Make a manual top-up</button>
                     </div>
