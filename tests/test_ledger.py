@@ -445,7 +445,8 @@ async def test_signup_promo_and_its_conversion_land_or_fail_together(c: AsyncCli
 
     monkeypatch.setattr(SAAsyncSession, "commit", failing_commit)
     async with session_maker() as db:
-        await signup._grant_signup_promo(db, await db.get(Org, org_id), user_id=user_id)  # must not raise
+        await signup._grant_signup_promo(db, await db.get(Org, org_id), user_id=user_id,
+                                       client_ip="203.0.113.10")  # must not raise
     assert state["failed"], "the promo commit was never attempted"
 
     async with session_maker() as db:  # neither half survived the failed commit
@@ -455,7 +456,8 @@ async def test_signup_promo_and_its_conversion_land_or_fail_together(c: AsyncCli
     assert await _assert_invariant(org_id) == 0
 
     async with session_maker() as db:  # the retry lands BOTH, in one commit
-        await signup._grant_signup_promo(db, await db.get(Org, org_id), user_id=user_id)
+        await signup._grant_signup_promo(db, await db.get(Org, org_id), user_id=user_id,
+                                       client_ip="203.0.113.10")
     async with session_maker() as db:
         assert [e.kind for e in await ledger.entries_of(db, org_id)] == ["grant"]
         assert len((await db.execute(select(AdConversion).where(

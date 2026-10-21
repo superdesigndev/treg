@@ -124,7 +124,7 @@ async def onboarding_start(
     require_managed_cli(request, team_change=True)
     try:
         result = await first_run.start(
-            user,
+            user, client_ip=_client_ip(request),
             ad_cookie=request.cookies.get("treg_ad") or "",
             utm_cookie=request.cookies.get("treg_utm") or "",
             referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",

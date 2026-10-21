@@ -305,7 +305,7 @@ async def start_email_login(
 
 
 async def verify_email_login(
-    email: str, code: str, *, entry_surface: str = "", client: str = "browser",
+    email: str, code: str, *, entry_surface: str = "", client: str = "browser", client_ip: str = "",
 ) -> VerifiedEmail:
     """Consume an email OTP and return both CLI and browser credentials for the proven identity."""
     email = _norm_email(email)
@@ -337,7 +337,7 @@ async def verify_email_login(
             raise EmailAuthError("suspended")
         await db.commit()
         if proven:
-            await signup.grant_signup_promo_on_proof(user.id)
+            await signup.grant_signup_promo_on_proof(user.id, client_ip=client_ip)
         if entry.get("captcha"):
             # Paired with event=turnstile_email_start: per outcome, how many code requests were
             # redeemed, i.e. how many people enforce would have refused. Existing users included.
@@ -596,7 +596,7 @@ async def start_google_login(cli: str, callback_base: Callable[[], str]) -> Soci
 
 
 async def _provision_social_user(email: str, state: str, door: str, entry_surface: str = "",
-                                 *, github_login: str = "", name: str = "") -> SocialLoginProof:
+                                 *, github_login: str = "", name: str = "", client_ip: str = "") -> SocialLoginProof:
     created: set[int] = set()
     proven: set[int] = set()
     async with database.session_maker() as db:
@@ -612,7 +612,7 @@ async def _provision_social_user(email: str, state: str, door: str, entry_surfac
             raise SocialLoginError("suspended")
         await db.commit()
         if proven:
-            await signup.grant_signup_promo_on_proof(user.id)
+            await signup.grant_signup_promo_on_proof(user.id, client_ip=client_ip)
         signup.track_signup(user, created, door, entry_surface)
         if user.id in created:  # what the door knew, for the first-run lookup (onboard.first_run)
             await first_run.remember_hints(user.id, user.email, door=door, github_login=github_login, name=name)
@@ -622,7 +622,7 @@ async def _provision_social_user(email: str, state: str, door: str, entry_surfac
 
 async def complete_github_login(
     client_factory: Callable[[], Any], code: str, state: str, cookie_state: str,
-    callback_base: Callable[[], str], *, entry_surface: str = "",
+    callback_base: Callable[[], str], *, entry_surface: str = "", client_ip: str = "",
 ) -> SocialLoginProof:
     if not code or not state or state != cookie_state:
         raise SocialLoginError("bad_state")
@@ -653,12 +653,12 @@ async def complete_github_login(
         print(f"[auth] github callback error: {exc}")  # keep internals server-side, not in the response
         raise SocialLoginError("callback_failed") from exc
     login = prof.get("login") if isinstance(prof.get("login"), str) else ""
-    return await _provision_social_user(email, state, "github", entry_surface, github_login=login)
+    return await _provision_social_user(email, state, "github", entry_surface, github_login=login, client_ip=client_ip)
 
 
 async def complete_google_login(
     client_factory: Callable[[], Any], code: str, state: str, cookie_state: str,
-    callback_base: Callable[[], str], *, entry_surface: str = "",
+    callback_base: Callable[[], str], *, entry_surface: str = "", client_ip: str = "",
 ) -> SocialLoginProof:
     if not code or not state or state != cookie_state:
         raise SocialLoginError("bad_state")
@@ -691,7 +691,7 @@ async def complete_google_login(
         print(f"[auth] google callback error: {exc}")  # keep internals server-side, not in the response
         raise SocialLoginError("callback_failed") from exc
     name = prof.get("name") if isinstance(prof.get("name"), str) else ""
-    return await _provision_social_user(email, state, "google", entry_surface, name=name)
+    return await _provision_social_user(email, state, "google", entry_surface, name=name, client_ip=client_ip)
 
 
 async def current_identity(x_treg_token: str, session_cookie: str) -> CurrentIdentity:
@@ -800,7 +800,7 @@ async def invite_signin_landing(
         return InviteCodePrefill(email=invite.email)
 
 
-async def confirm_invite_signin(email_token: str) -> InviteSigninProof:
+async def confirm_invite_signin(email_token: str, *, client_ip: str = "") -> InviteSigninProof:
     async with database.session_maker() as db:
         invite = await _live_invite_by_email_token(db, email_token)
         if invite is None:  # consumed / expired / revoked / suspended org → the SPA's expired banner
@@ -820,7 +820,7 @@ async def confirm_invite_signin(email_token: str) -> InviteSigninProof:
         db.add(invite)
         await db.commit()
         if proven:
-            await signup.grant_signup_promo_on_proof(user.id)
+            await signup.grant_signup_promo_on_proof(user.id, client_ip=client_ip)
         # A share-born invite lands on the shared page itself (the SPA auto-accepts + switches org);
         # a plain invite lands on the dashboard with the accept banner, as before. `landing` was
         # allowlist-validated at create time, so this can never redirect off-app.

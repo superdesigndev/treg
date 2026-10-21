@@ -42,6 +42,8 @@ sources:
   - src/treg/domain/identity/promotions.py
   - src/treg/alembic/versions/0033_signup_promo_eligibility.py
   - src/treg/alembic/versions/0071_signup_promo_claim.py
+  - src/treg/alembic/versions/0078_signup_promo_buckets.py
+  - tests/test_signup_promo_limits.py
   - src/treg/routers/admin.py
   - src/treg/routers/billing.py
   - src/treg/routers/call.py
@@ -141,8 +143,42 @@ amount is `promo_grant_micro` (default 1,000,000); zero skips the claim as well 
 
 Before claiming, `_grant_signup_promo` asks the `signup_credit` decision point
 ([policy extensions](policy-extensions.md)) for a user who could claim. Without an installed
-extension it always grants, and a slow or failing extension also grants (and is reported). A
-`defer` skips the claim and writes nothing, so the user stays eligible for their next team.
+handler the policy permits automatic credit. A slow, failing or malformed installed handler
+instead defers (and is reported). A `defer` skips the claim, preserving eligibility.
+
+`claim_signup_promo` also stages admission in `SignupPromoBucket` (revision `0078`). A single
+rolling window limits grants per network and registrable email domain; an optional global limit
+bounds grants across unrelated identities. The network is IPv4 /32 or IPv6 /64; mapped IPv4 shares
+its IPv4 bucket. HTTP adapters supply `client_ip.of` to every team/proof path, including onboarding.
+Missing/invalid network or domain evidence defers credit. Trusting the correct proxy headers and
+restricting direct origin access remain deployment requirements; these limits cannot authenticate
+client-supplied forwarding headers.
+
+Domain grouping uses IDNA A-labels and the dependency's bundled public-suffix snapshot, with no
+network fetch. Private suffixes are grouped under the registrable parent so a free-subdomain
+rotation shares a bucket. Exact domains in `promo_shared_email_domains` skip only the domain cap;
+network and configured global limits still apply. Keep that setting to shared mailbox providers:
+a catch-all/custom-domain entry exempts every distinct inbox on that exact domain. The settings
+and portable defaults are listed in README; deployment tuning belongs in private configuration.
+
+Each bucket is upserted in sorted key order, locking it before reading and appending timestamps.
+Those locks last through the claim and money commit. A savepoint rolls back partial admissions
+and identity/inbox claims when any limit refuses; money failure rolls back the entire transaction.
+Alias collisions consume no additional quota. SQLite requires DML before that savepoint, or its
+legacy transaction mode would commit the claim at RELEASE. Expired buckets are removed during
+claim attempts, and keys retain hashed network/domain values rather than raw addresses. Buckets
+have no user/org FK, so account or team deletion cannot reset an active window.
+
+A limited account still signs in, creates teams and can top up or use its own credentials. Its
+claim remains available for a later team after the window clears; an operator can also use the
+ordinary grant workflow. Shared networks and company domains can include unrelated legitimate
+users, while distributed identities can use unrelated networks/domains; these are bounded grant
+limits, not a one-person proof. Raising a cap or changing the window changes admission policy;
+retrospective history is not rebuilt. Signup conversion semantics remain per team.
+
+Rollout: apply `0078` before serving the new code, with automatic credit disabled until every
+serving instance runs the admission guard. Existing claims and balances are preserved; new quota
+windows start empty. Do not drop the table or roll back to an unguarded writer with credit enabled.
 
 Revision `0033` defaults historical users and old writers to ineligible without scanning potentially
 deleted team ledgers. New application User rows explicitly start eligible. Verification never resets
@@ -150,7 +186,7 @@ eligibility. Team deletion, leaving and ownership changes cannot restore it beca
 user. Administrative deletion of the user also deletes this marker; this is an account-level guarantee,
 not a permanent per-email denylist or proof that separate accounts belong to different humans.
 
-The inbox is `promotions.promo_inbox(email)`: lowercased, the domain's trailing dots dropped,
+The inbox is `promotions.promo_inbox(email)`: lowercased, the domain normalized to an IDNA A-label and its trailing dots dropped,
 `+tag` subaddressing dropped for every domain, and for `gmail.com` / `googlemail.com` the dots removed and the domain folded to
 `gmail.com`. Each alias is still its own login and `User`; only the gift is shared, and a user
 whose inbox was already claimed through another alias loses its own eligibility in the same
@@ -159,9 +195,10 @@ This stops one mailbox from verifying many accounts; it does not stop someone ho
 mailboxes or a catch-all domain. Revision `0071` seeds the table from every user already verified
 and no longer eligible (a superset of real claimants) and is a rollback floor: dropping it would
 reopen a gift to every alias of an already-gifted inbox.
-Existing balances and all five money operations are unchanged. During rollout or application rollback,
-keep automatic credit disabled until every serving instance enforces the new rule; old code still
-awards per team even after this additive migration.
+Revision `0078` adds canonical aliases for historical Unicode-domain claims, including deleted users,
+without deleting old keys or overwriting an existing canonical claim. Its backfill is paginated and
+its normalization frozen in the revision. Both migrations are rollback floors: removing durable
+claims or active budgets reopens consumed eligibility. Existing balances and money operations are unchanged.
 
 ## Units: integer micro-USD, everywhere
 

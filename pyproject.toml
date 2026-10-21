@@ -52,6 +52,8 @@ server = [
     "obstore>=0.11,<0.12",
     "numpy>=2.1",  # find's card vectors: one matrix product per query (application/find_index.py)
     "pillow>=11",  # re-draws uploaded pictures before they are stored (src/treg/infra/imaging.py)
+    "tldextract>=5.3,<6",
+    "idna>=3.10",
 ]
 # The LOCAL PROXY (`treg shell` catching the agent's own outgoing calls). It needs to generate a
 # certificate authority on the machine, and `cryptography` is a compiled package — putting it in the
@@ -124,6 +126,7 @@ forbidden_modules = [
     "sqlmodel",
     "starlette",
     "stripe",
+    "tldextract",
     "uvicorn",
     "yaml",
 ]

@@ -122,7 +122,7 @@ def _cookie_hints(utm_cookie: str, landing_cookie: str) -> dict:
 
 
 async def start(user: User, *, ad_cookie: str, utm_cookie: str, referral_cookie: str, landing_cookie: str,
-                http: httpx.AsyncClient) -> dict:
+                http: httpx.AsyncClient, client_ip: str = "") -> dict:
     if not await allowed(user.email):
         raise OnboardError("not_enabled")
     async with session_maker() as db:
@@ -134,7 +134,7 @@ async def start(user: User, *, ad_cookie: str, utm_cookie: str, referral_cookie:
     if not await _claim(user.id):
         return await _await_start(user)        # another request (a second tab) is making the team
     try:
-        team = await _create_team(user, ad_cookie=ad_cookie, utm_cookie=utm_cookie, referral_cookie=referral_cookie)
+        team = await _create_team(user, client_ip=client_ip, ad_cookie=ad_cookie, utm_cookie=utm_cookie, referral_cookie=referral_cookie)
     except BaseException:
         await _unclaim(user.id)
         raise

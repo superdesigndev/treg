@@ -176,8 +176,9 @@ Org existence and coordinate with deletion before cleanup starts. See [configura
   `list_members` carries `is_agent` so one roster can show people and machines apart.
 - **Email-domain blocklist.** The same choke points, for throwaway mail and domains used for bulk
   registration. New verified accounts can receive one promotional balance per inbox, so farming
-  many real or catch-all inboxes remains an abuse path even though repeated team creation and
-  `+tag` / Gmail-dot aliases no longer earn credit. **Entirely configuration**: the classifier
+  many real or catch-all inboxes is additionally constrained by the transactional grant limits
+  described in [money](money.md#signup-credit-eligibility). Repeated team creation and `+tag` /
+  Gmail-dot aliases do not earn another credit. **Entirely configuration**: the classifier
   (`_is_blocked_email` in `domain/identity/access.py`, pure - it only answers; it walks the
   `_norm_email` domain, whose trailing dots are dropped so `a@listed.example.` cannot pass) reads
   `TREG_BLOCKED_EMAIL_DOMAINS` and nothing else, parsed once per distinct value in `config.py`
@@ -271,8 +272,9 @@ Org existence and coordinate with deletion before cleanup starts. See [configura
   changes nothing; `enforce` refuses `missing` and `invalid` with 400 (`captcha_blocked`,
   `captcha_pending` or `captcha_failed`, by reason; no code, no mail) and lets `unavailable`
   through. The outcome rides in the OTP's `Ephemeral` entry to verify: in enforce mode a non-`pass`
-  creates the new `User` with `signup_promo_available=false` (an existing user is never touched),
-  so a siteverify outage costs a new account its credit, not everyone their sign-in. An outage of
+  sets `signup_promo_available=false` on a new user or the first proof of a pre-created unverified
+  user. Already verified users are unchanged. Creating an unverified account before the outage
+  cannot bypass this rule; sign-in remains available. An outage of
   Cloudflare's script itself is not absorbed: every browser then sends `!blocked`, which enforce
   refuses (the message points to Google and GitHub, which stay open). A
   `TREG_FIXED_LOGIN_CODES` account skips the check (nothing is mailed; reviewers may script it).

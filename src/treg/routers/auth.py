@@ -129,7 +129,8 @@ async def auth_email_verify(
     require_managed_cli(request)
     try:
         verified = await auth_use_cases.verify_email_login(body.email, body.code,
-            entry_surface=request.cookies.get("treg_entry_surface", ""), client=_client(request))
+            entry_surface=request.cookies.get("treg_entry_surface", ""), client=_client(request),
+            client_ip=_client_ip(request))
     except auth_use_cases.EmailAuthError as exc:
         raise _email_http_error(exc) from exc
     # Only a proven email: stashing at /start would let anyone tie their click to any address.
@@ -326,7 +327,7 @@ async def auth_github_callback(
         proof = await auth_use_cases.complete_github_login(
             lambda: request.app.state.http, code, state, treg_oauth_state,
             lambda: _login_callback_base(request),
-            entry_surface=request.cookies.get("treg_entry_surface", ""),
+            entry_surface=request.cookies.get("treg_entry_surface", ""), client_ip=_client_ip(request),
         )
     except auth_use_cases.CliPairingError:
         return _social_login_failure(auth_use_cases.SocialLoginError("callback_failed"))
@@ -361,7 +362,7 @@ async def auth_google_callback(
         proof = await auth_use_cases.complete_google_login(
             lambda: request.app.state.http, code, state, treg_oauth_state,
             lambda: _login_callback_base(request),
-            entry_surface=request.cookies.get("treg_entry_surface", ""),
+            entry_surface=request.cookies.get("treg_entry_surface", ""), client_ip=_client_ip(request),
         )
     except auth_use_cases.CliPairingError:
         return _social_login_failure(auth_use_cases.SocialLoginError("callback_failed"))
@@ -772,7 +773,7 @@ async def auth_invite_signin_confirm(request: Request):
         form = {}
     t = (form.get("t", [""])[0] or "").strip()
     try:
-        proof = await auth_use_cases.confirm_invite_signin(t)
+        proof = await auth_use_cases.confirm_invite_signin(t, client_ip=_client_ip(request))
     except auth_use_cases.InviteSigninError as exc:
         if exc.kind == "expired":
             return RedirectResponse("/?invite_expired=1", status_code=303)

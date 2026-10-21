@@ -379,10 +379,35 @@ async def test_start_makes_one_team_with_the_signup_credit_and_finishes(c, monke
             assert len(teams) == 1
             grants = (await db.execute(select(LedgerEntry).where(LedgerEntry.org_id == teams[0].org_id,
                                                                  LedgerEntry.kind == "grant"))).scalars().all()
-            assert len(grants) <= 1
+            assert len(grants) == 1
             row = (await db.execute(select(OnboardingProfile).where(OnboardingProfile.user_id == uid))).scalar_one()
             assert row.house_cost_micro == 0
             assert "people-search" not in row.payload    # encrypted at rest
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_onboarding_obeys_the_same_grant_limit_as_named_teams(c, monkeypatch):
+    monkeypatch.setenv("TREG_ONBOARDING_V2", "1")
+    monkeypatch.setenv("TREG_PROMO_GRANT_IP_LIMIT", "1")
+    get_settings.cache_clear()
+    try:
+        first = await _new_user("first@gmail.com")
+        c.cookies.set("treg_session", sess.make_session(first))
+        named = await c.post("/orgs", json={"name": "named"})
+        assert named.status_code == 200, named.text
+        second = await _new_user("second@gmail.com")
+        c.cookies.set("treg_session", sess.make_session(second))
+        onboarded = await c.post("/onboarding/start")
+        assert onboarded.status_code == 200, onboarded.text
+        async with session_maker() as db:
+            funded = await db.get(Org, named.json()["org_id"])
+            profile = (await db.execute(select(OnboardingProfile).where(
+                OnboardingProfile.user_id == second))).scalar_one()
+            deferred = await db.get(Org, profile.org_id)
+            assert funded.balance_micro == get_settings().promo_grant_micro
+            assert deferred.balance_micro == 0
+            assert (await db.get(User, second)).signup_promo_available
     finally:
         get_settings.cache_clear()
 

@@ -74,8 +74,8 @@ async def find_or_create_user(
     `treg org create`) — we never spawn a throwaway personal org they didn't ask for. Their identity
     token is user-scoped, so it works before they have any org (org chosen per-request via X-Treg-Org).
     Only trusted email-proof callers pass verified=True; `proven` collects a user this call verified
-    for the first time (see `grant_signup_promo_on_proof`). promo_eligible=False creates the user
-    without a signup-credit claim; it never touches an existing user. Caller commits."""
+    for the first time (see `grant_signup_promo_on_proof`). promo_eligible=False disqualifies a new
+    user or an existing user's first proof; an already verified user is unchanged. Caller commits."""
     email = _norm_email(email)
     # Machine identities (agents, the published demo token) are minted by an admin and act ONLY by
     # their token. This is the single choke point every identity door shares, so blocking here means
@@ -100,11 +100,14 @@ async def find_or_create_user(
             if created is not None:
                 created.add(user.id)
     if verified and user.email_verified_at is None:
+        values = {"email_verified_at": _utcnow_naive()}
+        if not promo_eligible:
+            values["signup_promo_available"] = False
         # Conditional, so of two proofs racing for one unverified user only the one that flips the
         # column is the first proof; the other sees no row and is an ordinary sign-in.
         flipped = await db.execute(
             update(User).where(User.id == user.id, User.email_verified_at.is_(None))
-            .values(email_verified_at=_utcnow_naive())
+            .values(**values)
         )
         if flipped.rowcount == 1 and proven is not None:
             proven.add(user.id)
@@ -123,7 +126,7 @@ def track_signup(
         analytics.capture(user.email, "signup_completed", properties)
 
 
-async def grant_signup_promo_on_proof(user_id: int) -> None:
+async def grant_signup_promo_on_proof(user_id: int, *, client_ip: str = "") -> None:
     """Fund the team a user made before proving their inbox. Call after the proving commit.
 
     The legacy `POST /users` door makes a team for an unverified user, and team creation is the
@@ -140,10 +143,11 @@ async def grant_signup_promo_on_proof(user_id: int) -> None:
         )).scalar_one_or_none()
         if org is not None:
             # The team's signup conversion was queued when it was made.
-            await _grant_signup_promo(db, org, user_id=user_id, conversion=False)
+            await _grant_signup_promo(db, org, user_id=user_id, conversion=False, client_ip=client_ip)
 
 
-async def _grant_signup_promo(db: AsyncSession, org: Org, *, user_id: int, conversion: bool = True) -> None:
+async def _grant_signup_promo(db: AsyncSession, org: Org, *, user_id: int, conversion: bool = True,
+                            client_ip: str = "") -> None:
     """Queue team attribution and grant at most once to its verified creator.
 
     The user claim, money block, balance and ledger entry share one transaction. A
@@ -156,7 +160,8 @@ async def _grant_signup_promo(db: AsyncSession, org: Org, *, user_id: int, conve
     org_id = org.id
     amount = get_settings().promo_grant_micro
     try:
-        claimed = amount > 0 and await _policy_grants(db, org_id, user_id) and await claim_signup_promo(db, user_id)
+        claimed = amount > 0 and await _policy_grants(db, org_id, user_id) and await claim_signup_promo(
+            db, user_id, client_ip=client_ip)
         try:
             if conversion:
                 await adsconv.queue(db, org, adsconv.ACTION_SIGNUP)
@@ -184,7 +189,7 @@ async def _policy_grants(db: AsyncSession, org_id: int, user_id: int) -> bool:
     decision = await policy.registry.signup_credit(policy.SignupCreditContext(
         user_id=user_id, org_id=org_id, email=email, canonical_inbox=promo_inbox(email),
     ))
-    if decision is policy.CreditDecision.DEFER:
+    if decision is not policy.CreditDecision.GRANT:
         logging.getLogger("treg").info("event=signup_credit_deferred org=%s user=%s", org_id, user_id)
         return False
     return True
@@ -374,6 +379,7 @@ async def register_user(
 
 async def create_org(
     *, user: User, name: str, ad_cookie: str, utm_cookie: str, referral_cookie: str,
+    client_ip: str = "",
 ) -> dict:
     async with session_maker() as db:
         if demo_sandbox.is_sandbox_user(user):  # anonymous sandbox visitors cannot mint real teams
@@ -415,6 +421,6 @@ async def create_org(
             "role": "owner",
             "token": token,
         }
-        await _grant_signup_promo(db, org, user_id=user.id)
+        await _grant_signup_promo(db, org, user_id=user.id, client_ip=client_ip)
         await _redeem_referral(db, referral_cookie, user, org)
         return response

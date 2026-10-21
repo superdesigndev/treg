@@ -49,6 +49,7 @@ sources:
   - src/treg/routers/provider_resources.py
   - src/treg/alembic/versions/0033_signup_promo_eligibility.py
   - src/treg/alembic/versions/0071_signup_promo_claim.py
+  - src/treg/alembic/versions/0078_signup_promo_buckets.py
   - src/treg/alembic/versions/0041_searchlog.py
   - src/treg/alembic/versions/0055_find_v2_log.py
   - src/treg/alembic/versions/0056_searchlog_verdict.py
@@ -163,6 +164,12 @@ with a retained database default of false for existing rows and old writers. New
 explicitly insert true. No balances or historical money entries change. Successful email proof sets
 verification; only the atomic identity claim consumes availability, committed with the signup grant.
 See [signup eligibility](money.md#signup-credit-eligibility).
+
+Revision `0078` adds `SignupPromoBucket`: a hashed scope key, JSON grant timestamps and indexed
+expiry. Identity owns its writes; admission commits with the inbox claim and money. It has no
+user/org FK so deletion cannot clear a rate window. The same revision adds IDNA-canonical aliases
+for existing inbox claims, retaining the original keys and timestamps even after user deletion.
+See [money](money.md#signup-credit-eligibility).
 
 Revision `0071` adds `SignupPromoClaim` (`inbox` primary key, `user_id` with no FK, `created_at`):
 one row per mailbox that received the signup gift, staged with the user-level claim. It is
