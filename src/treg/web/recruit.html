@@ -217,11 +217,6 @@
   .sv img { width: 22px; height: 22px; border-radius: 6px; background: #fff; box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--line); }
   .sv img + img { margin-left: -4px; }
   .src s { display: block; text-decoration: none; font-size: 12px; color: var(--muted); }
-  .gauge { margin-left: 16px; text-align: center; }
-  .gauge b { display: block; font-family: var(--mono); font-weight: 500; font-size: 40px; line-height: 1; color: var(--green); }
-  .gauge span { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
-  .evl { display: flex; flex: none; }
-  .evl img + img { margin-left: -6px; box-shadow: 0 0 0 2px #F6F5F2; }
   .sfoot { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding: 14px 0 6px; font-family: var(--mono); font-size: 13px; color: var(--muted); }
   .sfoot .lg { display: flex; }
   .sfoot .lg img { width: 24px; height: 24px; border-radius: 6px; background: #fff; box-shadow: 0 0 0 2px #fff; }
@@ -234,7 +229,7 @@
   .wrow span { display: inline-flex; align-items: center; gap: 7px; background: #F7F6F3; border-radius: 999px; padding: 6px 12px 6px 7px; font-size: 13px; font-weight: 500; }
   .wrow img { width: 18px; height: 18px; border-radius: 5px; background: #fff; }
   @media (max-width: 960px) { .groups { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 560px) { .groups { grid-template-columns: 1fr; } .gauge b { font-size: 28px; } .shead .ex { display: none; } }
+  @media (max-width: 560px) { .groups { grid-template-columns: 1fr; } .shead .ex { display: none; } }
 
   /* price duo */
   .duo { max-width: 960px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
@@ -245,7 +240,7 @@
   .duo.done .tr-win { transform: translateY(-6px); }
   .wbar { display: flex; align-items: center; gap: 12px; padding: 16px 20px; background: #0A66C2; color: #fff; font-family: var(--pixel); font-size: 19px; }
   .wbar.dark { background: #1B1B1A; }
-  .wbar img { width: 30px; height: 30px; border-radius: 7px; background: #fff; }
+  .wbar img, .wbar svg { width: 30px; height: 30px; border-radius: 7px; background: #fff; }
   .wbar small { margin-left: auto; font-family: var(--mono); font-size: 13px; color: #9A9A96; }
   .wbody { padding: 20px 22px 22px; display: flex; flex-direction: column; gap: 12px; min-height: 300px; }
   .person { display: flex; align-items: center; gap: 14px; }
@@ -272,19 +267,25 @@
   .shead b { display: block; font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
   .shead span { color: var(--muted); font-size: 14.5px; }
   .shead .ex { margin-left: auto; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; }
-  .scols, .srow { display: grid; grid-template-columns: 260px 1fr 110px; gap: 16px; align-items: center; }
-  .scols { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 14px 0 8px; }
-  .srow { border-top: 1px solid var(--line); padding: 12px 0; opacity: 0; transform: translateY(8px); transition: opacity .4s, transform .5s cubic-bezier(.3,.7,.3,1); }
-  .srow.on { opacity: 1; transform: none; }
-  .req mark { background: rgba(26,125,166,.16); border-radius: 6px; padding: 2px 6px; font-weight: 600; font-size: 17px; color: var(--ink); }
-  .req small { display: block; margin-top: 4px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
-  .ev { display: flex; align-items: center; gap: 12px; background: #F6F5F2; border-radius: 12px; padding: 10px 14px; min-width: 0; }
-  .ev img { width: 26px; height: 26px; border-radius: 6px; flex: none; }
-  .ev b { display: block; font-size: 15px; font-weight: 600; }
-  .ev s { display: block; text-decoration: none; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ev span { min-width: 0; }
-  .ok { justify-self: end; font-style: normal; font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--green); background: var(--green-soft); border-radius: 999px; padding: 6px 12px; transform: scale(.6); opacity: 0; transition: transform .35s cubic-bezier(.2,1.6,.4,1) .25s, opacity .2s .25s; }
-  .srow.on .ok { transform: none; opacity: 1; }
+
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 18px 0; }
+  .tile { background: #F6F5F2; border-radius: 16px; padding: 18px 20px 20px; opacity: 0; transform: translateY(8px); transition: opacity .4s, transform .5s cubic-bezier(.3,.7,.3,1); min-width: 0; }
+  .tile.on { opacity: 1; transform: none; }
+  .tile.hot { background: rgba(17,132,83,.1); }
+  .tile > b { display: block; font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: -.015em; margin-bottom: 14px; }
+  .tile.hot > b { color: var(--green); }
+  .tl { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .tbar { display: flex; gap: 5px; margin: 6px 0; }
+  .tbar i { height: 14px; border-radius: 7px; }
+  .repo { background: #fff; border: 1px solid #d0d7de; border-radius: 10px; padding: 12px 14px; font-size: 13px; color: #59636e; }
+  .repo b { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 500; color: #0969da; }
+  .repo b img { width: 18px; height: 18px; }
+  .repo p { margin: 4px 0 0; }
+  .repo i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #dea584; margin-right: 5px; }
+  .repo em { font-style: normal; margin-left: 14px; }
+  .cos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .cos span { display: flex; flex-direction: column; align-items: center; gap: 6px; background: #fff; border-radius: 12px; padding: 12px 6px; font-weight: 600; font-size: 14px; box-shadow: 0 1px 2px rgba(20,18,12,.05); }
+  .cos img { width: 36px; height: 36px; border-radius: 9px; }
 
   /* reach: two waterfalls */
   .reach { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
@@ -363,9 +364,7 @@
   @media (max-width: 860px) {
     .duo, .reach, .boards { grid-template-columns: 1fr; }
     .steps { grid-template-columns: 1fr 1fr; }
-    .scols { display: none; }
-    .srow { grid-template-columns: 1fr; gap: 8px; }
-    .ok { justify-self: start; }
+    .tiles { grid-template-columns: 1fr; }
   }
   @media (max-width: 640px) {
     #how .code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
@@ -383,9 +382,8 @@
     .paywall { font-size: 32px; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .srow, .res, .win { transition: none; }
-    .srow, .res { opacity: 1; transform: none; }
-    .srow .ok { opacity: 1; transform: none; }
+    .tile, .res, .win { transition: none; }
+    .tile, .res { opacity: 1; transform: none; }
     .bt2 i { transition: none; }
     .hw { opacity: 1; transform: none; }
   }
@@ -415,7 +413,7 @@
 <div class="demo-wrap" id="film">
   <div class="film" id="filmBox"><video id="filmV" src="media/recruit/film.mp4" poster="media/recruit/poster.jpg" muted playsinline preload="metadata"></video>
     <button type="button" class="fplay" id="filmPlay" aria-label="Play the film with sound"><span class="fpc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg></span><span class="fpl">Play with sound</span></button></div>
-  <div class="demo-cap">49 seconds · the candidate in the film is an example; every price and benchmark number is measured</div>
+  <div class="demo-cap">45 seconds · the candidate in the film is an example; every price and benchmark number is measured</div>
 </div>
 
 <section class="section" id="price">
@@ -426,29 +424,36 @@
       <div class="wbar"><img src="logos/linkedin.svg" alt="">LinkedIn Recruiter Lite</div>
       <div class="wbody">
         <div class="person"><img src="media/people-search/av-maya.png" alt=""><div><b>Maya Rao</b><span>Staff Backend Engineer · London</span></div></div>
-        <div class="paywall"><span class="lock">🔒</span>$170/month</div>
-        <div class="note">30 InMails · no email · no phone</div>
-        <div class="big"><s class="strk">$5.67</s><small>per candidate reached</small></div>
+        <div class="note">30 InMails, used or not · no email · no phone</div>
+        <div class="big"><s class="strk">$170</s><small>per month</small></div>
       </div>
     </div>
     <div class="win tr-win">
-      <div class="wbar dark"><img src="media/people-search/claude-code.png" alt="">Claude Code <small>+ treg</small></div>
+      <div class="wbar dark"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</div>
       <div class="wbody">
         <div class="person"><img src="media/people-search/av-maya.png" alt=""><div><b>Maya Rao</b><span>Staff Backend Engineer · London</span></div></div>
         <div class="ct"><i>✉</i><b>maya.rao.dev@gmail.com</b><em>✓</em></div>
         <div class="ct"><i>☎</i><b>+44 7700 900123</b><em>✓</em></div>
-        <div class="big g">$0.19<small>per candidate, personal email + mobile included</small></div>
+        <div class="note">30 candidates = <b style="color:var(--green);font-weight:500">$5.70</b> · email + mobile included</div>
+        <div class="big g">$0.19<small>per candidate</small></div>
       </div>
     </div>
   </div>
-  <div class="demo-cap">Recruiter Lite: $170 ÷ 30 InMails. treg: email $3.18 + phone $1.39 + verify $0.03 over 24 candidates on a recorded run</div>
+  <div class="demo-cap">Recruiter Lite: $170 a month whether you send the 30 InMails or not. treg: email $3.18 + phone $1.39 + verify $0.03 over 24 candidates on a recorded run</div>
 </section>
 
 <section class="section" id="footprint" style="padding-top:40px">
   <h2>Matched on her<br><span class="hl2">full social footprint.</span></h2>
   <p class="lede">A LinkedIn title says what someone is called. The agent reads the job post, then checks each candidate where their work actually shows up, from career history to code, talks, papers and posts, and cites every source it used.</p>
   <div class="srcmap" id="srcmap"><div class="hub"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg searches <b>14 sources</b> per candidate</div><div class="groups"><div class="grp"><div class="gt">Who they are</div><div class="src"><div class="sh"><img src="logos/linkedin.svg" alt=""><b>LinkedIn search</b></div><div class="sv"><img src="logos/crustdata.svg" alt=""><img src="logos/pdl.svg" alt=""><img src="logos/coresignal.svg" alt=""><img src="logos/exa.svg" alt=""><img src="logos/icypeas.svg" alt=""></div><s>profiles by title, skill, place</s></div><div class="src"><div class="sh"><img src="logos/linkedin.svg" alt=""><b>LinkedIn posts</b></div><div class="sv"><img src="logos/harvestapi.svg" alt=""></div><s>what they write about</s></div><div class="src"><div class="sh"><img src="logos/x.svg" alt=""><b>X posts</b></div><div class="sv"><img src="logos/scrapecreators.svg" alt=""></div><s>what they talk about</s></div></div><div class="grp"><div class="gt">What they've built</div><div class="src"><div class="sh"><img src="media/recruit/github.svg" alt=""><b>GitHub</b></div><div class="sv"><img src="logos/scrapecreators.svg" alt=""></div><s>repos, stars, commits</s></div><div class="src"><div class="sh"><img src="media/recruit/stackoverflow.png" alt=""><b>Stack Overflow</b></div><div class="sv"><img src="logos/crawl4ai.svg" alt=""></div><s>answers in their stack</s></div><div class="src"><div class="sh"><img src="logos/youtube.svg" alt=""><b>YouTube talks</b></div><div class="sv"><img src="logos/anyapi.svg" alt=""></div><s>conference talks</s></div><div class="src"><div class="sh"><img src="media/recruit/scholar.png" alt=""><b>Google Scholar</b></div><div class="sv"><img src="logos/anyapi.svg" alt=""></div><s>papers</s></div></div><div class="grp"><div class="gt">Whether they'd move</div><div class="src"><div class="sh"><img src="logos/datagma.svg" alt=""><b>Job changes</b></div><div class="sv"><img src="logos/datagma.svg" alt=""></div><s>tenure and moves</s></div><div class="src"><div class="sh"><img src="logos/akta.svg" alt=""><b>Company news</b></div><div class="sv"><img src="logos/akta.svg" alt=""></div><s>layoffs, funding, reorgs</s></div><div class="src"><div class="sh"><img src="logos/crunchbase.svg" alt=""><b>Crunchbase</b></div><div class="sv"><img src="logos/crunchbase.svg" alt=""></div><s>their employer's story</s></div></div><div class="grp"><div class="gt">How to reach them</div><div class="src"><div class="sh"><i class="gl">✉</i><b>Personal email</b></div><div class="sv"><img src="logos/fiber-ai.svg" alt=""><img src="logos/aviato.svg" alt=""><img src="logos/limadata.svg" alt=""><img src="logos/contactout.svg" alt=""><img src="logos/sixtyfour.svg" alt=""></div><s>not their work one</s></div><div class="src"><div class="sh"><i class="gl">☎</i><b>Mobile phone</b></div><div class="sv"><img src="logos/blitzapi.svg" alt=""><img src="logos/quickenrich.svg" alt=""><img src="logos/aiark.svg" alt=""><img src="logos/tomba.svg" alt=""><img src="logos/wiza.svg" alt=""></div><s>cheapest first</s></div><div class="src"><div class="sh"><img src="logos/millionverifier.svg" alt=""><b>Email verify</b></div><div class="sv"><img src="logos/millionverifier.svg" alt=""><img src="logos/zerobounce.svg" alt=""></div><s>deliverable, won't bounce</s></div><div class="src"><div class="sh"><img src="logos/hlrlookup.svg" alt=""><b>Carrier check</b></div><div class="sv"><img src="logos/hlrlookup.svg" alt=""><img src="logos/trestleiq.svg" alt=""></div><s>live mobile, not a landline</s></div></div></div></div>
-  <div class="sheet" id="sheet"><div class="shead"><img src="media/people-search/av-maya.png" alt=""><div><b>Maya Rao</b><span>Staff Backend Engineer · Ledgerly · London</span></div><span class="ex">example candidate</span><div class="gauge"><b id="gv">0</b><span>match to the job</span></div></div><div class="scols"><span>the job asks</span><span>what the agent found, and where</span><span></span></div><div class="srow"><div class="req"><mark>5+ years backend</mark><small>from the job</small></div><div class="ev"><span class="evl"><img src="logos/linkedin.svg" alt=""></span><span><b>9 years, all backend</b><s>Brightpay → Kestrel Bank → Ledgerly</s></span></div><i class="ok">✓ match</i></div><div class="srow"><div class="req"><mark>Built payments in Rust</mark><small>from the job</small></div><div class="ev"><span class="evl"><img src="media/recruit/github.svg" alt=""><img src="logos/youtube.svg" alt=""></span><span><b>Wrote a payments ledger in Rust</b><s>rust-ledger ★ 1.2k on GitHub · a talk on moving £2B a day to it</s></span></div><i class="ok">✓ match</i></div><div class="srow"><div class="req"><mark>Based in London</mark><small>from the job</small></div><div class="ev"><span class="evl"><img src="logos/linkedin.svg" alt=""></span><span><b>Lives in London</b><s>Shoreditch · 25 min to the office</s></span></div><i class="ok">✓ match</i></div><div class="srow"><div class="req"><mark>Fully vested in 2 months</mark><small>what you can't search for</small></div><div class="ev"><span class="evl"><img src="logos/linkedin.svg" alt=""><img src="logos/datagma.svg" alt=""></span><span><b>Joined Ledgerly Dec 2022</b><s>4-year vest ends Dec 2026 · the usual moment to move</s></span></div><i class="ok">✓ timing</i></div><div class="sfoot"><span class="lg"><img src="logos/linkedin.svg" alt=""><img src="media/recruit/github.svg" alt=""><img src="logos/youtube.svg" alt=""><img src="media/recruit/stackoverflow.png" alt=""><img src="logos/datagma.svg" alt=""><img src="logos/akta.svg" alt=""><img src="logos/crunchbase.svg" alt=""></span>evidence from 7 sources · about $0.02 a candidate on a recorded run</div></div>
+  <div class="sheet" id="sheet"><div class="shead"><img src="media/people-search/av-maya.png" alt=""><div><b>Maya Rao</b><span>Staff Backend Engineer · Ledgerly</span></div><span class="ex">example candidate</span></div>
+    <div class="tiles">
+      <div class="tile"><b>Strong IC + 3 yrs lead</b><div class="tl"><span>2016</span><span>2026</span></div><div class="tbar"><i style="flex:6;background:#1a7da6"></i><i style="flex:3;background:var(--green)"></i></div><div class="tl"><span style="color:#1a7da6">IC · 6 yrs</span><span style="color:var(--green)">Lead · 3 yrs</span></div></div>
+      <div class="tile"><b>Built payments infra</b><div class="repo"><b><img src="media/recruit/github.svg" alt="">maya-rao / <strong>ledgerd</strong></b><p>Payments ledger · 2B txns/day</p><p><i></i>Rust<em>★ 1.2k</em><em>⑂ 86</em></p></div></div>
+      <div class="tile"><b>Only payments companies</b><div class="cos"><span><img src="media/recruit/stripe.png" alt="">Stripe</span><span><img src="media/recruit/monzo.png" alt="">Monzo</span><span><img src="media/recruit/wise.png" alt="">Wise</span></div></div>
+      <div class="tile hot"><b>Vests in 2 months</b><div class="tbar" style="margin-top:28px"><i style="flex:96;background:var(--green)"></i><i style="flex:4;background:#E2E1DC"></i></div><div class="tl"><span>joined Dec 2022</span><span>vested Dec 2026</span></div></div>
+    </div>
+    <div class="sfoot"><span class="lg"><img src="logos/linkedin.svg" alt=""><img src="media/recruit/github.svg" alt=""><img src="logos/youtube.svg" alt=""><img src="media/recruit/stackoverflow.png" alt=""><img src="logos/datagma.svg" alt=""><img src="logos/akta.svg" alt=""></span>evidence from 6 sources · about $0.02 a candidate on a recorded run</div></div>
 </section>
 
 <section class="section" id="reach" style="padding-top:40px">
@@ -477,6 +482,19 @@
     </div>
   </div>
   <div class="demo-cap">example lookup · vendor order and prices are the catalog's</div>
+</section>
+
+<section class="section" id="compare" style="padding-top:40px">
+  <h2>What a seat buys you</h2>
+  <p class="lede">Prices are LinkedIn's list prices as published by third parties; check LinkedIn's own page for your region.</p>
+  <div class="cmp">
+    <div class="crow chead"><span></span><span><img src="logos/linkedin.svg" alt="">Recruiter Lite</span><span><img src="logos/linkedin.svg" alt="">Sales Nav</span><span class="tc"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></div>
+    <div class="crow"><span class="k">Price</span><span>$170/mo</span><span>$99.99/mo</span><span class="tc g">pay per candidate</span></div>
+    <div class="crow"><span class="k">Reach</span><span>30 InMails</span><span>50 InMails</span><span class="tc g">no limit</span></div>
+    <div class="crow"><span class="k">Personal email</span><span><i class="no">✕</i></span><span><i class="no">✕</i></span><span class="tc"><i class="yes">✓</i></span></div>
+    <div class="crow"><span class="k">Mobile</span><span><i class="no">✕</i></span><span><i class="no">✕</i></span><span class="tc"><i class="yes">✓</i></span></div>
+    <div class="crow"><span class="k">Per person reached</span><span class="bigc">$5.67</span><span class="bigc">$2.00</span><span class="tc bigc g">$0.19</span></div>
+  </div>
 </section>
 
 <section class="section" id="bench" style="padding-top:40px">
@@ -512,18 +530,6 @@
   <div class="wall"><div class="wgrp"><div class="wt">Find people</div><div class="wrow"><span><img src="logos/crustdata.svg" alt="">Crustdata</span><span><img src="logos/pdl.svg" alt="">People Data Labs</span><span><img src="logos/coresignal.svg" alt="">Coresignal</span><span><img src="logos/exa.svg" alt="">Exa</span><span><img src="logos/apollo.svg" alt="">Apollo</span><span><img src="logos/aviato.svg" alt="">Aviato</span><span><img src="logos/icypeas.svg" alt="">Icypeas</span><span><img src="logos/leadsforge.svg" alt="">Leadsforge</span><span><img src="logos/sumble.svg" alt="">Sumble</span><span><img src="logos/diffbot.svg" alt="">Diffbot</span><span><img src="logos/parallel.svg" alt="">Parallel</span><span><img src="logos/crunchbase.svg" alt="">Crunchbase</span><span><img src="logos/harvestapi.svg" alt="">HarvestAPI</span><span><img src="logos/companyenrich.svg" alt="">CompanyEnrich</span><span><img src="logos/moltsets.svg" alt="">Moltsets</span><span><img src="logos/enrichlayer.svg" alt="">EnrichLayer</span><span><img src="logos/lusha.svg" alt="">Lusha</span><span><img src="logos/contactout.svg" alt="">ContactOut</span><span><img src="logos/leadmagic.svg" alt="">LeadMagic</span><span><img src="logos/prospeo.svg" alt="">Prospeo</span><span><img src="logos/wiza.svg" alt="">Wiza</span><span><img src="logos/aiark.svg" alt="">AI Ark</span><span><img src="logos/blitzapi.svg" alt="">BlitzAPI</span><span><img src="logos/quickenrich.svg" alt="">QuickEnrich</span><span><img src="logos/findymail.svg" alt="">Findymail</span><span><img src="logos/hunter.svg" alt="">Hunter</span><span><img src="logos/dropleads.svg" alt="">Dropleads</span><span><img src="logos/getleadsio.svg" alt="">GetLeads</span><span><img src="logos/oceanio.svg" alt="">Ocean.io</span><span><img src="logos/fiber-ai.svg" alt="">Fiber</span><span><img src="logos/limadata.svg" alt="">LimaData</span><span><img src="logos/sixtyfour.svg" alt="">Sixtyfour</span></div></div><div class="wgrp"><div class="wt">Mobile phone</div><div class="wrow"><span><img src="logos/blitzapi.svg" alt="">BlitzAPI</span><span><img src="logos/quickenrich.svg" alt="">QuickEnrich</span><span><img src="logos/aiark.svg" alt="">AI Ark</span><span><img src="logos/tomba.svg" alt="">Tomba</span><span><img src="logos/wiza.svg" alt="">Wiza</span><span><img src="logos/prospeo.svg" alt="">Prospeo</span><span><img src="logos/leadmagic.svg" alt="">LeadMagic</span><span><img src="logos/leadsforge.svg" alt="">Leadsforge</span><span><img src="logos/lusha.svg" alt="">Lusha</span><span><img src="logos/contactout.svg" alt="">ContactOut</span><span><img src="logos/datagma.svg" alt="">Datagma</span><span><img src="logos/dropleads.svg" alt="">Dropleads</span><span><img src="logos/findymail.svg" alt="">Findymail</span><span><img src="logos/getleadsio.svg" alt="">GetLeads</span><span><img src="logos/oceanio.svg" alt="">Ocean.io</span><span><img src="logos/aviato.svg" alt="">Aviato</span><span><img src="logos/limadata.svg" alt="">LimaData</span><span><img src="logos/sixtyfour.svg" alt="">Sixtyfour</span></div></div><div class="wgrp"><div class="wt">Personal email</div><div class="wrow"><span><img src="logos/fiber-ai.svg" alt="">Fiber</span><span><img src="logos/aviato.svg" alt="">Aviato</span><span><img src="logos/limadata.svg" alt="">LimaData</span><span><img src="logos/contactout.svg" alt="">ContactOut</span><span><img src="logos/sixtyfour.svg" alt="">Sixtyfour</span></div></div><div class="wgrp"><div class="wt">Verify</div><div class="wrow"><span><img src="logos/millionverifier.svg" alt="">MillionVerifier</span><span><img src="logos/zerobounce.svg" alt="">ZeroBounce</span><span><img src="logos/hlrlookup.svg" alt="">HLR Lookup</span><span><img src="logos/trestleiq.svg" alt="">Trestle</span></div></div></div>
 </section>
 
-<section class="section" id="compare" style="padding-top:40px">
-  <h2>What a seat buys you</h2>
-  <p class="lede">Prices are LinkedIn's list prices as published by third parties; check LinkedIn's own page for your region.</p>
-  <div class="cmp">
-    <div class="crow chead"><span></span><span><img src="logos/linkedin.svg" alt="">Recruiter Lite</span><span><img src="logos/linkedin.svg" alt="">Sales Nav</span><span class="tc"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</span></div>
-    <div class="crow"><span class="k">Price</span><span>$170/mo</span><span>$99.99/mo</span><span class="tc g">pay per candidate</span></div>
-    <div class="crow"><span class="k">Reach</span><span>30 InMails</span><span>50 InMails</span><span class="tc g">no limit</span></div>
-    <div class="crow"><span class="k">Personal email</span><span><i class="no">✕</i></span><span><i class="no">✕</i></span><span class="tc"><i class="yes">✓</i></span></div>
-    <div class="crow"><span class="k">Mobile</span><span><i class="no">✕</i></span><span><i class="no">✕</i></span><span class="tc"><i class="yes">✓</i></span></div>
-    <div class="crow"><span class="k">Per person reached</span><span class="bigc">$5.67</span><span class="bigc">$2.00</span><span class="tc bigc g">$0.19</span></div>
-  </div>
-</section>
 
 <section class="section" id="how" style="padding-top:40px">
   <h2>How a run goes</h2>
@@ -719,17 +725,17 @@
   var duo = document.getElementById('duo');
   if (reduced) duo.classList.add('done'); else onSeen(duo, function () { setTimeout(function () { duo.classList.add('done'); }, 600); }, 0.3);
 
-  /* ---------- footprint sheet: rows land one by one ---------- */
+  /* ---------- footprint card: tiles land one by one ---------- */
   var srcs = document.querySelectorAll('#srcmap .src');
   onSeen(document.getElementById('srcmap'), function () {
     srcs.forEach(function (el, i) {
       setTimeout(function () { el.classList.add('on', 'ping'); setTimeout(function () { el.classList.remove('ping'); }, 500); }, reduced ? 0 : i * 110);
     });
   }, 0.3);
-  var rows = document.querySelectorAll('#sheet .srow'), gv = document.getElementById('gv'), FIT = [25, 55, 80, 96];
+  var tiles = document.querySelectorAll('#sheet .tile');
   function landRows() {
-    rows.forEach(function (r, i) {
-      setTimeout(function () { r.classList.add('on'); gv.textContent = FIT[i]; }, reduced ? 0 : 200 + i * 650);
+    tiles.forEach(function (r, i) {
+      setTimeout(function () { r.classList.add('on'); }, reduced ? 0 : 200 + i * 400);
     });
   }
   onSeen(document.getElementById('sheet'), landRows, 0.3);

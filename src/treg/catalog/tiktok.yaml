@@ -73,8 +73,11 @@ endpoints:
   # creator's TikTok inbox for them to finish by hand, and TikTok discards it after 24 hours. A
   # caller that wants review-before-publish must hold video.upload WITHOUT video.publish.
   #
-  # UNAUDITED-APP TRAP: until TikTok audits the app, every direct post is forced to SELF_ONLY
-  # (private) regardless of the privacy_level sent, and creator_info reports the allowed values.
+  # UNAUDITED-APP TRAP: until TikTok audits the app's Direct Post use, TikTok REFUSES a direct
+  # post (unaudited_client_can_only_post_to_private_accounts) unless privacy_level is SELF_ONLY
+  # AND the creator's whole account is set to private at the time of posting. It does not
+  # downgrade a public request to private. An unaudited client is also capped at 5 posting users
+  # per 24 hours. The inbox route is not affected. creator_info reports the allowed values.
   # Always read tiktok.creator.info first rather than assuming PUBLIC_TO_EVERYONE will stick.
   - id: tiktok.tiktok.creator.info
     added: '2026-07-28'
@@ -107,7 +110,7 @@ endpoints:
         post_info: {type: object, required: true, note: "{\"title\": \"caption, 2,200 chars, #hashtags and @mentions work\", \"privacy_level\": one of creator_info's privacy_level_options, \"disable_comment\": false, \"disable_duet\": false, \"disable_stitch\": false, \"video_cover_timestamp_ms\": 1000, \"is_aigc\": false, \"brand_content_toggle\": false, \"brand_organic_toggle\": false}. is_aigc labels AI-generated content and is required to be honest", example: {title: "Behind the build #engineering", privacy_level: "SELF_ONLY", disable_comment: false, is_aigc: false}}
         source_info: {type: object, required: true, note: "FILE_UPLOAD: {\"source\": \"FILE_UPLOAD\", \"video_size\": <exact bytes>, \"chunk_size\": <bytes>, \"total_chunk_count\": <n>}. PULL_FROM_URL: {\"source\": \"PULL_FROM_URL\", \"video_url\": \"…\"} — but the URL's domain must first be verified in the TikTok developer portal, so FILE_UPLOAD is the route that works without portal setup", example: {source: "FILE_UPLOAD", video_size: 8388608, chunk_size: 8388608, total_chunk_count: 1}}
       bodyType: json
-      note: "needs the `post` capability (video.publish); a `draft` connection gets scope_not_authorized. Returns {data: {publish_id, upload_url}}. CHUNK RULES, which TikTok enforces strictly: a chunk is 5 MB to 64 MB, so a file <= 64 MB goes as ONE chunk of the whole size; larger files use 10 MB chunks with total_chunk_count = floor(size / chunk_size) and the LAST chunk carrying the remainder (it may exceed chunk_size). PUT each chunk to upload_url with Content-Range: bytes start-end/total — chunked PUTs answer 206, not 200. Then poll tiktok.publish.status; publishing is not done when the upload finishes"
+      note: "needs the `post` capability (video.publish); a `draft` connection gets scope_not_authorized. Returns {data: {publish_id, upload_url}}. CHUNK RULES, which TikTok enforces strictly: a chunk is 5 MB to 64 MB, so a file <= 64 MB goes as ONE chunk of the whole size; larger files use 10 MB chunks with total_chunk_count = floor(size / chunk_size) and the LAST chunk carrying the remainder (it may exceed chunk_size). PUT each chunk straight to upload_url with plain curl or HTTP, NOT through treg: the URL carries its own permission and expires after 1 hour. Send Content-Type: video/mp4 (or video/quicktime, video/webm) and Content-Range: bytes start-end/total, e.g. curl -X PUT -H 'Content-Type: video/mp4' -H 'Content-Range: bytes 0-1304736/1304737' --data-binary @clip.mp4 \"$UPLOAD_URL\" — chunked PUTs answer 206, the last 201. Then poll tiktok.publish.status; publishing is not done when the upload finishes. UNTIL TIKTOK AUDITS TREG'S APP, this route is REFUSED (unaudited_client_can_only_post_to_private_accounts) unless privacy_level is SELF_ONLY and the creator's account is private; for any post others should see, use tiktok.tiktok.video.inbox.init instead"
     cost: {type: free, value: 0, currency: USD, unit: call, note: included with the connected account; TikTok rate-limits per token (600 req/min) and caps direct posts at 6 per minute per creator}
     unverified: "write action — this publishes to a real TikTok account; requires a deliberate manual test, never an automated verify run"
     docs_url: https://developers.tiktok.com/doc/content-posting-api-reference-direct-post/
@@ -126,12 +129,15 @@ endpoints:
       body:
         source_info: {type: object, required: true, note: "identical shape and identical chunk rules to the direct-post route", example: {source: "FILE_UPLOAD", video_size: 8388608, chunk_size: 8388608, total_chunk_count: 1}}
       bodyType: json
-      note: "takes NO post_info — caption, privacy and the comment/duet/stitch toggles are the creator's to set in the app, which is the entire point of this route. Needs only video.upload (treg's `draft` capability), so a connection that must never publish autonomously can still hand a video over. TikTok DISCARDS an unfinished inbox video after 24 hours. Polling tiktok.publish.status returns SEND_TO_USER_INBOX rather than PUBLISH_COMPLETE, and there is no post id to return"
+      note: "the route that works for a public post today: no TikTok audit needed. Same three steps as the direct post — init here, PUT the file straight to upload_url with plain curl (NOT through treg; Content-Type: video/mp4 and Content-Range, see the chunk rules on tiktok.tiktok.video.publish.init), then poll tiktok.publish.status. Takes NO post_info — caption, privacy and the comment/duet/stitch toggles are the creator's to set in the app, which is the entire point of this route. Needs only video.upload (treg's `draft` capability), so a connection that must never publish autonomously can still hand a video over. TikTok DISCARDS an unfinished inbox video after 24 hours. Polling tiktok.publish.status returns SEND_TO_USER_INBOX rather than PUBLISH_COMPLETE, and there is no post id to return"
     cost: {type: free, value: 0, currency: USD, unit: call, note: 'included with the connected account; rate-limited per token, no per-call charge'}
     unverified: "write action — pushes media to a real creator's inbox; requires a deliberate manual test, never an automated verify run"
     docs_url: https://developers.tiktok.com/doc/content-posting-api-reference-upload-video/
 
   - id: tiktok.tiktok.content.init
+    status: retired
+    status_note: "Hidden for now: photo posts are PULL_FROM_URL only, so the images must sit on a domain verified in treg's TikTok developer portal, and a direct post also needs TikTok's Direct Post audit."
+    superseded_by: tiktok.tiktok.video.inbox.init
     added: '2026-07-28'
     kind: action
     capability: tiktok.photo.publish

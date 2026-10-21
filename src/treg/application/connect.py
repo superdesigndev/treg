@@ -17,7 +17,7 @@ from ..config import get_settings
 from ..domain.catalog import store as catalog_store
 from ..domain.connections import authorization as connection_authorization
 from ..domain.connections import refresh as connection_refresh
-from ..domain.connections.oauth_flow import consent_url
+from ..domain.connections.oauth_flow import consent_url, is_loopback, pkce_challenge_hex
 from ..infra.db import session_maker
 from ..infra.oauth_exchange import HTTPXOAuthExchangePort
 from ..infra.oauth_refresh import HTTPXOAuthRefreshPort
@@ -381,6 +381,11 @@ async def start_oauth_connection(
                 auth_params = json.dumps(profile.auth_params)
             if profile.pkce:
                 code_verifier = crypto.new_token()
+            elif profile.pkce_loopback_hex and is_loopback(get_settings().public_url):
+                code_verifier = crypto.new_token()
+                auth_params = json.dumps({**(profile.auth_params or {}),
+                                          "code_challenge": pkce_challenge_hex(code_verifier),
+                                          "code_challenge_method": "S256"})
         elif not (client_id and client_secret):
             raise ConnectError(
                 "invalid_provider",

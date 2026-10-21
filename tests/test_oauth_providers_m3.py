@@ -101,6 +101,22 @@ async def test_tiktok_consent_url_uses_client_key_not_client_id(clients: AsyncCl
     assert "client_id" not in q
 
 
+async def test_tiktok_pkce_only_on_a_localhost_callback(clients: AsyncClient, all_apps, monkeypatch):
+    """TikTok treats a localhost redirect as a desktop app and requires PKCE there, hashed as hex
+    SHA-256 (not base64url). A web callback sends no challenge, as before."""
+    import hashlib
+    q = _q((await clients.post("/oauth/start", json={"provider": "tiktok"})).json())
+    assert "code_challenge" not in q
+    monkeypatch.setattr(get_settings(), "public_url", "http://localhost:18790")
+    started = (await clients.post("/oauth/start", json={"provider": "tiktok"})).json()
+    q = _q(started)
+    async with session_maker() as db:
+        pending = (await db.execute(select(PendingOAuth).where(
+            PendingOAuth.state == started["state"]))).scalar_one()
+    assert q["code_challenge"] == [hashlib.sha256(pending.code_verifier.encode()).hexdigest()]
+    assert q["code_challenge_method"] == ["S256"]
+
+
 async def test_tiktok_comma_joins_its_scopes(clients: AsyncClient, all_apps):
     """Space-joined scopes come back from TikTok as scope_not_authorized — it splits on commas."""
     q = _q((await clients.post("/oauth/start", json={"provider": "tiktok"})).json())

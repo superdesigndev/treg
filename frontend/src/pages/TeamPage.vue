@@ -345,7 +345,7 @@ export default {
                          modal) and the policy arms itself when a payment saves a card. Showing it in
                          the red "switched itself off" banner made an abandoned Checkout look broken. -->
                     <p v-if="billing.autotopup.disabled_reason==='no_card'" class="sub" style="margin:14px 0 0">
-                      Auto top-up is set up and will switch on as soon as a top-up saves your card.
+                      Auto top-up is set up and will switch on as soon as a top-up saves a card. Until then, calls stop when the balance runs out.
                     </p>
                     <div v-else-if="billing.autotopup.disabled_reason" class="banner"
                          :class="{'auth-warning':billing.autotopup.disabled_reason==='authentication_required'}"

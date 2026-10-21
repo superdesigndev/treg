@@ -299,7 +299,7 @@ endpoints:
         type: {type: "array[string]", required: false, note: "private, public, nonprofit, educational, government"}
         naicsCode: {type: "array[integer]", required: false, note: "2-6 digit NAICS; a short code matches all its children"}
         foundedYear: {type: object, required: false, note: "range object, e.g. {min: 2015, max: 2022}"}
-        fundingRounds: {type: "array[string]", required: false, note: "seed, series-a, …"}
+        fundingRounds: {type: "array[string]", required: false, note: "seed, debt_financing, angel, venture, series_a, series_b, series_c, series_d, series_e, series_f, series_g, series_h, other; hyphen forms like series-a are rejected", example: ["series_a"]}
         fundingAmount: {type: object, required: false, note: "range object in USD"}
         fundingYear: {type: object, required: false, note: "range object"}
         require: {type: "array[string]", required: false, note: "features that MUST be present on the company record"}

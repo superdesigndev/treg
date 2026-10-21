@@ -289,7 +289,7 @@ broken connections self-heal on their next call, no migration.
 code, client)` trades the auth code for tokens and returns a self-refreshable blob. Both honor
 per-provider quirks carried on the `PendingOAuth` (snapshotted from the registry entry, below): a provider's
 `auth_params` **replaces** the Google defaults entirely (LinkedIn/X/TikTok/Meta reject `access_type`);
-PKCE (`pkce_challenge()` — X requires a verifier); `token_endpoint_auth_method` = `client_secret_basic`
+PKCE (`pkce_challenge()` — X requires a verifier; TikTok's `pkce_loopback_hex` sends a hex SHA-256 challenge, stored in `auth_params`, only when `public_url` is localhost, because TikTok treats a localhost redirect as a desktop app); `token_endpoint_auth_method` = `client_secret_basic`
 (X puts the secret in HTTP Basic, not the body); the `client_id_param`/`scope_separator` dialect; and
 `long_lived_exchange` (`_extend_meta_token()` swaps Meta's ~1-hour code-exchange token for its ~60-day
 one, non-fatal on failure). Driven by the `/oauth/*` endpoints ([interface/api.md](../interface/api.md)).

@@ -688,7 +688,13 @@ when a user re-enables auto-top-up and resets the local failure counter. An inco
 lookup leaves the attempt unresolved and counts toward the consecutive-failure limit without
 changing the invoice key. Each unknown outcome is logged as an error. At the limit, auto top-up is
 paused with a specific billing banner and email asking the customer to check billing history and
-contact support. A later manual top-up does not advance the invoice lookup boundary. Before any
+contact support. A confirmed automatic payment ends that pause: the synchronous credit and the
+payment webhook for an automatic invoice both re-arm a policy paused as `stripe_unconfirmed` (one
+invoice serves each refill until it is credited, so that payment is the one in doubt), and a manual
+payment does not. A Stripe refusal naming the payment method (usually a saved card removed from the
+customer) charged nothing, so it is not unconfirmed: the card is forgotten and the policy waits as
+`no_card` until a payment or setup saves a new one. A card saved while that attempt ran is kept and
+leaves the policy on; a deliberate off made meanwhile stays off. A later manual top-up does not advance the invoice lookup boundary. Before any
 credited automatic top-up, the lookup checks the full customer invoice history.
 The cooldown, cap, ledger crossing, last automatic credit, and billing email are read before the
 Stripe sequence; `attempt_auto_topup` then releases the database transaction and retains only the
@@ -764,7 +770,8 @@ SetupIntent in that flow: `_set_default_pm` - called by both `_on_checkout_compl
 the policy back on from `no_card` once a card exists, and from repeated declines
 (`max_attempts:*`) only when the card is proven: it just paid (`paid=True`, both payment webhooks)
 or it is a newly saved card. The declined card saved again is not proof. A successful manual payment
-also re-arms a policy paused for 3DS (`authentication_required`). A deliberate off (reason `None`,
+also re-arms a policy paused for 3DS (`authentication_required`); a successful automatic payment
+also re-arms one paused as `stripe_unconfirmed`. A deliberate off (reason `None`,
 consent still on file) stays off; a redelivered payment webhook must not switch a deliberately
 disabled policy back on.
 

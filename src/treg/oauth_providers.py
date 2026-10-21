@@ -163,6 +163,9 @@ class OAuthProvider:
     # Per-provider auth quirks. Defaults match Google, which is the common case.
     auth_params: dict[str, str] | None = None  # extra ?query on the consent URL
     pkce: bool = False  # S256 challenge/verifier (X requires it)
+    # TikTok treats a localhost redirect as a desktop app and then requires PKCE, with the
+    # challenge as hex SHA-256 rather than base64url. A web redirect (treg.to) sends none.
+    pkce_loopback_hex: bool = False
     token_endpoint_auth_method: str = "client_secret_post"  # or client_secret_basic (X)
     # OAuth2 says the client identifier is `client_id` and scopes are space-delimited. TikTok obeys
     # neither: it reads `client_key` and splits scopes on commas. Both are snapshotted onto the
@@ -905,6 +908,7 @@ TIKTOK = OAuthProvider(
     client_id_param="client_key",  # not client_id — TikTok ignores the OAuth2 spelling
     scope_separator=",",  # not a space
     auth_params={},  # TikTok rejects Google's access_type/prompt
+    pkce_loopback_hex=True,  # a local dev server's localhost callback is a desktop redirect to TikTok
     resource_label="account",
     # One connection = one authorized creator, so there is nothing to pick; identity_* labels it
     # instead of showing an empty picker. Cheap, authenticated, and returns a human name.

@@ -39,6 +39,8 @@ Regenerate via `scripts/build-map.py`.
 | `frontend/src/components/PublicNavigation.vue` | interface/seo.md |
 | `frontend/src/components/SignedOutPage.vue` | interface/landing-sandbox.md |
 | `frontend/src/components/ui/Avatar.vue` | interface/dashboard.md |
+| `frontend/src/dialogs/TikTokPostForm.vue` | interface/dashboard.md |
+| `frontend/src/dialogs/TryEndpointDialog.vue` | interface/dashboard.md |
 | `frontend/src/dialogs/UserAvatarDialog.vue` | interface/dashboard.md |
 | `frontend/src/dialogs/WelcomeDialog.vue` | interface/onboarding.md |
 | `frontend/src/images.ts` | interface/dashboard.md |
@@ -67,7 +69,9 @@ Regenerate via `scripts/build-map.py`.
 | `frontend/src/state/onboarding.js` | interface/onboarding.md |
 | `frontend/src/state/session.js` | architecture/auth-secrets.md, interface/dashboard.md |
 | `frontend/src/state/team.js` | interface/dashboard.md |
+| `frontend/src/state/tryTool.js` | interface/dashboard.md |
 | `frontend/src/styles/base.css` | interface/dashboard.md |
+| `frontend/src/tiktokPost.ts` | interface/dashboard.md |
 | `frontend/src/views.ts` | interface/dashboard.md |
 | `frontend/tests/agents.test.ts` | interface/dashboard.md |
 | `frontend/tests/captcha.test.ts` | architecture/multi-tenancy.md |
@@ -786,7 +790,7 @@ Regenerate via `scripts/build-map.py`.
 | `interface/api.md` | `key_spend.py`, `media.py`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py`, `test_cli_pairing.py` |
 | `interface/catalog-review-proposal.md` | _(no source files — narrative/reference)_ |
 | `interface/cli.md` | `cli.py`, `test_released_cli_compat.py`, `test_cli_key_compatibility.py`, `auth_helpers.py`, `cli_analytics.py`, `convert.py`, `agents.py`, `api_keys.py`, `test_api_keys.py` |
-| `interface/dashboard.md` | `App.vue`, `TeamShowcase.vue`, `TeamAvatar.vue`, `UserAvatarDialog.vue`, `Avatar.vue`, `images.ts`, `views.ts`, `controller.js`, `agents.js`, `agentsComputed.js`, `credentialIssues.js`, `data.js`, `keys.js`, `session.js`, `team.js`, `TeamPage.vue`, `agents.test.ts`, `agents.spec.ts`, `catalog.js`, `base.css`, `layout.spec.ts`, `dashboard.css`, `web.py`, `tutorial.js`, `tour.js` |
+| `interface/dashboard.md` | `App.vue`, `TeamShowcase.vue`, `TeamAvatar.vue`, `UserAvatarDialog.vue`, `Avatar.vue`, `images.ts`, `views.ts`, `controller.js`, `agents.js`, `agentsComputed.js`, `credentialIssues.js`, `data.js`, `keys.js`, `session.js`, `team.js`, `TeamPage.vue`, `agents.test.ts`, `agents.spec.ts`, `catalog.js`, `base.css`, `layout.spec.ts`, `dashboard.css`, `web.py`, `tutorial.js`, `tour.js`, `TryEndpointDialog.vue`, `tryTool.js`, `TikTokPostForm.vue`, `tiktokPost.ts` |
 | `interface/enrich-arena.md` | `arena.py`, `arena.py`, `arena.py`, `models.py`, `0027_enrich_arena.py`, `teams.py`, `auth.py`, `bootstrap.py`, `enrich-arena.html`, `arena.js`, `bench.js`, `arena.css`, `index.ts`, `arena_verification_insights.py`, `0029_arena_verification_snapshot.py`, `import_arena_verification.py`, `test_arena_verification_insights.py`, `arena_insights.py`, `arena_insights.py`, `0028_arena_insights.py`, `test_arena_insights.py`, `apollo.svg`, `branddev.svg`, `companyenrich.svg`, `findymail.svg`, `hunter.svg`, `icypeas.svg`, `leadmagic.svg`, `leadsforge.svg`, `lusha.svg`, `pdl.svg`, `predictleads.svg`, `thecompaniesapi.svg`, `tomba.svg`, `sitetrack.js`, `test_enrich_arena.py` |
 | `interface/env-import.md` | `providers.py`, `skills.py` |
 | `interface/landing-sandbox.md` | `sandbox.py`, `sandbox_identity.py`, `pubfeed.py`, `sandbox.py`, `__init__.py`, `sandbox.py`, `api.py`, `onboard.py`, `web.py`, `boot.js`, `SignedOutPage.vue`, `install.sh` |

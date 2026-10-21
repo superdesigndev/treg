@@ -49,7 +49,7 @@ export default {
       <button v-if="drawerNext==='connect'" class="pl-btn" @click="catalogConnect(drawerEp)">{{endpointConnectLabel(drawerEp)}}</button>
       <button v-else-if="drawerNext==='key'" class="pl-btn" @click="catalogByok(drawerEp.provider, drawerEp)">Add your {{drawerEp.provider_display||drawerEp.provider}} key</button>
       <button v-if="drawerEp.call_template && drawerNext!=='paused'" class="pl-btn pl-copy" :class="{ghost:drawerNext!=='copy'}" @click="catalogCopy(drawerEp)">{{platCopied===drawerEp.id ? 'Copied' : 'Copy for your agent'}}</button>
-      <button v-if="drawerNext==='copy'" class="pl-btn" :class="{ghost:!!drawerEp.call_template}" @click="catalogTry(drawerEp)">Try it</button>
+      <button v-if="drawerNext==='copy'" class="pl-btn" :class="{ghost:!!drawerEp.call_template}" @click="catalogTry(drawerEp)">{{isTikTokPost(drawerEp)?'Publish a video':'Try it'}}</button>
       <a v-if="drawerEp.docs_url || provFact(drawerEp.provider,'pricing_url')" class="pl-link" :href="drawerEp.docs_url || provFact(drawerEp.provider,'pricing_url')"
          target="_blank" rel="noopener" @click="catalogDocs(drawerEp)">{{drawerEp.docs_url ? 'Docs' : 'Pricing'}} ↗</a>
     </div>
