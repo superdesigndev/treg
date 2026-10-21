@@ -4,10 +4,12 @@ from datetime import timedelta
 
 import httpx
 import pytest
+from pydantic import ValidationError
+from sqlalchemy import delete, text, update
 from sqlmodel import select
 
 from conftest import verified_identity
-from treg.config import get_settings
+from treg.config import Settings, get_settings
 from treg.domain import money
 from treg.domain.identity import promotions
 from treg.infra.db import session_maker
@@ -41,6 +43,135 @@ async def _balance(ids):
     assert total == sum(block.remaining_micro for block in blocks)
     assert total == sum(entry.amount_micro for entry in grants)
     return total
+
+
+def test_grant_limits_are_opt_in(monkeypatch):
+    names = [f"promo_grant_{dimension}_limit" for dimension in ("ip", "domain", "global")]
+    for name in names:
+        monkeypatch.delenv("TREG_" + name.upper(), raising=False)
+    settings = Settings(_env_file=None)
+    assert [getattr(settings, name) for name in names] == [0, 0, 0]
+    for name in names:
+        assert getattr(Settings(_env_file=None, **{name: 0}), name) == 0
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, **{name: -1})
+
+
+async def test_default_credit_supports_shared_network_and_domain_growth(clients, monkeypatch):
+    settings = get_settings()
+    for dimension in ("ip", "domain", "global"):
+        name = f"promo_grant_{dimension}_limit"
+        monkeypatch.setattr(settings, name, Settings.model_fields[name].default)
+    async with session_maker() as db:
+        await db.execute(delete(SignupPromoBucket))
+        await db.commit()
+    ids = [await _team(clients, await verified_identity(clients, f"growth{i}@business.com"),
+                       f"growth-{i}", "203.0.113.180") for i in range(12)]
+    assert await _balance(ids) == 12 * settings.promo_grant_micro
+    async with session_maker() as db:
+        assert (await db.execute(select(SignupPromoBucket))).first() is None
+
+
+@pytest.mark.parametrize("dimension", [None, "ip", "domain", "global"])
+@pytest.mark.parametrize("missing_ip", ["", "not-an-ip", "fe80::1%lo0"])
+async def test_grant_limits_can_be_enabled_independently(clients, monkeypatch, dimension, missing_ip):
+    from treg.application import signup
+    settings = get_settings()
+    for name in ("ip", "domain", "global"):
+        monkeypatch.setattr(settings, f"promo_grant_{name}_limit", int(name == dimension))
+    async with session_maker() as db:
+        await db.execute(delete(SignupPromoBucket))
+        await db.commit()
+    ids = []
+    for i in range(2):
+        email = f"independent{i}@business.com"
+        await verified_identity(clients, email)
+        async with session_maker() as db:
+            user = (await db.execute(select(User).where(User.email == email))).scalar_one()
+        team = await signup.create_org(user=user, name=f"independent-{i}", ad_cookie="",
+            utm_cookie="", referral_cookie="", client_ip="203.0.113.181" if dimension == "ip" else missing_ip)
+        ids.append(team["org_id"])
+    assert await _balance(ids) == (1 if dimension else 2) * settings.promo_grant_micro
+    async with session_maker() as db:
+        keys = (await db.execute(select(SignupPromoBucket.key))).scalars().all()
+    assert [key.split(":")[0] for key in keys] == ([dimension] if dimension else [])
+
+
+@pytest.mark.parametrize("nested_loop", [False, True])
+async def test_expired_bucket_cleanup_is_bounded_and_preserves_live_quota(clients, limits, monkeypatch, nested_loop):
+    if nested_loop:
+        from treg.application import signup
+        async with session_maker() as db:
+            if db.get_bind().dialect.name != "postgresql":
+                pytest.skip("PostgreSQL query planner")
+        original = promotions.prune_signup_promo_buckets
+        async def prune(db):
+            await db.execute(text("SET LOCAL enable_hashjoin = off"))
+            await db.execute(text("SET LOCAL enable_mergejoin = off"))
+            await original(db)
+        monkeypatch.setattr(signup, "prune_signup_promo_buckets", prune)
+    old = utcnow_naive() - timedelta(seconds=1)
+    future = utcnow_naive() + timedelta(hours=1)
+    async with session_maker() as db:
+        db.add_all([SignupPromoBucket(key=f"expired-{i}", hits=[], expires_at=old) for i in range(135)])
+        db.add(SignupPromoBucket(key="live", hits=[123.0], expires_at=future))
+        await db.commit()
+    token = await verified_identity(clients, "cleanup@business.com")
+    team = await _team(clients, token, "cleanup", "203.0.113.182")
+    assert await _balance([team]) == limits.promo_grant_micro
+    async with session_maker() as db:
+        expired = (await db.execute(select(SignupPromoBucket).where(
+            SignupPromoBucket.expires_at <= old))).scalars().all()
+        assert len(expired) == 35
+        live = await db.get(SignupPromoBucket, "live")
+        assert live.hits == [123.0] and live.expires_at == future
+    token = await verified_identity(clients, "next-cleanup@business.com")
+    await _team(clients, token, "next-cleanup", "203.0.113.183")
+    async with session_maker() as db:
+        assert (await db.execute(select(SignupPromoBucket).where(
+            SignupPromoBucket.expires_at <= old))).first() is None
+
+
+async def test_cleanup_commits_before_failed_grant_and_claim_still_rolls_back(clients, monkeypatch):
+    settings = get_settings()
+    for dimension in ("ip", "domain", "global"):
+        monkeypatch.setattr(settings, f"promo_grant_{dimension}_limit", 0)
+    async with session_maker() as db:
+        db.add(SignupPromoBucket(key="expired", hits=[], expires_at=utcnow_naive() - timedelta(seconds=1)))
+        await db.commit()
+    token = await verified_identity(clients, "cleanup-failure@business.com")
+    original = money.grant
+    async def fail(*args, **kwargs):
+        await original(*args, **kwargs)
+        raise RuntimeError("synthetic failure")
+    with monkeypatch.context() as patch:
+        patch.setattr(money, "grant", fail)
+        failed = await _team(clients, token, "cleanup-failed", "203.0.113.184")
+    assert await _balance([failed]) == 0
+    async with session_maker() as db:
+        assert await db.get(SignupPromoBucket, "expired") is None
+        user = (await db.execute(select(User).where(User.email == "cleanup-failure@business.com"))).scalar_one()
+        assert user.signup_promo_available
+    retry = await _team(clients, token, "cleanup-retry", "203.0.113.184")
+    assert await _balance([retry]) == settings.promo_grant_micro
+
+
+async def test_postgres_cleanup_skips_locked_expired_bucket(clients, limits):
+    async with session_maker() as db:
+        if db.get_bind().dialect.name != "postgresql":
+            pytest.skip("PostgreSQL SKIP LOCKED")
+        db.add_all([SignupPromoBucket(key=key, hits=[], expires_at=utcnow_naive() - timedelta(seconds=1))
+                    for key in ("locked-expired", "free-expired")])
+        await db.commit()
+    token = await verified_identity(clients, "locked-cleanup@business.com")
+    async with session_maker() as blocker:
+        await blocker.execute(update(SignupPromoBucket).where(SignupPromoBucket.key == "locked-expired")
+                              .values(key=SignupPromoBucket.key))
+        team = await asyncio.wait_for(_team(clients, token, "locked-cleanup", "203.0.113.185"), 2)
+        assert await _balance([team]) == limits.promo_grant_micro
+        async with session_maker() as db:
+            assert await db.get(SignupPromoBucket, "free-expired") is None
+            assert await db.get(SignupPromoBucket, "locked-expired") is not None
 
 
 @pytest.mark.parametrize("concurrent", [False, True])

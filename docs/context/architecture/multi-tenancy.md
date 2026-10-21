@@ -176,7 +176,7 @@ Org existence and coordinate with deletion before cleanup starts. See [configura
   `list_members` carries `is_agent` so one roster can show people and machines apart.
 - **Email-domain blocklist.** The same choke points, for throwaway mail and domains used for bulk
   registration. New verified accounts can receive one promotional balance per inbox, so farming
-  many real or catch-all inboxes is additionally constrained by the transactional grant limits
+  many real or catch-all inboxes can additionally be constrained by opt-in transactional grant limits
   described in [money](money.md#signup-credit-eligibility). Repeated team creation and `+tag` /
   Gmail-dot aliases do not earn another credit. **Entirely configuration**: the classifier
   (`_is_blocked_email` in `domain/identity/access.py`, pure - it only answers; it walks the

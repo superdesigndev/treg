@@ -156,8 +156,9 @@ agents then built against a constitution that was wrong.
   Authenticated provider subjects and verified inbox links also persist independently of users;
   identity observation and grants serialize on the same inbox/subject rows. They restrict credit
   only, never merge login identities or transfer access.
-  Network/domain grant buckets share that transaction; every grant door supplies a trusted client
-  IP, including first-proof funding and onboarding. Missing evidence or exhausted quota defers
+  Network/domain/global grant limits are independently opt-in (zero disables each). Enabled
+  buckets share that transaction; every grant door supplies a trusted client IP, including
+  first-proof funding and onboarding. Missing evidence for an enabled limit or exhausted quota defers
   credit while the account/team stays usable. An installed policy extension may defer it through the `signup_credit` decision point
   (`src/treg/policy.py`, docs/context/architecture/policy-extensions.md); extensions only restrict.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives

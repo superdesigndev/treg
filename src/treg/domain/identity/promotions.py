@@ -18,6 +18,7 @@ from .access import _norm_email
 
 # Providers that deliver every dot variant of a local part to one mailbox.
 _DOTLESS_DOMAINS = {"gmail.com": "gmail.com", "googlemail.com": "gmail.com"}
+_BUCKET_GC_BATCH_SIZE = 100
 
 _domain_parts = TLDExtract(suffix_list_urls=(), cache_dir=None, include_psl_private_domains=False)
 
@@ -34,22 +35,25 @@ def _shared_domains(value: str) -> frozenset[str]:
 
 def _grant_limits(email: str, client_ip: str) -> list[tuple[str, int]]:
     settings = get_settings()
-    if "%" in client_ip:
-        raise ValueError("scoped address")
-    address = ip_address(client_ip)
-    if isinstance(address, IPv6Address) and address.ipv4_mapped:
-        address = address.ipv4_mapped
-    network = str(ip_network(f"{address}/{64 if address.version == 6 else 32}", strict=False))
-    limits = [("ip:" + sha256(network.encode()).hexdigest(), settings.promo_grant_ip_limit)]
-    domain = _domain(email)
-    if domain not in _shared_domains(settings.promo_shared_email_domains):
-        parts = _domain_parts(domain)
-        root = parts.top_domain_under_public_suffix
-        if not parts.suffix and "." in domain:
-            root = ".".join(domain.split(".")[-2:])
-        if not root:
-            raise ValueError("no registrable domain")
-        limits.append(("domain:" + sha256(root.encode()).hexdigest(), settings.promo_grant_domain_limit))
+    limits = []
+    if settings.promo_grant_ip_limit:
+        if "%" in client_ip:
+            raise ValueError("scoped address")
+        address = ip_address(client_ip)
+        if isinstance(address, IPv6Address) and address.ipv4_mapped:
+            address = address.ipv4_mapped
+        network = str(ip_network(f"{address}/{64 if address.version == 6 else 32}", strict=False))
+        limits.append(("ip:" + sha256(network.encode()).hexdigest(), settings.promo_grant_ip_limit))
+    if settings.promo_grant_domain_limit:
+        domain = _domain(email)
+        if domain not in _shared_domains(settings.promo_shared_email_domains):
+            parts = _domain_parts(domain)
+            root = parts.top_domain_under_public_suffix
+            if not parts.suffix and "." in domain:
+                root = ".".join(domain.split(".")[-2:])
+            if not root:
+                raise ValueError("no registrable domain")
+            limits.append(("domain:" + sha256(root.encode()).hexdigest(), settings.promo_grant_domain_limit))
     if settings.promo_grant_global_limit:
         limits.append(("global", settings.promo_grant_global_limit))
     return sorted(limits)
@@ -57,6 +61,19 @@ def _grant_limits(email: str, client_ip: str) -> list[tuple[str, int]]:
 
 class _CreditLimited(Exception):
     pass
+
+
+async def prune_signup_promo_buckets(db: AsyncSession) -> None:
+    """Stage one bounded sweep; the caller commits before entering the claim transaction."""
+    now = utcnow_naive()
+    expired = (select(SignupPromoBucket.key).where(SignupPromoBucket.expires_at <= now)
+               .order_by(SignupPromoBucket.expires_at).limit(_BUCKET_GC_BATCH_SIZE)
+               .with_for_update(skip_locked=True).cte("expired_signup_buckets")
+               .prefix_with("MATERIALIZED", dialect="postgresql"))
+    # Materialize once: a nested-loop DELETE can otherwise re-evaluate a limited SKIP LOCKED scan.
+    await db.execute(delete(SignupPromoBucket).where(
+        SignupPromoBucket.key.in_(select(expired.c.key)), SignupPromoBucket.expires_at <= now,
+    ).execution_options(synchronize_session=False))
 
 
 async def _admit_grant(db: AsyncSession, email: str, client_ip: str, now: datetime) -> None:
@@ -186,7 +203,7 @@ async def claim_signup_promo(db: AsyncSession, user_id: int, *, client_ip: str =
     """
     now = utcnow_naive()
     # SQLite's legacy transaction mode needs DML before SAVEPOINT, or RELEASE commits the claim.
-    await db.execute(delete(SignupPromoBucket).where(SignupPromoBucket.expires_at <= now))
+    await db.execute(update(User).where(User.id == user_id).values(id=User.id))
     try:
         async with db.begin_nested():
             result = await db.execute(

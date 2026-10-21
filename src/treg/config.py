@@ -240,8 +240,8 @@ class Settings(BaseSettings):
     # The signup gift, in micro-USD (1e-6 USD): $1 buys ~1,600 catalog calls, enough for an agent to
     # get real work done before it ever sees a payment form. Granted once per verified user, when creating an eligible team.
     promo_grant_micro: int = 1_000_000
-    promo_grant_ip_limit: int = Field(default=3, ge=1, le=10000)
-    promo_grant_domain_limit: int = Field(default=10, ge=1, le=10000)
+    promo_grant_ip_limit: int = Field(default=0, ge=0, le=10000)
+    promo_grant_domain_limit: int = Field(default=0, ge=0, le=10000)
     promo_grant_global_limit: int = Field(default=0, ge=0, le=10000)
     promo_grant_window_s: int = Field(default=86400, ge=60, le=604800)
     promo_shared_email_domains: str = (

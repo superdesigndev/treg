@@ -69,18 +69,18 @@ GitHub supplies that timestamp; Google does not. Missing or invalid timestamps r
 These are stored authenticated observations, including after switching to OTP; they are not public
 profile matches or caller-submitted risk scores. The hash is a correlation key, not proof of a
 unique human; age is only a supporting signal. Existing API-v1 handlers remain compatible.
-The eligibility/evidence read's transaction is committed before the decision, so no database
+The eligibility/evidence read and bounded expired-bucket cleanup commit before the decision, so no database
 connection waits on the extension. Private policy can use these facts without an extra signup step;
 the public default remains automatic credit, and no new scoring service is installed by this code.
 
-`defer` writes nothing: no claim row, no ledger entry, and `signup_promo_available` stays true. The
+`defer` consumes no credit state: no claim row, no ledger entry, and `signup_promo_available` stays true. The
 team (or the sign-in) proceeds as usual. The point is asked again when the same user creates their
 next team, so a later `grant` is the release path and needs no new ledger entry type. A first
 proof happens once, so a deferral there is never re-asked by a later sign-in. treg logs
 `event=signup_credit_deferred org=<id> user=<id>`. After a grant the user is no longer eligible
 and is never asked again.
 
-An explicit `grant` still passes through the transactional network/domain limits described in
+An explicit `grant` still passes through any enabled transactional network/domain/global limits described in
 [money](money.md#signup-credit-eligibility). Extensions cannot bypass those limits or the inbox
 claim or the durable provider identity claims. A policy failure cannot release credit that the
 extension was installed to restrict. Policy context is a snapshot; the atomic claim re-reads current

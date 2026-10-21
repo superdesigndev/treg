@@ -53,10 +53,11 @@ provider account and bypass this platform ownership table.
   and admin-visible invitation codes do not. `claim_signup_promo` atomically consumes the user's
   eligibility in the same transaction as the money grant; team deletion never restores it. Accounts
   predating revision `0033` receive no new automatic grant; their existing balances are unchanged.
-  Automatic grants share transactional rolling limits by IPv4 address/IPv6 subnet and registrable
-  email domain, plus an optional global limit. All proof and team-creation paths use them, including
-  OAuth and onboarding. A failing installed policy defers credit. Missing network evidence also
-  defers credit; authentication and team creation remain available. Network limits require correct
+  Automatic grants can use transactional rolling limits by IPv4 address/IPv6 subnet, registrable
+  email domain and globally. Each limit is independently opt-in and defaults to zero (disabled).
+  All proof and team-creation paths enforce enabled limits, including OAuth and onboarding.
+  A failing installed policy defers credit. Missing network evidence defers credit only when the
+  network limit is enabled; authentication and team creation remain available. Network limits require correct
   trusted-proxy configuration and origin access controls. Separate networks and domains remain a
   Sybil risk; these limits are not a one-human guarantee. Authenticated GitHub IDs and Google
   subjects are retained for promotional eligibility across email changes. GitHub's verified email

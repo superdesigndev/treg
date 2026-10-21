@@ -15,7 +15,9 @@ from ..domain import money as ledger
 from ..domain import referrals
 from ..domain.governance.teams import _make_org_membership, _slugify, reserved_reason
 from ..domain.identity.access import _email_domain, _is_blocked_email, _is_machine_email, _norm_email
-from ..domain.identity.promotions import claim_signup_promo, promo_inbox, signup_identity_evidence, signup_promo_email
+from ..domain.identity.promotions import (
+    claim_signup_promo, promo_inbox, prune_signup_promo_buckets, signup_identity_evidence, signup_promo_email,
+)
 from ..infra.db import session_maker
 from ..models import AdClickStash, Membership, Org, User
 from ..timeutil import utcnow_naive as _utcnow_naive
@@ -179,11 +181,13 @@ async def _grant_signup_promo(db: AsyncSession, org: Org, *, user_id: int, conve
 async def _policy_grants(db: AsyncSession, org_id: int, user_id: int, client_ip: str) -> bool:
     """Ask the `signup_credit` decision point, only for a user who could claim right now.
 
-    The read's transaction ends before the decision so no connection waits on the extension. A
-    deferral writes nothing: the user keeps eligibility and is asked again on their next team.
+    Housekeeping commits before the decision, releasing cleanup locks before the claim and any
+    connection before the extension. Deferral preserves eligibility for the user's next team.
     """
     email = await signup_promo_email(db, user_id)
     identities = await signup_identity_evidence(db, email) if email is not None else ()
+    if email is not None:
+        await prune_signup_promo_buckets(db)
     await db.commit()
     if email is None:
         return False

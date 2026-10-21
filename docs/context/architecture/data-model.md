@@ -167,7 +167,8 @@ verification; only the atomic identity claim consumes availability, committed wi
 See [signup eligibility](money.md#signup-credit-eligibility).
 
 Revision `0078` adds `SignupPromoBucket`: a hashed scope key, JSON grant timestamps and indexed
-expiry. Identity owns its writes; admission commits with the inbox claim and money. It has no
+expiry. Identity owns its writes; admission for enabled limits commits with the inbox claim and money.
+Expired cleanup commits separately before admission, bounded to 100 rows per eligible attempt. It has no
 user/org FK so deletion cannot clear a rate window. The same revision adds IDNA-canonical aliases
 for existing inbox claims, retaining the original keys and timestamps even after user deletion.
 See [money](money.md#signup-credit-eligibility).

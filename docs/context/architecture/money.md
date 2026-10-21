@@ -170,13 +170,14 @@ attach to the existing permanent inbox claims. Already-issued gifts are not reve
 hook receives trusted request IP and observed provider evidence for deployment-specific automatic
 decisions; no new aggregate cap or interactive verification is introduced.
 
-`claim_signup_promo` also stages admission in `SignupPromoBucket` (revision `0078`). A single
-rolling window limits grants per network and registrable email domain; an optional global limit
-bounds grants across unrelated identities. The network is IPv4 /32 or IPv6 /64; mapped IPv4 shares
-its IPv4 bucket. HTTP adapters supply `client_ip.of` to every team/proof path, including onboarding.
-Missing/invalid network or domain evidence defers credit. Trusting the correct proxy headers and
-restricting direct origin access remain deployment requirements; these limits cannot authenticate
-client-supplied forwarding headers.
+`claim_signup_promo` also stages opt-in admission in `SignupPromoBucket` (revision `0078`). Network,
+registrable email-domain and global limits are independently disabled by default (zero); positive
+values enable each within the same rolling window. The network is IPv4 /32 or IPv6 /64; mapped
+IPv4 shares its IPv4 bucket. HTTP adapters supply `client_ip.of` to every team/proof path, including onboarding.
+Missing/invalid evidence defers credit only for an enabled limit; inbox/identity reuse guards
+always apply. Disabled dimensions neither parse quota evidence nor create buckets. Trusting the
+correct proxy headers and restricting direct origin access remain deployment requirements; these
+limits cannot authenticate client-supplied forwarding headers.
 
 Domain grouping uses IDNA A-labels and the dependency's bundled public-suffix snapshot, with no
 network fetch. Private suffixes are grouped under the registrable parent so a free-subdomain
@@ -189,8 +190,11 @@ Each bucket is upserted in sorted key order, locking it before reading and appen
 Those locks last through the claim and money commit. A savepoint rolls back partial admissions
 and identity/inbox claims when any limit refuses; money failure rolls back the entire transaction.
 Alias collisions consume no additional quota. SQLite requires DML before that savepoint, or its
-legacy transaction mode would commit the claim at RELEASE. Expired buckets are removed during
-claim attempts, and keys retain hashed network/domain values rather than raw addresses. Buckets
+legacy transaction mode would commit the claim at RELEASE. `prune_signup_promo_buckets` removes
+at most 100 expired buckets in the eligibility-read transaction, committed before policy and
+admission. PostgreSQL materializes the bounded candidate set and skips locked rows, preserving
+the deletion bound across query plans and releasing cleanup locks before admission. Active rows are preserved.
+Keys retain hashed network/domain values rather than raw addresses. Buckets
 have no user/org FK, so account or team deletion cannot reset an active window.
 
 A limited account still signs in, creates teams and can top up or use its own credentials. Its
