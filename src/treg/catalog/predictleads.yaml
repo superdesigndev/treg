@@ -30,7 +30,6 @@ proposed_capabilities:
   companies.news.detail: "Get one company news event by ID"
   companies.news.feed: "Browse the latest company news events across all companies"
   companies.jobs.detail: "Get one job posting by ID"
-  companies.tech_stack.users: "Find companies that use a given technology"
   companies.tech_stack.detection: "Get the full evidence for one technology detection"
   companies.technologies.list: "Browse the catalog of tracked technologies"
   companies.technologies.detail: "Get one tracked technology by ID or name"

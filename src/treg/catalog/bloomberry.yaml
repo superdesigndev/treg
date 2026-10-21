@@ -1,0 +1,174 @@
+provider: bloomberry
+source:
+  docs: https://docs.bloomberry.com
+  openapi: https://docs.bloomberry.com/openapi.yaml # the reference pages are rendered from it; every param below was read from them
+  curated: '2026-10-20'
+# Technographics, not contacts. Bloomberry (a Revealera product) watches public infrastructure
+# records — DNS, certificate logs, new subdomains, website JavaScript — and turns them into
+# "company X uses tool Y since date Z" across 1,700+ B2B tools, so it catches tools a company's
+# website never mentions (a self-hosted Grafana, a GitLab server, an Argo CD instance, a cold-email
+# sending domain). There are NO people endpoints here. What it adds to the Enrichment shelf is the
+# DATED tech stack: most tech-stack providers answer "what runs on this website", Bloomberry answers
+# "what does this company run, and when did it start or stop".
+#
+# Four routes, three prices (docs.bloomberry.com/reference/how-api-credits-are-calculated):
+#   - /enrichments/tech.json — 1 credit per company enriched, flat whatever the vendor count; the
+#     vendor confirms a domain with no detected vendors draws nothing.
+#   - /signals/tech.json — 10 credits per tech-stack CHANGE returned. `limit` (max 20) is the price dial.
+#   - /accounts/tech.json — 2 credits per CUSTOMER returned. `limit` (max 20) is the price dial.
+#   - /vendors/all_vendors.json — free, the whole catalog in one body (it does not even check the key).
+# Auth is `?api_key=…` on every route; a bogus or missing key is 401 on the metered routes.
+# Rate limit: a per-key cap on calls per 10-second window plus a per-period credit cap, both reported
+# in response headers (X-RateLimit-Limit / -Remaining / -Reset, X-Credits-Month-Remaining).
+# The two list routes page by cursor: pass `pagination.next_token` from the previous response.
+# An unknown `vendor_name` answers HTTP 200 with {"error": "That vendor does not exist in our
+# database"} — resolve exact spellings with the free vendor catalog first.
+limits: "per-key cap on calls per 10-second window (X-RateLimit-* headers) plus the plan's monthly credit cap (X-Credits-Month-Remaining)"
+pricing_url: https://bloomberry.com/pricing.html
+
+proposed_capabilities:
+  companies.tech_stack.changes: "Companies that just adopted, dropped, upgraded or downgraded a technology — dated tech-stack change signals"
+
+endpoints:
+  - id: bloomberry.companies.tech_stack
+    added: '2026-10-20'
+    domain: companies
+    capability: companies.tech_stack
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /enrichments/tech.json
+    name: "A company's tech stack by domain, with start dates"
+    summary: "Get a list of tech vendors that this company currently uses"
+    input:
+      queryParams:
+        domain: {type: string, required: true, note: "the company's website domain, bare — no scheme, no path", example: "unifygtm.com"}
+        list_mode: {type: string, required: false, note: "'true' returns only the vendor names as {vendors: [names]} — no categories, URLs or dates; default 'false' returns full vendor objects", example: "false"}
+        category: {type: string, required: false, note: "keep only vendors in this category, e.g. 'customer relationship management'; valid values at https://api.revealera.com/categories.txt", example: "managed DNS provider"}
+        upper_level_category: {type: string, required: false, note: "keep only vendors in this upper-level category, e.g. 'Sales & Revenue'", example: "Sales & Revenue"}
+      note: "returns {vendors: [{vendor_name, vendor_category, vendor_upper_level_category, vendor_url, usage_started_at}]}; usage_started_at is a Unix timestamp in seconds, or null when the start is unknown. Detected from DNS, certificate logs, subdomains and website JavaScript, so it includes back-office and infrastructure tools a website never shows. The live unifygtm.com call returned 60+ rows, so `category` is worth it when you only care about one kind of tool"
+    test_request:
+      queryParams: {domain: "unifygtm.com", category: "managed DNS provider"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://docs.bloomberry.com/reference/how-api-credits-are-calculated
+      checked: '2026-10-20'
+      confidence: documented
+      note: "docs: '1 credit per company enrichment', flat whatever the vendor count. The vendor states a domain with no detected vendors (200 with an empty `vendors`) draws nothing; the 2026-10-20 self-check saw X-Credits-Month-Remaining unchanged on such a call."
+    docs_url: https://docs.bloomberry.com/reference/get_enrichments-tech-json
+
+  - id: bloomberry.companies.tech_stack.changes
+    added: '2026-10-20'
+    domain: companies
+    capability: companies.tech_stack.changes
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /signals/tech.json
+    name: "Who just adopted or dropped a technology — dated feed"
+    summary: "Get recent tech stack changes"
+    input:
+      queryParams:
+        vendor_name: {type: string, required: false, note: "the vendor to watch, exact spelling from https://api.revealera.com/vendors.txt (or the free vendor catalog route). Use this OR `category`, never both", example: "Clay Web Intent"}
+        category: {type: string, required: false, note: "a product category to watch, from https://api.revealera.com/categories.txt, or 'all'. Use this OR `vendor_name`", example: "CRM"}
+        domain: {type: string, required: false, note: "scope to ONE company's own changes; when set, vendor_name and category are ignored", example: "unifygtm.com"}
+        limit: {type: integer, required: false, note: "changes per page, 1–20, default 20 — the PRICE DIAL (10 credits each)", example: 1}
+        next_token: {type: string, required: false, note: "cursor from the previous response's pagination.next_token; omit for the first page"}
+        begin_date: {type: string, required: false, note: "YYYY-MM-DD start of the change-date range; default the first date in the dataset", example: "2026-10-01"}
+        end_date: {type: string, required: false, note: "YYYY-MM-DD end of the change-date range; default today"}
+        new_only: {type: string, required: false, note: "'true' keeps only new installs / new usage (adoptions)", example: "true"}
+        churn_only: {type: string, required: false, note: "'true' keeps only churn — unsubscribed, stopped usage, downgrades"}
+        company_employee_size_range: {type: string, required: false, note: "semicolon-separated headcount bands: '1 employee', '2-10', '11-50', '51-200', '201-500', '501-1,000', '1,001-5,000', '5,001-10,000', '10,001+'", example: "11-50;51-200"}
+        company_industry: {type: string, required: false, note: "semicolon-separated LinkedIn industries from https://api.revealera.com/linkedin_industries.txt", example: "Software Development"}
+        company_country: {type: string, required: false, note: "semicolon-separated ISO 3166-1 alpha-2 HQ countries", example: "US;GB"}
+        company_region: {type: string, required: false, note: "semicolon-separated HQ regions: Africa, Asia, Europe, North America, Oceania, South America"}
+        exclude_domains: {type: string, required: false, note: "semicolon-separated company domains to leave out"}
+        omit_churned: {type: string, required: false, note: "'true' drops companies that no longer use the vendor"}
+        omit_current_customers: {type: string, required: false, note: "'true' drops companies that currently use the vendor"}
+        omit_linkedin_data: {type: string, required: false, note: "'true' removes linkedin_username and linkedin_company_id from each row"}
+      note: "returns {signals: [{id, change_date, change_type, change_description, domain, company_name, industry, company_size_range, country, vendor_name, vendor_category, vendor_source, context_url, ...}], pagination: {next_token, total_items, ...}}. change_type is one of subscribed, unsubscribed, usage, stop_usage, upgrade, downgrade; vendor_source names the public record (dns record, website javascript, link found, internal subdomain). Exactly one of vendor_name / category unless `domain` is set. This is the timing signal — 'who started using X this week' — ordered newest first. An unknown vendor_name answers HTTP 200 with an `error` body"
+    test_request:
+      queryParams: {vendor_name: "Clay Web Intent", new_only: "true", limit: 1}
+    cost:
+      type: per_result
+      value: 10
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://docs.bloomberry.com/reference/how-api-credits-are-calculated
+      checked: '2026-10-20'
+      confidence: documented
+      note: "docs: '10 credits per tech stack change', whatever the change type. `limit` bounds the page and so the price; a short last page bills only the rows returned."
+    docs_url: https://docs.bloomberry.com/reference/get_signals-tech-json
+
+  - id: bloomberry.companies.tech_stack.users
+    added: '2026-10-20'
+    domain: companies
+    capability: companies.tech_stack.users
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /accounts/tech.json
+    name: "Companies currently using a technology — reverse tech lookup"
+    summary: "Get current customers"
+    input:
+      queryParams:
+        vendor_name: {type: string, required: false, note: "the vendor whose current customers to list, exact spelling from https://api.revealera.com/vendors.txt. Use this OR `category`, never both", example: "Clay Web Intent"}
+        category: {type: string, required: false, note: "a product category from https://api.revealera.com/categories.txt, or 'all'. Use this OR `vendor_name`", example: "CRM"}
+        limit: {type: integer, required: false, note: "companies per page, 1–20, default 20 — the PRICE DIAL (2 credits each)", example: 1}
+        next_token: {type: string, required: false, note: "cursor from the previous response's pagination.next_token; omit for the first page"}
+        company_employee_size_range: {type: string, required: false, note: "semicolon-separated headcount bands: '1 employee', '2-10', '11-50', '51-200', '201-500', '501-1,000', '1,001-5,000', '5,001-10,000', '10,001+'", example: "11-50;51-200"}
+        company_industry: {type: string, required: false, note: "semicolon-separated LinkedIn industries from https://api.revealera.com/linkedin_industries.txt", example: "Software Development"}
+        company_country: {type: string, required: false, note: "semicolon-separated ISO 3166-1 alpha-2 HQ countries", example: "US;GB"}
+        company_region: {type: string, required: false, note: "semicolon-separated HQ regions: Africa, Asia, Europe, North America, Oceania, South America"}
+        exclude_domains: {type: string, required: false, note: "semicolon-separated company domains to leave out"}
+        omit_linkedin_data: {type: string, required: false, note: "'true' removes linkedin_username and linkedin_company_id from each row"}
+      note: "returns {users: [{id, domain, company_name, industry, company_size_range, country, vendor_name, vendor_category, vendor_url, usage_started_at, context_url, ...}], pagination: {next_token, total_items, ...}}. The install-base list: every company running a competitor's product, or every company running the tool yours integrates with. For who just STARTED or STOPPED use the changes feed; for one company's whole stack use the enrichment route. An unknown vendor_name answers HTTP 200 with an `error` body"
+    test_request:
+      queryParams: {vendor_name: "Clay Web Intent", limit: 1}
+    cost:
+      type: per_result
+      value: 2
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://docs.bloomberry.com/reference/how-api-credits-are-calculated
+      checked: '2026-10-20'
+      confidence: documented
+      note: "docs: '2 credits per tech stack customer'. `limit` bounds the page and so the price; a short last page bills only the rows returned."
+    docs_url: https://docs.bloomberry.com/reference/get_accounts-tech-json
+
+  - id: bloomberry.companies.tech_stack.taxonomy
+    added: '2026-10-20'
+    domain: companies
+    capability: companies.tech_stack.taxonomy
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /vendors/all_vendors.json
+    name: "Every tracked vendor (free) — exact names to query"
+    summary: "Returns all possible tech vendors we have data for Results are ordered by category, then name."
+    input:
+      queryParams:
+        show_counts: {type: string, required: false, note: "'true' adds, per vendor, the number of companies Bloomberry has data for", example: "false"}
+      note: "returns a bare array of {id, name, url, topics, category, upper_level_category, market, source, associated_domains, ticker, ...} for 1,700+ vendors — one body, no paging. Use it to resolve the exact `vendor_name` and `category` spellings the changes and customers routes require"
+    test_request:
+      queryParams: {}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://docs.bloomberry.com/reference/how-api-credits-are-calculated
+      checked: '2026-10-20'
+      confidence: documented
+      note: "not on the rate card; the vendor confirms it is free. Observed 2026-10-20: the route answers 200 with the full catalog even to a bogus key, so it is useless as a connection probe (the enrichment route is used instead)."
+    docs_url: https://docs.bloomberry.com/reference/get_vendors-all-vendors-json

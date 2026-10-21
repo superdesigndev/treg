@@ -297,6 +297,8 @@ capabilities:
   companies.similar: "Find companies similar to a seed company or domain"
   companies.search.count: "Count the companies a search would return, before paying for rows"
   companies.tech_stack: "Get the technologies a company uses"
+  companies.tech_stack.users: "Find companies that use a given technology"
+  companies.tech_stack.taxonomy: "Look up exact technology names in a provider's tech-detection taxonomy"
   companies.products: "List the products and services a company sells"
   companies.funding.feed: "Browse the latest funding rounds across all companies"
   people.search.count: "Count the people a search would return, before paying for rows"

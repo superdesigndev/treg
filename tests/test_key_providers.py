@@ -536,3 +536,44 @@ async def test_financialdatasets_connect_accepts_only_valid_key_outcomes_without
                     if t["name"] == "financialdatasets")
         assert tool["health_check"] is None
         assert tool["bindings"][0]["name"] == "X-API-KEY"
+
+
+# ---- Bloomberry ----
+
+
+async def test_bloomberry_key_rides_as_api_key_query_and_probes_a_free_unknown_domain(clients, monkeypatch):
+    """Bloomberry authenticates with ?api_key=… on every route. The connect probe is the enrichment
+    route on a domain that cannot exist: a valid key answers 200 {"vendors": []} and draws no
+    credit (vendor-confirmed), a bogus key 401. The free vendor catalog is NOT the probe — it
+    answers 200 to any key."""
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/enrichments/tech.json"
+        assert request.url.params["domain"] == "treg-probe-not-found.invalid"
+        assert request.url.params["api_key"] == "own-key"
+        assert "authorization" not in request.headers
+        return httpx.Response(200, json={"vendors": []})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "bloomberry", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "bloomberry")
+    binding = tool["bindings"][0]
+    assert binding["location"] == "query"
+    assert binding["name"] == "api_key" and binding["format"] == "{secret}"
+
+
+async def test_bloomberry_bogus_key_is_refused(clients, monkeypatch):
+    def probe(request):
+        return httpx.Response(401, json={"error": "You are not authorized!"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "bloomberry", "token": "bogus"},
+        )
+    assert response.status_code != 200, response.text

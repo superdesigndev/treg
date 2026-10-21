@@ -1675,6 +1675,32 @@ ZEROBOUNCE = OAuthProvider(
     probe_path="/v2/getapiusage?start_date=2026-01-01&end_date=2026-12-31",
 )
 
+BLOOMBERRY = OAuthProvider(
+    service="bloomberry", display_name="Bloomberry", auth_kind="key",
+    token_label="API key", token_placeholder="your Bloomberry API key",
+    # Bloomberry authenticates every route with `?api_key=…` (docs.bloomberry.com/docs/getting-started);
+    # there is no header form.
+    token_location="query", token_param="api_key", token_format="{secret}",
+    setup_url="https://bloomberry.com/signup.html",
+    setup_action_label="Get your Bloomberry API key",
+    setup_steps=("Sign up at bloomberry.com — the free key carries 1,000 credits.",
+                 "Copy the API key from the welcome email or your account page and paste it here."),
+    setup_note=("Company tech-stack enrichment costs 1 credit when vendors are found (a domain with "
+                "none costs nothing); tech-stack changes cost 10 credits per change returned and "
+                "tech-stack customers 2 per company returned. The vendor catalog is free, and so is "
+                "the connection check."),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=("Technographics: which of 1,700+ B2B tools a company uses, who just adopted or dropped "
+             "a vendor, and every current customer of one — with usage start dates."),
+    base_url="https://api.revealera.com",
+    docs_url="https://docs.bloomberry.com",
+    # Live 2026-10-20: a bogus key and a missing key both return 401 on this route; a valid key
+    # returns 200 {"vendors": []} for an unknown domain, which the vendor confirms draws no credit.
+    # The free catalog route (/vendors/all_vendors.json) is NOT a usable probe: it ignores the key.
+    probe_path="/enrichments/tech.json?domain=treg-probe-not-found.invalid",
+)
+
 DATAGMA = OAuthProvider(
     service="datagma", display_name="Datagma", auth_kind="key",
     token_label="API ID", token_placeholder="your Datagma API ID",
@@ -3987,7 +4013,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
-        QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
+        QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA, BLOOMBERRY,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
         REPLICATE,

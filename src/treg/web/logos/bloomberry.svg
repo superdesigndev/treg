@@ -1,0 +1,5 @@
+<!-- Neutral lettermark for Bloomberry (bloomberry.com); drawn for treg, not the vendor's own icon -->
+<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0.5" y="0.5" width="15" height="15" rx="3" fill="#6B3FA0"/>
+  <text x="8" y="12" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="10.5" font-weight="700" fill="#FFFFFF">B</text>
+</svg>

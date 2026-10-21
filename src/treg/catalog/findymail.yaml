@@ -543,7 +543,6 @@ endpoints:
     docs_url: https://app.findymail.com/docs/
 
 proposed_capabilities:
-  companies.tech_stack.taxonomy: "Look up exact technology names in a provider's tech-detection taxonomy"
   companies.search.status: "Check the progress of an async company-search job"
   companies.search.results: "Read the results of a completed async company-search job"
   companies.signals: "Buying and intent signals detected for companies"
