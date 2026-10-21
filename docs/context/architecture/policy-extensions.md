@@ -62,8 +62,16 @@ a team (`signup.grant_signup_promo_on_proof`, for the oldest such team), only fo
 claim right now
 (`promotions.signup_promo_email`: verified, still eligible, not suspended, not demo), and only
 when the grant amount is above zero. The context is the user and team IDs, the login email and its
-canonical inbox (`promo_inbox`). The eligibility read's transaction is committed before the
-decision, so no database connection waits on the extension.
+canonical inbox (`promo_inbox`). Additive, defaulted context fields also carry `client_ip` from the
+trusted-proxy adapter and an immutable tuple of `SignupCreditIdentity` observations: provider,
+hashed durable subject, and an optional provider-reported account creation time (naive UTC).
+GitHub supplies that timestamp; Google does not. Missing or invalid timestamps remain unknown.
+These are stored authenticated observations, including after switching to OTP; they are not public
+profile matches or caller-submitted risk scores. The hash is a correlation key, not proof of a
+unique human; age is only a supporting signal. Existing API-v1 handlers remain compatible.
+The eligibility/evidence read's transaction is committed before the decision, so no database
+connection waits on the extension. Private policy can use these facts without an extra signup step;
+the public default remains automatic credit, and no new scoring service is installed by this code.
 
 `defer` writes nothing: no claim row, no ledger entry, and `signup_promo_available` stays true. The
 team (or the sign-in) proceeds as usual. The point is asked again when the same user creates their
@@ -74,7 +82,9 @@ and is never asked again.
 
 An explicit `grant` still passes through the transactional network/domain limits described in
 [money](money.md#signup-credit-eligibility). Extensions cannot bypass those limits or the inbox
-claim. A policy failure cannot release credit that the extension was installed to restrict.
+claim or the durable provider identity claims. A policy failure cannot release credit that the
+extension was installed to restrict. Policy context is a snapshot; the atomic claim re-reads current
+identity links and consumption before money moves.
 
 A user who believes their signup credit was withheld in error contacts the deployment's support;
 an operator can grant credit through the ordinary admin grant.

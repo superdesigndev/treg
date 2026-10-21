@@ -343,6 +343,10 @@ bearer path refuses it once expired rather than reviving an expired cookie.
   but cannot call or read team resources. **`create_org` uses `require_identity`, NOT
   `require_member`** — else a zero-org user could never make their first team — and returns the new
   membership's team-scoped Default key. See [api](../interface/api.md).
+- **Social evidence:** GitHub always reads the authenticated verified-email list, including its
+  pages; public profile email alone cannot prove an inbox. Both providers require a well-formed
+  durable subject before provisioning. Successful proofs retain provider/inbox associations for
+  [signup credit](money.md#signup-credit-eligibility), without combining users or their access.
 - **Code-free invites:** `my_invites` (`GET /invites/mine`, `require_identity`) lists pending invites for
   the caller's proven email, newest creation time first with descending ID breaking timestamp ties; `accept_my_invite` (`POST /invites/{id}/accept`, `require_identity`) joins
   with no code (403 if `invite.email != user.email`, 409 if already a member). The code path stays.

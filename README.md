@@ -27,6 +27,7 @@ bills fractions of a cent per call.
   route that needs no provider key. Own-key calls use the team's prepaid balance; anonymous calls
   are free. No account with the provider is needed. New verified accounts receive **$1.00 free**
   once, when they create an eligible team, subject to abuse checks and grant limits.
+  Observed aliases of one inbox or provider account share that gift, including across login methods.
 - **Your own tools** — anything a teammate registered: a paid API account, an OAuth connection, a
   vendor CLI, a `SKILL.md`. **Your own key always wins over treg's, and those calls are never
   metered.**

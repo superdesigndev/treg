@@ -179,7 +179,8 @@ async def test_deferred_credit_stays_claimable(clients, monkeypatch, caplog):
         assert (await db.execute(select(SignupPromoClaim).where(
             SignupPromoClaim.user_id == user.id))).scalars().all() == []
     assert seen == [policy.SignupCreditContext(
-        user_id=user.id, org_id=first, email="farm.er+one@gmail.com", canonical_inbox="farmer@gmail.com")]
+        user_id=user.id, org_id=first, email="farm.er+one@gmail.com", canonical_inbox="farmer@gmail.com",
+        client_ip="127.0.0.1")]
 
     decision = policy.CreditDecision.GRANT
     second = await _team(clients, token, "granted")

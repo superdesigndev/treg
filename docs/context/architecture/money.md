@@ -43,7 +43,9 @@ sources:
   - src/treg/alembic/versions/0033_signup_promo_eligibility.py
   - src/treg/alembic/versions/0071_signup_promo_claim.py
   - src/treg/alembic/versions/0078_signup_promo_buckets.py
+  - src/treg/alembic/versions/0079_signup_promo_identities.py
   - tests/test_signup_promo_limits.py
+  - tests/test_signup_promo_identities.py
   - src/treg/routers/admin.py
   - src/treg/routers/billing.py
   - src/treg/routers/call.py
@@ -146,6 +148,28 @@ Before claiming, `_grant_signup_promo` asks the `signup_credit` decision point
 handler the policy permits automatic credit. A slow, failing or malformed installed handler
 instead defers (and is reported). A `defer` skips the claim, preserving eligibility.
 
+Revision `0079` adds permanent `SignupPromoIdentity` state and `SignupPromoLink` edges, owned by
+identity promotions. Keys hash a canonical inbox or authenticated provider subject under separate
+namespaces. GitHub's numeric ID and all fetched verified emails, or Google's opaque `sub` and
+current verified email, are remembered on every successful social login, including after funding.
+Old observations are retained. No user/org FK can cascade them away, and they never merge users,
+memberships or authentication access. Independent provider accounts still qualify automatically.
+
+`remember_signup_identity` locks the login user, then sorted observed inbox keys, then the provider
+subject. It consults existing permanent inbox claims, so an email grant made before linking a
+provider marks the observed identities consumed. `claim_signup_promo` locks the user, then its inbox
+before reading provider links, then sorted subject keys. Claimed identities refuse another gift;
+new consumption commits with the inbox claim and money, and rolls back on quota or money failure.
+Inbox locks arbitrate concurrent OAuth evidence attachment and OTP grants. These are direct
+provider/inbox associations, not a transitive person graph or a device fingerprint.
+
+This closes credit reuse through observed provider subjects and verified aliases across networks
+and login doors. It cannot infer undisclosed aliases or link independent verified account pools.
+Historical provider IDs were discarded and cannot be backfilled; later successful provider proofs
+attach to the existing permanent inbox claims. Already-issued gifts are not reversed. The policy
+hook receives trusted request IP and observed provider evidence for deployment-specific automatic
+decisions; no new aggregate cap or interactive verification is introduced.
+
 `claim_signup_promo` also stages admission in `SignupPromoBucket` (revision `0078`). A single
 rolling window limits grants per network and registrable email domain; an optional global limit
 bounds grants across unrelated identities. The network is IPv4 /32 or IPv6 /64; mapped IPv4 shares
@@ -176,9 +200,11 @@ users, while distributed identities can use unrelated networks/domains; these ar
 limits, not a one-person proof. Raising a cap or changing the window changes admission policy;
 retrospective history is not rebuilt. Signup conversion semantics remain per team.
 
-Rollout: apply `0078` before serving the new code, with automatic credit disabled until every
+Rollout: apply through `0079` before serving the new code, with automatic credit disabled until every
 serving instance runs the admission guard. Existing claims and balances are preserved; new quota
-windows start empty. Do not drop the table or roll back to an unguarded writer with credit enabled.
+windows start empty. Do not drop admission/evidence tables or roll back to an unguarded writer with
+credit enabled. Revision `0079` is also a rollback floor: removing its state permits reuse of
+consumed provider identities.
 
 Revision `0033` defaults historical users and old writers to ineligible without scanning potentially
 deleted team ledgers. New application User rows explicitly start eligible. Verification never resets

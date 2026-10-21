@@ -22,6 +22,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Protocol
@@ -39,12 +40,21 @@ _log = logging.getLogger("treg")
 
 
 @dataclass(frozen=True)
+class SignupCreditIdentity:
+    provider: str
+    subject_hash: str
+    account_created_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class SignupCreditContext:
     """A verified user is about to claim the one-time signup credit for a team they created."""
     user_id: int
     org_id: int
     email: str
     canonical_inbox: str  # the mailbox the credit is limited to (`promotions.promo_inbox`)
+    client_ip: str = ""
+    identities: tuple[SignupCreditIdentity, ...] = ()
 
 
 class CreditDecision(StrEnum):

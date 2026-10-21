@@ -132,20 +132,21 @@ async def test_social_accounts_share_the_same_credit_limit(clients, limits, monk
 
     monkeypatch.setattr(limits, "promo_grant_ip_limit", 1)
     monkeypatch.setattr(limits, f"{provider}_client_id", "test-client")
-    current = {"email": ""}
+    current = {"email": "", "id": 0}
     def upstream(request):
         if request.method == "POST":
             return httpx.Response(200, json={"access_token": "test-access"})
         if request.url.path == "/user":
-            return httpx.Response(200, json={"login": "test", "email": None})
+            return httpx.Response(200, json={"id": current["id"], "login": "test", "email": None})
         if request.url.path == "/user/emails":
             return httpx.Response(200, json=[{"email": current["email"], "verified": True, "primary": True}])
-        return httpx.Response(200, json={"email": current["email"], "email_verified": True})
+        return httpx.Response(200, json={"sub": current["email"], "email": current["email"], "email_verified": True})
     ids = []
     async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as outbound:
         with monkeypatch.context() as patch:
             patch.setattr(app.state, "http", outbound)
             for i in range(2):
+                current["id"] = i + 100
                 current["email"] = f"social{i}@provider{i}.com"
                 if team_before_proof:
                     response = await clients.post("/users", json={"email": current["email"]})

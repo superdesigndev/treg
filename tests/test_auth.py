@@ -35,7 +35,7 @@ def _github_app() -> FastAPI:
 
     @g.get("/user")
     async def user() -> dict:
-        return {"login": "octo", "email": None}  # force the /user/emails path
+        return {"id": 123, "login": "octo", "email": None}
 
     @g.get("/user/emails")
     async def emails() -> list:
@@ -394,7 +394,7 @@ def _google_app():
 
     @g.get("/userinfo")
     async def userinfo() -> dict:
-        return {"email": "guser@example.com", "email_verified": True}
+        return {"sub": "google-user", "email": "guser@example.com", "email_verified": True}
 
     return g
 

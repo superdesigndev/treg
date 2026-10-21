@@ -50,6 +50,7 @@ sources:
   - src/treg/alembic/versions/0033_signup_promo_eligibility.py
   - src/treg/alembic/versions/0071_signup_promo_claim.py
   - src/treg/alembic/versions/0078_signup_promo_buckets.py
+  - src/treg/alembic/versions/0079_signup_promo_identities.py
   - src/treg/alembic/versions/0041_searchlog.py
   - src/treg/alembic/versions/0055_find_v2_log.py
   - src/treg/alembic/versions/0056_searchlog_verdict.py
@@ -174,6 +175,11 @@ See [money](money.md#signup-credit-eligibility).
 Revision `0071` adds `SignupPromoClaim` (`inbox` primary key, `user_id` with no FK, `created_at`):
 one row per mailbox that received the signup gift, staged with the user-level claim. It is
 backfilled from users already verified and no longer eligible.
+
+Revision `0079` adds `SignupPromoIdentity` (namespaced hashed key, consumed flag and optional provider
+account creation time) and `SignupPromoLink` (inbox/subject composite primary key). Identity owns
+both, with no cascading FK or expiry; see [money](money.md#signup-credit-eligibility) for locking,
+historical evidence limits and rollback constraints. They affect credit eligibility only.
 
 ## Org flow-control configuration storage
 

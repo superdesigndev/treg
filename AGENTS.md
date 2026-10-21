@@ -153,6 +153,9 @@ agents then built against a constitution that was wrong.
 - **Signup credit.** Once per new verified user and once per inbox (IDNA domains, Gmail dots and `+tag` aliases
   share one), enforced by a user-level atomic claim plus a `SignupPromoClaim` row committed with
   the grant. Team deletion never restores eligibility; legacy registration is not email proof.
+  Authenticated provider subjects and verified inbox links also persist independently of users;
+  identity observation and grants serialize on the same inbox/subject rows. They restrict credit
+  only, never merge login identities or transfer access.
   Network/domain grant buckets share that transaction; every grant door supplies a trusted client
   IP, including first-proof funding and onboarding. Missing evidence or exhausted quota defers
   credit while the account/team stays usable. An installed policy extension may defer it through the `signup_credit` decision point

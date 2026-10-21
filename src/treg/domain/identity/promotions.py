@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tldextract import TLDExtract
 
 from ...config import get_settings
-from ...models import SignupPromoBucket, SignupPromoClaim, User
+from ...models import SignupPromoBucket, SignupPromoClaim, SignupPromoIdentity, SignupPromoLink, User
 from ...timeutil import utcnow_naive
 from .access import _norm_email
 
@@ -97,6 +97,71 @@ def promo_inbox(email: str) -> str:
     return f"{local}@{domain}"
 
 
+def _identity_key(namespace: str, value: str) -> str:
+    return namespace + ":" + sha256(value.encode()).hexdigest()
+
+
+async def _lock_identity(db: AsyncSession, key: str) -> bool:
+    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
+    stmt = insert(SignupPromoIdentity).values(key=key, claimed=False)
+    return (await db.execute(stmt.on_conflict_do_update(
+        index_elements=[SignupPromoIdentity.key], set_={"key": stmt.excluded.key},
+    ).returning(SignupPromoIdentity.claimed))).scalar_one()
+
+
+async def remember_signup_identity(
+    db: AsyncSession, user_id: int, *, provider: str, subject: str,
+    verified_emails: tuple[str, ...], account_created_at: datetime | None = None,
+) -> None:
+    """Store authenticated evidence only; never merge login users or transfer account access.
+
+    Both observation and claiming lock the inbox before its provider subjects. This prevents an
+    OTP grant racing an OAuth observation from missing the other's committed consumption.
+    """
+    if provider not in {"github", "google"} or not subject or not verified_emails:
+        raise ValueError("missing provider evidence")
+    await db.execute(update(User).where(User.id == user_id).values(id=User.id))
+    inboxes = {promo_inbox(email) for email in verified_emails}
+    inbox_keys = sorted(_identity_key("email", inbox) for inbox in inboxes)
+    consumed = False
+    for key in inbox_keys:
+        consumed |= await _lock_identity(db, key)
+    subject_key = _identity_key(provider, subject)
+    consumed |= await _lock_identity(db, subject_key)
+    consumed |= (await db.execute(select(SignupPromoClaim.inbox).where(
+        SignupPromoClaim.inbox.in_(inboxes)).limit(1))).first() is not None
+    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
+    for key in inbox_keys:
+        await db.execute(insert(SignupPromoLink).values(inbox_key=key, subject_key=subject_key)
+                         .on_conflict_do_nothing())
+    if account_created_at is not None:
+        await db.execute(update(SignupPromoIdentity).where(SignupPromoIdentity.key == subject_key)
+                         .values(account_created_at=account_created_at))
+    if consumed:
+        await db.execute(update(SignupPromoIdentity).where(
+            SignupPromoIdentity.key.in_([*inbox_keys, subject_key])).values(claimed=True))
+
+
+async def signup_identity_evidence(db: AsyncSession, email: str) -> tuple[tuple[str, str, datetime | None], ...]:
+    rows = (await db.execute(select(SignupPromoIdentity.key, SignupPromoIdentity.account_created_at)
+        .join(SignupPromoLink, SignupPromoLink.subject_key == SignupPromoIdentity.key)
+        .where(SignupPromoLink.inbox_key == _identity_key("email", promo_inbox(email)))
+        .order_by(SignupPromoIdentity.key))).all()
+    return tuple((*key.split(":", 1), created) for key, created in rows)
+
+
+async def _claim_identities(db: AsyncSession, email: str) -> bool:
+    inbox_key = _identity_key("email", promo_inbox(email))
+    consumed = await _lock_identity(db, inbox_key)
+    subjects = (await db.execute(select(SignupPromoLink.subject_key).where(
+        SignupPromoLink.inbox_key == inbox_key).order_by(SignupPromoLink.subject_key))).scalars().all()
+    for key in subjects:
+        consumed |= await _lock_identity(db, key)
+    await db.execute(update(SignupPromoIdentity).where(
+        SignupPromoIdentity.key.in_([inbox_key, *subjects])).values(claimed=True))
+    return not consumed
+
+
 def _eligible(user_id: int) -> tuple:
     return (
         User.id == user_id,
@@ -129,6 +194,8 @@ async def claim_signup_promo(db: AsyncSession, user_id: int, *, client_ip: str =
             )
             email = result.scalar_one_or_none()
             if email is None:
+                return False
+            if not await _claim_identities(db, email):
                 return False
             insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
             claimed = await db.execute(

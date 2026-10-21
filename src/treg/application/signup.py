@@ -15,7 +15,7 @@ from ..domain import money as ledger
 from ..domain import referrals
 from ..domain.governance.teams import _make_org_membership, _slugify, reserved_reason
 from ..domain.identity.access import _email_domain, _is_blocked_email, _is_machine_email, _norm_email
-from ..domain.identity.promotions import claim_signup_promo, promo_inbox, signup_promo_email
+from ..domain.identity.promotions import claim_signup_promo, promo_inbox, signup_identity_evidence, signup_promo_email
 from ..infra.db import session_maker
 from ..models import AdClickStash, Membership, Org, User
 from ..timeutil import utcnow_naive as _utcnow_naive
@@ -160,7 +160,7 @@ async def _grant_signup_promo(db: AsyncSession, org: Org, *, user_id: int, conve
     org_id = org.id
     amount = get_settings().promo_grant_micro
     try:
-        claimed = amount > 0 and await _policy_grants(db, org_id, user_id) and await claim_signup_promo(
+        claimed = amount > 0 and await _policy_grants(db, org_id, user_id, client_ip) and await claim_signup_promo(
             db, user_id, client_ip=client_ip)
         try:
             if conversion:
@@ -176,18 +176,20 @@ async def _grant_signup_promo(db: AsyncSession, org: Org, *, user_id: int, conve
         logging.getLogger("treg").warning("promo grant failed for org %s: %s", org_id, exc)
 
 
-async def _policy_grants(db: AsyncSession, org_id: int, user_id: int) -> bool:
+async def _policy_grants(db: AsyncSession, org_id: int, user_id: int, client_ip: str) -> bool:
     """Ask the `signup_credit` decision point, only for a user who could claim right now.
 
     The read's transaction ends before the decision so no connection waits on the extension. A
     deferral writes nothing: the user keeps eligibility and is asked again on their next team.
     """
     email = await signup_promo_email(db, user_id)
+    identities = await signup_identity_evidence(db, email) if email is not None else ()
     await db.commit()
     if email is None:
         return False
     decision = await policy.registry.signup_credit(policy.SignupCreditContext(
         user_id=user_id, org_id=org_id, email=email, canonical_inbox=promo_inbox(email),
+        client_ip=client_ip, identities=tuple(policy.SignupCreditIdentity(*identity) for identity in identities),
     ))
     if decision is not policy.CreditDecision.GRANT:
         logging.getLogger("treg").info("event=signup_credit_deferred org=%s user=%s", org_id, user_id)
