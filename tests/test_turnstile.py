@@ -177,15 +177,31 @@ async def test_enforce_outage_signs_in_without_credit(clients, widget, monkeypat
         assert all(entry.meta.get("user_id") != user.id for entry in grants)
 
 
-async def test_enforce_outage_never_touches_an_existing_user(clients, widget, monkeypatch):
+@pytest.mark.parametrize("already_verified", [False, True])
+async def test_enforce_outage_only_preserves_an_already_verified_user(clients, widget, monkeypatch, already_verified):
+    from treg.timeutil import utcnow_naive
     async with session_maker() as db:
-        db.add(User(email="existing@example.org"))
+        db.add(User(email="existing@example.org",
+                    email_verified_at=utcnow_naive() if already_verified else None))
         await db.commit()
     monkeypatch.setattr(get_settings(), "turnstile_mode", "enforce")
     widget["answer"] = httpx.ConnectError("down")
     response, balance = await _sign_up_and_fund(clients, "existing@example.org", "tok")
     assert response.status_code == 200
-    assert balance == get_settings().promo_grant_micro
+    assert balance == (get_settings().promo_grant_micro if already_verified else 0)
+
+
+async def test_legacy_registration_cannot_bypass_captcha_outage(clients, widget, monkeypatch):
+    registered = await clients.post("/users", json={"email": "precreated@example.org"})
+    assert registered.status_code == 200
+    monkeypatch.setattr(get_settings(), "turnstile_mode", "enforce")
+    widget["answer"] = httpx.ConnectError("down")
+    response, balance = await _sign_up_and_fund(clients, "precreated@example.org", "tok")
+    assert response.status_code == 200 and balance == 0
+    async with session_maker() as db:
+        org = await db.get(Org, registered.json()["org_id"])
+        user = (await db.execute(select(User).where(User.email == "precreated@example.org"))).scalar_one()
+        assert org.balance_micro == 0 and not user.signup_promo_available
 
 
 @pytest.mark.parametrize(("token", "reason"), [

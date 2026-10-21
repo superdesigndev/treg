@@ -13,11 +13,8 @@ Extensions can only restrict. Each decision point defines its outcomes and what 
 extension is slow or fails; the extension cannot change either. A point with no handler runs its
 public default, which is treg's behavior without any extension.
 
-A failing extension is almost always a bug or a misconfiguration on the operator's side, not
-something a caller can trigger, so every point falls back to its public default and reports the
-failure (a log line and a fault event) for the operator to fix. An extension that wants to be
-strict when its own state is missing (a counter store down, say) decides that itself and answers
-normally.
+A failing credit extension defers funding and reports the failure (a log line and a fault event).
+Authentication and team creation continue; failure cannot silently remove a deployment's guard.
 """
 from __future__ import annotations
 
@@ -25,6 +22,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING, Protocol
@@ -42,12 +40,21 @@ _log = logging.getLogger("treg")
 
 
 @dataclass(frozen=True)
+class SignupCreditIdentity:
+    provider: str
+    subject_hash: str
+    account_created_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class SignupCreditContext:
     """A verified user is about to claim the one-time signup credit for a team they created."""
     user_id: int
     org_id: int
     email: str
     canonical_inbox: str  # the mailbox the credit is limited to (`promotions.promo_inbox`)
+    client_ip: str = ""
+    identities: tuple[SignupCreditIdentity, ...] = ()
 
 
 class CreditDecision(StrEnum):
@@ -72,7 +79,7 @@ class PolicyRegistry:
         self._signup_credit = handler
 
     async def signup_credit(self, ctx: SignupCreditContext) -> CreditDecision:
-        """Default GRANT, also when the handler is slow, raises or answers anything else.
+        """No handler grants; an installed handler must explicitly grant or credit is deferred.
 
         The budget cancels a handler at its next await; a handler that blocks the event loop is
         not interrupted, so handlers must not block.
@@ -82,10 +89,10 @@ class PolicyRegistry:
         try:
             async with asyncio.timeout(SIGNUP_CREDIT_BUDGET_S):
                 decision = await self._signup_credit(ctx)
-        except Exception as exc:  # noqa: BLE001 - any extension failure takes the default
-            return _failed("signup_credit", type(exc).__name__, CreditDecision.GRANT)
+        except Exception as exc:  # noqa: BLE001 - unapproved credit must stay unclaimed
+            return _failed("signup_credit", type(exc).__name__, CreditDecision.DEFER)
         if not isinstance(decision, CreditDecision):
-            return _failed("signup_credit", "BadOutcome", CreditDecision.GRANT)
+            return _failed("signup_credit", "BadOutcome", CreditDecision.DEFER)
         return decision
 
 

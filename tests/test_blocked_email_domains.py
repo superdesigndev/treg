@@ -205,7 +205,11 @@ def _github_idp(email: str) -> FastAPI:
 
     @g.get("/user")
     async def user() -> dict:
-        return {"login": "farm", "email": email}
+        return {"id": 123, "login": "farm", "email": email}
+
+    @g.get("/user/emails")
+    async def emails() -> list:
+        return [{"email": email, "primary": True, "verified": True}]
 
     return g
 
@@ -219,7 +223,7 @@ def _google_idp(email: str) -> FastAPI:
 
     @g.get("/userinfo")
     async def userinfo() -> dict:
-        return {"email": email, "email_verified": True}
+        return {"sub": "google-user", "email": email, "email_verified": True}
 
     return g
 

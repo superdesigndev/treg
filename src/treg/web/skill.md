@@ -36,7 +36,7 @@ treg's MCP server to them once you are signed in. Given a token, the installer d
 Everything runs in the **active team**. Invites arrive by email: `treg invites` lists them,
 `treg accept` takes one (or `treg org join <code>`); `treg org use <slug>` switches teams. A new
 verified account gets $1.00 of credit once, on its first eligible team; aliases of one inbox (`+tag`,
-Gmail dots) share it.
+Gmail dots) share it. Signup credit is subject to abuse checks and any configured grant limits.
 
 **Over MCP** (`{BASE}/mcp/`), tools replace the CLI, and everything here maps onto them:
 

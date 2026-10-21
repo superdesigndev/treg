@@ -64,6 +64,40 @@ async def test_alembic_head_has_no_model_drift():
         await db.reset_db()
 
 
+async def test_signup_claim_upgrade_preserves_idna_aliases_even_after_user_deletion(clients):
+    from conftest import verified_identity
+    from treg.models import SignupPromoClaim
+    from treg.timeutil import utcnow_naive
+
+    await audit.drain()
+    await _drop_everything()
+    try:
+        await _upgrade_to("0077")
+        now = utcnow_naive()
+        originals = {"same@bücher.de": 10, "a.b@ｇｍａｉｌ.com": 11,
+                     "exists@bücher.de": 12, "exists@xn--bcher-kva.de": 13}
+        async with db.session_maker() as session:
+            session.add_all(SignupPromoClaim(inbox=inbox, user_id=user_id, created_at=now)
+                            for inbox, user_id in originals.items())
+            await session.commit()
+        await _upgrade_to("head")
+        async with db.session_maker() as session:
+            rows = (await session.execute(select(SignupPromoClaim))).scalars().all()
+            assert {row.inbox: row.user_id for row in rows} == {
+                **originals, "same@xn--bcher-kva.de": 10, "ab@gmail.com": 11}
+            assert all(row.created_at == now for row in rows)
+        for email in ("same@xn--bcher-kva.de", "a.b@gmail.com"):
+            token = await verified_identity(clients, email)
+            team = await clients.post("/orgs", json={"name": "after-upgrade"},
+                                      headers={"X-Treg-Token": token})
+            assert team.status_code == 200, team.text
+            async with db.session_maker() as session:
+                assert (await session.get(Org, team.json()["org_id"])).balance_micro == 0
+    finally:
+        await _drop_everything()
+        await db.reset_db()
+
+
 async def _insert_at_revision(session, model, **fields) -> None:
     """Insert a row using only the columns the CURRENT schema revision has for `model`'s table."""
     name = model.__tablename__

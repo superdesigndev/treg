@@ -239,6 +239,25 @@ class SignupPromoClaim(SQLModel, table=True):
     created_at: NaiveUTC = Field(default_factory=_now)
 
 
+class SignupPromoBucket(SQLModel, table=True):
+    key: str = Field(primary_key=True)
+    hits: list[float] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    expires_at: NaiveUTC = Field(index=True)
+
+
+class SignupPromoIdentity(SQLModel, table=True):
+    """Durable credit evidence, independent of login identities and team/account deletion."""
+
+    key: str = Field(primary_key=True)
+    claimed: bool = Field(default=False)
+    account_created_at: NaiveUTC | None = Field(default=None)
+
+
+class SignupPromoLink(SQLModel, table=True):
+    inbox_key: str = Field(primary_key=True)
+    subject_key: str = Field(primary_key=True)
+
+
 class Membership(SQLModel, table=True):
     """Links a User to an Org with a role, and carries that pairing's token.
     The caller presents a token; we store only its SHA-256 hash. Access = "are you a member

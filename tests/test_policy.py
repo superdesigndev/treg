@@ -42,43 +42,44 @@ def faults(monkeypatch):
 
 
 def _assert_failed(caplog, faults, error):
-    assert f"event=policy_failed point=signup_credit error={error} outcome=grant" in caplog.text
+    assert f"event=policy_failed point=signup_credit error={error} outcome=defer" in caplog.text
     assert faults == [{"component": "policy", "fault_type": "PolicyFailed", "value": f"signup_credit {error}"}]
 
 
-async def test_slow_handler_falls_back_to_grant(monkeypatch, caplog, faults):
+async def test_slow_handler_defers(monkeypatch, caplog, faults):
     monkeypatch.setattr(policy, "SIGNUP_CREDIT_BUDGET_S", 0.01)
 
     async def handler(ctx):
         await asyncio.sleep(1)
         return policy.CreditDecision.DEFER
     with caplog.at_level(logging.WARNING, logger="treg"):
-        assert await _registry(handler).signup_credit(CTX) is policy.CreditDecision.GRANT
+        assert await _registry(handler).signup_credit(CTX) is policy.CreditDecision.DEFER
     _assert_failed(caplog, faults, "TimeoutError")
 
 
-async def test_failing_handler_falls_back_to_grant(caplog, faults):
+async def test_failing_handler_defers(caplog, faults):
     async def handler(ctx):
         raise ValueError("rule-name-123")
     with caplog.at_level(logging.WARNING, logger="treg"):
-        assert await _registry(handler).signup_credit(CTX) is policy.CreditDecision.GRANT
+        assert await _registry(handler).signup_credit(CTX) is policy.CreditDecision.DEFER
     _assert_failed(caplog, faults, "ValueError")
     assert "rule-name-123" not in caplog.text + repr(faults)  # an extension's message may name its rule
 
 
-async def test_unknown_outcome_falls_back_to_grant(caplog, faults):
+@pytest.mark.parametrize("outcome", [None, True, "grant", "defer", {}])
+async def test_unknown_outcome_defers(caplog, faults, outcome):
     async def handler(ctx):
-        return "defer"  # a plain string is not a CreditDecision
+        return outcome
     with caplog.at_level(logging.WARNING, logger="treg"):
-        assert await _registry(handler).signup_credit(CTX) is policy.CreditDecision.GRANT
+        assert await _registry(handler).signup_credit(CTX) is policy.CreditDecision.DEFER
     _assert_failed(caplog, faults, "BadOutcome")
 
 
-async def test_sync_handler_falls_back_to_grant(caplog, faults):
+async def test_sync_handler_defers(caplog, faults):
     def handler(ctx):  # not awaitable
         return policy.CreditDecision.DEFER
     with caplog.at_level(logging.WARNING, logger="treg"):
-        assert await _registry(handler).signup_credit(CTX) is policy.CreditDecision.GRANT
+        assert await _registry(handler).signup_credit(CTX) is policy.CreditDecision.DEFER
     _assert_failed(caplog, faults, "TypeError")
 
 
@@ -178,7 +179,8 @@ async def test_deferred_credit_stays_claimable(clients, monkeypatch, caplog):
         assert (await db.execute(select(SignupPromoClaim).where(
             SignupPromoClaim.user_id == user.id))).scalars().all() == []
     assert seen == [policy.SignupCreditContext(
-        user_id=user.id, org_id=first, email="farm.er+one@gmail.com", canonical_inbox="farmer@gmail.com")]
+        user_id=user.id, org_id=first, email="farm.er+one@gmail.com", canonical_inbox="farmer@gmail.com",
+        client_ip="127.0.0.1")]
 
     decision = policy.CreditDecision.GRANT
     second = await _team(clients, token, "granted")
@@ -201,13 +203,32 @@ async def test_ineligible_users_never_reach_the_point(clients, monkeypatch):
     assert seen == []
 
 
-async def test_failing_extension_grants_and_signup_succeeds(clients, monkeypatch, faults):
+@pytest.mark.parametrize("team_before_proof", [False, True])
+async def test_failing_extension_defers_and_signup_succeeds(clients, monkeypatch, faults, team_before_proof):
     async def handler(ctx):
         raise RuntimeError("down")
     monkeypatch.setattr(policy, "registry", _registry(handler))
+    if team_before_proof:
+        response = await clients.post("/users", json={"email": "down@example.org"})
+        assert response.status_code == 200, response.text
+        first = response.json()["org_id"]
     token = await verified_identity(clients, "down@example.org")
-    assert len(await _grants(await _team(clients, token, "still-works"))) == 1
+    if not team_before_proof:
+        first = await _team(clients, token, "still-works")
+    assert await _grants(first) == []
     assert [f["value"] for f in faults] == ["signup_credit RuntimeError"]
+    async with session_maker() as db:
+        user = (await db.execute(select(User).where(User.email == "down@example.org"))).scalar_one()
+        assert user.email_verified_at is not None
+        assert user.signup_promo_available
+        assert (await db.execute(select(SignupPromoClaim).where(
+            SignupPromoClaim.user_id == user.id))).scalars().all() == []
+
+    async def recovered(ctx):
+        return policy.CreditDecision.GRANT
+    monkeypatch.setattr(policy, "registry", _registry(recovered))
+    assert len(await _grants(await _team(clients, token, "recovered"))) == 1
+    assert await _grants(await _team(clients, token, "claimed")) == []
 
 
 async def test_no_transaction_is_open_while_the_extension_decides(clients, monkeypatch):

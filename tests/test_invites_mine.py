@@ -172,6 +172,40 @@ async def test_email_link_post_signs_in_once_and_lands_on_invite_org(client, sen
         assert "treg_session" not in r.headers.get("set-cookie", "")
 
 
+@pytest.mark.parametrize("team_before_proof", [False, True])
+async def test_invite_proof_obeys_the_same_grant_limit(client, sent_invites, monkeypatch, team_before_proof):
+    from conftest import verified_identity
+    from treg.config import get_settings
+    from treg.infra.db import session_maker
+    from treg.models import Org
+
+    monkeypatch.setattr(get_settings(), "promo_grant_ip_limit", 1)
+    owner = await verified_identity(client, "tom@sd.io")
+    team = await client.post("/orgs", json={"name": "owner-team"}, headers=_h(owner))
+    assert team.status_code == 200, team.text
+    async with session_maker() as db:
+        assert (await db.get(Org, team.json()["org_id"])).balance_micro == get_settings().promo_grant_micro
+    invited = await client.post(f"/orgs/{team.json()['org_id']}/invites",
+                                json={"email": "bob@x.io", "role": "member"}, headers=_h(team.json()["token"]))
+    assert invited.status_code == 200, invited.text
+    t = sent_invites[0]["email_token"]
+    ids = []
+    async with await _fresh() as visitor:
+        if team_before_proof:
+            legacy = await visitor.post("/users", json={"email": "bob@x.io"})
+            assert legacy.status_code == 200, legacy.text
+            ids.append(legacy.json()["org_id"])
+        proof = await visitor.post("/auth/invite-signin", content=f"t={t}",
+                                   headers={"content-type": "application/x-www-form-urlencoded"})
+        assert proof.status_code == 303
+        team = await visitor.post("/orgs", json={"name": "invited-team"})
+        assert team.status_code == 200, team.text
+        ids.append(team.json()["org_id"])
+    async with session_maker() as db:
+        for org_id in ids:
+            assert (await db.get(Org, org_id)).balance_micro == 0
+
+
 async def test_email_link_post_refuses_suspended_user(client, sent_invites):
     from sqlmodel import select as _select
 

@@ -240,6 +240,16 @@ class Settings(BaseSettings):
     # The signup gift, in micro-USD (1e-6 USD): $1 buys ~1,600 catalog calls, enough for an agent to
     # get real work done before it ever sees a payment form. Granted once per verified user, when creating an eligible team.
     promo_grant_micro: int = 1_000_000
+    promo_grant_ip_limit: int = Field(default=0, ge=0, le=10000)
+    promo_grant_domain_limit: int = Field(default=0, ge=0, le=10000)
+    promo_grant_global_limit: int = Field(default=0, ge=0, le=10000)
+    promo_grant_window_s: int = Field(default=86400, ge=60, le=604800)
+    promo_shared_email_domains: str = (
+        "gmail.com,googlemail.com,outlook.com,hotmail.com,live.com,msn.com,"
+        "yahoo.com,ymail.com,aol.com,icloud.com,me.com,mac.com,"
+        "proton.me,protonmail.com,pm.me,fastmail.com,gmx.com,gmx.de,web.de,"
+        "t-online.de,mail.com,qq.com,163.com,126.com,yandex.com,yandex.ru,mail.ru"
+    )
     # Upstream HTTP timeout for a relayed call (the shared httpx client). Also the base of the hold
     # reaper's cutoff: a hold older than call_timeout_s + hold_grace_s belongs to a call that can no
     # longer be settling, so the reaper returns it (see ledger.reap_stale_holds).

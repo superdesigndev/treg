@@ -28,6 +28,7 @@ from ..infra import turnstile
 from ..config import get_settings
 from ..domain.identity import session as sess
 from ..domain.identity import mcp_oauth
+from ..domain.identity.promotions import remember_signup_identity
 from ..domain.identity import api_keys as managed_keys
 from ..domain.identity.access import (
     _is_machine_email,
@@ -305,7 +306,7 @@ async def start_email_login(
 
 
 async def verify_email_login(
-    email: str, code: str, *, entry_surface: str = "", client: str = "browser",
+    email: str, code: str, *, entry_surface: str = "", client: str = "browser", client_ip: str = "",
 ) -> VerifiedEmail:
     """Consume an email OTP and return both CLI and browser credentials for the proven identity."""
     email = _norm_email(email)
@@ -337,7 +338,7 @@ async def verify_email_login(
             raise EmailAuthError("suspended")
         await db.commit()
         if proven:
-            await signup.grant_signup_promo_on_proof(user.id)
+            await signup.grant_signup_promo_on_proof(user.id, client_ip=client_ip)
         if entry.get("captcha"):
             # Paired with event=turnstile_email_start: per outcome, how many code requests were
             # redeemed, i.e. how many people enforce would have refused. Existing users included.
@@ -596,7 +597,9 @@ async def start_google_login(cli: str, callback_base: Callable[[], str]) -> Soci
 
 
 async def _provision_social_user(email: str, state: str, door: str, entry_surface: str = "",
-                                 *, github_login: str = "", name: str = "") -> SocialLoginProof:
+                                 *, subject: str, verified_emails: tuple[str, ...],
+                                 account_created_at: datetime | None = None,
+                                 github_login: str = "", name: str = "", client_ip: str = "") -> SocialLoginProof:
     created: set[int] = set()
     proven: set[int] = set()
     async with database.session_maker() as db:
@@ -610,9 +613,11 @@ async def _provision_social_user(email: str, state: str, door: str, entry_surfac
             raise SocialLoginError("blocked_domain") from exc
         if user.suspended:  # a banned account may prove its email but must not receive a live session
             raise SocialLoginError("suspended")
+        await remember_signup_identity(db, user.id, provider=door, subject=subject,
+                                       verified_emails=verified_emails, account_created_at=account_created_at)
         await db.commit()
         if proven:
-            await signup.grant_signup_promo_on_proof(user.id)
+            await signup.grant_signup_promo_on_proof(user.id, client_ip=client_ip)
         signup.track_signup(user, created, door, entry_surface)
         if user.id in created:  # what the door knew, for the first-run lookup (onboard.first_run)
             await first_run.remember_hints(user.id, user.email, door=door, github_login=github_login, name=name)
@@ -620,70 +625,120 @@ async def _provision_social_user(email: str, state: str, door: str, entry_surfac
         return SocialLoginProof(user=user, cli_state=await _consume_cli_state(state))
 
 
+async def _github_verified_emails(client, url: str, headers: dict) -> tuple[str, ...]:
+    verified = []
+    primary = []
+    for page in range(1, 11):
+        response = await client.get(url, headers=headers, params={"per_page": 100, "page": page})
+        response.raise_for_status()
+        emails = response.json()
+        if not isinstance(emails, list) or len(emails) > 100:
+            raise SocialLoginError("callback_failed")
+        for entry in emails:
+            if not isinstance(entry, dict):
+                raise SocialLoginError("callback_failed")
+            if entry.get("verified") is not True:
+                continue
+            email = entry.get("email")
+            if not isinstance(email, str) or email.count("@") != 1 or not all(email.split("@")):
+                raise SocialLoginError("callback_failed")
+            (primary if entry.get("primary") is True else verified).append(email)
+        if len(emails) < 100 and "next" not in response.links:
+            return tuple(dict.fromkeys([*primary, *verified]))
+    # Never treat truncated provider evidence as the complete set of verified aliases.
+    raise SocialLoginError("callback_failed")
+
+
+def _provider_created_at(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    result = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return result if result <= _utcnow_naive() else None
+
+
 async def complete_github_login(
     client_factory: Callable[[], Any], code: str, state: str, cookie_state: str,
-    callback_base: Callable[[], str], *, entry_surface: str = "",
+    callback_base: Callable[[], str], *, entry_surface: str = "", client_ip: str = "",
 ) -> SocialLoginProof:
     if not code or not state or state != cookie_state:
         raise SocialLoginError("bad_state")
     client = client_factory()
     s = get_settings()
     try:
-        tok = (await client.post(
+        response = await client.post(
             s.github_token_url, headers={"Accept": "application/json"},
             data={"client_id": s.github_client_id, "client_secret": s.github_client_secret,
                   "code": code, "redirect_uri": f"{callback_base()}/auth/github/callback"},
-        )).json()
+        )
+        response.raise_for_status()
+        tok = response.json()
         access = tok.get("access_token")
         if not access:
             raise SocialLoginError("github_no_access_token")
         gh = {"Authorization": f"Bearer {access}", "Accept": "application/json", "User-Agent": "treg"}
-        prof = (await client.get(f"{s.github_api_url}/user", headers=gh)).json()
-        email = prof.get("email")
-        if not email:
-            emails = (await client.get(f"{s.github_api_url}/user/emails", headers=gh)).json()
-            if isinstance(emails, list):
-                email = (next((e["email"] for e in emails if e.get("primary") and e.get("verified")), None)
-                         or next((e["email"] for e in emails if e.get("verified")), None))
-        if not email:
+        response = await client.get(f"{s.github_api_url}/user", headers=gh)
+        response.raise_for_status()
+        prof = response.json()
+        subject = prof.get("id")
+        if type(subject) is not int or subject <= 0:
+            raise SocialLoginError("callback_failed")
+        emails = await _github_verified_emails(client, f"{s.github_api_url}/user/emails", gh)
+        if not emails:
             raise SocialLoginError("github_no_verified_email")
+        email = prof.get("email") if prof.get("email") in emails else emails[0]
     except SocialLoginError:
         raise
     except Exception as exc:  # noqa: BLE001
         print(f"[auth] github callback error: {exc}")  # keep internals server-side, not in the response
         raise SocialLoginError("callback_failed") from exc
     login = prof.get("login") if isinstance(prof.get("login"), str) else ""
-    return await _provision_social_user(email, state, "github", entry_surface, github_login=login)
+    return await _provision_social_user(email, state, "github", entry_surface,
+        subject=str(subject), verified_emails=emails, account_created_at=_provider_created_at(prof.get("created_at")),
+        github_login=login, client_ip=client_ip)
 
 
 async def complete_google_login(
     client_factory: Callable[[], Any], code: str, state: str, cookie_state: str,
-    callback_base: Callable[[], str], *, entry_surface: str = "",
+    callback_base: Callable[[], str], *, entry_surface: str = "", client_ip: str = "",
 ) -> SocialLoginProof:
     if not code or not state or state != cookie_state:
         raise SocialLoginError("bad_state")
     client = client_factory()
     s = get_settings()
     try:
-        tok = (await client.post(
+        response = await client.post(
             s.google_token_url, headers={"Accept": "application/json"},
             data={"client_id": s.google_client_id, "client_secret": s.google_client_secret,
                   "code": code, "grant_type": "authorization_code",
                   "redirect_uri": f"{callback_base()}/auth/google/callback"},
-        )).json()
+        )
+        response.raise_for_status()
+        tok = response.json()
         access = tok.get("access_token")
         if not access:
             raise SocialLoginError("google_no_access_token")
-        prof = (await client.get(
+        response = await client.get(
             s.google_userinfo_url,
-            headers={"Authorization": f"Bearer {access}", "Accept": "application/json"})).json()
+            headers={"Authorization": f"Bearer {access}", "Accept": "application/json"})
+        response.raise_for_status()
+        prof = response.json()
+        subject = prof.get("sub")
+        if (not isinstance(subject, str) or not 1 <= len(subject) <= 255
+                or subject != subject.strip() or not subject.isprintable()):
+            raise SocialLoginError("callback_failed")
         email = prof.get("email")
         if not email:
             raise SocialLoginError("google_no_email")
         # Identity is keyed by email, so we must only trust a VERIFIED one — else an unverified Google
         # address equal to a victim's registered email would resolve to the victim (account takeover).
         # (Google's userinfo returns email_verified; the GitHub door already filters for verified.)
-        if not prof.get("email_verified"):
+        if prof.get("email_verified") is not True:
             raise SocialLoginError("google_unverified_email")
     except SocialLoginError:
         raise
@@ -691,7 +746,8 @@ async def complete_google_login(
         print(f"[auth] google callback error: {exc}")  # keep internals server-side, not in the response
         raise SocialLoginError("callback_failed") from exc
     name = prof.get("name") if isinstance(prof.get("name"), str) else ""
-    return await _provision_social_user(email, state, "google", entry_surface, name=name)
+    return await _provision_social_user(email, state, "google", entry_surface,
+                                      subject=subject, verified_emails=(email,), name=name, client_ip=client_ip)
 
 
 async def current_identity(x_treg_token: str, session_cookie: str) -> CurrentIdentity:
@@ -800,7 +856,7 @@ async def invite_signin_landing(
         return InviteCodePrefill(email=invite.email)
 
 
-async def confirm_invite_signin(email_token: str) -> InviteSigninProof:
+async def confirm_invite_signin(email_token: str, *, client_ip: str = "") -> InviteSigninProof:
     async with database.session_maker() as db:
         invite = await _live_invite_by_email_token(db, email_token)
         if invite is None:  # consumed / expired / revoked / suspended org → the SPA's expired banner
@@ -820,7 +876,7 @@ async def confirm_invite_signin(email_token: str) -> InviteSigninProof:
         db.add(invite)
         await db.commit()
         if proven:
-            await signup.grant_signup_promo_on_proof(user.id)
+            await signup.grant_signup_promo_on_proof(user.id, client_ip=client_ip)
         # A share-born invite lands on the shared page itself (the SPA auto-accepts + switches org);
         # a plain invite lands on the dashboard with the accept banner, as before. `landing` was
         # allowlist-validated at create time, so this can never redirect off-app.

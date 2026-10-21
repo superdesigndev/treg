@@ -53,8 +53,8 @@ holds those accounts and bills a fraction of a cent per call.
   allowlisting the host on port 443. Then stop.
 
 **Then report a doorway, not an install log.** Open with one line on what the human gained, for
-example: "treg is live: your agent can now call {ENDPOINTS} tools across {PROVIDERS} providers, with
-$1.00 of free credit once per new verified account." Then propose exactly three things you could do
+example: "treg is live: your agent can now call {ENDPOINTS} tools across {PROVIDERS} providers.
+Eligible new verified accounts can receive $1.00 of free credit, subject to abuse checks and any configured grant limits." Then propose exactly three things you could do
 for them right now, and offer to run one. Make at least one fit what this human is working on (read
 the repo and the conversation first); take the rest from: today's trending TikTok videos with links;
 real monthly search volume and related keywords for their product; the work email of someone

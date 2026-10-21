@@ -38,14 +38,10 @@ behavior described everywhere else in these docs.
   build never serves without the policy its operator relies on. Empty, the default, requires
   nothing.
 - **One handler per point.** Registering a second handler for a point is an error.
-- **treg owns failure handling, and a failure falls back to the default.** When a handler is slow,
-  raises or returns something outside the point's outcomes, treg uses the point's public default.
-  An extension failure is almost always the operator's own bug or misconfiguration, not something a
-  caller can provoke, so it should cost users nothing beyond what treg without the extension would
-  do. It is reported instead: a log line `event=policy_failed point=<point> error=<exception type>
-  outcome=<default>` and a `PolicyFailed` fault event (component `policy`) for alerting, both with
-  the exception type only, never the message, which might name a private rule. An extension that
-  wants to be strict when its own state is missing decides that itself and answers normally.
+- **Credit checks fail closed.** An absent handler uses the public `grant` default. An installed
+  handler that times out, raises or returns an invalid outcome instead yields `defer`; sign-in
+  and team creation continue, and eligibility remains available. The `policy_failed` log and
+  `PolicyFailed` fault event record only the exception type, never a private rule or message.
 - **Handlers must not block.** The budget cancels a handler at its next `await`; a handler that
   blocks the event loop is not interrupted.
 - **One registry per process.** `policy.registry` holds the handlers of the most recent
@@ -57,7 +53,7 @@ behavior described everywhere else in these docs.
 
 | Point           | Called in                                                | Outcomes          | Budget | On timeout, error or bad outcome |
 | --------------- | -------------------------------------------------------- | ----------------- | ------ | -------------------------------- |
-| `signup_credit` | `signup._grant_signup_promo`, before `claim_signup_promo` | `grant`, `defer` | 300 ms | `grant`, reported                |
+| `signup_credit` | `signup._grant_signup_promo`, before `claim_signup_promo` | `grant`, `defer` | 300 ms | `defer`, reported                |
 
 ### `signup_credit`
 
@@ -66,20 +62,29 @@ a team (`signup.grant_signup_promo_on_proof`, for the oldest such team), only fo
 claim right now
 (`promotions.signup_promo_email`: verified, still eligible, not suspended, not demo), and only
 when the grant amount is above zero. The context is the user and team IDs, the login email and its
-canonical inbox (`promo_inbox`). The eligibility read's transaction is committed before the
-decision, so no database connection waits on the extension.
+canonical inbox (`promo_inbox`). Additive, defaulted context fields also carry `client_ip` from the
+trusted-proxy adapter and an immutable tuple of `SignupCreditIdentity` observations: provider,
+hashed durable subject, and an optional provider-reported account creation time (naive UTC).
+GitHub supplies that timestamp; Google does not. Missing or invalid timestamps remain unknown.
+These are stored authenticated observations, including after switching to OTP; they are not public
+profile matches or caller-submitted risk scores. The hash is a correlation key, not proof of a
+unique human; age is only a supporting signal. Existing API-v1 handlers remain compatible.
+The eligibility/evidence read and bounded expired-bucket cleanup commit before the decision, so no database
+connection waits on the extension. Private policy can use these facts without an extra signup step;
+the public default remains automatic credit, and no new scoring service is installed by this code.
 
-`defer` writes nothing: no claim row, no ledger entry, and `signup_promo_available` stays true. The
+`defer` consumes no credit state: no claim row, no ledger entry, and `signup_promo_available` stays true. The
 team (or the sign-in) proceeds as usual. The point is asked again when the same user creates their
 next team, so a later `grant` is the release path and needs no new ledger entry type. A first
 proof happens once, so a deferral there is never re-asked by a later sign-in. treg logs
 `event=signup_credit_deferred org=<id> user=<id>`. After a grant the user is no longer eligible
 and is never asked again.
 
-A failure grants, as treg without an extension would. The other signup-credit defenses (one
-credit per inbox, the human check, the domain blocklist) keep applying, so a broken extension
-returns the deployment to its public baseline rather than withholding credit from every new user
-until someone notices.
+An explicit `grant` still passes through any enabled transactional network/domain/global limits described in
+[money](money.md#signup-credit-eligibility). Extensions cannot bypass those limits or the inbox
+claim or the durable provider identity claims. A policy failure cannot release credit that the
+extension was installed to restrict. Policy context is a snapshot; the atomic claim re-reads current
+identity links and consumption before money moves.
 
 A user who believes their signup credit was withheld in error contacts the deployment's support;
 an operator can grant credit through the ordinary admin grant.

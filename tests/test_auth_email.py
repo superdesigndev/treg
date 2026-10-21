@@ -109,8 +109,10 @@ async def test_social_signup_tracking_reuses_same_new_user_rule(client, monkeypa
     from treg.application.auth import _provision_social_user
     events = []
     monkeypatch.setattr(analytics, "capture", lambda *a, **k: events.append(a))
-    await _provision_social_user("social@example.test", "unused", method, "arena")
-    await _provision_social_user("social@example.test", "unused", method, "arena")
+    await _provision_social_user("social@example.test", "unused", method, "arena",
+                                 subject="123", verified_emails=("social@example.test",))
+    await _provision_social_user("social@example.test", "unused", method, "arena",
+                                 subject="123", verified_emails=("social@example.test",))
     assert len(events) == 1
     assert events[0][1:] == ("signup_completed", {"signup_method": method, "entry_surface": "arena"})
 

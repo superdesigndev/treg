@@ -176,8 +176,9 @@ Org existence and coordinate with deletion before cleanup starts. See [configura
   `list_members` carries `is_agent` so one roster can show people and machines apart.
 - **Email-domain blocklist.** The same choke points, for throwaway mail and domains used for bulk
   registration. New verified accounts can receive one promotional balance per inbox, so farming
-  many real or catch-all inboxes remains an abuse path even though repeated team creation and
-  `+tag` / Gmail-dot aliases no longer earn credit. **Entirely configuration**: the classifier
+  many real or catch-all inboxes can additionally be constrained by opt-in transactional grant limits
+  described in [money](money.md#signup-credit-eligibility). Repeated team creation and `+tag` /
+  Gmail-dot aliases do not earn another credit. **Entirely configuration**: the classifier
   (`_is_blocked_email` in `domain/identity/access.py`, pure - it only answers; it walks the
   `_norm_email` domain, whose trailing dots are dropped so `a@listed.example.` cannot pass) reads
   `TREG_BLOCKED_EMAIL_DOMAINS` and nothing else, parsed once per distinct value in `config.py`
@@ -271,8 +272,9 @@ Org existence and coordinate with deletion before cleanup starts. See [configura
   changes nothing; `enforce` refuses `missing` and `invalid` with 400 (`captcha_blocked`,
   `captcha_pending` or `captcha_failed`, by reason; no code, no mail) and lets `unavailable`
   through. The outcome rides in the OTP's `Ephemeral` entry to verify: in enforce mode a non-`pass`
-  creates the new `User` with `signup_promo_available=false` (an existing user is never touched),
-  so a siteverify outage costs a new account its credit, not everyone their sign-in. An outage of
+  sets `signup_promo_available=false` on a new user or the first proof of a pre-created unverified
+  user. Already verified users are unchanged. Creating an unverified account before the outage
+  cannot bypass this rule; sign-in remains available. An outage of
   Cloudflare's script itself is not absorbed: every browser then sends `!blocked`, which enforce
   refuses (the message points to Google and GitHub, which stay open). A
   `TREG_FIXED_LOGIN_CODES` account skips the check (nothing is mailed; reviewers may script it).
@@ -341,6 +343,10 @@ bearer path refuses it once expired rather than reviving an expired cookie.
   but cannot call or read team resources. **`create_org` uses `require_identity`, NOT
   `require_member`** — else a zero-org user could never make their first team — and returns the new
   membership's team-scoped Default key. See [api](../interface/api.md).
+- **Social evidence:** GitHub always reads the authenticated verified-email list, including its
+  pages; public profile email alone cannot prove an inbox. Both providers require a well-formed
+  durable subject before provisioning. Successful proofs retain provider/inbox associations for
+  [signup credit](money.md#signup-credit-eligibility), without combining users or their access.
 - **Code-free invites:** `my_invites` (`GET /invites/mine`, `require_identity`) lists pending invites for
   the caller's proven email, newest creation time first with descending ID breaking timestamp ties; `accept_my_invite` (`POST /invites/{id}/accept`, `require_identity`) joins
   with no code (403 if `invite.email != user.email`, 409 if already a member). The code path stays.

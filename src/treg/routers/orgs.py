@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from .. import analytics, crypto, email as email_sender, health, localrun
+from .. import analytics, client_ip, crypto, email as email_sender, health, localrun
 from .. import oauth_providers
 from .. import providers as _providers
 from ..application import key_spend
@@ -417,6 +417,7 @@ async def create_org(
         result = await signup_use_cases.create_org(
             user=user,
             name=body.name,
+            client_ip=client_ip.of(request),
             ad_cookie=request.cookies.get("treg_ad") or "",
             utm_cookie=request.cookies.get("treg_utm") or "",
             referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",

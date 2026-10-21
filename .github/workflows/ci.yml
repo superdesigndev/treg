@@ -189,6 +189,11 @@ jobs:
           tests/test_auth.py
           tests/test_turnstile.py
           tests/test_signup_promo.py
+          tests/test_signup_promo_limits.py
+          tests/test_signup_promo_identities.py
+          tests/test_policy.py
+          tests/test_invites_mine.py::test_invite_proof_obeys_the_same_grant_limit
+          tests/test_onboarding_v2.py::test_onboarding_obeys_the_same_grant_limit_as_named_teams
           tests/test_postgres_reset.py
           tests/test_read_replica.py
           tests/test_admin_errors_replica.py

@@ -26,7 +26,8 @@ bills fractions of a cent per call.
 - **The catalog** — external endpoints treg can serve with its own key or through a verified public
   route that needs no provider key. Own-key calls use the team's prepaid balance; anonymous calls
   are free. No account with the provider is needed. New verified accounts receive **$1.00 free**
-  once, when they create an eligible team.
+  once, when they create an eligible team, subject to abuse checks and any configured grant limits.
+  Observed aliases of one inbox or provider account share that gift, including across login methods.
 - **Your own tools** — anything a teammate registered: a paid API account, an OAuth connection, a
   vendor CLI, a `SKILL.md`. **Your own key always wins over treg's, and those calls are never
   metered.**
@@ -377,6 +378,10 @@ Environment variables (prefix `TREG_`, read from `.env`):
 | `TREG_BLOCKED_EMAIL_DOMAINS`              | *(empty)*                       | comma-separated email domains refused at every sign-up/sign-in door and at team creation (subdomains included, case-insensitive). Empty blocks nothing — no list ships in the code |
 | `TREG_CLIENT_IP_HEADER`                   | *(empty)*                       | a header only your edge can set, used as the client address for every per-IP limit (`cf-connecting-ip` behind Cloudflare) |
 | `TREG_TRUSTED_PROXY_HOPS`                 | `1`                             | without that header: the `X-Forwarded-For` entry this many hops from the RIGHT (the one your nearest proxy appended); `0` when clients connect directly. The first entry is client-written and never trusted |
+| `TREG_PROMO_GRANT_IP_LIMIT` / `TREG_PROMO_GRANT_DOMAIN_LIMIT` | `0` / `0` | independently opt-in automatic-grant limits per network and registrable email domain within one rolling window; zero disables each limit; exceeded limits defer credit while sign-in and team creation continue |
+| `TREG_PROMO_GRANT_WINDOW_S` | `86400` | grant window in seconds; network keys use IPv4 /32 or IPv6 /64 |
+| `TREG_PROMO_GRANT_GLOBAL_LIMIT` | `0` | optional total grant limit per window; zero disables this aggregate cap |
+| `TREG_PROMO_SHARED_EMAIL_DOMAINS` | shared mailbox providers in `config.py` | comma-separated exact email domains exempt only from the domain cap; custom/catch-all domains must stay outside this list |
 | `TREG_REQUIRED_EXTENSIONS`                | *(empty)*                       | comma-separated policy extensions (`treg.extensions` entry points) that must be installed, else startup fails. treg.to runs a private abuse-policy extension this way; it can only restrict ([policy extensions](docs/context/architecture/policy-extensions.md)) |
 | `TREG_TURNSTILE_SITE_KEY` / `_SECRET`     | *(empty)*                       | Cloudflare Turnstile on every email sign-in form; either empty = off. The site key is served in `/captcha.js`, the secret only reaches siteverify |
 | `TREG_TURNSTILE_MODE`                     | `observe`                       | `observe` logs each outcome and changes nothing; `enforce` refuses a code to a missing or invalid token, and gives no signup credit when Cloudflare cannot answer |
