@@ -156,6 +156,8 @@ CATALOG: list[dict] = [
      "required_headers": {"x-api-version": "2025-11-01"}},
     {"provider": "Aviato", "tokens": ["AVIATO"], "base_url": "https://data.api.aviato.co",
      "auth": {"shape": "bearer"}, "probe": "billing/balance"},
+    {"provider": "Data Legion", "tokens": ["DATALEGION"], "base_url": "https://api.datalegion.ai",
+     "auth": {"shape": "api_key_header", "header": "API-Key"}, "probe": "credits"},
     {"provider": "Enrichlayer", "tokens": ["ENRICHLAYER"], "base_url": "https://enrichlayer.com",
      "auth": {"shape": "bearer"}, "probe": "api/v2/credit-balance"},
     {"provider": "AgentMail",   "tokens": ["AGENTMAIL"],           "base_url": "https://api.agentmail.to/v0",                     "auth": {"shape": "bearer"}, "probe": "inboxes"},

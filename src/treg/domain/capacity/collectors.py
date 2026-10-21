@@ -1076,6 +1076,9 @@ NO_BALANCE_API = {
     "adyntel": "no public balance or usage endpoint in the official API reference "
                 "(checked docs.adyntel.com 2026-09-22) — PAYG credits are visible in the "
                 "provider dashboard only",
+    "datalegion": "invoiced pay-as-you-go partner account: the platform key's contracts are "
+                  "unlimited (GET /credits shows credits_purchased -1) and billed monthly per "
+                  "match, so there is no prepaid balance to run dry",
     "aviato": "no public balance endpoint documented (checked docs.data.aviato.co 2026-08-31) — "
               "internal playbooks reference aviato_get_balance but it is not in the public API; "
               "dashboard only",

@@ -31,6 +31,7 @@ BURST_MAX_RETRY_AFTER_S = 60
 _TABLE: list[tuple[str, int, str, str]] = [
     ("findymail", 402, r"not enough credits", "balance"),
     ("leadsforge", 402, r"insufficient_credits", "balance"),
+    ("datalegion", 402, r"insufficient_credits", "balance"),
     ("leadmagic", 402, r"insufficient_credits", "balance"),
     ("thecompaniesapi", 403, r"noCreditsRemaining", "balance"),
     ("companyenrich", 402, r"payment required", "balance"),

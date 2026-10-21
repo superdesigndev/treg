@@ -2534,6 +2534,33 @@ AVIATO = OAuthProvider(
     probe_path="/billing/balance",
 )
 
+DATALEGION = OAuthProvider(
+    service="datalegion",
+    display_name="Data Legion",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="legion_…",
+    # The key rides in the API-Key header (not X-API-Key). A bogus key answers 401
+    # {"error": "unauthorized"} on the free /credits probe.
+    token_header="API-Key",
+    token_format="{secret}",
+    setup_url="https://www.datalegion.ai/dashboard/api-keys",
+    setup_action_label="Get your Data Legion API key",
+    setup_steps=(
+        "Sign up at datalegion.ai and open Dashboard → API Keys.",
+        "Create a key and copy it.",
+    ),
+    setup_note="Person and company enrichment spend a credit only on a match; a no-match and the account check are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Enrich people from an email, phone, social URL or name plus context, and companies from a domain, name or ticker.",
+    base_url="https://api.datalegion.ai",
+    docs_url="https://www.datalegion.ai/docs/api-reference/overview",
+    probe_path="/credits",  # free — shows the key's contracts and usage
+)
+
 EXA = OAuthProvider(
     service="exa",
     display_name="Exa",
@@ -3998,7 +4025,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
-        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
+        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO, DATALEGION,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB,
         # Market data API-key providers

@@ -1,0 +1,185 @@
+provider: datalegion
+source:
+  docs: https://www.datalegion.ai/docs/api-reference/overview
+  openapi: https://www.datalegion.ai/docs/api-reference/openapi.json
+  curated: '2026-10-19'
+limits: "Rate limits are per key and endpoint and reported on every response (RateLimit-Policy, RateLimit-Remaining). The pay-as-you-go partner key treg would hold allows 1,000 requests/minute per enrich endpoint."
+pricing_url: https://www.datalegion.ai/pricing
+
+# Data Legion: person and company enrichment. Self-serve keys from the dashboard; the key rides in
+# the API-Key header. A bogus key answers 401 {"error": "unauthorized", "message": "Invalid API key.
+# Check the value sent in the API-Key header."} on the free /credits probe (observed 2026-10-19).
+#
+# BILLING. Published self-serve prices: $0.05 per person credit, $0.01 per company credit, one credit
+# per matched record. A no-match is a 404 {"error": "not_found"} and costs nothing. Every billed
+# response carries a Credits-Used header (1 on a match, 0 on a miss) plus Credits-Remaining and
+# Contract-ID, so the charge for each call is on the wire.
+#
+# NOT MODELLED (deliberate):
+#   - /person/search, /company/search (SQL) and /person/discover, /company/discover (natural
+#     language): enterprise-only, not sold self-serve.
+#   - /person/enrich/bulk and /company/enrich/bulk: beta, billed exactly like the single routes
+#     (each item is one call); the single routes cover the job.
+#   - multiple_results / limit on the enrich routes: an enterprise switch; answered 403 unless enabled on the account.
+#   - /utility/validate beyond phones, /utility/clean, /utility/hash/email: free input helpers that
+#     check, reformat or hash the caller's own values. The phone check is catalogued below
+#     (people.phone.verify); the rest have no capability another provider shares, and the school
+#     and company cleaners only reformat (lowercase, pull the domain from a URL), so listing them
+#     beside a canonicalizing cleaner (people.school.clean) would oversell them.
+#   - /utility/report/person, /utility/report/company: data-quality reports back to Data Legion.
+
+endpoints:
+  - id: datalegion.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /credits
+    name: "Credit balance and contracts"
+    summary: "Show the key's team, its contracts, and credits used and remaining (free)"
+    input:
+      note: "no parameters — the API-Key header identifies the team"
+    test_request: {queryParams: {}}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.datalegion.ai/pricing
+      checked: '2026-10-19'
+      confidence: documented
+      note: "free — this is the registry probe; a bogus key answers 401"
+    docs_url: https://www.datalegion.ai/docs/api-reference/overview
+    added: '2026-10-21'
+
+  - id: datalegion.people.enrich
+    domain: contacts
+    capability: people.enrich
+    miss:
+      status: 404
+      means: "no person matched the identifiers (`{\"error\": \"not_found\"}`, Credits-Used: 0) — an expected outcome and free; do not retry the same input"
+    platform: people
+    scope: any_account
+    method: POST
+    path: /person/enrich
+    body_allowlist: true
+    name: "Enrich a person by email, phone, social URL or name"
+    summary: "Match a person from any identifier you hold and return their profile: work history, education, location, social profiles and contact details"
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: false, note: "primary identifier; normalized before matching"}
+        phone: {type: string, required: false, note: "primary identifier; normalized to E.164"}
+        social_url: {type: string, required: false, note: "primary identifier; LinkedIn, X, GitHub or Facebook profile URL, e.g. https://www.linkedin.com/in/<handle>"}
+        linkedin_id: {type: string, required: false, note: "primary identifier; LinkedIn numeric id"}
+        email_hash: {type: string, required: false, note: "primary identifier; SHA-256, SHA-1 or MD5 of the normalized email"}
+        legion_id: {type: string, required: false, note: "primary identifier; Data Legion person id", example: "1eb88b4c-ce67-5d2f-8d40-b3fe8250222d"}
+        first_name: {type: string, required: false, note: "name + context: needs a name plus at least one of company, school, job_title, birth_date or a location field"}
+        last_name: {type: string, required: false}
+        full_name: {type: string, required: false}
+        company: {type: string, required: false, note: "context; company name, website or social URL", example: "microsoft.com"}
+        school: {type: string, required: false, note: "context; school name, website or social URL"}
+        job_title: {type: string, required: false, note: "context"}
+        birth_date: {type: string, required: false, note: "context or a narrowing qualifier; YYYY-MM-DD, YYYY-MM or YYYY"}
+        address: {type: string, required: false, note: "context; parsed into city, state, postal code and country"}
+        city: {type: string, required: false, note: "context"}
+        state: {type: string, required: false, note: "context"}
+        country: {type: string, required: false, note: "context"}
+        postal_code: {type: string, required: false, note: "context; 5-digit ZIP or ZIP+4"}
+        min_confidence: {type: string, required: false, enum: [high, moderate, low], note: "drop matches below this confidence (a filtered-out match is a free 404)"}
+        required_fields: {type: string, required: false, note: "comma-separated fields that must be present or the match is a free 404, e.g. 'work_email,phones'"}
+        include_fields: {type: string, required: false, note: "comma-separated fields to return, e.g. 'full_name,job_title,work_email'; omit for every field the key's plan includes. legion_id is always returned"}
+        exclude_fields: {type: string, required: false, note: "comma-separated fields to drop, applied after include_fields, e.g. 'skills,education'"}
+        titlecase: {type: boolean, required: false, note: "title-case names, titles, companies and locations"}
+      note: "supply one primary identifier, or a name plus one context field; anything less is a 400 before matching. Name or location alone is not enough."
+    test_request:
+      body: {legion_id: "1eb88b4c-ce67-5d2f-8d40-b3fe8250222d", include_fields: "full_name,job_title,company_name"}
+    cost:
+      type: per_success
+      value: 0.05
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.datalegion.ai/pricing
+      checked: '2026-10-19'
+      confidence: documented
+      note: "$0.05 per matched person (one person credit); a no-match 404 is free. The Credits-Used response header reports 1 on a match and 0 on a miss."
+    docs_url: https://www.datalegion.ai/docs/api-reference/person-enrichment
+    added: '2026-10-21'
+
+  - id: datalegion.companies.enrich
+    domain: companies
+    capability: companies.enrich
+    miss:
+      status: 404
+      means: "no company matched the identifiers (`{\"error\": \"not_found\"}`, Credits-Used: 0) — an expected outcome and free; do not retry the same input"
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company/enrich
+    body_allowlist: true
+    name: "Enrich a company by domain, name, social URL or ticker"
+    summary: "Match a company and return its firmographics: industry, size range, type, founding year, locations, domains, social profiles and description"
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: false, note: "website domain; the strongest identifier", example: "stripe.com"}
+        name: {type: string, required: false, note: "company name, fuzzy-matched; add industry to narrow"}
+        industry: {type: string, required: false, note: "narrows a name match"}
+        social_url: {type: string, required: false, note: "LinkedIn, Facebook, Crunchbase, X or GitHub company URL"}
+        linkedin_id: {type: string, required: false, note: "LinkedIn company numeric id"}
+        ticker_symbol: {type: string, required: false, note: "stock ticker, e.g. GOOGL"}
+        legion_id: {type: string, required: false, note: "Data Legion company id"}
+        min_confidence: {type: string, required: false, enum: [high, moderate, low], note: "drop matches below this confidence (a filtered-out match is a free 404)"}
+        required_fields: {type: string, required: false, note: "comma-separated fields that must be present or the match is a free 404"}
+        include_fields: {type: string, required: false, note: "comma-separated fields to return, e.g. 'name,domain,industry'; omit for every field the key's plan includes. legion_id is always returned"}
+        exclude_fields: {type: string, required: false, note: "comma-separated fields to drop, applied after include_fields, e.g. 'locations,domains'"}
+        titlecase: {type: boolean, required: false, note: "title-case names and locations"}
+      note: "supply at least one identifier; a domain gives the most precise match"
+    test_request:
+      body: {domain: "stripe.com", include_fields: "name,domain,industry"}
+    cost:
+      type: per_success
+      value: 0.01
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.datalegion.ai/pricing
+      checked: '2026-10-19'
+      confidence: documented
+      note: "$0.01 per matched company (one company credit); a no-match 404 is free. The Credits-Used response header reports 1 on a match and 0 on a miss."
+    docs_url: https://www.datalegion.ai/docs/api-reference/company-enrichment
+    added: '2026-10-21'
+
+  - id: datalegion.people.phone.verify
+    added: '2026-10-21'
+    domain: people
+    capability: people.phone.verify
+    platform: people
+    scope: any_account
+    method: POST
+    path: /utility/validate
+    name: "Validate and format a phone number"
+    summary: "Phone number in any format → whether it is a valid number and its E.164 form (free)"
+    input:
+      bodyType: json
+      body:
+        phone: {type: string, required: true, note: "any common format; a number without a country code is read as US", example: "+1 (650) 253-0000"}
+      note: "format and numbering-plan validity only; it does not check whether the line is live or name its carrier. The same route also checks email, name, address and company fields."
+    test_request:
+      body: {phone: "+1 (650) 253-0000"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.datalegion.ai/pricing
+      checked: '2026-10-21'
+      confidence: documented
+      note: "free utility, rate-limited to 100 calls a minute; no Credits-Used charge"
+    docs_url: https://www.datalegion.ai/docs/api-reference/utility-validate
