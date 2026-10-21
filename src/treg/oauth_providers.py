@@ -3283,6 +3283,37 @@ HLRLOOKUP = OAuthProvider(
 )
 
 
+DATAHYENA = OAuthProvider(
+    service="datahyena",
+    display_name="Datahyena",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Datahyena API key (dh_live_…)",
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://app.datahyena.com/keys",
+    setup_action_label="Get your Datahyena API key",
+    setup_steps=(
+        "Sign up or sign in at app.datahyena.com and open API keys.",
+        "Create a key and copy it.",
+    ),
+    setup_note=(
+        "Data calls spend 1 credit per record returned; a query that matches nothing, and the "
+        "includeTotal count, are free. New workspaces start with free credits."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Company events: funding rounds, acquisitions, executive moves and hiring signals, each "
+        "dated and attached to a resolved company."
+    ),
+    base_url="https://api.datahyena.com",
+    docs_url="https://datahyena.com/docs",
+    probe_path="/v1/funding-events?limit=1&until=1970-01-02",
+)
+
 PREDICTLEADS = OAuthProvider(
     service="predictleads",
     display_name="PredictLeads",
@@ -3999,7 +4030,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
-        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
+        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, DATAHYENA, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,

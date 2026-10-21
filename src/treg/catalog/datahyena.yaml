@@ -1,0 +1,296 @@
+provider: datahyena
+source:
+  docs: https://datahyena.com/docs
+  openapi: https://api.datahyena.com/v1/openapi.json # OpenAPI 3; every path and parameter below was read from it
+  curated: '2026-10-18'
+# Company *events*, not contacts. Datahyena tracks funding rounds, acquisitions and mergers,
+# executive moves and hiring signals as dated, deduplicated events, each attached to a resolved
+# company with firmographics (domain, LinkedIn page, country, industry, headcount bucket). It adds
+# the event TIMELINE to the Enrichment shelf: "who just raised, was acquired, changed leadership or
+# started hiring for a function", with the announcement date and the source articles.
+#
+# One unit, one rule: 1 credit per RECORD returned. `limit` is the price dial on every list route.
+# A query that matches nothing costs 0 credits, and `includeTotal=true` returns the match count for
+# free, so an agent can size a query before paying for rows. Every JSON response carries
+# meta.creditsUsed and meta.creditsRemaining, the meter for that call.
+#
+# Single-company lookups (timeline, hiring profile) resolve a company by domain, name, LinkedIn URL
+# or id; nothing is charged when no company matches. The timeline costs one credit for the company
+# plus one per event included, so `include` narrows the price.
+#
+# Auth: X-API-Key header. A bad key returns 401 with no body data.
+# Rate limit: per workspace, by plan (20/min free, 30 Starter, 60 Growth, 120 Scale); 429 past it.
+limits: "per-workspace rate limit by plan (20 to 120 requests a minute), 429 when exceeded; credits are prepaid, and a call that would overdraw returns only the rows the balance covers"
+pricing_url: https://datahyena.com/pricing
+
+proposed_capabilities:
+  companies.funding: "A company's funding rounds & financing events"
+  companies.acquisitions.feed: "Browse recent company acquisition announcements"
+  companies.acquisitions: "List acquisitions made by a company"
+  companies.exec_moves.feed: "Browse the latest executive appointments, promotions and departures"
+  companies.hiring_signals.feed: "Browse hiring signals: leadership openings, founding roles, team build-outs"
+  companies.hiring_profile: "A company's hiring picture now: open roles by function, leadership roles, tools named"
+  companies.investors.search: "Search investors by type, country, cheque size and recent activity"
+
+endpoints:
+  - id: datahyena.funding.feed
+    domain: companies
+    capability: companies.funding.feed
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/funding-events
+    name: "Browse the latest funding rounds"
+    summary: "Funding rounds newest first, filterable by round, amount, country, industry, vertical and headcount, each with the resolved company and investors."
+    input:
+      queryParams:
+        since: {type: string, required: false, note: "announced on or after, YYYY-MM-DD", example: "2026-10-01"}
+        until: {type: string, required: false, note: "announced on or before, YYYY-MM-DD, inclusive"}
+        round: {type: "array[string]", required: false, note: "repeat the key; pre-seed, seed, angel, series-a … series-g, venture, debt, grant and more (see the OpenAPI enum)", example: "seed"}
+        minAmountUsd: {type: number, required: false, note: "whole USD", example: 1000000}
+        maxAmountUsd: {type: number, required: false, note: "whole USD"}
+        countries: {type: "array[string]", required: false, note: "ISO-3166 alpha-2 HQ country, repeat the key; `unknown` matches companies with no country", example: "US"}
+        industryGroups: {type: "array[string]", required: false, note: "LinkedIn industry labels, case-insensitive", example: "Software Development"}
+        verticals: {type: "array[string]", required: false, note: "ai, fintech, saas, devtools, healthcare, climate, robotics, cybersecurity and more", example: "ai"}
+        naicsCode: {type: string, required: false, note: "NAICS 2022, 2 to 6 digits; matches the code and everything beneath it"}
+        employeeBuckets: {type: "array[string]", required: false, note: "1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10001+"}
+        enrichedOnly: {type: boolean, required: false, note: "only rounds whose company carries a domain, industry, country and description"}
+        includeTotal: {type: boolean, required: false, note: "adds pagination.total; costs no credits"}
+        limit: {type: integer, required: false, note: "default 20, max 100 — THIS IS THE PRICE DIAL: 1 credit per round returned", example: 1}
+        cursor: {type: string, required: false, note: "pagination.nextCursor from the previous page"}
+      note: "each round carries the round label, amount in USD and the original currency, announced date, lead and other investors, the company's domain, country and industry, and source article URLs"
+    test_request:
+      queryParams: {limit: 1}
+    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://datahyena.com/pricing", checked: '2026-10-18', confidence: documented, note: "the OpenAPI description says 'Costs one credit per returned record'; meta.creditsUsed reports it per call"}
+    added: '2026-10-18'
+    docs_url: https://datahyena.com/docs
+
+  - id: datahyena.companies.funding
+    domain: companies
+    capability: companies.funding
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/funding-events
+    name: "A company's funding rounds by domain"
+    summary: "Every funding round for one company, newest first, matched on its domain or any domain it redirected from."
+    input:
+      queryParams:
+        domain: {type: string, required: true, note: "company domain; a full URL is reduced to its domain", example: "stripe.com"}
+        limit: {type: integer, required: false, note: "1 credit per round returned", example: 1}
+        includeTotal: {type: boolean, required: false, note: "free count of the company's rounds"}
+    test_request:
+      queryParams: {domain: "stripe.com", limit: 1}
+    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://datahyena.com/pricing", checked: '2026-10-18', confidence: documented}
+    added: '2026-10-18'
+    docs_url: https://datahyena.com/docs
+
+  - id: datahyena.acquisitions.feed
+    domain: companies
+    capability: companies.acquisitions.feed
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/acquisitions
+    name: "Browse the latest acquisitions and mergers"
+    summary: "Acquisition and merger events newest first, with acquirer and target companies, deal value and payment type."
+    input:
+      queryParams:
+        since: {type: string, required: false, note: "announced on or after, YYYY-MM-DD", example: "2026-10-01"}
+        until: {type: string, required: false, note: "announced on or before, YYYY-MM-DD"}
+        paymentType: {type: "array[string]", required: false, note: "cash, stock, mixed, undisclosed"}
+        isMerger: {type: boolean, required: false, note: "true for mergers, false for acquisitions"}
+        minAmountUsd: {type: number, required: false, note: "whole USD"}
+        maxAmountUsd: {type: number, required: false, note: "whole USD"}
+        countries: {type: "array[string]", required: false, note: "HQ country, ISO-3166 alpha-2", example: "US"}
+        industryGroups: {type: "array[string]", required: false, note: "LinkedIn industry labels"}
+        verticals: {type: "array[string]", required: false, note: "the target's vertical"}
+        naicsCode: {type: string, required: false, note: "the target's NAICS 2022 code"}
+        includeTotal: {type: boolean, required: false, note: "free match count"}
+        limit: {type: integer, required: false, note: "default 20, max 100 — PRICE DIAL: 1 credit per deal returned", example: 1}
+        cursor: {type: string, required: false}
+    test_request:
+      queryParams: {limit: 1}
+    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://datahyena.com/pricing", checked: '2026-10-18', confidence: documented}
+    added: '2026-10-18'
+    docs_url: https://datahyena.com/docs
+
+  - id: datahyena.companies.acquisitions
+    domain: companies
+    capability: companies.acquisitions
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/acquisitions
+    name: "A company's acquisitions, as buyer or target"
+    summary: "Every deal where the company at this domain was the acquirer or the target."
+    input:
+      queryParams:
+        domain: {type: string, required: true, note: "company domain", example: "salesforce.com"}
+        limit: {type: integer, required: false, note: "1 credit per deal returned", example: 1}
+    test_request:
+      queryParams: {domain: "salesforce.com", limit: 1}
+    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://datahyena.com/pricing", checked: '2026-10-18', confidence: documented}
+    added: '2026-10-18'
+    docs_url: https://datahyena.com/docs
+
+  - id: datahyena.exec_moves.feed
+    domain: companies
+    capability: companies.exec_moves.feed
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/exec-moves
+    name: "Browse executive appointments, promotions and departures"
+    summary: "Leadership changes newest first: who joined, was promoted or left which company, in what role, with C-level, VP and founder filters."
+    input:
+      queryParams:
+        since: {type: string, required: false, note: "announced on or after, YYYY-MM-DD", example: "2026-10-01"}
+        until: {type: string, required: false}
+        moveType: {type: "array[string]", required: false, note: "appointment, promotion, departure, transition", example: "appointment"}
+        roleSeniority: {type: "array[string]", required: false, note: "c_level, vp_level, founder", example: "c_level"}
+        domain: {type: string, required: false, note: "only moves at this company"}
+        countries: {type: "array[string]", required: false, note: "HQ country"}
+        naicsCode: {type: string, required: false}
+        includeTotal: {type: boolean, required: false, note: "free match count"}
+        limit: {type: integer, required: false, note: "default 20, max 100 — PRICE DIAL: 1 credit per move returned", example: 1}
+        cursor: {type: string, required: false}
+    test_request:
+      queryParams: {limit: 1}
+    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://datahyena.com/pricing", checked: '2026-10-18', confidence: documented}
+    added: '2026-10-18'
+    docs_url: https://datahyena.com/docs
+
+  - id: datahyena.hiring_signals.feed
+    domain: companies
+    capability: companies.hiring_signals.feed
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/hiring-signals
+    name: "Browse hiring signals from companies' own job boards"
+    summary: "Leadership openings, founding roles, team scaling, technology hiring and hard-to-fill roles, read from the company's own careers page, newest first."
+    input:
+      queryParams:
+        eventType: {type: "array[string]", required: false, note: "leadership_opening, founding_role, role_family_scaling, technology_hiring, team_buildout, hiring_surge and more", example: "leadership_opening"}
+        function: {type: "array[string]", required: false, note: "engineering, data, security, product, design, sales, marketing, customer_success, operations and more", example: "sales"}
+        seniority: {type: "array[string]", required: false, note: "c_level, vp_level, head, director, manager, senior, individual, entry, intern"}
+        technologies: {type: "array[string]", required: false, note: "technologies the roles name, e.g. snowflake", example: "snowflake"}
+        roleFamily: {type: "array[string]", required: false, note: "sales_development, revops, gtm_engineering and more"}
+        activeOnly: {type: boolean, required: false, note: "only signals whose roles are still open"}
+        domain: {type: string, required: false, note: "only this company's signals"}
+        countries: {type: "array[string]", required: false}
+        since: {type: string, required: false}
+        until: {type: string, required: false}
+        includeTotal: {type: boolean, required: false, note: "free match count"}
+        limit: {type: integer, required: false, note: "default 20, max 100 — PRICE DIAL: 1 credit per signal returned", example: 1}
+        cursor: {type: string, required: false}
+    test_request:
+      queryParams: {limit: 1}
+    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://datahyena.com/pricing", checked: '2026-10-18', confidence: documented}
+    added: '2026-10-18'
+    docs_url: https://datahyena.com/docs
+
+  - id: datahyena.companies.hiring_profile
+    domain: companies
+    capability: companies.hiring_profile
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/hiring
+    name: "A company's hiring picture right now"
+    summary: "Open roles by role family and function, leadership and founding roles, the tools its roles name, its hiring stance and its hiring signals from the last 90 days."
+    input:
+      queryParams:
+        domain: {type: string, required: false, note: "one of domain, name, linkedinUrl or id is required", example: "figma.com"}
+        name: {type: string, required: false}
+        linkedinUrl: {type: string, required: false}
+        id: {type: string, required: false}
+      note: "1 credit per profile; a company not read yet comes back as building and costs nothing"
+    test_request:
+      queryParams: {domain: "figma.com"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://datahyena.com/pricing", checked: '2026-10-18', confidence: documented, note: "charged only when a profile is returned"}
+    added: '2026-10-18'
+    docs_url: https://datahyena.com/docs
+
+  - id: datahyena.companies.timeline
+    domain: companies
+    capability: companies.news
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/timeline
+    name: "A company's event timeline: funding, M&A, leadership, hiring"
+    summary: "Resolve one company and return its firmographics, investors and every funding, acquisition, executive move and hiring event in date order."
+    input:
+      queryParams:
+        domain: {type: string, required: false, note: "one of domain, name, linkedinUrl or id is required", example: "legora.com"}
+        name: {type: string, required: false}
+        linkedinUrl: {type: string, required: false}
+        id: {type: string, required: false}
+        include: {type: "array[string]", required: false, note: "funding, acquisitions, exec_moves, hiring; default all — narrowing it narrows the price", example: "funding"}
+      note: "1 credit for the company plus 1 per event included; nothing charged when no company matches"
+    test_request:
+      queryParams: {domain: "legora.com", include: "funding"}
+    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://datahyena.com/pricing", checked: '2026-10-18', confidence: documented, note: "the company record plus each event returned"}
+    added: '2026-10-18'
+    docs_url: https://datahyena.com/docs
+
+  - id: datahyena.companies.search
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies
+    name: "Search companies by keyword, country, size and funding"
+    summary: "Company records filtered by keyword, HQ country, industry, NAICS, headcount, founded year and money raised in the last 12 months, ranked by recency or prominence."
+    input:
+      queryParams:
+        search: {type: string, required: false, note: "keyword over name, domain and description", example: "sales automation"}
+        domain: {type: string, required: false, note: "one company by domain"}
+        countries: {type: "array[string]", required: false, example: "US"}
+        industryGroups: {type: "array[string]", required: false}
+        naicsCode: {type: string, required: false}
+        employeeCountBuckets: {type: "array[string]", required: false}
+        foundedYearMin: {type: integer, required: false}
+        foundedYearMax: {type: integer, required: false}
+        minFundingUsdLast12mo: {type: number, required: false, note: "only companies that raised at least this much in the last 12 months"}
+        hasKnownFounder: {type: boolean, required: false}
+        sort: {type: string, required: false, note: "recent or prominence", example: "prominence"}
+        includeTotal: {type: boolean, required: false, note: "free match count"}
+        limit: {type: integer, required: false, note: "default 20, max 100 — PRICE DIAL: 1 credit per company returned", example: 1}
+        cursor: {type: string, required: false}
+    test_request:
+      queryParams: {search: "sales automation", limit: 1}
+    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://datahyena.com/pricing", checked: '2026-10-18', confidence: documented}
+    added: '2026-10-18'
+    docs_url: https://datahyena.com/docs
+
+  - id: datahyena.investors.search
+    domain: companies
+    capability: companies.investors.search
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/investors
+    name: "Search investors by type, country, cheque size and activity"
+    summary: "Investor records filtered by type (VC, angel, CVC, PE, growth, accelerator), HQ country, where they invest, largest round joined, round count and last activity."
+    input:
+      queryParams:
+        search: {type: string, required: false, note: "keyword over name and domain", example: "ventures"}
+        type: {type: "array[string]", required: false, note: "vc, angel, cvc, pe, growth, accelerator, family_office, syndicate", example: "vc"}
+        countries: {type: "array[string]", required: false, note: "investor HQ country"}
+        investsIn: {type: "array[string]", required: false, note: "countries of the companies they funded", example: "US"}
+        minRoundUsd: {type: number, required: false, note: "joined at least one round of this size, whole USD"}
+        minRounds: {type: integer, required: false}
+        activeSince: {type: string, required: false, note: "latest round on or after, YYYY-MM-DD"}
+        hasFirmographics: {type: boolean, required: false}
+        includeTotal: {type: boolean, required: false, note: "free match count"}
+        limit: {type: integer, required: false, note: "default 20, max 100 — PRICE DIAL: 1 credit per investor returned", example: 1}
+        cursor: {type: string, required: false}
+    test_request:
+      queryParams: {type: "vc", limit: 1}
+    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: record, source: docs, source_url: "https://datahyena.com/pricing", checked: '2026-10-18', confidence: documented}
+    added: '2026-10-18'
+    docs_url: https://datahyena.com/docs
