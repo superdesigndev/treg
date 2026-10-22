@@ -49,7 +49,7 @@ server = [
     "quickjs>=1.19.4",  # the hub's script sandbox engine (src/treg/hub_sandbox.py) — server-side only
     # httpx (they coexist), so the light CLI's dependency set is untouched
     "redis>=5",    # the shared key-value store (src/treg/infra/kv.py) — server-side only
-    "obstore>=0.11,<0.12",
+    "obstore>=0.11,<0.13",
     "numpy>=2.1",  # find's card vectors: one matrix product per query (application/find_index.py)
     "pillow>=11",  # re-draws uploaded pictures before they are stored (src/treg/infra/imaging.py)
 ]
