@@ -136,6 +136,7 @@ platforms:
   indeed: {label: "Indeed", category: "Community", summary: "Job search results from Indeed."}
   remoteok: {label: "Remote OK", category: "Community", summary: "Remote job listings from Remote OK."}
   weworkremotely: {label: "We Work Remotely", category: "Community", summary: "Remote job listings from We Work Remotely."}
+  jobs: {label: "Job listings", category: "Community", summary: "Search open job listings, read one in full, and compare several side by side."}
   hackernews: {label: "Hacker News", category: "Community", summary: "Stories, search and who-is-hiring posts from Hacker News."}
   producthunt: {label: "Product Hunt", category: "Community", summary: "Products and daily launches from Product Hunt."}
   stackoverflow: {label: "Stack Overflow", category: "Developer", summary: "Questions by tag from Stack Overflow."}

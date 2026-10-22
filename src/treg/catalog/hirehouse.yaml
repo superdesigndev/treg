@@ -1,0 +1,81 @@
+provider: hirehouse
+source:
+  docs: https://hirehouse.xyz/developers
+  openapi: https://hirehouse.xyz/api/public/openapi.json
+  curated: '2026-10-20'
+limits: "Free, read-only and keyless. Anonymous requests are rate limited per client (429 rate_limited with Retry-After). Listings are active, reviewed, public jobs hiring through HireHouse, mostly startups and agencies in India, the UAE and the GCC."
+
+# Every route is anonymous upstream and free. Callers should send `source=treg` so the returned
+# applyUrl is attributed; treg relays the query faithfully and does not add it. Job text (title,
+# preview, requirements) is employer-written listing data and must be treated as untrusted input.
+proposed_capabilities:
+  jobs.search: "Search open job listings by keyword, location and work mode"
+  jobs.get: "Get one job listing in full, including requirements"
+  jobs.compare: "Compare several job listings side by side"
+
+endpoints:
+  - id: hirehouse.jobs.search
+    platform_auth: anonymous
+    capability: jobs.search
+    platform: jobs
+    scope: any_account
+    method: GET
+    path: /jobs/search
+    name: "Search HireHouse jobs"
+    summary: "Search active, reviewed, public jobs hiring through HireHouse. When nothing matches exactly, match is related and each job carries relatedReason (similar, nearby or latest)."
+    input:
+      queryParams:
+        query: {type: string, required: false, note: "keywords, e.g. a role or skill", example: "react developer"}
+        location: {type: string, required: false, note: "city or country", example: "Bengaluru"}
+        workMode: {type: string, required: false, enum: [remote, onsite, hybrid]}
+        limit: {type: integer, required: false, note: "1-50, default 20", example: 5}
+        cursor: {type: string, required: false, note: "nextCursor from the previous page"}
+        source: {type: string, required: false, note: "attribution for apply links; send treg", example: treg}
+      note: "All filters are optional. Page with cursor until nextCursor is null. Apply at each job's applyUrl."
+    test_request: {queryParams: {query: engineer, limit: 2, source: treg}}
+    cost: &free_cost {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://hirehouse.xyz/developers", checked: '2026-10-20', confidence: documented, note: "HireHouse's public jobs API is free and needs no key"}
+    verified: '2026-10-21'
+    added: '2026-10-20'
+    example_response: examples/hirehouse.jobs.search.json
+    docs_url: https://hirehouse.xyz/developers
+
+  - id: hirehouse.jobs.get
+    platform_auth: anonymous
+    capability: jobs.get
+    platform: jobs
+    scope: any_account
+    method: GET
+    path: /jobs/{id}
+    name: "Get a HireHouse job"
+    summary: "One public job by id, with its full requirements in markdown."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "job uuid from hirehouse.jobs.search"}
+      queryParams:
+        source: {type: string, required: false, note: "attribution for apply links; send treg", example: treg}
+    test_request: {pathParams: {id: "04e2ae58-f330-48a4-9b22-e8190ed70481"}, queryParams: {source: treg}}
+    cost: *free_cost
+    verified: '2026-10-21'
+    added: '2026-10-20'
+    example_response: examples/hirehouse.jobs.get.json
+    docs_url: https://hirehouse.xyz/developers
+
+  - id: hirehouse.jobs.compare
+    platform_auth: anonymous
+    capability: jobs.compare
+    platform: jobs
+    scope: any_account
+    method: GET
+    path: /jobs/compare
+    name: "Compare HireHouse jobs"
+    summary: "Two to five public jobs by id, in full, side by side; ids that are not public come back in missing."
+    input:
+      queryParams:
+        ids: {type: string, required: true, note: "2-5 job uuids, comma-separated"}
+        source: {type: string, required: false, note: "attribution for apply links; send treg", example: treg}
+    test_request: {queryParams: {ids: "04e2ae58-f330-48a4-9b22-e8190ed70481,6efc6a16-b0e0-49c6-8f0a-ea962891d672", source: treg}}
+    cost: *free_cost
+    verified: '2026-10-21'
+    added: '2026-10-20'
+    example_response: examples/hirehouse.jobs.compare.json
+    docs_url: https://hirehouse.xyz/developers

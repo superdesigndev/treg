@@ -1,0 +1,34 @@
+{
+  "total": 2,
+  "jobs": [
+    {
+      "id": "04e2ae58-f330-48a4-9b22-e8190ed70481",
+      "orgId": "postings",
+      "title": "TECHNICAL ENGINEER / DRAFTSMAN",
+      "company": "Atratek Glass and Aluminium",
+      "workMode": "onsite",
+      "location": "Dubai - United Arab Emirates (UAE)",
+      "payRange": null,
+      "featured": false,
+      "publishedAt": "2026-10-19T12:55:41.641Z",
+      "preview": "- Translate complex engineering designs and concepts into precise, detailed technical drawings and blueprints using CAD software.\n- Making drawings\n- Collaborate closely with engineers and project managers to understand design intent and ensure drawings accurately reflect specifications.\n- Perform calculations and analyses to verify structural integrity, material requirements, and dimensional accuracy of designs.…",
+      "applyUrl": "https://postings.hirehouse.xyz/apply/04e2ae58-f330-48a4-9b22-e8190ed70481?ref=treg&utm_source=treg&utm_medium=api",
+      "requirements": "- Translate complex engineering designs and concepts into precise, detailed technical drawings and blueprints using CAD software.\n- Making drawings\n- Collaborate closely with engineers and project managers to understand design intent and ensure drawings accurately reflect specifications.\n- Perform calculations and analyses to verify structural integrity, material requirements, and dimensional accuracy of designs.\n- Develop and maintain a comprehensive library of standard parts, symbols, and draw… [551 chars total]"
+    },
+    {
+      "id": "6efc6a16-b0e0-49c6-8f0a-ea962891d672",
+      "orgId": "postings",
+      "title": "Pre-Sales Engineer (Data Center & Modular Infrastructure)",
+      "company": "ALTRON SMART TECHNOLOGY  SERVICES L.L.C.",
+      "workMode": "onsite",
+      "location": "Sharjah, Abu Dhabi - United Arab Emirates (UAE)",
+      "payRange": null,
+      "featured": false,
+      "publishedAt": "2026-10-19T11:03:16.633Z",
+      "preview": "- Work with the sales team to qualify opportunities, understand client requirements and shape the right technical solution and scope.\n- Design end-to-end data center infrastructure: power (MV/LV, UPS, generators), cooling (air, in-row, direct liquid), racks and containment, structured cabling, fire detection and suppression, security and monitoring (BMS/DCIM).…",
+      "applyUrl": "https://postings.hirehouse.xyz/apply/6efc6a16-b0e0-49c6-8f0a-ea962891d672?ref=treg&utm_source=treg&utm_medium=api",
+      "requirements": "- Work with the sales team to qualify opportunities, understand client requirements and shape the right technical solution and scope.\n- Design end-to-end data center infrastructure: power (MV/LV, UPS, generators), cooling (air, in-row, direct liquid), racks and containment, structured cabling, fire detection and suppression, security and monitoring (BMS/DCIM).\n- Configure and size prefabricated modular and containerized data centers and AI pods from the Altron Modular portfolio, working with our… [1645 chars total]"
+    }
+  ],
+  "missing": []
+}

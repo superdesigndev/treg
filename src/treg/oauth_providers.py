@@ -3788,6 +3788,42 @@ FINANCIALDATASETS = OAuthProvider(
 )
 
 
+HIREHOUSE = OAuthProvider(
+    service="hirehouse",
+    display_name="HireHouse",
+    auth_kind="key",
+    token_label="API key (optional)",
+    token_placeholder="your HireHouse public API key",
+    token_header="X-HireHouse-Key",
+    token_format="{secret}",
+    setup_url="https://hirehouse.xyz/developers",
+    setup_action_label="Read the HireHouse public jobs API docs",
+    setup_steps=(
+        "No key is needed: the public jobs routes answer anonymous requests.",
+        "A HireHouse key only raises rate limits; paste one here if you have it.",
+    ),
+    setup_note=(
+        "HireHouse's public jobs API is free and read-only. Send source=treg on every call so "
+        "apply links are attributed."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary=(
+        "Active, reviewed public job listings hiring through HireHouse, an AI hiring platform "
+        "for startups and agencies in India, the UAE and the GCC."
+    ),
+    base_url="https://hirehouse.xyz/api/public",
+    docs_url="https://hirehouse.xyz/developers",
+    # Public routes accept anonymous requests, so they cannot validate a pasted key. A search with
+    # limit=1 is the cheapest request; 401 invalid_api_key is the only rejection of a bad key.
+    probe_url="https://hirehouse.xyz/api/public/jobs/search?limit=1&source=treg",
+    probe_path="",
+    probe_reject_statuses=(401,),
+)
+
+
 # Alpha Vantage is DELIBERATELY absent. Its API served real quote data to a garbage key (verified
 # live 2026-08-14: bogus key -> HTTP 200 with the IBM quote; even premium endpoints answer 200 with
 # an upsell note), so a pasted key can never be validated at connect — the ScrapeCreators rule:
@@ -4004,6 +4040,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
+        # Jobs: free public listings
+        HIREHOUSE,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
