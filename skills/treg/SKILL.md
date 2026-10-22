@@ -52,7 +52,9 @@ treg login --token <team-token>       # non-interactive, for agents and CI
 ```
 
 The installer puts in the CLI and this skill for every agent it detects; `treg mcp install` adds
-treg's MCP server to them once you are signed in. Given a token, the installer does both.
+treg's MCP server to them once you are signed in. Given a token, the installer does both. It lists
+treg's other skills without installing them: tell the human in one sentence each what they do,
+ask which they want, then run `treg skill bootstrap --skills <name>,<name>` (or `--skills all`).
 
 Everything runs in the **active team**. Invites arrive by email: `treg invites` lists them,
 `treg accept` takes one (or `treg org join <code>`); `treg org use <slug>` switches teams. A new

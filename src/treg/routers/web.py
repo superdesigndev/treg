@@ -4421,9 +4421,14 @@ def _skill_frontmatter(name: str = "skill.md") -> dict[str, str]:
     if not text.startswith("---"):
         raise HTTPException(status_code=404, detail=f"{name} has no frontmatter")
     out: dict[str, str] = {}
+    parent = ""
     for line in text.split("---", 2)[1].strip().splitlines():
         key, _, value = line.partition(":")
+        if line[:1].isspace() and parent:
+            out[f"{parent}.{key.strip()}"] = value.strip()
+            continue
         out[key.strip()] = value.strip()
+        parent = key.strip() if not value.strip() else ""
     return out
 
 
@@ -4435,18 +4440,16 @@ async def well_known_skills_index():
     treg from treg.to directly, with no directory, no review queue and no third party in the middle
     — the same skill the plugins ship and `install.sh` drops, reached by whoever asks the domain.
     """
-    fm = _skill_frontmatter()
-    ugc = _skill_frontmatter("skills/make-ugc/SKILL.md")
-    sig = _skill_frontmatter("skills/lead-signals/SKILL.md")
-    web = _skill_frontmatter("skills/web-access/SKILL.md")
-    rec = _skill_frontmatter("skills/recruit/SKILL.md")
-    return JSONResponse({"skills": [
-        {"name": fm.get("name", "treg"), "description": fm.get("description", ""), "files": ["SKILL.md"]},
-        {"name": ugc.get("name", "make-ugc"), "description": ugc.get("description", ""), "files": ["SKILL.md"]},
-        {"name": sig.get("name", "lead-signals"), "description": sig.get("description", ""), "files": ["SKILL.md"]},
-        {"name": web.get("name", "web-access"), "description": web.get("description", ""), "files": ["SKILL.md"]},
-        {"name": rec.get("name", "recruit"), "description": rec.get("description", ""), "files": ["SKILL.md"]},
-    ]})
+    entries = []
+    for name, path in (("treg", "skill.md"), ("make-ugc", "skills/make-ugc/SKILL.md"),
+                       ("lead-signals", "skills/lead-signals/SKILL.md"),
+                       ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md")):
+        fm = _skill_frontmatter(path)
+        entry = {"name": fm.get("name", name), "description": fm.get("description", ""), "files": ["SKILL.md"]}
+        if summary := fm.get("metadata.summary"):
+            entry["summary"] = summary
+        entries.append(entry)
+    return JSONResponse({"skills": entries})
 
 
 @app.get("/.well-known/skills/treg/SKILL.md", include_in_schema=False)

@@ -33,6 +33,8 @@ async def test_well_known_skills_index_advertises_the_skill(clients):
     # would be caught the moment the two disagree.
     served = await clients.get("/skill.md")
     assert f"description: {entry['description']}" in served.text
+    # The installer offers the others to the human in one line each; a trigger description is no pitch.
+    assert all(s.get("summary") for s in skills[1:])
 
 
 async def test_well_known_skill_md_matches_the_canonical_one(clients):
