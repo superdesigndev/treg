@@ -1,4 +1,11 @@
-<svg width="150" height="150" viewBox="0 0 150 150" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="mailvalid">
-<rect width="150" height="150" rx="24" fill="#1E3A8A"/>
-<text x="75" y="102" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="78" font-weight="700" fill="#FFFFFF">M</text>
+<!-- Official MailValid icon, supplied by MailValid: https://mailvalid.io/static/img/favicon.svg ; 2026-10-22 -->
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Envelope body -->
+  <rect x="2" y="8" width="28" height="18" rx="3" fill="#2563EB"/>
+  <!-- Envelope flap -->
+  <path d="M2 11L16 20L30 11" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Checkmark circle -->
+  <circle cx="24" cy="10" r="7" fill="#10B981"/>
+  <!-- Checkmark -->
+  <path d="M20.5 10L23 12.5L27.5 7.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
