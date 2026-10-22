@@ -1014,6 +1014,28 @@ class ProviderResource(SQLModel, table=True):
     key_slot: str | None = Field(default=None)  # config.PlatformSlot label; NULL = primary
 
 
+class PlatformSubaccount(SQLModel, table=True):
+    """One org's tenant inside a provider treg serves through per-team sub-accounts (OpenMail pods).
+
+    `upstream_id` is the provider's id for the tenant (the pod); `secret` is that tenant's scoped
+    key, Fernet-encrypted like a `Secret.value`. It is NOT a `Secret` row on purpose: the org must
+    never read or export it (a pod key bypasses treg's ledger), and treg's account-wide key never
+    touches a relayed call — it only provisions (`application/call/openmail.py`). One row per
+    (org, provider); a 409 from the provider on re-provisioning resolves to the existing tenant.
+    """
+
+    __table_args__ = (
+        UniqueConstraint("org_id", "provider", name="uq_platformsubaccount_org_provider"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    org_id: int = Field(foreign_key="org.id", index=True)
+    provider: str = Field(index=True)
+    upstream_id: str = Field(index=True)
+    secret: str  # encrypted at rest; never returned to clients
+    created_at: datetime = Field(default_factory=_now)
+
+
 class TagSpend(SQLModel, table=True):
     """What one call cost, attributed to ONE of its caller tags. Written by `domain/money` only, inside
     the same transaction as the money movement — never through `audit.py`, which drops rows.

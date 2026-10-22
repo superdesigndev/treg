@@ -50,6 +50,7 @@ from ...models import (
     Org,
     OrgFlowControlVersion,
     PendingOAuth,
+    PlatformSubaccount,
     Project,
     ProviderResource,
     Referral,
@@ -273,6 +274,7 @@ ORG_SCOPED_MODELS = (
     TagBudget,
     TagSpend,  # before the money tables it attributes: its rows reference a Hold that is about to go
     AsyncResourceRecord, ProviderResource, AsyncTaskRecord, LedgerEntry, Hold, CreditBlock,
+    PlatformSubaccount,  # the team's OpenMail pod key; the pod itself is cleaned up upstream by hand
     OAuthCode, OAuthRefresh,   # grants naming a team that no longer exists
     IdempotentCall,            # a remembered answer belongs to the team that paid for it
     ToolRequest,  # attribution rows go with the team; anonymous filings carry no org_id and stay

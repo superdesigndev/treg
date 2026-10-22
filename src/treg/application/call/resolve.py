@@ -33,6 +33,7 @@ from ...infra.db import session_maker
 from ...domain.governance.access import pinned_tag_predicates
 from ...models import AsyncResourceRecord, AsyncTaskRecord, CapabilityPin, Org, Secret, Tool
 from ..connect import _host_of, _provider_bindings
+from . import openmail as openmail_platform
 from . import keyslots
 from .idempotency import _IDEM_SCOPE_SEP, IDEMPOTENCY_HEADER, _idempotency_key
 from .types import ResolutionFailed, ResolvedTarget
@@ -2423,10 +2424,14 @@ async def _resolve_marketplace_call(
                 ep, service, capacity_view.exhausted_until(service, ep["id"], cap_slot, metered=metered),
                 probing=True)
     if cost is not None:
+        # A sub-account provider (OpenMail) relays on the org's own upstream tenant key, provisioned
+        # on first use in `service` where the HTTP client lives; the marker binding names it.
+        bindings = ([dict(openmail_platform.BINDING)] if provider.platform_subaccount
+                    else oauth_providers.platform_bindings(provider, key_slot))
         virtual = Tool(
             org_id=caller.org_id, name=ep["id"], owner=caller.email,
             base_url=provider.base_url, host=_host_of(provider.base_url),
-            bindings=oauth_providers.platform_bindings(provider, key_slot),
+            bindings=bindings,
         )
         return MarketplaceCall(tool=virtual, tier="platform", skip_direct=skip_direct,
                                async_owner_call_id=async_owner_call_id,

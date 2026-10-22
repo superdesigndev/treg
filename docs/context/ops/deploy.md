@@ -42,6 +42,13 @@ Fish Audio shared-key capacity monitoring requires both `TREG_PLATFORM_KEY_FISHA
 free API-credit probe; without it, capacity remains unknown rather than reading the unrelated
 personal wallet.
 
+OpenMail on treg's key needs `TREG_PLATFORM_KEY_OPENMAIL` (an account-wide key on treg's OpenMail
+enterprise account) and `openmail` in `TREG_PLATFORM_PROVIDERS`. The key only creates pods and mints
+pod keys; pod keys live in `platformsubaccount`, encrypted with `TREG_SECRET_KEY`, so rotating that
+key without re-encrypting orphans every team's pod (the next call fails to decrypt, no re-provision
+happens because the row exists). Revoke a pod key in the OpenMail console and delete its row to
+force a fresh mint.
+
 OpenRouter capacity monitoring reads `TREG_PLATFORM_OPENROUTER_MANAGEMENT_KEY` (sweep only);
 without it, OpenRouter reports no balance API.
 

@@ -383,6 +383,9 @@ class Settings(BaseSettings):
     platform_key_cloro: str = ""      # Bearer key (sk_live_…); Hobby metered rate $0.0004/credit; settles from X-Credits-Charged
     platform_key_minimax: str = ""    # Bearer key for MiniMax voice, image and video generation
     platform_key_fishaudio: str = ""  # Bearer key for Fish Audio speech and private voices
+    # Account-wide OpenMail key. Only ever PROVISIONS: creates one pod per treg org and mints that
+    # pod's scoped key (`application/call/openmail.py`); relayed mail calls carry the pod key.
+    platform_key_openmail: str = ""
     # Fish API-credit lookups need the workspace selector to read the shared workspace wallet.
     # This is account metadata, not a credential and not another platform-provider slot.
     platform_fishaudio_workspace_id: str = ""

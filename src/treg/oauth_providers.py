@@ -90,6 +90,11 @@ class OAuthProvider:
     # only applies bindings and never learns provider-specific behavior. A tuple keeps this frozen
     # dataclass immutable and makes accidental process-wide mutation impossible.
     required_headers: tuple[tuple[str, str], ...] = ()
+    # Tier 4 serves this provider through a per-team sub-account: treg's own key only PROVISIONS
+    # (one upstream tenant per org, one scoped key each) and every relayed call carries the org's
+    # scoped key, so tenant isolation is enforced upstream, not by treg's ownership table.
+    # `application/call/openmail.py` is the first (and so far only) provisioner.
+    platform_subaccount: bool = False
     # Shown on the provider page and in the capability modal, i.e. everywhere Connect can be
     # clicked, BEFORE the consent popup opens. For providers whose consent screen names something
     # the user has not seen on treg: the Meta app is registered as "Crewlet", a sibling product, so
@@ -1841,6 +1846,33 @@ FISHAUDIO = OAuthProvider(
     docs_url="https://docs.fish.audio/api-reference/introduction",
     probe_path="/model?self=true&page_size=1",
     probe_reject_statuses=(401, 403),
+)
+
+OPENMAIL = OAuthProvider(
+    service="openmail",
+    display_name="OpenMail",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="om_…",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://console.openmail.sh/api-keys",
+    setup_action_label="Get your OpenMail API key",
+    setup_steps=(
+        "Sign in to the OpenMail console and open API keys.",
+        "Create a key and paste it here.",
+    ),
+    setup_note=("Inboxes and sends are usage-priced on your OpenMail plan. Custom domains need "
+                "your own account; on treg's key every team gets its own isolated pod."),
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Email",
+    summary="Give an agent its own email inboxes: create addresses, send, read threads, fetch attachments.",
+    base_url="https://api.openmail.sh",
+    docs_url="https://docs.openmail.sh",
+    probe_path="/v1/inboxes?limit=1",
+    probe_reject_statuses=(401, 403),
+    platform_subaccount=True,
 )
 
 OPENROUTER = OAuthProvider(
@@ -3988,7 +4020,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # API-key providers
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
-        TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
+        TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO, OPENMAIL,
         OPENROUTER,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,

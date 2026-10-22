@@ -15,6 +15,7 @@ sources:
   - src/treg/catalog/examples/fetchinio.linkedin.post.reactions.json
   - src/treg/catalog/examples/fetchinio.linkedin.post.engagement.json
   - src/treg/catalog/fishaudio.yaml
+  - src/treg/catalog/openmail.yaml
   - src/treg/catalog/examples/fishaudio.tts.s2-1-pro.json
   - src/treg/catalog/examples/fishaudio.voices.create.json
   - src/treg/catalog/examples/fishaudio.voices.discover.json
@@ -239,6 +240,29 @@ against the declared public predicate after closing the database session, before
 assigned to any organization is never sent through the public lookup. BYOK never applies this
 policy. Fish remains deployment-disabled until live management-price, shared-account permission,
 and commercial checks pass.
+
+## OpenMail v1
+
+OpenMail gives an agent its own email inboxes. On treg's key every team gets its own OpenMail
+**pod**: a tenant inside treg's one enterprise account, with its own inboxes, reputation and
+scoped API key. `platform_subaccount=True` on the provider turns the shared-key path into a
+sub-account path. treg's account-wide key (`TREG_PLATFORM_KEY_OPENMAIL`) only provisions — on an
+org's first platform call `application/call/openmail.py` creates the pod (`clientId` =
+`treg-org-<org_id>`, a 409 resolves to the existing pod) and mints the pod's scoped key — and
+every relayed call carries that pod key, stored Fernet-encrypted in `PlatformSubaccount`, never in
+a `Secret` row the org could read or export. Tenancy is enforced upstream: a pod key cannot read or
+act on another pod's inbox, and cannot set `podId` itself, so the rows need no `managed_resource`
+and `body_allowlist` keeps `podId` off every body. Provisioning failure is a typed 503
+(`platform_subaccount_unavailable`), nothing reserved.
+
+Prices are the treg partner offer of 2026-10-20, in USD: an inbox is paid per **term** on
+`inboxes.create` and `inboxes.renew` (`term=7d` $0.30, `term=30d` $1.00, a cost table on the body
+field), a send is $0.002 (a send OpenMail rejects or blocks is a non-2xx and so free), an
+attachment download $0.001, everything else free. Reads are `cache: forbidden` — mail is private.
+Custom domains are `own_account`/BYOK-only: a domain belongs to an OpenMail account, and an
+unverified claim on the shared account would lock it for every other team. `term`, `inboxes.renew`
+and inbox inactivity (mail still lands, reading and sending need a renewal of the same address) are the planned OpenMail
+API shape agreed 2026-10-22 and not live yet; the rows carry no `verified` stamp until they are.
 
 `team_label` covers provider objects that outlive a call and are kept per label (monitors,
 schedules, feeds) on treg's one shared account. It lists request fields (body, header, query or

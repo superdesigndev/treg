@@ -1,0 +1,467 @@
+provider: openmail
+source:
+  docs: https://docs.openmail.sh
+  curated: 2026-10-22
+pricing_url: https://openmail.sh/pricing
+limits: "On treg's key every team gets its own OpenMail pod: inbox ids from another team are refused upstream. Inboxes are paid per term (7 or 30 days) on create and renew; an expired inbox goes inactive: it still receives, but reading and sending need a renewal; the address is never recycled. Caps: 100 sends/day on a 30-day inbox, 20/day on a 7-day inbox. Custom domains need your own OpenMail account."
+# Prices are the treg offer of 2026-10-20 (user-facing USD); OpenMail's own retail is EUR.
+# `term` on create and renew, `POST /v1/inboxes/{id}/renew` and inactivity are the planned OpenMail API
+# shape agreed 2026-10-22 and not yet live; verify these rows once it ships.
+proposed_capabilities:
+  email.agent-inboxes.create: "Create an email inbox for an agent, paid per 7- or 30-day term"
+  email.agent-inboxes.renew: "Extend an agent inbox by another 7- or 30-day term"
+  email.agent-inboxes.list: "List the team's agent inboxes"
+  email.agent-inboxes.get: "Read one agent inbox"
+  email.agent-inboxes.delete: "Delete an agent inbox"
+  email.agent-inboxes.send: "Send an email from an agent inbox"
+  email.agent-inboxes.send_with_attachments: "Send an email with file attachments from an agent inbox"
+  email.agent-inboxes.threads.list: "List conversation threads in an agent inbox"
+  email.agent-inboxes.messages.list: "List messages in an agent inbox"
+  email.agent-inboxes.thread.read: "Read every message in a thread"
+  email.agent-inboxes.thread.mark_read: "Mark a thread read or unread"
+  email.agent-inboxes.attachment.download: "Download an attachment from a received message"
+  email.agent-inboxes.attachment.text: "Extract the text of an attachment"
+  email.custom-domains.add: "Add a custom sending domain to an OpenMail account"
+  email.custom-domains.list: "List custom domains on an OpenMail account"
+  email.custom-domains.get: "Read one custom domain and its DNS records"
+  email.custom-domains.verify: "Re-check a custom domain's DNS"
+  email.custom-domains.delete: "Remove a custom domain"
+endpoints:
+  - id: openmail.inboxes.create
+    capability: email.agent-inboxes.create
+    platform: email
+    domain: email
+    kind: action
+    scope: any_account
+    method: POST
+    path: /v1/inboxes
+    name: "OpenMail: create inbox"
+    summary: "Create an email address for an agent. Paid for the whole term up front; a failed creation is free."
+    input:
+      body:
+        term: {type: string, required: true, enum: [7d, 30d], example: 30d, note: "How long the inbox lives before it needs renewing. Sets the price."}
+        mailboxName: {type: string, required: false, example: "support-agent", note: "Local part; omit for a generated one."}
+        displayName: {type: string, required: false, example: "Support Agent"}
+        forwardTo: {type: string, required: false, note: "Forward incoming mail to this address."}
+        forwardWhen: {type: string, required: false, enum: [always, unread], default: always}
+      bodyType: json
+    body_allowlist: true
+    test_request:
+      body: {term: 7d, displayName: "treg verification"}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.term: 7d}, value: 0.30}
+        - {when: {body.term: 30d}, value: 1.00}
+      fallback: {value: 1.00, note: "A 30-day inbox is the longest term."}
+      currency: USD
+      settle: table
+      source: vendor_email
+      checked: 2026-10-20
+      confidence: documented
+      source_url: https://openmail.sh/pricing
+      note: "treg partner offer 2026-10-20: $0.30 for 7 days, $1.00 for 30 days, charged on create."
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/inboxes/create-inbox
+
+  - id: openmail.inboxes.renew
+    capability: email.agent-inboxes.renew
+    platform: email
+    domain: email
+    kind: action
+    scope: any_account
+    method: POST
+    path: /v1/inboxes/{id}/renew
+    name: "OpenMail: renew inbox"
+    summary: "Extend or reactivate an inbox by another term, same address. Renew any time, before or after it goes inactive."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "inb_01J..."}
+      body:
+        term: {type: string, required: true, enum: [7d, 30d], example: 30d}
+      bodyType: json
+    body_allowlist: true
+    test_request:
+      pathParams: {id: "inb_test"}
+      body: {term: 7d}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.term: 7d}, value: 0.30}
+        - {when: {body.term: 30d}, value: 1.00}
+      fallback: {value: 1.00, note: "A 30-day term is the longest."}
+      currency: USD
+      settle: table
+      source: vendor_email
+      checked: 2026-10-20
+      confidence: documented
+      source_url: https://openmail.sh/pricing
+      note: "Same prices as create: 7 more days $0.30, 30 more days $1.00."
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/inboxes/renew-inbox
+
+  - id: openmail.inboxes.list
+    capability: email.agent-inboxes.list
+    platform: email
+    domain: email
+    scope: any_account
+    method: GET
+    path: /v1/inboxes
+    name: "OpenMail: list inboxes"
+    summary: "List the team's inboxes."
+    input:
+      queryParams:
+        limit: {type: integer, required: false, min: 1, max: 100, default: 50}
+        offset: {type: integer, required: false, min: 0, default: 0}
+    strict_query: true
+    cost: {type: free, value: 0, currency: USD, unit: call, source: vendor_email, checked: 2026-10-20, confidence: documented, source_url: "https://openmail.sh/pricing"}
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/inboxes/list-inboxes
+
+  - id: openmail.inboxes.get
+    capability: email.agent-inboxes.get
+    platform: email
+    domain: email
+    scope: any_account
+    method: GET
+    path: /v1/inboxes/{id}
+    name: "OpenMail: get inbox"
+    summary: "Read one inbox, including its address and expiry."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "inb_01J..."}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: vendor_email, checked: 2026-10-20, confidence: documented, source_url: "https://openmail.sh/pricing"}
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/inboxes/get-inbox
+
+  - id: openmail.inboxes.delete
+    capability: email.agent-inboxes.delete
+    platform: email
+    domain: email
+    kind: action
+    scope: any_account
+    method: DELETE
+    path: /v1/inboxes/{id}
+    name: "OpenMail: delete inbox"
+    summary: "Delete an inbox for good. No refund for the remaining term; an unused inbox can simply be left to go inactive instead."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "inb_01J..."}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: vendor_email, checked: 2026-10-20, confidence: documented, source_url: "https://openmail.sh/pricing"}
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/inboxes/delete-inbox
+
+  - id: openmail.emails.send
+    capability: email.agent-inboxes.send
+    platform: email
+    domain: email
+    kind: action
+    scope: any_account
+    method: POST
+    path: /v1/inboxes/{id}/send
+    name: "OpenMail: send email"
+    summary: "Send an email from an inbox, or reply in a thread. A send OpenMail rejects or blocks is free."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "inb_01J..."}
+      headers:
+        idempotency-key: {type: string, required: false, note: "Retry-safe: the same key within 24 h returns the first result."}
+      body:
+        to: {type: string, required: true, example: "someone@example.com"}
+        subject: {type: string, required: false, example: "Hello from treg"}
+        body: {type: string, required: true, example: "Plain-text body."}
+        bodyHtml: {type: string, required: false}
+        threadId: {type: string, required: false, note: "Reply inside this thread."}
+        includeQuote: {type: boolean, required: false, default: false}
+        replyTo: {type: string, required: false}
+        cc: {type: string_or_array, required: false}
+        bcc: {type: string_or_array, required: false}
+      bodyType: json
+    body_allowlist: true
+    test_request:
+      pathParams: {id: "inb_test"}
+      body: {to: "verify@example.com", subject: "treg verification", body: "This is a treg verification send."}
+    cost:
+      type: per_success
+      value: 0.002
+      currency: USD
+      unit: call
+      source: vendor_email
+      checked: 2026-10-20
+      confidence: documented
+      source_url: https://openmail.sh/pricing
+      note: "treg partner offer 2026-10-20: $0.002 per accepted send, screening included."
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/send/send-email
+
+  - id: openmail.emails.send_with_attachments
+    capability: email.agent-inboxes.send_with_attachments
+    platform: email
+    domain: email
+    kind: action
+    scope: any_account
+    method: POST
+    path: /v1/inboxes/{id}/send
+    name: "OpenMail: send email with attachments"
+    summary: "Send an email with file attachments (multipart). Same price as a plain send."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "inb_01J..."}
+      headers:
+        idempotency-key: {type: string, required: false}
+      body:
+        to: {type: string, required: true, example: "someone@example.com"}
+        subject: {type: string, required: false}
+        body: {type: string, required: true}
+        bodyHtml: {type: string, required: false}
+        threadId: {type: string, required: false}
+        includeQuote: {type: boolean, required: false}
+        replyTo: {type: string, required: false}
+        cc: {type: string_or_array, required: false}
+        bcc: {type: string_or_array, required: false}
+        attachments: {type: "array[file]", required: true, min: 1, note: "File parts; total size per OpenMail's attachment limit."}
+      bodyType: multipart
+    body_allowlist: true
+    test_request:
+      pathParams: {id: "inb_test"}
+      bodyType: multipart
+      body: {to: "verify@example.com", subject: "treg verification", body: "Attachment test."}
+      files:
+        attachments: {filename: note.txt, content_type: text/plain}
+    cost:
+      type: per_success
+      value: 0.002
+      currency: USD
+      unit: call
+      source: vendor_email
+      checked: 2026-10-20
+      confidence: documented
+      source_url: https://openmail.sh/pricing
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/send/send-email
+
+  - id: openmail.threads.list
+    capability: email.agent-inboxes.threads.list
+    platform: email
+    domain: email
+    scope: any_account
+    method: GET
+    path: /v1/inboxes/{id}/threads
+    name: "OpenMail: list threads"
+    summary: "List conversation threads in an inbox, newest first; filter to unread."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "inb_01J..."}
+      queryParams:
+        limit: {type: integer, required: false, min: 1, max: 100, default: 50}
+        offset: {type: integer, required: false, min: 0, default: 0}
+        isRead: {type: boolean, required: false, note: "false = unread threads only."}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: vendor_email, checked: 2026-10-20, confidence: documented, source_url: "https://openmail.sh/pricing"}
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/threads/list-threads
+
+  - id: openmail.messages.list
+    capability: email.agent-inboxes.messages.list
+    platform: email
+    domain: email
+    scope: any_account
+    method: GET
+    path: /v1/inboxes/{id}/messages
+    name: "OpenMail: list messages"
+    summary: "List individual messages in an inbox, newest first."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "inb_01J..."}
+      queryParams:
+        limit: {type: integer, required: false, min: 1, max: 100, default: 50}
+        offset: {type: integer, required: false, min: 0, default: 0}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: vendor_email, checked: 2026-10-20, confidence: documented, source_url: "https://openmail.sh/pricing"}
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/messages/list-messages
+
+  - id: openmail.threads.read
+    capability: email.agent-inboxes.thread.read
+    platform: email
+    domain: email
+    scope: any_account
+    method: GET
+    path: /v1/threads/{id}/messages
+    name: "OpenMail: read thread"
+    summary: "Every message in a thread, oldest first, with attachment metadata."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "thr_01J..."}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: vendor_email, checked: 2026-10-20, confidence: documented, source_url: "https://openmail.sh/pricing"}
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/threads/list-thread-messages
+
+  - id: openmail.threads.mark_read
+    capability: email.agent-inboxes.thread.mark_read
+    platform: email
+    domain: email
+    kind: action
+    scope: any_account
+    method: PATCH
+    path: /v1/threads/{id}
+    name: "OpenMail: mark thread read"
+    summary: "Mark a thread read or unread."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "thr_01J..."}
+      body:
+        isRead: {type: boolean, required: true, example: true}
+      bodyType: json
+    body_allowlist: true
+    test_request:
+      pathParams: {id: "thr_test"}
+      body: {isRead: true}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: vendor_email, checked: 2026-10-20, confidence: documented, source_url: "https://openmail.sh/pricing"}
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/threads/update-thread
+
+  - id: openmail.attachments.get
+    capability: email.agent-inboxes.attachment.download
+    platform: email
+    domain: email
+    scope: any_account
+    method: GET
+    path: /v1/attachments/{messageId}/{filename}
+    name: "OpenMail: download attachment"
+    summary: "Download an attachment from a received message as raw bytes."
+    input:
+      pathParams:
+        messageId: {type: string, required: true, example: "msg_01J..."}
+        filename: {type: string, required: true, example: "invoice.pdf"}
+    cost:
+      type: per_success
+      value: 0.001
+      currency: USD
+      unit: call
+      source: vendor_email
+      checked: 2026-10-20
+      confidence: documented
+      source_url: https://openmail.sh/pricing
+      note: "treg partner offer 2026-10-20: $0.001 per fetched file."
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/attachments/download-attachment
+
+  - id: openmail.attachments.text
+    capability: email.agent-inboxes.attachment.text
+    platform: email
+    domain: email
+    scope: any_account
+    method: GET
+    path: /v1/attachments/{messageId}/{filename}/text
+    name: "OpenMail: attachment text"
+    summary: "Extract the text of an attachment (PDF, Office, plain text) without downloading it."
+    input:
+      pathParams:
+        messageId: {type: string, required: true, example: "msg_01J..."}
+        filename: {type: string, required: true, example: "invoice.pdf"}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: vendor_email, checked: 2026-10-20, confidence: documented, source_url: "https://openmail.sh/pricing"}
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/attachments/extract-attachment-text
+
+  # Custom domains are BYOK-only (`own_account`): a domain belongs to an OpenMail account, and on
+  # treg's shared account an unverified claim would lock the domain for every other team.
+  - id: openmail.domains.add
+    capability: email.custom-domains.add
+    platform: email
+    domain: email
+    kind: account
+    scope: own_account
+    method: POST
+    path: /v1/domains
+    name: "OpenMail: add custom domain"
+    summary: "Add a custom sending domain to your own OpenMail account and get the DNS records to publish."
+    input:
+      body:
+        domain: {type: string, required: true, example: "mail.example.com"}
+      bodyType: json
+    body_allowlist: true
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, checked: 2026-10-20, confidence: documented, note: "Custom domains are included on OpenMail Pro; BYOK only on treg."}
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/domains/add-custom-domain
+
+  - id: openmail.domains.list
+    capability: email.custom-domains.list
+    platform: email
+    domain: email
+    kind: account
+    scope: own_account
+    method: GET
+    path: /v1/domains
+    name: "OpenMail: list custom domains"
+    summary: "List custom domains on your own OpenMail account."
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, checked: 2026-10-20, confidence: documented, source_url: "https://openmail.sh/pricing"}
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/domains/list-custom-domains
+
+  - id: openmail.domains.get
+    capability: email.custom-domains.get
+    platform: email
+    domain: email
+    kind: account
+    scope: own_account
+    method: GET
+    path: /v1/domains/{id}
+    name: "OpenMail: get custom domain"
+    summary: "Read one custom domain, its verification state and DNS records."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "dom_01J..."}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, checked: 2026-10-20, confidence: documented, source_url: "https://openmail.sh/pricing"}
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/domains/get-custom-domain
+
+  - id: openmail.domains.verify
+    capability: email.custom-domains.verify
+    platform: email
+    domain: email
+    kind: account
+    scope: own_account
+    method: POST
+    path: /v1/domains/{id}/verify
+    name: "OpenMail: verify custom domain"
+    summary: "Re-check a custom domain's DNS records."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "dom_01J..."}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, checked: 2026-10-20, confidence: documented, source_url: "https://openmail.sh/pricing"}
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/domains/re-check-custom-domain
+
+  - id: openmail.domains.delete
+    capability: email.custom-domains.delete
+    platform: email
+    domain: email
+    kind: account
+    scope: own_account
+    method: DELETE
+    path: /v1/domains/{id}
+    name: "OpenMail: delete custom domain"
+    summary: "Remove a custom domain from your own OpenMail account."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "dom_01J..."}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, checked: 2026-10-20, confidence: documented, source_url: "https://openmail.sh/pricing"}
+    cache: forbidden
+    added: '2026-10-22'
+    docs_url: https://docs.openmail.sh/api-reference/domains/delete-custom-domain

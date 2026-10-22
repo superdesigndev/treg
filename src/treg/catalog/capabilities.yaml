@@ -33,6 +33,7 @@ platforms:
   image-gen: {label: "Image generation", category: "AI generation", summary: "Text-to-image and prompt-based image editing across models."}
   voice-gen: {label: "Voice generation", category: "AI generation", summary: "Text-to-speech across voice models, with prices side by side."}
   music-gen: {label: "Music generation", category: "AI generation", summary: "Songs and short music clips from a text prompt, with prices side by side."}
+  email: {label: "Agent email", category: "Developer", summary: "Email inboxes for agents: create addresses, send, read threads and attachments, each team in its own isolated pod."}
 
   # --- Social: global social & video -----------------------------------------------------------
   tiktok: {label: "TikTok", category: "Social", featured: 1, summary: "Profiles, videos, comments, hashtags and search — plus your own account via OAuth."}

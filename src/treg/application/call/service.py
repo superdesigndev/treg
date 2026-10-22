@@ -38,6 +38,7 @@ from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
 from . import keyslots
+from . import openmail as openmail_platform
 from .authorize import authorize_call, enforce_public_demo_limit
 from .evidence import (
     _ERROR_BODY_SLICE,
@@ -1093,8 +1094,14 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     # the call billable. Nothing is reserved yet, so a load failure here leaves no hold behind.
     secrets: dict[int, Secret] = {}
     try:
+        # A sub-account binding (OpenMail) is filled here: the org's pod is provisioned on its first
+        # call and its scoped key joins `secrets` under a negative pseudo id.
+        await _await_before_reserve(
+            openmail_platform.attach_subaccount(tool, caller.org, db, upstream_client, secrets),
+            request, call_ref)
         # A platform binding carries no secret_id — its value comes from settings at relay time.
-        for sid in {b["secret_id"] for b in tool.bindings if b.get("secret_id") is not None}:
+        for sid in {b["secret_id"] for b in tool.bindings
+                    if b.get("secret_id") is not None and b["secret_id"] not in secrets}:
             secret = await _await_before_reserve(db.get(Secret, sid), request, call_ref)
             if secret is None or secret.org_id != caller.org_id:
                 raise CallFailure(
