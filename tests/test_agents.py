@@ -61,17 +61,21 @@ def test_claude_config_dir_override(monkeypatch, tmp_path):
     assert ag.global_dir("claude-code") == tmp_path / "cc" / "skills"
 
 
-def test_skill_bootstrap_installs_every_advertised_skill(monkeypatch, tmp_path, capsys):
-    """`treg skill bootstrap` (what install.sh runs) drops the treg skill AND every other skill the
-    registry's well-known index advertises, and never turns a hostile name into a path."""
+def _bootstrap(monkeypatch, tmp_path, skills=None, json_out=False):
     from types import SimpleNamespace
 
     from treg import cli
 
     pages = {
         "/skill.md": "---\nname: treg\n---\n",
-        "/.well-known/skills/index.json": {"skills": [{"name": "treg"}, {"name": "lead-signals"}, {"name": "../evil"}]},
+        "/.well-known/skills/index.json": {"skills": [
+            {"name": "treg"},
+            {"name": "lead-signals", "description": "Find in-market buyers."},
+            {"name": "recruit", "description": "A ranked shortlist."},
+            {"name": "../evil"},
+        ]},
         "/.well-known/skills/lead-signals/SKILL.md": "---\nname: lead-signals\n---\n",
+        "/.well-known/skills/recruit/SKILL.md": "---\nname: recruit\n---\n",
     }
 
     def fake_get(url, **_):
@@ -80,9 +84,46 @@ def test_skill_bootstrap_installs_every_advertised_skill(monkeypatch, tmp_path, 
                                json=lambda: body, raise_for_status=lambda: None)
 
     monkeypatch.setattr(cli.httpx, "get", fake_get)
+    monkeypatch.setattr(cli, "_JSON_OVERRIDE", json_out)
     monkeypatch.setattr(ag, "resolve_targets", lambda **_: [tmp_path / "skills"])
     monkeypatch.delenv("TREG_TOKEN", raising=False)
-    cli.cmd_skill_bootstrap(SimpleNamespace(project=False, all_agents=False), {"base_url": "https://reg.example"})
-    installed = sorted(p.parent.name for p in (tmp_path / "skills").glob("*/SKILL.md"))
-    assert installed == ["lead-signals", "treg"]
+    cli.cmd_skill_bootstrap(SimpleNamespace(project=False, all_agents=False, skills=skills),
+                            {"base_url": "https://reg.example"})
+    return sorted(p.parent.name for p in (tmp_path / "skills").glob("*/SKILL.md"))
+
+
+def test_skill_bootstrap_installs_only_treg_and_lists_the_rest(monkeypatch, tmp_path, capsys):
+    """`treg skill bootstrap` (what install.sh runs) installs the treg skill alone, and prints the
+    other advertised skills with the command that adds them, never a hostile name."""
+    assert _bootstrap(monkeypatch, tmp_path) == ["treg"]
+    out = capsys.readouterr().out
+    assert "lead-signals  Find in-market buyers." in out
+    assert "treg skill bootstrap --skills all" in out
+    assert "evil" not in out
+
+
+def test_skill_bootstrap_installs_named_and_all(monkeypatch, tmp_path, capsys):
+    assert _bootstrap(monkeypatch, tmp_path, skills="recruit, nope") == ["recruit", "treg"]
+    out = capsys.readouterr().out
+    assert "Not a skill on this registry: nope" in out
+    assert "recruit  " not in out.split("Optional skills")[1]
+    assert _bootstrap(monkeypatch, tmp_path, skills="all") == ["lead-signals", "recruit", "treg"]
+    assert "Optional skills" not in capsys.readouterr().out
     assert not (tmp_path / "evil").exists()
+
+
+def test_skill_bootstrap_refreshes_an_installed_optional_skill(monkeypatch, tmp_path, capsys):
+    stale = tmp_path / "skills" / "recruit" / "SKILL.md"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("old")
+    assert _bootstrap(monkeypatch, tmp_path) == ["recruit", "treg"]
+    assert stale.read_text() == "---\nname: recruit\n---\n"
+
+
+def test_skill_bootstrap_json(monkeypatch, tmp_path, capsys):
+    import json
+
+    _bootstrap(monkeypatch, tmp_path, skills="lead-signals", json_out=True)
+    body = json.loads(capsys.readouterr().out)
+    assert body["installed"] == ["treg", "lead-signals"]
+    assert body["available"] == [{"name": "recruit", "description": "A ranked shortlist."}]
