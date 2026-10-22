@@ -70,7 +70,8 @@ def _bootstrap(monkeypatch, tmp_path, skills=None, json_out=False):
         "/skill.md": "---\nname: treg\n---\n",
         "/.well-known/skills/index.json": {"skills": [
             {"name": "treg"},
-            {"name": "lead-signals", "description": "Find in-market buyers."},
+            {"name": "lead-signals", "description": "Use when the user wants buyers.",
+             "summary": "Find people ready to buy."},
             {"name": "recruit", "description": "A ranked shortlist."},
             {"name": "../evil"},
         ]},
@@ -97,7 +98,7 @@ def test_skill_bootstrap_installs_only_treg_and_lists_the_rest(monkeypatch, tmp_
     other advertised skills with the command that adds them, never a hostile name."""
     assert _bootstrap(monkeypatch, tmp_path) == ["treg"]
     out = capsys.readouterr().out
-    assert "lead-signals  Find in-market buyers." in out
+    assert "lead-signals  Find people ready to buy." in out
     assert "treg skill bootstrap --skills all" in out
     assert "evil" not in out
 
@@ -126,4 +127,4 @@ def test_skill_bootstrap_json(monkeypatch, tmp_path, capsys):
     _bootstrap(monkeypatch, tmp_path, skills="lead-signals", json_out=True)
     body = json.loads(capsys.readouterr().out)
     assert body["installed"] == ["treg", "lead-signals"]
-    assert body["available"] == [{"name": "recruit", "description": "A ranked shortlist."}]
+    assert body["available"] == [{"name": "recruit", "summary": "A ranked shortlist."}]

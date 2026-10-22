@@ -1,6 +1,8 @@
 ---
 name: web-access
 description: Use whenever a task needs something from the live web — search the web or the news, read a URL, map or crawl a site, pull structured fields from a page, or get data from a platform (X, LinkedIn, Reddit, TikTok, Instagram, YouTube, Xiaohongshu, Amazon, app stores, Google Maps, papers). Picks the right tool for the job, starts free, and lets treg fall back to the next vendor when one fails. No local scrapers, browsers or cookies.
+metadata:
+  summary: Reads the live web without local scrapers. It searches, reads pages and pulls data from platforms like X, LinkedIn, Reddit, YouTube and Amazon, starting with free tools.
 ---
 
 # Web access

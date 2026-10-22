@@ -4144,8 +4144,9 @@ def cmd_mcp_install(args, cfg) -> None:
 
 
 def _optional_skills(base_url: str) -> list[tuple[str, str]]:
-    """The registry's other public skills as (name, description): the same well-known index
-    `npx skills add` reads, so that one list decides what is offered. Empty when it can't be read."""
+    """The registry's other public skills as (name, one-line summary for the human): the same
+    well-known index `npx skills add` reads, so that one list decides what is offered. Empty when it
+    can't be read."""
     try:
         idx = httpx.get(f"{base_url}/.well-known/skills/index.json", timeout=15, follow_redirects=True).json()
         entries = idx.get("skills", [])
@@ -4156,7 +4157,8 @@ def _optional_skills(base_url: str) -> list[tuple[str, str]]:
         name = str(entry.get("name", ""))
         # the name becomes a directory: only a plain slug, never a path the server could steer
         if name != "treg" and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", name):
-            out.append((name, " ".join(str(entry.get("description", "")).split())))
+            blurb = entry.get("summary") or textwrap.shorten(str(entry.get("description", "")), 100, placeholder="…")
+            out.append((name, " ".join(str(blurb).split())))
     return out
 
 
@@ -4232,7 +4234,7 @@ def cmd_skill_bootstrap(args, cfg) -> None:
 
     if _JSON_OVERRIDE:
         print(json.dumps({"installed": ["treg", *installed], "locations": n, "unknown": unknown,
-                          "available": [{"name": nm, "description": d} for nm, d in available]}, indent=2))
+                          "available": [{"name": nm, "summary": d} for nm, d in available]}, indent=2))
         return
     detected = _agents.detect_installed()
     tail = f"detected: {', '.join(detected)}" if detected else "no agents detected — used sensible defaults"
@@ -4243,8 +4245,9 @@ def cmd_skill_bootstrap(args, cfg) -> None:
         width = max(len(nm) for nm, _ in available)
         print("\nOptional skills from this registry (not installed):")
         for nm, desc in available:
-            print(f"  {nm:<{width}}  {textwrap.shorten(desc, 100, placeholder='…')}")
-        print("If you are an agent: ask the user which of these they want, then run")
+            print(f"  {nm:<{width}}  {desc}")
+        print("If you are an agent: tell the user in one sentence each what these do and ask which they")
+        print("want; then run")
         print("  treg skill bootstrap --skills <name>,<name>")
         print("  treg skill bootstrap --skills all")
 
