@@ -513,7 +513,7 @@ def cmd_login(args, cfg) -> None:
             with _client(cfg) as c:
                 who = c.get("/auth/me")
         except Exception as exc:  # noqa: BLE001 — network/DNS: report, don't persist a maybe-bad token
-            sys.exit(f"Could not reach {cfg['base_url']} to verify the token: {exc}")
+            sys.exit(f"Could not reach {_registry_url(cfg)} to verify the token: {exc}")
         if who.status_code == 401:
             sys.exit("That token was rejected (401 invalid token). It's expired or from a different "
                      "server — copy a fresh one from the dashboard ('API token' / the Access instruction).")
@@ -529,7 +529,7 @@ def cmd_login(args, cfg) -> None:
                   "`treg org create \"Your Team\"` or accept an invite, then retry.")
         return
     if getattr(args, "email", None):  # email one-time-code (register-or-login by proving an email)
-        base = cfg["base_url"].rstrip("/")
+        base = _registry_url(cfg).rstrip("/")
         h = {"ngrok-skip-browser-warning": "1", "X-Treg-Key-Protocol": "1"}
         r = httpx.post(f"{base}/auth/email/start", json={"email": args.email}, headers=h, timeout=15)
         if _wants_browser_check(r):
@@ -559,7 +559,7 @@ def cmd_login(args, cfg) -> None:
     # Browser handshake (register-or-login) — the /login page reuses an existing dashboard
     # session with one click, else offers every configured door (GitHub / Google / email code).
     import secrets as _secrets
-    base = cfg["base_url"].rstrip("/")
+    base = _registry_url(cfg).rstrip("/")
     # Ask the SERVER to start the login: it mints the login_id AND a short pairing code. The browser
     # must echo the code back before it finishes, so a login you didn't start — someone mailing you a
     # /login?cli=… link — can't be approved into a token for them. If the server is too old to know
@@ -946,7 +946,7 @@ def _maybe_offer_onboarding(cfg: dict) -> None:
     """After a first HUMAN login, offer onboarding — skippable, TTY-only, asked just once."""
     if not sys.stdin.isatty():
         return
-    base = cfg["base_url"].rstrip("/")
+    base = _registry_url(cfg).rstrip("/")
     try:
         with _spinner("checking your account"):
             me = httpx.get(f"{base}/auth/me", headers={"X-Treg-Token": cfg["token"], "ngrok-skip-browser-warning": "1"}, timeout=10).json()
