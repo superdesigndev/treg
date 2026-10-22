@@ -5473,7 +5473,16 @@ def _catalog_search(query: str, args, cfg) -> None:
         _dim(f"still missing? file it: treg catalog request \"{query}\"   # requests steer what gets added next")
         return
 
-    idw = min(max(len(e["id"]) for e in rows), 46)
+    # The server groups a capability that has a ROUTED row: the parent first, its children right
+    # under it. Draw that as a hierarchy — "let treg choose" leads, the specific providers indent.
+    routed_caps = {e["capability"] for e in rows if e.get("kind") == "routed"}
+
+    def _indented(e: dict) -> bool:
+        return e.get("kind") != "routed" and e.get("capability") in routed_caps
+
+    # An indented child spends 2 of the id column on its indent, so the column is sized for that and
+    # its id gets 2 less: every row's COST starts where the header's does.
+    idw = min(max(len(e["id"]) + (2 if _indented(e) else 0) for e in rows), 48)
     print(f"\n{body['total']} " + (what if added else f"matches for \"{query}\"")
           + (f" — showing {len(rows)} (--limit {min(body['total'], 100)} for more)" if body["total"] > len(rows) else ""))
     connected = _connected_providers(cfg)
@@ -5481,10 +5490,8 @@ def _catalog_search(query: str, args, cfg) -> None:
     # is better spent on the summary an agent actually reads. ADDED is the UTC day the tool
     # reached main (a routed row is a choice among tools and has none).
     print(f"\n  {'ENDPOINT':<{idw}} {'COST':<16} {'ADDED':<10} ●  SUMMARY")
-    # The server groups a capability that has a ROUTED row: the parent first, its children right
-    # under it. Draw that as a hierarchy — "let treg choose" leads, the specific providers indent.
-    routed_caps = {e["capability"] for e in rows if e.get("kind") == "routed"}
     open_group: dict | None = None  # the routed parent whose children are printing
+    own_key_only = False
 
     def _close_group() -> None:
         # the server shows the best few children; the rest are one `catalog get` away
@@ -5507,8 +5514,12 @@ def _catalog_search(query: str, args, cfg) -> None:
         if open_group and e.get("capability") != open_group.get("capability"):
             _close_group()
             open_group = None
-        indent = "    " if e.get("capability") in routed_caps else "  "
-        print(f"{indent}{_clip(e['id'], idw):<{idw}} {_clip(_cost_usd(e.get('cost')), 16):<16} "
+        indent, w = ("    ", idw - 2) if _indented(e) else ("  ", idw)
+        # A row treg's key cannot serve (`platform_blocked`, unpriced) has no price for this caller:
+        # showing it would sell a call that is refused before it reaches the provider.
+        cost = "own key only" if e.get("platform_eligible") is False else _cost_usd(e.get("cost"))
+        own_key_only = own_key_only or e.get("platform_eligible") is False
+        print(f"{indent}{_clip(e['id'], w):<{w}} {_clip(cost, 16):<16} "
               f"{e.get('added') or '-':<10} "
               f"{'●' if e['provider'] in connected else ' '}  {_clip(e.get('summary', ''), 78)}")
     _close_group()
@@ -5521,6 +5532,9 @@ def _catalog_search(query: str, args, cfg) -> None:
         # Once, below the table: inside it, an indented sentence reads like one more row.
         _dim("hint: a ▸ ROUTED row lets treg pick among its providers (own keys first, then cheapest per "
              "hit) and names the one that served; call an indented id to choose the provider yourself")
+    if own_key_only:
+        _dim("hint: \"own key only\" means treg's key cannot serve that tool; it works once your team "
+             "connects its own key for the provider (treg catalog get <id> says how)")
     _dim(f"next: treg catalog get <id> (e.g. {rows[0]['id']}) for its params, price and a ready `treg call` line")
 
 

@@ -492,7 +492,9 @@ Bare **`treg connections`** now lists (the subparser is `required=False` with a 
   request line, `closest` and a judge-less `keyword` page say so under the table. A compact ranked table: endpoint id,
   platform, provider, cost, `✓`/`·` verified, tier, clipped summary — footer hint `treg catalog get <id>`.
   Cost prints in **USD** (`_cost_usd`, 3 significant digits) rather than `_cost_label`'s source currency:
-  the column is only worth reading if CNY and USD rows compare. The no-match message names
+  the column is only worth reading if CNY and USD rows compare. A row treg's key cannot serve
+  (`platform_eligible: false`, e.g. `platform_blocked`) prints `own key only` instead of a price,
+  with one `hint:` below the table; a "free" there read as a call treg would make. The no-match message names
   `treg catalog request "<query>"` — the empty search is the moment the filer exists. An ADDED
   column shows each tool's `added` day (`-` on a routed row). `--new [DAYS]` (30 when bare, capped
   at 365 with one line saying so) keeps tools added in the last DAYS days and `--sort newest` lists
