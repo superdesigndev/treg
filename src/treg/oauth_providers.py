@@ -1671,6 +1671,24 @@ ZEROBOUNCE = OAuthProvider(
     probe_path="/v2/getapiusage?start_date=2026-01-01&end_date=2026-12-31",
 )
 
+MAILVALID = OAuthProvider(
+    service="mailvalid", display_name="MailValid", auth_kind="key",
+    token_label="API key", token_placeholder="your MailValid API key (mv_live_…)",
+    token_header="X-API-Key", token_format="{secret}",
+    setup_url="https://mailvalid.io/dashboard/api-keys",
+    setup_action_label="Get your MailValid API key",
+    setup_steps=("Sign in to MailValid and open API Keys.",
+                 "Create a key and paste it here."),
+    setup_note=("Each completed verification uses one credit; unknown results are free. "
+                "Connection verification reads the credit balance for free."),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Verify email deliverability one at a time or in bulk jobs, with catch-all, disposable and role flags.",
+    base_url="https://mailvalid.io/api",
+    docs_url="https://mailvalid.io/docs",
+    probe_path="/v1/credits",  # free; a bad key gets 401 {"detail":"Invalid API key"} (verified live 2026-10-22)
+)
+
 DATAGMA = OAuthProvider(
     service="datagma", display_name="Datagma", auth_kind="key",
     token_label="API ID", token_placeholder="your Datagma API ID",
@@ -4012,7 +4030,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB, VILLAGE,
+        INFLUENCERSCLUB, VILLAGE, MAILVALID,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,

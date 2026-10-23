@@ -1,0 +1,189 @@
+# MailValid's public OpenAPI spec lists nine API-key routes under /api/v1; seven are catalogued:
+# single verification, the five-route bulk job lifecycle and the credit balance.
+# Excluded: POST /v1/webhooks/bounce (writes bounce feedback into the caller's account; there is
+# no no-op input, so a test call would create persistent state), GET /v1/webhooks/secret (returns
+# the account's webhook signing secret), the hosted MCP server at /mcp/ (a separate transport over
+# the same verify/bulk/credits operations), and the dashboard-only routes (request logs, webhook
+# settings, billing), which take a browser session rather than an API key.
+# Billing: 1 credit per completed result (valid, invalid, catch_all, do_not_mail), fresh or cached.
+# unknown results and duplicate addresses in a bulk job are free. Credits never expire.
+provider: mailvalid
+source:
+  docs: https://mailvalid.io/docs
+  openapi: https://mailvalid.io/api/public-openapi.json
+  curated: '2026-10-22'
+pricing_url: https://mailvalid.io/pricing
+limits: "Free accounts: 10 requests/minute per key and 100 addresses per bulk job. Paid accounts (any purchase): 200 requests/minute and 10,000 addresses per bulk job; a larger job returns 413."
+proposed_capabilities:
+  people.email.verify.bulk.start: "Queue a bulk email-verification job"
+  people.email.verify.bulk.status: "Check a bulk email-verification job and read its results"
+  people.email.verify.bulk.list: "List your bulk email-verification jobs"
+  people.email.verify.bulk.results: "Download a finished bulk email-verification job as JSON or CSV"
+  people.email.verify.bulk.cancel: "Cancel a queued or running bulk email-verification job"
+endpoints:
+  - id: mailvalid.people.email.verify
+    added: '2026-10-22'
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v1/verify/single
+    name: "Verify email — SMTP, catch-all, disposable and role flags"
+    summary: "Verify a single email address and validate its deliverability using SMTP validation, MX lookup, and advanced pattern matching."
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, format: email, note: "email address to verify", example: "support@mailvalid.io"}
+      note: "Returns status (valid | invalid | catch_all | unknown | do_not_mail), is_valid, status_reason, confidence_score (0-100), MX records, SMTP response code, and disposable, role-based, catch-all and free-provider flags. credits_used in the response is the charge for this call. A malformed address is rejected with 422 before verification and is not charged."
+    test_request:
+      body: {email: "support@mailvalid.io"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://mailvalid.io/pricing
+      checked: '2026-10-22'
+      confidence: verified
+      note: "One credit per completed result (valid, invalid, catch_all, do_not_mail), including a result served from MailValid's cache. unknown results are free. Observed 2026-10-22: credits_used 1 and balance 99 -> 98 for the test address (a do_not_mail role address); a 422 malformed-address call left the balance unchanged. The unknown-is-free rule is documented, not observed."
+    docs_url: https://mailvalid.io/docs
+
+  - id: mailvalid.people.email.verify.bulk.start
+    added: '2026-10-22'
+    domain: contacts
+    capability: people.email.verify.bulk.start
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v1/verify/bulk
+    name: "Start a bulk email verification job"
+    summary: "Submit a batch of emails for verification."
+    resource_ownership:
+      produces: [{kind: mailvalid_bulk_job, path: job_id}]
+    input:
+      bodyType: json
+      body:
+        emails: {type: "array[string]", required: true, note: "1-10,000 addresses (100 on a free account); duplicates are removed before billing", example: ["support@mailvalid.io", "sachin@mailvalid.io"]}
+        webhook_url: {type: string, required: false, note: "receives a POST when the job completes; poll mailvalid.people.email.verify.bulk.status instead when calling through a proxy"}
+        filename: {type: string, required: false, note: "label shown in the job list, up to 255 characters", example: "leads.csv"}
+      note: "Returns {job_id, status, total_emails, credits_reserved} immediately. Credits for every unique address are reserved at submit; unknown results are released when the job finishes. Small jobs complete in under a second."
+    test_request:
+      body: {emails: ["support@mailvalid.io", "sachin@mailvalid.io"]}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      source: observed
+      source_url: https://mailvalid.io/pricing
+      checked: '2026-10-22'
+      confidence: verified
+      note: "One credit per unique address with a completed result (valid, invalid, catch_all, do_not_mail), fresh or cached; unknown results and duplicates are free. Observed 2026-10-22: a 2-address job reserved 2 credits (balance 98 -> 96), completed with 2 results (one served from cache) and settled at credits_used 2. The unknown-release path is documented, not observed."
+    docs_url: https://mailvalid.io/docs
+
+  - id: mailvalid.people.email.verify.bulk.status
+    added: '2026-10-22'
+    domain: contacts
+    capability: people.email.verify.bulk.status
+    platform: people
+    scope: own_account
+    method: GET
+    path: /v1/verify/bulk/{job_id}
+    name: "Check a bulk verification job"
+    summary: "Get the status and results of a bulk verification job."
+    resource_ownership:
+      requires: {kind: mailvalid_bulk_job, param: job_id}
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "the job_id returned by mailvalid.people.email.verify.bulk.start (UUID)", example: "da52b64a-4c78-47c7-8d84-830932f30de0"}
+      note: "status is pending | processing | cancelling | completed | failed | cancelled. Carries processed_emails, valid_count, invalid_count, progress_percentage and the per-address results array (the same shape as single verification). The example id belongs to the submitter's account; another key gets 404, so use a job_id from your own bulk.start call."
+    test_request:
+      pathParams: {job_id: "da52b64a-4c78-47c7-8d84-830932f30de0"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Free poll; observed 2026-10-22 with the balance unchanged at 96"}
+    docs_url: https://mailvalid.io/docs
+
+  - id: mailvalid.people.email.verify.bulk.list
+    added: '2026-10-22'
+    domain: contacts
+    capability: people.email.verify.bulk.list
+    platform: people
+    scope: own_account
+    method: GET
+    path: /v1/verify/bulk
+    name: "List bulk verification jobs"
+    summary: "List your bulk verification jobs."
+    input:
+      queryParams:
+        page: {type: integer, required: false, default: 1, min: 1, example: 1}
+        page_size: {type: integer, required: false, default: 20, min: 1, max: 100, example: 1}
+        status: {type: string, required: false, enum: [pending, processing, cancelling, completed, failed, cancelled], note: "filter by job status"}
+      note: "Newest first. Each job carries job_id, status, counts, credits_used, filename and timestamps; has_more signals another page."
+    test_request:
+      queryParams: {page: 1, page_size: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Free; observed 2026-10-22 with the balance unchanged at 96"}
+    docs_url: https://mailvalid.io/docs
+
+  - id: mailvalid.people.email.verify.bulk.results
+    added: '2026-10-22'
+    domain: contacts
+    capability: people.email.verify.bulk.results
+    platform: people
+    scope: own_account
+    method: GET
+    path: /v1/verify/bulk/{job_id}/download
+    name: "Download bulk verification results"
+    summary: "Download bulk verification results as JSON or CSV."
+    resource_ownership:
+      requires: {kind: mailvalid_bulk_job, param: job_id}
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "the job_id returned by mailvalid.people.email.verify.bulk.start (UUID)", example: "da52b64a-4c78-47c7-8d84-830932f30de0"}
+      queryParams:
+        format: {type: string, required: false, enum: [json, csv], default: json, example: json}
+        filter: {type: string, required: false, enum: [all, valid, invalid, catch_all, unknown, do_not_mail], default: all, note: "which rows to export"}
+      note: "JSON returns an array of per-address results; CSV returns one row per address, with any passthrough columns supplied at submit appended on the right. The example id belongs to the submitter's account; another key gets 404."
+    test_request:
+      pathParams: {job_id: "da52b64a-4c78-47c7-8d84-830932f30de0"}
+      queryParams: {format: json}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Free; observed 2026-10-22 (JSON and CSV) with the balance unchanged at 96"}
+    docs_url: https://mailvalid.io/docs
+
+  - id: mailvalid.people.email.verify.bulk.cancel
+    added: '2026-10-22'
+    domain: contacts
+    capability: people.email.verify.bulk.cancel
+    platform: people
+    scope: own_account
+    method: DELETE
+    path: /v1/verify/bulk/{job_id}
+    name: "Cancel a bulk verification job"
+    summary: "Cancel a pending or processing bulk verification job."
+    resource_ownership:
+      requires: {kind: mailvalid_bulk_job, param: job_id}
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "the job_id of a pending or processing job (UUID)", example: "da52b64a-4c78-47c7-8d84-830932f30de0"}
+      note: "Releases the credits reserved for addresses not yet verified. A finished job answers 400 {\"detail\":\"Cannot cancel job with status: completed\"}."
+    untestable: "Needs a job that is still pending or processing; a job small enough for a cheap test finishes in under a second, so no stable example id exists. The 400 on a completed job was observed 2026-10-22."
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Free; releases reserved credits for unverified addresses"}
+    docs_url: https://mailvalid.io/docs
+
+  - id: mailvalid.account.usage
+    added: '2026-10-22'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/credits
+    name: "Check credit balance"
+    summary: "Get current credit balance."
+    input:
+      note: "No parameters. Returns {balance, lifetime_used}."
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Free account balance check; also the registry's connection probe (a bad key gets 401 {\"detail\":\"Invalid API key\"})"}
+    docs_url: https://mailvalid.io/docs
