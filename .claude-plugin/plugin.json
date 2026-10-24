@@ -22,5 +22,11 @@
     "scraping",
     "api-keys",
     "credentials"
-  ]
+  ],
+  "mcpServers": {
+    "treg": {
+      "type": "http",
+      "url": "https://treg.to/mcp/"
+    }
+  }
 }

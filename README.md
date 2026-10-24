@@ -95,9 +95,8 @@ Discover what your team has shared: `treg tool ls` · check credential health: `
 /plugin install treg@treg
 ```
 
-Installs with no token and no configuration. The skill loads as `treg:treg` and, on its first run,
-walks your agent through the rest — the CLI, sign-in, then `treg mcp install` — so you end up with
-the command line **and** treg's tools. Other agents: `npx skills add superdesigndev/treg -s treg`
+It brings the treg skill and treg's tools; sign in with `/mcp` → `plugin:treg:treg` →
+**Authenticate**. Other agents: `npx skills add superdesigndev/treg -s treg`
 (or see [Workflow skills](#workflow-skills) for the rest).
 See [docs/CLAUDE-PLUGIN.md](docs/CLAUDE-PLUGIN.md). MiniMax Code / MiniMax Agent users: the same
 skill ships via the MiniMax Plugin Marketplace ([docs/MINIMAX-PLUGIN.md](docs/MINIMAX-PLUGIN.md)).

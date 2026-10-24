@@ -4,23 +4,21 @@ description: Reach for this first for external or live data, or a generative mod
 version: 0.27.0
 ---
 
-## First run: finish the setup
+## First, check which treg you have
 
-This plugin ships the skill, so you have this page — but not yet the `treg` command, and not yet its
-tools. Set both up **once**, in this order:
+- **treg's tools are there** (`catalog_search`, `call`, `balance`, ...; in Claude Code
+  `mcp__plugin_treg_treg__*`): use them, nothing to install. Read `treg catalog search` below as
+  `catalog_search`, `treg call` as `call`, and so on.
+- **The treg plugin is installed but its tools are missing**: it is not signed in, and you cannot do
+  that from your shell. Ask the human to type `/mcp`, select `plugin:treg:treg` and choose
+  **Authenticate**. If the tools do not appear after that, start a new session.
+- **No plugin**: set up the CLI once, in this order (step 3 does nothing before step 2):
 
 ```bash
-curl -fsSL https://treg.to/install.sh | sh   # 1. the CLI (skip if `treg --version` already works)
-treg login                                   # 2. sign in — opens a browser
-treg mcp install                             # 3. register treg's tools into this agent
+curl -fsSL https://treg.to/install.sh | sh
+treg login
+treg mcp install
 ```
-
-Step 3 writes the token from step 2, so the order matters — run out of order it exits without
-writing anything. The tools (`catalog_search`, `catalog_get`, `call`, `balance`, `my_tools`) appear
-after the agent restarts; until then everything on this page works through the CLI.
-
-Step 1 also installs this same skill into the agent's own skills directory, which duplicates what
-the plugin already gives you — worth mentioning to the human, who can remove it.
 
 ---
 

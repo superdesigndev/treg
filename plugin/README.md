@@ -5,10 +5,9 @@ A **distribution wrapper**, not a second product. It ships the same skill that
 searching the plugin directory that ChatGPT and Codex share.
 
 > **One of five shop windows.** The Claude Code plugin lives at the **repo root**
-> (`.claude-plugin/` + `skills/treg/`) and declares **no connector in its manifest**, so it installs
-> with no token and nothing about it waits on a review queue — its skill wires up the CLI and the MCP
-> tools at first run instead. Cursor is the same bootstrap in Cursor's own layout
-> (`plugins/treg/`), and DeepSeek Harness is an npm bundle (`package.json` + `dsh/`) whose MCP row is
+> (`.claude-plugin/` + `skills/treg/`) and declares treg's MCP server inline (URL only, OAuth), so it
+> installs with no token and nothing about it waits on a review queue. Cursor does the same in
+> Cursor's own layout (`plugins/treg/`), and DeepSeek Harness is an npm bundle (`package.json` + `dsh/`) whose MCP row is
 > disabled until there is a token. All of them are rendered by the same `scripts/build_plugin.py`
 > from the same source; they differ only in the prepended bootstrap. See
 > [`docs/CLAUDE-PLUGIN.md`](../docs/CLAUDE-PLUGIN.md), [`docs/DSH-PLUGIN.md`](../docs/DSH-PLUGIN.md)
