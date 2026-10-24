@@ -2043,6 +2043,65 @@ async def test_a_monthly_cap_below_one_refill_is_refused_and_0_restores_the_defa
     assert r.json()["autotopup"]["monthly_cap_usd"] == billing.TOPUP_MAX_USD
 
 
+async def test_monthly_cap_above_single_topup_limit_with_small_refills_succeeds(c: AsyncClient, monkeypatch):
+    """A $5,000 monthly cap with $100 refills is valid — the cap bounds total spend, not each charge.
+    This is the scenario from issue #1165: high-volume teams need a monthly budget above $2,000."""
+    org_id, owner = await _org(c)
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    r = await c.post("/billing/autotopup", headers=_h(owner), json={
+        "enabled": True, "consent": True, "threshold_usd": 50,
+        "amount_usd": 100, "monthly_cap_usd": 5000, "setup_url": False})
+    assert r.status_code == 200, r.text
+    assert r.json()["autotopup"]["monthly_cap_usd"] == 5000
+    assert r.json()["autotopup"]["amount_usd"] == 100
+
+
+async def test_single_refill_above_topup_max_is_still_rejected(c: AsyncClient, monkeypatch):
+    """A $5,000 SINGLE refill is rejected — the per-charge limit is still enforced."""
+    org_id, owner = await _org(c)
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    r = await c.post("/billing/autotopup", headers=_h(owner), json={
+        "enabled": True, "consent": True, "threshold_usd": 50,
+        "amount_usd": 5000, "monthly_cap_usd": 5000, "setup_url": False})
+    assert r.status_code == 422, r.text
+    assert "maximum single top-up" in r.text
+
+
+async def test_monthly_cap_above_maximum_is_rejected(c: AsyncClient, monkeypatch):
+    """A monthly cap above AUTOTOPUP_MONTHLY_CAP_MAX_USD is rejected."""
+    org_id, owner = await _org(c)
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    too_high = billing.AUTOTOPUP_MONTHLY_CAP_MAX_USD + 1
+    r = await c.post("/billing/autotopup", headers=_h(owner), json={
+        "enabled": True, "consent": True, "threshold_usd": 50,
+        "amount_usd": 100, "monthly_cap_usd": too_high, "setup_url": False})
+    assert r.status_code == 422, r.text
+    assert "maximum monthly cap" in r.text
+
+
+async def test_rejected_monthly_cap_update_leaves_prior_policy_intact(c: AsyncClient, monkeypatch):
+    """A rejected update must not change the existing policy — rollback semantics."""
+    org_id, owner = await _org(c)
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    r = await c.post("/billing/autotopup", headers=_h(owner), json={
+        "enabled": True, "consent": True, "threshold_usd": 50,
+        "amount_usd": 100, "monthly_cap_usd": 3000, "setup_url": False})
+    assert r.status_code == 200, r.text
+    assert r.json()["autotopup"]["monthly_cap_usd"] == 3000
+    assert r.json()["autotopup"]["amount_usd"] == 100
+
+    # Attempt an invalid update: cap above maximum
+    too_high = billing.AUTOTOPUP_MONTHLY_CAP_MAX_USD + 1
+    r = await c.post("/billing/autotopup", headers=_h(owner), json={
+        "enabled": True, "consent": True, "monthly_cap_usd": too_high, "setup_url": False})
+    assert r.status_code == 422, r.text
+
+    # Prior policy must be unchanged
+    state = (await c.get("/billing", headers=_h(owner))).json()
+    assert state["autotopup"]["monthly_cap_usd"] == 3000
+    assert state["autotopup"]["amount_usd"] == 100
+
+
 async def test_a_topup_checkout_arms_a_consented_policy_that_was_waiting_for_a_card(c: AsyncClient, monkeypatch):
     """The modal flow: consent is stored first (no card → `no_card`), then the top-up Checkout saves
     the card. The PAYMENT webhook must arm the policy — there is no setup_intent in this flow."""

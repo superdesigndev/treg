@@ -69,6 +69,11 @@ MICRO_PER_USD = 1_000_000
 # and "$5000" is one keystroke, and a card that big is likelier a mistake or a stolen number than a
 # customer. Raise it deliberately when someone asks.
 TOPUP_MAX_USD = 2_000
+# The maximum a team may set for their automatic monthly cap. Separate from the single-top-up ceiling
+# because the monthly cap bounds TOTAL unattended spend, not any one charge. A team doing high-volume
+# work may need a monthly cap above a single refill amount — but setting it arbitrarily high defeats
+# the safety purpose. $10,000/month is a conservative default; raise deliberately when someone asks.
+AUTOTOPUP_MONTHLY_CAP_MAX_USD = 10_000
 # Tags Checkout sessions in the Stripe dashboard so this flow's conversion can be compared against
 # any other we add later (required suffix is 8 letters — see Stripe's integration_identifier docs).
 INTEGRATION_ID = "tregtopup-qwkmzhrb"
@@ -210,6 +215,28 @@ def validate_topup_usd(amount_usd) -> int:
         raise TopupRejected(f"the minimum top-up is ${s.topup_min_usd} (card fees eat a smaller one)")
     if value > TOPUP_MAX_USD:
         raise TopupRejected(f"the maximum single top-up is ${TOPUP_MAX_USD}")
+    return value
+
+
+def validate_monthly_cap_usd(cap_usd) -> int:
+    """Validate an auto-top-up MONTHLY CAP. Returns whole dollars; raises `TopupRejected` on bad input.
+
+    The monthly cap is not a single charge amount — it bounds total unattended spend per month.
+    A team doing high-volume work legitimately needs a cap above `TOPUP_MAX_USD`, while each
+    individual refill stays within that limit. The cap has its own ceiling
+    (`AUTOTOPUP_MONTHLY_CAP_MAX_USD`) to prevent runaway billing if someone types a huge number.
+    """
+    try:
+        value = float(cap_usd)
+    except (TypeError, ValueError) as exc:
+        raise TopupRejected("monthly cap must be a number of US dollars") from exc
+    if value != int(value):
+        raise TopupRejected("the monthly cap is whole dollars (e.g. 5000, not 5000.50)")
+    value = int(value)
+    if value < 1:
+        raise TopupRejected("the monthly cap must be at least $1")
+    if value > AUTOTOPUP_MONTHLY_CAP_MAX_USD:
+        raise TopupRejected(f"the maximum monthly cap is ${AUTOTOPUP_MONTHLY_CAP_MAX_USD:,}")
     return value
 
 
@@ -1784,7 +1811,7 @@ async def set_autotopup(
     if monthly_cap_usd is not None:
         # 0 clears a chosen cap back to the default (`autotopup_prefs`).
         org.autotopup_monthly_cap_micro = (
-            0 if monthly_cap_usd == 0 else usd_to_micro(validate_topup_usd(monthly_cap_usd)))
+            0 if monthly_cap_usd == 0 else usd_to_micro(validate_monthly_cap_usd(monthly_cap_usd)))
     if per_hour is not None:
         org.autotopup_max_per_hour = validate_per_hour(per_hour)
     prefs = autotopup_prefs(org)
