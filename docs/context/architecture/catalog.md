@@ -1204,12 +1204,22 @@ and edited by hand. The full ladder: docs/SHARED-PLAN-PRICING-PLAN.md; the billi
 billable, the recovery report): architecture/money.md.
 
 For synchronous providers that disclose the exact charge in the response, a paid cost may declare
-`reported_charge: {path: ..., unit: usd}` or use `unit: credit` when the provider has an `fx.yaml`
-credit rate. The catalog estimate still reserves a safe
-ceiling. A finite nonnegative response value settles the call at that amount; a missing value in a
-body whose own `status` is 400 or more settles at zero; other missing, invalid, or non-finite
-evidence falls back to the normal estimate/miss rules. `reported_charge` is generic
-catalog metadata, not a provider-specific billing branch, and cannot be combined with `cost.settle`.
+`reported_charge: {path: ..., unit: usd}` (JSON body) or
+`reported_charge: {header: X-Credits-Charged, unit: credit}` (response header). Both allow
+`unit: usd|credit`; credit units require the provider's `fx.yaml` conversion rate. The catalog
+estimate still reserves a safe ceiling. A finite nonnegative response value settles the call at
+that amount; a missing value in a body whose own `status` is 400 or more settles at zero; other
+missing, invalid, or non-finite evidence falls back to the normal estimate/miss rules.
+`reported_charge` is generic catalog metadata, not a provider-specific billing branch, and cannot
+be combined with `cost.settle`.
+
+A reported per-result price can declare `base_value` in its billing currency for a fixed
+per-call component. `cost_view` exposes its converted `base_usd`; reserve adds it once to the
+unit price times the requested count. `request_count` declares a top-level body or queryParams
+field, `mode: value|length`, and a positive default and maximum. This replaces guessed page
+sizes for bounded limits and input arrays. Invalid explicit counts are refused before calling
+the provider. Settlement reads the exact reported charge, including zero, rather than assuming
+that all reserved results were delivered. A missing or invalid meter retains the safe reserve.
 
 A provider file, or one endpoint's `cost`, may declare `ceiling_param: {in: query, name, unit: usd}`.
 When the call has a caller ceiling and the caller did not send that query name, the call application

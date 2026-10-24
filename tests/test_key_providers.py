@@ -8,6 +8,7 @@ conftest (`/whoami` echoes; `/units` and `/units-bad` model Semrush's plain-text
 from __future__ import annotations
 
 import json
+import os
 import httpx
 from treg.api import app
 import dataclasses
@@ -536,3 +537,44 @@ async def test_financialdatasets_connect_accepts_only_valid_key_outcomes_without
                     if t["name"] == "financialdatasets")
         assert tool["health_check"] is None
         assert tool["bindings"][0]["name"] == "X-API-KEY"
+
+
+async def test_influship_key_uses_free_authenticated_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v1/auth/test"
+        assert request.headers["x-api-key"] == "own-key"
+        return httpx.Response(200, json={"data": {"ok": True, "account_label": "Test"}})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "influship", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+    assert P.INFLUSHIP.probe_cost_micro == 0
+
+
+async def test_influship_rejects_bogus_key(clients, monkeypatch):
+    async with AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(401, json={"error": {"code": "unauthorized", "message": "API key missing or invalid"}})
+    )) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "influship", "token": "inf_invalid_treg_verification"},
+        )
+    assert response.status_code == 422, response.text
+    assert "rejected" in response.text
+
+
+@pytest.mark.skipif(os.environ.get('TREG_LIVE_INFLUSHIP_PROBE') != '1',
+                    reason='explicit opt-in live bogus-key probe')
+async def test_influship_live_bogus_key_is_rejected_by_connections_token(clients, monkeypatch):
+    # No real credential: exercise the actual live 401 through the local connect route.
+    async with AsyncClient(timeout=30) as upstream:
+        monkeypatch.setattr(app.state, 'http', upstream)
+        response = await clients.post('/connections/token', json={
+            'provider': 'influship', 'token': 'inf_invalid_treg_verification',
+        })
+    assert response.status_code == 422, response.text
+    assert 'rejected' in response.text
