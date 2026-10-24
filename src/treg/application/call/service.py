@@ -52,6 +52,7 @@ from .evidence import (
     UNSCANNABLE_ERROR_BODY,
     _safe_secret_renderings,
     redact_error_response,
+    summarize_cf_edge_block,
 )
 from .idempotency import IDEMPOTENCY_HEADER, _hold_claim_lease, _store_idempotent
 from .intake import META_HEADER, _parse_call_meta, _tag_telemetry, prepare_call_intake
@@ -411,16 +412,23 @@ def _with_body(response: UpstreamResponse, body: bytes) -> UpstreamResponse:
 def _redact_error_body(
     response: UpstreamResponse, body: bytes, tool, secrets: dict,
 ) -> tuple[UpstreamResponse, bytes]:
-    """Mask injected credentials out of a WHOLE error body before the caller receives it.
+    """Mask injected credentials and summarize CDN error pages before the caller receives them.
 
     Providers echo the request back in errors (TikHub's 402 "Insufficient balance" returns every
     request header, Authorization included). Unchanged bodies keep their original bytes and
     encoding; a redacted one is re-sent identity-encoded.
+
+    Cloudflare edge-block pages (~290 KB HTML) are summarized to a short JSON body that preserves
+    the error code and ray ID without flooding agent context.
     """
     encoding = next((v.decode("latin-1") for k, v in response.raw_headers
                      if k.lower() == b"content-encoding"), "")
     redacted, was_redacted = redact_error_response(
         body, tool, secrets, content_encoding=encoding)
+    result_body = redacted if was_redacted else body
+    summarized = summarize_cf_edge_block(result_body, response.status)
+    if summarized is not None:
+        return _with_body(response, summarized), summarized
     if not was_redacted:
         return response, body
     return _with_body(response, redacted), redacted
