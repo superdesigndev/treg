@@ -1,0 +1,33 @@
+{
+  "data": {
+    "uuid": "00000l1",
+    "product": [
+      {
+        "id": "89224",
+        "product_name": "Canva",
+        "main_category": "Display Ad Design Software",
+        "categories": [
+          "AI Writing Assistant",
+          "Collaborative Whiteboard",
+          "… 15 more item(s) truncated"
+        ],
+        "description": "Canva is an end-to-end AI-powered visual communication and collaboration platform empowering everyone in the world to design everything from presentations to infographics, videos, documents, websites, social media graphics and more. With pre-templated designs and thousands of stock images, videos, soundtracks, and fonts, Canva is a simple way to create visual content at scale. Canva is available on the web, iOS and Android."
+      },
+      {
+        "id": "40370",
+        "product_name": "Canva",
+        "main_category": "Display Ad Design Software",
+        "categories": [
+          "AI Writing Assistant",
+          "Collaborative Whiteboard",
+          "… 15 more item(s) truncated"
+        ],
+        "description": "Canva is an online design and publishing platform that provides user friendly design tools for non-designers."
+      },
+      "… 2 more item(s) truncated"
+    ]
+  },
+  "limit": 10,
+  "offset": 0,
+  "credits_consumed": 0.5
+}

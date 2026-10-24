@@ -1,0 +1,29 @@
+{
+  "status": "success",
+  "data": [
+    {
+      "job_id": "WXRXXU34C8",
+      "company_uuid": "00000l1",
+      "title": "Strategic Customer Success Manager",
+      "source": "linkedin",
+      "url": "https://www.linkedin.com/jobs/view/4481695415",
+      "date_posted": "2026-10-23 14:27:34+00:00",
+      "location": "Austin, TX",
+      "description": "Own the post-sale customer journey for strategic enterprise accounts, including onboarding, adoption, advocacy, renewals, and expansion. Identify and mitigate account risks, drive revenue growth and retention, and collaborate with internal teams to deliver customer value and influence product direction.",
+      "type": "FULL_TIME",
+      "remote": false,
+      "salary_min_usd": null,
+      "salary_max_usd": null,
+      "experience_level": "5-10",
+      "key_skills": [
+        "Enterprise Customer Success Management",
+        "B2B SaaS",
+        "… 14 more item(s) truncated"
+      ]
+    }
+  ],
+  "count": 115,
+  "limit": 1,
+  "offset": 0,
+  "credits_consumed": 4
+}
