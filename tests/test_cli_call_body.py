@@ -36,9 +36,9 @@ def _capture(monkeypatch):
     return seen
 
 
-def _args(data=None, file=None, content_type=None):
+def _args(data=None, file=None, content_type=None, header=()):
     return SimpleNamespace(target="dataforseo.google.keywords.volume", path="", method="POST",
-                           query=[], data=data, file=file, content_type=content_type, header=[],
+                           query=[], data=data, file=file, content_type=content_type, header=list(header),
                            upload=[])
 
 
@@ -82,6 +82,15 @@ def test_non_json_body_with_explicit_type_is_sent_as_is(monkeypatch):
     seen = _capture(monkeypatch)
     cli.cmd_call(_args(data="{{template}}", content_type="text/plain"), {})
     assert seen[0].content == b"{{template}}"
+
+
+@pytest.mark.parametrize("data", [json.dumps(BODY), "{{template}}"])
+def test_content_type_header_is_the_explicit_type(monkeypatch, data):
+    # curl's `-H 'Content-Type: ...'` habit: sent once, as written, never beside a sniffed type
+    seen = _capture(monkeypatch)
+    cli.cmd_call(_args(data=data, header=["Content-Type: application/vnd.api+json"]), {})
+    assert seen[0].content == data.encode()
+    assert seen[0].headers.get_list("content-type") == ["application/vnd.api+json"]
 
 
 def test_plain_text_body_is_untouched(monkeypatch):
