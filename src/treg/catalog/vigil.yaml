@@ -1,0 +1,105 @@
+provider: vigil
+source:
+  docs: https://renolabshq.com/vigil/api
+  openapi: https://renolabshq.com/vigil/api/openapi.json
+  curated: '2026-10-20'
+limits: "Vigil keys carry a monthly successful-data-call cap (free 500, paid 100000 per key per UTC month, adjustable per key). treg platform calls run on treg's own shared key, so the shared cap covers all platform users; an org BYOK key consumes that key's own cap instead."
+pricing_url: https://renolabshq.com/vigil/api
+# Every Vigil answer is a metered, per-call sale: never store or replay it.
+cache: forbidden
+
+# BYOK and treg's platform key expose the same paths and the same X-Vigil-Key auth.
+# A team's own key is unmetered by treg; on treg's key the documented USD rates below
+# settle after success. stocks.insider-trades.list is REUSED from Financial Datasets
+# (same id, same description) — not a second proposal for the same job.
+proposed_capabilities:
+  stocks.congressional-trades.list: "List congressional STOCK Act disclosures"
+  stocks.insider-trades.list: "List insider trades"
+  stocks.insider-intent.list: "List Form 144 sale-intent notices"
+  stocks.reference.ticker-cik: "Resolve a ticker, CIK or issuer-name prefix to its CIK"
+
+endpoints:
+  - id: vigil.stocks.congressional-trades
+    added: '2026-10-20'
+    domain: stocks
+    capability: stocks.congressional-trades.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/congressional-trades
+    name: "Congressional trades by filter"
+    summary: "List blended House and Senate STOCK Act disclosures with per-row source chamber and per-chamber coverage"
+    input:
+      queryParams:
+        ticker: {type: string, required: false, note: "US stock ticker", example: NVDA}
+        bioguide_id: {type: string, required: false, note: "Member Bioguide ID, e.g. P000197"}
+        chamber: {type: string, required: false, note: "house | senate"}
+        side: {type: string, required: false, note: "buy | sell"}
+        since: {type: string, required: false, note: "transaction on or after YYYY-MM-DD"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {ticker: NVDA, limit: 1}}
+    cost: {type: per_success, value: 0.02, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.stocks.insider-trades
+    added: '2026-10-20'
+    domain: stocks
+    capability: stocks.insider-trades.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/insider-trades
+    name: "Insider trades by filter"
+    summary: "List as-filed SEC Form 4 transactions with pass-through shares, price and 10b5-1 flag"
+    input:
+      queryParams:
+        ticker: {type: string, required: false, note: "US stock ticker", example: NVDA}
+        cik: {type: string, required: false, note: "issuer or insider SEC CIK; zero-padding accepted"}
+        side: {type: string, required: false, note: "buy | sell"}
+        since: {type: string, required: false, note: "transaction on or after YYYY-MM-DD"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {ticker: NVDA, side: sell, limit: 1}}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.stocks.insider-intent
+    added: '2026-10-20'
+    domain: stocks
+    capability: stocks.insider-intent.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/insider-intent
+    name: "Insider sale-intent notices"
+    summary: "List Form 144 planned-sale notices with same-issuer 30-day insider clustering; intent, not executed sales"
+    input:
+      queryParams:
+        ticker: {type: string, required: false, note: "US stock ticker", example: NVDA}
+        cik: {type: string, required: false, note: "issuer or insider SEC CIK; zero-padding accepted"}
+        since: {type: string, required: false, note: "notice on or after YYYY-MM-DD"}
+        min_shares: {type: integer, required: false, min: 0, note: "planned shares at or above this count"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {ticker: NVDA, limit: 1}}
+    cost: {type: per_success, value: 0.02, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Per successful request, not per notice row. Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.stocks.reference.ticker-cik
+    added: '2026-10-20'
+    domain: stocks
+    capability: stocks.reference.ticker-cik
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/reference/ticker-cik
+    name: "Ticker-CIK probe"
+    summary: "Resolve a ticker, CIK or issuer-name prefix to its SEC directory identity; also the registry's key check"
+    input:
+      queryParams:
+        q: {type: string, required: true, minLength: 1, maxLength: 100, note: "ticker, CIK or case-insensitive issuer-name prefix", example: NVDA}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+    test_request: {queryParams: {q: NVDA}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Free and unbilled, but still keyed: a successful call consumes the calling key's monthly cap like a dataset call."}
+    docs_url: https://renolabshq.com/vigil/api

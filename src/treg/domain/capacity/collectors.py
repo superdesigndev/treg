@@ -1112,6 +1112,12 @@ NO_BALANCE_API = {
                  "(checked replicate.com/docs/reference/http 2026-10-01) — dashboard only",
     "tiingo": "no usage API (api/account/usage 404s, checked 2026-08-31) — tiingo.com/account/usage is "
               "a logged-in HTML page only",
+    "vigil": "no balance or remaining-quota operation in the public schema (fifteen operations: "
+             "twelve priced dataset/fund reads, the keyed free ticker-CIK probe, unkeyed pricing "
+             "and signup; https://renolabshq.com/vigil/api/openapi.json, checked 2026-10-19) — "
+             "postpaid monthly usage billed in arrears (Net15), not a prepaid wallet; per-key "
+             "UTC-month successful-call cap (free 500 / paid 100000) shared across platform "
+             "users on treg's key",
 }
 
 # platform_key_* slots that are the SECOND half of a provider's credential pair, not a provider of

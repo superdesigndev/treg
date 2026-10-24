@@ -3811,6 +3811,39 @@ FINANCIALDATASETS = OAuthProvider(
 )
 
 
+VIGIL = OAuthProvider(
+    service="vigil",
+    display_name="Vigil",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    auth_kind="key",
+    token_label="Vigil API key",
+    token_placeholder="vt_live_…",
+    token_header="X-Vigil-Key",
+    token_format="{secret}",
+    category="Market data",
+    summary=(
+        "Congressional disclosures, SEC Form 4 transactions and Form 144 sale-intent notices."
+    ),
+    base_url="https://vigil-api.renolabshq.com",
+    docs_url="https://renolabshq.com/vigil/api",
+    # The free ticker-CIK probe doubles as the key check: a valid key answers 200, a bad
+    # key 401 with {"error":"invalid_api_key"}. Query is preserved by the probe merger.
+    probe_path="/v1/reference/ticker-cik?q=NVDA",
+    setup_url="https://renolabshq.com/vigil/api#signup",
+    setup_action_label="Get a Vigil key for optional BYOK",
+    setup_steps=(
+        "Create a free Vigil key using the signup guide.",
+        "Store the one-time secret privately and connect it to treg.",
+    ),
+    setup_note=(
+        "Optional BYOK uses your Vigil account. treg platform access needs no personal "
+        "Vigil key. Free-key quota and paid usage terms are described in the guide."
+    ),
+)
+
+
 # Alpha Vantage is DELIBERATELY absent. Its API serves real quote data to a garbage key (bogus
 # key -> HTTP 200 with the IBM quote; even premium endpoints answer 200 with an upsell note), so a
 # pasted key can never be validated at connect - the ScrapeCreators rule:
@@ -4025,7 +4058,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         INFLUENCERSCLUB, VILLAGE,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
-        FINANCIALDATASETS,
+        FINANCIALDATASETS, VIGIL,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
