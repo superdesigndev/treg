@@ -1,6 +1,8 @@
 ---
 name: web-access
-description: Use whenever a task needs something from the live web — search the web or the news, read a URL, map or crawl a site, pull structured fields from a page, or get data from a platform (X, LinkedIn, Reddit, TikTok, Instagram, YouTube, Xiaohongshu, Amazon, app stores, Google Maps, papers). Picks the right tool for the job, starts free, and lets treg fall back to the next vendor when one fails. No local scrapers, browsers or cookies.
+description: Use only when the agent's own web tools can't do the job. Use what you already have first (built-in web search and fetch, a browser, MCP servers the user installed); come here when none of them covers it, such as a page they can't read, structured data from a platform they have no tool for (X, LinkedIn, Reddit, TikTok, Instagram, YouTube, Xiaohongshu, Amazon, app stores, Google Maps, papers), or when the user asks for treg. Not for localhost, staging, internal pages or public docs your own fetch can read. Starts free, and treg falls back to the next vendor when one fails.
+metadata:
+  summary: Reaches the web data your own tools can't. Pages a normal fetch can't read, and structured data from platforms like X, LinkedIn, Reddit, YouTube and Amazon, starting with free tools.
 ---
 
 # Web access
@@ -10,8 +12,20 @@ pages and platforms a free fetch can't reach. Nothing runs on this machine: no b
 no burner accounts. treg calls the vendor and, on a routed job, tries the next one when a vendor
 comes back empty or blocked.
 
-Runs on treg. If it isn't set up (`treg --version` fails), read https://treg.to/llms.txt and follow it to
-install and sign in, then come back here.
+## When to use this
+
+Your own tools come first. Whenever the built-in web search or fetch, a browser, or an MCP server the
+user installed can do the job, use it and leave this skill alone. Come here only when none can:
+
+- a page your own fetch can't read (blocked, needs JavaScript, rate-limited)
+- structured data from a platform you have no tool for (posts, profiles, products, reviews, places)
+- the user asked for treg
+
+Never send localhost, staging, an intranet or anything behind the user's login through treg: it
+cannot reach them, and they are not public.
+
+Runs on treg. If it isn't set up (`treg --version` fails), don't install it on your own: tell the
+user what it would add and ask. With their yes, follow https://treg.to/llms.txt to install and sign in.
 
 ## Pick the job
 

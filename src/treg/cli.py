@@ -4039,12 +4039,36 @@ def cmd_mcp_install(args, cfg) -> None:
            " (and hub_create, hub_update, hub_mine where the hub is on)")
 
 
+def _optional_skills(base_url: str) -> list[tuple[str, str]]:
+    """The registry's other public skills as (name, one-line summary for the human): the same
+    well-known index `npx skills add` reads, so that one list decides what is offered. Empty when it
+    can't be read."""
+    try:
+        idx = httpx.get(f"{base_url}/.well-known/skills/index.json", timeout=15, follow_redirects=True).json()
+        entries = idx.get("skills", [])
+    except Exception:  # noqa: BLE001 — optional extras; the treg skill installs without them
+        return []
+    out = []
+    for entry in entries:
+        name = str(entry.get("name", ""))
+        # the name becomes a directory: only a plain slug, never a path the server could steer
+        if name != "treg" and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", name):
+            blurb = entry.get("summary") or textwrap.shorten(str(entry.get("description", "")), 100, placeholder="…")
+            out.append((name, " ".join(str(blurb).split())))
+    return out
+
+
 def cmd_skill_bootstrap(args, cfg) -> None:
     """Fetch the official treg skill from the server and drop it into every detected agent's
     skills dir, so whatever agent the user runs already knows how to use treg. install.sh calls this
     right after installing the CLI; it's also runnable by hand. Global (per-user) scope by default —
-    it runs outside any project — with `--project` to target repo-local dirs instead."""
+    it runs outside any project — with `--project` to target repo-local dirs instead.
+
+    The registry's other skills are opt-in: `--skills` names them (or `all`), and one already on this
+    machine is refreshed. It never prompts, since an agent usually runs it; the rest are listed with
+    the command that adds them, so the agent can ask its user."""
     base_url = (cfg.get("base_url") or "https://treg.to").rstrip("/")
+    say = (lambda *_: None) if _JSON_OVERRIDE else print
     try:
         # Signed in, the server answers for your team: sections for a feature limited to some teams
         # (the tool hub, TREG_HUB_TEAMS) reach only a member of those teams.
@@ -4067,41 +4091,61 @@ def cmd_skill_bootstrap(args, cfg) -> None:
         dest = b / "treg"
         dest.mkdir(parents=True, exist_ok=True)
         (dest / "SKILL.md").write_text(recipe, encoding="utf-8")
-        print(f"  ✓ treg → {dest / 'SKILL.md'}"); n += 1
+        say(f"  ✓ treg → {dest / 'SKILL.md'}"); n += 1
         # the skill used to install as "tools-registry"; a leftover copy would load as a duplicate
         # skill and confuse agents, so retire it — but only if it's exactly ours (just a SKILL.md).
         legacy = b / "tools-registry"
         try:
             if legacy.is_dir() and [q.name for q in legacy.iterdir()] == ["SKILL.md"]:
                 (legacy / "SKILL.md").unlink(); legacy.rmdir()
-                print("    (removed the old tools-registry skill folder — renamed to treg)")
+                say("    (removed the old tools-registry skill folder — renamed to treg)")
         except OSError:
             pass
-    # The other public skills this registry advertises (make-ugc, lead-signals, …): the same well-known
-    # index `npx skills add` reads, so that one list decides what ships. Best-effort: the treg skill is
-    # already in place, so a miss here never fails the install.
-    extra = []
-    try:
-        idx = httpx.get(f"{base_url}/.well-known/skills/index.json", timeout=15, follow_redirects=True).json()
-        for entry in idx.get("skills", []):
-            name = str(entry.get("name", ""))
-            # the name becomes a directory: only a plain slug, never a path the server could steer
-            if name == "treg" or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", name):
-                continue
+
+    optional = _optional_skills(base_url)
+    names = [nm for nm, _ in optional]
+    asked = [s.strip() for s in (args.skills or "").split(",") if s.strip()]
+    if asked == ["all"]:
+        asked = names
+    elif asked == ["none"]:
+        asked = []
+    unknown = [s for s in asked if s not in names]
+    present = [nm for nm in names if any((b / nm / "SKILL.md").is_file() for b in bases)]
+    installed = []
+    for name in names:
+        if name not in asked and name not in present:
+            continue
+        try:
             r = httpx.get(f"{base_url}/.well-known/skills/{name}/SKILL.md", timeout=15, follow_redirects=True)
-            if r.status_code == 200 and r.text.startswith("---"):
-                extra.append((name, r.text))
-    except Exception:  # noqa: BLE001 — optional extras; the treg skill already installed
-        pass
-    for name, text in extra:
+        except Exception:  # noqa: BLE001 — best-effort: the treg skill is already in place
+            continue
+        if r.status_code != 200 or not r.text.startswith("---"):
+            continue
         for b in bases:
             (b / name).mkdir(parents=True, exist_ok=True)
-            (b / name / "SKILL.md").write_text(text, encoding="utf-8")
-        print(f"  ✓ {name} → {len(bases)} location(s)")
+            (b / name / "SKILL.md").write_text(r.text, encoding="utf-8")
+        installed.append(name)
+        say(f"  ✓ {name} → {len(bases)} location(s)")
+    available = [(nm, desc) for nm, desc in optional if nm not in installed]
+
+    if _JSON_OVERRIDE:
+        print(json.dumps({"installed": ["treg", *installed], "locations": n, "unknown": unknown,
+                          "available": [{"name": nm, "summary": d} for nm, d in available]}, indent=2))
+        return
     detected = _agents.detect_installed()
     tail = f"detected: {', '.join(detected)}" if detected else "no agents detected — used sensible defaults"
-    names = ", ".join(["treg"] + [nm for nm, _ in extra])
-    print(f"\nInstalled {names} into {n} location(s)  ({tail}).")
+    print(f"\nInstalled {', '.join(['treg', *installed])} into {n} location(s)  ({tail}).")
+    if unknown:
+        print(f"Not a skill on this registry: {', '.join(unknown)}")
+    if available:
+        width = max(len(nm) for nm, _ in available)
+        print("\nOptional skills from this registry (not installed):")
+        for nm, desc in available:
+            print(f"  {nm:<{width}}  {desc}")
+        print("If you are an agent: tell the user in one sentence each what these do and ask which they")
+        print("want; then run")
+        print("  treg skill bootstrap --skills <name>,<name>")
+        print("  treg skill bootstrap --skills all")
 
 
 def cmd_agents_ls(args, cfg) -> None:
@@ -7042,10 +7086,13 @@ def build_parser() -> argparse.ArgumentParser:
     ski.set_defaults(fn=cmd_skill_install)
 
     skb = mk(sk, "bootstrap", "Install the official treg skill into every detected agent (used by the installer).",
-             "treg skill bootstrap", "treg skill bootstrap --all-agents")
+             "treg skill bootstrap", "treg skill bootstrap --skills lead-signals,recruit",
+             "treg skill bootstrap --skills all")
     skb.add_argument("--all-agents", dest="all_agents", action="store_true",
                      help="every known agent's dir, not just the ones detected on this machine")
     skb.add_argument("--project", action="store_true", help="write into project dirs instead of the per-user global dirs")
+    skb.add_argument("--skills", metavar="NAMES",
+                     help="also install the registry's other skills: comma-separated names, or `all`")
     skb.set_defaults(fn=cmd_skill_bootstrap)
 
     mc = mk(sub, "mcp", "Register the treg MCP server into the coding agents on this machine.",
