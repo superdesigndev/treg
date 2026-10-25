@@ -11,6 +11,9 @@
     {
       "name": "treg",
       "source": "./",
+      "skills": [
+        "./skills/treg"
+      ],
       "category": "developer-tools",
       "tags": [
         "api",
