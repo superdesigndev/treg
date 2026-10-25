@@ -3,14 +3,12 @@ source:
   docs: https://docs.akta.pro
   openapi: null # Akta publishes markdown reference pages plus an llms.txt index; no OpenAPI document
   curated: 2026-07-28
-# VERIFIED 2026-07-28, RE-VERIFIED 2026-07-31 with a live credential — same four passes, same two
-# 403s, and the credit charges below are now OBSERVED rather than transcribed. Company search,
-# industry search, enrichment and news all pass. The entire "alternative data" family — headcount-trends and employee-reviews here, plus
-# product-reviews, jobs, posts and website-traffic in akta.extended.yaml — answers a uniform
-# `http 403 "Your current subscription does not include access to this endpoint"` on this key,
-# including the free (no-`products`) product-reviews call. Six distinct paths, identical message:
-# this is an account-tier gap on the connected plan, not a broken route or bad test_request — a
-# plan upgrade, not a fix, would clear it. Re-run catalog_verify.py once the plan changes.
+# VERIFIED 2026-07-28, RE-VERIFIED 2026-07-31 with a live credential; the credit charges below are
+# OBSERVED rather than transcribed. The "alternative data" family (headcount-trends and
+# employee-reviews here, plus product-reviews, jobs, posts and website-traffic in
+# akta.extended.yaml) needs a plan that includes Alternative Signals: without it every one answers
+# `http 403 "Your current subscription does not include access to this endpoint"`, including the
+# free (no-`products`) product-reviews call. VERIFIED 2026-10-24 on a plan that includes it.
 #
 # TRAILING SLASHES ARE MANDATORY ON EVERY PATH. Live-probed: /v1/company/search?query=… answers 307
 # (redirect), /v1/company/search/?query=… answers 401 (i.e. it routed). treg does not follow
@@ -155,8 +153,8 @@ endpoints:
     test_request:
       queryParams: {company: "canva.com"}
     cost: {type: per_success, value: 2.5, currency: credit, per: 1, unit: call, source: docs, source_url: 'https://docs.akta.pro/getting-started/pricing', checked: '2026-07-28', confidence: documented, note: 2.5 Akta credits per request}
-    unverified: "http 403 {\"detail\": \"Your current subscription does not include access to this endpoint.\"} — re-probed 2026-07-31, identical response, so the plan gate has not moved. An account-tier gap, not a call error: every /company/{jobs,posts,website-traffic,employee-reviews,headcount-trends,product-reviews-with-products} route on this key returns the same message, and a 403 consumes no credits"
-    platform_blocked: "upstream 403 'Your current subscription does not include access to this endpoint' on treg's shared Akta key (alternative-data tier; re-probed 2026-07-31). Works with your own Akta key on a plan that includes Alternative Signals."
+    verified: 2026-10-24
+    example_response: examples/akta.companies.headcount_trend.json
     docs_url: https://docs.akta.pro/api-reference/alternative-data/headcount-trends
 
   - id: akta.companies.reviews
@@ -178,8 +176,8 @@ endpoints:
     test_request:
       queryParams: {company: "canva.com", limit: 1}
     cost: {type: per_result, value: 1.5, currency: credit, per: 50, unit: review, source: docs, source_url: 'https://docs.akta.pro/getting-started/pricing', checked: '2026-07-28', confidence: documented, note: 1.5 Akta credits per 50 reviews returned}
-    unverified: "http 403 {\"detail\": \"Your current subscription does not include access to this endpoint.\"} — re-probed 2026-07-31, unchanged. Account-tier gap, same message as the other alternative-data routes; the 403 is free, so re-probing costs nothing"
-    platform_blocked: "upstream 403 'Your current subscription does not include access to this endpoint' on treg's shared Akta key (alternative-data tier; re-probed 2026-07-31). Works with your own Akta key on a plan that includes Alternative Signals."
+    verified: 2026-10-24
+    example_response: examples/akta.companies.reviews.json
     docs_url: https://docs.akta.pro/api-reference/alternative-data/employee-reviews
 
   - id: akta.companies.industry.resolve

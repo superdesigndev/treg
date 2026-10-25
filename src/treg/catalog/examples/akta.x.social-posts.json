@@ -1,0 +1,34 @@
+{
+  "count": 50,
+  "limit": 1,
+  "offset": 0,
+  "data": {
+    "uuid": "00000l1",
+    "posts": [
+      {
+        "id": "WX6KQLT32M",
+        "content_type": null,
+        "url": "https://www.linkedin.com/feed/update/urn:li:activity:7519358803293773824/",
+        "posted_date": "2026-10-23 11:27:21+00:00",
+        "is_paid": null,
+        "reposted": false,
+        "engagement_metrics": {
+          "total_reaction_count": null,
+          "like_count": 68,
+          "empathy_count": 9,
+          "praise_count": 2,
+          "appreciation_count": 0,
+          "interest_count": null,
+          "funny_count": 0,
+          "comments_count": 0,
+          "reposts_count": 3
+        },
+        "text_content": "What if every photo you took could be a video too? 📸\n\nGo to your camera roll and try Image to Video on one of your favorites! \n\n#CanvaWorldTour",
+        "post_classification": "Other",
+        "author": {},
+        "mentions": []
+      }
+    ]
+  },
+  "credits_consumed": 1
+}
