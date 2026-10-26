@@ -1,0 +1,139 @@
+{
+  "data": {
+    "corpusTypes": [
+      {
+        "token": "USC",
+        "description": "United States Code (federal statutes)",
+        "scope": "federal",
+        "browsable": true,
+        "sourceScopeNotes": {}
+      },
+      {
+        "token": "USC_ANNUAL",
+        "description": "GPO's PUBLISHED ANNUAL EDITION of the United States Code, retired here when the live Code cut over to OLRC release points. This is the federal statutory text that was actually in force on a past date, as printed, not reconstructed. Distinct from `USC`, which is the Code as it stands at the current OLRC release point. Resolve a date with `asOf=YYYY-MM-DD` on `/section/{actId}/body` using the CURRENT act_id: the response names `asOf.source=\"stored_edition\"` when an edition answered. Every point is… [638 chars total]",
+        "scope": "federal",
+        "browsable": false,
+        "sourceScopeNotes": {}
+      },
+      "… 21 more item(s) truncated"
+    ],
+    "jurisdictions": [
+      {
+        "code": "ca",
+        "name": "California",
+        "kind": "state",
+        "sectionCount": 248461,
+        "hasData": true,
+        "statusBreakdown": {
+          "REGULATION": {
+            "expired": 1,
+            "inForce": 58877,
+            "renumbered": 3082,
+            "repealed": 12561,
+            "reserved": 261,
+            "transferred": 1
+          },
+          "STATE": {
+            "inForce": 161395,
+            "repealed": 46
+          },
+          "STATE_RULES": {
+            "inForce": 3862,
+            "renumbered": 1,
+            "repealed": 145,
+            "reserved": 299
+          },
+          "STATE_REGISTER": {
+            "published": 5127
+          },
+          "STATE_AGENCY_GUIDANCE": {
+            "inForce": 462,
+            "rescinded": 1,
+            "superseded": 1
+          },
+          "STATE_AG_OPINION": {
+            "inForce": 1967
+          },
+          "STATE_CONSTITUTION": {
+            "inForce": 364,
+            "rejected": 8
+          }
+        },
+        "corpora": {
+          "STATE": 161441,
+          "REGULATION": 74783,
+          "STATE_REGISTER": 5127,
+          "STATE_RULES": 4307,
+          "STATE_AG_OPINION": 1967,
+          "STATE_AGENCY_GUIDANCE": 464,
+          "STATE_CONSTITUTION": 372
+        },
+        "sessionLaws": {
+          "sessions": [
+            {
+              "code": "1989R",
+              "label": "1989-1990 Regular Session",
+              "type": "regular",
+              "year": 1989,
+              "status": "partial",
+              "servedCount": 3114,
+              "withheldCount": 422,
+              "notHeldCount": 0,
+              "registryCount": 3536,
+              "collectedCount": 3536,
+              "denominator": {
+                "kind": "complete_listing",
+                "value": 3536,
+                "derivation": "The publisher's complete listing of this session names 3,536 measures. We hold 3,536 of them; the rest are not yet collected."
+              },
+              "openGaps": 3,
+              "measuredAt": "2026-10-13T20:08:07.862201+00:00"
+            },
+            {
+              "code": "1989X1",
+              "label": "1989-1990 First Extraordinary Session",
+              "type": "extraordinary",
+              "year": 1989,
+              "status": "partial",
+              "servedCount": 35,
+              "withheldCount": 2,
+              "notHeldCount": 0,
+              "registryCount": 37,
+              "collectedCount": 37,
+              "denominator": {
+                "kind": "complete_listing",
+                "value": 37,
+                "derivation": "The publisher's complete listing of this session names 37 measures. We hold 37 of them; the rest are not yet collected."
+              },
+              "openGaps": 25,
+              "measuredAt": "2026-10-13T20:08:07.862201+00:00"
+            },
+            "… 52 more item(s) truncated"
+          ],
+          "sessionCount": 54,
+          "completeSessionCount": 25,
+          "servedCount": 39480,
+          "series": [
+            "general",
+            "resolution_chapter"
+          ],
+          "instrumentTypes": [
+            "act",
+            "concurrent_resolution",
+            "… 2 more item(s) truncated"
+          ],
+          "earliestApprovedDate": "1983-09-07",
+          "latestApprovedDate": "2030-09-29"
+        }
+      }
+    ],
+    "totalSections": 5478264,
+    "totalPassages": 20807037,
+    "stateCountWithData": 50,
+    "measuredAt": "2026-10-26T09:37:14.627763+00:00"
+  },
+  "meta": {
+    "processingTimeMs": 10.8,
+    "creditsConsumed": 0.0
+  }
+}

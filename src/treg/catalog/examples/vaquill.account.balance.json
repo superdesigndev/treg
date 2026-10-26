@@ -1,0 +1,23 @@
+{
+  "creditsRemaining": 5000.0,
+  "usdRemaining": 50.0,
+  "bySource": [
+    {
+      "source": "payg",
+      "credits": 5000.0
+    }
+  ],
+  "nextExpiry": {
+    "at": "2027-10-26T00:00:00Z",
+    "credits": 5000.0
+  },
+  "plan": null,
+  "totalPurchased": 5000.0,
+  "totalConsumed": 0.0,
+  "rateLimit": {
+    "perMinute": 30,
+    "perHour": 500,
+    "perDay": 1000
+  },
+  "asOf": "2026-10-26T00:00:00Z"
+}

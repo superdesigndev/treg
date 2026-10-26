@@ -1,0 +1,32 @@
+{
+  "processingTimeMs": 501.5,
+  "creditsConsumed": 6,
+  "sessionLawId": "SSL_MN_2025R_G_Y2025_C1",
+  "citation": "CHAPTER 1--S.F.No. 1552",
+  "jurisdiction": "mn",
+  "session": {
+    "code": "2025R",
+    "label": "2025 Regular Session",
+    "type": "regular",
+    "year": 2025
+  },
+  "approvedDate": "2025-03-17",
+  "approvedDateDerived": false,
+  "sourceUrl": "https://www.revisor.mn.gov/laws/2025/0/Session+Law/Chapter/1/",
+  "available": true,
+  "reason": null,
+  "textStatus": "held",
+  "withheldReason": null,
+  "text": "CHAPTER 1--S.F.No. 1552\n\nAn act\n\nrelating to agriculture; modifying financial reporting requirements for grain buyers;\n\namending Minnesota Statutes 2024, section 223.17, subdivision 6.\n\nBE IT ENACTED BY THE LEGISLATURE OF THE STATE OF MINNESOTA:\n\nSection 1.\n\nMinnesota Statutes 2024, section 223.17, subdivision 6, is amended to read:\n\nSubd. 6.\n\nFinancial statements.\n\n(a) Except as allowed in paragraph (c), a grain buyer licensed under this chapter must annually submit to the commissioner a financ… [5470 chars total]",
+  "pageStart": 0,
+  "pageEnd": 5470,
+  "totalChars": 5470,
+  "totalPages": 1,
+  "pagePrice": 6,
+  "estimatedRemainingCredits": 0,
+  "textSha256": "55c7a8d08647e41f87e23fc2016881a6583911a1d5cfa8687403442e9096451b",
+  "amendatoryMarkup": "preserved",
+  "markupConvention": "publisher_literal",
+  "nextCursor": null,
+  "hasMore": false
+}

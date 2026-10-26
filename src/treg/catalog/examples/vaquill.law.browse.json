@@ -1,0 +1,31 @@
+{
+  "corpusType": "USC",
+  "state": null,
+  "level": "chapters",
+  "parentLabel": "Title 42",
+  "divisions": [
+    {
+      "identifier": "1",
+      "name": "THE PUBLIC HEALTH SERVICE",
+      "kind": "chapter",
+      "isLeaf": false,
+      "actId": null,
+      "sectionCount": 21
+    },
+    {
+      "identifier": "1A",
+      "name": "THE PUBLIC HEALTH SERVICE; SUPPLEMENTAL PROVISIONS",
+      "kind": "chapter",
+      "isLeaf": false,
+      "actId": null,
+      "sectionCount": 4
+    },
+    "… 194 more item(s) truncated"
+  ],
+  "count": 196,
+  "nextCursor": null,
+  "truncated": false,
+  "note": null,
+  "processingTimeMs": 1427.8,
+  "creditsConsumed": 1.0
+}

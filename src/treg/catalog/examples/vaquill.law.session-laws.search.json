@@ -1,0 +1,54 @@
+{
+  "query": "grain buyers",
+  "parsed": {
+    "text": "grain buyers",
+    "phrases": [],
+    "citationTokens": [],
+    "billNumbers": []
+  },
+  "results": [
+    {
+      "sessionLawId": "SSL_MN_2025R_G_Y2025_C1",
+      "jurisdiction": "mn",
+      "session": "2025R",
+      "series": "general",
+      "instrumentType": "act",
+      "citation": "CHAPTER 1--S.F.No. 1552",
+      "title": "An act relating to agriculture; modifying financial reporting requirements for grain buyers; amending Minnesota Statutes 2024, section 223.17, subdivision 6.",
+      "approvedDate": "2025-03-17",
+      "enactmentOutcome": "signed",
+      "matchType": "text",
+      "matchedBy": [
+        "title",
+        "text"
+      ],
+      "passage": {
+        "seq": 1,
+        "ownStart": 3686,
+        "ownEnd": 5470,
+        "pageStart": null,
+        "heading": "Section 1.",
+        "snippet": "…data as provided in section 13.02. (c) A grain buyer who purchases grain immediately upon delivery solely with cash , as defined in section 223.16, subdivision 2a, paragraph (b), is exempt from this subdivision if the grain buyer's gross annual purchases are $1,000,000 or less.…",
+        "highlights": [
+          [
+            42,
+            47
+          ],
+          [
+            48,
+            53
+          ],
+          "… 2 more item(s) truncated"
+        ],
+        "bodyHref": "https://api.vaquill.ai/api/v1/us/session-laws/SSL_MN_2025R_G_Y2025_C1/body?startChar=3686"
+      },
+      "href": "https://api.vaquill.ai/api/v1/us/session-laws/SSL_MN_2025R_G_Y2025_C1"
+    }
+  ],
+  "count": 1,
+  "offset": 0,
+  "limit": 1,
+  "hasMore": true,
+  "creditsConsumed": 4,
+  "processingTimeMs": 1357.7
+}

@@ -59,6 +59,9 @@ _TABLE: list[Signature] = [
     Signature("thecompaniesapi", 403, r"noCreditsRemaining", "balance", tripwire=True),
     Signature("companyenrich", 402, r"payment required", "balance", tripwire=True),
     Signature("akta", 402, r"insufficient credits", "balance"),
+    # Vaquill: an empty credit pool is a 402 {"detail": "Insufficient credits"}; routes that meter by
+    # bucket say "Insufficient API credits". A 401 is a bad key, never an empty account.
+    Signature("vaquill", 402, r"insufficient (api )?credits", "balance"),
     # AI Ark: an empty credit pool is a 402 {"error": "sorry, you don't have enough credit"}.
     Signature("aiark", 402, r"don't have enough credit", "balance"),
     Signature("lusha", 400, r"reached your credit limit", "balance", tripwire=True),

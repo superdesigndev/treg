@@ -1,0 +1,510 @@
+provider: vaquill
+source:
+  docs: https://api.vaquill.ai/external/docs
+  openapi: https://api.vaquill.ai/external/openapi.json
+  curated: 2026-10-26
+# Vaquill sells US primary law as structured data: federal and state statutes, regulations,
+# constitutions, court rules, agency guidance and state session laws, each section linked back to
+# the official source. It does not hold case law and does not hold local ordinances.
+#
+# Billing is credit based at $0.01 per credit and the API reports its own spend: every response
+# carries `creditsConsumed` (and an `X-Magicapi-Billing: API=N;` header), net of refunds, so each
+# price below is read from the live rate card (https://api.vaquill.ai/api/v1/api-credits/pricing) and was
+# reconciled against a measured balance delta on 2026-10-26 (19 routes, 50 credits charged, balance moved
+# by exactly 50). A not-found, a failed lookup and an empty-text section are refunded.
+#
+# Auth: `X-API-Key: vq_key_...` (also `Authorization: Bearer`). A garbage key answers 401
+# `Invalid or expired API key` on every route, including the free GET /credits/balance probe.
+#
+# Deliberately NOT catalogued: the board-watch and law-change alert routes (/boards, /watches/*)
+# and the two change-history feeds (/us/statutes/section/{act_id}/changes and
+# /us/session-laws/changes). Watches belong to the calling key's account, so they cannot be offered
+# on a credential shared between teams. The three deprecated discovery routes (/states, /laws,
+# /codes) are hidden from the OpenAPI document and not catalogued either.
+limits: "30 requests/minute, 500/hour and 1,000/day on a default key; plans raise them. A limited call returns 429 with Retry-After"
+pricing_url: https://api.vaquill.ai/api/v1/api-credits/pricing
+proposed_capabilities:
+  law.browse: "Browse the statutory hierarchy one level at a time"
+  law.citation.extract: "Find and resolve every statute citation in a block of text"
+  law.citation.resolve: "Resolve a legal citation to the exact US statute or regulation section"
+  law.citation.resolve.batch: "Resolve up to 50 legal citations to their sections in one call"
+  law.count: "Count the sections in a jurisdiction, code, title or chapter"
+  law.coverage: "See which jurisdictions and kinds of law are held"
+  law.section.batch: "Get the metadata of up to 50 statute sections in one call"
+  law.section.cited_by: "Find the statute sections that cite a given section"
+  law.section.cross_state: "Find the same provision in other states' codes"
+  law.section.definitions: "Get the defined terms that govern a statute section"
+  law.section.enactments: "List the session laws a state publisher lists against a code section"
+  law.section.get: "Get the metadata of a US statute or regulation section"
+  law.section.neighbors: "Get the statute sections before and after a given section"
+  law.section.text: "Get the full text of a US statute or regulation section, as of a date"
+  law.session_laws.batch: "Get up to 50 state session laws in one call"
+  law.session_laws.get: "Get a state session law without its text"
+  law.session_laws.list: "List a state's session laws by session, approval date or effective date"
+  law.session_laws.search: "Search the text of state session laws by what they say"
+  law.session_laws.text: "Get the text of a state session law, page by page"
+  law.statutes.search: "Search US statutes, regulations, constitutions and court rules by meaning"
+endpoints:
+  - id: vaquill.law.citation.resolve
+    added: '2026-10-26'
+    domain: law
+    capability: law.citation.resolve
+    platform: law
+    scope: any_account
+    method: GET
+    path: /us/statutes/resolve
+    name: "Resolve a citation to its section"
+    summary: "Resolve a Bluebook citation such as 42 U.S.C. 1983 or 16 C.F.R. 444.1 to the exact statute or regulation section, with an official source link"
+    input:
+      queryParams:
+        cite: {type: string, required: true, note: "one Bluebook citation, optionally with a pinpoint such as (c)(1)", example: "42 U.S.C. 1983"}
+        state: {type: string, required: false, note: "two-letter state code to disambiguate a state citation", example: "tx"}
+        corpusType: {type: string, required: false, note: "narrow to one corpus, for example REGULATION", example: "REGULATION"}
+    test_request: {queryParams: {cite: "42 U.S.C. 1983"}}
+    cost: {type: per_call, value: 2, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "2 credits per citation. Charged whether or not the citation resolves, because a confident negative is the answer when verifying a citation. Read creditsConsumed on the response, which is net of refunds."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.citation.resolve.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.citation.resolve-batch
+    added: '2026-10-26'
+    domain: law
+    capability: law.citation.resolve.batch
+    platform: law
+    scope: any_account
+    method: POST
+    path: /us/statutes/resolve
+    name: "Resolve up to 50 citations at once"
+    summary: "Resolve up to 50 Bluebook citations in one call, one verdict per citation, in the order sent"
+    input:
+      bodyType: json
+      body:
+        citations: {type: array, required: true, note: "up to 50 citation strings", example: ["42 U.S.C. 1983", "16 C.F.R. 444.1"]}
+        state: {type: string, required: false, note: "two-letter state code applied to every citation", example: "tx"}
+        corpusType: {type: string, required: false, note: "narrow every citation to one corpus", example: "REGULATION"}
+    test_request: {body: {citations: ["42 U.S.C. 1983", "16 C.F.R. 444.1"]}}
+    cost: {type: per_result, value: 2, currency: credit, per: 1, unit: item, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "2 credits per citation, the same price as one lookup, so batching saves a round trip and not money. Observed 2 citations = 4 credits."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.citation.resolve-batch.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.citation.extract
+    added: '2026-10-26'
+    domain: law
+    capability: law.citation.extract
+    platform: law
+    scope: any_account
+    method: POST
+    path: /us/statutes/extract-citations
+    name: "Find and resolve every statute citation in a text"
+    summary: "Read a block of text up to 200,000 characters, such as a brief or a model answer, and resolve each distinct statute, regulation or rule citation in it"
+    input:
+      bodyType: json
+      body:
+        text: {type: string, required: true, note: "the text to read, up to 200000 characters", example: "Plaintiff sued under 42 U.S.C. 1983. See also 16 C.F.R. 444.1."}
+        state: {type: string, required: false, note: "two-letter state code used to read bare state citations", example: "tx"}
+        resolve: {type: boolean, required: false, note: "false extracts without resolving and is free", example: true}
+        includeUnresolved: {type: boolean, required: false, note: "also list citations that did not resolve", example: true}
+    test_request: {body: {text: "Plaintiff sued under 42 U.S.C. 1983. See also 16 C.F.R. 444.1."}}
+    cost: {type: per_result, value: 2, currency: credit, per: 1, unit: item, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "2 credits per DISTINCT citation sent to the resolver, so a text that cites one section forty times pays once. Session-law citations are not resolved here and not charged. Observed 2 distinct citations = 4 credits."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.citation.extract.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.statutes.search
+    added: '2026-10-26'
+    domain: law
+    capability: law.statutes.search
+    platform: law
+    scope: any_account
+    method: POST
+    path: /us/statutes/search
+    name: "Search US statutes, regulations and court rules"
+    summary: "Hybrid semantic and keyword search across the US Code, the CFR, state codes, state regulations, constitutions, court rules and agency guidance, with citations and links to the official source"
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, note: "a plain question, keywords or a citation", example: "insider trading penalties"}
+        corpusType: {type: string, required: false, note: "one corpus or a list, for example USC, CFR, STATE, REGULATION", example: "USC"}
+        state: {type: string, required: false, note: "two-letter state code or a list", example: "ca"}
+        titleNumber: {type: integer, required: false, example: 17}
+        matchType: {type: string, required: false, note: "all, any, phrase or boolean", example: "phrase"}
+        excludeRepealed: {type: boolean, required: false, example: true}
+        limit: {type: integer, required: false, min: 1, max: 50, example: 10}
+        offset: {type: integer, required: false, example: 0}
+        includeBody: {type: boolean, required: false, enum: [false], note: "treg returns excerpts only; for inline full text per hit, read the section text route or use your own key upstream", example: false}
+    platform_request: {body.includeBody: false}
+    test_request: {body: {query: "insider trading penalties", corpusType: "USC", limit: 2}}
+    cost: {type: per_call, value: 4, currency: credit, per: 1, unit: page, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "4 credits per search page whatever the limit. includeBody adds the section-body price per row that returns text, so treg fixes it to false."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.statutes.search.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.section.get
+    added: '2026-10-26'
+    domain: law
+    capability: law.section.get
+    platform: law
+    scope: any_account
+    method: GET
+    path: /us/statutes/section/{act_id}
+    name: "Get a statute section's metadata"
+    summary: "Title, citation, hierarchy, status, cross references and source link for one section, by act id"
+    input:
+      pathParams:
+        act_id: {type: string, required: true, note: "the actId from a search or resolve result", example: "USC_T42_C21_S1983"}
+    test_request: {pathParams: {act_id: "USC_T42_C21_S1983"}}
+    cost: {type: per_call, value: 2, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "2 credits. A not-found lookup is not charged."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.section.get.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.section.text
+    added: '2026-10-26'
+    domain: law
+    capability: law.section.text
+    platform: law
+    scope: any_account
+    method: GET
+    path: /us/statutes/section/{act_id}/body
+    name: "Get a section's full text, as of a date"
+    summary: "The full text of a statute or regulation section as plain text and HTML, optionally one subsection by pinpoint or the version in force on a past date"
+    input:
+      pathParams:
+        act_id: {type: string, required: true, example: "USC_T42_C21_S1983"}
+      queryParams:
+        pinpoint: {type: string, required: false, note: "a subsection such as (c)(1), located inside the section at no extra cost", example: "(c)(1)"}
+        asOf: {type: string, required: false, note: "YYYY-MM-DD, the version in force on that date where the change history reaches it", example: "2026-01-15"}
+        structured: {type: boolean, required: false, note: "also return the subsection tree", example: true}
+    test_request: {pathParams: {act_id: "USC_T42_C21_S1983"}}
+    cost: {type: per_call, value: 6, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "6 credits, charged only when text is returned. A not-found, a section whose text is not ingested and an image-only section are not charged."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.section.text.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.section.batch
+    added: '2026-10-26'
+    domain: law
+    capability: law.section.batch
+    platform: law
+    scope: any_account
+    method: POST
+    path: /us/statutes/sections
+    name: "Get metadata for up to 50 sections"
+    summary: "Metadata for up to 50 statute or regulation sections in one call"
+    input:
+      bodyType: json
+      body:
+        actIds: {type: array, required: true, note: "up to 50 act ids", example: ["USC_T42_C21_S1983", "CFR_T17_P240_S240_10b5_1"]}
+        includeBody: {type: boolean, required: false, enum: [false], note: "treg returns metadata only; read the section text route for full text", example: false}
+    platform_request: {body.includeBody: false}
+    test_request: {body: {actIds: ["USC_T42_C21_S1983"]}}
+    cost: {type: per_result, value: 2, currency: credit, per: 1, unit: section, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "2 credits per section returned; ids with no match are refunded. includeBody adds the body price per section, so treg fixes it to false."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.section.batch.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.section.neighbors
+    added: '2026-10-26'
+    domain: law
+    capability: law.section.neighbors
+    platform: law
+    scope: any_account
+    method: GET
+    path: /us/statutes/section/{act_id}/related
+    name: "Get the sections before and after a section"
+    summary: "The sections immediately before and after a given section, in statutory order"
+    input:
+      pathParams:
+        act_id: {type: string, required: true, example: "USC_T42_C21_S1983"}
+      queryParams:
+        limit: {type: integer, required: false, note: "neighbours on each side", example: 3}
+    test_request: {pathParams: {act_id: "USC_T42_C21_S1983"}, queryParams: {limit: 1}}
+    cost: {type: per_call, value: 2, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "2 credits. Not-found is not charged."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.section.neighbors.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.section.definitions
+    added: '2026-10-26'
+    domain: law
+    capability: law.section.definitions
+    platform: law
+    scope: any_account
+    method: GET
+    path: /us/statutes/section/{act_id}/definitions
+    name: "Get the defined terms that govern a section"
+    summary: "The term definitions that apply to a section, parsed from its chapter's definitions section"
+    input:
+      pathParams:
+        act_id: {type: string, required: true, example: "USC_T42_C21_S1983"}
+    test_request: {pathParams: {act_id: "USC_T42_C21_S1983"}}
+    cost: {type: per_call, value: 4, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "4 credits. Not-found, chapters with no definitions section and definitions not yet ingested are refunded."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.section.definitions.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.section.cited-by
+    added: '2026-10-26'
+    domain: law
+    capability: law.section.cited_by
+    platform: law
+    scope: any_account
+    method: GET
+    path: /us/statutes/section/{act_id}/cited-by
+    name: "Find the sections that cite a section"
+    summary: "The US Code and CFR sections whose text cross-references a given section"
+    input:
+      pathParams:
+        act_id: {type: string, required: true, example: "USC_T42_C21_S1983"}
+      queryParams:
+        limit: {type: integer, required: false, example: 25}
+    test_request: {pathParams: {act_id: "USC_T42_C21_S1983"}, queryParams: {limit: 2}}
+    cost: {type: per_call, value: 2, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "2 credits. Not-found and corpora with no cross-reference index are not charged."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.section.cited-by.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.section.cross-state
+    added: '2026-10-26'
+    domain: law
+    capability: law.section.cross_state
+    platform: law
+    scope: any_account
+    method: GET
+    path: /us/statutes/section/{act_id}/cross-state
+    name: "Compare a state provision with other states"
+    summary: "Provisions in other states that address the same subject as a given state statute section, ranked by similarity"
+    input:
+      pathParams:
+        act_id: {type: string, required: true, note: "a state statute section; other corpora are not charged", example: "STATE_TX_Cbc_C521_S521.053"}
+      queryParams:
+        limit: {type: integer, required: false, example: 5}
+    test_request: {pathParams: {act_id: "STATE_TX_Cbc_C521_S521.053"}, queryParams: {limit: 2}}
+    cost: {type: per_call, value: 6, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "6 credits. Not-found and sections outside the state statute corpus are not charged."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.section.cross-state.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.section.enactments
+    added: '2026-10-26'
+    domain: law
+    capability: law.section.enactments
+    platform: law
+    scope: any_account
+    method: GET
+    path: /us/statutes/section/{act_id}/enactments
+    name: "List the session laws a publisher lists against a section"
+    summary: "Which state session laws a state publisher's own tables list against one code section, with effective dates; not complete, because an act the publisher does not tabulate is not listed"
+    input:
+      pathParams:
+        act_id: {type: string, required: true, note: "a state code section; jurisdictions where the mapping is not verified answer supported: false", example: "STATE_MS_T27_C71_S27-71-5"}
+    test_request: {pathParams: {act_id: "STATE_MS_T27_C71_S27-71-5"}}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "1 credit; an unsupported jurisdiction is not charged."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.section.enactments.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.browse
+    added: '2026-10-26'
+    domain: law
+    capability: law.browse
+    platform: law
+    scope: any_account
+    method: GET
+    path: /us/statutes/divisions
+    name: "Browse the statutory hierarchy one level at a time"
+    summary: "List the children of any level of a code, title, chapter or part, in statutory order, down to the sections"
+    input:
+      queryParams:
+        corpusType: {type: string, required: true, note: "USC, CFR, STATE, REGULATION, CONSTITUTION and others, see coverage", example: "USC"}
+        state: {type: string, required: false, example: "tx"}
+        titleNumber: {type: integer, required: false, example: 42}
+        chapter: {type: string, required: false, example: "21"}
+        code: {type: string, required: false, example: "tx_pe"}
+        cursor: {type: string, required: false, note: "nextCursor from the previous page"}
+    test_request: {queryParams: {corpusType: "USC", titleNumber: 42}}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: page, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "1 credit per page of children."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.browse.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.coverage
+    added: '2026-10-26'
+    domain: law
+    capability: law.coverage
+    platform: law
+    scope: any_account
+    method: GET
+    path: /us/statutes/coverage
+    name: "See which jurisdictions and corpora are held"
+    summary: "A self-describing matrix of every corpus type and, for each jurisdiction, how many documents are held"
+    input:
+      queryParams:
+        state: {type: string, required: false, note: "one two-letter jurisdiction, or omit for all", example: "ca"}
+    test_request: {queryParams: {state: "ca"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free"}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.coverage.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.count
+    added: '2026-10-26'
+    domain: law
+    capability: law.count
+    platform: law
+    scope: any_account
+    method: POST
+    path: /us/statutes/count
+    name: "Count the sections in a scope"
+    summary: "An exact section count for a jurisdiction, corpus, code, title, chapter or part, without running a search"
+    input:
+      bodyType: json
+      body:
+        corpusType: {type: string, required: false, example: "USC"}
+        state: {type: string, required: false, example: "tx"}
+        titleNumber: {type: integer, required: false, example: 42}
+        chapter: {type: string, required: false, example: "21"}
+        excludeRepealed: {type: boolean, required: false, example: true}
+    test_request: {body: {corpusType: "USC", titleNumber: 42}}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "1 credit."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.count.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.session-laws.search
+    added: '2026-10-26'
+    domain: law
+    capability: law.session_laws.search
+    platform: law
+    scope: any_account
+    method: POST
+    path: /us/session-laws/search
+    name: "Search state session laws by what they say"
+    summary: "Full-text search over the enacted text of state session laws: a plain question, a quoted phrase, a code section or a bill number; text an act strikes out is never searched"
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "grain buyers"}
+        jurisdiction: {type: string, required: false, example: "mn"}
+        session: {type: string, required: false, example: "2025R"}
+        approvedFrom: {type: string, required: false, example: "2025-03-01"}
+        approvedTo: {type: string, required: false, example: "2025-06-30"}
+        limit: {type: integer, required: false, min: 1, example: 5}
+        offset: {type: integer, required: false, example: 0}
+    test_request: {body: {query: "grain buyers", jurisdiction: "mn", limit: 1}}
+    cost: {type: per_call, value: 4, currency: credit, per: 1, unit: page, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "4 credits per page; an empty result is charged."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.session-laws.search.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.session-laws.list
+    added: '2026-10-26'
+    domain: law
+    capability: law.session_laws.list
+    platform: law
+    scope: any_account
+    method: GET
+    path: /us/session-laws/list
+    name: "List a state's session laws by session or date"
+    summary: "Every act a state legislature enacted, filtered by session, approval date or effective date: what became law, what was signed in April, what takes effect on a date"
+    input:
+      queryParams:
+        jurisdiction: {type: string, required: true, example: "mn"}
+        session: {type: string, required: false, example: "2025R"}
+        approvedFrom: {type: string, required: false, example: "2025-04-01"}
+        approvedTo: {type: string, required: false, example: "2025-05-31"}
+        effectiveFrom: {type: string, required: false, example: "2025-09-01"}
+        effectiveTo: {type: string, required: false, example: "2025-09-30"}
+        q: {type: string, required: false, example: "grain buyers"}
+        limit: {type: integer, required: false, example: 25}
+        cursor: {type: string, required: false, note: "nextCursor from the previous page"}
+    test_request: {queryParams: {jurisdiction: "mn", session: "2025R", limit: 1}}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: page, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "1 credit per page; an empty page is charged."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.session-laws.list.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.session-laws.get
+    added: '2026-10-26'
+    domain: law
+    capability: law.session_laws.get
+    platform: law
+    scope: any_account
+    method: GET
+    path: /us/session-laws/{session_law_id}
+    name: "Get a state session law, without its text"
+    summary: "Identity, citation, session, approval and effective dates and the code sections the publisher lists the act as affecting, by id or citation"
+    input:
+      pathParams:
+        session_law_id: {type: string, required: true, note: "an id from list or search, or a citation such as S.F.No. 1552 with jurisdiction", example: "SSL_MN_2025R_G_Y2025_C1"}
+      queryParams:
+        jurisdiction: {type: string, required: false, note: "required when the id is a citation", example: "mn"}
+    test_request: {pathParams: {session_law_id: "SSL_MN_2025R_G_Y2025_C1"}}
+    cost: {type: per_call, value: 2, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "2 credits."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.session-laws.get.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.session-laws.text
+    added: '2026-10-26'
+    domain: law
+    capability: law.session_laws.text
+    platform: law
+    scope: any_account
+    method: GET
+    path: /us/session-laws/{session_law_id}/body
+    name: "Get a state session law's text"
+    summary: "The act's text exactly as printed, one page of about 30,000 characters at a time, followed by nextCursor"
+    input:
+      pathParams:
+        session_law_id: {type: string, required: true, example: "SSL_MN_2025R_G_Y2025_C1"}
+      queryParams:
+        cursor: {type: string, required: false, note: "nextCursor while hasMore is true"}
+    test_request: {pathParams: {session_law_id: "SSL_MN_2025R_G_Y2025_C1"}}
+    cost: {type: per_call, value: 6, currency: credit, per: 1, unit: page, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "6 credits per page served; a law whose text is not held answers available: false and is not charged."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.session-laws.text.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.law.session-laws.batch
+    added: '2026-10-26'
+    domain: law
+    capability: law.session_laws.batch
+    platform: law
+    scope: any_account
+    method: POST
+    path: /us/session-laws/batch
+    name: "Get up to 50 state session laws at once"
+    summary: "The same record as one session-law lookup for each id or citation, in the order sent, optionally with the first page of each text"
+    input:
+      bodyType: json
+      body:
+        ids: {type: array, required: true, note: "up to 50 ids or citations", example: ["SSL_MN_2025R_G_Y2025_C1"]}
+        jurisdiction: {type: string, required: false, note: "required when an id is a citation", example: "mn"}
+        includeBody: {type: boolean, required: false, enum: [false], note: "treg returns the record only; read the session-law text route for the text", example: false}
+    platform_request: {body.includeBody: false}
+    test_request: {body: {ids: ["SSL_MN_2025R_G_Y2025_C1"], jurisdiction: "mn", includeBody: false}}
+    cost: {type: per_result, value: 2, currency: credit, per: 1, unit: item, source: rate_card_api, source_url: "https://api.vaquill.ai/api/v1/api-credits/pricing", checked: '2026-10-26', confidence: verified, note: "2 credits per law served; laws that do not resolve are not charged. includeBody adds the body price per law, so treg fixes it to false."}
+    verified: 2026-10-26
+    example_response: examples/vaquill.law.session-laws.batch.json
+    docs_url: https://api.vaquill.ai/external/docs
+
+  - id: vaquill.account.balance
+    added: '2026-10-26'
+    domain: account
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /credits/balance
+    name: "Check your credit balance"
+    summary: "Credits this key can spend now, split by funding source, with the next expiry (free, never charged)"
+    input:
+      note: "no parameters; the key rides in the X-API-Key header"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free; this is the registry's health probe"}
+    verified: 2026-10-26
+    example_response: examples/vaquill.account.balance.json
+    docs_url: https://api.vaquill.ai/external/docs
