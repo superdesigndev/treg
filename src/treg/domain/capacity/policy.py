@@ -98,6 +98,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     # Treat replenishment as manual until that account setting is explicitly verified.
     "zerobounce": ("credits", "manual", "api"),
     "datagma": ("credits", "manual", "api"),
+    "reversecontact": ("credits", "manual", "api"),
     # Neither aggregator exposes a balance endpoint at its documented path.
     "overflow:orthogonal": ("cash", "manual", "manual"),
     "overflow:monid": ("cash", "manual", "manual"),
@@ -140,6 +141,9 @@ _RATE_LIMITS: dict[str, dict] = {
     # The public allowance is far higher; keep a conservative shared-key pace.
     "zerobounce": {"limit": 25, "window_s": 1, "source": "policy"},
     "datagma": {"limit": 10, "window_s": 1, "source": "docs"},
+    # The per-minute limit is set by the workspace plan and read live from GET /v2/usage
+    # (quotas.workspace.minuteRateLimit); a new pay-as-you-go workspace gets 100/min, 60 keeps headroom.
+    "reversecontact": {"limit": 60, "window_s": 60, "source": "policy"},
     # One shared key serves both 5/s enrichment and 1/s search routes. Until smoothing becomes
     # endpoint-aware, protect the stricter search allowance and accept conservative enrichment.
     "prospeo": {"limit": 1, "window_s": 1, "source": "docs"},
