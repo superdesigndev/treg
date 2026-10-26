@@ -12,6 +12,7 @@ from sqlmodel import select
 
 from ... import crypto
 from ...config import get_settings
+from ...infra import call_db_admission
 from ...infra.db import get_admin_session, get_session
 from ...models import ROLE_RANK, ApiKey, EnterpriseSSO, Membership, Org, User
 from . import api_keys as managed_keys
@@ -241,6 +242,15 @@ async def require_member(
     x_treg_org: str = Header(default=""),
     treg_session: str = Cookie(default=""),
     db: AsyncSession = Depends(get_session),
+) -> Caller:
+    if request.url.path.startswith(("/call/", "/catalog/call/")):
+        async with call_db_admission.identity(db):
+            return await _resolve_member(request, x_treg_token, x_treg_org, treg_session, db)
+    return await _resolve_member(request, x_treg_token, x_treg_org, treg_session, db)
+
+
+async def _resolve_member(
+    request: Request, x_treg_token: str, x_treg_org: str, treg_session: str, db: AsyncSession,
 ) -> Caller:
     """A caller acting in a specific org. Two ways in:
     - **token** (agents/CLI): the token IS a membership, so the org is baked in.

@@ -32,6 +32,7 @@ from treg import audit
 from treg.domain import money as ledger
 from treg.domain.identity import api_keys as managed_keys
 from treg.config import get_settings
+from treg.infra import call_db_admission
 from treg.infra.db import _background_engine, _engine, session_maker
 from treg.infra.upstream.relay import relay as upstream_relay
 from treg.models import EndpointDayStat, Hold
@@ -93,18 +94,20 @@ async def test_an_own_key_call_holds_no_db_connection_while_upstream_is_called(
 async def test_a_burst_larger_than_the_pool_settles_every_call_at_provider_speed(
     clients: AsyncClient, platform_on, monkeypatch, dispose_exhausted_pool_on_its_own_loop,
 ):
-    """20 metered calls, all forced INTO the upstream window at once (each waits at the relay until
-    every one has arrived). The pool has 15 slots (5 + 10 overflow, the same defaults the test engine
+    """20 admitted metered calls held in the upstream window together. The pool has 15 slots
+    (5 + 10 overflow, the same defaults the test engine
     uses). Before the fix this deadlocked: 20 requests × a held connection, 20 settles waiting for a
     slot nobody could free, until the 30 s pool_timeout killed some and the rest cascaded."""
     N = 20
     original = upstream_relay
     arrived = 0
     everyone_in = asyncio.Event()
+    at_provider = asyncio.Queue()
 
     async def _relay_after_everyone_arrives(*args, **kwargs):
         nonlocal arrived
         arrived += 1
+        at_provider.put_nowait(arrived)
         if arrived == N:
             everyone_in.set()
         await asyncio.wait_for(everyone_in.wait(), timeout=10)
@@ -115,8 +118,19 @@ async def test_a_burst_larger_than_the_pool_settles_every_call_at_provider_speed
     before = (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"]
 
     t0 = time.monotonic()
-    responses = await asyncio.gather(*(
-        clients.get(f"/call/{EP}?aweme_id=burst-{i}") for i in range(N)))
+    tasks = []
+    try:
+        async with asyncio.timeout(10):
+            for i in range(N):
+                tasks.append(asyncio.create_task(clients.get(f"/call/{EP}?aweme_id=burst-{i}")))
+                await at_provider.get()
+            responses = await asyncio.gather(*tasks)
+    finally:
+        everyone_in.set()
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
     wall = time.monotonic() - t0
 
     assert [r.status_code for r in responses] == [200] * N, [r.status_code for r in responses]
@@ -182,9 +196,15 @@ async def test_a_catalog_search_storm_cannot_starve_calls_of_the_pool(
     await asyncio.wait_for(refresh_started.wait(), timeout=30)
     await asyncio.sleep(0.25)  # let the old path fill all 15 pool slots before calls arrive
 
+    lanes = asyncio.Semaphore(call_db_admission._capacity())
+
+    async def admitted_call(index):
+        async with lanes:
+            return await clients.get(f"/call/{EP}?aweme_id=catalog-mix-{index}")
+
     try:
         calls = await asyncio.wait_for(asyncio.gather(*(
-            clients.get(f"/call/{EP}?aweme_id=catalog-mix-{i}") for i in range(20)
+            admitted_call(i) for i in range(20)
         )), timeout=15)
     finally:
         release_refresh.set()

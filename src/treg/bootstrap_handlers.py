@@ -15,6 +15,7 @@ from .call_surface import split_call_path
 from .caller_metadata import _client_of
 from .client_identity import _norm_client
 from .config import get_settings
+from .infra.call_db_admission import CallDBAdmissionRejected
 
 # The token refusals `domain/identity/access.py` raises; their bodies carry `hint` (interface/api.md).
 _TOKEN_REFUSALS = frozenset({"not authenticated", "invalid token", "revoked key", "disabled key"})
@@ -24,13 +25,14 @@ _TOKEN_REFUSALS = frozenset({"not authenticated", "invalid token", "revoked key"
 _stamp_call_exit: Any = None
 
 
-def _capture_call_intake_failure(request: Request, *, surface: str) -> None:
+def _capture_call_intake_failure(request: Request, *, surface: str,
+                                 failure_kind: str = "db_pool") -> None:
     """Report a call-shaped request that failed before treg could resolve its caller."""
     user_agent = request.headers.get("user-agent", "")
     props = {
         "status_code": 503,
         "outcome": "gateway_failed",
-        "failure_kind": "db_pool",
+        "failure_kind": failure_kind,
         "phase": "caller_identity",
         "surface": surface,
         "client": _client_of(request),
@@ -42,16 +44,20 @@ def _capture_call_intake_failure(request: Request, *, surface: str) -> None:
     analytics.capture("treg-server", "call_intake_failed", props)
 
 
-async def _pool_saturated(request: Request, exc: PoolTimeoutError) -> JSONResponse:
-    """The DB pool had no connection to give within `pool_timeout` (db.py). That is treg being
+async def _pool_saturated(request: Request, exc: PoolTimeoutError | CallDBAdmissionRejected) -> JSONResponse:
+    """The new-call DB budget refused work or pool checkout exceeded `pool_timeout`. That is treg being
     saturated, not the caller's fault and not the provider's — so say so, typed, and fast. Before this
     handler the same condition escaped request handling and surfaced as a bare
     `500 Internal Server Error` after a 30 s wait, which an agent cannot tell from a provider bug.
     `treg_saturated` is the key a retrying client should branch on; `Retry-After` is how long to wait
     before doing so."""
-    analytics.capture_fault(exc, component="db_pool")
+    failure_kind = "db_admission" if isinstance(exc, CallDBAdmissionRejected) else "db_pool"
+    if failure_kind == "db_pool":
+        analytics.capture_fault(exc, component="db_pool")
+    detail = ("new call database work is busy — retry in a moment" if failure_kind == "db_admission"
+              else "treg's database pool is saturated — retry in a moment")
     resp = JSONResponse(
-        {"detail": "treg's database pool is saturated — retry in a moment", "treg_saturated": True},
+        {"detail": detail, "treg_saturated": True},
         status_code=503, headers={"Retry-After": "2"})
     # A saturation 503 is answered HERE, not through `_mark_treg_own_errors`, so it needs its own
     # join key, row and label release. Without them the one failure mode a burst actually produces
@@ -60,9 +66,9 @@ async def _pool_saturated(request: Request, exc: PoolTimeoutError) -> JSONRespon
     # the HTTPException handler's (interface/api.md).
     if call_path := split_call_path(request.url.path):
         if hasattr(request.state, "call_identity"):
-            await _stamp_call_exit(request, resp, 503, failure_kind="db_pool")
+            await _stamp_call_exit(request, resp, 503, failure_kind=failure_kind)
         else:
-            _capture_call_intake_failure(request, surface=call_path[0])
+            _capture_call_intake_failure(request, surface=call_path[0], failure_kind=failure_kind)
             await _stamp_call_exit(request, resp, 503)
     return resp
 
@@ -77,7 +83,12 @@ async def _mark_treg_own_errors(request: Request, exc: StarletteHTTPException):
 
     A token refusal also carries a top-level `hint` naming the way back in, on every route: scripts,
     older CLIs and agents print the body verbatim, so the body is the one place all of them read."""
-    if exc.status_code == 401 and isinstance(exc.detail, str) and exc.detail in _TOKEN_REFUSALS:
+    if (exc.status_code == 503 and isinstance(exc.detail, dict)
+            and exc.detail.get("error") == "db_admission"):
+        request.state.call_failure_kind = "db_admission"
+        resp = JSONResponse({"detail": exc.detail, "treg_saturated": True},
+                            status_code=503, headers=exc.headers)
+    elif exc.status_code == 401 and isinstance(exc.detail, str) and exc.detail in _TOKEN_REFUSALS:
         base = get_settings().public_url.rstrip("/")
         resp = JSONResponse(
             {"detail": exc.detail,

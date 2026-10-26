@@ -312,6 +312,13 @@ some JSON. The [local proxy](../architecture/local-proxy.md) needs that distinct
 without ever rewriting a real vendor response. `application.call` failures carry a mechanism `kind`
 and separately mapped `blame`; the compatibility header remains the literal `1`.
 
+Call identity and new reserves share a bounded [database admission budget](../architecture/data-model.md#admission-for-new-call-transactions).
+Saturation refuses before checkout with HTTP 503, top-level `treg_saturated: true`, and
+`Retry-After: 2`. Its failure classification is `db_admission`, distinct from a real pool-checkout
+timeout (`db_pool`). Before identity resolves, it emits `call_intake_failed` without attributing an
+org; a reserve refusal carries `detail.error: db_admission` and blame `treg`. Finishing an existing
+hold does not take this gate.
+
 When enabled money admission exhausts its configured reserve wait, `reserve_admission` refuses
 before the funds transaction with HTTP 429, `detail.error: money_admission_timeout`, blame `treg`
 and `Retry-After` with integer-second jitter from `money_admission_retry_after_s` through twice

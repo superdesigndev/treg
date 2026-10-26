@@ -586,6 +586,11 @@ org ([multi-tenancy](multi-tenancy.md)). "Use-without-hold": a tool binding may 
 teammate uploaded in the same org; the key stays server-side. Later: local-key end-to-end encryption,
 finer permission tiers.
 
+`/call/` and `/catalog/call/` `require_member` transactions use the shared [new-call database admission
+budget](data-model.md#admission-for-new-call-transactions) before querying identity. Authentication,
+revocation, SSO and authorization checks still run normally once admitted; admission does not cache
+their verdict or use an unauthenticated team identifier.
+
 ## Secret kinds + the one release exception
 `kind` also gained **`param`** — a non-secret value (project/org id) stored and injected like a secret but
 never health-checked or marked invalid (config, not a credential). Every kind is still Fernet-encrypted at

@@ -342,6 +342,11 @@ nor accounting behavior.
 
 ### Optional admission before the settlement session
 
+New reserves additionally share the [call database admission budget](data-model.md#admission-for-new-call-transactions)
+with identity transactions. `reserve_admission` takes that permit after per-org admission and before
+opening its money session. This service-capacity refusal is a 503; it does not apply to settlement,
+release or deferred closing, and does not replace the per-org 429 described below.
+
 `infra.money_admission.admit` optionally queues same-org balance work by payer Org before the
 application opens a database session. A process-local async lock limits Redis polling within that
 process; contended Redis acquisition retries after a random 3–10 ms async delay. A token-owned,

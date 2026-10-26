@@ -1259,7 +1259,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # content reaches it. A tag-cap detail carries the tag's `val`, the caller's own identifier,
             # bounded by the same redaction and retention as the request bodies.
             _audit(exc.status_code, charged_micro=0,
-                   refused_by="balance" if exc.status_code == 402 else "cap",
+                   refused_by=(None if exc.kind == "db_admission" else
+                               "balance" if exc.status_code == 402 else "cap"),
                    error_response=(
                        _ERROR_MASKING_FAILED if refusal_secrets is None else
                        _redact_snippet(f"treg: {exc.detail}", refusal_secrets,

@@ -25,6 +25,7 @@ from . import adsconv, analytics, archive, audit, call_events
 from .application.call import route as routed_call
 from .application import arena, find_index
 from . import bootstrap_handlers, policy
+from .infra.call_db_admission import CallDBAdmissionRejected
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
     _DevTitleMiddleware,
@@ -857,6 +858,7 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     app.add_exception_handler(OverflowError, api_module._id_out_of_range)
     bootstrap_handlers._stamp_call_exit = call_routes._stamp_call_exit
     app.add_exception_handler(PoolTimeoutError, bootstrap_handlers._pool_saturated)
+    app.add_exception_handler(CallDBAdmissionRejected, bootstrap_handlers._pool_saturated)
     app.add_exception_handler(StarletteHTTPException, bootstrap_handlers._mark_treg_own_errors)
 
     _include_role_routes(app, api_module, role)

@@ -18,6 +18,7 @@ from treg.application.call import service as call_service
 from treg import audit
 from treg.domain.identity import access as identity_access
 from treg.domain import money as ledger
+from treg.infra import call_db_admission
 from treg.infra.db import session_maker
 from treg.domain.money import with_margin
 from treg.models import CallRecord
@@ -858,8 +859,11 @@ async def test_f3_treg_cookie_is_scrubbed_both_directions(
 
 
 async def test_g1_ten_concurrent_calls_compete_for_three_call_balance(
-    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on,
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, monkeypatch,
 ) -> None:
+    """Ten admitted calls compete for funds; overload shedding has its own burst coverage."""
+    gate = call_db_admission._Gate(limit=10)
+    monkeypatch.setattr(call_db_admission, "_gate", lambda: gate)
     charged = with_margin(EP_MICRO)
     org_id = (await matrix_clients.get("/orgs")).json()[0]["org_id"]
     current = await _balance(matrix_clients)

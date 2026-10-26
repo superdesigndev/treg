@@ -66,6 +66,7 @@ sources:
   - src/treg/alembic/versions/0085_enterprise_sso_blocks.py
   - src/treg/timeutil.py
   - src/treg/infra/db.py
+  - src/treg/infra/call_db_admission.py
   - src/treg/infra/money_timing.py
   - src/treg/infra/money_admission.py
   - src/treg/infra/kv.py
@@ -80,6 +81,8 @@ sources:
   - src/treg/ratestore.py
   - src/treg/application/auth.py
   - tests/test_postgres_reset.py
+  - tests/test_call_db_admission.py
+  - tests/test_call_db_admission_composite.py
   - tests/test_alembic_expand_safety.py
   - tests/test_redundant_index_migration.py
   - tests/test_api_keys.py
@@ -609,6 +612,33 @@ org names. Provisioning/replication, replica lag and each caller's write boundar
 before opting in; a URL alone does not synchronize databases or add other dialect support.
 See [deploy](../ops/deploy.md) § Optional read replica for configuration and connection budgeting.
 
+### Admission for new call transactions
+
+`infra.call_db_admission` shares one process-local budget between call-surface identity transactions
+and new `reserve_admission` transactions, across all organizations. Its limit is
+`floor((POOL_SPECS["api"]["pool_size"] + POOL_SPECS["api"]["max_overflow"]) / 2)`, after pool overrides.
+This matches PostgreSQL's pool configuration; SQLite does not apply these pool overrides.
+The waiting queue is bounded by the same limit and waits at most 50 ms, before connection checkout.
+A full queue refuses immediately. A one-connection API pool gives a zero limit and refuses new
+work immediately; it cannot admit new work while retaining a connection for finishing work.
+
+`require_member` acquires this permit only on `/call/` and `/catalog/call/`, before its first
+identity query. It uses no unverified org hint. Table OAuth performs earlier identity reads;
+`/table/` identity remains outside this budget so it never waits here holding their connection.
+The permit ends after the existing successful commit, leaving the session and attached ORM objects
+available for dependency reuse. On failure it joins rollback, then close if rollback fails, even
+under repeated cancellation, before releasing the permit. It never spans the dependency's yield
+lifetime, upstream work, or response streaming. A reserve first acquires the existing per-org money
+admission, then this shared permit, then its money session; session cleanup completes before the
+permit is released. This order keeps money-admission waiting out of the shared budget.
+
+Settlement, release, and deferred closing bypass this new gate. The gated identity and reserve phases therefore
+cannot consume the whole configured API pool, leaving room for already-started calls to finish.
+Those connections are not physically reserved: other API phases and routes still compete for them,
+and workers do not share this gate. The bound limits overload spread; it neither shortens commits
+nor diagnoses their latency. Rejections use the [service-saturation HTTP contract](../interface/api.md)
+with `db_admission` attribution, distinct from a real `db_pool` checkout timeout.
+
 ## Alembic execution and the adoption floor
 
 Alembic owns all production schema execution through `maintenance._upgrade_schema`. An empty or stamped
@@ -675,8 +705,8 @@ the role and those archive settings. They exist so an analysis can be bounded to
 or one cache configuration instead of a remembered deploy time: a property that an older build
 never emitted reads as null there, and without the boundary that null looks like a state. Attributed product events use the caller's email and team group,
 so they join the same PostHog person/group the SPA identifies. A pre-identity `call_intake_failed` event
-instead uses the fixed `treg-server` identity and no team because authentication could not obtain a DB
-connection. Emitters:
+instead uses the fixed `treg-server` identity and no team because authentication was refused before
+checkout (`db_admission`) or could not obtain a DB connection (`db_pool`). Emitters:
 `call_tool`'s `_audit` funnel (`tool_called`, with the catalog `provider` as vendor or the upstream host
 for own tools; the field list is in [proxy-model](proxy-model.md)), `bootstrap_handlers._pool_saturated`
 (`call_intake_failed`), `billing_topup` (`topup_started`), and `billing._credit` (`topup_completed`,

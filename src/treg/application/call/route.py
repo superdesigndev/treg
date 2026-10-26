@@ -100,7 +100,7 @@ _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-enc
 _CALLER_FAULT = frozenset({400, 401, 403, 404, 405, 409, 422})
 _CANDIDATE_LOCAL_FAILURES = frozenset({"tool_access_denied", "policy_denied", "capability_pinned"})
 _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
-                              "platform_daily_cap_reached", "daily_cap_reached"})
+                              "platform_daily_cap_reached", "daily_cap_reached", "db_admission"})
 
 
 MAX_WEAK_FALLBACKS = 2   # extra providers asked after a thin-but-real answer (see min_results)
@@ -863,7 +863,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
 
 _CHECK_REASONS = {"route_max_cost": "over_cost_limit", "route_no_candidate": "no_checker",
                   **{k: "spend_limit" for k in _GLOBAL_REFUSALS},
-                  **{k: "not_allowed" for k in _CANDIDATE_LOCAL_FAILURES}}
+                  **{k: "not_allowed" for k in _CANDIDATE_LOCAL_FAILURES},
+                  "db_admission": "treg_saturated"}
 
 
 def _unchecked(reason: str) -> dict:

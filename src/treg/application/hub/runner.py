@@ -51,7 +51,7 @@ _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-enc
                               b"accept-encoding"})
 # Refusals that are the same for every step: no point starting anything else.
 _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
-                              "platform_daily_cap_reached", "daily_cap_reached"})
+                              "platform_daily_cap_reached", "daily_cap_reached", "db_admission"})
 
 
 class _Bytes:
@@ -79,9 +79,10 @@ class _Step:
 class RunStopped(Exception):
     """The run must not start anything new: a step failed, a cap was hit, or a global refusal."""
 
-    def __init__(self, kind: str, status: int, detail: dict) -> None:
+    def __init__(self, kind: str, status: int, detail: dict, retry_after_s: int | None = None) -> None:
         super().__init__(kind)
         self.kind, self.status, self.detail = kind, status, detail
+        self.retry_after_s = retry_after_s
 
 
 class InputError(ValueError):
@@ -324,14 +325,16 @@ async def run_hub_tool(
                     trace.append(entry)
                     spent += entry["cost_micro"]
                     failed = isinstance(answer, (_StepFailed, CallFailure))
-                    if failed and not step.spec.get("allow_fail"):
+                    if failed and (not step.spec.get("allow_fail") or (
+                            isinstance(answer, CallFailure) and answer.kind == "db_admission")):
                         if stop is None:
                             stop = RunStopped("hub_step_failed", 424, {
                                 "error": "hub_step_failed", "step": step.name, "status": entry.get("status"),
                                 **({"message": "a refusal that applies to every step"} if entry.get("global") else {})})
                         if isinstance(answer, CallFailure) and entry.get("global"):
                             stop = RunStopped(answer.kind, answer.status_code, {
-                                "error": answer.kind, "step": step.name, "detail": answer.detail})
+                                "error": answer.kind, "step": step.name, "detail": answer.detail},
+                                retry_after_s=answer.retry_after_s)
                         answer = None
                     elif failed:
                         entry["outcome"] = "failed_allowed"
@@ -353,7 +356,8 @@ async def run_hub_tool(
             await _record(tool, parent, run_id, "failed" if stop.kind == "hub_step_failed" else "stopped",
                           counted, spent, ms_total, masked(manifest["inputs"], inputs), trace, error=detail)
             _audit_parent(parent, tool, stop.status, spent, audit_client)
-            raise ResolutionFailed("hub_run_failed", status_code=stop.status, detail=_public_detail(detail))
+            raise ResolutionFailed("hub_run_failed", status_code=stop.status, detail=_public_detail(detail),
+                                   retry_after_s=stop.retry_after_s)
 
         output = refs.resolve(manifest["output"], scope, g.positions)
         earned = await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id, success=True,
@@ -748,6 +752,8 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
         except CallFailure as exc:
             ms = int((time.monotonic() - t0) * 1000)
             trace.append(_entry(step, "failed", exc.status_code, ms, 0, key=None, error=_short(exc.detail)))
+            if exc.kind == "db_admission":
+                raise sandbox.SandboxError("db_admission", "new call database work is busy; retry shortly") from exc
             if exc.kind in _GLOBAL_REFUSALS:
                 raise sandbox.SandboxError("refused", f"{exc.kind}: a refusal that applies to every call") from exc
             return {"status": exc.status_code, "headers": {}, "json": exc.detail if isinstance(exc.detail, dict) else None,
@@ -781,13 +787,16 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
     except sandbox.SandboxError as exc:
         ms_total = int((time.monotonic() - started) * 1000)
         await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id, success=False, reason="hub_script_failed")
-        detail = {"error": "hub_script_failed", "kind": exc.kind, "message": exc.message,
+        saturated = exc.kind == "db_admission"
+        status = 503 if saturated else 424
+        detail = {"error": "db_admission" if saturated else "hub_script_failed", "kind": exc.kind, "message": exc.message,
                   "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}",
                   "charged_micro": spent, "price_micro": 0, "trace": trace, "log": log}
         await _record(tool, parent, run_id, "failed", counted, spent, ms_total,
                       masked(manifest["inputs"], inputs), trace, error=detail, log=log)
-        _audit_parent(parent, tool, 424, spent, audit_client)
-        raise ResolutionFailed("hub_run_failed", status_code=424, detail=_public_detail(detail)) from exc
+        _audit_parent(parent, tool, status, spent, audit_client)
+        raise ResolutionFailed("hub_run_failed", status_code=status, detail=_public_detail(detail),
+                               retry_after_s=2 if saturated else None) from exc
     missing = [f for f in fields if f not in output]
     ms_total = int((time.monotonic() - started) * 1000)
     if missing:

@@ -172,6 +172,8 @@ jobs:
           tests/test_archive_opt_out.py
           tests/test_call_cancellation.py
           tests/test_call_pool_discipline.py
+          tests/test_call_db_admission.py
+          tests/test_call_db_admission_composite.py
           tests/test_catalog_stats_refresh.py
           tests/test_catalog_stats_corrections.py
           tests/test_catalog_stats_concurrency.py

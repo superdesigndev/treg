@@ -3,7 +3,7 @@
 import logging
 import random
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import datetime, timezone
 
 from sqlalchemy import func
@@ -19,7 +19,7 @@ from ...domain.governance import budgets as budget_policy
 from ...domain.governance.usage import _day_start_utc
 from ...domain.identity.access import Caller
 from ...infra.db import session_maker
-from ...infra import money_admission
+from ...infra import call_db_admission, money_admission
 from ...infra.money_session import money_session
 from ...infra.money_timing import observe_money
 from ...infra.money_trace import mark_money, money_stage
@@ -35,7 +35,14 @@ async def reserve_admission(org_id: int) -> AsyncIterator[None]:
     try:
         async with money_admission.admit(
             money_admission.require_balance_orgs([org_id]), operation="reserve",
-        ):
+        ), AsyncExitStack() as stack:
+            try:
+                await stack.enter_async_context(call_db_admission.admit("reserve"))
+            except call_db_admission.CallDBAdmissionRejected as exc:
+                raise ReservationFailed("db_admission", status_code=503, detail={
+                    "error": "db_admission",
+                    "message": "new call database work is busy; retry shortly",
+                }, retry_after_s=2) from exc
             yield
     except money_admission.ReserveAdmissionTimeout as exc:
         # Money admission owns its retry floor, with integer-second jitter for Retry-After.
