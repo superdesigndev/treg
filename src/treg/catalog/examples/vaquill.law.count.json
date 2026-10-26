@@ -1,0 +1,12 @@
+{
+  "count": 8481,
+  "isExact": true,
+  "scope": {
+    "corpusType": [
+      "USC"
+    ],
+    "titleNumber": 42
+  },
+  "processingTimeMs": 516.1,
+  "creditsConsumed": 1.0
+}

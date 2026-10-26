@@ -1334,6 +1334,33 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+VAQUILL = OAuthProvider(
+    service="vaquill",
+    display_name="Vaquill",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Vaquill API key (vq_key_...)",
+    # Vaquill accepts the key as `Authorization: Bearer`, `X-API-Key`, or `?api_key=`. Use the
+    # header so the key never lands in a URL.
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://app.vaquill.ai/settings",
+    setup_action_label="Get your Vaquill API key",
+    setup_steps=(
+        "Sign in to Vaquill and open Settings, then API Keys.",
+        "Create a key and copy it right away; it is shown once.",
+    ),
+    setup_note="Lookups spend credits at $0.01 each; the balance check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="US statutes, regulations, constitutions, court rules and state session laws: resolve a citation, search, and read the text in force on a date.",
+    base_url="https://api.vaquill.ai/api/v1",
+    docs_url="https://api.vaquill.ai/external/docs",
+    probe_path="/credits/balance",  # free and never charged; a bad key gets a 401 here
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -4008,7 +4035,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, VAQUILL, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

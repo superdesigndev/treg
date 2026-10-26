@@ -1,0 +1,128 @@
+{
+  "laws": [
+    {
+      "sessionLawId": "SSL_MN_2025R_G_Y2025_C1",
+      "lawId": null,
+      "jurisdiction": "mn",
+      "citation": "CHAPTER 1--S.F.No. 1552",
+      "citableAs": "Minn. Laws 2025, ch. 1",
+      "citationShort": "MN ch. 1 (2025)",
+      "session": {
+        "code": "2025R",
+        "label": "2025 Regular Session",
+        "type": "regular",
+        "year": 2025,
+        "coverageStatus": "complete"
+      },
+      "series": "general",
+      "instrumentType": "act",
+      "number": "1",
+      "billKey": null,
+      "billNumber": "S.F.No. 1552",
+      "numberingYear": 2025,
+      "title": "An act relating to agriculture; modifying financial reporting requirements for grain buyers; amending Minnesota Statutes 2024, section 223.17, subdivision 6.",
+      "shortTitle": null,
+      "approvedDate": "2025-03-17",
+      "approvedDateDerived": false,
+      "effectiveFirst": null,
+      "effectiveLast": null,
+      "enactmentOutcome": "signed",
+      "isLaw": true,
+      "textStatus": "held",
+      "withheldReason": null,
+      "charCount": 5470,
+      "estimatedBodyPages": 1,
+      "textSha256": "55c7a8d08647e41f87e23fc2016881a6583911a1d5cfa8687403442e9096451b",
+      "versionNo": 1,
+      "amendatoryMarkup": "preserved",
+      "markupConvention": "publisher_literal",
+      "documentKind": "session_law_print",
+      "identityConfidence": "single_source",
+      "licenseNote": "Government public: published by a government body with no restrictive terms, so the text may be reused, including commercially.",
+      "updatedAt": "2026-10-05T09:06:39.998043+00:00",
+      "citationAsPrinted": "CHAPTER 1--S.F.No. 1552",
+      "vetoStatusAsPrinted": "Signed by the governor March 17, 2025, 10:54 a.m.",
+      "pageCount": null,
+      "sourceUrl": "https://www.revisor.mn.gov/laws/2025/0/Session+Law/Chapter/1/",
+      "effectiveDates": [],
+      "otherDates": [
+        {
+          "kind": "approved",
+          "date": "2025-03-17",
+          "dateAsPrinted": "March 17, 2025, 10:54 a.m.",
+          "kindAsPrinted": null,
+          "scopeAsPrinted": null
+        },
+        {
+          "kind": "other",
+          "date": "2025-03-14",
+          "dateAsPrinted": "March 14, 2025",
+          "kindAsPrinted": "Presentment Date",
+          "scopeAsPrinted": null
+        },
+        "… 1 more item(s) truncated"
+      ],
+      "codeSectionsAffected": [],
+      "sources": [
+        {
+          "sourceIndex": 0,
+          "role": "text",
+          "url": "https://www.revisor.mn.gov/laws/2025/0/Session+Law/Chapter/1/",
+          "fetchedAt": "2026-09-29T00:41:01+00:00",
+          "contentType": "text/html; charset=utf-8",
+          "sha256": "6c83d9c109c1ec61fcd96cea92c8c48414df7ae7dfda7452ebcfbddc181b6b45",
+          "byteLength": 69907,
+          "hostClass": "gov"
+        },
+        {
+          "sourceIndex": 1,
+          "role": "identity",
+          "url": "https://www.revisor.mn.gov/laws/2025/0/",
+          "fetchedAt": "2026-09-29T00:41:00+00:00",
+          "contentType": "text/html; charset=utf-8",
+          "sha256": "7c7e4d1195d3e82ec1b26a20687f8b4532f4e06bde6297a6c1a7963f92cedcb1",
+          "byteLength": 89348,
+          "hostClass": "gov"
+        }
+      ],
+      "publisher": {
+        "legislatureNumber": 94,
+        "sessionLastYear": 2025,
+        "printedPageStart": null,
+        "printedPageEnd": null,
+        "documentKindAsPrinted": null,
+        "publisherIds": [],
+        "otherCitations": [],
+        "publisherFields": {
+          "Bill": "SF1552",
+          "Veto": null,
+          "Chapter": "Chapter 1",
+          "Presentment Date": "March 14, 2025"
+        },
+        "publisherFieldsOmitted": []
+      },
+      "provenance": {
+        "textMethod": "html",
+        "pagesWithText": null,
+        "volume": null,
+        "caveats": [
+          "session_label '2025 Regular Session' is the title of the session index page; the chapter page also names its own session ('2025 Regular Session') and bill, both checked against the index, since every special session restarts chapter numbering at 1 and session_ordinal 0 is part of identity.",
+          "Amendatory markup kept as the publisher's literal markers. Raw HTML: 16 'new text begin', 16 'new text end', 12 'deleted text begin', 12 'deleted text end', alongside 16 <ins> and 12 line-through spans that duplicate them typographically (not also written as wdiff). Extracted text: 16 'new text begin', 16 'new text end', 12 'deleted text begin', 12 'deleted text end'. Counts match."
+        ]
+      },
+      "input": "SSL_MN_2025R_G_Y2025_C1",
+      "status": "resolved",
+      "body": null,
+      "bodyPageEnd": null,
+      "bodyTotalChars": null,
+      "bodyHasMore": null,
+      "bodyNextCursor": null
+    }
+  ],
+  "resolved": [],
+  "notFound": [],
+  "count": 1,
+  "deduped": 0,
+  "creditsConsumed": 2,
+  "processingTimeMs": 662.1
+}

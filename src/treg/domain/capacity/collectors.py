@@ -434,6 +434,18 @@ async def _dropleads(c, key):
     }
 
 
+async def _vaquill(c, key):
+    d = await _get(c, "https://api.vaquill.ai/api/v1/credits/balance", headers={"X-API-Key": key})
+    remaining = _finite(d.get("creditsRemaining")) if isinstance(d, dict) else None
+    if remaining is None or remaining < 0:
+        raise ValueError("Vaquill returned no valid credit balance")
+    expiry = d.get("nextExpiry")
+    when = expiry.get("at") if isinstance(expiry, dict) else None
+    return {"value": remaining, "unit": "credits",
+            "note": f"Spendable now; next expiry {when if isinstance(when, str) else 'none'}. "
+                    "The balance route is free and never charged"}
+
+
 async def _prospeo(c, key):
     d = await _get(c, "https://api.prospeo.io/account-information",
                    headers={"X-KEY": key})
@@ -996,6 +1008,7 @@ BALANCE_ROUTES = {
     "brightdata": _brightdata,
     "crustdata": _crustdata,
     "dropleads": _dropleads,
+    "vaquill": _vaquill,
     "fiber_ai": _fiber_ai,
     "spyfu": _spyfu,
     "icypeas": _icypeas,

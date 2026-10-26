@@ -738,6 +738,24 @@ async def test_dropleads_balance_collector_uses_total_available(payload, expecte
     assert row["unit"] == "credits"
 
 
+@pytest.mark.parametrize("remaining,expected", [(76123.0, 76123.0), (0, 0), (-1, None), (True, None)])
+async def test_vaquill_balance_collector_uses_credits_remaining(remaining, expected):
+    def serve(request):
+        assert request.url.path == "/api/v1/credits/balance"
+        assert request.headers["x-api-key"] == "test-key"
+        return httpx.Response(200, json={"creditsRemaining": remaining,
+                                         "nextExpiry": {"at": "2027-05-10T21:25:57Z", "credits": 15}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as upstream:
+        if expected is None:
+            with pytest.raises(ValueError):
+                await collectors._vaquill(upstream, "test-key")
+            return
+        row = await collectors._vaquill(upstream, "test-key")
+    assert row["value"] == expected
+    assert row["unit"] == "credits"
+
+
 @pytest.mark.parametrize("remaining,expected", [(1987, 1987), (0, 0), (-1, None), (True, None)])
 async def test_prospeo_balance_collector_uses_remaining_credits(remaining, expected):
     def serve(request):

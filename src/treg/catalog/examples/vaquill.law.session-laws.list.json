@@ -1,0 +1,49 @@
+{
+  "processingTimeMs": 1001.6,
+  "creditsConsumed": 1,
+  "results": [
+    {
+      "sessionLawId": "SSL_MN_2025R_G_Y2025_C1",
+      "lawId": null,
+      "jurisdiction": "mn",
+      "citation": "CHAPTER 1--S.F.No. 1552",
+      "citableAs": "Minn. Laws 2025, ch. 1",
+      "citationShort": "MN ch. 1 (2025)",
+      "session": {
+        "code": "2025R",
+        "label": "2025 Regular Session",
+        "type": "regular",
+        "year": 2025
+      },
+      "series": "general",
+      "instrumentType": "act",
+      "number": "1",
+      "billKey": null,
+      "billNumber": "S.F.No. 1552",
+      "numberingYear": 2025,
+      "title": "An act relating to agriculture; modifying financial reporting requirements for grain buyers; amending Minnesota Statutes 2024, section 223.17, subdivision 6.",
+      "shortTitle": null,
+      "approvedDate": "2025-03-17",
+      "approvedDateDerived": false,
+      "effectiveFirst": null,
+      "effectiveLast": null,
+      "enactmentOutcome": "signed",
+      "isLaw": true,
+      "textStatus": "held",
+      "withheldReason": null,
+      "charCount": 5470,
+      "estimatedBodyPages": 1,
+      "textSha256": "55c7a8d08647e41f87e23fc2016881a6583911a1d5cfa8687403442e9096451b",
+      "versionNo": 1,
+      "amendatoryMarkup": "preserved",
+      "markupConvention": "publisher_literal",
+      "documentKind": "session_law_print",
+      "identityConfidence": "single_source",
+      "licenseNote": "Government public: published by a government body with no restrictive terms, so the text may be reused, including commercially.",
+      "updatedAt": "2026-10-05T09:06:39.998043+00:00"
+    }
+  ],
+  "count": 1,
+  "nextCursor": "eyJ2IjoyLCJqIjoibW4iLCJzIjoiMjAyNVIiLCJpIjoiU1NMX01OXzIwMjVSX0dfWTIwMjVfQzEiLCJxIjoiNjEyOTY0MTM5MTY5MmY5NiJ9.qHNqgLP3k5FsuUc5i5OVjQ",
+  "hasMore": true
+}

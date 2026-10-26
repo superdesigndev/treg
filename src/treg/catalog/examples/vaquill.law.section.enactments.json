@@ -1,0 +1,85 @@
+{
+  "actId": "STATE_MS_T27_C71_S27-71-5",
+  "resolvedFrom": null,
+  "jurisdiction": "ms",
+  "supported": true,
+  "reason": null,
+  "enactments": [
+    {
+      "sessionLawId": "SSL_MS_2009R_G_C465",
+      "href": "/api/v1/us/session-laws/SSL_MS_2009R_G_C465",
+      "citation": "Regular Session, ch. 465",
+      "title": "AN ACT TO AMEND SECTIONS 67-1-5 AND 67-1-51, MISSISSIPPI CODE OF 1972, RELATING TO THE LOCAL OPTION ALCOHOLIC BEVERAGE CONTROL LAW; TO PROVIDE THAT CLASS 2 TEMPORARY RETAILER'S PERMITS MAY ONLY BE ISSUED TO PROSPECTIVE PERMITTEES SEEKING THE TRANSFER OF ON-PREMISES RETAILER'S PERMIT; TO AUTHORIZE THE ISSUANCE OF CLASS 3 AND CLASS 4 TEMPORARY PERMITS; TO PROVIDE THAT A CLASS 3 TEMPORARY PERMIT SHALL BE ISSUED TO RETAIL ESTABLISHMENTS FOR ONE DAY ONLY FOR THE LIMITED PURPOSE OF AUTHORIZING THE COM… [1843 chars total]",
+      "sessionCode": "2009R",
+      "approvedDate": null,
+      "effectiveDates": [
+        {
+          "kind": null,
+          "date": "2009-07-01",
+          "dateAsPrinted": "July 1, 2009",
+          "kindAsPrinted": null,
+          "scopeAsPrinted": null
+        }
+      ],
+      "action": "amended",
+      "actionAsPrinted": "A",
+      "sectionAsPrinted": "027-0071-0005",
+      "codeAsPrinted": null,
+      "actSectionAsPrinted": null,
+      "basis": "publisher_sections_affected",
+      "matchQuality": "as_printed",
+      "identityConfidence": "single_source",
+      "textStatus": "held",
+      "enactmentOutcome": "signed"
+    },
+    {
+      "sessionLawId": "SSL_MS_2014R_G_C527",
+      "href": "/api/v1/us/session-laws/SSL_MS_2014R_G_C527",
+      "citation": "Regular Session, ch. 527",
+      "title": "AN ACT TO AMEND SECTION 67-1-51, MISSISSIPPI CODE OF 1972, TO AUTHORIZE THE DEPARTMENT OF REVENUE TO ISSUE PERMITS THAT ALLOW THE HOLDER TO PURCHASE AND RESELL ALCOHOLIC BEVERAGES FOR CONSUMPTION ON THE PREMISES DURING LEGAL HOURS DURING EVENTS HELD ON THE LICENSED PREMISES IF FOOD IS BEING SERVED AT AN EVENT BY A CATERER WHO IS NOT AFFILIATED WITH OR RELATED TO THE PERMITTEE; TO PROVIDE THAT SUCH PERMITS MAY ONLY BE ISSUED FOR VENUES THAT CAN ACCOMMODATE 200 PERSONS OR MORE; TO AMEND SECTION 27… [595 chars total]",
+      "sessionCode": "2014R",
+      "approvedDate": null,
+      "effectiveDates": [
+        {
+          "kind": null,
+          "date": "2014-07-01",
+          "dateAsPrinted": "July 1, 2014",
+          "kindAsPrinted": null,
+          "scopeAsPrinted": null
+        }
+      ],
+      "action": "amended",
+      "actionAsPrinted": "A",
+      "sectionAsPrinted": "027-0071-0005",
+      "codeAsPrinted": null,
+      "actSectionAsPrinted": null,
+      "basis": "publisher_sections_affected",
+      "matchQuality": "as_printed",
+      "identityConfidence": "single_source",
+      "textStatus": "held",
+      "enactmentOutcome": "signed"
+    },
+    "… 13 more item(s) truncated"
+  ],
+  "count": 15,
+  "truncated": false,
+  "coverage": {
+    "jurisdiction": "ms",
+    "sessionsHeld": [
+      {
+        "code": "2008R",
+        "label": "Regular Session",
+        "status": "partial"
+      },
+      {
+        "code": "2008X1",
+        "label": "First Extraordinary Session",
+        "status": "partial"
+      },
+      "… 32 more item(s) truncated"
+    ],
+    "note": "Mississippi: the Legislature's bill-status record lists Code sections in a zero-padded form. A section brought forward (`BF`) or reenacted (`R`) is listed as `other`: the act named it and did not necessarily change it. Entries the publisher prints as a list or range (`338-15, 21`), with a subsection pincite, or by an act's own section number are not matched, so a section can be amended by an act this answer does not list. "
+  },
+  "creditsConsumed": 1,
+  "processingTimeMs": 979.9
+}

@@ -153,6 +153,7 @@ platforms:
   research: {label: "Academic literature", category: "Research & public data", summary: "Search scholarly papers and preprints across academic sources."}
   health: {label: "Health & biomedical", category: "Research & public data", summary: "Clinical studies, medicine labels and public health statistics."}
   economics: {label: "Economic indicators", category: "Research & public data", summary: "Official labor and development statistics."}
+  law: {label: "US primary law", category: "Research & public data", summary: "Federal and state statutes, regulations, constitutions, court rules and state session laws: resolve a citation, search, and read the text in force on a date."}
 
 capabilities:
   # --- AI generation ---------------------------------------------------------------------------
