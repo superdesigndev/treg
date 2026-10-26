@@ -28,6 +28,7 @@
 # NOTE: this block must stay ABOVE `rates_to_usd:` -- catalog_fx_update.py rewrites the file
 # from the text before that key, so anything below it is discarded on the next FX refresh.
 credit_rates_usd:
+  influship: {usd: 0.01, basis: "Pay-as-you-go API-key rate: $0.01 per credit", source: "https://docs.influship.com/concepts/pricing", checked: "2026-10-23"}
   blitzapi: {usd: 0.000495, basis: "Operator-supplied Start subscription: $99 per month / 200,000 included records = $0.000495 per record when fully used; unused records increase effective cost", source: "Account purchase price and https://docs.blitz-api.ai/guide/reference/fair-use-policy", checked: "2026-10-16"}
   sixtyfour: {usd: 0.24, basis: "Operator-supplied Individual subscription price: $24 per month / 100 included credits; credits do not roll over", source: "Account purchase price and https://docs.sixtyfour.ai/guides/credits-and-pricing", checked: "2026-10-16"}
   village: {usd: 0.02, basis: "Village's published rate: 1 credit = $0.02 (docs credits page), the per-credit price of the $100 / 5,000 pack. Smaller packs cost more per credit ($25 / 1,000 = $0.025)", source: "https://docs.village.ai/api-reference/credits", checked: "2026-10-09"}
