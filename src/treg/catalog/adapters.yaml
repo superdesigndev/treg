@@ -1591,6 +1591,11 @@ adapters:
     in:  {q: queryParams.query}
     out: {posts: data.searchResults.edges}
     miss: "data.searchResults.edges == []"
+  scrapecreators.x.v1-threads-search:
+    accepts: [[q]]
+    in:  {q: queryParams.query}
+    out: {posts: posts}
+    miss: "posts == []"
 
   # ---- batch 6: long tail (2026-08-28) ----------------------------------------------------------
   scrapecreators.x.v1-instagram-search-profiles:

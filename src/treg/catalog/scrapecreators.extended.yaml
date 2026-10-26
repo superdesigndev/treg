@@ -4059,8 +4059,9 @@ endpoints:
         example: 'false'
   test_request:
     queryParams:
-      query: basketball
-  skipped: not called — $1.0000 would exceed this run's $45.00 budget
+      query: bitcoin
+  verified: '2026-10-26'
+  example_response: examples/scrapecreators.x.v1-threads-search.json
 - id: scrapecreators.x.v1-threads-search-users
   added: '2026-07-28'
   tier: extended
