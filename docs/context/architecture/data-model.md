@@ -202,9 +202,10 @@ increasing versions, JSON schema validation, and immutable snapshots are managem
 responsibilities; this migration does not grant that writer access or prohibit arbitrary
 SQL updates. No rows are backfilled and existing request admission is unchanged.
 `org_id` has no foreign key, keeping this migration independent of locks on the balance table.
-`cascade_delete_org` explicitly removes this history with its Org. The management writer must
-validate Org existence and coordinate saves with Org deletion before its cleanup begins;
-direct SQL writes or deletes have no database-enforced referential integrity.
+`cascade_delete_org` removes configuration history during normal Org deletion as best-effort
+application cleanup. Management writers validate Org existence before saving, but do not
+coordinate with deletion. Concurrent or direct deletion may leave stale configuration history;
+later cleanup is accepted. The database does not enforce referential integrity for these rows.
 An application rollback leaves the table in place; a schema downgrade deletes its saved history.
 
 ## Registry tables
