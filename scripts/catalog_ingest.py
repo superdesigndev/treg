@@ -218,7 +218,7 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
             # (`cost`, the verifier's `observed_cost`), the success rule (`expect`), why a row
             # cannot be tested, and a retired/broken `status`. Dropping them on a re-ingest
             # silently un-prices, un-checks and un-retires rows.
-            "cost", "observed_cost", "expect", "untestable", "status",
+            "cost", "observed_cost", "expect", "untestable", "status", "status_note", "superseded_by",
             # Meta publishes no machine-readable request schema or grant matrix. These contracts
             # are reviewed against its HTML docs and must survive the next deterministic ingest.
             "authorization_method", "authorization_methods", "authorization_paths",

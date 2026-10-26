@@ -139,6 +139,7 @@ def test_ingest_carries_reviewed_prices_rules_and_status_but_not_a_superseded_bl
         "- id: example.x.priced\n  method: POST\n  path: /priced\n  added: '2026-08-02'\n"
         "  cost: {type: per_call, value: 0.6, currency: USD, unit: call}\n"
         "  observed_cost: 0.5\n  expect: {json_path: ok, equals: true}\n  status: retired\n"
+        "  status_note: gone upstream\n  superseded_by: example.x.reader\n"
         "  untestable: needs a crawl\n  platform_blocked: no owner\n"
         "- id: example.x.reader\n  method: GET\n  path: /reader\n  added: '2026-08-02'\n"
         "  platform_blocked: no owner\n")
@@ -152,5 +153,6 @@ def test_ingest_carries_reviewed_prices_rules_and_status_but_not_a_superseded_bl
     assert priced["cost"]["value"] == 0.6 and priced["observed_cost"] == 0.5
     assert priced["expect"] == {"json_path": "ok", "equals": True}
     assert priced["status"] == "retired" and priced["untestable"] == "needs a crawl"
+    assert priced["status_note"] == "gone upstream" and priced["superseded_by"] == "example.x.reader"
     assert priced["platform_blocked"] == "no owner"
     assert "platform_blocked" not in reader
