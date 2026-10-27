@@ -87,6 +87,7 @@ platforms:
   beike: {label: "Beike / Lianjia (Chinese property listings)", category: "E-commerce", summary: "Property listings from Beike / Lianjia."}
 
   # --- Reviews & Apps: app stores and review sites ---------------------------------------------
+  travel: {label: "Travel", category: "Reviews & Apps", summary: "Accommodation discovery, public facts and direct host booking destinations."}
   app-store: {label: "Apple App Store", category: "Reviews & Apps", featured: 1, summary: "App listings, rankings and reviews from the Apple App Store."}
   google-play: {label: "Google Play", category: "Reviews & Apps", featured: 2, summary: "App listings, rankings and reviews from Google Play."}
   apple-maps: {label: "Apple Maps", category: "Reviews & Apps", summary: "Public Apple Maps places, ratings and reviews."}

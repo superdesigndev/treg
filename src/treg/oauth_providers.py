@@ -4001,6 +4001,38 @@ PINTEREST_ADS = OAuthProvider(
     probe_path="/user_account",  # cheap token check once configured; auto-provisions a Bearer tool
 )
 
+CHUCHO = OAuthProvider(
+    service="chucho",
+    display_name="Chucho",
+    auth_kind="key",
+    token_label="Organization API key",
+    token_placeholder="your Chucho organization API key",
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://chucho.ai/admin/",
+    setup_action_label="Get your Chucho API key",
+    setup_steps=(
+        "Sign in to the Chucho admin as an organization owner or admin.",
+        "Create a named API key for your organization and copy it.",
+    ),
+    setup_note=(
+        "Public discovery reads are free and do not need a key; the key is accepted and ignored "
+        "there. Connect checks it against the organization registry, which rejects an invalid key."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Travel",
+    summary="Search published vacation rentals and boutique hotels, read facts and photos, and get the host's booking destination.",
+    base_url="https://chucho.ai/api/public/v1",
+    docs_url="https://chucho.ai/agents.md",
+    # The public base_url answers 200 to any key, so the key check lives on the organization
+    # registry route, which 401s a missing or invalid x-api-key. Absolute and probe_path empty:
+    # connect-time verification only, with no recurring health check on the provisioned tool.
+    probe_url="https://chucho.ai/api/v1/villas",
+    probe_path="",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4023,6 +4055,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE,
+        # Travel API-key providers
+        CHUCHO,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
