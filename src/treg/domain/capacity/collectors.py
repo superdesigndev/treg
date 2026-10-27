@@ -1061,6 +1061,8 @@ BALANCE_ROUTES = {
 # obtain. Kept explicit so the report names them instead of silently skipping, and so a future probe
 # has a list of what to re-check.
 NO_BALANCE_API = {
+    "deeplead": "partner key invoiced monthly in USD from the x-deeplead-cost-usd meter; GET /credits "
+                "shows direct-key credits the partner key never spends",
     "quickenrich": "no balance endpoint, and no response carries the allowance any more: a free "
                    "Contact Finder miss or hit and a billed employee search all return a meta without "
                    "remaining_credits (or no meta), despite the published docs; the subscription "
