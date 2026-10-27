@@ -1,0 +1,137 @@
+provider: dansugc
+source:
+  docs: https://dansugc.com/docs
+  openapi: https://dansugc.com/api/openapi.json
+  curated: '2026-10-08'
+pricing_url: https://dansugc.com/pricing
+limits: "60 requests/minute per key (429 with Retry-After: 60). The B-roll endpoints work on every DansUGC plan; licensing needs enough account credits."
+proposed_capabilities:
+  ugc.clips.search: Search licensable UGC clips
+  ugc.clips.filters: List the filter values for UGC clip search
+  ugc.clip.detail: Get a UGC clip's details & price
+  ugc.clips.purchase: License UGC clips and get their download links
+  ugc.purchases.list: List the UGC clips you have licensed
+
+endpoints:
+  - id: dansugc.ugc.clips.search
+    added: '2026-10-27'
+    capability: ugc.clips.search
+    platform: ugc
+    domain: clips
+    scope: any_account
+    method: GET
+    path: /broll
+    name: Search UGC reaction clips by keyword or description
+    summary: List B-Roll Videos
+    input:
+      queryParams:
+        search: {type: string, required: false, note: "keyword search over title, tags and description. Use this or semantic_search, not both", example: "surprised"}
+        semantic_search: {type: string, required: false, note: "describe the shot in plain words; results are ranked by meaning, not keywords. Use this or search, not both", example: "woman laughing at her phone in bed"}
+        emotion: {type: string, required: false, note: "a value from dansugc.ugc.clips.filters", example: "happy"}
+        gender: {type: string, required: false, example: "female"}
+        location: {type: string, required: false, example: "Bedroom"}
+        age_range: {type: string, required: false, example: "18-24"}
+        hair_color: {type: string, required: false, example: "Blonde"}
+        outfit: {type: string, required: false, example: "Casual"}
+        media_type: {type: string, required: false, enum: [video, image]}
+        featured: {type: boolean, required: false}
+        min_virality: {type: number, required: false}
+        sort_by: {type: string, required: false, enum: [created_at, virality_score, download_count, difficulty_level], default: created_at}
+        sort_order: {type: string, required: false, enum: [asc, desc], default: desc}
+        page: {type: integer, required: false, default: 1}
+        limit: {type: integer, required: false, default: 24, max: 100}
+      note: "Each result carries `price` in credits, already discounted for the caller's plan. Free to call."
+    test_request: {queryParams: {search: "surprised", limit: 1}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: https://dansugc.com/docs, checked: '2026-10-08', confidence: documented, note: "Searching and browsing never spend credits"}
+    docs_url: https://dansugc.com/docs#tag/b-roll/GET/broll
+
+  - id: dansugc.ugc.clips.filters
+    added: '2026-10-27'
+    capability: ugc.clips.filters
+    platform: ugc
+    domain: clips
+    scope: any_account
+    kind: utility
+    method: GET
+    path: /broll/filters
+    name: List clip search filters
+    summary: Get Available Filter Values
+    input: {}
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: https://dansugc.com/docs, checked: '2026-10-08', confidence: documented}
+    docs_url: https://dansugc.com/docs#tag/b-roll/GET/broll/filters
+
+  - id: dansugc.ugc.clip.detail
+    added: '2026-10-27'
+    capability: ugc.clip.detail
+    platform: ugc
+    domain: clips
+    scope: any_account
+    method: GET
+    path: /broll/{videoId}
+    name: Get a clip's details & price
+    summary: Get B-Roll Video Details
+    input:
+      pathParams:
+        videoId: {type: string, required: true, note: "clip UUID from dansugc.ugc.clips.search", example: "c47369b6-4d46-4adf-a500-c7f792cb5667"}
+      note: "download_url is present only when the caller already owns the clip."
+    test_request: {pathParams: {videoId: "c47369b6-4d46-4adf-a500-c7f792cb5667"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: https://dansugc.com/docs, checked: '2026-10-08', confidence: documented}
+    docs_url: https://dansugc.com/docs#tag/b-roll/GET/broll/{videoId}
+
+  - id: dansugc.ugc.clips.purchase
+    added: '2026-10-27'
+    capability: ugc.clips.purchase
+    platform: ugc
+    domain: clips
+    scope: own_account
+    kind: action
+    method: POST
+    path: /broll/purchase
+    name: License clips & get download links
+    summary: Purchase B-Roll Videos
+    input:
+      body:
+        video_ids: {type: array, items: string, required: true, note: "1–50 clip UUIDs", example: ["1166a85d-b967-4fb0-8ed8-6d2f2d22f23b"]}
+        expected_total_cents: {type: integer, required: false, note: "the confirmed total in hundredths of a credit. A call without it (or with a stale value) charges nothing and answers 409 with requiresConfirmation and expectedTotalCents (e.g. 1100 for one video); repeat the call with that value to buy", example: 1100}
+        customer_email: {type: string, required: false, note: "your end customer, for your own billing reconciliation"}
+      bodyType: json
+      note: "Two-step confirm: call once without expected_total_cents to get the exact total (409, nothing charged), then again with it to buy. Clips the account already owns come back under already_purchased and are not charged again. download_url links are signed for 1 hour; dansugc.ugc.purchases.list re-issues them. Each clip comes with a 12-month commercial license."
+    # Deliberate zero-charge target: a clip the test account already owns, confirmed at 0.
+    test_request: {body: {video_ids: ["1166a85d-b967-4fb0-8ed8-6d2f2d22f23b"], expected_total_cents: 0}}
+    cost:
+      type: per_result
+      value: 11
+      currency: credit
+      per: 1
+      unit: item
+      source: rate_card_api
+      source_url: https://dansugc.com/api/pricing/settings
+      checked: '2026-10-08'
+      confidence: documented
+      note: "11 credits per video, 8 per image (list price in the public rate card), less any live plan discount or sale. Already-owned clips and 409 confirmation answers are free."
+    docs_url: https://dansugc.com/docs#tag/b-roll/POST/broll/purchase
+
+  - id: dansugc.ugc.purchases.list
+    added: '2026-10-27'
+    capability: ugc.purchases.list
+    platform: ugc
+    domain: clips
+    scope: own_account
+    kind: account
+    method: GET
+    path: /broll/purchases
+    name: List licensed clips
+    summary: List Purchases (Billing)
+    input:
+      queryParams:
+        start_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-10-01"}
+        end_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-10-31"}
+        customer_email: {type: string, required: false}
+        sort_by: {type: string, required: false, enum: [purchased_at, price_paid, difficulty_level], default: purchased_at}
+        sort_order: {type: string, required: false, enum: [asc, desc], default: desc}
+        page: {type: integer, required: false, default: 1}
+        limit: {type: integer, required: false, default: 100, max: 500}
+    test_request: {queryParams: {limit: 1}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: https://dansugc.com/docs, checked: '2026-10-08', confidence: documented}
+    docs_url: https://dansugc.com/docs#tag/b-roll/GET/broll/purchases
