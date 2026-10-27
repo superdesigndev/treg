@@ -53,6 +53,8 @@ class Signature:
 
 
 _TABLE: list[Signature] = [
+    # PB's public marketplace contract reserves 402 for insufficient API credit; not live-forced.
+    Signature("prerenderbuddy", 402, r"", "balance"),
     Signature("findymail", 402, r"not enough credits", "balance", tripwire=True),
     Signature("leadsforge", 402, r"insufficient_credits", "balance"),
     Signature("leadmagic", 402, r"insufficient_credits", "balance"),

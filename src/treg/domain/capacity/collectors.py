@@ -954,6 +954,14 @@ async def _anyapi(c, key):
     return {"value": _balance(d.get("usd"), "AnyAPI"), "unit": "USD", "note": "prepaid wallet"}
 
 
+async def _prerenderbuddy(c, key):
+    # /marketplace/openapi.json documents this account read as free; availableUsd excludes holds.
+    d = await _get(c, "https://api.prerenderbuddy.com/v1/developer/marketplace/account",
+                   headers={"Authorization": f"Bearer {key}"})
+    return {"value": _balance(d.get("availableUsd"), "Prerender Buddy"), "unit": "USD",
+            "note": "available API credit after pending reservations"}
+
+
 async def _cloro(c, key):
     # GET /v1/credits charges 0 credits (cloro.dev/docs/api-reference/endpoint/get-credits).
     d = await _get(c, "https://api.cloro.dev/v1/credits", headers={"Authorization": f"Bearer {key}"})
@@ -985,6 +993,7 @@ async def _piapi(c, key):
 
 
 BALANCE_ROUTES = {
+    "prerenderbuddy": _prerenderbuddy,
     "anyapi": _anyapi,
     "cloro": _cloro,
     "openrouter": _openrouter,

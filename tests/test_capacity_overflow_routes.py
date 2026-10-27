@@ -724,3 +724,9 @@ def test_orthogonal_relaying_icypeas_empty_pool_is_the_aggregators_dry_account()
                 "requestId": "run_x", "billing": {"chargedPriceCents": 1}}
     res = with_vendor_verdict(orthogonal.parse(200, _json.dumps(envelope).encode()), "icypeas")
     assert res.failure == VENDOR_DRY
+
+
+@pytest.mark.parametrize("status,exhausting", [(402, True), (400, False), (401, False),
+                                              (403, False), (429, False), (503, False)])
+def test_prerenderbuddy_documented_credit_refusal_is_distinct_from_request_capacity(status, exhausting):
+    assert S.is_exhausting(S.classify("prerenderbuddy", status)) is exhausting
