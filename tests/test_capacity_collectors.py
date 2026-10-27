@@ -1007,3 +1007,26 @@ async def test_openrouter_without_a_management_key_is_no_api_and_skips_request(p
         row = await collectors.provider_balance("openrouter", client)
     snap = sweep.snapshot_from("openrouter", row)
     assert snap.error == "no_balance_api" and snap.remaining is None
+
+
+@pytest.mark.parametrize("available", [0, 1.25])
+async def test_prerenderbuddy_balance_reads_available_credit_without_creating_a_job(available):
+    def serve(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://api.prerenderbuddy.com/v1/developer/marketplace/account"
+        assert request.headers["authorization"] == "Bearer test-pb-key"
+        return httpx.Response(200, json={"connected": True, "balanceUsd": 5,
+                                         "reservedUsd": 5 - available, "availableUsd": available})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as client:
+        result = await collectors.BALANCE_ROUTES["prerenderbuddy"](client, "test-pb-key")
+    assert result["value"] == available
+    assert result["unit"] == "USD"
+
+
+@pytest.mark.parametrize("available", [None, True, "5", -1, float("inf"), float("nan")])
+async def test_prerenderbuddy_balance_rejects_invalid_available_credit(available):
+    response = httpx.Response(200, text=json.dumps({"balanceUsd": 5, "availableUsd": available}))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: response)) as client:
+        with pytest.raises(ValueError):
+            await collectors.BALANCE_ROUTES["prerenderbuddy"](client, "test-pb-key")

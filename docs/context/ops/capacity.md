@@ -61,6 +61,12 @@ and sums every pool that can pay for a call (Fiber AI's trial and paid pools). V
 `OVERDRAFT_SERVED` keep serving past zero, so their low balance is informational and `overdrawn`;
 each needs a refusal signature.
 
+Prerender Buddy's free `GET /v1/developer/marketplace/account` reads `availableUsd`,
+which excludes reserved funds; total balance would overstate the credit available for another job.
+The marketplace-only Bearer key is sufficient. Its public contract reserves HTTP 402 for
+insufficient API credit, while HTTP 429 is request capacity, so the documented balance signature
+does not treat rate limits as wallet exhaustion. The empty-credit response was not live-forced.
+
 Octen's PAYG balance has no account balance or usage endpoint in its published OpenAPI, so
 `NO_BALANCE_API` reports it as dashboard-only. `_KNOWN` classifies the account as manually funded
 cash. The shared-key rate policy spaces calls at five per second, below the Base plan's displayed
