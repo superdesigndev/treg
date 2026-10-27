@@ -56,6 +56,9 @@ _TABLE: list[Signature] = [
     Signature("findymail", 402, r"not enough credits", "balance", tripwire=True),
     Signature("leadsforge", 402, r"insufficient_credits", "balance"),
     Signature("leadmagic", 402, r"insufficient_credits", "balance"),
+    # Tokfluence: an empty wallet is 402 {"error": {"code": "insufficient_credits", ...}} (source:
+    # Api::BaseController; docs/credits). Ultra quota is a different code, not catalogued.
+    Signature("tokfluence", 402, r"insufficient_credits", "balance"),
     Signature("thecompaniesapi", 403, r"noCreditsRemaining", "balance", tripwire=True),
     Signature("companyenrich", 402, r"payment required", "balance", tripwire=True),
     Signature("akta", 402, r"insufficient credits", "balance"),

@@ -1061,6 +1061,9 @@ BALANCE_ROUTES = {
 # obtain. Kept explicit so the report names them instead of silently skipping, and so a future probe
 # has a list of what to re-check.
 NO_BALANCE_API = {
+    "tokfluence": "no balance endpoint; the remaining credits ride only on the X-Credits-Remaining "
+                  "header of metered calls (the free /v1/lists probe does not carry it); the "
+                  "balance is visible at developers.tokfluence.com/billing",
     "quickenrich": "no balance endpoint, and no response carries the allowance any more: a free "
                    "Contact Finder miss or hit and a billed employee search all return a meta without "
                    "remaining_credits (or no meta), despite the published docs; the subscription "

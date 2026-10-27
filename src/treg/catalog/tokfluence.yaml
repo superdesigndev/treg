@@ -1,0 +1,284 @@
+# Tokfluence: a searchable index of 15M+ TikTok creators (stats, recent posts, contact emails and
+# phones where known), stored audience reports, posts and comments. Bearer key (tkf_live_…, 41 chars) in the
+# Authorization header; no query-string auth. Self-serve keys at developers.tokfluence.com/api_keys.
+#
+# THE METER: every metered response carries X-Credits-Remaining (errors included). Search and
+# semantic search also report the call's charge in meta.billing.credits_charged. Any metered call
+# that does not end in 200/201/204 is refunded in full (404 creator_not_found,
+# audience_not_available, 422, 502), so a miss is free. Note: on a 404 the header is written before
+# the refund lands, so it reads one credit low; the next call's header shows the refund.
+#
+# Curated + live-tested 2026-10-27 (UTC) by the vendor. Search pricing is 1 credit per creator
+# returned for API-plan accounts; the test requests ask for one creator so the price is one credit.
+provider: tokfluence
+source:
+  docs: https://developers.tokfluence.com/docs
+  openapi: null  # no OpenAPI spec is published; paths and params are from the docs pages
+  curated: '2026-10-27'
+limits: "120 requests/minute per API key across /v1 and /mcp; 600/minute per IP. 429 rate_limited with Retry-After. 402 insufficient_credits when the wallet is empty (nothing runs)."
+pricing_url: https://tokfluence.com/tiktok-api
+# Both ids already exist as influencers.club's proposed capabilities (same text); repeated here so
+# this file validates on its own. Two providers now share each, so they are ready to promote.
+proposed_capabilities:
+  creators.profile: "Get a creator's profile, contacts and stats"
+  creators.analytics: "Get a creator's performance analytics and audience"
+endpoints:
+  # --- discovery -------------------------------------------------------------------------------
+  - id: tokfluence.creators.search
+    added: '2026-10-27'
+    domain: discovery
+    capability: creators.search
+    platform: creators
+    scope: any_account
+    method: GET
+    path: /v1/creators/search
+    name: "Find TikTok creators by keyword, followers & country"
+    summary: "Search the creator index with filters. Returns creators with stats and known contacts."
+    input:
+      queryParams:
+        query: {type: string, required: false, example: "fitness", note: "Free text over usernames, tags, mentions and bios; an exact or partial handle ranks first"}
+        niche_level: {type: string, required: false, enum: [wide, balanced, niche, laser], example: "balanced", note: "How committed to the topic a creator must be. Defaults to balanced"}
+        min_followers: {type: integer, required: false, example: 100000}
+        max_followers: {type: integer, required: false, example: 500000}
+        min_engagement_rate: {type: number, required: false, example: 0.03, note: "0-1 fraction; creators never measured are excluded unless include_unknown_engagement=true"}
+        "regions[]": {type: string, required: false, example: "US", note: "ISO-3166 alpha-2, uppercase; repeat for several"}
+        gender: {type: string, required: false, enum: [male, female, humans, no_face, no_picture, artificial_intelligence]}
+        brand: {type: boolean, required: false, note: "true = brand accounts only, false = exclude them"}
+        has_email: {type: boolean, required: false, example: true, note: "Only creators with a known contact email"}
+        has_phone: {type: boolean, required: false}
+        "hashtags[]": {type: string, required: false, example: "homeworkout", note: "Without #; several values are OR"}
+        "mentions[]": {type: string, required: false, note: "Without @"}
+        sort: {type: string, required: false, example: "follower_count_desc", note: "follower_count, engagement_rate, posts_per_week, average_views_per_video or last_analyzed_at, with _desc or _asc"}
+        page: {type: integer, required: false, default: 1, note: "page x per_page cannot exceed 10,000; use cursor for deeper paging"}
+        per_page: {type: integer, required: false, default: 20, min: 1, max: 100, example: 1, note: "THE PRICE DIAL: 1 credit per creator returned"}
+        cursor: {type: string, required: false, note: "Send empty on the first call, then meta.next_cursor"}
+        include: {type: string, required: false, example: "recent_posts", note: "Embed recent posts at no extra cost"}
+      note: "returns {data: [creator], meta: {total, billing: {unit, credits_charged, capped_by_balance, note}}}. An empty page costs 0. If the balance cannot cover the page, it is cut to what the balance covers (capped_by_balance: true)."
+    test_request:
+      queryParams: {query: "fitness", "regions[]": "US", min_followers: 100000, per_page: 1}
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: result
+      source: observed
+      source_url: https://developers.tokfluence.com/docs/credits
+      checked: '2026-10-27'
+      confidence: verified
+      reported_charge: {path: meta.billing.credits_charged, unit: credit}
+      note: "1 credit per creator returned; an empty page is free. OBSERVED 2026-10-27: per_page=1 returned 1 creator, meta.billing.credits_charged=1, X-Credits-Remaining moved by 1."
+    docs_url: https://developers.tokfluence.com/docs/creators
+
+  - id: tokfluence.creators.semantic_search
+    added: '2026-10-27'
+    domain: discovery
+    capability: creators.search
+    platform: creators
+    scope: any_account
+    method: POST
+    path: /v1/creators/semantic_search
+    name: "Find TikTok creators from a plain-English brief"
+    summary: "Describe the creator you want in plain English and get a ranked list back, best fit first."
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "home workout fitness creators in the UK", note: "Plain-English description; follower and region constraints are inferred from it"}
+        max_results: {type: integer, required: false, default: 20, min: 1, max: 50, example: 1, note: "THE PRICE DIAL: 1 credit per creator returned"}
+        min_followers: {type: integer, required: false, note: "Overrides the inferred follower floor"}
+        max_followers: {type: integer, required: false, note: "Overrides the inferred follower ceiling"}
+        region: {type: string, required: false, example: "GB", note: "Two-letter code; overrides the inferred region"}
+      note: "Takes a few seconds (embedding + a small LLM pass). meta.cost and meta.billing.credits_charged hold the credits this call charged. An empty result is free; 502 search_unavailable is refunded."
+    test_request:
+      body: {query: "home workout fitness creators in the UK", max_results: 1}
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: result
+      source: docs
+      source_url: https://developers.tokfluence.com/docs/credits
+      checked: '2026-10-27'
+      confidence: documented
+      reported_charge: {path: meta.billing.credits_charged, unit: credit}
+      note: "1 credit per creator returned; an empty result is free. meta.billing.credits_charged reports the charge for each call."
+    docs_url: https://developers.tokfluence.com/docs/semantic_search
+
+  # --- free pre-flight --------------------------------------------------------------------------
+  - id: tokfluence.lists.list
+    added: '2026-10-27'
+    kind: utility
+    domain: account
+    capability: account.identity
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/lists
+    name: "Check a Tokfluence key (free): list your saved creator lists"
+    summary: "Free pre-flight: confirms the key works and lists the creator lists saved on its own account. Returns no creator data and charges no credits."
+    input:
+      queryParams:
+        page: {type: integer, required: false, default: 1}
+        per_page: {type: integer, required: false, default: 50, min: 1, max: 200, example: 1}
+        archived: {type: boolean, required: false}
+      note: "returns {data: [list], meta: {page, per_page, total}}. A bad key answers 401 unauthorized. Same route as the connection probe."
+    test_request:
+      queryParams: {per_page: 1}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://developers.tokfluence.com/docs/credits
+      checked: '2026-10-27'
+      confidence: documented
+      note: "Not credit-metered: list routes return no creator data."
+    docs_url: https://developers.tokfluence.com/docs
+
+  # --- one creator -----------------------------------------------------------------------------
+  - id: tokfluence.creators.profile
+    added: '2026-10-27'
+    domain: enrich
+    capability: creators.profile
+    platform: creators
+    scope: any_account
+    method: GET
+    path: /v1/creators/{id}
+    name: "Get a TikTok creator's profile, stats & contacts"
+    summary: "One creator by TikTok username or Tokfluence id: stats, known contact emails and phones, linked YouTube/Instagram and up to 12 recent posts."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "khaby.lame", note: "TikTok username (no @) or Tokfluence creator id (tkc_…)"}
+    test_request:
+      pathParams: {id: "khaby.lame"}
+    miss: {status: 404, means: "creator_not_found: no creator with that handle in the index. Refunded, so free."}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      source: observed
+      source_url: https://developers.tokfluence.com/docs/credits
+      checked: '2026-10-27'
+      confidence: verified
+      note: "OBSERVED 2026-10-27: X-Credits-Remaining moved by 1 on a hit. A 404 creator_not_found is refunded (balance unchanged after the refund)."
+    docs_url: https://developers.tokfluence.com/docs/creators
+
+  - id: tokfluence.creators.posts
+    added: '2026-10-27'
+    domain: enrich
+    capability: tiktok.user.videos
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/creators/{id}/posts
+    name: "List a TikTok creator's latest posts (live fetch)"
+    summary: "A creator's recent posts with views, likes, comments, shares, saves and hashtags, fetched live."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "khaby.lame", note: "TikTok username or tkc_ id"}
+      queryParams:
+        limit: {type: integer, required: false, default: 24, min: 1, max: 50, example: 1, note: "The price is per call, not per post"}
+      note: "A 202 analysis_pending is not charged; retry later. For posts already in the index, the profile endpoint's recent_posts (1 credit) is cheaper."
+    test_request:
+      pathParams: {id: "khaby.lame"}
+      queryParams: {limit: 1}
+    miss: {status: 404, means: "creator_not_found: no creator with that handle. Refunded, so free."}
+    cost:
+      type: per_success
+      value: 25
+      currency: credit
+      source: observed
+      source_url: https://developers.tokfluence.com/docs/credits
+      checked: '2026-10-27'
+      confidence: verified
+      note: "25 credits per call for up to 50 posts. OBSERVED 2026-10-27: limit=1 returned 200 and moved the balance by 25. A first call can answer 202 analysis_pending, which is not charged (observed: refunded); retry after a few seconds."
+    docs_url: https://developers.tokfluence.com/docs/creators
+
+  - id: tokfluence.creators.audience
+    added: '2026-10-27'
+    domain: enrich
+    capability: creators.analytics
+    platform: creators
+    scope: any_account
+    method: GET
+    path: /v1/creators/{id}/audience
+    name: "Get a TikTok creator's engaged-audience report"
+    summary: "A stored engaged-audience report for a creator. Read only: a creator without a report is a 404 and is not charged."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "khaby.lame", note: "TikTok username or tkc_ id"}
+    test_request:
+      pathParams: {id: "khaby.lame"}
+    miss: {status: 404, when: "error.code == 'audience_not_available'", means: "No audience report is held for this creator yet. Nothing is charged."}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      source: docs
+      source_url: https://developers.tokfluence.com/docs/credits
+      checked: '2026-10-27'
+      confidence: documented
+      note: "DELIBERATE MISS as test_request: reports exist only for creators already analysed, and none of the well-known public creators tried on 2026-10-27 had one, so the test call answers 404 audience_not_available and is refunded (observed). Hit price (1 credit) unobserved."
+    docs_url: https://developers.tokfluence.com/docs/creators
+
+  # --- posts -----------------------------------------------------------------------------------
+  - id: tokfluence.posts.detail
+    added: '2026-10-27'
+    domain: enrich
+    capability: tiktok.video.detail
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/posts/{id}
+    name: "Get a TikTok post's stats from the index"
+    summary: "One post from the local index: caption, publish time, views, likes, comments, shares, saves, hashtags, music."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "7663545266246520095", note: "TikTok video id (the trailing number of the URL)"}
+      note: "Cached read; it does not trigger a fresh analysis."
+    test_request:
+      pathParams: {id: "7663545266246520095"}
+    miss: {status: 404, means: "post_not_found: no post with that id in the index. Refunded, so free."}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      source: observed
+      source_url: https://developers.tokfluence.com/docs/credits
+      checked: '2026-10-27'
+      confidence: verified
+      note: "OBSERVED 2026-10-27: X-Credits-Remaining moved by 1."
+    docs_url: https://developers.tokfluence.com/docs/posts
+
+  - id: tokfluence.posts.comments
+    added: '2026-10-27'
+    domain: enrich
+    capability: tiktok.video.comments
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/posts/{id}/comments
+    name: "List a TikTok post's comments"
+    summary: "Offset-paginated comments for a post: text, time, likes, reply count, parent id and author."
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "7663545266246520095"}
+      queryParams:
+        cursor: {type: integer, required: false, default: 0, note: "Number of comments to skip"}
+        limit: {type: integer, required: false, default: 50, min: 1, max: 200, example: 1}
+    test_request:
+      pathParams: {id: "7663545266246520095"}
+      queryParams: {limit: 1}
+    miss: {status: 404, means: "post_not_found: no post with that id in the index. Refunded, so free."}
+    cost:
+      type: per_call
+      value: 2
+      currency: credit
+      source: observed
+      source_url: https://developers.tokfluence.com/docs/credits
+      checked: '2026-10-27'
+      confidence: verified
+      note: "2 credits per call (per_call). A page that returns no comments is not charged (the API waives it), and a 404 post_not_found is refunded like every non-2xx. OBSERVED 2026-10-27 (re-run): limit=1 returned 1 comment (meta.total 528) and moved the balance by 2. The free empty page is documented, not re-observed."
+    docs_url: https://developers.tokfluence.com/docs/posts

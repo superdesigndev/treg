@@ -3547,6 +3547,39 @@ INFLUENCERSCLUB = OAuthProvider(
 )
 
 
+TOKFLUENCE = OAuthProvider(
+    service="tokfluence",
+    display_name="Tokfluence",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Tokfluence API key (tkf_live_…)",
+    # `Authorization: Bearer tkf_live_…` only: no query-string auth, and cookies are ignored on the
+    # API host.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://developers.tokfluence.com/api_keys",
+    setup_action_label="Get your Tokfluence API key",
+    setup_steps=(
+        "Sign in at developers.tokfluence.com and open API keys.",
+        "Create a key and copy it (it is shown once).",
+    ),
+    setup_note=(
+        "Calls spend credits: search 1 credit per creator returned, a profile 1, live posts 25. "
+        "Failed calls are refunded. Listing your own creator lists (the connection check) is free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find TikTok creators by niche, country, followers and engagement, or from a plain-English brief, then get their stats, contacts, posts and comments.",
+    base_url="https://developers.tokfluence.com",
+    docs_url="https://developers.tokfluence.com/docs",
+    # Free (not credit-metered). A bogus key answers 401
+    # {"error":{"code":"unauthorized","message":"Invalid or missing API key"}} (observed 2026-10-27).
+    probe_path="/v1/lists",
+)
+
+
 # Market data API-key providers (pricing: docs/SHARED-PLAN-PRICING-PLAN.md; provider selection:
 # docs/MARKET-DATA-CATEGORY-RESEARCH.md). CoinGecko leads because it is the one true credit-priced
 # provider in the sector - its fx.yaml entry divides like Hunter's.
@@ -4022,7 +4055,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB, VILLAGE,
+        INFLUENCERSCLUB, VILLAGE, TOKFLUENCE,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
