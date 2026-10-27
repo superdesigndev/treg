@@ -1,0 +1,23 @@
+[
+  {
+    "id": 6547383,
+    "name": "Berlin, Stadt",
+    "admin1_name": "Berlin",
+    "country_code": "DE",
+    "feature_code": "ADM3",
+    "feature_name": "region",
+    "display_name": "Berlin, Stadt, Berlin, Germany",
+    "country_name": "Germany"
+  },
+  {
+    "id": 2950157,
+    "name": "Land Berlin",
+    "admin1_name": "Berlin",
+    "country_code": "DE",
+    "feature_code": "ADM1",
+    "feature_name": "region",
+    "display_name": "Land Berlin, Germany",
+    "country_name": "Germany"
+  },
+  "… 3 more item(s) truncated"
+]

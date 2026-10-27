@@ -1,0 +1,99 @@
+{
+  "metadata": {
+    "total_results": null,
+    "truncated_results": 0,
+    "truncated_companies": 0,
+    "total_companies": null
+  },
+  "data": [
+    {
+      "id": "PmFtMEW/FBkVY8gQCxZv/w==",
+      "name": "STATION F",
+      "domain": "stationf.co",
+      "industry": "Technology, Information and Internet",
+      "country": "France",
+      "country_code": "FR",
+      "employee_count": 299,
+      "logo": "https://media.theirstack.com/company/logo/domain/stationf.co.jpeg",
+      "num_jobs": 10721,
+      "num_technologies": 1120,
+      "num_keywords": 3616,
+      "num_buying_intent_topics": 2496,
+      "possible_domains": [
+        "stationf.co"
+      ],
+      "url": "https://stationf.co",
+      "industry_id": 6,
+      "linkedin_url": "https://www.linkedin.com/company/stationf/",
+      "num_jobs_last_30_days": 334,
+      "num_jobs_found": null,
+      "yc_batch": null,
+      "apollo_id": null,
+      "linkedin_id": "10776313",
+      "url_source": null,
+      "is_recruiting_agency": false,
+      "founded_year": null,
+      "annual_revenue_usd": null,
+      "annual_revenue_usd_readable": null,
+      "total_funding_usd": null,
+      "last_funding_round_date": null,
+      "last_funding_round_amount_readable": null,
+      "employee_count_range": "201-500",
+      "long_description": "STATION F is the world's biggest startup campus based in Paris, gathering a whole entrepreneurial ecosystem under one roof. ",
+      "seo_description": "The biggest startup campus in the world.",
+      "city": "Paris",
+      "postal_code": "75013",
+      "company_keywords": [],
+      "company_tags": [],
+      "alexa_ranking": null,
+      "publicly_traded_symbol": null,
+      "publicly_traded_exchange": null,
+      "investors": [],
+      "funding_stage": null,
+      "has_blurred_data": false,
+      "keyword_slugs": [
+        "1password",
+        "3-d-secure",
+        "… 3614 more item(s) truncated"
+      ],
+      "technology_slugs": [
+        "brandwatch",
+        "anaplan",
+        "… 1118 more item(s) truncated"
+      ],
+      "technology_names": [
+        "brandwatch",
+        "anaplan",
+        "… 1118 more item(s) truncated"
+      ],
+      "technologies_found": [
+        {
+          "technology": {
+            "name": "HubSpot",
+            "category": "Marketing Automation Platforms",
+            "type": "technology",
+            "slug": "hubspot",
+            "category_slug": "marketing-automation",
+            "parent_category": "Marketing",
+            "parent_category_slug": "marketing",
+            "logo": "https://media.theirstack.com/technology/logo/hubspot/logo.jpeg",
+            "logo_thumbnail": "https://media.theirstack.com/technology/logo/hubspot/thumbnail.jpeg"
+          },
+          "confidence": "high",
+          "jobs": 1133,
+          "jobs_last_7_days": 3,
+          "jobs_last_30_days": 36,
+          "jobs_last_180_days": 231,
+          "first_date_found": "2022-11-17",
+          "last_date_found": "2026-09-26",
+          "rank_within_category": 1,
+          "relative_occurrence_within_category": 0.9100401401519775,
+          "theirstack_score": 3.8533732891082764,
+          "company_name": "STATION F"
+        }
+      ],
+      "jobs_found": [],
+      "keywords_found": []
+    }
+  ]
+}

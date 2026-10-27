@@ -1,0 +1,43 @@
+{
+  "data": [
+    {
+      "name": "Snowflake",
+      "category": "Data Warehousing",
+      "type": "technology",
+      "slug": "snowflake",
+      "category_slug": "data-warehousing",
+      "parent_category": "Business Intelligence And Analytics",
+      "parent_category_slug": "business-intelligence-and-analytics",
+      "logo": "https://media.theirstack.com/technology/logo/snowflake/logo.png",
+      "logo_thumbnail": "https://media.theirstack.com/technology/logo/snowflake/thumbnail.png",
+      "one_liner": "The data warehouse built for the cloud",
+      "url": "https://www.snowflake.com",
+      "description": "Snowflake eliminates the administration and management demands of traditional data warehouses and big data platforms. Snowflake is a true data warehouse as a service running on Amazon Web Services (AWS)—no infrastructure to manage and no knobs to turn.",
+      "jobs": 488086,
+      "companies": 61727,
+      "companies_found_last_week": 3048
+    },
+    {
+      "name": "Snowflake Marketplace",
+      "category": "Integrations Marketplace",
+      "type": "technology",
+      "slug": "snowflake-marketplace",
+      "category_slug": "integrations-marketplace",
+      "parent_category": "Programming Languages And Frameworks",
+      "parent_category_slug": "programming-languages-and-frameworks",
+      "logo": "https://media.theirstack.com/technology/logo/snowflake-marketplace/logo.jpeg",
+      "logo_thumbnail": "https://media.theirstack.com/technology/logo/snowflake-marketplace/logo.jpeg",
+      "one_liner": "Snowflake Marketplace offers a convenient platform for users to discover third-party data, data services & applications.",
+      "url": "",
+      "description": "",
+      "jobs": 219,
+      "companies": 123,
+      "companies_found_last_week": 6
+    }
+  ],
+  "metadata": {
+    "total_results": 2,
+    "page": 0,
+    "limit": 5
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "industry_id": 3101,
+      "industry": "Desktop Computing Software Products",
+      "hierarchy": "Technology, Information and Media > Technology, Information and Internet > Software Development > Desktop Computing Software Products",
+      "description": "This industry includes entities that produce software which runs on desktop or laptop computers.",
+      "parent_id": 4,
+      "companies": 160,
+      "jobs": 2792
+    },
+    {
+      "industry_id": 3102,
+      "industry": "IT System Custom Software Development",
+      "hierarchy": "Professional Services > IT Services and IT Consulting > IT System Custom Software Development",
+      "description": "This industry includes entities that focus on creating, modifying, testing, and supporting software to meet the needs of a particular customer.",
+      "parent_id": 96,
+      "companies": 925,
+      "jobs": 35051
+    },
+    "… 3 more item(s) truncated"
+  ],
+  "metadata": {
+    "total_results": 17
+  }
+}

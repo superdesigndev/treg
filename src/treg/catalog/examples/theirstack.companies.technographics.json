@@ -1,0 +1,55 @@
+{
+  "data": [
+    {
+      "technology": {
+        "name": "Greenhouse",
+        "category": "HRMS",
+        "type": "technology",
+        "slug": "greenhouse",
+        "category_slug": "hrms",
+        "parent_category": "HR",
+        "parent_category_slug": "hr",
+        "logo": "https://media.theirstack.com/technology/logo/greenhouse/logo.png",
+        "logo_thumbnail": "https://media.theirstack.com/technology/logo/greenhouse/logo.png"
+      },
+      "confidence": "high",
+      "jobs": 2813,
+      "jobs_last_7_days": 25,
+      "jobs_last_30_days": 213,
+      "jobs_last_180_days": 976,
+      "first_date_found": "2021-02-23",
+      "last_date_found": "2026-10-01",
+      "rank_within_category": 1,
+      "relative_occurrence_within_category": 0.922295093536377
+    },
+    {
+      "technology": {
+        "name": "Thrive",
+        "category": "Learning Management Systems",
+        "type": "technology",
+        "slug": "thrive",
+        "category_slug": "learning-management-systems",
+        "parent_category": "HR",
+        "parent_category_slug": "hr",
+        "logo": "https://media.theirstack.com/technology/logo/thrive/logo.jpeg",
+        "logo_thumbnail": "https://media.theirstack.com/technology/logo/thrive/logo.jpeg"
+      },
+      "confidence": "high",
+      "jobs": 739,
+      "jobs_last_7_days": 1,
+      "jobs_last_30_days": 17,
+      "jobs_last_180_days": 65,
+      "first_date_found": "2019-08-06",
+      "last_date_found": "2026-09-29",
+      "rank_within_category": 1,
+      "relative_occurrence_within_category": 0.4743260443210602
+    },
+    "… 3 more item(s) truncated"
+  ],
+  "metadata": {
+    "total_results": null,
+    "truncated_results": 0,
+    "truncated_companies": 0,
+    "total_companies": null
+  }
+}

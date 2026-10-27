@@ -353,6 +353,7 @@ class Settings(BaseSettings):
     platform_key_tomba: str = ""          # the API key (ta_…); X-Tomba-Key header
     platform_key_tomba_secret: str = ""   # the API secret (ts_…); X-Tomba-Secret — BOTH must be set
     platform_key_trestleiq: str = ""       # raw key; exact lowercase x-api-key header
+    platform_key_theirstack: str = ""      # Bearer key; API credits: 1 per job, 3 per company returned
     platform_key_hlrlookup: str = ""         # JSON body api_key; prepaid lookup credits, 1 per mobile lookup
     platform_key_hlrlookup_secret: str = ""  # JSON body api_secret paired with it — BOTH must be set
     # (tomba's data routes need the header pair; TOMBA.platform_extra_setting names this second slot)
