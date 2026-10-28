@@ -1109,6 +1109,8 @@ BALANCE_ROUTES = {
 # obtain. Kept explicit so the report names them instead of silently skipping, and so a future probe
 # has a list of what to re-check.
 NO_BALANCE_API = {
+    "oriane": "no balance or usage route in the published OpenAPI and no per-call charge in "
+              "responses; the credit balance and per-call history are visible in the Oriane app",
     "quickenrich": "no balance endpoint, and no response carries the allowance any more: a free "
                    "Contact Finder miss or hit and a billed employee search all return a meta without "
                    "remaining_credits (or no meta), despite the published docs; the subscription "

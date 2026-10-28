@@ -3625,6 +3625,35 @@ INFLUENCERSCLUB = OAuthProvider(
     probe_path="/public/v1/accounts/credits/",
 )
 
+ORIANE = OAuthProvider(
+    service="oriane",
+    display_name="Oriane",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Oriane API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.oriane.xyz/billing/subscription?tab=api",
+    setup_action_label="Get your Oriane API key",
+    setup_steps=(
+        "Sign up at app.oriane.xyz (free workspaces include monthly credits).",
+        "Open Billing → Subscription → API and create an API key.",
+    ),
+    setup_note=("Every search and asset call spends credits; the price depends on the projection. "
+                "Connection verification sends an invalid empty search, which costs no credits."),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Search TikTok, Instagram and YouTube videos and creators by caption, transcript, hashtag, audio, location or visual similarity.",
+    base_url="https://connect.oriane.xyz/rest",
+    docs_url="https://connect.oriane.xyz/rest/docs",
+    # Every route is billed, so the probe POSTs {}: the assigned key gets a free 400 VALIDATION
+    # error (operator missing), a bogus or missing key a 401 UNAUTHORIZED.
+    probe_path="/profiles/search", probe_method="POST", probe_json={},
+    probe_reject_statuses=(401, 403),
+)
+
 
 # Market data API-key providers (pricing: docs/SHARED-PLAN-PRICING-PLAN.md; provider selection:
 # docs/MARKET-DATA-CATEGORY-RESEARCH.md). CoinGecko leads because it is the one true credit-priced
@@ -4101,7 +4130,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB, VILLAGE,
+        INFLUENCERSCLUB, VILLAGE, ORIANE,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
