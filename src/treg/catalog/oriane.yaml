@@ -1,0 +1,137 @@
+provider: oriane
+source:
+  docs: https://connect.oriane.xyz/rest/docs
+  openapi: null # the Scalar reference at /rest/docs embeds its OpenAPI 3.0 document inline; no standalone spec URL is served
+  curated: '2026-10-28'
+# Curated + live-called 2026-10-28 with the vendor's own key.
+#
+# WHAT IT IS: an index of TikTok, Instagram and YouTube videos, posts and creator profiles,
+# enriched with transcripts, on-screen frames, audio and location. Three operations, all POST:
+#   - contents search: filter posts by platform, format, creator, caption, transcript, hashtags,
+#     mentions, co-authors, audio, location, publish date and view/engagement ranges, or rank them
+#     by visual similarity to an asset;
+#   - profiles search: filter creator profiles by platform, handle, bio, language, location,
+#     verification and follower/post/like counts;
+#   - create asset: turn a text phrase or an image into a reusable query for visualSimilarity.
+#
+# PRICING: credits per call, one call returns up to 100 rows. The `projection` query param picks
+# how many fields come back and is the price dial: contents basic 10 / default 15 / full 20,
+# profiles basic 5 / default 10 / full 15, asset 5. Rows are catalogued at the default projection.
+# The API reports no per-call charge; the per-call ledger lives in the account's credit history
+# (app.oriane.xyz/billing/subscription?tab=credits). 402 means the workspace is out of credits.
+#
+# STATUSES: 200 = every match fits the page, 206 = a partial page (more rows past offset+limit),
+# 416 = offset past totalCount, 400 = validation error.
+limits: "Up to 100 rows per call; nested query groups up to two levels deep; at most 500 filter values per request"
+pricing_url: https://www.oriane.xyz/pricing
+endpoints:
+  - id: oriane.contents.search
+    added: '2026-10-28'
+    domain: discovery
+    capability: creators.content.search
+    platform: creators
+    scope: any_account
+    method: POST
+    path: /contents/search
+    name: "Search TikTok, Instagram & YouTube videos and posts"
+    summary: "Search, filter and retrieve indexed social contents across platforms."
+    input:
+      queryParams:
+        projection: {type: string, required: false, note: "basic | default | full — how many fields each row carries, and the price (10 / 15 / 20 credits per call)", example: "basic"}
+        limit: {type: integer, required: false, note: "rows per page, default 20, at most 100; the price is per call, not per row", example: 1}
+        offset: {type: integer, required: false, note: "0-based; past totalCount answers 416", example: 0}
+        sort: {type: string, required: false, note: "comma-separated, by priority: visualSimilarity, transcriptRelevance, viewsCount, likesCount, sharesCount, commentsCount, interactionsCount, publishedAt; each takes :asc or :desc (default :desc). Default publishedAt", example: "publishedAt:desc,viewsCount"}
+        aiSearchAnchor: {type: string, required: false, note: "returned by the first visual-similarity page; pass it on later offset pages of the same search so scores stay consistent", example: null}
+      body:
+        operator: {type: string, required: true, note: "and | or — combines filters and nested queries at this level", example: "and"}
+        filters: {type: object, required: false, note: "keys: id, platform {includes: [instagram|tiktok|youtube]}, platformId, format {includes: [image|video|carousel]}, profileId, profilePlatformId, profileHandle, caption, captionLanguage, profileBio, transcript, transcriptLanguage, hashtags, mentionIds/mentionHandles/hasMentions, coAuthorIds/coAuthorHandles/hasCoAuthors, audioPlatformId/audioTitle/audioAuthor/audioCopyrighted, location* and profileLocation*, publishedAt {after, before}, viewsCount/interactionsCount/engagementRatePerViews/engagementRatePerFollowers/viewsRatePerFollowers/profileFollowersCount {min, max}, visualSimilarity {includes: {values: [{assetId, minScore, maxScore}]}}. Text fields take {exactMatch: {values, operator}}; lists take {includes: [...]}", example: {profileHandle: {exactMatch: {values: ["nasa"]}}}}
+        queries: {type: array, required: false, note: "nested query groups of the same shape, at most two levels deep", example: null}
+        name: {type: string, required: false, note: "label echoed in each row's matchedQueries", example: "query1"}
+      note: "returns {data: {aggregations: {totalViewsCount}, results: [{id, platform, profileHandle, format, caption, publishedAt, …}]}, metadata: {pagination: {offset, limit, totalCount}}}. A query matching nothing answers 200 with totalCount 0. Visual similarity across the whole index is slow: live 2026-10-28 an unfiltered visualSimilarity search hit the client's 90 s timeout and one narrowed to a single profileHandle came back as a 504 at 120 s — pair it with selective filters."
+    test_request:
+      queryParams: {limit: 1}
+      body: {operator: "and", filters: {profileHandle: {exactMatch: {values: ["nasa"]}}}}
+    cost:
+      type: per_call
+      value: 15
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.oriane.xyz/pricing
+      checked: '2026-10-28'
+      confidence: documented
+      note: "price of the default projection; basic is 10 credits and full 20 per call, whatever the row count up to 100. Live calls 2026-10-28 returned 206 for all three projections on the test target; the charge per call is in the account's credit history, not in the response."
+    docs_url: https://connect.oriane.xyz/rest/docs
+
+  - id: oriane.profiles.search
+    added: '2026-10-28'
+    domain: discovery
+    capability: creators.search
+    platform: creators
+    scope: any_account
+    method: POST
+    path: /profiles/search
+    name: "Find TikTok, Instagram & YouTube creators by size & bio"
+    summary: "Search, filter and retrieve indexed social profiles across platforms."
+    input:
+      queryParams:
+        projection: {type: string, required: false, note: "basic | default | full — how many fields each row carries, and the price (5 / 10 / 15 credits per call)", example: "basic"}
+        limit: {type: integer, required: false, note: "rows per page, default 20, at most 100; the price is per call, not per row", example: 1}
+        offset: {type: integer, required: false, note: "0-based; past totalCount answers 416", example: 0}
+        sort: {type: string, required: false, note: "comma-separated, by priority: followersCount, createdAt, updatedAt; each takes :asc or :desc (default :desc). Default createdAt", example: "followersCount:desc"}
+      body:
+        operator: {type: string, required: true, note: "and | or — combines filters and nested queries at this level", example: "and"}
+        filters: {type: object, required: false, note: "keys: id, platform {includes: [instagram|tiktok|youtube]}, platformId, handle, displayName, bio (text fields take {exactMatch: {values, operator}}), language {includes}, isPrivate, isVerified, postsCount/likesCount/followersCount/followingCount {min, max}, locationPlatformId, locationCompleteAddress, locationCoordinates, createdAt/updatedAt {after, before}", example: {platform: {includes: ["instagram"]}, handle: {exactMatch: {values: ["nasa"]}}}}
+        queries: {type: array, required: false, note: "nested query groups of the same shape, at most two levels deep", example: null}
+      note: "returns {data: [{id, platform, handle, displayName, …}], metadata: {pagination: {offset, limit, totalCount}}}. This is the STRUCTURED shape of creator discovery (exact handle, bio, follower and location filters) over the same index as oriane.contents.search; a profile's id (prf_…) feeds that route's profileId filter."
+    test_request:
+      queryParams: {limit: 1}
+      body: {operator: "and", filters: {platform: {includes: ["instagram"]}, handle: {exactMatch: {values: ["nasa"]}}}}
+    cost:
+      type: per_call
+      value: 10
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.oriane.xyz/pricing
+      checked: '2026-10-28'
+      confidence: documented
+      note: "price of the default projection; basic is 5 credits and full 15 per call, whatever the row count up to 100. Live calls 2026-10-28 returned 200 with one row for all three projections; the charge per call is in the account's credit history, not in the response."
+    docs_url: https://connect.oriane.xyz/rest/docs
+
+  - id: oriane.assets.create
+    added: '2026-10-28'
+    domain: discovery
+    capability: creators.content.visual_query
+    platform: creators
+    scope: any_account
+    method: POST
+    path: /assets
+    name: "Turn a text phrase or image into a visual-search query"
+    summary: "Create a reusable text or image asset for visual search."
+    input:
+      body:
+        type: {type: string, required: true, note: "text | image", example: "text"}
+        text: {type: string, required: false, note: "with type=text; at most 300 characters, describing what should be on screen", example: "a rocket launching into space"}
+        image: {type: object, required: false, note: "with type=image: {type: url, url} or {type: base64, …}; multipart/form-data with a `file` field (jpeg, png or webp, at most 20 MiB) is also accepted", example: null}
+      note: "returns 201 {data: {id: ast_…}}. Pass the id in oriane.contents.search's visualSimilarity filter ({assetId, minScore, maxScore}) and sort=visualSimilarity; an asset is reusable across searches."
+    test_request:
+      body: {type: "text", text: "a rocket launching into space"}
+    cost:
+      type: per_call
+      value: 5
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.oriane.xyz/pricing
+      checked: '2026-10-28'
+      confidence: documented
+      note: "Live call 2026-10-28 answered 201; the charge per call is in the account's credit history, not in the response."
+    docs_url: https://connect.oriane.xyz/rest/docs
+
+proposed_capabilities:
+  creators.content.search: "Search social videos and posts across TikTok, Instagram and YouTube by caption, transcript, hashtag, audio or what is on screen"
+  creators.content.visual_query: "Turn a text phrase or an image into a reusable query for searching what is on screen in social videos"

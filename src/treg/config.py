@@ -360,6 +360,7 @@ class Settings(BaseSettings):
     platform_key_hlrlookup_secret: str = ""  # JSON body api_secret paired with it — BOTH must be set
     # (tomba's data routes need the header pair; TOMBA.platform_extra_setting names this second slot)
     platform_key_influencersclub: str = ""  # Bearer key (dashboard JWT); creator discovery + enrichment, fx.yaml $0.598/credit
+    platform_key_oriane: str = ""  # Bearer API key; contents + profiles search and visual-search assets, fx.yaml $0.07/credit
     platform_key_crustdata: str = ""  # Bearer key; every call also needs the pinned x-api-version header
     platform_key_theirstack: str = ""  # Bearer key; jobs and companies draw API credits
     platform_key_aviato: str = ""     # Bearer key; $10 auto-top-up buys 1,000 credits

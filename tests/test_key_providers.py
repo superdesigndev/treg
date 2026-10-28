@@ -212,6 +212,24 @@ async def test_octen_key_uses_unbilled_validation_probe(clients, monkeypatch):
     assert response.json()["health"] == "unknown"
 
 
+@pytest.mark.parametrize("status,accepted", [(400, True), (401, False)])
+async def test_oriane_key_uses_unbilled_validation_probe(clients, monkeypatch, status, accepted):
+    def probe(request):
+        assert request.method == "POST"
+        assert request.url.path == "/rest/profiles/search"
+        assert json.loads(request.content) == {}
+        assert request.headers["authorization"] == "Bearer own-key"
+        code = "FAILED" if status == 400 else "UNAUTHORIZED"
+        return httpx.Response(status, json={"error": {"code": code}})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "oriane", "token": "own-key"},
+        )
+    assert (response.status_code == 200) is accepted, response.text
+
+
 async def test_adyntel_connect_collects_both_credentials_before_provisioning(clients, monkeypatch):
     def probe(request):
         assert request.method == "POST"
