@@ -1334,6 +1334,31 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+INETGEEK = OAuthProvider(
+    service="inetgeek",
+    display_name="inetGeek",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your inetGeek API key (igk_...)",
+    token_header="X-Api-Key",
+    token_format="{secret}",
+    setup_url="https://inetgeek.com/docs/rest-api/",
+    setup_action_label="Get a free inetGeek API key",
+    setup_steps=(
+        "Create a key with one request: POST https://inetgeek.com/api/v1/keys (no email, no sign-up).",
+        "Copy the api_key from the response; it starts with igk_ and is shown once.",
+    ),
+    setup_note="The API is free. The account check is free and rejects an unknown key with 401.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Developer",
+    summary="Sourced, dated pricing, limits and compliance facts for cloud infrastructure providers, with scores and cost estimates.",
+    base_url="https://inetgeek.com/api/v1",
+    docs_url="https://inetgeek.com/docs/rest-api/",
+    probe_path="/account",  # free — a missing, unknown or revoked key gets 401
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -4008,7 +4033,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, INETGEEK, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

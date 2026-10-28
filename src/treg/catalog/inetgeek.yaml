@@ -1,0 +1,241 @@
+# inetGeek documents 13 operations. treg catalogues the 11 read routes. The two key-management
+# routes (POST /keys creates a key; DELETE /keys revokes the one in the request) are excluded:
+# treg users connect a key they already hold, and revoking it from inside a tool call would
+# disconnect the very connection making the call.
+provider: inetgeek
+source:
+  docs: https://inetgeek.com/docs/rest-api/
+  openapi: https://inetgeek.com/api/v1/openapi.yaml
+  curated: '2026-10-25'
+pricing_url: https://inetgeek.com/docs/rest-api/#pricing
+limits: "120 requests/minute per key; a limited call returns 429 with Retry-After. The limit is a soft per-location counter, not an exact count. List routes take limit (1-200, default 50) and offset."
+proposed_capabilities:
+  infra.categories.list: List the infrastructure categories covered and how many providers each holds
+  infra.providers.list: List infrastructure providers with their free tier and entry price, filtered by category or documented fact
+  infra.providers.get: Get one infrastructure provider's sourced fact sheet
+  infra.providers.score: Get an infrastructure provider's score against its category peers
+  infra.providers.alternatives: List a provider's category peers ranked by score
+  infra.facts.list: List the documented fact keys that providers can be filtered on
+  infra.search: Search infrastructure providers, comparisons and guides
+  infra.cost.estimate: Estimate monthly cost across providers at a stated usage volume
+  infra.changes.list: List recorded changes to published provider facts
+  infra.startup_credits.list: List providers that offer a startup credit programme
+endpoints:
+  - id: inetgeek.account.identity
+    kind: account
+    added: '2026-10-25'
+    capability: account.identity
+    platform: account
+    domain: account
+    scope: own_account
+    method: GET
+    path: /account
+    name: Check an API key
+    summary: Returns the key's prefix, label, creation date and limits when the key is valid, and 401 when it is missing, unknown or revoked.
+    input:
+      queryParams: {}
+    test_request:
+      queryParams: {}
+    cost: &free_cost
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      note: The whole API is free; no meter exists. This route is the registry's health probe and counts one request against the 120/minute limit.
+    docs_url: https://inetgeek.com/docs/rest-api/reference/keys/
+
+  - id: inetgeek.infra.categories.list
+    added: '2026-10-25'
+    capability: infra.categories.list
+    platform: infra
+    domain: discovery
+    scope: any_account
+    method: GET
+    path: /categories
+    name: List infrastructure categories
+    summary: One row per URL section (analytics, databases, hosting...) with its provider count and the category ids that publish under it.
+    input:
+      queryParams: {}
+    test_request:
+      queryParams: {}
+    cost: *free_cost
+    docs_url: https://inetgeek.com/docs/rest-api/reference/discovery/
+
+  - id: inetgeek.infra.providers.list
+    added: '2026-10-25'
+    capability: infra.providers.list
+    platform: infra
+    domain: providers
+    scope: any_account
+    method: GET
+    path: /providers
+    name: List providers
+    summary: Providers with free tier and entry price, filtered by category, name prefix or by which facts they document.
+    input:
+      queryParams:
+        category: {type: string, required: false, example: analytics, note: "A URL section (analytics, databases, hosting) or a category id (web-analytics). GET /categories lists both."}
+        q: {type: string, required: false, example: plaus, note: "Matches the start of an id or part of a name, case-insensitively."}
+        has: {type: string, required: false, example: revenue_attribution, note: "Comma-separated fact keys every returned provider must document; their values ride along on each row. GET /facts lists the keys. A documented key is not a yes: read the value."}
+        limit: {type: integer, required: false, default: 50, min: 1, max: 200, example: 2}
+        offset: {type: integer, required: false, default: 0, min: 0, example: 0}
+    test_request:
+      queryParams: {category: analytics, limit: 2}
+    cost: *free_cost
+    docs_url: https://inetgeek.com/docs/rest-api/reference/providers/
+
+  - id: inetgeek.infra.providers.get
+    added: '2026-10-25'
+    capability: infra.providers.get
+    platform: infra
+    domain: providers
+    scope: any_account
+    method: GET
+    path: /providers/{id}
+    name: Get a provider's fact sheet
+    summary: Every fact the provider documents, each with its value, the vendor page it was read from and the date it was last checked, plus its score.
+    input:
+      pathParams:
+        id: {type: string, required: true, example: plausible, note: "A provider id. GET /providers?q= finds ids."}
+      note: "An empty or missing fact means undocumented on the vendor's page at the date shown, not a confirmed no."
+    test_request:
+      pathParams: {id: plausible}
+    cost: *free_cost
+    docs_url: https://inetgeek.com/docs/rest-api/reference/providers/
+
+  - id: inetgeek.infra.providers.score
+    added: '2026-10-25'
+    capability: infra.providers.score
+    platform: infra
+    domain: providers
+    scope: any_account
+    method: GET
+    path: /providers/{id}/score
+    name: Get a provider's iScore
+    summary: 0-100 against category peers with an 80% interval and rank, six pillars with their weights, and every scored criterion with the fact it came from.
+    input:
+      pathParams:
+        id: {type: string, required: true, example: plausible}
+      queryParams:
+        category: {type: string, required: false, example: web-analytics, note: "A category id the provider is scored in. Defaults to its canonical category."}
+      note: "Report the interval with the number; distinct false means the neighbouring rank is an ordering, not a finding. Not comparable across categories."
+    test_request:
+      pathParams: {id: plausible}
+    cost: *free_cost
+    docs_url: https://inetgeek.com/docs/rest-api/reference/providers/
+
+  - id: inetgeek.infra.providers.alternatives
+    added: '2026-10-25'
+    capability: infra.providers.alternatives
+    platform: infra
+    domain: providers
+    scope: any_account
+    method: GET
+    path: /providers/{id}/alternatives
+    name: List a provider's alternatives
+    summary: Every other provider scored in the category, best first, with score and interval, free tier and entry price.
+    input:
+      pathParams:
+        id: {type: string, required: true, example: plausible}
+      queryParams:
+        category: {type: string, required: false, example: web-analytics, note: "A category id the provider is scored in. Defaults to its canonical category."}
+    test_request:
+      pathParams: {id: plausible}
+    cost: *free_cost
+    docs_url: https://inetgeek.com/docs/rest-api/reference/providers/
+
+  - id: inetgeek.infra.facts.list
+    added: '2026-10-25'
+    capability: infra.facts.list
+    platform: infra
+    domain: discovery
+    scope: any_account
+    method: GET
+    path: /facts
+    name: List filterable fact keys
+    summary: Every fact key with its human label, for use in GET /providers?has=.
+    input:
+      queryParams: {}
+    test_request:
+      queryParams: {}
+    cost: *free_cost
+    docs_url: https://inetgeek.com/docs/rest-api/reference/discovery/
+
+  - id: inetgeek.infra.search
+    added: '2026-10-25'
+    capability: infra.search
+    platform: infra
+    domain: discovery
+    scope: any_account
+    method: GET
+    path: /search
+    name: Search inetGeek
+    summary: Full-text search over every published provider, comparison, DNS record, tool and stack page, widening everyday words to the vocabulary of the fact labels.
+    input:
+      queryParams:
+        q: {type: string, required: true, maxLength: 200, example: revenue attribution}
+      note: "matched_criteria names documented facts the terms match; pass those keys to GET /providers?has= for the values."
+    test_request:
+      queryParams: {q: revenue attribution}
+    cost: *free_cost
+    docs_url: https://inetgeek.com/docs/rest-api/reference/discovery/
+
+  - id: inetgeek.infra.cost.estimate
+    added: '2026-10-25'
+    capability: infra.cost.estimate
+    platform: infra
+    domain: pricing
+    scope: any_account
+    method: GET
+    path: /estimate
+    name: Estimate monthly cost at a volume
+    summary: What each provider with a published per-volume price would charge a month at the volume given, cheapest first, with plan, formula, vendor page and date read.
+    input:
+      queryParams:
+        units: {type: number, required: true, example: 500000, note: "The monthly volume, in the unit named by `unit`."}
+        unit: {type: string, required: false, default: pageviews, enum: [pageviews, events, emails, mau], example: pageviews}
+        category: {type: string, required: false, example: analytics, note: "A URL section or category id; omit for every category with per-volume prices."}
+        events_per_pageview: {type: number, required: false, default: 1, example: 1, note: "Used only to compare pageviews against plans that bill in events."}
+        sites: {type: integer, required: false, min: 1, example: 1, note: "Websites the plan must cover; plans with a lower stated cap are skipped."}
+      note: "inetGeek's arithmetic on published rates, not a vendor quote. Taxes, currency conversion and each vendor's own definition of its unit are outside it. Covers web analytics, email and auth."
+    test_request:
+      queryParams: {units: 500000, unit: pageviews, category: analytics}
+    cost: *free_cost
+    docs_url: https://inetgeek.com/docs/rest-api/reference/estimates-and-changes/
+
+  - id: inetgeek.infra.changes.list
+    added: '2026-10-25'
+    capability: infra.changes.list
+    platform: infra
+    domain: changes
+    scope: any_account
+    method: GET
+    path: /changelog
+    name: List recorded fact changes
+    summary: Every recorded change to a published fact, newest first, with the old and new value and the commit that made it.
+    input:
+      queryParams:
+        provider: {type: string, required: false, example: plausible, note: "Restrict to one provider id."}
+        limit: {type: integer, required: false, default: 50, min: 1, max: 200, example: 2}
+        offset: {type: integer, required: false, default: 0, min: 0, example: 0}
+    test_request:
+      queryParams: {limit: 2}
+    cost: *free_cost
+    docs_url: https://inetgeek.com/docs/rest-api/reference/estimates-and-changes/
+
+  - id: inetgeek.infra.startup_credits.list
+    added: '2026-10-25'
+    capability: infra.startup_credits.list
+    platform: infra
+    domain: pricing
+    scope: any_account
+    method: GET
+    path: /startup-credits
+    name: List startup credit programmes
+    summary: Every provider documented as offering a startup credit programme, with the amount and eligibility as published, a source and the date checked.
+    input:
+      queryParams: {}
+      note: "Absence from the list means undocumented, not a confirmed no."
+    test_request:
+      queryParams: {}
+    cost: *free_cost
+    docs_url: https://inetgeek.com/docs/rest-api/reference/estimates-and-changes/

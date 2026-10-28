@@ -140,6 +140,7 @@ platforms:
   producthunt: {label: "Product Hunt", category: "Community", summary: "Products and daily launches from Product Hunt."}
   stackoverflow: {label: "Stack Overflow", category: "Developer", summary: "Questions by tag from Stack Overflow."}
   packages: {label: "Package registries", category: "Developer", summary: "Package facts from npm, PyPI and crates.io."}
+  infra: {label: "Infrastructure pricing & limits", category: "Developer", summary: "Sourced, dated pricing, limits and compliance facts for cloud infrastructure providers, with iScores and cost estimates at a stated volume."}
   medium: {label: "Medium", category: "Research & public data", summary: "Posts of a Medium tag, author or publication."}
   substack: {label: "Substack", category: "Research & public data", summary: "Latest posts of a Substack publication."}
   wikipedia: {label: "Wikipedia", category: "Research & public data", summary: "Article summaries, sections and search from Wikipedia."}
