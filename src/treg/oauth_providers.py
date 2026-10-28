@@ -1517,6 +1517,26 @@ BLITZAPI = OAuthProvider(
     probe_path="/v2/account/key-info",
 )
 
+GENERECT = OAuthProvider(
+    service="generect", display_name="Generect", auth_kind="key",
+    token_label="API token", token_placeholder="your Generect API token",
+    # The token rides in Authorization with a required `Token ` prefix; a raw token does not authenticate.
+    token_header="Authorization", token_format="Token {secret}",
+    setup_url="https://app.generect.com/settings/api",
+    setup_action_label="Get your Generect API token",
+    setup_steps=("Sign up at app.generect.com (new accounts start with a free starter credit).",
+                 "Open Settings, then API, and copy your API token."),
+    setup_note=("Billed in USD from a prepaid balance, per returned row or per found result; not-found results, "
+                "database counts and thin search rows are free. The account check is free."),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=("Search people and companies by role, firmographics and location, enrich LinkedIn profiles and "
+             "company pages live, and find verified work emails and phones."),
+    base_url="https://api.generect.com",
+    docs_url="https://docs.generect.com/api-reference/introduction",
+    probe_path="/api/v1/accounts/me/",  # free; a bad or missing token gets HTTP 401 {"status": "error", "status_code": 401, ...}
+)
+
 DROPLEADS = OAuthProvider(
     service="dropleads", display_name="Dropleads", auth_kind="key",
     token_label="API key", token_placeholder="your Dropleads API key",
@@ -4123,7 +4143,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, GENERECT, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

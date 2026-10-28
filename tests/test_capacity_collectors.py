@@ -105,6 +105,33 @@ async def test_blitzapi_key_info_rejects_invalid_balance(body):
             await collectors._blitzapi(client, "test-key")
 
 
+async def test_generect_balance_reads_the_free_account_route():
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://api.generect.com/api/v1/accounts/me/"
+        assert request.headers["authorization"] == "Token test-key"
+        return httpx.Response(200, json={"data": {"credits": {"balance": 12, "wallet_usd": 12.5,
+                                                              "perk_usd": 0.0}}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await collectors._generect(client, "test-key")
+    assert row["value"] == 12.5 and row["unit"] == "USD left"
+
+
+@pytest.mark.parametrize("body", [
+    {"data": {"credits": {"wallet_usd": None}}},
+    {"data": {"credits": {"wallet_usd": "12.5"}}},
+    {"data": {"credits": {"wallet_usd": -1}}},
+    {"data": {}},
+    {"detail": "Authentication credentials were not provided."},
+])
+async def test_generect_balance_rejects_invalid_values(body):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json=body))) as client:
+        with pytest.raises(ValueError, match="Generect returned no valid balance"):
+            await collectors._generect(client, "test-key")
+
+
 async def test_sixtyfour_balance_uses_the_free_credit_route():
     def probe(request):
         assert request.method == "GET"

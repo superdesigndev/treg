@@ -42,6 +42,31 @@ async def test_anymailfinder_key_uses_free_account_probe(clients, monkeypatch):
     assert rejected.status_code == 422 and "rejected" in rejected.text
 
 
+async def test_generect_key_uses_free_account_probe_with_token_prefix(clients, monkeypatch):
+    def valid(request):
+        assert request.method == "GET"
+        assert request.url.path == "/api/v1/accounts/me/"
+        assert request.headers["authorization"] == "Token own-key"
+        return httpx.Response(200, json={"data": {"credits": {"balance": 5, "wallet_usd": 5.0}}})
+
+    async with AsyncClient(transport=httpx.MockTransport(valid)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "generect", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+    async with AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(401, json={
+                "status": "error", "status_code": 401,
+                "detail": "Authentication credentials were not provided."}))) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        rejected = await clients.post(
+            "/connections/token", json={"provider": "generect", "token": "bad-key"},
+        )
+    assert rejected.status_code == 422 and "rejected" in rejected.text
+
+
 # ---- registry shape ----------------------------------------------------------------------
 def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,

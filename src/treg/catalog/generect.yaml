@@ -1,0 +1,424 @@
+provider: generect
+source:
+  docs: https://docs.generect.com/api-reference/introduction
+  openapi: https://docs.generect.com/api-reference/openapi.yaml
+  curated: 2026-10-28
+# Prepaid USD balance. Every billable result deducts its listed price, and every JSON response reports
+# the exact charge in meta.amount_charged (USD), which the cost blocks below settle against. Not-found
+# results are never billed: enrich answers 400 "Person/Company does not exist" at $0, email and phone
+# find answer 200 with a null value at $0. Database counts and thin search rows ("detail": "thin",
+# 2,000 rows per account per UTC day) are free. Real-time count routes are NOT free ($0.04 a call) and
+# are left out of this file. Optional enrich sections (posts, comments, reactions, people_also_viewed,
+# people_also_follow) and include_full_profile on real-time search add a charge per section and are
+# not declared, so a row's price stays the one listed.
+# Probe: GET /api/v1/accounts/me/ is free; a bad or missing token answers 401
+# {"status": "error", "status_code": 401, "detail": "Authentication credentials were not provided."}.
+# Prices are the published standard (Tier 0) API rates, which every API account pays until its lifetime
+# spend reaches $20,000; each one was observed charged by meta.amount_charged and the balance delta on
+# 2026-10-28.
+limits: "Parallel requests per token and source IP: lead search 50, company search 20, lead enrich 500, company enrich 50; email find, email validation and phone find are uncapped. Excess answers 429 without Retry-After. Recommended timeouts: search 300 s, lead enrich 100 s, company enrich 60 s. HTTP 402 \"Insufficient funds in the account.\" when the prepaid balance is empty."
+pricing_url: https://docs.generect.com/billing/pricing
+endpoints:
+  - id: generect.account.me
+    added: '2026-10-28'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /api/v1/accounts/me/
+    name: "Get your account and balance"
+    summary: "Retrieve the current account profile, credit balance, monthly usage, and whether Preview is currently free for you."
+    input:
+      note: "no parameters; the token rides in the Authorization header as `Token <token>`"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free; data.credits.wallet_usd is the prepaid balance in USD. A bad or missing token gets HTTP 401."}
+    docs_url: https://docs.generect.com/api-reference/endpoint/accounts/get-account-me
+
+  - id: generect.people.search.count
+    added: '2026-10-28'
+    capability: people.search.count
+    platform: people
+    domain: search
+    scope: any_account
+    method: POST
+    path: /api/v1/search/database/leads/count/
+    body_allowlist: true
+    name: "Count people before you search"
+    summary: "Count matching cached leads before running a database lead search."
+    input:
+      bodyType: json
+      body:
+        <<: &lead_filters_body
+          job_titles: {type: "array[string]", required: false, note: "a lead matches any one title; more titles widen the search", example: ["CEO"]}
+          seniorities: {type: "array[string]", required: false, note: "seniority at the current employer, e.g. c_suite, vp, director, manager, senior, entry, owner, partner, training, unpaid. Matched exactly: an unknown value returns 0 rows, not a 400", example: ["c_suite"]}
+          locations: {type: "array[string]", required: false, note: "where the lead lives: city, region or country names; an unknown value is a 400", example: ["United States"]}
+          exclude_locations: {type: "array[string]", required: false}
+          company_locations: {type: "array[string]", required: false, note: "the employer's HQ location"}
+          exclude_company_locations: {type: "array[string]", required: false}
+          company_industries: {type: "array[string]", required: false, note: "LinkedIn industry names, e.g. Software Development. Matched exactly: an unknown value returns 0 rows, not a 400", example: ["Software Development"]}
+          exclude_company_industries: {type: "array[string]", required: false}
+          company_headcounts: {type: "array[string]", required: false, note: "one of 1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10001+", example: ["11-50"]}
+          exclude_company_headcounts: {type: "array[string]", required: false}
+          company_types: {type: "array[string]", required: false, note: "Public Company, Privately Held, Non Profit, Government Agency, Educational, Self Employed, Partnership, Self Owned"}
+          company_name: {type: string, required: false, note: "one employer by name; mutually exclusive with company_link and company_id"}
+          company_link: {type: string, required: false, note: "one employer by LinkedIn company URL", example: "https://www.linkedin.com/company/generect/"}
+          company_id: {type: integer, required: false, note: "one employer by LinkedIn numeric company id"}
+          exclude_names: {type: "array[string]", required: false, note: "skip leads by full name"}
+          exclude_ids: {type: "array[string]", required: false, note: "skip leads by id"}
+          filter_empty_vars: {type: "array[string]", required: false, note: "skip leads missing any of job_started_on, profile_photo, started_at_position, company_website"}
+          strict: {type: "array[string]", required: false, note: "fields to match strictly, e.g. company_locations"}
+          skip_truncated_names: {type: boolean, required: false, note: "drop leads whose first or last name is one character"}
+        gender: {type: "array[string]", required: false, note: "male, female or unknown; inferred from the name, known for about a third of leads"}
+    test_request: {body: {job_titles: ["CEO"], company_link: "https://www.linkedin.com/company/generect/"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free: a cached count, meta.amount_charged 0"}
+    docs_url: https://docs.generect.com/api-reference/endpoint/search/count-database-leads
+
+  - id: generect.people.search
+    added: '2026-10-28'
+    capability: people.search
+    platform: people
+    domain: search
+    scope: any_account
+    method: POST
+    path: /api/v1/search/database/leads/
+    body_allowlist: true
+    name: "Search people (database)"
+    summary: "Search cached lead data with fast database filters."
+    input:
+      bodyType: json
+      body:
+        <<: *lead_filters_body
+        gender: {type: "array[string]", required: false, note: "male, female or unknown; inferred from the name, known for about a third of leads"}
+        detail: {type: string, required: false, default: full, note: "full (billed per row) or thin: id, name, title, seniority, location and employer at $0, up to 2,000 rows per account per UTC day; a spent quota is a 429 with Retry-After, never billed", example: full}
+        limit_by: {type: integer, required: false, min: 1, max: 2400, note: "rows to return and the price dial: each full row is billed", example: 1}
+        offset_by: {type: integer, required: false, min: 0, max: 2399, note: "rows to skip, for pagination"}
+    test_request: {body: {job_titles: ["CEO"], company_link: "https://www.linkedin.com/company/generect/", limit_by: 1}}
+    cost: &cached_row
+      type: per_result
+      value: 0.02
+      currency: USD
+      per: 1
+      unit: row
+      reported_charge: {path: meta.amount_charged, unit: usd}
+      source: docs
+      source_url: https://docs.generect.com/billing/pricing
+      checked: '2026-10-28'
+      confidence: documented
+      note: "$0.02 per full row returned; zero rows cost $0. \"detail\": \"thin\" rows are $0 within the daily quota (meta.free_tier reports it). The exact charge is meta.amount_charged. Observed 2026-10-28: 1 full row charged 0.02, 1 thin row 0, 0 rows 0."
+    docs_url: https://docs.generect.com/api-reference/endpoint/search/database-leads
+
+  - id: generect.people.search.realtime
+    added: '2026-10-28'
+    capability: people.search
+    platform: people
+    domain: search
+    scope: any_account
+    method: POST
+    path: /api/v1/search/realtime/leads/
+    body_allowlist: true
+    name: "Search people (real-time)"
+    summary: "Search fresh lead data with full realtime filters."
+    input:
+      bodyType: json
+      body:
+        <<: *lead_filters_body
+        functions: {type: "array[string]", required: false, note: "job functions, e.g. Engineering, Marketing, Sales"}
+        exclude_functions: {type: "array[string]", required: false}
+        keywords: {type: "array[string]", required: false, note: "profile keywords"}
+        past_job_titles: {type: "array[string]", required: false}
+        past_company_names: {type: "array[string]", required: false}
+        years_of_experience: {type: "array[string]", required: false}
+        years_in_position: {type: "array[string]", required: false}
+        years_in_company: {type: "array[string]", required: false}
+        changed_jobs: {type: boolean, required: false, note: "changed jobs in the last 90 days"}
+        posted_on_linkedin: {type: boolean, required: false, note: "posted on LinkedIn in the last 30 days"}
+        schools: {type: "array[string]", required: false}
+        first_name: {type: "array[string]", required: false}
+        last_name: {type: "array[string]", required: false}
+        limit_by: {type: integer, required: false, min: 1, note: "rows to return and the price dial: each row is billed", example: 1}
+        offset_by: {type: integer, required: false, min: 0}
+      note: "gender is database-only and rejected here; include_full_profile (a higher per-row price) is not offered on this row"
+    test_request: {body: {job_titles: ["CEO"], company_link: "https://www.linkedin.com/company/generect/", limit_by: 1}}
+    cost: &realtime_row
+      type: per_result
+      value: 0.04
+      currency: USD
+      per: 1
+      unit: row
+      reported_charge: {path: meta.amount_charged, unit: usd}
+      source: docs
+      source_url: https://docs.generect.com/billing/pricing
+      checked: '2026-10-28'
+      confidence: documented
+      note: "$0.04 per row returned from live sources; zero rows cost $0. The exact charge is meta.amount_charged. Observed 2026-10-28: 1 row charged 0.04, 3.0 s."
+    docs_url: https://docs.generect.com/api-reference/endpoint/search/realtime-leads
+
+  - id: generect.companies.search.count
+    added: '2026-10-28'
+    capability: companies.search.count
+    platform: companies
+    domain: search
+    scope: any_account
+    method: POST
+    path: /api/v1/search/database/companies/count/
+    body_allowlist: true
+    name: "Count companies before you search"
+    summary: "Count matching cached companies before running a database company search."
+    input:
+      bodyType: json
+      body: &company_filters_body
+        industries: {type: "array[string]", required: false, note: "LinkedIn industry names, e.g. Software Development", example: ["Software Development"]}
+        exclude_industries: {type: "array[string]", required: false}
+        sub_industries: {type: boolean, required: false, note: "false (default) also matches an industry's children in LinkedIn's taxonomy"}
+        headcounts: {type: "array[string]", required: false, note: "one of 1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10001+", example: ["11-50"]}
+        locations: {type: "array[string]", required: false, note: "HQ city, region or country names; an unknown value is a 400", example: ["Israel"]}
+        exclude_locations: {type: "array[string]", required: false}
+        company_types: {type: "array[string]", required: false}
+        founded_year: {type: object, required: false, note: "a list of years or {\"min\", \"max\"}; known for about 57% of companies"}
+        exclude_ids: {type: "array[string]", required: false}
+        exclude_domains: {type: "array[string]", required: false}
+        strict: {type: "array[string]", required: false}
+        apply_domain_blocklist: {type: boolean, required: false, note: "drop staffing agencies, directories and similar low-signal records"}
+    test_request: {body: {industries: ["Software Development"], headcounts: ["11-50"], locations: ["Israel"]}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free: a cached count, meta.amount_charged 0"}
+    docs_url: https://docs.generect.com/api-reference/endpoint/search/count-database-companies
+
+  - id: generect.companies.search
+    added: '2026-10-28'
+    capability: companies.search
+    platform: companies
+    domain: search
+    scope: any_account
+    method: POST
+    path: /api/v1/search/database/companies/
+    body_allowlist: true
+    name: "Search companies (database)"
+    summary: "Search cached company data with database filters."
+    input:
+      bodyType: json
+      body:
+        <<: *company_filters_body
+        detail: {type: string, required: false, default: full, note: "full (billed per row) or thin: name, industry, size and location at $0, up to 2,000 rows per account per UTC day", example: full}
+        limit_by: {type: integer, required: false, min: 1, max: 1600, note: "rows to return and the price dial: each full row is billed", example: 1}
+        offset_by: {type: integer, required: false, min: 0, max: 1599}
+    test_request: {body: {industries: ["Software Development"], headcounts: ["11-50"], locations: ["Israel"], limit_by: 1}}
+    cost:
+      <<: *cached_row
+      note: "$0.02 per full company row returned; zero rows cost $0. \"detail\": \"thin\" rows are $0 within the daily quota. The exact charge is meta.amount_charged. Observed 2026-10-28: 1 full row charged 0.02, 1 thin row 0."
+    docs_url: https://docs.generect.com/api-reference/endpoint/search/database-companies
+
+  - id: generect.people.enrich
+    added: '2026-10-28'
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /api/v1/enrich/database/lead/
+    body_allowlist: true
+    name: "Enrich a person (database)"
+    summary: "Retrieve a full lead profile from cached data by Generect ID, LinkedIn URL, or email (reverse lookup)."
+    input: &lead_lookup
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false, note: "linkedin.com/in/{slug}, /in/{id} or a Sales Navigator lead URL", example: "https://www.linkedin.com/in/andrewkolp"}
+        email: {type: string, required: false, note: "a work email, for a reverse lookup"}
+        id: {type: string, required: false, note: "a Generect lead id from a search"}
+        get_full_experience: {type: boolean, required: false, default: true, note: "false returns current positions only; free either way"}
+        inexact_company: {type: boolean, required: false, note: "fall back to a fuzzy company match; free"}
+      note: "exactly one of linkedin_url, email or id; anything else is a 400"
+    test_request: {body: {linkedin_url: "https://www.linkedin.com/in/andrewkolp"}}
+    cost: &cached_hit
+      type: per_success
+      value: 0.02
+      currency: USD
+      per: 1
+      unit: record
+      reported_charge: {path: meta.amount_charged, unit: usd}
+      source: docs
+      source_url: https://docs.generect.com/billing/pricing
+      checked: '2026-10-28'
+      confidence: documented
+      note: "$0.02 per profile returned; a profile that does not exist is a free 400 (see miss). Observed 2026-10-28: hit charged 0.02 (0.8 s), miss $0 (7.0 s)."
+    miss:
+      status: 400
+      when: "detail == 'Person does not exist'"
+      means: "no such person: a normal outcome (and free), not an API failure (400 with detail \"Person does not exist\"; other 400 bodies, e.g. \"Bad url\" or a field map, are real request errors)"
+    docs_url: https://docs.generect.com/api-reference/endpoint/enrich/enrich-database-lead
+
+  - id: generect.people.enrich.realtime
+    added: '2026-10-28'
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /api/v1/enrich/realtime/lead/
+    body_allowlist: true
+    name: "Enrich a person (real-time)"
+    summary: "Retrieve a fresh lead profile, including reverse email lookup, by Generect ID, LinkedIn URL, or email."
+    input: *lead_lookup
+    test_request: {body: {linkedin_url: "https://www.linkedin.com/in/andrewkolp"}}
+    cost: &realtime_hit
+      <<: *cached_hit
+      value: 0.04
+      note: "$0.04 per profile read live; a profile that does not exist is a free 400 (see miss). Observed 2026-10-28: hit charged 0.04 (4.6 s), miss $0 (6.7 s)."
+    miss:
+      status: 400
+      when: "detail == 'Person does not exist'"
+      means: "no such person: a normal outcome (and free), not an API failure (400 with detail \"Person does not exist\"; other 400 bodies are real request errors)"
+    docs_url: https://docs.generect.com/api-reference/endpoint/enrich/enrich-realtime-lead
+
+  - id: generect.companies.enrich
+    added: '2026-10-28'
+    capability: companies.enrich
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /api/v1/enrich/database/company/
+    body_allowlist: true
+    name: "Enrich a company (database)"
+    summary: "Retrieve a company profile from cached data by Generect ID, LinkedIn URL, domain, or company name."
+    input: &company_lookup
+      bodyType: json
+      body:
+        domain: {type: string, required: false, note: "website domain without protocol", example: "generect.com"}
+        linkedin_url: {type: string, required: false, note: "linkedin.com/company/{slug}, /company/{id} or a Sales Navigator company URL"}
+        name: {type: string, required: false, note: "company name, fuzzy matched"}
+        id: {type: string, required: false, note: "a Generect company id from a search"}
+      note: "exactly one of domain, linkedin_url, name or id; anything else is a 400"
+    test_request: {body: {domain: "generect.com"}}
+    cost:
+      <<: *cached_hit
+      note: "$0.02 per company returned; a company that does not exist is a free 400 (see miss). Observed 2026-10-28: hit charged 0.02 (0.1 s), miss $0 (9.0 s)."
+    miss:
+      status: 400
+      when: "detail == 'Company does not exist'"
+      means: "no such company: a normal outcome (and free), not an API failure (400 with detail \"Company does not exist\"; other 400 bodies are real request errors)"
+    docs_url: https://docs.generect.com/api-reference/endpoint/enrich/enrich-database-company
+
+  - id: generect.companies.enrich.realtime
+    added: '2026-10-28'
+    capability: companies.enrich
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /api/v1/enrich/realtime/company/
+    body_allowlist: true
+    name: "Enrich a company (real-time)"
+    summary: "Retrieve a fresh company profile by Generect ID, LinkedIn URL, domain, or company name."
+    input: *company_lookup
+    test_request: {body: {linkedin_url: "https://www.linkedin.com/company/generect/"}}
+    cost:
+      <<: *realtime_hit
+      note: "$0.04 per company read live; a company that does not exist is a free 400 (see miss). Observed 2026-10-28: hit charged 0.04 (0.9 s), miss $0 (0.7 s)."
+    miss:
+      status: 400
+      when: "detail == 'Company does not exist'"
+      means: "no such company: a normal outcome (and free), not an API failure (400 with detail \"Company does not exist\"; other 400 bodies are real request errors)"
+    docs_url: https://docs.generect.com/api-reference/endpoint/enrich/enrich-realtime-company
+
+  - id: generect.people.email.find
+    added: '2026-10-28'
+    capability: people.email.find
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /api/v1/email/find/
+    body_allowlist: true
+    name: "Find a verified work email"
+    summary: "Reveal a work email for a lead from Preview, or find a verified email from a name and company domain."
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false, example: "https://www.linkedin.com/in/andrewkolp"}
+        first_name: {type: string, required: false, note: "with last_name and domain"}
+        last_name: {type: string, required: false}
+        middle_name: {type: string, required: false, note: "optional; widens the pattern set"}
+        domain: {type: string, required: false, note: "the company's email domain"}
+        lead_id: {type: string, required: false, note: "a Generect lead id from a search"}
+      note: "one of linkedin_url, lead_id, or first_name + last_name + domain. data.valid_email is the found address and null on a miss; data.result is valid, invalid or unknown; data.catch_all flags a catch-all domain"
+    test_request: {body: {linkedin_url: "https://www.linkedin.com/in/andrewkolp"}}
+    cost:
+      type: per_success
+      value: 0.02
+      currency: USD
+      per: 1
+      unit: result
+      reported_charge: {path: meta.amount_charged, unit: usd}
+      source: docs
+      source_url: https://docs.generect.com/billing/pricing
+      checked: '2026-10-28'
+      confidence: documented
+      note: "$0.02 per valid email found; no email found is $0 (HTTP 200, data.valid_email null). Observed 2026-10-28: hit by LinkedIn URL and by name + domain charged 0.02 each, a miss $0 (8.5 s)."
+    docs_url: https://docs.generect.com/api-reference/endpoint/emails/email-finder
+
+  - id: generect.people.email.verify
+    added: '2026-10-28'
+    capability: people.email.verify
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /api/v1/email/validate/
+    body_allowlist: true
+    name: "Verify email addresses"
+    summary: "Clean and verify email lists to improve campaign success rates and lower bounce rates."
+    input:
+      bodyType: json
+      body:
+        emails: {type: "array[string]", required: true, note: "addresses to check; keep batches to about 50, the call is synchronous", example: ["andrii.kolpakov@generect.com"]}
+      note: "one result per address in input order: result valid, invalid, catch_all or unknown, plus exist and catch_all"
+    test_request: {body: {emails: ["andrii.kolpakov@generect.com"]}}
+    cost:
+      type: per_result
+      value: 0.005
+      currency: USD
+      per: 1
+      unit: result
+      reported_charge: {path: meta.amount_charged, unit: usd}
+      source: docs
+      source_url: https://docs.generect.com/billing/pricing
+      checked: '2026-10-28'
+      confidence: documented
+      note: "$0.005 per address checked, whatever the verdict: the verdict is the result. Observed 2026-10-28: 1 address charged 0.005."
+    docs_url: https://docs.generect.com/api-reference/endpoint/emails/email-validation
+
+  - id: generect.people.phone.find
+    added: '2026-10-28'
+    capability: people.phone.find
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /api/v1/phone/find/
+    body_allowlist: true
+    name: "Find a phone number"
+    summary: "Find a phone number by `lead_id`, `linkedin_url`, or by `first_name` + `last_name` + `company`."
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false, example: "https://www.linkedin.com/in/treg-deliberate-miss-0000000000"}
+        first_name: {type: string, required: false, note: "with last_name and company"}
+        last_name: {type: string, required: false}
+        company: {type: string, required: false, note: "company name or domain"}
+        lead_id: {type: string, required: false, note: "a Generect lead id from a search"}
+      note: "one of linkedin_url, lead_id, or first_name + last_name + company. data.phone.status is FOUND or NOT_FOUND; data.phone.number is E.164 and null on a miss"
+    test_request: {body: {linkedin_url: "https://www.linkedin.com/in/treg-deliberate-miss-0000000000"}}
+    cost:
+      type: per_success
+      value: 0.40
+      currency: USD
+      per: 1
+      unit: result
+      reported_charge: {path: meta.amount_charged, unit: usd}
+      source: docs
+      source_url: https://docs.generect.com/billing/pricing
+      checked: '2026-10-28'
+      confidence: documented
+      note: "$0.40 per phone found; NOT_FOUND is $0. The test_request is a DELIBERATE MISS (a LinkedIn slug that does not exist), so verification costs $0: it answers 200, phone.status NOT_FOUND, meta.amount_charged 0 (7.0 s, observed 2026-10-28). The hit price was observed once on a real profile the same day: charged 0.40, 0.5 s."
+    docs_url: https://docs.generect.com/api-reference/endpoint/phone/phone-finder
