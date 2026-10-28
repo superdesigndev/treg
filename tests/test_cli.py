@@ -131,6 +131,66 @@ def test_login_exits_with_helpful_message_when_localhost_unreachable(monkeypatch
     assert cli.PRODUCTION_BASE_URL in error_msg
 
 
+def test_login_honours_treg_url_over_config_base_url(monkeypatch):
+    """`TREG_URL` names the registry for every command (`_registry_url`). `treg login` must not
+    start the email or browser handshake against the config's `base_url` (default treg.to)."""
+    monkeypatch.setenv("TREG_URL", "https://treg.example.internal/")
+    posted, polled = [], []
+
+    class Response:
+        status_code = 200
+        cookies = {}
+        def __init__(self, body): self.body = body
+        def json(self): return self.body
+
+    def fake_post(url, **kw):
+        posted.append(url)
+        if url.endswith("/auth/email/start"):
+            return Response({})
+        if url.endswith("/auth/email/verify"):
+            return Response({"token": "tok", "email": "me@example.com"})
+        return Response({"login_id": "lid", "code": "123456"})
+
+    def fake_get(url, **kw):
+        polled.append(url)
+        return Response({"token": "tok", "email": "me@example.com", "active_org": "team"})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr("builtins.input", lambda *a: "000000")
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url))
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+    monkeypatch.setattr(cli, "_save_config", lambda cfg: None)
+    monkeypatch.setattr(cli, "_pick_active_org", lambda cfg, **kw: None)
+    monkeypatch.setattr(cli, "_pin_token_to_active_org", lambda cfg, **kw: None)
+    monkeypatch.setattr(cli, "_maybe_offer_onboarding", lambda cfg: onboarded.append(cfg))
+    opened, onboarded = [], []
+
+    cfg = {"base_url": "https://treg.to", "token": None}
+    cli.cmd_login(type("A", (), {"token": None, "email": "me@example.com"})(), dict(cfg))   # email door
+    cli.cmd_login(type("A", (), {"token": None, "email": None})(), dict(cfg))               # browser door
+
+    assert posted == ["https://treg.example.internal/auth/email/start",
+                      "https://treg.example.internal/auth/email/verify",
+                      "https://treg.example.internal/auth/cli/start"]
+    assert polled == ["https://treg.example.internal/auth/cli/poll"]
+    assert opened == ["https://treg.example.internal/login?cli=lid#code=123456"]
+
+
+def test_login_onboarding_probe_honours_treg_url(monkeypatch):
+    """The post-login onboarding probe sends the fresh token to the registry TREG_URL names."""
+    monkeypatch.setenv("TREG_URL", "https://treg.example.internal")
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    seen = []
+
+    class Response:
+        def json(self): return {"onboarded": True}
+
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: seen.append(url) or Response())
+    cli._maybe_offer_onboarding({"base_url": "https://treg.to", "token": "tok"})
+    assert seen == ["https://treg.example.internal/auth/me"]
+
+
 def test_token_org_claim_reads_a_team_pinned_token():
     """`_token_org_claim` decodes the org slug a team-pinned identity token carries — without the
     signature check (the server still authorizes), and returning None on anything else."""
