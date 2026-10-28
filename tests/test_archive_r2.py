@@ -320,7 +320,7 @@ async def test_arena_worker_owns_object_store_and_flushes_read_events(r2, monkey
     from contextlib import asynccontextmanager
     from types import SimpleNamespace
     from treg import analytics, worker
-    from treg.application import arena_insights
+    from treg.application import arena_insights, web_arena, web_arena_calls
     from treg.infra import object_store
     steps = []
     @asynccontextmanager
@@ -342,6 +342,10 @@ async def test_arena_worker_owns_object_store_and_flushes_read_events(r2, monkey
     monkeypatch.setattr(db, 'verify_db', verified)
     monkeypatch.setattr(arena_insights, 'drain', run)
     monkeypatch.setattr(analytics, 'drain', flushed)
+    monkeypatch.setattr(web_arena, 'enabled', lambda: False)
+    async def unseeded():
+        return False
+    monkeypatch.setattr(web_arena_calls, 'seeded', unseeded)
     assert await worker._arena_insights(SimpleNamespace(max_seconds=1)) == 0
     assert steps == ['open', 'run', 'flush', 'close']
     assert archive_bodies._store is None
