@@ -57,6 +57,8 @@ _TABLE: list[Signature] = [
     Signature("anymailfinder", 402, r"not have enough credits", "balance", tripwire=True),
     Signature("findymail", 402, r"not enough credits", "balance", tripwire=True),
     Signature("leadsforge", 402, r"insufficient_credits", "balance"),
+    # Generect: an empty prepaid balance is a 402 {"status": "error", "status_code": 402, "detail": "Insufficient funds in the account."}.
+    Signature("generect", 402, r"insufficient funds in the account", "balance"),
     # MobiusEngine Jobs Data: an empty prepaid balance is a 402 {"error": {"code": "insufficient_balance", ...}}.
     Signature("mobiusengine-jobs", 402, r"insufficient_balance", "balance", tripwire=True),
     Signature("leadmagic", 402, r"insufficient_credits", "balance"),

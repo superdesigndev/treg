@@ -424,6 +424,16 @@ async def _blitzapi(c, key):
                     f"per-endpoint limit {rps if type(rps) is int else 'unknown'} requests/s"}
 
 
+async def _generect(c, key):
+    # Free: GET /api/v1/accounts/me/ spends nothing and answers 401 for a bad token. `wallet_usd` is the prepaid
+    # balance in dollars (docs.generect.com/api-reference/endpoint/accounts/get-account-me).
+    d = await _get(c, "https://api.generect.com/api/v1/accounts/me/", headers={"Authorization": f"Token {key}"})
+    credits = (d.get("data") or {}).get("credits") if isinstance(d, dict) else None
+    left = _balance((credits or {}).get("wallet_usd"), "Generect")
+    return {"value": left, "unit": "USD left",
+            "note": "prepaid USD balance; HTTP 402 \"Insufficient funds in the account.\" at zero"}
+
+
 async def _mobiusengine_jobs(c, key):
     # Free: GET /v1/balance spends nothing and answers 401 for a bad key. A wallet account answers its prepaid
     # dollars; an account on a monthly plan answers mode "plan" and no balance, which is not a usable slot.
@@ -1101,6 +1111,7 @@ BALANCE_ROUTES = {
     "fetchinio": _fetchinio,
     "sixtyfour": _sixtyfour,
     "blitzapi": _blitzapi,
+    "generect": _generect,
     "mobiusengine_jobs": _mobiusengine_jobs,
     "prospeo": _prospeo,
     "aiark": _aiark,
