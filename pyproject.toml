@@ -53,6 +53,7 @@ server = [
     "obstore>=0.11,<0.12",
     "numpy>=2.1",  # find's card vectors: one matrix product per query (application/find_index.py)
     "pillow>=11",  # re-draws uploaded pictures before they are stored (src/treg/infra/imaging.py)
+    "pympp[tempo,x402]>=0.17",  # agent payments: MPP and x402 (src/treg/infra/agent_payments/) — server-side only
 ]
 # The LOCAL PROXY (`treg shell` catching the agent's own outgoing calls). It needs to generate a
 # certificate authority on the machine, and `cryptography` is a compiled package — putting it in the
@@ -166,6 +167,18 @@ ignore_imports = [
 allow_indirect_imports = true
 unmatched_ignore_imports_alerting = "error"
 as_packages = false
+
+[[tool.importlinter.contracts]]
+name = "Payment protocol SDKs live only in the agent-payments infrastructure"
+type = "forbidden"
+source_modules = ["treg"]
+forbidden_modules = ["mpp", "x402"]
+ignore_imports = [
+    "treg.infra.agent_payments.tempo -> mpp",
+    "treg.infra.agent_payments.x402 -> x402",
+]
+allow_indirect_imports = true
+unmatched_ignore_imports_alerting = "error"
 
 [[tool.importlinter.contracts]]
 name = "Money domain does not depend on best-effort audit"
