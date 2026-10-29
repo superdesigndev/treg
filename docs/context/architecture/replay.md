@@ -8,11 +8,15 @@ sources:
   - src/treg/application/replay/engine.py
   - src/treg/application/replay/fixtures.py
   - src/treg/application/replay/differ.py
+  - src/treg/application/replay/export.py
   - tests/test_replay.py
+  - tests/test_replay_export.py
 related:
   - architecture/money.md
   - architecture/proxy-model.md
   - architecture/catalog.md
+  - architecture/archive.md
+  - ops/deploy.md
 ---
 
 # Replay
@@ -70,16 +74,18 @@ One JSON object per line, bodies in base64, a fidelity flag on each part:
 { "rid": "<opaque>", "endpoint_id": "...", "class": "hit|miss|non2xx|async_terminal",
   "captured_at": "...", "source": "archive|error_evidence|async_terminal|fixture",
   "request":  { "method": "...", "vendor_url": "...", "query_items": [[k, v]], "path_params": {},
-                "body_b64": "...", "accept": {}, "fidelity": "exact|reconstructed|snippet" },
+                "body_b64": "...", "accept": {},
+                "fidelity": "exact|reconstructed|snippet|unavailable" },
   "response": { "status": 200, "media_type": "...", "headers": null, "body_b64": "...",
-                "fidelity": "exact|snippet_redacted_truncated" },
+                "fidelity": "exact|snippet_redacted_truncated", "headers_fidelity": "synthesized" },
   "recorded": { "estimate_micro": 0, "observed_micro": null, "charged_micro": 0, "hit": null,
                 "verdict": null, "credential_tier": "platform", "routed_child": false },
   "async":    { "descriptor": {}, "settlement_basis": {}, "status": "...", "settled_micro": 0 } }
 ```
 
 `query_items` is the caller's query as pricing reads it, path parameters included;
-`path_params` names which of them the path consumed. `recorded.routed_child` replays the settle as
+`path_params` names which of them the path consumed. `headers_fidelity` is present only when the
+headers were synthesized rather than recorded. `recorded.routed_child` replays the settle as
 a routed child. The engine reads nothing else from `recorded`: production's own amounts are carried
 for whoever extracted the corpus, not compared. A record holds no team, member, key, call reference
 or IP.
@@ -93,6 +99,77 @@ declared miss status, a 2xx error envelope, a 400 and a 500, and for an async en
 success, failure and billed-failure documents. Requests come from `test_request`, so a record's
 request fidelity is `reconstructed` and its response carries no headers. Nothing in it is
 customer data, and it is generated, never committed.
+
+## The production corpus
+
+`treg-worker admin export-replay-corpus` (`export.py`) writes the same records from what
+production already keeps, so a change can be replayed on real answers as well as on fixtures. It
+is the one part of the package that reads a database and the archive.
+
+```bash
+treg-worker admin export-replay-corpus --endpoints <id>,<id> --out <dir>/corpus.jsonl \
+  --manifest <dir>/manifest.jsonl [--per-class 20] [--days 30] [--statement-timeout-s 20]
+treg-worker admin export-replay-corpus --provider <name>,<name> --out ... --manifest ...
+```
+
+**Selection.** The named endpoints, or every priced endpoint of the named providers; which
+endpoints a change touches is the caller's question (the fingerprints above answer it). An
+unknown name exits 2 before anything is read. Only the calls a replay models are read: metered
+calls on treg's own key (`credential_tier: platform`, so no own key, overflow child or routed
+parent), of kind `call`, never a cached hit or a refusal, inside the window. Per endpoint and
+class, up to `--per-class` records (default 20), one per question first (the archive key for an
+answer, `params_hash` for a failure, the outcome and verdict for a task), newest first, then
+repeats, newest first.
+
+| Class | Rows | Source |
+|---|---|---|
+| `hit` | 2xx with `hit`, or no verdict and a charge | the archive key's request, the exact snapshot the call received |
+| `miss` | 2xx judged a miss, or no verdict and no charge | the same |
+| `non2xx` | a provider status outside 2xx with failure evidence inside its 14-day retention, purged or not | `error_request` and `error_response` |
+| `async_terminal` | a settled or released task with its terminal answer archived | the task row and that answer |
+
+**Fidelity, with what production keeps today.**
+
+- The archive keeps the vendor-facing URL. The caller's query comes back from it by matching the
+  endpoint's path template: the `{placeholder}` values become path parameters, and the template's
+  fixed query is removed. Such a request is `reconstructed`; one with neither is `exact`.
+- A provider whose charge is a response header (`settle._CREDIT_HEADERS`) gets that header back,
+  computed from the recorded `cost_observed_micro` as the exact inverse of the settle's
+  conversion (`headers_fidelity: synthesized`). No observed cost means no header, which settles
+  as unreported, as the call did.
+- A failure is a `snippet` request and a `snippet_redacted_truncated` response: the redacted,
+  truncated evidence, with the allowlisted headers it inlines parsed back into `headers`.
+- A task's request is `reconstructed` from a table basis, the only basis that keeps it, and
+  `unavailable` otherwise; the task settles on its own frozen basis either way.
+- A 2xx answer production never kept is counted, never invented: `expect_unavailable` on an
+  endpoint that declares `expect` (an answer that failed it is not recorded), `not_archived`
+  otherwise, `no_body` or `policy_forbidden` for a key whose bytes are not kept.
+
+**Privacy.**
+
+- A record carries no team, member, key, call reference or IP; `captured_at` is the day. The
+  manifest maps each `rid` to its `callrecord.id` (and a task's call id), for whoever debugs the
+  run; it never belongs in a report.
+- A team that no longer exists, or that is opted out of the archive when the export runs, is
+  never read; erasing a team's archive requires that opt-out first. The export reads only
+  platform-key answers, which erasure leaves by design (archive.md, "Opting out").
+- A record whose request, answer or evidence contains any spelling of treg's own credential for
+  the provider (`evidence._secret_renderings`, every account, as is or percent-decoded) is
+  dropped, and an endpoint whose credentials cannot be rendered exports nothing.
+- Both files are created new, readable by their owner only, and removed when the run fails. The
+  command prints counts per endpoint and class, with the reason for every record it dropped; a
+  body never reaches its output or a log.
+
+**Load.** One endpoint at a time; one class query at a time through
+`ix_callrecord_endpoint_id_created_at`, each a short session reading at most five times
+`--per-class` rows under a statement timeout. The sessions come from the worker process's API
+pool, as every `treg-worker` command's do: nothing else runs in that process, so the export
+competes with no request for a slot. A query that times out is retried on
+half its window, three times, after which that class reports `timed_out`. Answers are selected by
+the Arena reader's exact-hash selection (`arena_insights._evidence_pointers`) and read through
+`archive_bodies.read` (R2 first under the result read switch, the database as fallback) after the
+session closes, eight at a time; terminal answers through `archive.load_terminal_snapshots`. How
+to run it against a hosted database is in ops/deploy.md, "Worker commands".
 
 ## Running it
 

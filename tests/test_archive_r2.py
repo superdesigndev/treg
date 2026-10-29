@@ -66,7 +66,7 @@ async def snapshots():
         return (await s.execute(select(ArchiveSnapshot).order_by(ArchiveSnapshot.id))).scalars().all()
 
 
-@pytest.mark.parametrize('path', ['lookup', 'result', 'terminal', 'observation', 'initialization', 'admin', 'arena'])
+@pytest.mark.parametrize('path', ['lookup', 'result', 'terminal', 'observation', 'initialization', 'admin', 'arena', 'replay'])
 @pytest.mark.parametrize('outcome', ['r2', 'db_fallback', 'unavailable'])
 async def test_legacy_read_reports_final_source(r2, monkeypatch, path, outcome):
     from treg import analytics

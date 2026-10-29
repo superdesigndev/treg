@@ -252,6 +252,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/replay/__main__.py` | architecture/replay.md |
 | `src/treg/application/replay/differ.py` | architecture/replay.md |
 | `src/treg/application/replay/engine.py` | architecture/replay.md |
+| `src/treg/application/replay/export.py` | architecture/replay.md |
 | `src/treg/application/replay/fixtures.py` | architecture/replay.md |
 | `src/treg/application/replay/records.py` | architecture/replay.md |
 | `src/treg/application/search_experiment.py` | architecture/search-experiment.md |
@@ -811,6 +812,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_relay_quota_admission.py` | architecture/org-endpoint-quota.md |
 | `tests/test_released_cli_compat.py` | interface/cli.md |
 | `tests/test_replay.py` | architecture/replay.md |
+| `tests/test_replay_export.py` | architecture/replay.md |
 | `tests/test_reviews.py` | architecture/feedback.md |
 | `tests/test_route_cost_ceiling.py` | architecture/catalog.md |
 | `tests/test_routing.py` | architecture/catalog.md |
@@ -863,7 +865,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/org-traffic.md` | `org_traffic.py`, `structured_logging.py`, `bootstrap.py`, `call.py`, `table.py`, `mcp.py`, `types.py`, `service.py`, `test_org_traffic.py`, `test_org_concurrency.py` |
 | `architecture/policy-extensions.md` | `policy.py`, `bootstrap.py`, `signup.py`, `promotions.py`, `test_policy.py` |
 | `architecture/proxy-model.md` | `relay.py`, `jsontext.py`, `ssrf.py`, `api.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `asynctasks.py`, `keyslots.py`, `0069_platform_key_slot.py`, `test_platform_accounts.py`, `client_identity.py`, `call_surface.py`, `sandbox_identity.py`, `access.py`, `publicdemo.py`, `usage.py`, `call.py`, `limits.py`, `test_ssrf_public_addresses.py`, `test_call_application_contract.py`, `test_call_cancellation.py`, `test_call_response_limits.py`, `test_error_capture.py`, `test_marketplace_call.py`, `test_oauth_billed.py`, `test_passthrough.py`, `test_tag_billing.py`, `test_tag_billing_adversarial.py`, `test_call_architecture.py`, `test_asynctasks.py`, `test_relay_content_length.py` |
-| `architecture/replay.md` | `__init__.py`, `__main__.py`, `records.py`, `engine.py`, `fixtures.py`, `differ.py`, `test_replay.py` |
+| `architecture/replay.md` | `__init__.py`, `__main__.py`, `records.py`, `engine.py`, `fixtures.py`, `differ.py`, `export.py`, `test_replay.py`, `test_replay_export.py` |
 | `architecture/search-experiment.md` | `catalog_search.py`, `search_experiment.py`, `interleave.py`, `judge.py`, `0041_searchlog.py`, `0056_searchlog_verdict.py`, `search_experiment_report.sql`, `search_agent_bench.py`, `test_search_experiment.py`, `test_catalog_search.py`, `test_search_agent_bench.py` |
 | `architecture/shadow.md` | `shadow.py`, `shadow.py`, `0086_shadow_pairs.py`, `test_shadow.py` |
 | `architecture/showcase.md` | `__init__.py`, `showcase.py`, `showcase.py`, `__init__.py`, `images.py`, `images.py`, `imaging.py`, `media_store.py`, `0076_showcase_and_avatars.py`, `showcase.html`, `test_showcase_leaderboard.py`, `test_images.py` |

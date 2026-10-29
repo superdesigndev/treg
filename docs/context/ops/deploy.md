@@ -680,6 +680,14 @@ without importing the heavy database stack into the light `treg` CLI.
 - `treg-worker admin purge-ad-clicks` deletes email-to-click stash rows whose `updated_at` is past
   the 90-day window ([ads conversions](../architecture/ads-conversions.md)); schedule it daily.
   Without it, expired rows stop being read but stay in the database.
+- `treg-worker admin export-replay-corpus` writes recorded exchanges of the named endpoints (or
+  providers) as a [replay](../architecture/replay.md) corpus plus a private manifest. It is not a
+  schedule: run it on demand as a one-off job on the server's own image and environment (a Render
+  one-off job of the worker service, for example), so it reads through the database and archive
+  settings that service already has and needs no new credential. Write both files to a
+  temporary directory of the job, move them only to where the replay runs, and delete them when the
+  replay is done; the corpus holds customer answers, so no copy outlives the run. Each class query
+  is a short session bounded by `--statement-timeout-s`; the output is counts only.
 - `treg-worker hub check [--only <tool_id>] [--json]` runs every live [hub](../architecture/hub.md)
   tool's `check.json` once, as its maker (spends the maker's balance at step prices); a no-op with
   exit 0 when `hub_enabled` is off. Schedule it every 6 hours; health is derived from the last three
