@@ -1,0 +1,304 @@
+provider: fokals
+source:
+  docs: https://www.fokals.com/docs/connect#reference
+  openapi: https://api.fokals.com/v1/openapi.json
+  curated: '2026-10-27'
+# Company SIGNALS, no people: the technologies a company's website runs (with first-seen dates),
+# its open job postings, weekly buying-intent topics with surge flags, announcements, and dated
+# website changes. Companies only: no person records, emails or phones, so nothing here maps to
+# people.*.
+#
+# BILLING. A prepaid USD balance, charged per COMPANY RETURNED, by kind:
+#   a company in a search or a list   $0.04   ($0.02 past 10,000 a calendar month, $0.01 past 100,000)
+#   a company found by buying topic   $0.08   ($0.05 past 10,000)
+#   a full company profile            $0.10   ($0.06 past 10,000)
+#   a market breakdown                $0.05 a question
+# A company not found costs nothing. The same company is free again to the same account for 30
+# days (a profile also covers it in lists). Counting, identifying a company, listing filter values
+# and the account route are free. A call that would cost more than $0.25 answers with its price
+# and does nothing until it is sent again with `max_usd`. Every paid answer carries
+# data.charged_usd and data.balance_usd. GET https://api.fokals.com/v1/prices (no key) is the live rate card.
+limits: "60 calls a minute and 2,000 a day per account; at most 100 companies an answer"
+pricing_url: https://www.fokals.com/pricing
+
+proposed_capabilities:
+  # Reused as PredictLeads proposed them, so both providers sit on one shelf.
+  companies.tech_stack.users: "Find companies that use a given technology"
+  companies.connections: "Partners, customers, vendors and investors a company is linked to"
+  # New.
+  companies.intent.search: "Find companies showing buying intent in a topic"
+  companies.market.breakdown: "Split a set of companies by industry, country, size or technology"
+  companies.changes: "What changed lately at named companies: tools added or removed, announcements, website changes"
+
+endpoints:
+  - id: fokals.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /account
+    name: "Balance and prices"
+    summary: "The balance of the account the key belongs to, when its funds expire, what it has spent this month and what each call costs. Free."
+    input:
+      note: "no parameters; the key rides in the Authorization header as a bearer token"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free; the registry's health probe. A bad key answers 401 {\"error\":{\"code\":\"unauthorized\"}}"}
+    added: '2026-10-27'
+    docs_url: https://www.fokals.com/docs/connect#reference
+
+  - id: fokals.companies.search.count
+    domain: companies
+    capability: companies.search.count
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /count_companies
+    name: "Count companies"
+    summary: "Counts the companies that match a set of filters, and says what it would cost to get them. Free."
+    input:
+      body:
+        technology: {type: string, required: false, note: "a technology the website runs, by name", example: "Shopify"}
+        buying_topic: {type: string, required: false, note: "a buying topic by name or id (list_filters kind buying_topics)", example: "Marketing automation"}
+        hiring: {type: boolean, required: false, note: "true keeps only companies with open roles now", example: true}
+        industry: {type: string, required: false, note: "one of fashion_apparel, beauty_personal_care, software_saas, ... (list_filters kind industries)", example: "software_saas"}
+        country: {type: string, required: false, note: "two-letter code", example: "US"}
+    test_request:
+      body: {technology: "Shopify", hiring: true, country: "US"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free: count before paying for rows"}
+    added: '2026-10-27'
+    docs_url: https://www.fokals.com/docs/connect#reference
+
+  - id: fokals.companies.search
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /find_companies
+    name: "Find companies by signal"
+    summary: "Finds companies by what they show: a technology they run, whether they are hiring, an announcement they made lately, industry, business model, country."
+    input:
+      body:
+        technology: {type: string, required: false, example: "HubSpot"}
+        hiring: {type: boolean, required: false, example: true}
+        industry: {type: string, required: false, example: "software_saas"}
+        business_model: {type: string, required: false, note: "b2b | b2c | both", example: "b2b"}
+        country: {type: string, required: false, example: "US"}
+        announcement: {type: string, required: false, note: "an announcement type, e.g. funding (list_filters kind announcement_types)"}
+        announced_since: {type: string, required: false, note: "ISO date"}
+        changed_since: {type: string, required: false, note: "ISO date: latest change on or after"}
+        limit: {type: integer, required: false, note: "companies to return, at most 100. THIS IS THE PRICE DIAL", example: 1}
+        max_usd: {type: number, required: false, note: "the most the caller agreed to pay; needed above $0.25"}
+    test_request:
+      body: {technology: "HubSpot", hiring: true, country: "US", limit: 1}
+    cost:
+      type: per_result
+      value: 0.04
+      currency: USD
+      per: 1
+      unit: record
+      source: rate_card_api
+      source_url: https://api.fokals.com/v1/prices
+      checked: '2026-10-27'
+      confidence: documented
+      note: "per company returned; $0.02 past 10,000 companies a calendar month, $0.01 past 100,000; a company already paid for in the last 30 days is free"
+    added: '2026-10-27'
+    docs_url: https://www.fokals.com/docs/connect#reference
+
+  - id: fokals.companies.tech_stack.users
+    domain: companies
+    capability: companies.tech_stack.users
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /find_companies
+    name: "Find companies that run a technology"
+    summary: "The same search keyed on one technology: companies whose website runs it, latest changes first."
+    input:
+      body:
+        technology: {type: string, required: true, note: "by name; list_filters kind technologies lists them", example: "Klaviyo"}
+        changed_since: {type: string, required: false, note: "ISO date, to find recent adopters"}
+        country: {type: string, required: false, example: "GB"}
+        limit: {type: integer, required: false, note: "THIS IS THE PRICE DIAL", example: 1}
+    test_request:
+      body: {technology: "Klaviyo", country: "GB", limit: 1}
+    cost: {type: per_result, value: 0.04, currency: USD, per: 1, unit: record, source: rate_card_api, source_url: "https://api.fokals.com/v1/prices", checked: '2026-10-27', confidence: documented, note: "as fokals.companies.search"}
+    added: '2026-10-27'
+    docs_url: https://www.fokals.com/docs/connect#reference
+
+  - id: fokals.companies.intent.search
+    domain: companies
+    capability: companies.intent.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /find_companies
+    name: "Find companies by buying intent"
+    summary: "Companies showing signs of buying in a topic, strongest first, each with its weekly score (0 to 100), a surge flag and the dated evidence behind the score."
+    input:
+      body:
+        buying_topic: {type: string, required: true, note: "by name or id; list_filters kind buying_topics lists them", example: "Marketing automation"}
+        country: {type: string, required: false, example: "DE"}
+        limit: {type: integer, required: false, note: "THIS IS THE PRICE DIAL", example: 1}
+    test_request:
+      body: {buying_topic: "Marketing automation", limit: 1}
+    cost: {type: per_result, value: 0.08, currency: USD, per: 1, unit: record, source: rate_card_api, source_url: "https://api.fokals.com/v1/prices", checked: '2026-10-27', confidence: documented, note: "per company found by buying topic; $0.05 past 10,000 a calendar month"}
+    added: '2026-10-27'
+    docs_url: https://www.fokals.com/docs/connect#reference
+
+  - id: fokals.companies.enrich
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /enrich_companies
+    name: "Enrich a list of companies"
+    summary: "The caller's own companies, by website or name, each with industry and business model, the technologies its website runs, open roles and hiring, its buying topics and its latest changes."
+    input:
+      body:
+        companies: {type: "array[string]", required: true, note: "1 to 1,000 websites, names or ids. THIS IS THE PRICE DIAL", example: ["shopify.com"]}
+        max_usd: {type: number, required: false}
+    test_request:
+      body: {companies: ["shopify.com"]}
+    cost: {type: per_result, value: 0.04, currency: USD, per: 1, unit: record, source: rate_card_api, source_url: "https://api.fokals.com/v1/prices", checked: '2026-10-27', confidence: documented, note: "per company found; a company not found is free"}
+    added: '2026-10-27'
+    docs_url: https://www.fokals.com/docs/connect#reference
+
+  - id: fokals.companies.tech_stack
+    domain: companies
+    capability: companies.tech_stack
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company_profile
+    name: "Company profile"
+    summary: "One company in depth: every technology its website runs and since when, open roles, buying topics with their evidence, announcements and website changes."
+    input:
+      body:
+        company: {type: string, required: true, note: "website, name or id", example: "shopify.com"}
+        sections: {type: "array[string]", required: false, note: "technology | hiring | buying_topics | announcements | changes | traffic; all unless given", example: ["technology"]}
+        max_usd: {type: number, required: false}
+    test_request:
+      body: {company: "shopify.com", sections: ["technology"]}
+    cost: {type: per_call, value: 0.10, currency: USD, per: 1, unit: record, source: rate_card_api, source_url: "https://api.fokals.com/v1/prices", checked: '2026-10-27', confidence: documented, note: "a full profile; $0.06 past 10,000 a calendar month; free again for 30 days"}
+    added: '2026-10-27'
+    docs_url: https://www.fokals.com/docs/connect#reference
+
+  - id: fokals.companies.changes
+    domain: companies
+    capability: companies.changes
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company_changes
+    name: "What changed at named companies"
+    summary: "What changed lately at the companies named: technologies added or removed, announcements and website changes, with their dates."
+    input:
+      body:
+        companies: {type: "array[string]", required: true, example: ["shopify.com"]}
+        since: {type: string, required: false, note: "ISO date"}
+    test_request:
+      body: {companies: ["hertz.com"]}
+    cost: {type: per_result, value: 0.04, currency: USD, per: 1, unit: record, source: rate_card_api, source_url: "https://api.fokals.com/v1/prices", checked: '2026-10-27', confidence: documented}
+    added: '2026-10-27'
+    docs_url: https://www.fokals.com/docs/connect#reference
+
+  - id: fokals.companies.jobs.search
+    domain: companies
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /search_job_postings
+    name: "Search job postings"
+    summary: "Open job postings across companies by words in the title, function, seniority, country, work mode, a technology the posting asks for, industry and pay."
+    input:
+      body:
+        title: {type: string, required: false, example: "data engineer"}
+        technology: {type: string, required: false, note: "a technology Fokals tracks, by name (list_filters kind technologies)"}
+        country: {type: string, required: false, example: "GB"}
+        work_mode: {type: string, required: false, note: "onsite | hybrid | remote"}
+        seen_since: {type: string, required: false, note: "ISO date"}
+        limit: {type: integer, required: false, example: 1}
+    test_request:
+      body: {title: "data engineer", country: "US", work_mode: "remote", limit: 1}
+    cost: {type: per_result, value: 0.04, currency: USD, per: 1, unit: record, source: rate_card_api, source_url: "https://api.fokals.com/v1/prices", checked: '2026-10-27', confidence: documented, note: "per hiring company in the answer"}
+    added: '2026-10-27'
+    docs_url: https://www.fokals.com/docs/connect#reference
+
+  - id: fokals.companies.similar
+    domain: companies
+    capability: companies.similar
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /similar_companies
+    name: "Similar companies and competitors"
+    summary: "Companies most like a seed company, or its competitors, each with what they have in common."
+    input:
+      body:
+        company: {type: string, required: true, example: "shopify.com"}
+        kind: {type: string, required: false, note: "lookalikes | competitors", example: "lookalikes"}
+        limit: {type: integer, required: false, note: "THIS IS THE PRICE DIAL", example: 1}
+    test_request:
+      body: {company: "shopify.com", kind: "lookalikes", limit: 1}
+    cost: {type: per_result, value: 0.04, currency: USD, per: 1, unit: record, source: rate_card_api, source_url: "https://api.fokals.com/v1/prices", checked: '2026-10-27', confidence: documented}
+    added: '2026-10-27'
+    docs_url: https://www.fokals.com/docs/connect#reference
+
+  - id: fokals.companies.connections
+    domain: companies
+    capability: companies.connections
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company_connections
+    name: "Customers, partners, integrations and investors"
+    summary: "The customers, partners, integrations and investors a company names."
+    input:
+      body:
+        company: {type: string, required: true, example: "shopify.com"}
+    test_request:
+      body: {company: "brainchip.com"}
+    cost: {type: per_result, value: 0.04, currency: USD, per: 1, unit: record, source: rate_card_api, source_url: "https://api.fokals.com/v1/prices", checked: '2026-10-27', confidence: documented, note: "per company asked about; free again for 30 days"}
+    added: '2026-10-27'
+    docs_url: https://www.fokals.com/docs/connect#reference
+
+  - id: fokals.companies.domain.find
+    domain: companies
+    capability: companies.domain.find
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /identify_company
+    name: "Which company is meant"
+    summary: "The companies a name or website address could mean, surest first, each with its website, country and industry. Free."
+    input:
+      body:
+        company: {type: string, required: true, example: "Shopify"}
+    test_request:
+      body: {company: "Shopify"}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    added: '2026-10-27'
+    docs_url: https://www.fokals.com/docs/connect#reference
+
+  - id: fokals.companies.market.breakdown
+    domain: companies
+    capability: companies.market.breakdown
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /market_breakdown
+    name: "Market breakdown"
+    summary: "Splits the companies matching a set of filters by industry, country, size, technology or buying topic."
+    input:
+      body:
+        by: {type: string, required: true, note: "industry | business_model | country | growth_stage | customer_size | price_tier | sales_motion | pricing_model | region | sic | technology | buying_topic", example: "industry"}
+        technology: {type: string, required: false, example: "Klaviyo"}
+    test_request:
+      body: {by: "industry", technology: "Klaviyo"}
+    cost: {type: per_call, value: 0.05, currency: USD, per: 1, unit: call, source: docs, source_url: "https://api.fokals.com/v1/openapi.json", checked: '2026-10-27', confidence: documented, note: "a market question"}
+    added: '2026-10-27'
+    docs_url: https://www.fokals.com/docs/connect#reference
