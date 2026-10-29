@@ -139,7 +139,8 @@ repeats, newest first.
   as unreported, as the call did.
 - A failure is a `snippet` request and a `snippet_redacted_truncated` response: the redacted,
   truncated evidence, with the allowlisted headers it inlines parsed back into `headers`. A GET,
-  HEAD or DELETE snippet is all query; otherwise the body starts at its last ` {` or ` [`.
+  HEAD or DELETE snippet is all query; otherwise the body starts at its first ` {` or ` [`,
+  or at the first space when it has neither.
 - A task's request is `reconstructed` from a table basis, the only basis that keeps it, and
   `unavailable` otherwise; the task settles on its own frozen basis either way.
 - A 2xx answer production never kept is counted, never invented: `expect_unavailable` on an

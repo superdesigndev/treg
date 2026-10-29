@@ -480,9 +480,10 @@ def _snippet_request(snippet: str, method: str) -> tuple[list[list[str]], str]:
     if snippet.startswith("?"):
         query, body = snippet[1:], ""
         if method.upper() not in _BODYLESS:
-            starts = [n for n in (query.rfind(" {"), query.rfind(" [")) if n >= 0]
-            if starts:
-                query, body = query[:max(starts)], query[max(starts) + 1:]
+            starts = [n for n in (query.find(" {"), query.find(" [")) if n >= 0]
+            cut = min(starts) if starts else query.find(" ")
+            if cut >= 0:
+                query, body = query[:cut], query[cut + 1:]
     return [list(part.partition("=")[::2]) for part in query.split("&") if part], body
 
 

@@ -225,6 +225,16 @@ async def test_a_failed_query_keeps_its_spaces_and_lists_each_path_parameter_onc
     assert by_endpoint[APOLLO]["query_items"] == [["organization_id", "org/42"], ["page", "2"]]
 
 
+@pytest.mark.parametrize("snippet, items, body", [
+    ('?page=2 {"filters": {"title": "cto"}}', [["page", "2"]], '{"filters": {"title": "cto"}}'),
+    ('?page=2 [{"a": 1}]', [["page", "2"]], '[{"a": 1}]'),
+    ("?page=2 a=1&b=2", [["page", "2"]], "a=1&b=2"),
+    ('{"a": {"b": 1}}', [], '{"a": {"b": 1}}'),
+])
+def test_a_failed_post_splits_its_query_from_the_body_where_the_body_starts(snippet, items, body):
+    assert export._snippet_request(snippet, "POST") == (items, body)
+
+
 async def test_an_endpoint_without_a_configured_credential_exports_nothing(team, tmp_path,
                                                                            monkeypatch):
     monkeypatch.delenv("TREG_PLATFORM_KEY_HUNTER")
