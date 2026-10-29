@@ -12,6 +12,7 @@ No database session is open while a rail verifies or settles. This module is the
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -39,6 +40,17 @@ def configure(rails: Sequence[PaymentRail]) -> None:
     _rails = tuple(rails)
 
 
+# A keyless caller is not yet anyone; its body is read only for a payable catalog call, and only
+# this much of it.
+MAX_BODY_BYTES = 1 << 20
+
+
+def serves(rest: str, method: str) -> bool:
+    """A cheap first check, before any body is read: is `rest` a catalog id for this method?"""
+    ep = _catalog_endpoint_for(rest)
+    return ep is not None and method.upper() == (ep.get("method") or "GET").upper()
+
+
 def enabled() -> bool:
     return bool(get_settings().agent_payments_enabled and _rails)
 
@@ -55,6 +67,14 @@ class PayerAdmission:
     caller: Caller
     verified: Verified
     settlement: Settlement | None   # None: the call draws credit the payer already holds
+
+
+class PaymentPending(Exception):
+    """The payment may have moved but treg could not confirm it; no call was made."""
+
+    def __init__(self, detail: dict) -> None:
+        super().__init__(detail["message"])
+        self.detail = detail
 
 
 class PaymentChallenge(Exception):
@@ -145,13 +165,46 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
                               message="this payment was already used")
     settlement = None
     if not draw:
+        # A settlement outlives the request: a caller that disconnects mid-settlement must still
+        # be credited for a transfer that lands, so the work runs as its own task.
+        work = asyncio.ensure_future(_settle_and_credit(rail, verified, paid, payment_id, org_id))
+        _inflight.add(work)
+        work.add_done_callback(_forget)
         try:
-            settlement = await rail.settle(verified, paid.offer)
+            settlement = await asyncio.shield(work)
         except PaymentRejected as exc:
-            await _mark(payment_id, status="failed", error=exc.code)
+            if exc.code == "settlement_unknown":
+                raise PaymentPending({
+                    "error": "payment_outcome_unknown", "endpoint_id": paid.endpoint_id,
+                    "message": ("treg could not confirm the settlement of this payment, so the "
+                                "call was not made. If the transfer lands it is kept as this "
+                                "wallet's credit; do not send this payment again."),
+                }) from exc
             raise await challenge(paid, reason=exc.code, message=exc.message) from exc
-        await _credit(payment_id, verified, org_id, settlement)
     return PayerAdmission(caller=await _caller(org_id), verified=verified, settlement=settlement)
+
+
+_inflight: set[asyncio.Task] = set()
+
+
+def _forget(task: asyncio.Task) -> None:
+    _inflight.discard(task)
+    if not task.cancelled() and task.exception() is not None:
+        log.info("agent payments: settlement ended with %s", type(task.exception()).__name__)
+
+
+async def _settle_and_credit(rail: PaymentRail, verified: Verified, paid: PaidOffer,
+                             payment_id: int | None, org_id: int) -> Settlement:
+    """Settle, then top up. A definite refusal marks the proof `failed`; an unknown outcome leaves
+    it `settling` for reconciliation, because the transfer may still land."""
+    try:
+        settlement = await rail.settle(verified, paid.offer)
+    except PaymentRejected as exc:
+        status = "settling" if exc.code == "settlement_unknown" else "failed"
+        await _mark(payment_id, status=status, error=exc.code)
+        raise
+    await _credit(payment_id, verified, org_id, settlement)
+    return settlement
 
 
 async def _payer_org(address: str) -> int:
@@ -220,9 +273,15 @@ async def _caller(org_id: int) -> Caller:
         return Caller(membership=membership, user=user, org=org, api_key=None)
 
 
-def receipt_headers(admission: PayerAdmission) -> list[tuple[str, str]]:
-    """Headers for a successful answer: the protocol receipt when this payment settled, and
-    which money the call used."""
+def payment_headers(admission: PayerAdmission) -> list[tuple[str, str]]:
+    """Every answer after a payment says which money the call used, and the settlement
+    transaction when this payment settled, whatever the call's outcome."""
     if admission.settlement is None:
         return [("X-Treg-Payment", "credit")]
-    return [("X-Treg-Payment", "settled"), *admission.settlement.receipt_headers]
+    return [("X-Treg-Payment", "settled"),
+            ("X-Treg-Payment-Reference", admission.settlement.reference)]
+
+
+def receipt_headers(admission: PayerAdmission) -> list[tuple[str, str]]:
+    """The protocol receipt, for a 2xx answer only (the MPP draft sends none on errors)."""
+    return list(admission.settlement.receipt_headers) if admission.settlement else []

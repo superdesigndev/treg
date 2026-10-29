@@ -63,6 +63,8 @@ class FakeFacilitator:
     def __init__(self) -> None:
         self.settles = 0
         self.fail = False
+        self.unreachable = False
+        self.gate: asyncio.Event | None = None
 
     async def verify(self, payload, requirements):
         from x402.schemas import VerifyResponse
@@ -72,6 +74,10 @@ class FakeFacilitator:
     async def settle(self, payload, requirements):
         from x402.schemas import SettleResponse
 
+        if self.gate is not None:
+            await self.gate.wait()
+        if self.unreachable:
+            raise httpx.ReadTimeout("facilitator timed out after submitting")
         if self.fail:
             return SettleResponse(success=False, error_reason="insufficient_funds", transaction="",
                                   network=requirements.network)
@@ -376,6 +382,7 @@ async def test_a_failed_call_releases_the_hold_once_and_keeps_the_credit(
     r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
     assert r.status_code in (503, 502), r.text
     assert r.headers["X-Treg-Cost-Micro"] == "0"
+    assert r.headers["X-Treg-Payment"] == "settled" and r.headers["X-Treg-Payment-Reference"]
     await _released_once(payer)
     # The payer was not charged: the next call draws the kept credit, nothing settles on chain.
     monkeypatch.setattr(call_service, "relay", _fake_relay(200))
@@ -410,7 +417,8 @@ async def test_a_vendor_402_is_relayed_verbatim(anon: AsyncClient, payments_on, 
     assert r.status_code == 402 and r.content == vendor
     assert r.headers.get_list("www-authenticate") == ['Payment id="vendor"']
     assert "X-Treg-Error" not in r.headers and "payment-required" not in r.headers
-    assert "X-Treg-Payment" not in r.headers
+    # treg's own headers only: which money paid, never a receipt on a non-2xx answer.
+    assert r.headers["X-Treg-Payment"] == "settled" and "payment-response" not in r.headers
 
 
 async def test_the_insufficient_balance_402_is_unchanged(clients: AsyncClient, payments_on):
@@ -449,3 +457,115 @@ def test_payment_headers_are_consumed_only_when_they_carry_a_payment(payments_on
     assert agent_payments.consumes("PAYMENT-SIGNATURE", "x")
     assert agent_payments.consumes("x-payment", "x")
     assert not agent_payments.consumes("content-type", "application/json")
+
+
+# ---- what a Tempo signature can prove -------------------------------------------------------------
+def _tempo_tx(signature: bytes) -> str:
+    import rlp
+
+    return "0x76" + rlp.encode([b""] * 13 + [signature]).hex()
+
+
+def test_only_a_recovered_tempo_signature_may_draw_credit():
+    from treg.infra.agent_payments.tempo import _recovered_sender
+
+    assert _recovered_sender(_tempo_tx(b"\x01" * 65))
+    # A keychain signature only NAMES its account (0x03 | address | inner signature); the chain
+    # authenticates it at settlement, so before settlement it proves nothing.
+    assert not _recovered_sender(_tempo_tx(b"\x03" + bytes.fromhex("ab" * 20) + b"\x02" * 65))
+    assert not _recovered_sender("0x76zz")
+
+
+async def test_an_unrecovered_mpp_signature_never_draws_credit(anon: AsyncClient, payments_on,
+                                                              chain):
+    for n in (1, 2):
+        challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+        keychain = b"\x03" + bytes.fromhex(TEMPO_PAYER[2:]) + bytes([n]) * 65
+        r = await anon.get(f"/call/{EP}?aweme_id=7", headers={
+            "Authorization": _mpp_credential(challenge, _tempo_tx(keychain))})
+        assert r.status_code == 200, r.text
+        assert r.headers["X-Treg-Payment"] == "settled"
+    assert chain.broadcasts == 2  # the wallet held credit, but a named signer must settle
+
+
+async def test_one_tempo_transfer_is_one_proof_in_either_mode(anon: AsyncClient, payments_on, chain):
+    from mpp import Challenge, Credential
+
+    from treg.infra.agent_payments.tempo import _transaction_hash
+
+    signed = _tempo_tx(b"\x01" * 65)
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    r = await anon.get(f"/call/{EP}?aweme_id=7",
+                       headers={"Authorization": _mpp_credential(challenge, signed)})
+    assert r.status_code == 200, r.text
+    echo = Challenge.from_www_authenticate(challenge.headers.get_list("www-authenticate")[0]).to_echo()
+    pushed = Credential(challenge=echo, payload={"type": "hash", "hash": _transaction_hash(signed)})
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"Authorization": pushed.to_authorization()})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "payment_replayed"
+    assert chain.broadcasts == 1
+
+
+# ---- settlement that cannot be confirmed ----------------------------------------------------------
+async def test_an_unknown_settlement_runs_no_call_and_stays_open(anon: AsyncClient, payments_on,
+                                                                facilitator, monkeypatch):
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    facilitator.unreachable = True
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, payer = _x402_credential(challenge)
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "payment_outcome_unknown"
+    assert r.headers["X-Treg-Error"] == "1" and "payment-required" not in r.headers
+    assert calls == [] and await _entries(payer) == []
+    async with session_maker() as db:
+        row = (await db.execute(select(AgentPayment))).scalar_one()
+    assert (row.status, row.error) == ("settling", "settlement_unknown")
+
+
+async def test_a_caller_that_leaves_mid_settlement_is_still_credited(anon: AsyncClient, payments_on,
+                                                                    facilitator):
+    from x402.http import decode_payment_signature_header
+
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, payer = _x402_credential(challenge)
+    assert decode_payment_signature_header(credential)
+    paid = await agent_payments.quote(
+        rest=EP, method="GET", path=f"/call/{EP}", query="aweme_id=7",
+        query_items=(("aweme_id", "7"),), body=b"")
+    facilitator.gate = asyncio.Event()
+    admission = asyncio.create_task(agent_payments.admit(paid, {"payment-signature": credential}))
+    while facilitator.gate is not None and not admission.done() and \
+            not await _settling(payer):
+        await asyncio.sleep(0.01)
+    admission.cancel()
+    facilitator.gate.set()
+    with pytest.raises(asyncio.CancelledError):
+        await admission
+    for _ in range(100):
+        if await _settled(payer):
+            break
+        await asyncio.sleep(0.01)
+    assert await _balance(payer) == FLOOR
+
+
+async def _settling(payer: str) -> bool:
+    async with session_maker() as db:
+        return (await db.execute(select(AgentPayment).where(
+            AgentPayment.payer_address == payer, AgentPayment.status == "settling"))).first() is not None
+
+
+async def _settled(payer: str) -> bool:
+    async with session_maker() as db:
+        return (await db.execute(select(AgentPayment).where(
+            AgentPayment.payer_address == payer, AgentPayment.status == "settled"))).first() is not None
+
+
+# ---- a keyless body -----------------------------------------------------------------------------
+async def test_a_keyless_body_is_capped(anon: AsyncClient, payments_on):
+    post_ep = next(ep["id"] for ep in catalog_store.load().by_id.values()
+                   if (ep.get("method") or "GET") == "POST" and ep["provider"] == "tikhub")
+    big = b"x" * (agent_payments.MAX_BODY_BYTES + 1)
+    r = await anon.post(f"/call/{post_ep}", content=big)
+    assert r.status_code == 413
+    r = await anon.post("/call/not-a-catalog-id/x", content=big)
+    assert r.status_code == 401

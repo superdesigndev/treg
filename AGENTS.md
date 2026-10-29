@@ -80,7 +80,7 @@ Everything else in this file is guidance; these are the contract, and they win o
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
    A keyless agent-payments call (no treg credential of any kind) has its payment credential
-   (`Authorization: Payment …`, `Payment-Authorization`, `PAYMENT-SIGNATURE`, `X-PAYMENT`) consumed
+   (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`) consumed
    by treg and removed before the relay; nothing else it sent changes. A request carrying any treg
    credential is never read for a payment (docs/context/architecture/agent-payments.md).
 5. Balances change only through money's five entries: grant, topup, reserve, settle, release.

@@ -93,8 +93,11 @@ class X402Rail:
         try:
             result = await self._facilitator.settle(payload, requirements)
         except Exception as exc:
-            raise PaymentRejected("settlement_failed", "the facilitator could not settle") from exc
-        if not result.success or not result.transaction:
+            # The facilitator may have submitted the transfer before the error reached us.
+            raise PaymentRejected("settlement_unknown", "the facilitator did not answer") from exc
+        if result.error_reason == "settlement_pending" or (result.success and not result.transaction):
+            raise PaymentRejected("settlement_unknown", "the settlement is still pending")
+        if not result.success:
             raise PaymentRejected("settlement_failed", result.error_reason or "settlement failed")
         return Settlement(reference=result.transaction,
                           receipt_headers=(("PAYMENT-RESPONSE", encode_payment_response_header(result)),))

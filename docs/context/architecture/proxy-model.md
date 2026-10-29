@@ -656,8 +656,7 @@ checked before any aggregator is contacted, on both entry points.
 ## Control-header isolation
 
 A keyless agent-payments call is the one case where treg removes a non-`x-treg-` header the caller
-sent: its payment credential (`Authorization: Payment …`, `Payment-Authorization`,
-`PAYMENT-SIGNATURE`, `X-PAYMENT`), through `routers.call._paid_call` and
+sent: its payment credential (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`), through `routers.call._paid_call` and
 `agent_payments.consumes`. A request with any treg credential relays those headers unchanged.
 
 `proxy._is_dropped_request_header` strips every request header beginning with `x-treg-`,

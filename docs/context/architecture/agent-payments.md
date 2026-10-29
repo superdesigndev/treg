@@ -37,7 +37,10 @@ is configured, and the request carries **no treg credential at all**: no `X-Treg
 (an empty or invalid one counts as a credential) and no `treg_session` cookie. Every other request
 goes through `require_member` exactly as before, and is never challenged.
 
-`routers.call._paid_call` then asks `agent_payments.quote` for a price. The quote is None, and the
+`routers.call._paid_call` first checks, without reading the body, that `rest` is a catalog id for
+the request's method (`agent_payments.serves`); anything else is today's 401. Only then is the body
+read, at most `agent_payments.MAX_BODY_BYTES` (1 MiB; more is 413), because a keyless caller is not
+yet anyone. Then `_paid_call` asks `agent_payments.quote` for a price. The quote is None, and the
 answer is today's `401 not authenticated`, unless `rest` is a catalog id that treg's own key serves
 to a caller holding no credential: `application.call.resolve.platform_quote_micro` (pure, no session)
 refuses routed `treg.*` ids, endpoints with a `status`, endpoints with OAuth authorization methods,
@@ -78,6 +81,13 @@ settled and topped up. So a call at or above the floor pays exactly once on chai
 it buys floor-sized credit that the next calls from the same address draw down. A payment the
 payer already broadcast (MPP push mode, `Verified.deferrable = False`) is always settled.
 
+A credit draw moves no money, so the proof must establish key control before any settlement.
+x402: the facilitator's `verify` checks the EIP-3009 signature against `from`. MPP pull mode:
+pympp's `validate` recovers only a 65-byte secp256k1 sender signature; keychain, multisig, P256 and
+WebAuthn signatures only *name* their account and are authenticated by the chain at settlement. So
+`MppTempoRail` marks a pull credential deferrable only when its signature is a recovered one
+(`tempo._recovered_sender`); any other MPP payment always settles, credit or not.
+
 ## The flow (`application/agent_payments.admit`)
 
 1. The rail whose header is present verifies the credential (`rail.verify`). No session is open:
@@ -85,12 +95,18 @@ payer already broadcast (MPP push mode, `Verified.deferrable = False`) is always
 2. `_payer_org`: get or create the payer team (a concurrent create loses on the `AgentPayer` key).
 3. `_claim`: one transaction inserts `AgentPayment(proof_id UNIQUE)` with status `credit` or
    `settling` and commits. A unique violation is a replay: 402 with a fresh challenge.
-4. If settling: `rail.settle` with no session open. A refusal marks the row `failed` and answers
-   402; no call runs and no money moves. Success tops up and marks the row `settled` in one
-   transaction (`_credit`).
+4. If settling: `_settle_and_credit` runs as its own task (`asyncio.shield`), so a caller that
+   disconnects mid-settlement is still credited when the transfer lands. No session is open during
+   `rail.settle`. A definite refusal marks the row `failed` and answers 402; no call runs and no
+   money moves. An unknown outcome (`settlement_unknown`: the node or facilitator did not answer
+   after the transfer may have been sent, or x402 `settlement_pending`) leaves the row `settling`
+   and answers 503 `payment_outcome_unknown` with no call; the proof cannot be sent again.
+   Success tops up and marks the row `settled` in one transaction (`_credit`).
 5. The request headers minus the payment credential (`agent_payments.consumes`) go to the call as
-   the payer team. A 2xx answer gets `X-Treg-Payment: settled|credit` and, when this payment
-   settled, the protocol receipt (`Payment-Receipt`, `PAYMENT-RESPONSE`).
+   the payer team. Every answer after this point, a refusal included, carries
+   `X-Treg-Payment: settled|credit` and, when this payment settled,
+   `X-Treg-Payment-Reference: <transaction>`; a 2xx answer also carries the protocol receipt
+   (`Payment-Receipt`, `PAYMENT-RESPONSE`).
 
 ## The challenge, and the 402s it is not
 
@@ -106,12 +122,13 @@ The body is `{"detail": {"error": "payment_required", "amount_micro", "estimated
 It is told apart from treg's `insufficient_balance` and `route_max_cost` 402s by `detail.error`
 and the protocol headers, and from a provider's 402 by `X-Treg-Error`. A provider's 402 on a paid
 call is relayed verbatim, its own `WWW-Authenticate` included; treg adds only its usual `X-Treg-*`
-headers and no receipt.
+headers (`X-Treg-Payment` among them) and no receipt.
 
 ## Replays
 
-- MPP pull mode: the proof is the SHA-256 of the signed transaction, so one signed transfer pays
-  once even if it is wrapped in a new challenge. Push mode: the transaction hash.
+- MPP: the proof is the transaction hash the chain records, in both modes (pull: pympp's
+  canonical-encoding hash of the signed transaction; push: the hash sent). One transfer pays once,
+  whichever mode presents it and under whichever challenge it is wrapped.
 - x402: network, asset, payer and the EIP-3009 nonce. The token contract also refuses a reused nonce.
 - The proof row is committed before any settlement, so two concurrent uses of one proof settle at
   most once.
@@ -126,7 +143,9 @@ headers and no receipt.
 contract keeps `mpp` and `x402` there).
 
 - `MppTempoRail` uses `pympp` (`mpp.server.Mpp`, `mpp.methods.tempo.server.charge`):
-  `validate_credential` to verify without broadcasting, `broadcast_credential` to settle.
+  `validate_credential` to verify without broadcasting, `broadcast_credential` to settle. Two
+  private pympp helpers (the canonical transaction hash, the RLP decoder) are used, so the
+  dependency is pinned below the next minor version.
   Fees are not sponsored (`feePayer` off): the client pays its own fee in a USD TIP-20 token.
 - `X402Rail` uses the official `x402` SDK: header codecs, `PaymentRequirements`, and an
   `HTTPFacilitatorClient` for `verify` and `settle`; the facilitator pays gas.
@@ -147,6 +166,6 @@ default), `..._x402_asset`, `..._x402_asset_name`, `..._x402_asset_version`,
 
 - MPP sessions (payment channels with cumulative vouchers): `pympp` has no session server yet.
 - Stripe as a settlement rail.
-- A worker that reconciles a `settling` row left by a crash between settlement and top-up, or a
-  credit-first authorization someone else submitted before it expired.
+- A worker that reconciles a `settling` row (an unknown settlement outcome, or a crash between
+  settlement and top-up), or a credit-first authorization someone else submitted before it expired.
 - Withdrawing or expiring credit (there is no refund entry).

@@ -1933,7 +1933,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'server'", specifier = ">=11" },
     { name = "posthog", specifier = ">=7.47.3" },
     { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.5" },
-    { name = "pympp", extras = ["tempo", "x402"], marker = "extra == 'server'", specifier = ">=0.17" },
+    { name = "pympp", extras = ["tempo", "x402"], marker = "extra == 'server'", specifier = ">=0.17,<0.18" },
     { name = "pyyaml", marker = "extra == 'server'", specifier = ">=6" },
     { name = "questionary", specifier = ">=2.0" },
     { name = "quickjs", marker = "extra == 'server'", specifier = ">=1.19.4" },

@@ -300,9 +300,10 @@ all, for a tool treg's own key serves, answers 402 `{"detail": {"error": "paymen
 "endpoint_id", "amount_micro", "estimated_cost_micro", "protocols", "reason"?}}` with
 `X-Treg-Error: 1`, `Cache-Control: no-store`, `WWW-Authenticate: Payment ...` (MPP) and
 `PAYMENT-REQUIRED` (x402). The request sent again with a payment credential is answered as a
-normal call, plus `X-Treg-Payment: settled|credit` and, when the payment settled,
-`Payment-Receipt` or `PAYMENT-RESPONSE`. Every other keyless call is still
-`401 not authenticated`. See [agent payments](../architecture/agent-payments.md).
+normal call; every such answer carries `X-Treg-Payment: settled|credit` (plus
+`X-Treg-Payment-Reference` when it settled), and a 2xx also `Payment-Receipt` or
+`PAYMENT-RESPONSE`. A settlement treg cannot confirm answers 503 `payment_outcome_unknown` with no
+call. A keyless body over 1 MiB is 413. Every other keyless call is still `401 not authenticated`. See [agent payments](../architecture/agent-payments.md).
 
 ## `X-Treg-Smoothed` - the call waited for treg's own rate limit
 

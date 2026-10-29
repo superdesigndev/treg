@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 from collections.abc import Mapping
 
 from . import Offer, PaymentRejected, Settlement, Verified, micro_to_decimal
 
-CONSUMED_HEADERS = ("authorization", "payment-authorization")
+CONSUMED_HEADERS = ("authorization",)
 
 
 def _payment_scheme(value: str) -> bool:
@@ -68,13 +67,15 @@ class MppTempoRail:
             raise PaymentRejected("verification_failed", "the payment names no payer")
         payload = parsed.payload if isinstance(parsed.payload, dict) else {}
         if payload.get("type") == "hash":
-            # Push mode: the payer already broadcast the transfer, so the hash is the proof.
-            proof, deferrable = f"mpp:{self.network}:tx:{str(payload.get('hash')).lower()}", False
+            # Push mode: the payer already broadcast the transfer.
+            tx_hash, deferrable = str(payload.get("hash") or ""), False
         else:
-            # A signed transaction can be wrapped in a fresh challenge; one use per transaction.
-            signed = str(payload.get("signature") or "").lower().encode()
-            proof, deferrable = f"mpp:{self.network}:{hashlib.sha256(signed).hexdigest()}", True
-        return Verified(protocol=self.protocol, network=self.network, proof_id=proof,
+            raw = str(payload.get("signature") or "")
+            tx_hash, deferrable = _transaction_hash(raw), _recovered_sender(raw)
+        # Both modes key on the transaction hash the chain records, so one transfer is one proof
+        # whichever mode presents it and under whichever challenge it is wrapped.
+        return Verified(protocol=self.protocol, network=self.network,
+                        proof_id=f"mpp:{self.network}:tx:{tx_hash.lower()}",
                         payer=validation.payer.lower(), amount_micro=offer.amount_micro,
                         deferrable=deferrable, credential=parsed)
 
@@ -92,14 +93,48 @@ class MppTempoRail:
     async def settle(self, verified: Verified, offer: Offer) -> Settlement:
         from mpp.errors import PaymentError
 
+        from mpp.errors import InternalPaymentError, PaymentOutcomeUnknownError
+
         try:
             receipt = await self._mpp.broadcast_credential(
                 verified.credential, intent="charge",
                 request={"amount": micro_to_decimal(offer.amount_micro)})
+        except (InternalPaymentError, PaymentOutcomeUnknownError) as exc:
+            # pympp raises these once the transaction may have reached the chain.
+            raise PaymentRejected("settlement_unknown", str(exc) or exc.title) from exc
         except PaymentError as exc:
             raise PaymentRejected("settlement_failed", str(exc) or exc.title) from exc
+        except Exception as exc:
+            raise PaymentRejected("settlement_unknown", "the Tempo node did not answer") from exc
         return Settlement(reference=receipt.reference,
                           receipt_headers=(("Payment-Receipt", receipt.to_payment_receipt()),))
+
+
+def _transaction_hash(raw: str) -> str:
+    """The hash a Tempo node gives this signed transaction. pympp exposes no public helper; these
+    are the ones its own replay store uses (pinned by the `pympp` version range)."""
+    from mpp.methods.tempo.intents import _canonical_raw_transaction, _raw_transaction_hash
+
+    try:
+        return _raw_transaction_hash(_canonical_raw_transaction(raw))
+    except Exception as exc:
+        raise PaymentRejected("malformed_credential", "the signed transaction cannot be read") from exc
+
+
+def _recovered_sender(raw: str) -> bool:
+    """True when the sender signature is a 65-byte secp256k1 signature, the one kind pympp
+    recovers before payment. Keychain, multisig, P256 and WebAuthn senders are only named in the
+    transaction and authenticated by the chain at settlement, so they prove nothing until then
+    and may never draw credit without settling."""
+    from mpp.methods.tempo import _rlp as rlp
+
+    try:
+        tx = bytes.fromhex(raw.removeprefix("0x"))
+        fields = rlp.decode(tx[1:])
+    except (ValueError, rlp.RLPException):
+        return False
+    return (tx[:1] == b"\x76" and isinstance(fields, list) and len(fields) in (14, 15)
+            and isinstance(fields[-1], bytes) and len(fields[-1]) == 65)
 
 
 def _code(exc) -> str:

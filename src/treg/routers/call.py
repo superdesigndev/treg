@@ -328,7 +328,9 @@ async def call_tool(
 async def _paid_call(rest: str, request: Request) -> Response:
     """A keyless call that pays for itself (docs/context/architecture/agent-payments.md). A call
     the payment path does not serve answers exactly as an unauthenticated call always has."""
-    body = await request.body() if _may_have_body(request) else b""
+    if not agent_payments.serves(rest, request.method):
+        raise HTTPException(status_code=401, detail="not authenticated")
+    body = await _capped_body(request) if _may_have_body(request) else b""
     raw_path = request.scope.get("raw_path")
     path = raw_path.decode("ascii", "replace") if raw_path else request.url.path
     paid = await agent_payments.quote(
@@ -339,21 +341,53 @@ async def _paid_call(rest: str, request: Request) -> Response:
     try:
         admission = await agent_payments.admit(paid, request.headers)
     except agent_payments.PaymentChallenge as exc:
-        resp = JSONResponse({"detail": exc.detail}, status_code=402)
-        for name, value in exc.headers:
-            resp.headers.append(name, value)
-        resp.headers["Cache-Control"] = "no-store"
-        resp.headers["X-Treg-Error"] = "1"
-        await _stamp_call_exit(request, resp, 402)
-        return resp
+        return await _payment_refusal(request, 402, exc.detail, exc.headers)
+    except agent_payments.PaymentPending as exc:
+        return await _payment_refusal(request, 503, exc.detail, [])
+    paid_headers = agent_payments.payment_headers(admission)
     headers = [(name, value) for name, value in request.headers.raw
                if not agent_payments.consumes(name.decode("latin-1"), value.decode("latin-1"))]
-    response = await run_call_surface(rest, request, admission.caller, prefix="/call/",
-                                      finish=_relay_answer, headers=headers)
+    try:
+        response = await run_call_surface(rest, request, admission.caller, prefix="/call/",
+                                          finish=_relay_answer, headers=headers)
+    except HTTPException as exc:
+        exc.headers = {**(exc.headers or {}), **dict(paid_headers)}
+        raise
+    for name, value in paid_headers:
+        response.headers[name] = value
     if 200 <= response.status_code < 300:
         for name, value in agent_payments.receipt_headers(admission):
             response.headers.append(name, value)
     return response
+
+
+async def _capped_body(request: Request) -> bytes:
+    limit = agent_payments.MAX_BODY_BYTES
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status_code=413, detail="request body too large")
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            raise HTTPException(status_code=413, detail="request body too large")
+        chunks.append(chunk)
+    body = b"".join(chunks)
+    # Starlette serves a later `request.body()` / `request.stream()` from `_body` once the stream
+    # has been consumed; the call road reads the body again through those.
+    request._body = body
+    return body
+
+
+async def _payment_refusal(request: Request, status: int, detail: dict,
+                           headers: list[tuple[str, str]]) -> Response:
+    resp = JSONResponse({"detail": detail}, status_code=status)
+    for name, value in headers:
+        resp.headers.append(name, value)
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Treg-Error"] = "1"
+    await _stamp_call_exit(request, resp, status)
+    return resp
 
 
 async def _relay_answer(request: Request, context, upstream: UpstreamResponse, rest: str) -> Response:
