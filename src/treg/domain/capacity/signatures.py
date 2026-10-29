@@ -53,6 +53,7 @@ class Signature:
 
 
 _TABLE: list[Signature] = [
+    Signature("orbit", 402, r"developer_api_credits_insufficient", "balance", tripwire=True),
     Signature("enrow", 402, r"insufficient credits", "balance", tripwire=True),
     Signature("anymailfinder", 402, r"not have enough credits", "balance", tripwire=True),
     Signature("findymail", 402, r"not enough credits", "balance", tripwire=True),

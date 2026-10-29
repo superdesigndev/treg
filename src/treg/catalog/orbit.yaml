@@ -1,0 +1,755 @@
+# Orbit — four person-context workflows with supporting polling utilities.
+provider: orbit
+source:
+  docs: https://docs.orbitsearch.com/
+  openapi: https://docs.orbitsearch.com/openapi.json
+  curated: '2026-10-29'
+limits: 'Scoped bearer API keys: search:read and profile:read. Standard Search 25 rps/burst 100; discovery and Enrich
+  starts 5 rps/burst 25; status 25 rps/burst 150; profile read 50 rps/burst 250. Honor Retry-After on 429. Full
+  builds can take 25–30 minutes or longer; persist IDs and allow at least 45 minutes of polling.'
+pricing_url: https://api.orbitsearch.com/v3/pricing
+proposed_capabilities:
+  people.search.status: Get search status
+  people.profile.read: Read an enriched profile
+  people.enrich.status: Get enrichment status
+  people.enrich.bulk: Start or inspect a batch of person enrichments
+endpoints:
+- id: orbit.people.search
+  capability: people.search
+  platform: people
+  domain: search
+  scope: any_account
+  kind: action
+  method: POST
+  path: /v3/search
+  name: Start a people search
+  summary: Find people from a name, company, email, phone, LinkedIn URL, username, address, or structured criteria
+  async:
+    id_from: search_id
+    poll:
+      endpoint: orbit.people.search.status
+      param:
+        in: pathParams
+        name: search_id
+    status:
+      path: status
+      success:
+      - completed
+      - completed_with_errors
+      failure:
+      - failed
+    result:
+      path: results
+    interval: 5
+  input:
+    headers:
+      Idempotency-Key:
+        type: string
+        maxLength: 200
+        required: false
+    bodyType: json
+    body:
+      request_id:
+        type: string
+        minLength: 1
+        note: Your idempotency key. Reuse it only when retrying the same logical request.
+        required: false
+      query:
+        type: string
+        minLength: 1
+        note: A plain-English description of the people you want. When intent is also present, Orbit derives a base
+          intent from this query before applying the caller-provided structured fields.
+        required: false
+      intent:
+        type: object
+        minProperties: 1
+        additionalProperties: false
+        properties:
+          names:
+            type: array
+            items:
+              type: string
+              minLength: 1
+          experiences:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              properties:
+                title:
+                  type: string
+                titleAnyOf:
+                  type: array
+                  items:
+                    type: string
+                organization:
+                  type: string
+                year:
+                  type: integer
+                startYear:
+                  type: integer
+                startYearLte:
+                  type: integer
+                endYear:
+                  type: integer
+                temporalScope:
+                  type: string
+                  enum:
+                  - current
+                  - historical
+                  - both
+          semanticClauses:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                anyOf:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    minLength: 1
+              anyOf:
+              - required:
+                - text
+              - required:
+                - anyOf
+          schools:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              properties:
+                school:
+                  type: string
+                schoolAnyOf:
+                  type: array
+                  items:
+                    type: string
+                graduationYear:
+                  type: integer
+                startYear:
+                  type: integer
+                endYear:
+                  type: integer
+                temporalScope:
+                  type: string
+                  enum:
+                  - current
+                  - historical
+                  - both
+                relation:
+                  type: string
+          geo:
+            oneOf:
+            - type: object
+              additionalProperties: false
+              properties:
+                place:
+                  type: string
+                isHistorical:
+                  type: boolean
+                distance:
+                  type: string
+            - type: 'null'
+          demographics:
+            oneOf:
+            - type: object
+              additionalProperties: false
+              properties:
+                ageRange:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - min
+                  - max
+                  properties:
+                    min:
+                      type: integer
+                    max:
+                      type: integer
+                birthYearRange:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - min
+                  - max
+                  properties:
+                    min:
+                      type: integer
+                    max:
+                      type: integer
+                gender:
+                  type: string
+            - type: 'null'
+          personalization:
+            oneOf:
+            - type: object
+              additionalProperties: false
+              properties:
+                network:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - scope
+                  properties:
+                    scope:
+                      type: string
+                      enum:
+                      - first_degree
+                nearMe:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - distance
+                  properties:
+                    distance:
+                      type: string
+            - type: 'null'
+        note: Advanced structured criteria. Do not include a `version` field.
+        required: false
+      signals:
+        type: object
+        minProperties: 1
+        additionalProperties: false
+        properties:
+          address:
+            type: string
+            minLength: 1
+          email:
+            type: string
+            format: email
+          phone:
+            type: string
+            minLength: 1
+          linkedin_url:
+            type: string
+            format: uri
+          urls:
+            type: array
+            items:
+              type: string
+              format: uri
+          usernames:
+            type: array
+            items:
+              type: string
+              minLength: 1
+          face_source:
+            allOf:
+            - type: object
+              required:
+              - image_url
+              additionalProperties: false
+              description: A face from a photo stored by `POST /v3/faces/detect`. On `POST /v3/search` it searches
+                for the people the face could be.
+              properties:
+                image_url:
+                  type: string
+                  minLength: 1
+                  description: The photo reference returned by `POST /v3/faces/detect`.
+                bbox:
+                  allOf:
+                  - type: array
+                    minItems: 4
+                    maxItems: 4
+                    items:
+                      type: number
+                      minimum: 0
+                    description: A face box `[x0, y0, x1, y1]` in the pixels of the upright photo.
+                    example:
+                    - 212
+                    - 140
+                    - 388
+                    - 356
+                  description: The picked face's box from `POST /v3/faces/detect`. Required when the photo has more
+                    than one face.
+            description: 'A face from a photo. It is enough on its own: the search returns the possible people,
+              up to `candidate_discovery_limit`, best match first.'
+        note: Known identity signals. Send only the signals you have.
+        required: false
+      candidate_discovery:
+        type: boolean
+        default: false
+        note: Continue beyond known matches to find additional people. Address, email, and phone signals can each
+          resolve to multiple associated people.
+        required: false
+      candidate_discovery_limit:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 10
+        note: Maximum number of Candidate Discovery results. Valid only with candidate_discovery set to true. A
+          lower value reduces downstream profile-generation fanout, although source discovery and clustering can
+          still dominate initial discovery time.
+        required: false
+        min: 1
+        max: 50
+      profile_depth:
+        type: string
+        enum:
+        - quick
+        - partial
+        - full
+        default: partial
+        note: The minimum profile depth required for each ready result.
+        required: false
+      include_profile:
+        type: boolean
+        default: true
+        note: Embed each readable result's profile with its identity fields, contact fields, and generated sections.
+          Read GET /v3/enrich/{profile_id} for the image gallery and source links. This controls the response shape;
+          profile_depth controls how deep each profile is built.
+        required: false
+      limit:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+        note: The maximum number of matches returned from the existing Orbit index. Candidate Discovery results
+          append outside this limit, and profile upgrades update selected results in place.
+        required: false
+        min: 1
+        max: 100
+      webhooks:
+        type: boolean
+        default: false
+        note: Deliver this search's generation updates to the webhook endpoints subscribed to search.profile.updated
+          and search.completed. Deliveries embed whole profiles, so this requires the profile:read scope.
+        required: false
+      face_search:
+        type: boolean
+        default: false
+        note: 'Opt into portrait-based source expansion during full generation. Requires candidate_discovery=true,
+          profile_depth=full and limit + candidate_discovery_limit <= 30. Cannot be combined with signals.face_source.
+          Already-full cached profiles are not regenerated.
+
+
+          Significantly more expensive: 100 credits total per generated profile instead of the normal 10 (10x).
+          Use only when you need maximum coverage of a person. Reserves up to 100 credits per eligible profile.
+          A successful face-search provider response, including an empty result, charges the 100-credit inclusive
+          total even if later generation fails. With no usable portrait or all providers failing, ordinary delivered-depth
+          pricing applies.'
+        required: false
+    note: 'Find people, optionally discover additional candidates, and build every selected result to the requested
+      profile depth. Requires `search:read`; `include_profile: true` also requires `profile:read`. Provide `query`,
+      `intent`, at least one identity signal, or a supported combination; when `query` and `intent` are both present
+      Orbit derives a base intent from the query and overlays the structured fields (arrays, scalars and null replace;
+      nested objects merge). Send an `Idempotency-Key` header or `request_id` and reuse it only for retries of the
+      same logical request. The response is a snapshot: while `status` is `running` poll `orbit.people.search.status`
+      with `search_id` (treg `--await` does this); `completed_with_errors` is terminal partial success — keep the
+      ready results and inspect the failures. Quick depth costs 2 credits per newly built profile and supports phone/email/address,
+      URLs with exactly one name in intent.names, or one name plus a company in intent.experiences; it does not
+      run open-ended discovery. Partial builds normally finish in under two minutes; full builds can take 25–30
+      minutes or longer. Use --await --timeout 2700 for full depth, or persist the ID and resume polling. Several
+      candidates can match an identity signal; inspect confidence and corroborating evidence before selecting a
+      person. Embedded profiles contain contacts, work, education, bio, social profiles, and generated sections
+      when available; an unavailable contact field is not a failed profile lookup. Sources and image gallery are
+      available on explicit Profile Read.'
+  test_request:
+    body:
+      query: Sam Altman
+      limit: 1
+      include_profile: false
+  cost:
+    currency: credit
+    source: rate_card_api
+    source_url: https://api.orbitsearch.com/v3/pricing
+    checked: '2026-10-29'
+    confidence: documented
+    type: per_success
+    value: 1
+    per: 10
+    unit: result
+    note: 'Live rate card 2026-10-22: 1 credit per started block of 10 cached results, zero when none. Cached profiles
+      below requested depth can also require generation. Each unique discovered person costs 1 credit when reused,
+      2 quick, 5 partial, or 10 full when built; the generation tier replaces discovery for that person. Full includes
+      intermediate partial, never 5+10. Tier increases charge only the difference within one operation; duplicate
+      people are reconciled. signals.face_source adds 100 credits per face-search request plus ordinary profile
+      charges. Optional face_search during full generation costs 100 total per eligible profile (inclusive of normal
+      generation) when a provider succeeds, even if empty or later work fails; otherwise ordinary delivered-depth
+      pricing applies. Reservations are ceilings, not final charges. Poll until billing.status=settled for consumedCredits.
+      The cheap replay returns one already-built public profile; generation and face hit prices are documented,
+      not live-tested here.'
+    display:
+      grouped: true
+      round_up: true
+      variable: true
+      unit: cached results
+  docs_url: https://docs.orbitsearch.com/api/search/search
+  added: '2026-10-29'
+  platform_blocked: 'BYOK for now: one search can bill cached-result blocks, per-profile quick/partial/full tiers,
+    and optional face work. The scalar catalog price cannot reserve this combined fanout. Use the caller’s Orbit
+    key until exact composite reservation and terminal billing.consumedCredits settlement are supported; never meter
+    the whole search at the block price.'
+- id: orbit.people.search.status
+  capability: people.search.status
+  platform: people
+  domain: search
+  scope: own_account
+  kind: utility
+  method: GET
+  path: /v3/search/{search_id}
+  name: Get search status
+  summary: Get search status
+  resource_ownership:
+    requires:
+      kind: poll:orbit.people.search.status
+      param: search_id
+  async: false
+  input:
+    pathParams:
+      search_id:
+        type: string
+        minLength: 1
+        required: true
+    note: Return the latest snapshot of a search. Poll while `status` is `running`; `completed` and `completed_with_errors`
+      are terminal. Results are append-only and each result carries its own `status`, so ready profiles can be used
+      before the search finishes. Requires `search:read` (and `profile:read` when the search embeds profiles).
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    note: Status polls are free; the accepted search operation already covers its results.
+  docs_url: https://docs.orbitsearch.com/api/search/search-status
+  untestable: needs a search_id that the calling account created on the submit route (orbit.people.search); ids
+    are account-scoped, so no fixed replay target exists. --await polls it automatically.
+  added: '2026-10-29'
+- id: orbit.people.enrich.batch
+  capability: people.enrich.bulk
+  platform: people
+  domain: enrich
+  scope: any_account
+  kind: action
+  method: POST
+  path: /v3/enrich
+  name: Batch enrich profiles
+  summary: Batch enrich profiles
+  input:
+    headers:
+      Idempotency-Key:
+        type: string
+        maxLength: 200
+        required: false
+    bodyType: json
+    body:
+      request_id:
+        type: string
+        minLength: 1
+        note: The parent idempotency key for the batch.
+        required: false
+      profile_ids:
+        type: array
+        minItems: 1
+        maxItems: 20
+        items:
+          type: string
+          minLength: 1
+        note: Provide between 1 and 20 Orbit profile IDs or slugs. Duplicate entries within this list are normalized
+          before work starts.
+        required: true
+      operation:
+        type: string
+        enum:
+        - quick
+        - partial
+        - full
+        - regenerate
+        note: Use `quick` for identity and contact data (every known profile already holds it, so quick returns
+          the current profile at once), `partial` for a useful profile, `full` for the deepest available profile,
+          or `regenerate` to rebuild a fresh full profile. face_search works with full and regenerate, and starts
+          full-generation work even for an already-full profile.
+        required: true
+      include_profile:
+        type: boolean
+        default: true
+        note: Embed each child result's full public profile when one is available.
+        required: false
+      face_search:
+        type: boolean
+        default: false
+        note: 'Apply portrait-based source expansion to every profile with operation=full or operation=regenerate.
+          Candidate discovery is not required. Rejects operation=partial and operation=quick. Starts full-generation
+          work even for already-full profiles; each profile has its own reservation and charge.
+
+
+          Significantly more expensive: 100 credits total per generated profile instead of the normal 10 (10x).
+          Use only when you need maximum coverage of a person. Reserves up to 100 credits per eligible profile.
+          A successful face-search provider response, including an empty result, charges the 100-credit inclusive
+          total even if later generation fails. With no usable portrait or all providers failing, ordinary delivered-depth
+          pricing applies.'
+        required: false
+    note: Apply one enrichment operation (`partial`, `full`, or `regenerate`) to 1–20 known Orbit profile ids or
+      slugs; duplicates are normalised before work starts. Requires `search:read` (and `profile:read` to embed profiles).
+      The response lists one child per profile with its own `request_id`, `status` and `links.status`; poll each
+      child with `orbit.people.enrich.status` until `completed` or `failed` — the batch itself has no parent poll
+      route, so treg `--await` does not apply here. `completed_with_errors` is terminal partial success. Send an
+      `Idempotency-Key` header or `request_id` and reuse it only for retries. operation=quick requests the Level
+      1 minimum from an existing profile without new generation; a deeper stored profile may be returned. full and
+      regenerate can take 25–30 minutes or longer; persist IDs and keep polling. face_search=true is allowed only
+      with full or regenerate and starts full work even for an already-full profile. Without regeneration or face_search,
+      profiles already at requested depth have zero new generation charge.
+  test_request:
+    body:
+      profile_ids:
+      - a23ff3b7-b6cc-4ac6-8d4f-0c909cd956f5
+      operation: partial
+      include_profile: false
+  cost:
+    currency: credit
+    source: rate_card_api
+    source_url: https://api.orbitsearch.com/v3/pricing
+    checked: '2026-10-29'
+    confidence: documented
+    type: per_result
+    table:
+    - when:
+        body.face_search: true
+      value: 100
+    - when:
+        body.operation: quick
+      value: 0
+    - when:
+        body.operation: partial
+      value: 5
+    - when:
+        body.operation: full
+      value: 10
+    - when:
+        body.operation: regenerate
+      value: 10
+    fallback:
+      value: 100
+      note: 'Maximum per-profile tariff: full generation with successful optional face search.'
+    unit: record
+    note: 'Known-ID Enrich quick is a free no-op. Documented generation tariffs: partial 5, full/regenerate 10;
+      optional successful face expansion 100 total (inclusive, even for an empty successful face response or later
+      generation failure). Without a usable portrait or successful face provider, ordinary delivered-depth pricing
+      applies. A profile already at depth is free without regeneration/face_search; quick on a known ID does no
+      new generation. This replay is a deliberate no-op on an existing Level 3 public profile. Paid generation and
+      face tariffs are unobserved in this refresh. Each batch child has its own billing and reservation; sum terminal
+      consumedCredits, not table estimates.'
+    settle: table
+  docs_url: https://docs.orbitsearch.com/api/enrich/batch-enrich
+  added: '2026-10-29'
+  platform_blocked: 'BYOK for now: no-op enrichment can cost zero, successful face work can remain billable after
+    failure, and batches have child billing. A fixed table settlement cannot faithfully charge these outcomes. Use
+    the caller’s Orbit key until terminal per-operation/per-child billing reconciliation is supported.'
+- id: orbit.people.profile.read
+  capability: people.profile.read
+  platform: people
+  domain: enrich
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v3/enrich/{profile_id}
+  name: Read an enriched profile
+  summary: Read an enriched profile
+  input:
+    pathParams:
+      profile_id:
+        type: string
+        minLength: 1
+        required: true
+    headers:
+      Idempotency-Key:
+        type: string
+        maxLength: 200
+        required: false
+    queryParams:
+      format:
+        type: string
+        enum:
+        - json
+        - markdown
+        default: json
+        required: false
+    note: Read the stored public profile by canonical Orbit ID, alias, or slug. Requires profile:read. Returns identity,
+      bio, work history, education, social profiles, available contact fields, generated sections, sources and images.
+      A stale stored profile may schedule a background refresh; this request returns the available stored profile.
+      Email classification and verification are distinct; unavailable fields stay absent.
+  test_request:
+    pathParams:
+      profile_id: a23ff3b7-b6cc-4ac6-8d4f-0c909cd956f5
+  cost:
+    currency: credit
+    source: rate_card_api
+    source_url: https://api.orbitsearch.com/v3/pricing
+    checked: '2026-10-29'
+    confidence: documented
+    type: per_success
+    value: 1
+    unit: record
+    note: 1 credit per explicit read. Profiles embedded in Search and status snapshots incur no additional profile-read
+      charge. A missing profile is not billed.
+  docs_url: https://docs.orbitsearch.com/api/enrich/read-profile
+  added: '2026-10-29'
+- id: orbit.people.enrich
+  capability: people.enrich
+  platform: people
+  domain: enrich
+  scope: any_account
+  kind: action
+  method: POST
+  path: /v3/enrich/{profile_id}
+  name: Enrich a profile
+  summary: Enrich a profile
+  async:
+    id_from: request_id
+    poll:
+      endpoint: orbit.people.enrich.status
+      param:
+        in: pathParams
+        name: request_id
+    status:
+      path: status
+      success:
+      - completed
+      failure:
+      - failed
+    result:
+      path: profile
+    interval: 5
+  input:
+    pathParams:
+      profile_id:
+        type: string
+        minLength: 1
+        required: true
+    headers:
+      Idempotency-Key:
+        type: string
+        maxLength: 200
+        required: false
+    bodyType: json
+    body:
+      request_id:
+        type: string
+        minLength: 1
+        note: Your idempotency key. Keep it stable across retries of the same operation.
+        required: false
+      operation:
+        type: string
+        enum:
+        - quick
+        - partial
+        - full
+        - regenerate
+        note: Use `quick` for identity and contact data (every known profile already holds it, so quick returns
+          the current profile at once), `partial` for a useful profile, `full` for the deepest available profile,
+          or `regenerate` to rebuild a fresh full profile. face_search works with full and regenerate, and starts
+          full-generation work even for an already-full profile.
+        required: true
+      include_profile:
+        type: boolean
+        default: true
+        note: Embed the full public profile when one is available.
+        required: false
+      face_search:
+        type: boolean
+        default: false
+        note: 'Opt into portrait-based source expansion with operation=full or operation=regenerate. Candidate discovery
+          is not required. Rejects operation=partial and operation=quick. Starts full-generation work even if the
+          profile is already at full depth.
+
+
+          Significantly more expensive: 100 credits total per generated profile instead of the normal 10 (10x).
+          Use only when you need maximum coverage of a person. Reserves up to 100 credits per eligible profile.
+          A successful face-search provider response, including an empty result, charges the 100-credit inclusive
+          total even if later generation fails. With no usable portrait or all providers failing, ordinary delivered-depth
+          pricing applies.'
+        required: false
+    note: 'Build, upgrade, or regenerate one known Orbit profile. `partial` gives a useful profile, `full` the deepest
+      available, `regenerate` a fresh full rebuild. Requires `search:read` (and `profile:read` to embed the profile).
+      The response is a snapshot: while `status` is `running` poll `orbit.people.enrich.status` with `request_id`
+      (treg `--await` does this). Send an `Idempotency-Key` header or `request_id` and reuse it only for retries;
+      do not re-POST to poll. operation=quick requests the Level 1 minimum from an existing profile without new
+      generation; a deeper stored profile may be returned. full and regenerate can take 25–30 minutes or longer;
+      persist IDs and keep polling. face_search=true is allowed only with full or regenerate and starts full work
+      even for an already-full profile. Without regeneration or face_search, profiles already at requested depth
+      have zero new generation charge.'
+  test_request:
+    pathParams:
+      profile_id: a23ff3b7-b6cc-4ac6-8d4f-0c909cd956f5
+    body:
+      operation: partial
+      include_profile: false
+  cost:
+    currency: credit
+    source: rate_card_api
+    source_url: https://api.orbitsearch.com/v3/pricing
+    checked: '2026-10-29'
+    confidence: documented
+    type: per_success
+    table:
+    - when:
+        body.face_search: true
+      value: 100
+    - when:
+        body.operation: quick
+      value: 0
+    - when:
+        body.operation: partial
+      value: 5
+    - when:
+        body.operation: full
+      value: 10
+    - when:
+        body.operation: regenerate
+      value: 10
+    fallback:
+      value: 100
+      note: 'Maximum per-profile tariff: full generation with successful optional face search.'
+    unit: record
+    note: 'Known-ID Enrich quick is a free no-op. Documented generation tariffs: partial 5, full/regenerate 10;
+      optional successful face expansion 100 total (inclusive, even for an empty successful face response or later
+      generation failure). Without a usable portrait or successful face provider, ordinary delivered-depth pricing
+      applies. A profile already at depth is free without regeneration/face_search; quick on a known ID does no
+      new generation. This replay is a deliberate no-op on an existing Level 3 public profile. Paid generation and
+      face tariffs are unobserved in this refresh. Each batch child has its own billing and reservation; sum terminal
+      consumedCredits, not table estimates.'
+    settle: table
+  docs_url: https://docs.orbitsearch.com/api/enrich/enrich-profile
+  added: '2026-10-29'
+  platform_blocked: 'BYOK for now: no-op enrichment can cost zero, successful face work can remain billable after
+    failure, and batches have child billing. A fixed table settlement cannot faithfully charge these outcomes. Use
+    the caller’s Orbit key until terminal per-operation/per-child billing reconciliation is supported.'
+- id: orbit.people.enrich.status
+  capability: people.enrich.status
+  platform: people
+  domain: enrich
+  scope: own_account
+  kind: utility
+  method: GET
+  path: /v3/enrich/requests/{request_id}
+  name: Get enrichment status
+  summary: Get enrichment status
+  resource_ownership:
+    requires:
+      kind: poll:orbit.people.enrich.status
+      param: request_id
+  async: false
+  input:
+    pathParams:
+      request_id:
+        type: string
+        minLength: 1
+        required: true
+    note: Return the latest snapshot for one enrichment request or one batch child. Poll while `status` is `running`;
+      `completed` and `failed` are terminal. Requires `search:read` (and `profile:read` when the request embeds
+      the profile).
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    note: Status polls are free; the accepted enrichment operation already covers its result.
+  docs_url: https://docs.orbitsearch.com/api/enrich/enrich-status
+  untestable: needs a request_id that the calling account created on the submit route (orbit.people.enrich or a
+    batch child); ids are account-scoped, so no fixed replay target exists. --await polls it automatically.
+  added: '2026-10-29'

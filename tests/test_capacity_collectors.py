@@ -17,6 +17,40 @@ from treg.domain.capacity import collectors, policy, signatures, sweep
 from treg.timeutil import utcnow_naive
 
 
+@pytest.mark.parametrize("available", [0, 100])
+async def test_orbit_balance_uses_available_credits_without_subtracting_holds_twice(available):
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://api.orbitsearch.com/v3/credits/usage"
+        assert request.headers["authorization"] == "Bearer test-key"
+        return httpx.Response(200, json={"status": "success", "payload": {
+            "balance_scope": "billing_account", "available_credits": available,
+            "reserved_credits": 30, "credits_used": 999,
+        }})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await collectors._orbit(client, "test-key")
+    assert row["value"] == available and row["unit"] == "credits"
+    assert policy.default_policy("orbit", has_key=True).capacity_type == "credits"
+    assert signatures.classify("orbit", 402, {}, b'{"error":{"code":"developer_api_credits_insufficient"}}').kind == "balance"
+
+
+@pytest.mark.parametrize("available", [None, True, -1, "100", 1.5])
+async def test_orbit_balance_rejects_invalid_credit_values(available):
+    body = {"status": "success", "payload": {"balance_scope": "billing_account", "available_credits": available}}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=body))) as client:
+        with pytest.raises(ValueError, match="no valid spendable credit balance"):
+            await collectors._orbit(client, "test-key")
+
+
+@pytest.mark.parametrize("body", [[], {}, {"status": "failure"}, {"status": "success", "payload": None},
+                                 {"status": "success", "payload": {"balance_scope": "current_api_key", "available_credits": 10}}])
+async def test_orbit_balance_rejects_failure_and_wrong_account_scope(body):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200, json=body))) as client:
+        with pytest.raises(ValueError, match="no valid spendable credit balance"):
+            await collectors._orbit(client, "test-key")
+
+
 async def test_anymailfinder_balance_uses_free_account_route():
     def probe(request):
         assert request.method == "GET"

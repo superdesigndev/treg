@@ -67,6 +67,15 @@ API credits. The upstream docs label `api_credits` as available, but it does not
 The shared key is paced at the paid tier's four requests per second. The funded account was not
 exhausted to capture a provider-specific 402 body.
 
+Orbit's free `GET /v3/credits/usage` collector validates the success envelope and billing-account
+scope, then reads nonnegative integer `payload.available_credits`. Active holds are already
+excluded from that spendable number: subtracting `reserved_credits` again understates capacity.
+Key-scoped `credits_used` is usage, not the billing account's balance. The policy is
+`credits / manual / api`; no recharge is enabled. Its documented 402
+`developer_api_credits_insufficient` maps to exhausted balance. The funded account was not
+deliberately exhausted during verification. Composite-priced Orbit operations require BYOK
+until exact reservation and terminal settlement are supported; see [Orbit](../guides/orbit.md).
+
 Octen's PAYG balance has no account balance or usage endpoint in its published OpenAPI, so
 `NO_BALANCE_API` reports it as dashboard-only. `_KNOWN` classifies the account as manually funded
 cash. The shared-key rate policy spaces calls at five per second, below the Base plan's displayed

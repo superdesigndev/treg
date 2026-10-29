@@ -28,6 +28,19 @@ async def _get(c: httpx.AsyncClient, url: str, **kw) -> dict:
     return r.json()
 
 
+async def _orbit(c: httpx.AsyncClient, key: str) -> dict:
+    """Read spendable billing-account credits; active holds are already excluded upstream."""
+    document = await _get(c, "https://api.orbitsearch.com/v3/credits/usage",
+                          headers={"Authorization": f"Bearer {key}"})
+    payload = document.get("payload") if isinstance(document, dict) else None
+    available = payload.get("available_credits") if isinstance(payload, dict) else None
+    if (not isinstance(document, dict) or document.get("status") != "success" or not isinstance(payload, dict)
+            or payload.get("balance_scope") != "billing_account"
+            or type(available) is not int or available < 0):
+        raise ValueError("Orbit returned no valid spendable credit balance")
+    return {"value": available, "unit": "credits", "note": "Spendable billing-account credits; holds already excluded"}
+
+
 async def _orbisearch(c, key):
     d = await _get(c, "https://api.orbisearch.com/v1/credits",
                    headers={"X-API-Key": key})
@@ -1046,6 +1059,7 @@ async def _piapi(c, key):
 
 
 BALANCE_ROUTES = {
+    "orbit": _orbit,
     "orbisearch": _orbisearch,
     "dropcontact": _dropcontact,
     "theirstack": _theirstack,

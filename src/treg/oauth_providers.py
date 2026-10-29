@@ -1224,6 +1224,37 @@ META_ADS = OAuthProvider(
 # key" copy. A key provider needs nothing from treg, so it is always offerable (is_configured=True).
 # No `scopes`: there is no consent screen to size, so the marketplace card leans on `summary`.
 
+ORBIT = OAuthProvider(
+    service="orbit",
+    display_name="Orbit",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="sk_orb_…",
+    setup_url="https://developer.orbitsearch.com/dashboard/keys",
+    setup_action_label="Get your Orbit API key",
+    setup_steps=(
+        "Sign in to the Orbit developer dashboard and open API Keys.",
+        "Create a scoped key: search:read for Search and Enrich, profile:read to read profiles.",
+    ),
+    setup_note="Usage-based credits on your own Orbit account (1 credit = $0.01; rate card at "
+               "https://api.orbitsearch.com/v3/pricing). Search and Enrich are asynchronous: "
+               "use `treg call --await --timeout 2700` for full builds, or persist and poll the returned ID. Full builds can take 25–30 minutes or longer.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="The deepest source-backed context about a person, for one-shot agent personalization and person enrichment.",
+    base_url="https://api.orbitsearch.com",
+    docs_url="https://docs.orbitsearch.com/",
+    # Free, unmetered, scope-less self read (any valid key). Live 2026-10-29: a bogus `sk_orb_…` key
+    # gets 403 {"status":"failure","error":{"code":"invalid_api_key",…}}; a valid one 200 with
+    # {"status":"success","payload":{…}}. Reading the body field keeps a 200 error envelope from
+    # ever counting as a verified key.
+    probe_path="/v3/credits/usage",
+    token_ok_field="status",
+    token_ok_value="success",
+)
+
 APOLLO = OAuthProvider(
     service="apollo",
     display_name="Apollo.io",
@@ -4123,7 +4154,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ORBIT, ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

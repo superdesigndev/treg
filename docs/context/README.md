@@ -83,4 +83,5 @@ covers (frontmatter `sources:`). Regenerate this index with
 | Fragment | Status | Covers |
 |---|---|---|
 | [Expanding a catalog category — the add-a-provider playbook](guides/expanding-a-category.md) | guide | oauth_providers.py, authorization.py, oauth_flow.py, oauth_exchange.py, … |
+| [Orbit — people context and enrichment](guides/orbit.md) | reference | orbit.yaml, orbit.svg, test_orbit_provider.py |
 

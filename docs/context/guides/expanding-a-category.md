@@ -31,6 +31,15 @@ pasted-key provider is **`connect_with_token`** (`POST /connections/token`) in
 [auth-secrets](../architecture/auth-secrets.md) + [api](../interface/api.md);
 this fragment is the *process*, not the mechanics reference.
 
+## Orbit
+
+The vendor contribution is documented in [Orbit](orbit.md): the current public-v3
+four-workflow person-context surface, current profile depths, identity inputs,
+asynchronous polling, and exact credit-accounting limitations. API-key registry setup stays
+here; Orbit-specific guidance belongs in that fragment rather than this generic playbook.
+
+## MillionVerifier (2026-09-08)
+
 MillionVerifier (2026-09-08) follows this key-provider path: query `api` auth, free credits probe
 with an HTTP-200 `error` rejection, two single-host catalog jobs and an existing email-verification
 adapter. The bulk host uses a different auth parameter and is explicitly excluded in the surface
@@ -42,6 +51,7 @@ subscription capacity uses API balance data and is separate from platform list p
 Tests extend the existing auth, capacity and marketplace files. See [catalog](../architecture/catalog.md).
 
 ## The two kinds of provider
+
 - **API-key** (`auth_kind="key"`) — the user pastes a key; self-serve; **the fast path** (research → implement
   → live-test in one session). This is the workhorse and where almost all growth happens.
 - **OAuth** (`auth_kind="oauth"`) — treg holds its own registered app; **heavy** (needs a dev-app registration

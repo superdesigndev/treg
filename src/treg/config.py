@@ -301,6 +301,7 @@ class Settings(BaseSettings):
     platform_key_orbisearch: str = ""  # X-API-Key; prepaid validation and enrichment credits
     platform_key_bounceban: str = ""  # raw key in Authorization; prepaid verification credits
     platform_key_hunter: str = ""
+    platform_key_orbit: str = ""  # Bearer sk_orb_…; prepaid credits, $0.01 each
     platform_key_sumble: str = ""  # Bearer; Pro monthly credits, optional vendor auto-top-up
     platform_key_moltsets: str = ""  # Bearer; shared subscription fair-use pools, no auto-top-up
     platform_key_openmart: str = ""  # Bearer; monthly subscription credits, no auto-top-up
