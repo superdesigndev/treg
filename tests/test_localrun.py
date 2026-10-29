@@ -1,4 +1,4 @@
-"""`treg run` — grants for local CLI execution (docs/CLI-RUN-PLAN.md).
+"""`treg run` — grants for local CLI execution (docs/context/architecture/local-run.md).
 
 Three layers, mirroring the plan's §12: pure unit tests on `localrun` (profile merge, deny
 semantics, validation), endpoint tests on /grant + /run-report (custody, opt-in, deny, audit,
@@ -827,19 +827,6 @@ def test_cmd_run_allows_vendor_flags_after_the_separator(monkeypatch):
     with pytest.raises(SystemExit) as e:
         cli_mod.cmd_run(args, {"base_url": "http://x", "token": "t"})
     assert "before the tool name" not in str(e.value.code).lower()          # guard did NOT trip
-
-
-async def test_run_slot_caps_concurrent_runs_per_user():
-    from treg import runner
-    import contextlib
-    async with contextlib.AsyncExitStack() as stack:
-        for _ in range(runner.MAX_CONCURRENT_RUNS_PER_USER):        # fill this user's slots
-            await stack.enter_async_context(runner.run_slot("u@x"))
-        with pytest.raises(runner.RunBusy):                          # one more → busy
-            await stack.enter_async_context(runner.run_slot("u@x"))
-    # slots released on exit → a fresh run works again
-    async with runner.run_slot("u@x"):
-        pass
 
 
 def test_run_server_timeout_exits_nonzero(monkeypatch):

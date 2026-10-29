@@ -1,5 +1,5 @@
 ---
-title: Onboarding — the first-run demo team (dashboard + CLI)
+title: Onboarding — first run (dashboard + CLI)
 status: shipped
 sources:
   - src/treg/application/auth.py
@@ -25,24 +25,15 @@ A brand-new user's fastest path to *believing* treg ("call a real API with no ke
 is to **do it** on a team that's already alive. So onboarding hands them a **team they own**,
 seeded with teammates, a working tool, and a real audit trail — one backend brain, two faces.
 
-## The one brain - `src/treg/application/onboard/demo.py`
+## Retired demo teams - `src/treg/application/onboard/demo.py`
 
-`provision(db, owner, team_name)` seeds a REAL org owned by the caller, marked `Org.demo=True`.
-It shares the 10-owned-team cap with regular creation, with the user lock held until
-`application.onboard.provision_demo` commits. Existing demo teams can still be reused at the cap;
-a new demo team over the cap returns HTTP 403.
-
-The seeded content includes:
-
-- **Fake teammates** (`TEAMMATES`): Ada·admin, Ben·member, Cora·viewer — roster-only `User` rows
-  with `demo=True` on the unusable domain **`demo.treg.local`** (`DEMO_DOMAIN`). Reused across demo
-  orgs (email is unique); they get a Membership but **no personal org** and **cannot log in** (see
-  the OTP guard below).
-- **Owner key controls:** the real owner's membership gets only its default signed-key control. Fake
-  demo teammates get neither human default keys nor unreachable hash-backed compatibility keys.
-- **A working tool** (`echo` → `postman-echo.com`) + its `echo-key` secret, so **Try-it / `treg call`
-  returns 200 with the injected `Authorization: Bearer sk-demo-…`** — the aha.
-- **Sample activity** (`SAMPLE_CALLS`): a few `CallRecord`s attributed to teammates so Activity is alive.
+Onboarding once seeded a REAL org owned by the caller, marked `Org.demo=True`, with roster-only fake
+teammates (`demo=True` users on the unusable domain **`demo.treg.local`**, `DEMO_DOMAIN`, which
+**cannot log in**; see the OTP guard below), an `echo` tool and sample activity. Nothing seeds those
+teams any more; what remains is the way out. `reset(db, owner)` deletes every demo org the caller owns
+through the shared `cascade_delete_org` (`domain/governance/teams.py`, no private table list), drops
+demo-teammate memberships from the caller's REAL teams too, and sweeps any demo user left with zero
+memberships.
 
 **CLI onboarding is 4 paths** (`cmd_onboard` → `_dispatch_onboard`, one of `_run_catalog`/`_run_setup`/
 `_run_access`/`_run_demo`; `_PATHS = {1:catalog, 2:setup, 3:access, 4:demo}`).
@@ -93,28 +84,12 @@ you admin → **Share your own**, else **the catalog**) applies **only non-inter
   example if none → ④ `_demo_call_log` — an illustrative ledger: the call you just made plus example
   teammates on YOUR email domain (so they read as real). The `echo` tool and the old seed-a-team flow are gone.
 
-`provision` (full auto-seed) backs the Demo path. The narrower helpers — `seed_tool(db, org, owner_email)`
-(adds the `echo` tool+secret, idempotent) and `accept_demo_invite(db, org_id, invite)` (creates the fake
-teammate `demo=True` and accepts a pending invite; `GUIDED_TEAMMATE` = Alex Rivera, `alex@demo.treg.local`,
-member) — were the dashboard stepper's backing; with the stepper removed they have no UI caller, though
-their endpoints remain.
-
-Idempotent — `existing_demo_org` reuses the caller's demo org instead of stacking. Marks
-`owner.onboarded=True`. `reset(db, owner)` deletes every demo org the caller owns through the shared
-`cascade_delete_org` (`domain/governance/teams.py`, no private table list), drops demo-teammate memberships from the caller's REAL teams too, and sweeps
-any demo user left with zero memberships — a clean exit, no litter.
-
 `application.onboard` owns the session and commit boundary for each onboarding journey. The router
-keeps identity and role dependencies plus HTTP error translation; demo provisioning, skip/reset,
-tool seeding, and teammate acceptance run in short use-case-owned sessions.
+keeps identity dependencies and HTTP error translation; skip and reset run in short use-case-owned
+sessions.
 
 ## Endpoints (`routers/onboard.py`, all identity/member-scoped)
 
-- `POST /onboard/demo {team_name}` (`require_identity`) → `application.onboard.provision_demo`
-  (CLI quick mode: full seed). A landing sandbox visitor gets 403, as on `POST /orgs`.
-- `POST /onboard/seed-tool` (`require_member`, member+) → `application.onboard.seed_tool` into the active team.
-- `POST /onboard/accept-teammate {email}` (`require_member`, admin+, demo-domain only) →
-  `application.onboard.accept_teammate` — auto-joins the teammate the user just invited.
 - `POST /onboard/skip` → sets `onboarded=True` without seeding (dismiss, don't re-offer).
 - `POST /onboard/reset` → `demo.reset`.
 - `POST /onboard/team` (`require_identity`) → `application.onboard.first_run.first_team`: a new
@@ -171,8 +146,7 @@ from `/grokbot`'s "Setup treg") **preselects that agent**: the `ref` param is st
 `localStorage` (`treg-ref`) because sign-in reloads the page, and `_welcomeAgentFromRef` consumes it
 when `autoTeam` runs (unknown refs are ignored). The picked agent itself persists as `treg-agent` (a
 `welcome.agent` watcher; `_restoreAgent` at boot) so Getting started keeps showing the same steps
-after a reload. `/onboard/seed-tool` and
-`/onboard/accept-teammate` no longer have a dashboard caller (the CLI/demo paths don't use them either);
+after a reload.
 **"Remove demo"** (`resetDemo` → `/onboard/reset`) remains in Help. A clay **`demo` chip** marks a demo org.
 
 Getting Started's key is the active team's signed Default key. It is intentionally revealable again:

@@ -1,4 +1,4 @@
-"""Step B of docs/PROVIDER-CAPACITY-PLAN.md — the "Know" layer: policies, snapshots, the sweep,
+"""Provider capacity (docs/context/ops/capacity.md) - the "Know" layer: policies, snapshots, the sweep,
 and the latest-state view. Observe-only: nothing here touches the call path."""
 
 from __future__ import annotations

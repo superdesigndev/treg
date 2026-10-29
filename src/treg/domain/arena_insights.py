@@ -29,11 +29,6 @@ def invalid_request(query, body):
         return 'invalid_linkedin_handle'
     return None
 
-def response_doc(text):
-    text = re.sub(r'^\[[^\]]*\]\s*', '', text or '')
-    try: return json.loads(text)
-    except ValueError: return None
-
 def body_failure(doc):
     if not isinstance(doc, dict): return None
     # Restrict inspection to explicit error/status fields; arbitrary profile prose is not evidence.

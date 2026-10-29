@@ -1,4 +1,4 @@
-"""Capability routing — first-party routed endpoints (`treg.<capability>`), docs/CAPABILITY-ROUTING-PLAN.md.
+"""Capability routing - first-party routed endpoints (`treg.<capability>`), docs/context/architecture/catalog.md § Routing.
 
 Pure: contracts, adapters and their fixture verification, identity matching, `cost_at`, ranking,
 and the generated `treg.*` catalog rows. No I/O beyond reading the two YAML files at catalog load;

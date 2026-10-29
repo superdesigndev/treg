@@ -1,6 +1,6 @@
 """Per-user daily usage caps (usage-metering v1). Membership.daily_call_cap (-1 = unlimited) bounds
 how many usage events a member may produce per UTC day in an org; the count spans ALL kinds — proxy
-calls + local-run grants (CallRecord) + server runs (RunRecord) — enforced before each executes.
+calls + local-run grants (CallRecord) — enforced before each executes.
 Soft by design (best-effort audit → fails open), so these tests seed records deterministically.
 """
 
@@ -107,10 +107,9 @@ async def test_setting_a_cap_seeds_the_counter_from_todays_journal(clients: Asyn
     journal says they already used - not from zero."""
     await _mk_echo_tool(clients)
     org_id = await _get_org_id()
-    for _ in range(3):
+    for _ in range(4):
         assert (await clients.get("/call/echo/anything")).status_code == 200
     await audit.drain()
-    await _seed_run(org_id, "tim@superdesign.dev")  # a server run counts too: 4 events in the journal
     uid = [x["user_id"] for x in (await clients.get(f"/orgs/{org_id}/members")).json()
            if x["email"] == "tim@superdesign.dev"][0]
     assert (await clients.patch(f"/orgs/{org_id}/members/{uid}/cap", json={"daily_call_cap": 5})).status_code == 200
@@ -188,13 +187,13 @@ async def test_usage_me(clients: AsyncClient):
     assert me["cap"] == 9 and me["used_today"] == 1 and me["org"]
 
 
-async def test_count_today_sums_calls_and_runs(clients: AsyncClient):
+async def test_count_today_counts_only_todays_calls(clients: AsyncClient):
     org_id = await _set_cap(-1)  # cap irrelevant here; just exercising the counter
     email = "tim@superdesign.dev"
     async with session_maker() as s:
         before = await count_today(s, org_id, email)
     await _seed_call(org_id, email)
-    await _seed_run(org_id, email)
+    await _seed_call(org_id, email)
     await _seed_call(org_id, email, days_ago=2)  # old — must NOT count
     async with session_maker() as s:
         after = await count_today(s, org_id, email)

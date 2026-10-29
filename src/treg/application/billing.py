@@ -395,13 +395,6 @@ def _arm_if_waiting_for_card(org: Org, *, card_proven: bool = False, paid: bool 
     return True
 
 
-async def _pm_of_payment_intent(pi_id: str) -> str | None:
-    """The PaymentMethod a succeeded PaymentIntent used — how a Checkout with
-    `setup_future_usage` hands us the card to reuse, without any Stripe.js on our side."""
-    pm_id, _ = await _pm_and_fingerprint(pi_id)
-    return pm_id
-
-
 async def _pm_and_fingerprint(pi_id: str) -> tuple[str | None, str | None]:
     """`(payment_method_id, card_fingerprint)` for a succeeded PaymentIntent, in ONE retrieve.
 

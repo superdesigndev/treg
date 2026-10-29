@@ -165,7 +165,7 @@ Deleting a team: the owner route sets the opt-out and commits it, calls `erase_o
 request session has let go of its connection and before the cascade (a failure keeps the team,
 opted out, for a retry), then cascades. `cascade_delete_org` itself deletes the rows (the archive
 keys no foreign key at the team, so the cascade's FK-walking guard test never sees them), which
-keeps every other deletion path (admin force-delete, the sandbox reaper, the demo reset) from
+keeps every other deletion path (admin force-delete, the demo reset) from
 leaving rows behind, at the price of objects those paths do not clear. Out of scope,
 deliberately: the terminal evidence of async tasks (`treg://asynctasks/<call_id>`, settlement
 evidence under a public key with no team provenance), the `callrecord` audit trail and the

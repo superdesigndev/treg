@@ -567,23 +567,6 @@ def _without_purchase_pointers(body: Any) -> Any:
     return scrub(body)
 
 
-def _qs_value(v: Any) -> str:
-    """One query-string value, spelled the way the WIRE spells it — not the way Python does.
-
-    `str(True)` is `"True"`, and an upstream that documents a boolean flag rejects that:
-    thecompaniesapi answers `{"rule": "boolean", "message": "The value must be a boolean"}`. The
-    caller did nothing wrong — JSON booleans are what an MCP client sends, and they arrived here as
-    real `bool`s — so the conversion is ours to get right. It bit hardest where it cost money:
-    `simplified=true` is that endpoint's FREE preview mode, so a silently-mangled flag pushed the
-    caller onto the paid path for a query they had asked to see for nothing.
-
-    Nested objects/arrays go as compact JSON rather than Python's `repr` (`{'a': 1}` with single
-    quotes is not JSON and no upstream parses it). `None` never reaches here — an unset parameter is
-    omitted from the query string entirely, which is what "no value" means over HTTP.
-    """
-    return catalog_store.wire_value(v)
-
-
 def _query_values(ep: dict | None, name: str, value: Any) -> list[str]:
     """Structured value(s) for one query key, using the catalog's declared wire encoding."""
     return catalog_store.query_values(ep, name, value)

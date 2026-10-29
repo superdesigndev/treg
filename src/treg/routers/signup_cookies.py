@@ -2,7 +2,6 @@
 
 from fastapi import Request
 
-from ..domain import referrals
 from .auth_helpers import _is_https
 
 
@@ -29,11 +28,3 @@ def _remember_referral(resp, request: Request, code: str) -> None:
                     secure=_is_https(request), max_age=REFERRAL_COOKIE_MAX_AGE)
 
 
-def _take_referral(request: Request) -> str:
-    """The parked code, revalidated. "" when there is none or it is not a shape we ever mint.
-
-    Validated on READ as well as on write, exactly like `_take_oauth_return`: a cookie is
-    attacker-supplied, and this value reaches a database query. `normalize_code` is a strict
-    allowlist, so anything odd becomes "" and the signup simply proceeds unreferred.
-    """
-    return referrals.normalize_code((request.cookies.get(REFERRAL_COOKIE) or "").strip('"'))

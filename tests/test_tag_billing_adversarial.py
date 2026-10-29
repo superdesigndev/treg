@@ -126,10 +126,10 @@ async def test_attack_2_usage_identity_survives_five_tags_zero_release_settle_an
         other_call = await ledger.reserve(
             db, other_org_id, EP, 700, tags={"customer": "shared"})
         assert await ledger.settle(db, other_call, 700) == 700
-        this_org_shared = await ledger.tag_invoice_since(
-            db, org_id, "customer", "shared", datetime(2000, 1, 1))
-        other_org_shared = await ledger.tag_invoice_since(
-            db, other_org_id, "customer", "shared", datetime(2000, 1, 1))
+        this_org_shared = (await ledger.spend_by_tag(
+            db, org_id, "customer", datetime(2000, 1, 1))).get("shared", 0)
+        other_org_shared = (await ledger.spend_by_tag(
+            db, other_org_id, "customer", datetime(2000, 1, 1))).get("shared", 0)
         assert this_org_shared == EP_MICRO
         assert other_org_shared == 700
 
@@ -146,11 +146,11 @@ async def test_attack_3_settle_and_release_cannot_reattribute_reserved_tags(clie
         assert await ledger.settle(
             db, settled_id, 600, meta={"customer": "settle_attacker"}) == 600
 
-        assert await ledger.tag_invoice_since(
-            db, org_id, "customer", "reserved_owner", datetime(2000, 1, 1)) == 600
+        assert (await ledger.spend_by_tag(
+            db, org_id, "customer", datetime(2000, 1, 1))).get("reserved_owner", 0) == 600
         for attacker in ("mutated_owner", "settle_attacker"):
-            assert await ledger.tag_invoice_since(
-                db, org_id, "customer", attacker, datetime(2000, 1, 1)) == 0
+            assert (await ledger.spend_by_tag(
+                db, org_id, "customer", datetime(2000, 1, 1))).get(attacker, 0) == 0
 
         released_id = await ledger.reserve(
             db, org_id, EP, 400, tags={"customer": "released_owner"})
@@ -159,8 +159,8 @@ async def test_attack_3_settle_and_release_cannot_reattribute_reserved_tags(clie
         rows = (await db.execute(select(TagSpend).where(
             TagSpend.hold_id == released_id))).scalars().all()
         assert rows == []
-        assert await ledger.tag_invoice_since(
-            db, org_id, "customer", "release_attacker", datetime(2000, 1, 1)) == 0
+        assert (await ledger.spend_by_tag(
+            db, org_id, "customer", datetime(2000, 1, 1))).get("release_attacker", 0) == 0
 
 
 async def test_attack_4_concurrent_prechecks_overshoot_is_bounded_not_exact(
@@ -357,10 +357,10 @@ async def test_review_pin_bypass_matrix_never_attributes_a_different_value(
             TagSpend.org_id == org_id, TagSpend.dim == "customer",
             TagSpend.val != "cust_A"))).scalars().all()
         assert refused == [], "a refused pin must not have reserved anything"
-        assert await ledger.tag_invoice_since(
-            db, org_id, "customer", "cust_B", datetime(2000, 1, 1)) == 0
-        assert await ledger.tag_invoice_since(
-            db, org_id, "customer", "cust_A", datetime(2000, 1, 1)) == successes * EP_MICRO
+        assert (await ledger.spend_by_tag(
+            db, org_id, "customer", datetime(2000, 1, 1))).get("cust_B", 0) == 0
+        assert (await ledger.spend_by_tag(
+            db, org_id, "customer", datetime(2000, 1, 1))).get("cust_A", 0) == successes * EP_MICRO
 
 
 async def test_review_distinct_memberships_never_share_idempotent_bodies(

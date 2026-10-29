@@ -1,4 +1,4 @@
-"""Overflow — the child cycle (docs/PROVIDER-CAPACITY-PLAN.md §4.3).
+"""Overflow - the child cycle (docs/context/architecture/proxy-model.md § Overflow).
 
 When treg's OWN account for a provider fails a tier-4 call (a balance/quota signature, a burst-429
 that smoothing could not absorb, a connect error), serve the SAME vendor endpoint through a

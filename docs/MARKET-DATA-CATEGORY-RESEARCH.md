@@ -1,6 +1,7 @@
 # Market data — provider research, for review before testing
 
-**Status:** research only. Nothing added, nothing tested.
+**Status:** historical research snapshot; the findings below describe the catalog when it was written
+and are not updated. Financial providers have since been added (see `src/treg/catalog/`).
 
 A user asked for market data and they are right that it is missing: 40 providers across SEO (9),
 Advertising (10), Social media (10), Enrichment (10) and Community (1), and **not one financial

@@ -3,7 +3,7 @@
 These exercise the client-side pieces without a live server or a real vendor CLI: the tool→shim
 selection, the shim contract (clean PATH + verbatim args + exit-code passthrough → no recursion), the
 session wiring (shim dir first on PATH, REALPATH kept clean, teardown), and the stop/guard paths.
-See docs/CLI-SHELL-MODE-PLAN.md §7.
+See docs/context/interface/shell.md.
 """
 
 from __future__ import annotations

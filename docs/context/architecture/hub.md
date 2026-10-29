@@ -182,7 +182,7 @@ calling team.
 ## The sandbox (`application/hub/sandbox.py`, `treg/hub_sandbox.py`)
 
 `run.js` runs in a separate short-lived process per run, `python -m treg.hub_sandbox`, spawned
-with `runner.py`'s discipline: a scrubbed environment (never the server's), a private temporary
+with a scrubbed environment (never the server's), a private temporary
 HOME, its own process group, POSIX rlimits (CPU, file size, no core, RLIMIT_AS on Linux), a
 wall-clock kill, the whole group killed on every exit. Inside, QuickJS (the `quickjs` package,
 server extra) has no network, no file system, no `require`, no `process`, no timers; the engine's

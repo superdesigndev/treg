@@ -1,8 +1,7 @@
 """The hub's script sandbox — the PARENT side (docs/HUB-DECISIONS.md round 2).
 
-Spawns `python -m treg.hub_sandbox` as a separate short-lived process with the discipline
-`treg/runner.py` already has for vendor CLIs: a scrubbed environment (never the server's), a
-private temporary HOME, its own process group, POSIX rlimits, a wall-clock kill, and the whole
+Spawns `python -m treg.hub_sandbox` as a separate short-lived process: a scrubbed environment
+(never the server's), a private temporary HOME, its own process group, POSIX rlimits, a wall-clock kill, and the whole
 group killed on every exit. Inside, QuickJS has no network, no file system, no `require`, no
 `process`; the only road out is `ctx.call`, which arrives here as one JSON line and is run
 through the same step executor the JSON road uses — the same gates, the same key injection, the

@@ -1,7 +1,6 @@
 """`POST /media` hosts a reference file for a vendor to fetch; `GET /m/{token}` serves it."""
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from .. import sandbox as demo_sandbox
 from ..application import media as media_app
 from ..config import get_settings
 from ..domain.identity.access import Caller, require_member
@@ -13,8 +12,6 @@ app = APIRouter()
 async def host_media(request: Request, caller: Caller = Depends(require_member)) -> dict:
     """Raw body in, public URL out. The Content-Type header names the media type; there is no
     multipart wrapper because the CLI and an agent's HTTP client both send bytes more simply."""
-    if demo_sandbox.is_sandbox(caller.org):
-        raise HTTPException(status_code=403, detail="hosting is disabled in the sandbox")
     # Refuse before buffering: no body-size middleware exists, so a declared or streamed body past
     # the cap must never reach worker RAM in full.
     declared = request.headers.get("content-length")

@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import analytics
 from .. import audit
-from .. import sandbox as demo_sandbox
 from ..application.call.access import catalog_endpoint_access as get_catalog_endpoint_access
 from ..application.call.idempotency import (
     _release_idempotent_claim as release_idempotent_claim,
@@ -41,7 +40,6 @@ from ..call_surface import split_call_path
 from ..config import get_settings
 from ..domain.catalog import store as catalog_store
 from ..domain.governance import access as access_policy
-from ..domain.governance import publicdemo as publicdemo_policy
 from ..domain.governance import usage as usage_policy
 from ..domain.identity.access import Caller, require_member
 from ..infra.db import get_session
@@ -130,22 +128,12 @@ def _require_tool_use_http(caller: Caller, tool: Tool) -> None:
         raise HTTPException(status_code=403, detail=exc.detail) from exc
 
 
-async def _enforce_public_demo_ip_cap(request: Request, db: AsyncSession) -> None:
-    try:
-        await publicdemo_policy.enforce_public_demo_ip_cap(_client_ip(request), db)
-    except publicdemo_policy.PublicDemoLimitError as exc:
-        await db.commit()
-        raise HTTPException(status_code=429, detail=exc.detail) from exc
-    await db.commit()
-
-
 async def _enforce_daily_cap(caller: Caller, db: AsyncSession) -> None:
     """The run surfaces' door to the per-user daily cap - the SAME gate `/call/` goes through
     (`application/call/authorize.py`), so a member cannot dodge the cap by switching path. Commits,
     because the gate takes the slot with a write and this request's session is the only owner."""
     try:
-        await usage_policy.enforce_daily_cap(
-            caller, db, sandbox=demo_sandbox.is_sandbox(caller.org))
+        await usage_policy.enforce_daily_cap(caller, db)
     except usage_policy.UsagePolicyError as exc:
         await db.commit()
         raise HTTPException(status_code=429, detail=exc.detail) from exc

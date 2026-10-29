@@ -1,4 +1,4 @@
-"""Routed endpoints — `POST /call/treg.<capability>` (docs/CAPABILITY-ROUTING-PLAN.md §3–§5).
+"""Routed endpoints - `POST /call/treg.<capability>` (docs/context/architecture/catalog.md § Routing).
 
 The router PICKS a child endpoint and runs it through the SAME call use case as any `/call/`:
 each attempt is a full `execute_call` on a child `CallContext` whose `call_ref` is

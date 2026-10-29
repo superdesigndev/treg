@@ -327,11 +327,10 @@ router.routes.extend(auth_routes.token_router.routes)       # caller auth: token
 
 
 def _require_local_run(caller: Caller) -> None:
-    """Gate the LOCAL run tier on the member's `local_run_enabled` (owner exempt). Off → server only."""
+    """Gate the LOCAL run tier on the member's `local_run_enabled` (owner exempt)."""
     if caller.role != "owner" and not caller.membership.local_run_enabled:
         raise HTTPException(status_code=403, detail=(
-            "local execution is disabled for you — run on the server instead (`treg run --server`), "
-            "or ask an admin to enable local runs for your account"))
+            "local execution is disabled for you — ask an admin to enable local runs for your account"))
 
 
 router.routes.extend(org_routes.signup_router.routes)
@@ -340,7 +339,6 @@ router.routes.extend(org_routes.org_entry_router.routes)
 router.routes.extend(org_routes.invite_entry_router.routes)
 router.routes.extend(onboard_routes.onboard_entry_router.routes)
 router.routes.extend(onboard_routes.sandbox_router.routes)
-router.routes.extend(onboard_routes.onboard_teammate_router.routes)
 router.routes.extend(org_routes.invite_management_router.routes)
 router.routes.extend(org_routes.member_list_router.routes)
 router.routes.extend(org_routes.org_usage_router.routes)

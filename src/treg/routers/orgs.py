@@ -204,8 +204,8 @@ async def _count_owners(org_id: int, db: AsyncSession) -> int:
 
 
 async def _used_today_by_user(db: AsyncSession, org_id: int) -> dict[str, int]:
-    """{user_email: events today} for every member of the org — one grouped COUNT per table, so the
-    members list gets everyone's usage without an N+1 fan-out. Spans all kinds (calls + local + server).
+    """{user_email: events today} for every member of the org — one grouped COUNT, so the members
+    list gets everyone's usage without an N+1 fan-out. Spans calls and local runs.
     Once the usage rollup has caught up, calls come from today's rollup rows plus the audit rows after
     its cursor; until then from the audit table itself."""
     since = _day_start_utc()
@@ -217,9 +217,6 @@ async def _used_today_by_user(db: AsyncSession, org_id: int) -> dict[str, int]:
         calls = (await db.execute(select(CallRecord.user_email, func.count()).where(
             CallRecord.org_id == org_id, CallRecord.created_at >= since).group_by(CallRecord.user_email))).all()
     for email, n in calls:
-        counts[email] = counts.get(email, 0) + n
-    for email, n in (await db.execute(select(RunRecord.user_email, func.count()).where(
-            RunRecord.org_id == org_id, RunRecord.created_at >= since).group_by(RunRecord.user_email))).all():
         counts[email] = counts.get(email, 0) + n
     return counts
 
@@ -245,7 +242,7 @@ async def _usage_rollup(db: AsyncSession, org_id: int, since: datetime,
                         folded: list[call_usage.UsageRow] | None) -> dict:
     """Aggregate usage since `since` into by-user (with a per-kind split), by-tool, by-day, and totals.
     CallRecord carries `kind` ("call"/"local_run"); every RunRecord is a "server_run". Pure GROUP BY —
-    no request/response bodies are read (we don't store them). See docs/USAGE-METERING-PLAN.md.
+    no request/response bodies are read (we don't store them). See docs/context/interface/api.md (usage metering).
 
     The call side comes from `folded`, the daily rollup's rows (`application/call_usage.py`). Only
     when the rollup worker has never run is it None, and the audit table is aggregated here: ONE
@@ -383,9 +380,6 @@ _SIGNUP_HTTP_ERRORS = {
     "blocked_domain": (403, "this address cannot be used to sign in"),  # same words: leaks no list
     "unsafe_webhook": (422, "webhook_url must be a public http(s) URL"),
     "email_exists": (409, "email already registered"),
-    "sandbox_user": (403, (
-        "the demo sandbox can't create a real team — sign in with GitHub, Google, or email to make one"
-    )),
     "slug_conflict": (409, "could not allocate a unique org slug — retry"),
     "reserved_name": (422, "this team name is reserved: it reads as treg itself, as official, or as a "
                            "catalog provider or platform. Choose another name."),

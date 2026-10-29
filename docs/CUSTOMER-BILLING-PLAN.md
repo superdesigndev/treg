@@ -1,7 +1,8 @@
 # Customer-level billing — builders reselling treg to their own customers
 
-**Status:** planned, awaiting review. Nothing built. Written to be handed to a maintainer cold; no
-context from the design conversation is assumed.
+**Status:** shipped as caller tags, per-tag spend and tag budgets; kept as the design record. The
+current behavior is `docs/context/interface/api.md` (Caller tags, budgets and per-tag usage) and
+`docs/context/architecture/multi-tenancy.md` (Caller tags and pinned read scopes).
 
 ## Who is asking, and for what
 

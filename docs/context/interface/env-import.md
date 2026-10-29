@@ -84,7 +84,7 @@ a server-injected run); **local tier** is secret-less — it stores an **explici
 dropped key) so the catalog's own inject can't merge back in at grant time (the CLI reads its own config).
 Then an **actionable report** where every gap names the exact fix (`set STRIPE_API_KEY` / `run gcloud auth
 login`); fix it and re-run (idempotent; `--replace` re-creates, `--status`/`--dry-run` report without
-writing). See `docs/CLI-AUTOIMPORT-PLAN.md`.
+writing).
 
 **Secret kind `param`.** A non-secret value (a project id, an org id) stored like a secret and injected the
 same way — into a CLI env var (`CLOUDSDK_CORE_PROJECT`) or an HTTP query/header binding. It reuses the

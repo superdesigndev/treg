@@ -119,8 +119,7 @@ deletion, and global user erasure remove it.
 
 The registry is **tenant-isolated**: an **Org** owns resources, a **User** is a global identity, and a
 **Membership** links them with a role and IS where the caller's token lives. A token = a `(user, org)`
-pair, so every list/create/mutation and the proxy are scoped to the caller's org. Design source:
-`docs/MULTI-TENANCY-PLAN.md` (standalone plan).
+pair, so every list/create/mutation and the proxy are scoped to the caller's org.
 
 ## Owned-team limit
 
@@ -292,7 +291,7 @@ Org existence and coordinate with deletion before cleanup starts. See [configura
   sent-guard, so a rotate that omits it still preserves it. `Membership.created_by` (migration A23)
   stamps the minting admin, giving every agent an owner in the roster.
 - **Client address.** Every per-IP limit (email code requests, tool requests, public demo, find,
-  arena, onboarding sandbox, judge) keys on `client_ip.of(request)`, never on a header the client
+  arena, judge) keys on `client_ip.of(request)`, never on a header the client
   wrote. `X-Forwarded-For` is a list each proxy appends to, so its first entry is the client's own
   claim: trusting it let a script send a fresh address per request and skip every per-IP limit.
   The address is `TREG_CLIENT_IP_HEADER` when set and a valid IP (behind Cloudflare
@@ -452,11 +451,9 @@ bearer path refuses it once expired rather than reviving an expired cookie.
   **That list is the only one**, plus one named exception: `cascade_delete_org` also deletes every
   `HubRun` where `caller_org_id == org.id` before that sweep, because a run names the team that
   CALLED by that foreign key and the maker only by number — a caller's traces go with the caller, a
-  maker's deletion leaves callers' history intact. Owner delete, admin force-delete, the landing-sandbox reaper and the
+  maker's deletion leaves callers' history intact. Owner delete, admin force-delete and the
   demo reset all go through it; `test_org_delete_clears_EVERY_org_scoped_table` walks the models module
-  for anything carrying `org_id` and also refuses a reaper that keeps a private copy. The sandbox reaper
-  did until 2026-09-02, its copy never learned about `IdempotentCall` (which references a Membership),
-  and every sandbox mint 500'd at the foreign key until it was fixed.
+  for anything carrying `org_id` and also refuses a reaper that keeps a private copy.
 - **Invites lifecycle:** one-time **and** time-bounded — `Invite.expires_at` (default `INVITE_TTL_DAYS`),
   `accept_invite` returns `410` past expiry. `list_invites` (`GET /orgs/{id}/invites`, admin+) and
   `revoke_invite` (`DELETE /orgs/{id}/invites/{invite}`, admin+); expired codes are garbage-collected by
@@ -479,8 +476,8 @@ bearer path refuses it once expired rather than reviving an expired cookie.
   is baked into signed team keys, `~/.treg`, MCP pins and agent addresses, so a slug change retires
   the old one into `previous_slug` instead of revoking every copied key: it still resolves, and no
   other team may take it (`_slug_taken` checks both columns). One alias only; a second rename
-  overwrites it. Slugs are validated as their own `_slugify`, 3–40 chars, never `sbx-` (the sandbox
-  shape). Stripe metadata and the analytics group key keep the slug they were stamped with.
+  overwrites it. Slugs are validated as their own `_slugify`, 3–40 chars, never `sbx-` (the closed
+  landing sandbox's shape, kept reserved while its rows may remain). Stripe metadata and the analytics group key keep the slug they were stamped with.
 - **Reserved names.** `teams.reserved_reason(text, extra)` refuses a name or slug that *reads* as
   treg itself, as "official"/"verified", or as a catalog provider/platform (a hub tool's callable id
   is `<team slug>.<name>`, so a squatted slug could pass a stranger's tool off as ours or a

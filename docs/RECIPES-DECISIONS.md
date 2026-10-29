@@ -1,6 +1,6 @@
 ---
 title: Recipes — the decisions, from the owner interview
-status: settled 2026-09-07, no code written yet
+status: historical; superseded by docs/HUB-DECISIONS.md and the tool hub (docs/context/architecture/hub.md)
 ---
 
 # Recipes — the decisions

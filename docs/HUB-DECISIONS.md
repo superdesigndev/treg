@@ -1,6 +1,6 @@
 ---
 title: The tool hub — the decisions, from the owner interview
-status: settled 2026-09-09, no code written yet
+status: settled 2026-09-09; built in src/treg/application/hub/, see docs/context/architecture/hub.md
 ---
 
 # The tool hub — the decisions

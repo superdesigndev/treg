@@ -370,8 +370,7 @@ globally. The tool's `cli` profile (`bin`, `inject`, `deny`, `enabled`) configur
   with a warning). A member may run a tool whose key **they own**; a **shared** (teammate/admin) key
   requires the isolated runner **and** the server's `TREG_RUN_PROOF` (pass it as `--run-proof` at
   setup).
-- `--server` — disabled globally; `POST /run` returns 503 for every caller. `TREG_RUN_ALLOWED_BINS`
-  cannot re-enable server execution.
+- `--server` — disabled globally; `POST /run` returns 503 for every caller.
 
 ```bash
 treg run stripe -- get /v1/balance          # local: CLI runs here, key injected, never held

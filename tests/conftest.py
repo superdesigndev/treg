@@ -91,7 +91,6 @@ os.environ["TREG_MONEY_ADMISSION_ORG_IDS"] = "[]"
 os.environ["TREG_ORG_FLOW_CONTROL_ENABLED"] = "false"
 os.environ["TREG_EMAIL_DEV_MODE"] = "true"  # tests need the returned OTP code (prod default is now False)
 os.environ["TREG_RESEND_API_KEY"] = ""  # never fire a real Resend send from the test suite (send_otp/send_invite skip when empty)
-os.environ["TREG_RUN_ALLOWED_BINS"] = "sh,echo,true,false,cat,sleep,treg-nonexistent-bin-xyz"  # allow the test CLIs for --server run tests
 os.environ["TREG_PROXY_SSRF_CHECK"] = "false"
 # The production default is OFF. The established connector tests and committed route snapshots test
 # the enabled product surface; dedicated tests below also prove the disabled deployment shape.
@@ -671,3 +670,24 @@ def pytest_runtest_teardown(item, nextitem):
         raise AssertionError(f"{item.nodeid} left the working directory at {leaked}; "
                              "use monkeypatch.chdir so it is restored")
     return result
+
+
+async def _register_runnable(c: AsyncClient, *, name="sh-skill", value="s3cr3t-value", bin="sh"):
+    """A skill whose tool carries the full cli profile — the canonical runnable shape."""
+    payload = {
+        "name": name,
+        "recipe": f"# {name}\n",
+        "secrets": [{"local_name": "my-secret", "kind": "env", "value": value}],
+        "tools": [{
+            "name": name,
+            "base_url": "https://api.example.com",
+            "cli": {
+                "bin": bin,
+                "inject": [{"secret": "my-secret", "via": "env", "name": "MY_SECRET"}],
+                "enabled": True,
+            },
+        }],
+    }
+    r = await c.post("/skills", json=payload)
+    assert r.status_code == 200, r.text
+    return r.json()

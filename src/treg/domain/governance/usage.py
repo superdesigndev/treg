@@ -7,7 +7,7 @@ from sqlalchemy import case, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from ...models import CallRecord, Membership, RunRecord
+from ...models import CallRecord, Membership
 from ...timeutil import utcnow_naive
 from ..identity.access import Caller
 
@@ -29,21 +29,17 @@ def _day_start_utc() -> datetime:
 
 async def count_today(db: AsyncSession, org_id: int | None, user_email: str) -> int:
     """How many usage events this user has produced in this org since midnight UTC, from the JOURNAL:
-    proxy calls + local-run grants (both `CallRecord`) plus server runs (`RunRecord`).
+    proxy calls + local-run grants (both `CallRecord`).
 
     NOT the cap's number and NOT on the call path. This is what the roster, `/usage/me` and the
     usage report show, and what `seed_counter` copies when a cap is first set; the gate itself
-    reads `Membership.calls_today` (`take_daily_slot`). Two range COUNTs over
+    reads `Membership.calls_today` (`take_daily_slot`). One range COUNT over
     `(org_id, user_email, created_at)` - O(this member's rows today).
     """
     since = _day_start_utc()
-    calls = (await db.execute(select(func.count()).select_from(CallRecord).where(
+    return (await db.execute(select(func.count()).select_from(CallRecord).where(
         CallRecord.org_id == org_id, CallRecord.user_email == user_email, CallRecord.created_at >= since,
     ))).scalar_one()
-    runs = (await db.execute(select(func.count()).select_from(RunRecord).where(
-        RunRecord.org_id == org_id, RunRecord.user_email == user_email, RunRecord.created_at >= since,
-    ))).scalar_one()
-    return calls + runs
 
 
 async def take_daily_slot(db: AsyncSession, membership_id: int, cap: int) -> bool:
@@ -76,18 +72,17 @@ async def seed_counter(db: AsyncSession, membership: Membership, user_email: str
     membership.calls_today_day = utcnow_naive().date()
 
 
-async def enforce_daily_cap(caller: Caller, db: AsyncSession, *, sandbox: bool) -> None:
+async def enforce_daily_cap(caller: Caller, db: AsyncSession) -> None:
     """Refuse a call/run once the caller has used their per-user daily cap for this org. `-1` (the
-    default) = unlimited, so unmetered members pay ZERO extra queries. The sandbox has its own limiter
-    and is exempt.
+    default) = unlimited, so unmetered members pay ZERO extra queries.
 
     One conditional UPDATE of the member's row (`take_daily_slot`), exact under concurrency. Fails
     OPEN if that statement cannot run: a cap is a courtesy limit an admin set on a colleague, and
     the database being unavailable is not the colleague's fault - the money gates behind this one
-    are the ones that fail closed. See docs/USAGE-METERING-PLAN.md.
+    are the ones that fail closed. See docs/context/architecture/multi-tenancy.md.
     """
     cap = caller.membership.daily_call_cap
-    if cap < 0 or sandbox:
+    if cap < 0:
         return
     try:
         admitted = await take_daily_slot(db, caller.membership.id, cap)

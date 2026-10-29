@@ -1194,7 +1194,7 @@ summing *across* dimensions deliberately double-counts, which is why every repor
 settle, and deleted on release. So a cap counts in-flight work at its estimate and errs toward
 refusing - the right direction for money - while an invoice reads settled rows only, because an open
 hold is not spend and billing it would charge again when it settles. Hence two deliberately separate
-reads, `tag_spent_since` (cap) and `tag_invoice_since` (invoice), named so nobody "deduplicates" them.
+reads, `tag_spent_since` (cap) and `spend_by_tag` (invoice), kept apart so nobody "deduplicates" them.
 
 ### The caps are SOFT, and must never be sold as hard
 

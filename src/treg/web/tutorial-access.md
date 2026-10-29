@@ -167,11 +167,10 @@ ask an admin to enable local runs; server execution is disabled.
 HOME=~/.treg-personas/sam treg run gh -- --version
 ```
 ```
-treg: local execution is disabled for you — run on the server instead (`treg run --server`), or ask an admin to enable local runs for your account
+treg: local execution is disabled for you — ask an admin to enable local runs for your account
 ```
 
-**Notice:** this is the *local* wall, separate from tool access. The legacy error text still suggests
-`--server`, but that option returns HTTP 503; ask an admin to enable local runs.
+**Notice:** this is the *local* wall, separate from tool access.
 
 ## Step 7 — A member can't manage the team
 

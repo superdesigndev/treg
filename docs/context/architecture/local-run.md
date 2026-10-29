@@ -162,7 +162,7 @@ follow-up — the builder exists, the wiring doesn't.
 ### Per-member gates (the access-control feature)
 Before rendering a grant, `grant_local_run` also enforces the per-member ACL: `_require_tool_access` (the
 member's `tool_access` must be NULL or name this tool) and `_require_local_run` (the member's
-`local_run_enabled` must be true, else "run on the server instead"). Both gate the LOCAL tier; the tool ACL
+`local_run_enabled` must be true, else "ask an admin to enable local runs"). Both gate the LOCAL tier; the tool ACL
 also gates the proxy `call` + server `run`. Owner is exempt. See [multi-tenancy](multi-tenancy.md).
 
 ## Trust posture

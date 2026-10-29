@@ -290,9 +290,6 @@ Cron job's workload. Configure it in a private local `.env` or the hosting servi
   a sign-in and team-creation speed bump, not a substitute for suspending an existing abusive user.
 - `run_proof` gates release of a shared key to the root-installed local runner. Empty refuses shared
   local runs while leaving owner-key runs available.
-- `run_allowed_bins` is the command allowlist for server-side CLI execution.
-- `run_rlimits`, `run_cpu_seconds` and `run_fsize_mb` bound server-run resource use where POSIX
-  resource limits are available.
 - `proxy_ssrf_check` enables the call-time SSRF guard and is on by default.
 - `claude_connector_enabled` gates the catalog-only connector at `/mcp/v2/`.
 - `connect_demo_enabled` gates the developer OAuth test page. Leave it off on public deployments.

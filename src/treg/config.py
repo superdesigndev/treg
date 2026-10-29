@@ -192,12 +192,6 @@ class Settings(BaseSettings):
 
     api_token: str = "dev-token"
 
-    # The Stripe sandbox restricted key (env TREG_DEMO_STRIPE_KEY) behind the landing sandbox's ONE
-    # live wire: a sandbox call to the exact seeded stripe tool relays for real with THIS key
-    # injected — the key never exists in any sandbox org (see sandbox.is_live_tool / api.call_tool).
-    # Empty = every sandbox call synthesizes.
-    demo_stripe_key: str = ""
-
     # Cross-tenant super-admin bearer (env TREG_ADMIN_TOKEN). Presenting it authorizes every
     # /admin/* endpoint regardless of org. Empty = the env key is disabled (only is_superadmin
     # users can reach /admin). Keep it long + secret; it sees ALL orgs.
@@ -209,21 +203,6 @@ class Settings(BaseSettings):
     # by the member. Empty = shared-key local runs are refused (owned-secret runs still work). Set it
     # on the server AND install it via `treg setup-local-run --run-proof` to enable shared local runs.
     run_proof: str = ""
-
-    # `treg run --server` allow-list. The server only executes an entrypoint that is a catalog-known CLI
-    # (stripe/gh/vercel/…) OR listed here (comma-separated) — so a member can't name `bash`/`python` and
-    # run arbitrary code as the server user. Extend it as new CLIs are approved.
-    run_allowed_bins: str = ""
-
-    # Server-run resource limits (the DoS half of the server-run sandbox). Every `--server` run's child
-    # process gets these POSIX rlimits so a runaway or hostile CLI can't exhaust the host. On by default;
-    # a no-op where `resource` is unavailable (non-Unix). We deliberately do NOT cap address space or
-    # process count — a virtual-memory cap crashes Go-based CLIs (gh/stripe/doctl), and the per-user
-    # process cap is shared with the server itself. CPU-seconds + max-file-size + no-core-dumps are the
-    # safe, high-value guards. Set TREG_RUN_RLIMITS=false to disable entirely.
-    run_rlimits: bool = True
-    run_cpu_seconds: int = 300          # CPU time a single server run may burn (backstop to the wall timeout)
-    run_fsize_mb: int = 100             # largest single file a server run may write (disk-fill guard)
 
     # Platform markup on a call served by a PLATFORM key, applied to the estimate at reserve time and
     # to the observed cost at settle time. 0.0 = we charge exactly what the provider charges us.
@@ -524,10 +503,9 @@ class Settings(BaseSettings):
     # already theirs.
     oauth_billed_providers: str = ""
 
-    # OUR billing account's keys. Deliberately NOT the `demo_stripe_*` pair above: that one belongs to
-    # the landing page's sandbox feed and its webhook secret signs a different endpoint. Empty secret
-    # key = top-ups are off (the /billing/* endpoints 503); empty webhook secret = the webhook 404s,
-    # so an unconfigured deploy exposes no unauthenticated POST surface (same posture as the demo).
+    # OUR billing account's keys. Empty secret key = top-ups are off (the /billing/* endpoints 503);
+    # empty webhook secret = the webhook 404s, so an unconfigured deploy exposes no unauthenticated
+    # POST surface.
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
     # Enterprise SSO uses WorkOS only as a federation bridge; treg remains the account,
@@ -817,8 +795,6 @@ class Settings(BaseSettings):
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
 
-    slack_client_id: str = ""
-    slack_client_secret: str = ""
     x_client_id: str = ""
     x_client_secret: str = ""
     # TikTok issues a separate app (and separate key/secret) per sandbox, so a dev deployment

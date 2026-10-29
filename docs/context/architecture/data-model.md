@@ -677,7 +677,7 @@ repairing invalid build debris, and needs space for those indexes. No rows or fo
 
 ## Audit writer (`audit.py`)
 
-`record_call` and `record_run` schedule best-effort writes through `background_session_maker`.
+`record_call` and the other `record_*` writers schedule best-effort writes through `background_session_maker`.
 They never delay or fail a proxied response. `_pending` retains tasks; a loop-bound semaphore
 limits active writes and `_MAX_PENDING` bounds the queue by dropping excess rows.
 API traffic has a separate pool on Postgres; SQLite aliases the pools.

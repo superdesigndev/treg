@@ -5,7 +5,7 @@ fragments) for ONE run on a member's machine. It is the single, sanctioned, audi
 "secret values are never returned" — gated per tool by `cli.enabled` (owner opt-in). OAuth secrets
 are refreshed first and release ONLY the expiring leaf (the access token); the blob
 (refresh_token / client_secret) never leaves the server. Deny patterns are checked HERE, where the
-secret lives, not on the client. See docs/CLI-RUN-PLAN.md.
+secret lives, not on the client. See docs/context/architecture/local-run.md.
 
 Profile shape (tool.cli, mirrored by the catalog `cli` blocks):
   {enabled, bin, install?, inject: [{secret_id | from_binding?, via: "env"|"argv",

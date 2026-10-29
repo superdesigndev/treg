@@ -57,7 +57,6 @@ sources:
   - src/treg/timeutil.py
   - src/treg/domain/catalog/store.py
   - src/treg/email.py
-  - src/treg/runner.py
   - src/treg/ratestore.py
   - tests/test_cli_pairing.py
 related:
@@ -112,8 +111,7 @@ See [feedback](../architecture/feedback.md) for the contract and provenance boun
 `POST /media` (member+, raw body, `Content-Type` = the media type) stores a reference file and
 answers `{url, token, content_type, size, expires_at}`; `GET /m/{token}` serves it publicly, no
 token, because the vendor's fetcher has none. 30 MB per file, 300 MB per org per 24 h, 7-day TTL,
-`image/*` / `audio/*` / `video/*` only, refused in the sandbox. Refusals: 415 type, 413 size, 429
-quota, 403 sandbox. Not metered. See [media](../architecture/media.md).
+`image/*` / `audio/*` / `video/*` only. Refusals: 415 type, 413 size, 429 quota. Not metered. See [media](../architecture/media.md).
 
 ## Pictures and the showcase leaderboard
 
@@ -459,7 +457,7 @@ shared HTTP client. `/auth/logout` remains an HTTP-only cookie action.
   both run tiers - see [proxy-model](../architecture/proxy-model.md). `GET /orgs/{id}/policy/cli-deny`
   (admin+, read-only) reports each CLI tool's effective argv deny patterns with their source (skill
   `treg.json` vs catalog) so the Policy screen shows every deny layer in one place.
-- **Usage metering + caps** (usage-metering v1, `docs/USAGE-METERING-PLAN.md`): `org_usage`
+- **Usage metering + caps** (usage-metering v1): `org_usage`
   (`GET /orgs/{id}/usage?days=`, admin+) rolls up `CallRecord` + `RunRecord` since the window start into
   **by-user** (with a `call`/`local_run`/`server_run` split), **by-tool**, **by-day**, and totals - pure
   counts, **no request/response bodies** (they aren't stored). The call side reads the daily usage
@@ -478,8 +476,7 @@ shared HTTP client. `/auth/logout` remains an HTTP-only cookie action.
   dodges the cap). It takes the slot with ONE conditional UPDATE of `Membership.calls_today` /
   `calls_today_day` (`take_daily_slot`, revision 0024): the WHERE is the check and the SET is the
   count, so the cap is exact under concurrency, a refused event is not counted, and the first event of
-  a new UTC day starts from 1. `-1` (default) skips it entirely (zero overhead); the sandbox is
-  exempt; a database error fails *open* (a courtesy limit, not a money gate). `used_today` in the
+  a new UTC day starts from 1. `-1` (default) skips it entirely (zero overhead); a database error fails *open* (a courtesy limit, not a money gate). `used_today` in the
   roster and `/usage/me` still comes from the journal (`count_today` = today's `CallRecord` +
   `RunRecord`), and `set_member_cap` copies that journal count onto the counter when a member goes
   from unlimited to capped, so a cap set mid-day does not start from zero. Until 2026-09-06 the gate
@@ -529,8 +526,8 @@ shared HTTP client. `/auth/logout` remains an HTTP-only cookie action.
   `credential_invalid` marks the injected secret(s) invalid via the health fields, skipping `param` kind.
 - **Server runs (`treg run --server`):** `POST /run` unconditionally returns 503 with
   `Server-side CLI execution is disabled`. The handler has no body, authentication or database
-  dependencies and cannot reach the runner. This applies to every caller, including ordinary teams
-  and sandbox visitors; CLI profiles and `TREG_RUN_ALLOWED_BINS` cannot re-enable it. `_tool_view`
+  dependencies, and the server-side runner is removed. This applies to every caller; no CLI profile
+  or setting re-enables it. `_tool_view`
   reports `server_runnable: false` for every tool. Scrubbed environments and resource limits are not
   a filesystem/process isolation boundary.
 
@@ -651,7 +648,7 @@ shared HTTP client. `/auth/logout` remains an HTTP-only cookie action.
   permanent keys; missing `tv` means zero. New scoped credentials do not change those compatibility
   rules. `POST /auth/revoke-tokens` bumps the version and
   returns a replacement cookie/token for the caller. `/auth/logout` is a same-origin cookie action.
-  Onboarding routes are `POST /onboard/demo|skip|reset|team`; see [onboarding](onboarding.md).
+  Onboarding routes are `POST /onboard/skip|reset|team`; see [onboarding](onboarding.md).
 
   The shared dependencies resolve a membership token, a team Default key, a legacy identity bearer
   plus `X-Treg-Org`, or a session cookie plus `X-Treg-Org`. Bootstrap credentials cannot access team
@@ -717,24 +714,8 @@ shared HTTP client. `/auth/logout` remains an HTTP-only cookie action.
   "List as vendor" modal hands vendors a prompt naming this URL; the repo-side counterpart is
   `docs/VENDORS.md`).
   Browser-facing auth pages (GitHub callback, OAuth-connect result) render via `_auth_page` (brand card).
-- **Landing sandbox:** the landing sandbox is **closed**: `POST /demo/sandbox`
-  returns 410 and authentication refuses every sandbox visitor token with 403
-  ([landing-sandbox](landing-sandbox.md)); the rest of this entry describes the unreachable code
-  awaiting removal. `demo_sandbox_mint` (`POST /demo/sandbox`, open, per-IP rate-limited) minted an anonymous throwaway team (its response now carries `live` = whether the seeded
-  stripe tool is a real wire); `demo_sandbox_skill` (`GET /demo/sandbox/skill`) exports what the visitor
-  built. `call_tool` short-circuits **sandbox**
-  orgs to `sandbox.synthesize` (real injection, no network). Caps via
-`domain.governance.sandbox.enforce_sandbox_cap`. Full
-  behavior: [landing-sandbox](landing-sandbox.md).
-  - **The one live wire (real Stripe demo).** When `demo_stripe_key` is set, a sandbox call to the exact
-    seeded `stripe` tool (fingerprint-matched by `demo_sandbox.is_live_tool`, GET/POST only) is relayed
-    for real to Stripe's test API via `_relay_live_demo` - a deliberately narrower relay: the auth header
-    is built from the env key (never from a sandbox secret, which doesn't hold it), the body is
-    form-encoded, and `metadata[visitor]` is overridden server-side. Metered per client IP
-    (`_enforce_public_demo_ip_cap`) since the wire is one shared credential. `demo_sandbox_live`
-    (`GET /demo/sandbox/live`) reports `live` + the visitor's feed name for an existing sandbox.
-    `_require_not_live_demo_tool`/`_require_not_live_demo_secret` freeze the seeded `stripe` tool and its
-    `STRIPE_KEY` against edit/delete so a visitor can't break their own live pane.
+- **Landing sandbox:** closed. `POST /demo/sandbox` returns 410 and authentication refuses every
+  sandbox visitor token with 403; see [landing-sandbox](landing-sandbox.md).
 - **Public demo token (publishable, call-only credential):** `create_public_token`
   (`POST /orgs/{id}/public-token`, owner-only) flips the org to `public_demo` and mints a **viewer-role**
   token bound to a dedicated can't-log-in identity (`pub-<slug>@public-demo.treg.local`) - safe to print

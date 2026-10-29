@@ -756,20 +756,6 @@ async def tag_spent_since(db: AsyncSession, org_id: int, dim: str, val: str, sin
     return int(total)
 
 
-async def tag_invoice_since(db: AsyncSession, org_id: int, dim: str, val: str, since: datetime) -> int:
-    """What one tag actually SPENT since `since` — settled rows only.
-
-    The invoice read, deliberately not the same function as `tag_spent_since`. An open hold is not
-    spend: billing it would charge for work in flight and then charge again when it settles.
-    """
-    total = (await db.execute(
-        select(func.coalesce(func.sum(TagSpend.amount_micro), 0)).where(
-            TagSpend.org_id == org_id, TagSpend.dim == dim, TagSpend.val == val,
-            TagSpend.settled.is_(True), TagSpend.created_at >= since)
-    )).scalar() or 0
-    return int(total)
-
-
 async def spend_by_tag(db: AsyncSession, org_id: int, dim: str, since: datetime) -> dict[str, int]:
     """Settled spend for every value of one tag key — `{"cust_8123": 41234, ...}`. What a builder
     invoices from. Grouped in SQL over the same index the cap uses; no JSON folding, so it stays

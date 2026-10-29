@@ -15,7 +15,7 @@ from treg.models import AsyncResourceRecord, AsyncTaskRecord, CallRecord, Feedba
 from treg.timeutil import utcnow_naive
 from test_asynctasks import EP, _response, replicate_platform, legacy_async_platform, minimax_platform  # noqa: F401 - pytest fixtures
 from test_tag_billing import _mint_agent, _mk_echo_tool, _org_id
-from test_run import _register_runnable
+from conftest import _register_runnable
 from test_marketplace_call import platform_on  # noqa: F401
 from test_routing import ROUTED, _relay_by_provider, enrichment_on  # noqa: F401
 

@@ -192,10 +192,10 @@ async def test_a_metered_call_attributes_its_spend_to_every_tag(clients: AsyncCl
     assert charged == EP_MICRO
 
     async with session_maker() as db:
-        assert await ledger.tag_invoice_since(db, org_id, "customer", "cust_A", _EPOCH) == charged
-        assert await ledger.tag_invoice_since(db, org_id, "workspace", "ws_9", _EPOCH) == charged
+        assert (await ledger.spend_by_tag(db, org_id, "customer", _EPOCH)).get("cust_A", 0) == charged
+        assert (await ledger.spend_by_tag(db, org_id, "workspace", _EPOCH)).get("ws_9", 0) == charged
         # An untouched value of the same dimension is unaffected.
-        assert await ledger.tag_invoice_since(db, org_id, "customer", "cust_B", _EPOCH) == 0
+        assert (await ledger.spend_by_tag(db, org_id, "customer", _EPOCH)).get("cust_B", 0) == 0
 
 
 async def test_untagged_metered_calls_write_no_tag_rows(clients: AsyncClient, platform_on):
@@ -216,7 +216,7 @@ async def test_a_released_call_bills_no_tag(clients: AsyncClient, platform_on, m
     org_id = await _org_id(clients)
     await clients.get(f"/call/{EP}?aweme_id=7", headers={"X-Treg-Meta": "customer=cust_A"})
     async with session_maker() as db:
-        assert await ledger.tag_invoice_since(db, org_id, "customer", "cust_A", _EPOCH) == 0
+        assert (await ledger.spend_by_tag(db, org_id, "customer", _EPOCH)).get("cust_A", 0) == 0
         assert await ledger.tag_spent_since(db, org_id, "customer", "cust_A", _EPOCH) == 0
 
 
@@ -227,11 +227,11 @@ async def test_in_flight_spend_counts_toward_a_cap_but_not_an_invoice(clients: A
     async with session_maker() as db:
         call_id = await ledger.reserve(db, org_id, EP, 5_000, tags={"customer": "cust_A"})
         assert await ledger.tag_spent_since(db, org_id, "customer", "cust_A", _EPOCH) == 5_000
-        assert await ledger.tag_invoice_since(db, org_id, "customer", "cust_A", _EPOCH) == 0
+        assert (await ledger.spend_by_tag(db, org_id, "customer", _EPOCH)).get("cust_A", 0) == 0
         await ledger.settle(db, call_id, 2_000)
         # Settle rewrites the row to what the call actually consumed, not the estimate it reserved.
         assert await ledger.tag_spent_since(db, org_id, "customer", "cust_A", _EPOCH) == 2_000
-        assert await ledger.tag_invoice_since(db, org_id, "customer", "cust_A", _EPOCH) == 2_000
+        assert (await ledger.spend_by_tag(db, org_id, "customer", _EPOCH)).get("cust_A", 0) == 2_000
 
 
 async def test_caller_tags_cannot_overwrite_ledger_provenance(clients: AsyncClient, platform_on):
@@ -399,8 +399,8 @@ async def test_two_users_can_reuse_one_idempotency_label(clients: AsyncClient, p
     # Both really called the provider, and both were billed.
     org_id = await _org_id(clients)
     async with session_maker() as db:
-        assert await ledger.tag_invoice_since(db, org_id, "customer", "cust_A", _EPOCH) == EP_MICRO
-        assert await ledger.tag_invoice_since(db, org_id, "customer", "cust_B", _EPOCH) == EP_MICRO
+        assert (await ledger.spend_by_tag(db, org_id, "customer", _EPOCH)).get("cust_A", 0) == EP_MICRO
+        assert (await ledger.spend_by_tag(db, org_id, "customer", _EPOCH)).get("cust_B", 0) == EP_MICRO
 
 
 async def test_one_user_still_replays_their_own_label(clients: AsyncClient, platform_on):
@@ -417,7 +417,7 @@ async def test_one_user_still_replays_their_own_label(clients: AsyncClient, plat
     assert again.headers["X-Treg-Original-Cost-Micro"] == str(EP_MICRO)
     org_id = await _org_id(clients)
     async with session_maker() as db:
-        assert await ledger.tag_invoice_since(db, org_id, "customer", "cust_A", _EPOCH) == EP_MICRO
+        assert (await ledger.spend_by_tag(db, org_id, "customer", _EPOCH)).get("cust_A", 0) == EP_MICRO
 
 
 async def test_a_reused_label_on_a_different_request_still_says_so(clients: AsyncClient, platform_on):
@@ -626,7 +626,7 @@ async def test_an_overrun_settle_still_reconciles(clients: AsyncClient):
     async with session_maker() as db:
         call_id = await ledger.reserve(db, org_id, EP, 1_000, tags={"customer": "cust_A"})
         await ledger.settle(db, call_id, 9_000)          # provider charged 9x the estimate
-        assert await ledger.tag_invoice_since(db, org_id, "customer", "cust_A", _EPOCH) == 9_000
+        assert (await ledger.spend_by_tag(db, org_id, "customer", _EPOCH)).get("cust_A", 0) == 9_000
         org_total = (await ledger.spend_since(db, org_id, _EPOCH))["spend_micro"]
         assert org_total == 9_000
         by_value = await ledger.spend_by_tag(db, org_id, "customer", _EPOCH)
@@ -648,7 +648,7 @@ async def test_a_reaped_stale_hold_bills_nobody(clients: AsyncClient):
         await db.commit()
         await ledger.reap_stale_holds(db, org_id=org_id)
         assert await ledger.tag_spent_since(db, org_id, "customer", "cust_A", _EPOCH) == 0
-        assert await ledger.tag_invoice_since(db, org_id, "customer", "cust_A", _EPOCH) == 0
+        assert (await ledger.spend_by_tag(db, org_id, "customer", _EPOCH)).get("cust_A", 0) == 0
         assert (await ledger.spend_since(db, org_id, _EPOCH))["spend_micro"] == 0
 
 
@@ -689,7 +689,7 @@ async def test_a_provider_credential_refusal_is_never_billed(clients: AsyncClien
 
     assert (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"] == before
     async with session_maker() as db:
-        assert await ledger.tag_invoice_since(db, org_id, "customer", "cust_A", _EPOCH) == 0
+        assert (await ledger.spend_by_tag(db, org_id, "customer", _EPOCH)).get("cust_A", 0) == 0
 
 
 async def test_a_caller_input_4xx_may_bill_only_on_a_per_call_endpoint(clients: AsyncClient,

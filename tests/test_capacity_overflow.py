@@ -1,4 +1,4 @@
-"""Step E of docs/PROVIDER-CAPACITY-PLAN.md — the overflow child cycle: the same vendor endpoint
+"""Overflow (docs/context/architecture/proxy-model.md § Overflow) - the child cycle: the same vendor endpoint
 served through a treg-owned aggregator account when treg's own account fails a tier-4 call.
 Off by default; shadow mode never changes the caller's answer."""
 

@@ -1,4 +1,4 @@
-"""overflow spend accounting (docs/PROVIDER-CAPACITY-PLAN.md §4.3 step 5)
+"""overflow spend accounting (docs/context/ops/capacity.md)
 
 Revision ID: 0007
 Revises: 0006

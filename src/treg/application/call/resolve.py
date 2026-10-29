@@ -17,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ... import oauth, oauth_providers
-from ... import sandbox as demo_sandbox
 from ...config import get_settings
 from ...domain.capacity import marks as capacity_marks
 from ...domain.capacity.routes_view import view as overflow_routes_view
@@ -1127,7 +1126,7 @@ def _platform_offer(ep: dict, provider, org: Org) -> dict | None:
         return None
     if not get_settings().platform_key_for(ep["provider"]):
         return None
-    if demo_sandbox.is_sandbox(org) or org.public_demo:
+    if org.public_demo:
         return None
     return cat.cost_view(ep.get("cost"), ep["provider"]) or None
 
@@ -1146,7 +1145,7 @@ def _anonymous_offer(ep: dict, org: Org) -> dict | None:
         return None
     if not get_settings().platform_provider_enabled(ep["provider"]):
         return None
-    if demo_sandbox.is_sandbox(org) or org.public_demo:
+    if org.public_demo:
         return None
     cost = cat.cost_view(ep.get("cost"), ep["provider"])
     return cost if cost and cost.get("type") == "free" else None

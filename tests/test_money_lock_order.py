@@ -246,8 +246,8 @@ async def test_settlement_and_release_claim_one_hold_exactly_once(postgres_money
         assert [(entry.kind, entry.amount_micro) for entry in closes] == [
             (winner, -60 if winner == "settle" else 100),
         ]
-        assert await ledger.tag_invoice_since(
-            db, org_id, "customer", hold_id, datetime(2000, 1, 1)) == spent
+        assert (await ledger.spend_by_tag(
+            db, org_id, "customer", datetime(2000, 1, 1))).get(hold_id, 0) == spent
 
 
 async def test_deferred_failure_rolls_back_every_child_and_can_be_retried(postgres_money):
@@ -408,8 +408,8 @@ async def test_caller_can_close_a_reservation_staged_in_the_same_transaction(pos
         closes = [entry for entry in await ledger.entries_of(db, org_id)
                   if entry.call_id == hold_id and entry.kind in {"settle", "release"}]
         assert len(closes) == 1 and closes[0].kind == closing
-        assert await ledger.tag_invoice_since(
-            db, org_id, "customer", "staged", datetime(2000, 1, 1)) == spent
+        assert (await ledger.spend_by_tag(
+            db, org_id, "customer", datetime(2000, 1, 1))).get("staged", 0) == spent
 
 
 async def test_exact_cost_settlement_does_not_wait_for_another_hold_refund(postgres_money):

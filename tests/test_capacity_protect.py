@@ -1,4 +1,4 @@
-"""Step D of docs/PROVIDER-CAPACITY-PLAN.md — Protect: refuse-before-reserve on an exhausted
+"""Platform capacity (docs/context/architecture/proxy-model.md § Platform capacity) - Protect: refuse-before-reserve on an exhausted
 platform account, the typed `provider_capacity` 503, and the call-path breaker (strike, lock,
 probe, clear).
 

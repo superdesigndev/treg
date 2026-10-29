@@ -2,7 +2,7 @@
 
 Open a subshell in which a team's REGISTERED CLIs (`stripe`, `gh`, `neonctl`, …) run as if they were
 installed locally with the team credential, without the member ever holding the key or typing
-`treg run`. The mechanic (docs/CLI-SHELL-MODE-PLAN.md): put a private **shim directory first on PATH**
+`treg run`. The mechanic (docs/context/interface/shell.md): put a private **shim directory first on PATH**
 holding one wrapper per registered CLI. The shell resolves a command name against PATH in order, so a
 registered CLI finds our shim first and is routed through treg; any other command has no shim and
 resolves normally — the "is this registered?" test is done for free by name resolution.

@@ -21,7 +21,6 @@ sources:
   - tests/test_platform_accounts.py
   - src/treg/client_identity.py
   - src/treg/call_surface.py
-  - src/treg/sandbox_identity.py
   - src/treg/domain/governance/access.py
   - src/treg/domain/governance/publicdemo.py
   - src/treg/domain/governance/usage.py

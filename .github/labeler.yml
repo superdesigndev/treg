@@ -30,7 +30,6 @@
 "area:runner":
   - changed-files:
       - any-glob-to-any-file:
-          - 'src/treg/runner.py'
           - 'src/treg/localrun.py'
           - 'src/treg/egress.py'
           - 'src/treg/fsjail.py'

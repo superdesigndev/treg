@@ -1,6 +1,9 @@
 # Capability choice — the agent decides, treg makes the decision factual
 
-**Status:** planned (2026-08). Supersedes the "treg routes for you" reading of landing pillar 2.
+**Status:** shipped; kept as the design record. Supersedes the "treg routes for you" reading of landing
+pillar 2. Measured comparison is `docs/context/architecture/catalog.md` (Choosing between providers);
+the two cases where treg does choose, routed endpoints and overflow, are in the same fragment
+(Routing) and `docs/context/architecture/proxy-model.md` (Overflow).
 
 ## The promise, and what it actually needs
 

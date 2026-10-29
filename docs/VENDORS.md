@@ -1,6 +1,6 @@
 # List your API on treg
 
-treg is the tool catalog for AI agents: ~2,600 endpoints across ~40 providers, discoverable by
+treg is the tool catalog for AI agents: endpoints from many providers, discoverable by
 *capability* ("get a domain's backlink summary") rather than by vendor name. Agents search the
 catalog, compare providers side by side on price / measured success rate / speed, and call your
 API through treg's proxy with the credential injected server-side.

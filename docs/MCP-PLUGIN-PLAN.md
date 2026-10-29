@@ -1,6 +1,7 @@
 # The treg MCP server, and the plugin that ships it
 
-**Status:** spike COMPLETE and thrown away; implementation approved and not yet started.
+**Status:** shipped; kept as the design record. The MCP server is live at `/mcp/` and `/mcp/v2/`;
+the current design is `docs/context/architecture/mcp-oauth.md`.
 
 The goal is the plugin directory's traffic. A skill-only plugin gets that traffic and then tells the
 visitor to install a CLI — the dead end is the conversion. An MCP connector **works the moment it is

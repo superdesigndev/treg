@@ -25,7 +25,7 @@ from sqlalchemy import select, update
 
 from .infra.catalog_stat_dirty import mark_dirty
 from .infra.db import background_session_maker
-from .models import AsyncTaskRecord, CallRecord, RunRecord, SearchLog, SearchMiss
+from .models import AsyncTaskRecord, CallRecord, SearchLog, SearchMiss
 
 _pending: set[asyncio.Task] = set()
 # ONE writer per process, and it writes in batches. Audit rows are single-row inserts that cost
@@ -125,20 +125,6 @@ def record_search(*, query: str, source: str, org_id: int | None, user_email: st
     every write here — a dropped row costs one sample of the experiment, never a search."""
     _enqueue(SearchLog, dict(query=query[:300], source=source, org_id=org_id,
                              user_email=user_email, **fields))
-
-
-def record_run(
-    *, org_id: int | None = None, user_email: str, bundle_name: str, argv: list, exit_code: int,
-    duration_ms: int, client: str = "", api_key_id: int | None = None,
-    api_key_name: str | None = None, api_key_prefix: str | None = None,
-    tags: dict | None = None,
-) -> None:
-    _enqueue(RunRecord, dict(
-        org_id=org_id, user_email=user_email, bundle_name=bundle_name,
-        argv=argv, exit_code=exit_code, duration_ms=duration_ms, client=client,
-        tags=dict(tags) if tags else None,
-        api_key_id=api_key_id, api_key_name=api_key_name, api_key_prefix=api_key_prefix,
-    ))
 
 
 _shed = 0  # audit rows dropped by back-pressure this process; only ever grows

@@ -82,23 +82,15 @@ async toggleLocalRun(t){ if(!t.cli) return; const turningOn=!t.cli.enabled; cons
       catch(e){ this.err='Could not change local-run: '+(e.detail||e.status); } },
 canCall(t){ return !t.cli || (t.bindings&&t.bindings.length); },
 // an HTTP verb needs a binding (or it's a plain HTTP tool)
-    canRun(t){ return !!t.server_runnable; },
-// server-computed: cli profile + allow-listed bin
     credChips(t){  // one chip per credential KIND (env/oauth/…), covering HTTP bindings + cli.inject alike
       const kinds=new Map();
       (t.bindings||[]).forEach(b=>{ const k=b.injector||'env'; kinds.set(k,(kinds.get(k)||0)+1); });
       ((t.cli&&t.cli.inject)||[]).forEach(()=>{ kinds.set('env',(kinds.get('env')||0)+1); });
       return [...kinds.keys()].map(k=>({label:k, kind:k, title:'credential injected by the registry ('+kinds.get(k)+' wire'+(kinds.get(k)>1?'s':'')+': proxy call and/or CLI run) - the value never appears here'}));
     },
-openUse(t){ this.tryTool=t; this.useMode=this.canRun(t)?'run':(this.canCall(t)?'call':'run'); this.runOut=null;  // last resort: run mode, whose server 422 explains itself (never an unauthenticated HTTP call)
+openUse(t){ this.tryTool=t; this.useMode=this.canCall(t)?'call':'local';  // a CLI with no HTTP binding runs from the member's machine
       const ex=(t.examples||[])[0], hp=t.health_check&&t.health_check.path;  // prefill a real, runnable path so Send just works
       this.tryPath=ex?ex.path:(hp||this.samplePath(t.host)||''); this.tryMethod=ex?(ex.method||'GET'):'GET'; this.tryResp=null; this.tryBody=''; },
-async doRun(){ if(this.running || !this.tryTool) return; this.running=true; this.runOut=null;
-      // shell-ish tokenizer so quoted arguments ("a b") survive as one argv entry
-      const args=(this.runArgsStr.match(/"([^"]*)"|'([^']*)'|\S+/g)||[]).map(a=>a.replace(/^["']|["']$/g,''));
-      try{ this.runOut=await this.api('/run',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({tool:this.tryTool.name,args,timeout_s:60}),encode:true}); }
-      catch(e){ this.runOut={exit_code:-1, duration_ms:0, detail:(e&&e.detail)||('request failed: '+(e&&e.status||e))}; }
-      finally{ this.running=false; } },
 async deleteTool(t){ if(this.confirmDelTool!==t.id){ this.confirmDelTool=t.id; return; } this.confirmDelTool=null; this.err=''; this.toolErr='';
       try{ await this.api('/tools/'+t.id,{method:'DELETE'}); await this.loadAll(); }
       catch(e){ this.err='Delete tool failed: '+(e.detail||e.status); } },

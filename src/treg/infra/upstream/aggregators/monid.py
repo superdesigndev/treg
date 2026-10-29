@@ -86,10 +86,6 @@ def build(route, key: str, query: list[tuple[str, str]] | dict, body: bytes | No
                              {"provider": route.agg_slug, "endpoint": route.agg_path, "input": inp})
 
 
-def poll_request(run_id: str, key: str) -> AggregatorRequest:
-    return AggregatorRequest("GET", f"{BASE}/runs/{run_id}", {"Authorization": f"Bearer {key}"}, {})
-
-
 def _dump(value) -> bytes:
     return jsontext.dumps_bytes(value, separators=(",", ":"))
 

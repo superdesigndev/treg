@@ -248,7 +248,7 @@ _CONCURRENCY: dict[str, int] = {
 }
 
 
-def policy_population(configured_keys: set[str] | None = None) -> list[str]:
+def policy_population() -> list[str]:
     """Every account a policy must exist for: each platform-key slot plus each aggregator."""
     return sorted(set(all_platform_providers()) | {f"overflow:{a}" for a in AGGREGATORS})
 

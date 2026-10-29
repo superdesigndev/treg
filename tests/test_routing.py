@@ -1,4 +1,4 @@
-"""Capability routing — first-party routed endpoints (docs/CAPABILITY-ROUTING-PLAN.md).
+"""Capability routing - first-party routed endpoints (docs/context/architecture/catalog.md § Routing).
 `treg.people.email.find` picks a child and runs it through the ordinary call use case."""
 
 from __future__ import annotations

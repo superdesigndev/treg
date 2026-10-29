@@ -434,8 +434,8 @@
     { part: "Part 2 · The walls", who: "sam", title: "Local execution is off",
       explain: "<code>gh</code> is allowed, but Sam's <code>local_run_enabled</code> is <b>off</b>, so he cannot run it on his own machine. He must ask an admin to enable local runs; server execution is disabled.",
       cmd: `HOME=~/.treg-personas/sam treg run gh -- --version`,
-      out: `treg: local execution is disabled for you — run on the server instead (\`treg run --server\`), or ask an admin to enable local runs for your account`,
-      notice: "This is the <i>local</i> wall, separate from tool access. The legacy error text still suggests <code>--server</code>, but that option returns HTTP 503; ask an admin to enable local runs." },
+      out: `treg: local execution is disabled for you — ask an admin to enable local runs for your account`,
+      notice: "This is the <i>local</i> wall, separate from tool access." },
 
     { part: "Part 2 · The walls", who: "sam", title: "A member can't manage the team",
       explain: "Access control is an admin power. Sam (a member) cannot list or change anyone's access.",

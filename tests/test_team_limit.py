@@ -62,18 +62,7 @@ async def test_joining_does_not_count_but_promotion_does(clients):
     assert (await clients.get('/tools', headers={'X-Treg-Token': accepted.json()['token']})).status_code == 200
 
 
-async def test_demo_cannot_bypass_limit_but_existing_demo_can_be_reused(clients):
-    for i in range(8):
-        assert (await clients.post('/orgs', json={'name': f'owned-{i}'})).status_code == 200
-    demo = await clients.post('/onboard/demo', json={'team_name': 'Demo'})
-    assert demo.status_code == 200, demo.text
-    assert (await clients.post('/orgs', json={'name': 'eleventh'})).status_code == 403
-    reused = await clients.post('/onboard/demo', json={'team_name': 'Demo again'})
-    assert reused.status_code == 200, reused.text
-    assert len((await clients.get('/orgs')).json()) == 10
-
-
-async def test_demo_refused_at_ten_and_existing_excess_teams_preserved(clients):
+async def test_existing_excess_teams_preserved_at_the_limit(clients):
     from sqlmodel import select
     from treg.infra.db import session_maker
     from treg.models import Membership, Org, User
@@ -90,7 +79,6 @@ async def test_demo_refused_at_ten_and_existing_excess_teams_preserved(clients):
     before = (await clients.get('/orgs')).json()
     assert len(before) == 12
     assert (await clients.post('/orgs', json={'name': 'new'})).status_code == 403
-    assert (await clients.post('/onboard/demo', json={'team_name': 'demo'})).status_code == 403
     assert (await clients.get('/orgs')).json() == before
     assert (await clients.get('/tools')).status_code == 200
 

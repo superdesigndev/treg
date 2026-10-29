@@ -1,4 +1,4 @@
-"""Step B′ of docs/PROVIDER-CAPACITY-PLAN.md — overflow routes, the signature table and the
+"""Provider capacity (docs/context/ops/capacity.md) - overflow routes, the signature table and the
 aggregator envelopes. Fixtures are recorded aggregator bodies (PII hashed) from the 2026-08-26
 mapping run. No call-path involvement."""
 

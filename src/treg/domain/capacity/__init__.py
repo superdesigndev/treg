@@ -1,4 +1,4 @@
-"""Platform vendor-account capacity — the "Know" layer of docs/PROVIDER-CAPACITY-PLAN.md.
+"""Platform vendor-account capacity - the "Know" layer (docs/context/ops/capacity.md).
 
 What treg's OWN accounts (tier 4) have left, so a caller never inherits our 402. Three pieces:
 

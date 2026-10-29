@@ -315,14 +315,6 @@ async def revoke_membership_keys(
         row.membership_id = None
 
 
-def key_snapshot(key: ApiKey | None) -> dict:
-    return {
-        "api_key_id": key.id if key else None,
-        "api_key_name": key.name if key else None,
-        "api_key_prefix": key.safe_prefix if key else None,
-    }
-
-
 def _writer_gate() -> asyncio.Semaphore:
     """Return a loop-local gate; pytest and embedded apps can use more than one event loop."""
     global _last_used_gate

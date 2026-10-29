@@ -1233,16 +1233,11 @@ async def use_case_job_page(request: Request, job: str,
     obs = await _observed_or_empty(observations, [e["id"] for e in eps])
     provs = _uc_providers(cat, eps, obs)
 
-    def usd_of(e):
-        cv = cat.cost_view(e.get("cost"), e.get("provider"))
-        return cv["usd"] if cv and cv["usd"] else None
-
     platforms = sorted({p["platform_label"] for p in provs})
     form = "short" if len(provs) == 1 else ("platforms" if len(platforms) > 1 else "compare")
     # data-provider must stay unique in the DOM when one provider appears under two platforms
     for pr in provs:
         pr["row_id"] = pr["id"] if form != "platforms" else f'{pr["id"]}-{pr["platform"]}'
-    noun = spec.get("result_noun", "result")
 
     # Cheapest is claimed PER BILLING UNIT. A per-call endpoint that returns a thousand rows is not
     # dearer than a per-result one, and ranking them together names the wrong winner.
@@ -1273,9 +1268,6 @@ async def use_case_job_page(request: Request, job: str,
 
     def ms(x):
         return (f"{x/1000:.1f}s" if x >= 1000 else f"{int(x)}ms") if x else ""
-
-    def unit_plural(u: str) -> str:
-        return {"found": f"{noun}s found", "result": "results"}.get(u, "calls")
 
     title = spec.get("title", "{sentence}: {n} providers | treg.to").format(
         sentence=spec["sentence"], n=n, agent=agent_name,

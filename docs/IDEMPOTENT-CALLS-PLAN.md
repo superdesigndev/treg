@@ -1,6 +1,9 @@
 # Idempotent calls — a retry must not bill twice
 
-**Status:** planned, awaiting approval. Nothing built.
+**Status:** shipped; kept as the design record. Caller `Idempotency-Key` replay is described in
+`docs/context/interface/api.md` (`Idempotency-Key` on `/call/`) and `docs/context/architecture/money.md`
+(Idempotency and retries); the per-org re-scoping on treg's shared key lives in
+`src/treg/infra/upstream/relay.py` (`docs/context/architecture/proxy-model.md`).
 
 ## The question that prompted it
 

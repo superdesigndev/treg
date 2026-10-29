@@ -32,8 +32,7 @@ to land one 18 s Seedance task was the cost on 2026-09-14. `treg host <file>` re
   `X-Robots-Tag: noindex`. No listing endpoint exists.
 - Bounds, all in `application/media.py`: 30 MB per file (the vendors' own reference limit),
   300 MB per org per rolling 24 h, 7-day TTL (reAPI's output URLs live about as long), and only
-  `image/*`, `audio/*`, `video/*`, with SVG denied (an image type that carries script). Sandbox
-  orgs are refused. The router refuses on `Content-Length` and again mid-stream at the cap, so an
+  `image/*`, `audio/*`, `video/*`, with SVG denied (an image type that carries script). The router refuses on `Content-Length` and again mid-stream at the cap, so an
   oversized body never reaches worker RAM in full.
 - Expiry is swept inline on every upload (`DELETE WHERE expires_at < now`) rather than by a cron;
   an expired row also 404s on read before the sweep reaches it.

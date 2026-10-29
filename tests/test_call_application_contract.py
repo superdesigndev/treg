@@ -33,7 +33,6 @@ async def test_authorization_gate_order_is_frozen(monkeypatch) -> None:
     monkeypatch.setattr(authorize.access_policy, "enforce_deny", deny)
     monkeypatch.setattr(authorize.usage_policy, "enforce_daily_cap", daily)
     monkeypatch.setattr(authorize.publicdemo_policy, "enforce_public_demo_ip_cap", public)
-    monkeypatch.setattr(authorize.demo_sandbox, "is_sandbox", lambda org: False)
     caller = type("Caller", (), {
         "role": "member",
         "org": type("Org", (), {"public_demo": True})(),

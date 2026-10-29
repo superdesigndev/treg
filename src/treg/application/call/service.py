@@ -8,7 +8,7 @@ import logging
 import time
 import uuid
 from types import SimpleNamespace
-from urllib.parse import parse_qsl, quote, urlencode, urlsplit
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -16,7 +16,6 @@ from ... import analytics, archive, audit, jsontext, oauth, oauth_providers
 from ...application import hub as hub_app
 from ...application.hub import runner as hub_runner
 from ...application.hub import limits as hub_limits
-from ... import sandbox as demo_sandbox
 from ...capacity_notice import CAPACITY_HEADER, EXHAUSTED
 from ...client_identity import _norm_client, mcp_host
 from ...config import get_settings
@@ -27,7 +26,6 @@ from ...domain import provider_resources
 from ...infra import money_admission
 from ...infra.db import session_maker
 from ...models import Secret
-from ...sandbox_identity import visitor_name
 from ...domain.capacity import marks as capacity_marks
 from ...domain.capacity import signatures as capacity_signatures
 from ...domain.capacity.fair_share import NO_SLOT, ShareBusy, fair_share
@@ -39,7 +37,7 @@ from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
 from . import keyslots
-from .authorize import authorize_call, enforce_public_demo_limit
+from .authorize import authorize_call
 from .evidence import (
     _ERROR_BODY_SLICE,
     _ERROR_CALLER_BODY_MAX,
@@ -641,27 +639,6 @@ def _set_response_header(response: UpstreamResponse, name: str, value: str) -> N
     ) + ((wanted, value.encode("latin-1")),)
 
 
-async def _relay_live_demo(
-    request: _ApplicationRequest, upstream_url: str, key: str, visitor: str,
-    client: httpx.AsyncClient,
-) -> UpstreamResponse:
-    headers = {"Authorization": f"Bearer {key}"}
-    content = None
-    if request.method == "POST":
-        body = (await request.body()).decode("utf-8", "replace")
-        pairs = [(k, v) for k, v in parse_qsl(body, keep_blank_values=True)
-                 if k != "metadata[visitor]"]
-        pairs.append(("metadata[visitor]", visitor))
-        content = urlencode(pairs)
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
-    response = await client.request(
-        request.method, upstream_url, params=request.query_params.multi_items(),
-        content=content, headers=headers)
-    return _bytes_response(
-        response.content, response.status_code,
-        response.headers.get("content-type", "application/json"))
-
-
 async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.AsyncClient) -> UpstreamResponse:
     caller = request.caller
     rest = request.raw_rest
@@ -1089,46 +1066,6 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             return props
         _capture(props)
         return None
-
-    # Landing-page sandbox: never touch the network — EXCEPT the one live wire. A call to the
-    # exact seeded stripe tool (fingerprint-matched; see sandbox.is_live_tool) relays to the real
-    # Stripe test API with the env-held demo key. Any tampered/lookalike tool falls through to
-    # synthesize below, so there is never a key to exfiltrate from a sandbox org.
-    if demo_sandbox.is_sandbox(caller.org):
-        live_key = get_settings().demo_stripe_key
-        if live_key and demo_sandbox.is_live_tool(tool) and request.method in ("GET", "POST"):
-            try:
-                await _await_before_reserve(
-                    enforce_public_demo_limit(request.client_ip), request, call_ref
-                )  # one shared wire → meter by client IP
-            except CallFailure:
-                raise
-            await _await_before_reserve(
-                db.commit(), request, call_ref
-            )  # end the DB phase before network I/O (see the same call before relay())
-            try:
-                response = await _await_before_reserve(
-                    _relay_live_demo(
-                        request, upstream_url, live_key,
-                        visitor_name(caller.org.slug), upstream_client),
-                    request, call_ref)
-            except httpx.RequestError as exc:
-                _audit(502, answered=False)
-                raise _gateway_request_failure(exc) from exc
-            _audit(response.status)
-            return response
-        secrets = {}
-        for sid in {b.get("secret_id") for b in tool.bindings if b.get("secret_id") is not None}:
-            s = await _await_before_reserve(db.get(Secret, sid), request, call_ref)
-            if s is not None and s.org_id == caller.org_id:
-                secrets[sid] = s
-        body = (await _await_before_reserve(request.body(), request, call_ref)).decode(
-            "utf-8", "replace")
-        result = demo_sandbox.synthesize(
-            request.method, upstream_url, tool, secrets,
-            query=request.query_params.multi_items(), body=body)
-        _audit(200)
-        return _json_response(result)
 
     # Load every secret the bindings need BEFORE the money gate (api does the DB work; proxy stays
     # I/O-free): whether this call is METERED can depend on the credential itself — a registry X

@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from .. import adsconv, analytics, health, policy, sandbox as demo_sandbox
+from .. import adsconv, analytics, health, policy
 from ..config import get_settings
 from ..domain import money as ledger
 from ..domain import referrals
@@ -385,8 +385,6 @@ async def create_org(
     *, user: User, name: str, ad_cookie: str, utm_cookie: str, referral_cookie: str,
 ) -> dict:
     async with session_maker() as db:
-        if demo_sandbox.is_sandbox_user(user):  # anonymous sandbox visitors cannot mint real teams
-            raise SignupError("sandbox_user")
         # Previously registered identities may still hold tokens, so check this door too.
         if blocked_email(user.email, "create_org"):
             raise SignupError("blocked_domain")

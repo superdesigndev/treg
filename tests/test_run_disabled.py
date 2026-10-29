@@ -7,12 +7,12 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from treg import audit, crypto, runner
+from treg import audit, crypto
 from treg.api import app
 from treg.bootstrap import create_app
 from treg.infra.db import get_session, session_maker
 from treg.models import Membership, Org, User
-from test_run import _register_runnable
+from conftest import _register_runnable
 
 
 async def test_run_disabled_for_registered_owner_and_cli_tool(clients):
@@ -68,7 +68,6 @@ async def test_run_disabled_without_dependencies_for_every_identity(clients, mon
         patch.setitem(app.dependency_overrides, get_session, forbidden_session)
         patch.setattr(AsyncSession, "execute", forbidden)
         patch.setattr(crypto, "decrypt", forbidden)
-        patch.setattr(runner, "run_tool", forbidden)
         patch.setattr(asyncio, "create_subprocess_exec", forbidden)
         clients.headers.clear()
         clients.headers.update(headers)

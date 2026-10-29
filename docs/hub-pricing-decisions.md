@@ -1,6 +1,6 @@
 ---
 title: hub pricing flexibility — the decisions, from the owner interview
-status: settled 2026-09-14, no code written yet
+status: settled 2026-09-14; built (per-call and ctx.charge pricing), see docs/context/architecture/hub.md
 ---
 
 # hub pricing flexibility — the decisions

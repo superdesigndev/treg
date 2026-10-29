@@ -35,7 +35,6 @@ MAX_COST_USD = 100.0
 #             charge. The caller sees N before the run, the hold is N, the run settles at the sum.
 # Stored as {"mode": "per_call", "price_usd"} or {"mode": "charge", "max_price_usd"}.
 PRICING_MODES = ("per_call", "charge")
-MAX_CHARGES_PER_RUN = 20
 
 INPUT_TYPES = ("string", "int", "float", "bool", "list", "object")
 INPUT_KEYS = frozenset({"type", "default", "max", "min", "secret", "example", "note"})
@@ -394,11 +393,6 @@ def _validate_steps(raw: Any, uses: list[str], max_steps: int) -> list[dict[str,
     from . import graph as _graph   # local: graph imports ManifestError from here
     _graph.build(out)               # unknown-step references and cycles are refused at publish
     return out
-
-
-def own_names(uses: list[str]) -> set[str]:
-    """The entries of `uses` that are a team's own tool names (no dot) rather than catalog ids."""
-    return {u for u in uses if "." not in u}
 
 
 def pricing_micro(manifest: dict[str, Any]) -> dict[str, Any]:

@@ -47,9 +47,6 @@ _DATAPLANE_DERIVED_WRITES = {
     "public_demo_ratestore_hit": (
         (authorize.authorize_call, "publicdemo_policy.enforce_public_demo_ip_cap"),
     ),
-    "sandbox_ratestore_hit": (
-        (authorize.enforce_public_demo_limit, "publicdemo_policy.enforce_public_demo_ip_cap"),
-    ),
     "first_call_adconversion_outbox": (
         (settle._record_first_call, "adsconv.queue"),
     ),
@@ -123,7 +120,6 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "archive_body_object",
     "auto_topup_task",
     "public_demo_ratestore_hit",
-    "sandbox_ratestore_hit",
     "first_call_adconversion_outbox",
     "lazy_stale_hold_reap",
     "capacity_exhausted_mark",
@@ -195,8 +191,6 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("archive_bodies.py", "prepare", "_store.put"),
     ("application/billing.py", "maybe_schedule_autotopup", "loop.create_task"),
     ("application/call/authorize.py", "authorize_call",
-     "publicdemo_policy.enforce_public_demo_ip_cap"),
-    ("application/call/authorize.py", "enforce_public_demo_limit",
      "publicdemo_policy.enforce_public_demo_ip_cap"),
     ("application/call/authorize.py", "authorize_call", "usage_policy.enforce_daily_cap"),
     ("domain/governance/usage.py", "enforce_daily_cap", "take_daily_slot"),

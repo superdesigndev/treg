@@ -25,9 +25,6 @@ def _configure_test_environment() -> None:
     os.environ["TREG_DATABASE_URL"] = os.environ.get("TREG_TEST_DB_URL", default_db)
     os.environ["TREG_EMAIL_DEV_MODE"] = "true"
     os.environ["TREG_RESEND_API_KEY"] = ""
-    os.environ["TREG_RUN_ALLOWED_BINS"] = (
-        "sh,echo,true,false,cat,sleep,treg-nonexistent-bin-xyz"
-    )
     os.environ["TREG_PROXY_SSRF_CHECK"] = "false"
     os.environ["TREG_CLAUDE_CONNECTOR_ENABLED"] = "true"
 

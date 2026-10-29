@@ -1,6 +1,9 @@
 # Shared-plan pricing — the ladder that lets flat-fee providers into the catalog
 
-**Status:** planned, awaiting approval. Nothing built.
+**Status:** shipped; kept as the design record. `kind: treg_shared_plan` rates live in
+`src/treg/catalog/fx.yaml` and are checked by the catalog validator; the review helper
+`shared_plan_recovery` in `src/treg/reconcile.py` is not yet run by any command. See
+`docs/context/architecture/catalog.md` (Cost).
 
 ## The ladder (agreed 2026-08-13)
 

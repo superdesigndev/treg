@@ -938,7 +938,7 @@ def _pick_path(cfg: dict) -> str:
         ("catalog", "Call something now", "find a tool in the catalog and call it — no key, no setup"),
         ("setup", "Share your own keys & skills", "upload this project's .env + skills (admins)"),
         ("access", "Use your team's tools", "pull your team's shared skills + make a call"),
-        ("demo", "See how it works", "a walkthrough with a throwaway team"),
+        ("demo", "See how it works", "a guided walkthrough; nothing is created"),
     ], default="catalog")
     if picked is None:  # Ctrl-C / Esc / EOF
         raise SystemExit(0)
@@ -1021,16 +1021,6 @@ def _spinner(msg: str):
         t.join(timeout=0.3)
         print("\r" + " " * (len(msg) + 6) + "\r", end="", flush=True)  # wipe the line
         _SPINNER_ACTIVE = False
-
-
-def _show_calls(cfg: dict) -> None:
-    with _client(cfg) as c:
-        calls = c.get("/calls", params={"limit": 6}).json()
-    for cr in (calls if isinstance(calls, list) else [])[:6]:
-        st = cr.get("status_code", "")
-        col = _G if (isinstance(st, int) and st < 400) else _M
-        print(f"   {cr.get('user_email',''):<26}{_M}{cr.get('method',''):<5}{_R}{col}{st}{_R}  {_M}{cr.get('tool_name','')}{_R}")
-    _arrow("full log:  treg audit")
 
 
 _ONBOARD_SUGGESTIONS = [
@@ -1857,7 +1847,7 @@ def _import_clis(args, cfg, env_path: str) -> None:
     """Scan the machine for INSTALLED catalog CLIs, classify each (server-injectable / local / gap), and
     register the ready ones on the right tier — server-side when treg can hold the key, local when the
     credential lives in the CLI's own config. Prints an actionable report; fix a gap and re-run. `--status`
-    (or `--dry-run`) reports without registering. See docs/CLI-AUTOIMPORT-PLAN.md."""
+    (or `--dry-run`) reports without registering. See docs/context/interface/env-import.md."""
     import shutil
     from . import providers as prov
     if getattr(args, "add", None):  # register an UNKNOWN (non-catalog) installed CLI
@@ -1964,16 +1954,15 @@ def _import_add_cli(args, cfg) -> None:
                 bindings = [{"via": "header", "name": "Authorization", "format": "Bearer {secret}", "secret_id": sid}]
             else:  # env var named but not set → register the profile; user sets it, re-run tools work
                 profile["inject"] = [{"via": "env", "name": envvar}]
-                print(f"  note: {envvar} isn't set — the tool is registered; set it before running server-side.")
+                print(f"  note: {envvar} isn't set — the tool is registered; store the key before running it.")
         rt = c.post("/tools", json={"name": name, "base_url": base_url, "bindings": bindings, "cli": profile})
         if rt.status_code >= 400:
             sys.exit(f"tool failed ({rt.status_code}) {rt.text[:120]}")
-    # An unknown bin is NOT on the server allow-list (the RCE guard), so it runs LOCALLY; server-run needs
-    # an admin to allow-list the bin. If a key was bound it's also a callable HTTP tool.
+    # An unknown bin runs locally. If a key was bound it's also a callable HTTP tool.
     print(f"✓ Registered '{name}'. Run it locally: `treg cli run {name}`.")
     print(f"  ↗ {_detail_url(cfg, 'tool', name)}")
     if bindings:
-        print(f"  (key stored — also a callable API tool; to run '{bin_}' on the SERVER too, an admin adds it to TREG_RUN_ALLOWED_BINS.)")
+        print("  (key stored — also a callable API tool.)")
     import json as _json
     entry = {"provider": name.title(), "tokens": [envvar.split("_")[0]] if envvar else [], "base_url": base_url,
              "auth": {"shape": "bearer"},
@@ -2871,7 +2860,7 @@ def cmd_audit(args, cfg) -> None:
 
 
 def cmd_run(args, cfg) -> None:
-    """`treg run <tool> -- <args>` dispatcher over two execution tiers (docs/CLI-RUN-PLAN.md):
+    """`treg run <tool> -- <args>` dispatcher over two execution tiers (docs/context/interface/cli.md):
       --local  (default): run the CLI on THIS machine; the credential is isolated under the treg-run user.
       --server          : run the CLI on the registry server (Tier 0), streaming stdout/stderr back.
     """
@@ -3718,7 +3707,7 @@ def cmd_serve_env(args, cfg) -> None:
 
 def cmd_shell_start(args, cfg) -> None:
     """Open a subshell where the team's registered CLIs run with the credential injected — the member
-    types `stripe …`/`gh …` normally and treg handles auth behind the scenes (docs/CLI-SHELL-MODE-PLAN.md).
+    types `stripe …`/`gh …` normally and treg handles auth behind the scenes (docs/context/interface/shell.md).
     MVP: shims call `treg run <tool>`, reusing the whole local-run path. With `--proxy`, calls the
     AGENT makes directly to a registered API are caught too (docs/LOCAL-PROXY-PLAN.md)."""
     from . import shell as sh

@@ -2140,7 +2140,7 @@ and the CLI so the three surfaces cannot disagree:
 ## Routing — first-party routed endpoints (`treg.<capability>`)
 
 The one place treg **models** an upstream API, and the explicit opt-in where the caller asks treg
-to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog stays verbatim relay.
+to choose. Everything else in the catalog stays verbatim relay.
 
 - **Contracts** — `contracts.yaml`: per capability, one-of *identity* variants (structural keys,
   never provider names — `{full_name, domain}`, `{first_name, last_name, domain}`,

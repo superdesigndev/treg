@@ -38,15 +38,12 @@ async def test_org_delete_clears_EVERY_org_scoped_table(clients):
     assert not missing, (
         f"these models reference org but cascade_delete_org never deletes them: {missing}. "
         f"A team holding any of these rows cannot be deleted - the foreign key fails with a 500.")
-    # And there is only ONE list. The sandbox reaper and the demo reset each kept a private copy
-    # until 2026-09-02, when the copies had not learned about IdempotentCall and every sandbox
-    # mint returned a 500. A reaper that names its own tables is the bug coming back.
-    from treg.application.onboard import demo, sandbox
+    # And there is only ONE list. A reaper that names its own tables misses the next new one.
+    from treg.application.onboard import demo
     from treg.domain.governance.teams import cascade_delete_org
 
-    for module in (sandbox, demo):
-        assert not hasattr(module, "_ORG_MODELS"), f"{module.__name__} keeps its own org-table list"
-    assert sandbox.cascade_delete_org is cascade_delete_org
+    assert not hasattr(demo, "_ORG_MODELS"), f"{demo.__name__} keeps its own org-table list"
+    assert demo.cascade_delete_org is cascade_delete_org
 
 
 async def test_a_team_with_a_BALANCE_can_still_be_deleted(clients):

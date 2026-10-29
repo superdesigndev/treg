@@ -1,4 +1,4 @@
-"""overflow route table (docs/PROVIDER-CAPACITY-PLAN.md §4.3)
+"""overflow route table (docs/context/ops/capacity.md)
 
 Revision ID: 0006
 Revises: 0005

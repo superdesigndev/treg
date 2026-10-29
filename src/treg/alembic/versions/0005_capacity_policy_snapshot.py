@@ -1,4 +1,4 @@
-"""capacity policy + snapshot tables (docs/PROVIDER-CAPACITY-PLAN.md §2)
+"""capacity policy + snapshot tables (docs/context/ops/capacity.md)
 
 Revision ID: 0005
 Revises: 0004

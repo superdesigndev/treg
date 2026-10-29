@@ -15,14 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import convert as _convert
-from .. import crypto, health, sandbox as demo_sandbox
+from .. import crypto, health
 from .. import providers as _providers
 from .. import skills as _skills
 from ..application import connect as connect_use_cases
-from ..config import get_settings
 from ..infra.db import get_session
 from ..domain.governance import access as access_policy
-from ..domain.governance import sandbox as sandbox_policy
 from ..domain.tools import SecretOwnershipError, ToolConfigError
 from ..domain.tools import bindings as binding_rules
 from ..domain.tools import bundles as bundle_rules
@@ -87,13 +85,6 @@ async def create_secret(
     body: SecretIn, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
 ) -> dict:
     _require_can_register(caller)
-    try:
-        await sandbox_policy.enforce_sandbox_cap(
-            sandbox=demo_sandbox.is_sandbox(caller.org), org_id=caller.org_id,
-            model=Secret, cap=demo_sandbox.MAX_SECRETS, noun="secrets", db=db)
-    except sandbox_policy.SandboxLimitError as exc:
-        raise HTTPException(status_code=422, detail=(
-            f"the sandbox is limited to {exc.cap} {exc.noun} — sign up for more")) from exc
     await _validate_bundle_id(body.bundle_id, caller.org_id, db)
     secret = Secret(
         org_id=caller.org_id, name=body.name, owner=caller.email, kind=body.kind,
@@ -127,7 +118,6 @@ async def update_secret(
         raise HTTPException(status_code=404, detail="secret not found")
     if not _can_manage(caller, secret):
         raise HTTPException(status_code=403, detail="only the creator or an admin can edit this secret")
-    _require_not_live_demo_secret(caller, secret)
     fields = body.model_dump(exclude_unset=True)
     # A connection's name is also its tools' names; renaming only the secret strands them.
     if secret.provider and fields.get("name", secret.name) != secret.name:
@@ -166,7 +156,6 @@ async def delete_secret(
         raise HTTPException(status_code=404, detail="secret not found")
     if not _can_manage(caller, secret):
         raise HTTPException(status_code=403, detail="only the creator or an admin can delete this secret")
-    _require_not_live_demo_secret(caller, secret)
     # bindings live in a JSON column — scan tools IN THIS ORG (registry-scale N is small).
     tools = (await db.execute(select(Tool).where(Tool.org_id == caller.org_id))).scalars().all()
     if any(b.get("secret_id") == secret_id for t in tools for b in t.bindings):
@@ -178,14 +167,6 @@ async def delete_secret(
     await db.delete(secret)
     await db.commit()
     return {"deleted": secret_id}
-
-
-def _require_not_live_demo_secret(caller: Caller, secret: Secret) -> None:
-    """Companion guard for the seeded STRIPE_KEY the live tool is bound to."""
-    if (demo_sandbox.is_sandbox(caller.org) and get_settings().demo_stripe_key
-            and secret.name == "STRIPE_KEY"):
-        raise HTTPException(status_code=403, detail=(
-            "STRIPE_KEY powers the live stripe demo — add your own keys instead"))
 
 
 async def _validate_bundle_id(bundle_id: int | None, org_id: int, db: AsyncSession) -> None:
@@ -254,17 +235,6 @@ def _flat_binding(body: ToolIn) -> dict:
     }
 
 
-def _require_not_live_demo_tool(caller: Caller, tool: Tool) -> None:
-    """The sandbox's seeded live-wire tool (`stripe`, pinned base) is the demo's centerpiece —
-    editing or removing it would break the visitor's own live pane, so refuse. Only the seeded
-    name is frozen; visitor-created tools stay fully editable. No-op outside sandboxes / with
-    the wire off."""
-    if (demo_sandbox.is_sandbox(caller.org) and get_settings().demo_stripe_key
-            and tool.name == "stripe" and demo_sandbox.is_live_tool(tool)):
-        raise HTTPException(status_code=403, detail=(
-            "the live stripe demo endpoint is part of the sandbox — add your own endpoints instead"))
-
-
 def _require_public_base_url(base_url: str) -> None:
     """A tool's base_url is fetched server-side by the proxy — reject internal / loopback / cloud-metadata
     targets so a member can't turn `treg call` into an SSRF (e.g. base_url=169.254.169.254). Reuses the
@@ -277,15 +247,6 @@ def _require_public_base_url(base_url: str) -> None:
     if hub_app.points_at_treg(base_url):
         raise HTTPException(status_code=422, detail=(
             "base_url may not be treg itself: call treg's tools by their ids, not through a tool of your own"))
-
-
-async def _require_secret_ownership(secret: Secret, caller: Caller) -> None:
-    try:
-        await binding_rules.require_secret_ownership(
-            secret, caller_email=caller.email,
-            caller_is_admin=_role_at_least(caller.role, "admin"))
-    except SecretOwnershipError as exc:
-        raise HTTPException(status_code=403, detail=exc.detail) from exc
 
 
 async def _validate_bindings(bindings: list[dict], caller: Caller, db: AsyncSession,
@@ -320,29 +281,11 @@ async def _validate_cli_secrets(cli: dict | None, caller: Caller, db: AsyncSessi
         raise HTTPException(status_code=422, detail=exc.detail) from exc
 
 
-def _allowed_server_bins() -> set[str]:
-    """The commands `treg run --server` may execute: catalog-known CLIs + an admin allow-list. Blocks a
-    member naming `bash`/`python` to run arbitrary code as the server user (docs/CLI-RUN-PLAN.md Option A)."""
-    from . import providers as prov
-    bins = {(e.get("cli") or {}).get("bin") for e in prov.CATALOG}
-    bins.discard(None)
-    extra = get_settings().run_allowed_bins
-    bins |= {b.strip() for b in extra.split(",") if b.strip()}
-    return bins  # type: ignore[return-value]
-
-
 @app.post("/tools")
 async def create_tool(
     body: ToolIn, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
 ) -> dict:
     _require_can_register(caller)
-    try:
-        await sandbox_policy.enforce_sandbox_cap(
-            sandbox=demo_sandbox.is_sandbox(caller.org), org_id=caller.org_id,
-            model=Tool, cap=demo_sandbox.MAX_TOOLS, noun="endpoints", db=db)
-    except sandbox_policy.SandboxLimitError as exc:
-        raise HTTPException(status_code=422, detail=(
-            f"the sandbox is limited to {exc.cap} {exc.noun} — sign up for more")) from exc
     if body.bindings is not None:
         bindings = body.bindings
     elif body.secret_id is not None:
@@ -404,7 +347,6 @@ async def update_tool(
         raise HTTPException(status_code=404, detail="tool not found")
     if not _can_manage(caller, tool):
         raise HTTPException(status_code=403, detail="only the creator or an admin can edit this tool")
-    _require_not_live_demo_tool(caller, tool)
     fields = body.model_dump(exclude_unset=True)
     if "base_url" in fields and fields["base_url"] is None:  # NOT-NULL column + feeds _host_of — 422, not 500
         raise HTTPException(status_code=422, detail="base_url cannot be null")
@@ -452,7 +394,6 @@ async def delete_tool(
         raise HTTPException(status_code=404, detail="tool not found")
     if not _can_manage(caller, tool):
         raise HTTPException(status_code=403, detail="only the creator or an admin can delete this tool")
-    _require_not_live_demo_tool(caller, tool)
     await db.delete(tool)
     await db.commit()
     return {"deleted": tool_id}
@@ -537,8 +478,6 @@ _sanitize_bundle_files = bundle_rules.sanitize_bundle_files
 
 async def _register_skill_bundle(body: SkillIn, caller: Caller, db: AsyncSession) -> dict:
     _require_can_register(caller)
-    if demo_sandbox.is_sandbox(caller.org):  # a skill import would create unlimited tools/secrets, past the cap
-        raise HTTPException(status_code=403, detail="skill import is disabled in the sandbox")
     names = [s.local_name for s in body.secrets]  # bindings reference secrets by local_name
     dupes = sorted({n for n in names if names.count(n) > 1})
     if dupes:  # a duplicate would silently orphan the first secret (only the last id is kept)
@@ -654,8 +593,6 @@ async def analyze_skill_folder(
     """Classify an uploaded skill folder WITHOUT registering — the dashboard's verify step. Same
     classifier as `treg upload skills`: recipe-only vs contract vs generated, plus readiness gaps."""
     _require_can_register(caller)
-    if demo_sandbox.is_sandbox(caller.org):
-        raise HTTPException(status_code=403, detail="skill import is disabled in the sandbox")
     _check_upload_size(body.files)
     from . import providers as prov, convert, skills as sk_mod
     root = _materialize_skill_files(body.files)
@@ -692,8 +629,6 @@ async def import_skill_folder(
     """Register selected skills from an uploaded folder: scan → build the payload (secret VALUES from
     the uploaded files / provided env values) → register each as a bundle. Mirrors `treg upload skills`."""
     _require_can_register(caller)
-    if demo_sandbox.is_sandbox(caller.org):
-        raise HTTPException(status_code=403, detail="skill import is disabled in the sandbox")
     _check_upload_size(body.files)
     from . import skills as sk, providers as prov
     root = _materialize_skill_files(body.files)
