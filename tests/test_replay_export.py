@@ -38,6 +38,15 @@ KEY = "hunter-platform-secret-value"
 _orgs = Counter()
 
 
+@pytest.fixture(autouse=True)
+def platform_keys(monkeypatch):
+    for provider in ("hunter", "apollo", "crawl4ai", "contactout"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{provider.upper()}", f"{provider}-platform-key-value")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture
 async def team(clients):
     return await _org()
@@ -64,11 +73,12 @@ def _url(endpoint_id: str, query: str) -> str:
 async def _call(org_id, endpoint_id=HUNTER, *, query="domain=acme.test&full_name=Ann", body=FOUND,
                 status=200, hit=True, charged=24_000, observed=None, question=None, ago=60,
                 tier="platform", cached=False, refused=None, archived=True, kept=True,
-                error_request=None, error_response=None, call_ref="call-ref-1") -> int:
+                error_request=None, error_response=None, call_ref="call-ref-1",
+                method="GET") -> int:
     url = _url(endpoint_id, query)
     async with session_maker() as s:
         row = CallRecord(
-            org_id=org_id, user_email="member@example.test", tool_name=endpoint_id, method="GET",
+            org_id=org_id, user_email="member@example.test", tool_name=endpoint_id, method=method,
             path=url.split("?")[0], status_code=status, endpoint_id=endpoint_id,
             provider=endpoint_id.split(".")[0], credential_tier=tier, cost_estimated_micro=24_000,
             cost_observed_micro=observed, cost_charged_micro=charged, hit=hit, cached=cached,
@@ -187,19 +197,43 @@ async def test_a_header_billed_answer_carries_a_synthesized_credit_header(team, 
 
 
 async def test_failure_evidence_is_a_flagged_snippet_with_its_inlined_headers(team, tmp_path):
-    await _call(team, status=429, hit=None, charged=0, archived=False,
-                error_request='?domain=acme.test&full_name=Ann {"x": 1}',
+    await _call(team, status=429, hit=None, charged=0, archived=False, method="POST",
+                error_request='?domain=acme.test&full_name=Ann Lee {"x": 1}',
                 error_response='[retry-after=5 www-authenticate=Bearer realm="api" '
                                'x-request-id=req-1] {"error":"rate limited"}')
     (record,), _, _ = await _export(tmp_path, [HUNTER])
     assert record["request"]["fidelity"] == "snippet"
-    assert record["request"]["query_items"] == [["domain", "acme.test"], ["full_name", "Ann"]]
+    assert record["request"]["query_items"] == [["domain", "acme.test"], ["full_name", "Ann Lee"]]
     assert records.decode(record["request"]["body_b64"]) == b'{"x": 1}'
     assert record["response"]["fidelity"] == "snippet_redacted_truncated"
     assert record["response"]["headers"] == {
         "retry-after": "5", "www-authenticate": 'Bearer realm="api"', "x-request-id": "req-1"}
     assert records.decode(record["response"]["body_b64"]) == b'{"error":"rate limited"}'
     assert engine.replay(record)["settle"]["billable"] is False
+
+
+async def test_a_failed_query_keeps_its_spaces_and_lists_each_path_parameter_once(team, tmp_path):
+    await _call(team, status=429, hit=None, charged=0, archived=False,
+                error_request="?domain=acme.test&full_name=Ann Lee {x}", error_response="{}")
+    await _call(team, APOLLO, status=500, hit=None, charged=0, archived=False,
+                error_request="?organization_id=org/42&page=2", error_response="{}")
+    corpus, _, _ = await _export(tmp_path, [HUNTER, APOLLO])
+    by_endpoint = {r["endpoint_id"]: r["request"] for r in corpus}
+    assert by_endpoint[HUNTER]["query_items"] == [
+        ["domain", "acme.test"], ["full_name", "Ann Lee {x}"]]
+    assert by_endpoint[HUNTER]["body_b64"] == ""
+    assert by_endpoint[APOLLO]["query_items"] == [["organization_id", "org/42"], ["page", "2"]]
+
+
+async def test_an_endpoint_without_a_configured_credential_exports_nothing(team, tmp_path,
+                                                                           monkeypatch):
+    monkeypatch.delenv("TREG_PLATFORM_KEY_HUNTER")
+    get_settings.cache_clear()
+    await _call(team)
+    corpus, _, summary = await _export(tmp_path, [HUNTER])
+    assert corpus == []
+    assert summary["endpoints"][HUNTER] == {"error": "credential_renderings_unavailable"}
+    get_settings.cache_clear()
 
 
 async def test_two_xx_answers_production_never_kept_are_counted_never_invented(team, tmp_path):

@@ -50,6 +50,7 @@ _READS = 8            # simultaneous body reads, as the Arena reader
 _ROUTED_CHILD = re.compile(r":r\d+$")
 _PLACEHOLDER = re.compile(r"{(\w+)}")
 _NO_EVIDENCE = "<no response body or headers>"
+_BODYLESS = {"GET", "HEAD", "DELETE"}
 _EVIDENCE_HEADER = re.compile(
     r"(?:^|\s)(" + "|".join(map(re.escape, evidence._EVIDENCE_HEADERS)) + r")=")
 _COLUMNS = (CallRecord.id, CallRecord.created_at, CallRecord.method, CallRecord.status_code,
@@ -366,21 +367,19 @@ async def _async_class(ep: dict, renderings: list[str], run: _Run) -> _Tally:
 
 def _renderings(provider: str) -> list[str] | None:
     """Every spelling of every value of treg's own credential for `provider` (all its accounts),
-    lowercased; None when they cannot be rendered."""
+    lowercased; None when they cannot be rendered or none is configured."""
     profile = oauth_providers.get(provider)
     if profile is None:
-        return []
+        return None
     tool = Tool(name=provider, base_url=profile.base_url,
                 bindings=oauth_providers.platform_bindings(profile))
     found = evidence._safe_secret_renderings(tool, {})
-    return None if found is None else [s.lower() for s in found]
+    return [s.lower() for s in found] if found else None
 
 
 def _echoes(renderings: list[str], *parts: bytes | str | None) -> bool:
     """Whether any part carries a rendering, as is or percent-decoded and JSON-unescaped: the
     probe the caller-facing error masking uses."""
-    if not renderings:
-        return False
     for part in parts:
         if not part:
             continue
@@ -475,11 +474,15 @@ def _answer_record(ep: dict, cls: str, row, key, media_type: str, body: bytes,
     return _record(ep, cls, "archive", row.created_at, request, response, _recorded(row)), None
 
 
-def _snippet_request(snippet: str) -> tuple[list[list[str]], str]:
+def _snippet_request(snippet: str, method: str) -> tuple[list[list[str]], str]:
     """The caller's query items and body from failure evidence (`?k=v&k=v body`, redacted)."""
     query, body = "", snippet
     if snippet.startswith("?"):
-        query, _, body = snippet[1:].partition(" ")
+        query, body = snippet[1:], ""
+        if method.upper() not in _BODYLESS:
+            starts = [n for n in (query.rfind(" {"), query.rfind(" [")) if n >= 0]
+            if starts:
+                query, body = query[:max(starts)], query[max(starts) + 1:]
     return [list(part.partition("=")[::2]) for part in query.split("&") if part], body
 
 
@@ -502,10 +505,12 @@ def _failure_record(ep: dict, row, renderings: list[str]) -> tuple[dict | None, 
         return None, "path_unmatched"
     if _echoes(renderings, row.path, row.error_request, row.error_response):
         return None, "credential_echo"
-    items, body = _snippet_request(row.error_request or "")
+    items, body = _snippet_request(row.error_request or "", row.method or "")
     headers, answer = _snippet_response(row.error_response or "")
+    named = {k for k, _ in items}
     request = {"method": row.method, "vendor_url": row.path,
-               "query_items": items + [[k, v] for k, v in params.items()], "path_params": params,
+               "query_items": items + [[k, v] for k, v in params.items() if k not in named],
+               "path_params": params,
                "body_b64": records.encode(body.encode()), "accept": {}, "fidelity": "snippet"}
     response = _with_headers({"status": row.status_code, "media_type": "", "headers": headers,
                               "body_b64": records.encode(answer.encode()),

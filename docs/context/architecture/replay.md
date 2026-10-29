@@ -138,7 +138,8 @@ repeats, newest first.
   conversion (`headers_fidelity: synthesized`). No observed cost means no header, which settles
   as unreported, as the call did.
 - A failure is a `snippet` request and a `snippet_redacted_truncated` response: the redacted,
-  truncated evidence, with the allowlisted headers it inlines parsed back into `headers`.
+  truncated evidence, with the allowlisted headers it inlines parsed back into `headers`. A GET,
+  HEAD or DELETE snippet is all query; otherwise the body starts at its last ` {` or ` [`.
 - A task's request is `reconstructed` from a table basis, the only basis that keeps it, and
   `unavailable` otherwise; the task settles on its own frozen basis either way.
 - A 2xx answer production never kept is counted, never invented: `expect_unavailable` on an
@@ -155,7 +156,8 @@ repeats, newest first.
   platform-key answers, which erasure leaves by design (archive.md, "Opting out").
 - A record whose request, answer or evidence contains any spelling of treg's own credential for
   the provider (`evidence._secret_renderings`, every account, as is or percent-decoded) is
-  dropped, and an endpoint whose credentials cannot be rendered exports nothing.
+  dropped, and an endpoint whose credentials cannot be rendered, or for which the job holds no
+  value, exports nothing.
 - Both files are created new, readable by their owner only, and removed when the run fails. The
   command prints counts per endpoint and class, with the reason for every record it dropped; a
   body never reaches its output or a log.
