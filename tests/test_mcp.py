@@ -1725,3 +1725,22 @@ async def test_tool_called_names_the_mcp_host(clients, monkeypatch, posthog_even
     assert old["client"] == "mcp" and old["user_agent"].startswith("python-httpx/")
     assert old["mcp_user_agent"] == "claude-code/2.1.0 (cli)" and old["mcp_client"] is None
     assert new["mcp_user_agent"] == "claude-code/2.1.0 (cli)" and new["mcp_client"] == "test"
+
+
+async def test_catalog_get_names_the_team_for_a_token_that_carries_none(clients, monkeypatch):
+    """An identity token that names no team (an older `treg login` key) still gets `your_values`
+    from MCP catalog_get: the read names the caller's one team, since the token alone does not."""
+    from treg.application.call import resolve as call_resolution
+    from treg.domain.catalog import store as catalog_store
+    from treg.domain.identity import session as sess
+    cat = catalog_store.load()
+    ep = dict(cat.by_id["crawl4ai.watch.list"])
+    monkeypatch.setitem(cat.by_id, "crawl4ai.watch.list", ep)
+    team_token = (await clients.post("/users", json={"email": "no-org-key@superdesign.dev"})).json()["token"]
+    clients.headers["X-Treg-Token"] = team_token
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    bare = sess.make_identity(sess.read_identity_claims(team_token)["uid"])
+    assert "org" not in sess.read_identity_claims(bare)
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "catalog_get", {"endpoint_id": "crawl4ai.watch.list"}, token=bare)
+    assert out["endpoint"]["your_values"] == {"queryParams.agent": call_resolution.team_label(org_id)}
