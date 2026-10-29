@@ -1473,6 +1473,16 @@ guard; webhook order and sequential redelivery do not change attribution or dupl
 Missing/legacy attribution is `unknown`. No query inputs, URLs, API keys or provider results are
 copied into this metadata. Amounts, reservations, settlement and payment authorization are unchanged.
 
+## Agent payer top-ups
+
+A keyless caller that pays a catalog call (MPP or x402, [agent payments](agent-payments.md)) is a
+payer team per wallet address. A payment confirmed on chain is an ordinary `topup` on that team,
+`payment_ref = agentpay:<proof id>`, with `meta.source = agent_payment` and the settlement
+transaction; then the call reserves, settles or releases as any team's call. The topup is booked
+only after the chain or facilitator confirms the transfer, so the ledger never credits money treg
+has not received. A payment the team's existing credit already covers is not settled and books
+nothing. No money entry is added.
+
 ## Response evidence size and free final downloads
 
 Settlement evidence must be complete. The call application's 8 MiB buffer raises a typed 502 on

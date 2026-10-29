@@ -232,6 +232,10 @@ Settlement, first-call recording and idempotency storage use their own sessions.
 invalidate loaded objects because the session makers use `expire_on_commit=False`.
 OAuth refresh likewise separates DB reads/writes from token-endpoint network I/O.
 
+A keyless agent-payments call verifies and settles its payment with the chain or facilitator
+before the call starts and with no session open; the database work around it is short sessions of
+its own ([agent payments](agent-payments.md)).
+
 Keeping the request transaction open through relay can deadlock a saturated pool: each request
 holds a slot while its settlement waits for another. `tests/test_call_pool_discipline.py` checks
 pool occupancy at the network boundary and covers concurrent calls. Pool sizing, timeouts and
@@ -650,6 +654,11 @@ not enabled, or a team that opted out (`Org.platform_overflow_disabled`, `treg o
 checked before any aggregator is contacted, on both entry points.
 
 ## Control-header isolation
+
+A keyless agent-payments call is the one case where treg removes a non-`x-treg-` header the caller
+sent: its payment credential (`Authorization: Payment …`, `Payment-Authorization`,
+`PAYMENT-SIGNATURE`, `X-PAYMENT`), through `routers.call._paid_call` and
+`agent_payments.consumes`. A request with any treg credential relays those headers unchanged.
 
 `proxy._is_dropped_request_header` strips every request header beginning with `x-treg-`,
 including future control headers. `_CONTROL` lists the non-prefixed infrastructure headers.

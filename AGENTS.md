@@ -39,8 +39,9 @@ Everything else in this file is guidance; these are the contract, and they win o
    This temporary allowance permits calls when Redis state cannot be confirmed; it is not a durable cap.
 2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
    every path: timeout, cancellation and exceptions included.
-3. A request holds zero database connections while upstream or object-storage I/O is in flight.
-   Keep `reserve` and `settle` separate; read archive pointers, close the session, then fetch bytes.
+3. A request holds zero database connections while upstream, object-storage or payment-rail
+   (chain or facilitator) I/O is in flight. Keep `reserve` and `settle` separate; read archive
+   pointers, close the session, then fetch bytes; verify or settle a payment, then open the session.
 4. Plain `/call/` is a faithful relay: the injected credential (on treg's shared key, one of treg's
    accounts for the provider, chosen per call and fixed for anything an account created; on a
    connection to treg's own Meta app it also carries `appsecret_proof`, the HMAC of the injected
@@ -78,6 +79,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    Authorized free final fetches needing no body evidence stream in full.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
+   A keyless agent-payments call (no treg credential of any kind) has its payment credential
+   (`Authorization: Payment …`, `Payment-Authorization`, `PAYMENT-SIGNATURE`, `X-PAYMENT`) consumed
+   by treg and removed before the relay; nothing else it sent changes. A request carrying any treg
+   credential is never read for a payment (docs/context/architecture/agent-payments.md).
 5. Balances change only through money's five entries: grant, topup, reserve, settle, release.
    There is deliberately no refund or adjustment entry; an ops correction is a grant.
 
@@ -170,6 +175,12 @@ agents then built against a constitution that was wrong.
   the grant. Team deletion never restores eligibility; legacy registration is not email proof.
   An installed policy extension may defer it through the `signup_credit` decision point
   (`src/treg/policy.py`, docs/context/architecture/policy-extensions.md); extensions only restrict.
+- **Agent payments** (behind `TREG_AGENT_PAYMENTS_ENABLED`). A keyless caller's payment confirmed
+  on chain is an ordinary `topup` on its wallet's payer team (`governance.teams.make_payer_team`:
+  a machine user, a member with no token); the call then runs the normal road as that team. What
+  a call does not use stays as that team's credit. `application/agent_payments.py` is the only
+  writer of `AgentPayment`; the protocol SDKs live only in `infra/agent_payments/`. See
+  `docs/context/architecture/agent-payments.md`.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
   only in `infra/stripe.py`, orchestration in `application/billing.py`, and `reconcile.py` is
   read-only. See `docs/context/architecture/money.md`.

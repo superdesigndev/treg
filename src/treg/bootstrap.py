@@ -702,6 +702,38 @@ def configure_provider_labels() -> None:
     catalog_store.configure_provider_labels(label)
 
 
+def configure_agent_payments() -> None:
+    """Composition seam: the payment rails the settings turn on. The protocol SDKs load only here,
+    and only when the feature is on (docs/context/architecture/agent-payments.md)."""
+    from urllib.parse import urlsplit
+
+    from .application import agent_payments
+
+    s = get_settings()
+    rails = []
+    if s.agent_payments_enabled:
+        if s.agent_payments_tempo_recipient:
+            from .infra.agent_payments.tempo import MppTempoRail
+
+            rails.append(MppTempoRail(
+                secret=s.agent_payments_secret,
+                realm=s.agent_payments_realm or urlsplit(s.public_url).hostname or "treg",
+                recipient=s.agent_payments_tempo_recipient,
+                chain_id=s.agent_payments_tempo_chain_id,
+                rpc_url=s.agent_payments_tempo_rpc_url,
+                currency=s.agent_payments_tempo_currency))
+        if s.agent_payments_x402_pay_to:
+            from .infra.agent_payments.x402 import X402Rail
+
+            rails.append(X402Rail(
+                pay_to=s.agent_payments_x402_pay_to, network=s.agent_payments_x402_network,
+                asset=s.agent_payments_x402_asset, asset_name=s.agent_payments_x402_asset_name,
+                asset_version=s.agent_payments_x402_asset_version,
+                facilitator_url=s.agent_payments_x402_facilitator_url,
+                max_timeout_s=s.agent_payments_x402_max_timeout_s))
+    agent_payments.configure(rails)
+
+
 def configure_archive_object_store(store) -> None:
     """Composition seam shared by startup and in-memory tests. Find's card vectors share the store."""
     from . import archive_bodies
@@ -849,6 +881,7 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
 
     keyslots.check_accounts()  # an unusable TREG_PLATFORM_ACCOUNTS entry refuses to start
     configure_provider_labels()
+    configure_agent_payments()
 
     expose_docs = role != "dataplane"
     app = FastAPI(

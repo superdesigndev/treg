@@ -699,6 +699,40 @@ class Settings(BaseSettings):
     # script id is a setting, not a code change. Empty = the client does not exist.
     sheets_redirect_uris: str = ""
 
+    # Agent payments (docs/context/architecture/agent-payments.md): a caller with no treg
+    # credential pays a catalog call with MPP (Tempo charge) or x402 (`exact`). Off by default.
+    # A rail is offered only when its recipient address is set. Testnet defaults throughout.
+    agent_payments_enabled: bool = False
+    # Binds MPP challenge ids (HMAC). Required when the feature is on; never reuse another secret.
+    agent_payments_secret: str = ""
+    # MPP realm; empty means the host of `public_url`.
+    agent_payments_realm: str = ""
+    # The smallest amount one payment may carry. A cheaper call buys this much credit and the
+    # payer's next calls draw on it. Integer micro-USD.
+    agent_payments_min_payment_micro: int = Field(default=50_000, ge=1)
+    agent_payments_tempo_recipient: str = ""
+    agent_payments_tempo_chain_id: int = 42431          # Tempo Moderato testnet; 4217 is mainnet
+    agent_payments_tempo_rpc_url: str = ""              # empty: the chain's public RPC
+    agent_payments_tempo_currency: str = ""             # empty: the chain's default TIP-20 USD token
+    agent_payments_x402_pay_to: str = ""
+    agent_payments_x402_network: str = "eip155:84532"   # Base Sepolia; eip155:8453 is Base mainnet
+    agent_payments_x402_asset: str = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"  # Base Sepolia USDC
+    agent_payments_x402_asset_name: str = "USDC"        # the token's EIP-712 domain name
+    agent_payments_x402_asset_version: str = "2"
+    agent_payments_x402_facilitator_url: str = "https://x402.org/facilitator"
+    agent_payments_x402_max_timeout_s: int = Field(default=120, ge=10, le=3600)
+
+    @model_validator(mode="after")
+    def _agent_payments_configuration(self):
+        if self.agent_payments_enabled and len(self.agent_payments_secret) < 32:
+            raise ValueError("agent payments require TREG_AGENT_PAYMENTS_SECRET of 32+ characters")
+        for name in ("agent_payments_tempo_recipient", "agent_payments_x402_pay_to",
+                     "agent_payments_tempo_currency", "agent_payments_x402_asset"):
+            value = getattr(self, name)
+            if value and not re.fullmatch(r"0x[0-9a-fA-F]{40}", value):
+                raise ValueError(f"{name} must be a 0x-prefixed 20-byte address")
+        return self
+
     # Additive Claude directory MCP. Default OFF so deploying code cannot publish a new connector
     # surface before its production Inspector and custom-connector gates have passed.
     claude_connector_enabled: bool = False

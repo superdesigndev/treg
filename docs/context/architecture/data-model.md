@@ -228,6 +228,12 @@ An application rollback leaves the table in place; a schema downgrade deletes it
   versioned history (revision 0030), owned by this schema and written only by the private admin
   service. Both cascade from the original report. See [feedback](feedback.md).
 
+- **`AgentPayer` / `AgentPayment`** - the payer team of one agent-payments wallet address, and
+  each payment proof it presented (`proof_id` UNIQUE, status `credit|settling|settled|failed`).
+  Revision `0091`; `governance.teams.make_payer_team` stages `AgentPayer`,
+  `application.agent_payments` is the only writer of `AgentPayment`. Team deletion removes both.
+  See [agent payments](agent-payments.md).
+
 `src/treg/models.py` is authoritative for columns, indexes and defaults. This section records
 ownership and behavior that a field declaration alone does not explain.
 [Multi-tenancy](multi-tenancy.md) defines org scoping and role gates.

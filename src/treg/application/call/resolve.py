@@ -2539,6 +2539,33 @@ def provider_paused(service: str, endpoint_id: str | None = None) -> ResolutionF
                             detail=oauth_providers.paused_detail(service, endpoint_id))
 
 
+def platform_quote_micro(ep: dict, query: QueryValues, body: bytes) -> int | None:
+    """The raw estimate a tier-4 call of `ep` would reserve for this query and body, or None
+    when treg's own key cannot serve it to a caller that holds no credential of its own. Pure:
+    no session, no network. The agent-payments challenge prices from this, before any team
+    exists (docs/context/architecture/agent-payments.md)."""
+    if (ep["id"].startswith("treg.") or ep.get("status")
+            or connection_authorization.endpoint_methods(ep)):
+        return None
+    provider = oauth_providers.get(ep["provider"])
+    if provider is None or not provider.base_url or oauth_providers.is_paused(ep["provider"]):
+        return None
+    if ep.get("platform_auth") == "anonymous" or not provider.uses_pasted_secret:
+        return None
+    cat = catalog_store.load()
+    if not cat.platform_eligible(ep) or not get_settings().platform_key_for(ep["provider"]):
+        return None
+    cost = cat.cost_view(ep.get("cost"), ep["provider"])
+    if not cost or cost.get("type") == "free":
+        return None
+    try:
+        _, consumed = _marketplace_upstream(ep, provider, query)
+    except ResolutionFailed:
+        return None
+    estimate = price_call(ep, query, body, consumed).estimate_micro
+    return estimate if estimate > 0 else None
+
+
 async def resolve_marketplace_target(
     ep: dict,
     *,

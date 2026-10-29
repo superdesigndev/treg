@@ -552,6 +552,11 @@ contract:
   `TREG_FIND_EMBED_URL` an empty value uses `TREG_PLATFORM_KEY_OPENROUTER`. Card vectors are cached in
   the archive's object store when archive R2 is on, else rebuilt by each process.
 
+- `TREG_AGENT_PAYMENTS_ENABLED` lets a caller with no treg credential pay a catalog call with
+  MPP or x402. Needs `TREG_AGENT_PAYMENTS_SECRET` (32+ characters; startup refuses without it) and a
+  recipient address per rail; testnet defaults. Off by default. See
+  [agent payments](../architecture/agent-payments.md).
+
 Exact treg.to values, funded accounts and rollout instructions live in the private
 [provider-capacity runbook](https://github.com/superdesigndev/treg-internal/blob/main/docs/production/provider-capacity.md).
 

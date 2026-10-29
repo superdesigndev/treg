@@ -17,6 +17,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | Fragment | Status | Covers |
 |---|---|---|
 | [Google Ads conversion tracking — capture, outbox, upload](architecture/ads-conversions.md) | shipped | adsconv.py, signup.py, adtrack.js, gtag.js, … |
+| [Agent payments — a keyless caller pays a catalog call with MPP or x402](architecture/agent-payments.md) | built, behind `agent_payments_enabled` (TREG_AGENT_PAYMENTS_ENABLED), off by default | agent_payments.py, __init__.py, tempo.py, x402.py, … |
 | [Archive - versioned history and cache admission](architecture/archive.md) | building | archive.py, hunter.yaml, results.py, 0031_archive_result_admission.py, … |
 | [Auth & secrets — injectors, encryption, OAuth freshness, health](architecture/auth-secrets.md) | shipped | injectors.py, ssrf.py, crypto.py, oauth.py, … |
 | [Call events — one pseudonymous event per call, to an Iceberg table outside Postgres](architecture/call-events.md) | building | call_events.py, call_events.py, contracts.yaml, test_call_events.py |

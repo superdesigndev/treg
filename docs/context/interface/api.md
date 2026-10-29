@@ -293,6 +293,17 @@ notice on stderr and `treg --json call` sets `_treg.capacity`. Only treg's own
 MCP's hint and `treg call`'s top-up line; a provider's 402 on the team's own key is marked
 `whose_error: provider`, and `route_max_cost` is the caller's ceiling.
 
+## `402 payment_required` - a keyless call that can pay (off by default)
+
+With `TREG_AGENT_PAYMENTS_ENABLED`, a `/call/<catalog id>` request carrying no treg credential at
+all, for a tool treg's own key serves, answers 402 `{"detail": {"error": "payment_required",
+"endpoint_id", "amount_micro", "estimated_cost_micro", "protocols", "reason"?}}` with
+`X-Treg-Error: 1`, `Cache-Control: no-store`, `WWW-Authenticate: Payment ...` (MPP) and
+`PAYMENT-REQUIRED` (x402). The request sent again with a payment credential is answered as a
+normal call, plus `X-Treg-Payment: settled|credit` and, when the payment settled,
+`Payment-Receipt` or `PAYMENT-RESPONSE`. Every other keyless call is still
+`401 not authenticated`. See [agent payments](../architecture/agent-payments.md).
+
 ## `X-Treg-Smoothed` - the call waited for treg's own rate limit
 
 On platform calls, including owned free polling: `wait=<ms>` when the call was spaced behind other callers on the

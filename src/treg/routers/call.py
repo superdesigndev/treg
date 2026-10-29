@@ -6,14 +6,15 @@ import json
 import uuid
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.background import BackgroundTask
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import analytics
 from .. import audit
+from ..application import agent_payments
 from .. import sandbox as demo_sandbox
 from ..application.call.access import catalog_endpoint_access as get_catalog_endpoint_access
 from ..application.call.idempotency import (
@@ -293,6 +294,22 @@ def _capture_hint(request: Request, context, kind: str) -> None:
     }, groups={"team": slug} if slug else None)
 
 
+async def member_or_payer(
+    request: Request,
+    x_treg_token: str = Header(default=""),
+    x_treg_org: str = Header(default=""),
+    treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_session),
+) -> Caller | None:
+    """`require_member`, except that a `/call/` request carrying no treg credential at all (no
+    token header, even an empty one, and no session cookie) returns None for the agent-payments
+    path while that feature is on. Any credential, valid or not, takes the account path."""
+    if (agent_payments.enabled() and "x-treg-token" not in request.headers
+            and "treg_session" not in request.cookies):
+        return None
+    return await require_member(request, x_treg_token, x_treg_org, treg_session, db)
+
+
 @app.api_route(
     "/call/{rest:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
@@ -300,10 +317,43 @@ def _capture_hint(request: Request, context, kind: str) -> None:
 async def call_tool(
     rest: str,
     request: Request,
-    caller: Caller = Depends(require_member),
+    caller: Caller | None = Depends(member_or_payer),
 ):
+    if caller is None:
+        return await _paid_call(rest, request)
     prefix = "/catalog/call/" if getattr(request.state, "catalog_only", False) else "/call/"
     return await run_call_surface(rest, request, caller, prefix=prefix, finish=_relay_answer)
+
+
+async def _paid_call(rest: str, request: Request) -> Response:
+    """A keyless call that pays for itself (docs/context/architecture/agent-payments.md). A call
+    the payment path does not serve answers exactly as an unauthenticated call always has."""
+    body = await request.body() if _may_have_body(request) else b""
+    raw_path = request.scope.get("raw_path")
+    path = raw_path.decode("ascii", "replace") if raw_path else request.url.path
+    paid = await agent_payments.quote(
+        rest=rest, method=request.method, path=path, query=request.url.query or "",
+        query_items=tuple(request.query_params.multi_items()), body=body)
+    if paid is None:
+        raise HTTPException(status_code=401, detail="not authenticated")
+    try:
+        admission = await agent_payments.admit(paid, request.headers)
+    except agent_payments.PaymentChallenge as exc:
+        resp = JSONResponse({"detail": exc.detail}, status_code=402)
+        for name, value in exc.headers:
+            resp.headers.append(name, value)
+        resp.headers["Cache-Control"] = "no-store"
+        resp.headers["X-Treg-Error"] = "1"
+        await _stamp_call_exit(request, resp, 402)
+        return resp
+    headers = [(name, value) for name, value in request.headers.raw
+               if not agent_payments.consumes(name.decode("latin-1"), value.decode("latin-1"))]
+    response = await run_call_surface(rest, request, admission.caller, prefix="/call/",
+                                      finish=_relay_answer, headers=headers)
+    if 200 <= response.status_code < 300:
+        for name, value in agent_payments.receipt_headers(admission):
+            response.headers.append(name, value)
+    return response
 
 
 async def _relay_answer(request: Request, context, upstream: UpstreamResponse, rest: str) -> Response:
@@ -347,7 +397,7 @@ async def run_call_surface(rest: str, request: Request, caller: Caller, *, prefi
     which turns the answer into the HTTP response, differs. `finish(request, context, upstream,
     rest)` runs inside the same try, so a fault there is audited and released like any other.
     `headers`, when given, replaces the request's raw headers for the upstream call (`/table/` asks
-    the provider for uncompressed bytes); `/call/` never passes it."""
+    the provider for uncompressed bytes; a paid `/call/` drops its payment credential)."""
     org_traffic.identify(request.scope, caller.org_id, enter=True,
                          api_key_id=caller.api_key.id if caller.api_key else None)
     # Identity for the refusal fallback in `_mark_treg_own_errors`: a raise anywhere below (unknown
