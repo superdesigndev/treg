@@ -116,6 +116,11 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
 - If a result invites a review, rate that call with `treg review` or MCP `review`. Report anything
   confusing, wrong or slow with `treg feedback submit` or MCP `feedback`, then carry on.
 
+**Paying per call without an account**: where a deployment turns it on, a catalog tool with a fixed
+price of at least one cent answers a call with no token with `402` and x402 (USDC on Base) and MPP
+(Tempo stablecoins) offers. Any x402 or MPP client pays it; one payment buys one call, and a call
+the provider fails (4xx/5xx) is not charged.
+
 **Building treg into a product** that bills its own users is allowed and encouraged, with no special
 agreement: tag each call with your customer ids from your backend, cap and invoice per customer from
 treg's ledger. See the integration guide below. For volume or partnership terms, write to

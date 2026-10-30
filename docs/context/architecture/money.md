@@ -206,6 +206,12 @@ Existing balances and all five money operations are unchanged. During rollout or
 keep automatic credit disabled until every serving instance enforces the new rule; old code still
 awards per team even after this additive migration.
 
+## Pay per call
+
+A call paid over x402 or MPP runs on the pay-per-call team's prepaid balance like any metered
+call; when the payment is taken, the team gets a `topup` of the price with the payment's reference
+(`tempo:<tx>`, `evm:<tx>`) as `payment_ref`. No new entry kind. See [pay per call](pay-per-call.md).
+
 ## Units: integer micro-USD, everywhere
 
 1 micro = 1e-6 USD. A catalog call costs ~600 micro ($0.0006), so **cents cannot represent one call**

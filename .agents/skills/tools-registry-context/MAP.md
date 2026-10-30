@@ -243,6 +243,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/onboard/demo.py` | interface/onboarding.md |
 | `src/treg/application/onboard/first_run.py` | interface/onboarding.md |
 | `src/treg/application/onboard/sandbox.py` | interface/landing-sandbox.md |
+| `src/treg/application/pay_per_call.py` | architecture/pay-per-call.md |
 | `src/treg/application/provider_resources.py` | architecture/catalog.md, architecture/multi-tenancy.md, interface/api.md |
 | `src/treg/application/rankings.py` | architecture/catalog.md |
 | `src/treg/application/referrals.py` | architecture/money.md, interface/api.md |
@@ -433,7 +434,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/cli_view.py` | interface/cli.md |
 | `src/treg/client_identity.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/client_ip.py` | architecture/multi-tenancy.md |
-| `src/treg/config.py` | architecture/archive.md, architecture/auth-secrets.md, architecture/feedback.md, architecture/org-concurrency.md, architecture/org-endpoint-quota.md, architecture/org-flow-control.md, architecture/super-admin.md, architecture/table.md, guides/expanding-a-category.md, interface/web-arena.md, ops/deploy.md |
+| `src/treg/config.py` | architecture/archive.md, architecture/auth-secrets.md, architecture/feedback.md, architecture/org-concurrency.md, architecture/org-endpoint-quota.md, architecture/org-flow-control.md, architecture/pay-per-call.md, architecture/super-admin.md, architecture/table.md, guides/expanding-a-category.md, interface/web-arena.md, ops/deploy.md |
 | `src/treg/convert.py` | interface/cli.md |
 | `src/treg/crypto.py` | architecture/auth-secrets.md |
 | `src/treg/domain/__init__.py` | architecture/import-boundaries.md |
@@ -535,6 +536,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/infra/org_endpoint_quota.py` | architecture/org-endpoint-quota.md |
 | `src/treg/infra/org_flow_control.py` | architecture/org-flow-control.md |
 | `src/treg/infra/org_traffic.py` | architecture/org-traffic.md |
+| `src/treg/infra/payments.py` | architecture/pay-per-call.md |
 | `src/treg/infra/provider_concurrency.py` | ops/capacity.md |
 | `src/treg/infra/provider_rate.py` | ops/capacity.md |
 | `src/treg/infra/stripe.py` | architecture/money.md |
@@ -572,7 +574,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/routers/auth.py` | architecture/ads-conversions.md, architecture/composition.md, architecture/mcp-oauth.md, architecture/multi-tenancy.md, architecture/table.md, interface/api.md, interface/enrich-arena.md, interface/onboarding.md |
 | `src/treg/routers/auth_helpers.py` | interface/api.md, interface/cli.md |
 | `src/treg/routers/billing.py` | architecture/composition.md, architecture/money.md, interface/api.md |
-| `src/treg/routers/call.py` | architecture/composition.md, architecture/feedback.md, architecture/instagram-oauth.md, architecture/money.md, architecture/org-concurrency.md, architecture/org-flow-control.md, architecture/org-traffic.md, architecture/proxy-model.md, architecture/table.md, interface/api.md |
+| `src/treg/routers/call.py` | architecture/composition.md, architecture/feedback.md, architecture/instagram-oauth.md, architecture/money.md, architecture/org-concurrency.md, architecture/org-flow-control.md, architecture/org-traffic.md, architecture/pay-per-call.md, architecture/proxy-model.md, architecture/table.md, interface/api.md |
 | `src/treg/routers/catalog.py` | architecture/catalog.md, architecture/hub.md, interface/api.md |
 | `src/treg/routers/connections.py` | architecture/auth-secrets.md, architecture/composition.md, guides/expanding-a-category.md, interface/api.md |
 | `src/treg/routers/enterprise_sso.py` | architecture/money.md, architecture/multi-tenancy.md, interface/web-arena.md |
@@ -798,6 +800,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_org_rate_limit_redis.py` | architecture/org-flow-control.md |
 | `tests/test_org_traffic.py` | architecture/org-traffic.md |
 | `tests/test_passthrough.py` | architecture/proxy-model.md |
+| `tests/test_pay_per_call.py` | architecture/pay-per-call.md |
 | `tests/test_pinned_read_scope.py` | architecture/multi-tenancy.md |
 | `tests/test_platform_accounts.py` | architecture/proxy-model.md |
 | `tests/test_policy.py` | architecture/policy-extensions.md |
@@ -859,6 +862,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/org-endpoint-quota.md` | `org_endpoint_quota.py`, `service.py`, `types.py`, `route.py`, `async_bridge.py`, `overflow.py`, `arena.py`, `relay.py`, `bootstrap.py`, `config.py`, `analytics.py`, `test_org_endpoint_quota_redis.py`, `test_org_endpoint_quota_call.py`, `test_org_endpoint_quota_hub.py`, `test_org_endpoint_quota_async.py`, `test_org_endpoint_quota_best_effort.py`, `test_org_endpoint_quota_breaker.py`, `test_org_endpoint_quota_telemetry.py`, `test_org_endpoint_quota_rollup.py`, `test_org_endpoint_quota_rate_observe.py`, `test_org_endpoint_quota_local_rejections.py`, `test_org_endpoint_quota_route.py`, `test_relay_quota_admission.py`, `test_call_architecture.py` |
 | `architecture/org-flow-control.md` | `org_flow_control.py`, `structured_logging.py`, `kv.py`, `config.py`, `call.py`, `test_org_flow_control.py`, `test_org_flow_control_reader.py`, `test_org_flow_control_redis.py`, `test_org_rate_limit_redis.py`, `generate.ts` |
 | `architecture/org-traffic.md` | `org_traffic.py`, `structured_logging.py`, `bootstrap.py`, `call.py`, `table.py`, `mcp.py`, `types.py`, `service.py`, `test_org_traffic.py`, `test_org_concurrency.py` |
+| `architecture/pay-per-call.md` | `pay_per_call.py`, `payments.py`, `call.py`, `config.py`, `test_pay_per_call.py` |
 | `architecture/policy-extensions.md` | `policy.py`, `bootstrap.py`, `signup.py`, `promotions.py`, `test_policy.py` |
 | `architecture/proxy-model.md` | `relay.py`, `jsontext.py`, `ssrf.py`, `api.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `asynctasks.py`, `keyslots.py`, `0069_platform_key_slot.py`, `test_platform_accounts.py`, `client_identity.py`, `call_surface.py`, `sandbox_identity.py`, `access.py`, `publicdemo.py`, `usage.py`, `call.py`, `limits.py`, `test_ssrf_public_addresses.py`, `test_call_application_contract.py`, `test_call_cancellation.py`, `test_call_response_limits.py`, `test_error_capture.py`, `test_marketplace_call.py`, `test_oauth_billed.py`, `test_passthrough.py`, `test_tag_billing.py`, `test_tag_billing_adversarial.py`, `test_call_architecture.py`, `test_asynctasks.py`, `test_relay_content_length.py` |
 | `architecture/replay.md` | `__init__.py`, `__main__.py`, `records.py`, `engine.py`, `fixtures.py`, `differ.py`, `test_replay.py` |
