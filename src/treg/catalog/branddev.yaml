@@ -486,6 +486,560 @@ endpoints:
     example_response: examples/branddev.web.crawl.json
     docs_url: https://docs.context.dev/api-reference/web-scraping/crawl
 
+  - id: branddev.news.search
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /news/search
+    name: Search news by topic or company
+    summary: Find news about a company by name, domain, ticker, or ISIN, or search all news with a natural-language query. Filter articles and continue through
+      results with a cursor.
+    input:
+      bodyType: json
+      body:
+        searchBy: {type: object, required: true, note: 'What to search for: a specific company, or a natural-language query across all news. Variants: type=natural_language,
+            query (required); type=entity, entity (required).'}
+        filterBy: {type: object, required: false, note: 'Optional result filters. Use at most one of sourceDomain, sourceCountry, articleLanguage, or articleType.
+            A date range may accompany that category; date.from must not exceed date.to. Fields: sourceDomain, sourceCountry, articleLanguage, articleType,
+            date.'}
+        sortBy: {type: object, required: false, note: 'Result ordering. Defaults to newest for entity searches. Natural-language searches are always ordered
+            by relevance. Fields: type.'}
+        limit: {type: integer, required: false, default: 10, min: 1, max: 100, note: Maximum results to return. Defaults to 10.}
+        cursor: {type: string, required: false, note: 'Opaque next_cursor from the previous response, or null for the first page. maxLength: 300.'}
+        tags: {type: 'array[string]', required: false, example: [production, team-alpha], maxItems: 20, note: Labels for filtering usage in the dashboard.}
+      note: 'Use searchBy.type natural_language with query, or entity with an entity object such as {type: domain, domain: microsoft.com}. One credit per
+        ten returned articles, rounded up; empty results are free.'
+    test_request:
+      body:
+        searchBy:
+          type: natural_language
+          query: Microsoft
+        limit: 10
+    skipped: Live verification is blocked by a disabled Context.dev credential; response and billed cost have not been observed.
+    platform_blocked: Live response and billing verification is pending; connect your own Context.dev key.
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      unit: result
+      source: docs
+      source_url: https://docs.context.dev/api-reference/news/search
+      checked: '2026-10-27'
+      confidence: documented
+      note: 'Use searchBy.type natural_language with query, or entity with an entity object such as {type: domain, domain: microsoft.com}. One credit per
+        ten returned articles, rounded up; empty results are free.'
+      per: 10
+    added: '2026-10-27'
+    docs_url: https://docs.context.dev/api-reference/news/search
+  - id: branddev.web.answers
+    capability: web.answer
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /web/answers
+    name: Research a question with cited sources
+    summary: Research the web and return a sourced answer in your JSON shape. Choose `fast` for a short task or `ultra` for deeper research.
+    input:
+      bodyType: json
+      body:
+        mode: {type: string, required: false, enum: [fast, ultra], note: '`fast` prioritizes speed, with extra verification for people and companies; `ultra`
+            supports deeper research (default).', default: ultra}
+        task: {type: string, required: true, note: 'Research task. The agent selects company/profile lookups, web searches, or page reads. Include domains
+            or URLs to focus the research. minLength: 1. maxLength: 2000.'}
+        json_format: {type: object, required: false, note: 'Example answer object, not JSON Schema. Up to 8 levels, 500 values, and 16000 characters; unknowns
+            may be null.'}
+        timeoutOpts: {type: object, required: false, note: 'Request deadline and what to return when it passes. Fields: milliseconds, behavior.'}
+        tags: {type: 'array[string]', required: false, example: [production, team-alpha], maxItems: 20, note: Labels for filtering usage in the dashboard.}
+        zdr: {type: string, required: false, enum: [enabled, disabled], note: '`enabled` turns on zero data retention. Returns 403 `ZDR_NOT_ENABLED` unless
+            your organization has ZDR.'}
+      note: 'Choose mode explicitly: fast costs 10 credits; ultra is the upstream default and costs 100 credits. json_format is an example object, not JSON
+        Schema.'
+    test_request:
+      body:
+        mode: fast
+        task: What does IANA do?
+        json_format:
+          description: ''
+    skipped: Live verification is blocked by a disabled Context.dev credential; response and billed cost have not been observed.
+    platform_blocked: Live response and billing verification is pending; connect your own Context.dev key.
+    cost:
+      type: per_success
+      currency: credit
+      unit: call
+      source: docs
+      source_url: https://docs.context.dev/api-reference/web-extraction/answers
+      checked: '2026-10-27'
+      confidence: documented
+      note: 'Choose mode explicitly: fast costs 10 credits; ultra is the upstream default and costs 100 credits. json_format is an example object, not JSON
+        Schema.'
+      table:
+      - when:
+          body.mode: fast
+        value: 10
+      - when:
+          body.mode: ultra
+        value: 100
+      fallback:
+        value: 100
+        note: The higher priced mode is the reserve ceiling.
+    added: '2026-10-27'
+    docs_url: https://docs.context.dev/api-reference/web-extraction/answers
+  - id: branddev.documents.parse
+    capability: web.document.parse
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /parse
+    name: Parse document bytes into Markdown
+    summary: Convert uploaded file bytes into Markdown and optional HTML.
+    input:
+      queryParams:
+        extension: {type: string, required: false, enum: [txt, text, md, markdown, html, htm, xhtml, xml, rss, atom, csv, tsv, yaml, yml, py, java, js, jsx,
+            mjs, cjs, json, jsonl, ndjson, php, sh, bash, zsh, fish, rb, ts, tsx, rtf, srt, css, scss, less, styl, sass, svg, pdf, docx, doc, xlsx, xlsm,
+            xlsb, xltx, xltm, xls, pptx, pptm, ppsx, ppsm, potx, potm, ppt, pps, pot, jpg, jpeg, jpe, png, gif, bmp, tiff, tif, webp, ppm, pbm, pgm, pnm],
+          note: 'Optional file extension hint, such as pdf, docx, xlsx, pptx, html, json, csv, md, py, rtf, jpg, png, or txt.'}
+        includeLinks: {type: boolean, required: false, default: true, note: Preserve hyperlinks in Markdown output}
+        includeImages: {type: boolean, required: false, default: false, note: Include image references in Markdown output}
+        shortenBase64Images: {type: boolean, required: false, default: true, note: Shorten base64-encoded image data in the Markdown output}
+        useMainContentOnly: {type: boolean, required: false, default: false, note: Extract only the main content from HTML-like inputs}
+        ocr: {type: boolean, required: false, default: false, note: Read text from images and scanned PDF pages. PDF page ranges still apply.}
+        pdf: {type: object, required: false, note: 'PDF page-range options as a JSON object, e.g. {"start": 2, "end": 5}. Fields: start, end.'}
+        client: {type: string, required: false, note: 'Optional client identifier used for usage attribution. minLength: 1. maxLength: 100.'}
+        zdr: {type: string, required: false, enum: [enabled, disabled], default: disabled, note: '`enabled` turns on zero data retention. Returns 403 `ZDR_NOT_ENABLED`
+            unless your organization has ZDR.'}
+        tags: {type: 'array[string]', required: false, example: [production, team-alpha], maxItems: 20, note: 'Comma-separated labels for filtering usage,
+            e.g. `production,team-alpha`.'}
+      note: 'Send raw file bytes with --file document.pdf --header Content-Type=application/octet-stream. Maximum upload: 50 MiB; do not send JSON or base64.'
+      queryArrayEncoding: comma
+    untestable: Requires raw document bytes; live verification is blocked by a disabled Context.dev credential.
+    platform_blocked: Live response and billing verification is pending; connect your own Context.dev key.
+    cost:
+      type: per_success
+      value: null
+      currency: credit
+      unit: call
+      source: docs
+      source_url: https://docs.context.dev/api-reference/utility/parse
+      checked: '2026-10-27'
+      confidence: unknown
+      note: Upstream parsing price has not been confirmed; no live response or charge was observed.
+    added: '2026-10-27'
+    docs_url: https://docs.context.dev/api-reference/utility/parse
+  - id: branddev.web.extract
+    capability: web.extract.website
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /web/extract
+    name: Extract structured data from a website
+    summary: Extract website data using your JSON Schema and instructions.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, note: 'The starting website URL to crawl and extract from. Must include http:// or https://. minLength:
+            1.'}
+        schema: {type: object, required: true, example: {type: object, properties: {mission_statement: {type: string, description: The company's stated mission.},
+              case_studies: {type: array, items: {type: object, properties: {title: {type: string}, url: {type: string}}, required: [title, url], additionalProperties: false}}},
+            required: [mission_statement, case_studies], additionalProperties: false}, note: JSON Schema (not an example object) for the returned object.
+            Image fields include relevant page image references.}
+        instructions: {type: string, required: false, note: 'Optional extraction guidance, such as which facts to prioritize or how to interpret fields in
+            the schema. maxLength: 2000.'}
+        factCheck: {type: boolean, required: false, default: false, note: Require facts stated on the page. Unsupported fields become null or empty.}
+        followSubdomains: {type: boolean, required: false, default: false, note: 'When true, follow links on subdomains of the starting URL''s domain.'}
+        maxPages: {type: integer, required: false, default: 5, min: 1, max: 50, note: 'Maximum number of pages to analyze for extraction. Hard cap: 50. Defaults
+            to 5.'}
+        maxDepth: {type: integer, required: false, min: 0, note: 'Optional maximum link depth from the starting URL (0 = only the starting page). If omitted,
+            there is no crawl depth limit.'}
+        pdf: {type: object, required: false, default: {shouldParse: true}, note: 'PDF handling. `start`/`end` limit parsing to an inclusive, 1-based page
+            range. Fields: shouldParse, start, end.'}
+        includeFrames: {type: boolean, required: false, default: false, note: 'When true, iframe contents are included in Markdown before extraction.'}
+        maxAgeMs: {type: integer, required: false, default: 604800000, min: 0, max: 2592000000, note: Return cached scrape results if a prior scrape for the
+            same parameters is younger than this many milliseconds. Defaults to 7 days (604800000 ms).}
+        waitForMs: {type: integer, required: false, min: 0, max: 30000, note: Optional browser wait time in milliseconds after initial page load for each
+            crawled page.}
+        settleAnimations: {type: boolean, required: false, default: false, note: Wait briefly for CSS animations and transitions to settle before reading
+            each page.}
+        actions: {type: 'array[object]', required: false, maxItems: 5, note: Browser steps before page discovery. Requires a paid plan; defaults the crawl
+            budget to 110000 ms.}
+        stopAfterMs: {type: integer, required: false, default: 80000, min: 10000, max: 110000, note: 'Soft time budget for the crawl in milliseconds. Min:
+            10000 (10s). Max: 110000 (110s). Defaults to 80000 (80s), or 110000 (110s) when browser actions are provided.'}
+        timeoutOpts: {type: object, required: false, note: 'Request deadline and what to return when it passes. Fields: milliseconds, behavior.'}
+        zdr: {type: string, required: false, enum: [enabled, disabled], default: disabled, note: '`enabled` turns on zero data retention. Returns 403 `ZDR_NOT_ENABLED`
+            unless your organization has ZDR.'}
+        tags: {type: 'array[string]', required: false, example: [production, team-alpha], maxItems: 20, note: Labels for filtering usage in the dashboard.}
+      note: schema is JSON Schema. maxPages defaults to 5 and is capped at 50; extraction can visit multiple pages. Confirm the current per-request charge
+        before enabling shared-key billing.
+    test_request:
+      body:
+        url: https://example.com
+        schema:
+          type: object
+          properties:
+            title:
+              type: string
+        maxPages: 1
+    skipped: Live verification is blocked by a disabled Context.dev credential; response and billed cost have not been observed.
+    platform_blocked: Live response and billing verification is pending; connect your own Context.dev key.
+    cost:
+      type: per_success
+      value: 10
+      currency: credit
+      unit: call
+      source: docs
+      source_url: https://docs.context.dev/api-reference/web-extraction/extract
+      checked: '2026-10-27'
+      confidence: documented
+      note: 10 credits per request in the published contract; live response and charge remain unobserved.
+    added: '2026-10-27'
+    docs_url: https://docs.context.dev/api-reference/web-extraction/extract
+  - id: branddev.people.enrich
+    capability: people.enrich
+    platform: people
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /people/enrich
+    name: Enrich a person from identity clues
+    summary: Find a person from identity clues and return their profile with a match score. Available on all plans; free or disposable email addresses return
+      422.
+    input:
+      bodyType: json
+      body:
+        social_urls: {type: 'array[string]', required: false, minItems: 1, maxItems: 20, note: Public profile URLs for the person. A person-profile URL can
+            identify the person without a name.}
+        name: {type: object, required: false, note: 'Person name. Without an email or person-profile URL, provide both first and last name plus company, education,
+            or location. Fields: first, last.'}
+        email: {type: string, required: false, format: email, note: 'Email address of the person to find. maxLength: 320.'}
+        company: {type: object, required: false, note: 'Company context to help identify the person. Provide a name or domain. Fields: name, domain.'}
+        education: {type: 'array[object]', required: false, minItems: 1, maxItems: 10, note: Education history to help distinguish people with similar names.}
+        location: {type: object, required: false, note: 'Location context to help identify the person. Provide a city, region, or country. Fields: city, region,
+            country.'}
+        timeoutOpts: {type: object, required: false, note: 'Request deadline and what to return when it passes. Fields: milliseconds, behavior.'}
+        zdr: {type: string, required: false, enum: [enabled, disabled], note: '`enabled` turns on zero data retention. Returns 403 `ZDR_NOT_ENABLED` unless
+            your organization has ZDR.'}
+        tags: {type: 'array[string]', required: false, example: [production, team-alpha], maxItems: 20, note: Labels for filtering usage in the dashboard.}
+      note: Identity clues for one person. Provide a person email, a person-profile social URL, or both first and last name with company, education, or location.
+        All supplied clues are considered together.
+    test_request:
+      body:
+        social_urls:
+        - https://www.linkedin.com/in/satyanadella/
+    skipped: Live verification is blocked by a disabled Context.dev credential; response and billed cost have not been observed.
+    platform_blocked: Live response and billing verification is pending; connect your own Context.dev key.
+    cost:
+      type: per_success
+      value: 20
+      currency: credit
+      unit: call
+      source: docs
+      source_url: https://docs.context.dev/api-reference/people/enrich
+      checked: '2026-10-27'
+      confidence: documented
+      note: Documented price only; no live response or charge was observed.
+    added: '2026-10-27'
+    docs_url: https://docs.context.dev/api-reference/people/enrich
+  - id: branddev.brand.retrieve.unified
+    capability: companies.enrich
+    platform: companies
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /brand/retrieve
+    name: Retrieve a brand by any supported identifier
+    summary: Retrieve logos, colors, company details, and social links using one lookup identifier. A direct URL limits extraction to that page.
+    input:
+      bodyType: json
+      body:
+        force_language: {type: string, required: false, enum: [afrikaans, albanian, amharic, arabic, armenian, assamese, aymara, azeri, basque, belarusian,
+            bengali, bosnian, bulgarian, burmese, cantonese, catalan, cebuano, chinese, corsican, croatian, czech, danish, dutch, english, esperanto, estonian,
+            farsi, fijian, finnish, french, galician, georgian, german, greek, guarani, gujarati, haitian-creole, hausa, hawaiian, hebrew, hindi, hmong, hungarian,
+            icelandic, igbo, indonesian, irish, italian, japanese, javanese, kannada, kazakh, khmer, kinyarwanda, korean, kurdish, kyrgyz, lao, latin, latvian,
+            lingala, lithuanian, luxembourgish, macedonian, malagasy, malay, malayalam, maltese, maori, marathi, mongolian, nepali, norwegian, odia, oromo,
+            pashto, pidgin, polish, portuguese, punjabi, quechua, romanian, russian, samoan, scottish-gaelic, serbian, sesotho, shona, sindhi, sinhala, slovak,
+            slovene, somali, spanish, sundanese, swahili, swedish, tagalog, tajik, tamil, tatar, telugu, thai, tibetan, tigrinya, tongan, tswana, turkish,
+            turkmen, ukrainian, urdu, uyghur, uzbek, vietnamese, welsh, wolof, xhosa, yiddish, yoruba, zulu], note: 'Language, e.g. `english`.'}
+        maxSpeed: {type: boolean, required: false, note: 'Optional parameter to optimize the API call for maximum speed. When set to true, the API will skip
+            time-consuming operations for faster response at the cost of less comprehensive data.'}
+        maxAgeMs: {type: integer, required: false, note: Maximum age of cached brand data in ms. Defaults to 3 months; clamped to 0–1 year. `0` refreshes.}
+        timeoutOpts: {type: object, required: false, note: 'Request deadline and what to return when it passes. Fields: milliseconds, behavior.'}
+        type: {type: string, required: true, enum: [by_domain, by_name, by_email, by_ticker, by_direct_url, by_transaction], note: Select the lookup identifier
+            variant.}
+        domain: {type: string, required: false, note: 'Domain name to retrieve brand data for (e.g., ''stripe.com''). minLength: 3.'}
+        tags: {type: 'array[string]', required: false, example: [production, team-alpha], maxItems: 20, note: Labels for filtering usage in the dashboard.}
+        name: {type: string, required: false, note: 'Company name to retrieve brand data for (e.g., ''Apple Inc''). minLength: 3. maxLength: 30.'}
+        country_gl: {type: string, required: false, enum: [af, al, dz, as, ad, ao, ai, aq, ag, ar, am, aw, au, at, az, bs, bh, bd, bb, by, be, bz, bj, bm,
+            bt, bo, ba, bw, bv, br, io, bn, bg, bf, bi, kh, cm, ca, cv, ky, cf, td, cl, cn, cx, cc, co, km, cg, cd, ck, cr, ci, hr, cu, cy, cz, dk, dj, dm,
+            do, ec, eg, sv, gq, er, ee, et, fk, fo, fj, fi, fr, gf, pf, tf, ga, gm, ge, de, gh, gi, gr, gl, gd, gp, gu, gt, gn, gw, gy, ht, hm, va, hn, hk,
+            hu, is, in, id, ir, iq, ie, il, it, jm, jp, jo, kz, ke, ki, kp, kr, kw, kg, la, lv, lb, ls, lr, ly, li, lt, lu, mo, mk, mg, mw, my, mv, ml, mt,
+            mh, mq, mr, mu, yt, mx, fm, md, mc, mn, ms, ma, mz, mm, na, nr, np, nl, an, nc, nz, ni, ne, ng, nu, nf, mp, 'no', om, pk, pw, ps, pa, pg, py,
+            pe, ph, pn, pl, pt, pr, qa, re, ro, ru, rw, sh, kn, lc, pm, vc, ws, sm, st, sa, sn, rs, sc, sl, sg, sk, si, sb, so, za, gs, es, lk, sd, sr, sj,
+            sz, se, ch, sy, tw, tj, tz, th, tl, tg, tk, to, tt, tn, tr, tm, tc, tv, ug, ua, ae, gb, us, um, uy, uz, vu, ve, vn, vg, vi, wf, eh, ye, zm, zw],
+          note: Optional country code hint (GL parameter) to specify the country when identifying a transaction.}
+        email: {type: string, required: false, format: email, note: 'Email address to retrieve brand data for (e.g., ''jane@stripe.com''). minLength: 1.'}
+        ticker: {type: string, required: false, note: 'Stock ticker symbol to retrieve brand data for (e.g., ''AAPL''). minLength: 1. maxLength: 15.'}
+        ticker_exchange: {type: string, required: false, enum: [AMEX, AMS, AQS, ASX, ATH, BER, BME, BRU, BSE, BUD, BUE, BVC, CBOE, CNQ, CPH, DFM, DOH, DUB,
+            DUS, DXE, EGX, FSX, HAM, HEL, HKSE, HOSE, ICE, IOB, IST, JKT, JNB, JPX, KLS, KOE, KSC, KUW, LIS, LSE, MCX, MEX, MIL, MUN, NASDAQ, NEO, NSE, NYSE,
+            NZE, OSL, OTC, PAR, PNK, PRA, RIS, SAO, SAU, SES, SET, SGO, SHH, SHZ, SIX, STO, STU, TAI, TAL, TLV, TSX, TSXV, TWO, VIE, WSE, XETRA], note: Optional
+            stock exchange for the ticker. Defaults to NASDAQ if not specified.}
+        direct_url: {type: string, required: false, format: uri, note: 'Full http(s) URL to fetch brand data from (e.g., ''https://stripe.com/enterprise'').
+            Only this URL is fetched — not the entire internet.'}
+        transaction_info: {type: string, required: false, note: 'Transaction information to identify the brand. minLength: 3. maxLength: 500.'}
+        city: {type: string, required: false, note: Optional city name to prioritize when searching for the brand.}
+        mcc: {type: string, required: false, note: Optional Merchant Category Code (MCC) to help identify the business category or industry.}
+        phone: {type: string, required: false, note: Optional phone number from the transaction to help verify brand match.}
+        high_confidence_only: {type: boolean, required: false, note: 'When set to true, the API performs additional verification to ensure the identified
+            brand matches the transaction with high confidence.'}
+      note: 'Provide exactly one identifier using type: by_domain, by_name, by_email, by_ticker, by_direct_url or by_transaction. The existing GET tool IDs
+        remain available.'
+    test_request:
+      body:
+        type: by_domain
+        domain: example.com
+    skipped: Live verification is blocked by a disabled Context.dev credential; response and billed cost have not been observed.
+    platform_blocked: Live response and billing verification is pending; connect your own Context.dev key.
+    cost:
+      type: per_success
+      value: 10
+      currency: credit
+      unit: call
+      source: docs
+      source_url: https://docs.context.dev/api-reference/brand-intelligence/brand
+      checked: '2026-10-27'
+      confidence: documented
+      note: 'Provide exactly one identifier using type: by_domain, by_name, by_email, by_ticker, by_direct_url or by_transaction. The existing GET tool IDs
+        remain available.'
+    added: '2026-10-27'
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/brand
+  - id: branddev.brand.search
+    capability: companies.search
+    platform: companies
+    domain: search
+    scope: any_account
+    method: GET
+    path: /brand/search
+    name: Find brands by name or domain
+    summary: Find up to 10 brands by name or domain, ordered by popularity. Optionally filter by country and primary language; both filters must match when
+      provided together. Results include description, country, and language when available. Use the returned domain to retrieve a full brand profile.
+    input:
+      queryParams:
+        query: {type: string, required: true, note: 'Search term, matched against the fields selected by queryBy (e.g. ''nike'', ''nike.com'', ''nik''). minLength:
+            1. maxLength: 100.'}
+        country: {type: string, required: false, enum: [AD, AE, AF, AG, AI, AL, AM, AO, AQ, AR, AS, AT, AU, AW, AX, AZ, BA, BB, BD, BE, BF, BG, BH, BI, BJ,
+            BL, BM, BN, BO, BQ, BR, BS, BT, BV, BW, BY, BZ, CA, CC, CD, CF, CG, CH, CI, CK, CL, CM, CN, CO, CR, CU, CV, CW, CX, CY, CZ, DE, DJ, DK, DM, DO,
+            DZ, EC, EE, EG, EH, ER, ES, ET, FI, FJ, FK, FM, FO, FR, GA, GB, GD, GE, GF, GG, GH, GI, GL, GM, GN, GP, GQ, GR, GS, GT, GU, GW, GY, HK, HM, HN,
+            HR, HT, HU, ID, IE, IL, IM, IN, IO, IQ, IR, IS, IT, JE, JM, JO, JP, KE, KG, KH, KI, KM, KN, KP, KR, KW, KY, KZ, LA, LB, LC, LI, LK, LR, LS, LT,
+            LU, LV, LY, MA, MC, MD, ME, MF, MG, MH, MK, ML, MM, MN, MO, MP, MQ, MR, MS, MT, MU, MV, MW, MX, MY, MZ, NA, NC, NE, NF, NG, NI, NL, 'NO', NP,
+            NR, NU, NZ, OM, PA, PE, PF, PG, PH, PK, PL, PM, PN, PR, PS, PT, PW, PY, QA, RE, RO, RS, RU, RW, SA, SB, SC, SD, SE, SG, SH, SI, SJ, SK, SL, SM,
+            SN, SO, SR, SS, ST, SV, SX, SY, SZ, TC, TD, TF, TG, TH, TJ, TK, TL, TM, TN, TO, TR, TT, TV, TW, TZ, UA, UG, UM, US, UY, UZ, VA, VC, VE, VG, VI,
+            VN, VU, WF, WS, YE, YT, ZA, ZM, ZW], example: US, note: 'Only return brands in this country, as an uppercase ISO 3166-1 alpha-2 code such as US
+            or GB.'}
+        language: {type: string, required: false, enum: [afrikaans, albanian, amharic, arabic, armenian, assamese, aymara, azeri, basque, belarusian, bengali,
+            bosnian, bulgarian, burmese, cantonese, catalan, cebuano, chinese, corsican, croatian, czech, danish, dutch, english, esperanto, estonian, farsi,
+            fijian, finnish, french, galician, georgian, german, greek, guarani, gujarati, haitian-creole, hausa, hawaiian, hebrew, hindi, hmong, hungarian,
+            icelandic, igbo, indonesian, irish, italian, japanese, javanese, kannada, kazakh, khmer, kinyarwanda, korean, kurdish, kyrgyz, lao, latin, latvian,
+            lingala, lithuanian, luxembourgish, macedonian, malagasy, malay, malayalam, maltese, maori, marathi, mongolian, nepali, norwegian, odia, oromo,
+            pashto, pidgin, polish, portuguese, punjabi, quechua, romanian, russian, samoan, scottish-gaelic, serbian, sesotho, shona, sindhi, sinhala, slovak,
+            slovene, somali, spanish, sundanese, swahili, swedish, tagalog, tajik, tamil, tatar, telugu, thai, tibetan, tigrinya, tongan, tswana, turkish,
+            turkmen, ukrainian, urdu, uyghur, uzbek, vietnamese, welsh, wolof, xhosa, yiddish, yoruba, zulu], note: 'Only return brands with this primary
+            language, such as english or french.'}
+        autocomplete: {type: boolean, required: false, default: true, note: 'Whether the search term matches by prefix, so partial words match as they are
+            typed (e.g. ''nik'' matches Nike). Set to false to match whole words only.'}
+        queryBy: {type: 'array[string]', required: false, default: [name, domain], minItems: 1, note: 'Fields to match the search term against, as a comma-separated
+            list or repeated parameter: ''name'', ''domain'', or both. Defaults to both.'}
+        typoTolerance: {type: integer, required: false, default: 0, min: 0, max: 2, note: 'Maximum number of typos tolerated when matching, from 0 to 2. Defaults
+            to 0 (no typo tolerance).'}
+        tags: {type: 'array[string]', required: false, example: [production, team-alpha], maxItems: 20, note: 'Comma-separated labels for filtering usage,
+            e.g. `production,team-alpha`.'}
+      queryArrayEncoding: comma
+    test_request:
+      queryParams:
+        query: Stripe
+    skipped: Live verification is blocked by a disabled Context.dev credential; response and billed cost have not been observed.
+    platform_blocked: Live response and billing verification is pending; connect your own Context.dev key.
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      unit: call
+      source: docs
+      source_url: https://docs.context.dev/api-reference/brand-intelligence/search
+      checked: '2026-10-27'
+      confidence: documented
+      note: 1 credit per call; free on Pro, Growth and Scale. Plan-dependent charge has not been observed live.
+    added: '2026-10-27'
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/search
+  - id: branddev.web.styleguide
+    capability: companies.brand.styleguide
+    platform: companies
+    domain: extract
+    scope: any_account
+    method: GET
+    path: /web/styleguide
+    name: Extract a website design system
+    summary: Extract colors, typography, spacing, and component styles from a website.
+    input:
+      queryParams:
+        domain: {type: string, required: false, note: 'Domain name to extract styleguide from (e.g., ''example.com'', ''google.com''). The domain will be
+            automatically normalized and validated. You must provide either ''domain'' or ''directUrl'', but not both. minLength: 3.'}
+        directUrl: {type: string, required: false, format: uri, note: 'Exact URL to inspect. Provide either `domain` or `directUrl`, not both.'}
+        maxAgeMs: {type: integer, required: false, default: 7776000000, note: Maximum age of cached brand data in ms. Defaults to 3 months; clamped to 0–1
+            year. `0` refreshes.}
+        timeoutOpts: {type: object, required: false, note: 'Request deadline and what to return when it passes. Fields: milliseconds, behavior.'}
+        colorScheme: {type: string, required: false, enum: [light, dark], note: Optional browser color scheme to emulate for websites that respond to prefers-color-scheme.
+            This value is part of the styleguide cache key.}
+        zdr: {type: string, required: false, enum: [enabled, disabled], default: disabled, note: '`enabled` turns on zero data retention. Returns 403 `ZDR_NOT_ENABLED`
+            unless your organization has ZDR.'}
+        tags: {type: 'array[string]', required: false, example: [production, team-alpha], maxItems: 20, note: 'Comma-separated labels for filtering usage,
+            e.g. `production,team-alpha`.'}
+      queryArrayEncoding: comma
+    test_request:
+      queryParams:
+        domain: example.com
+    skipped: Live verification is blocked by a disabled Context.dev credential; response and billed cost have not been observed.
+    platform_blocked: Live response and billing verification is pending; connect your own Context.dev key.
+    cost:
+      type: per_success
+      value: 10
+      currency: credit
+      unit: call
+      source: docs
+      source_url: https://docs.context.dev/api-reference/brand-intelligence/styleguide
+      checked: '2026-10-27'
+      confidence: documented
+      note: Documented price only; no live response or charge was observed.
+    added: '2026-10-27'
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/styleguide
+  - id: branddev.web.fonts
+    capability: companies.brand.fonts
+    platform: companies
+    domain: extract
+    scope: any_account
+    method: GET
+    path: /web/fonts
+    name: Extract a website font list
+    summary: Identify fonts and available font files used by a website.
+    input:
+      queryParams:
+        directUrl: {type: string, required: false, format: uri, note: Exact page to inspect. Provide either `domain` or `directUrl`.}
+        domain: {type: string, required: false, note: 'Domain name to extract fonts from (e.g., ''example.com'', ''google.com''). The domain will be automatically
+            normalized and validated. You must provide either ''domain'' or ''directUrl'', but not both. minLength: 3.'}
+        maxAgeMs: {type: integer, required: false, default: 7776000000, note: Maximum age of cached brand data in ms. Defaults to 3 months; clamped to 0–1
+            year. `0` refreshes.}
+        timeoutOpts: {type: object, required: false, note: 'Request deadline and what to return when it passes. Fields: milliseconds, behavior.'}
+        tags: {type: 'array[string]', required: false, example: [production, team-alpha], maxItems: 20, note: 'Comma-separated labels for filtering usage,
+            e.g. `production,team-alpha`.'}
+      queryArrayEncoding: comma
+    test_request:
+      queryParams:
+        domain: example.com
+    skipped: Live verification is blocked by a disabled Context.dev credential; response and billed cost have not been observed.
+    platform_blocked: Live response and billing verification is pending; connect your own Context.dev key.
+    cost:
+      type: per_success
+      value: 5
+      currency: credit
+      unit: call
+      source: docs
+      source_url: https://docs.context.dev/api-reference/brand-intelligence/fonts
+      checked: '2026-10-27'
+      confidence: documented
+      note: Documented price only; no live response or charge was observed.
+    added: '2026-10-27'
+    docs_url: https://docs.context.dev/api-reference/brand-intelligence/fonts
+  - id: branddev.companies.search
+    capability: companies.search
+    platform: companies
+    domain: search
+    scope: any_account
+    method: POST
+    path: /company/search
+    name: Search companies by description and filters
+    summary: Find companies with a natural-language query.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: Solar startups in California that raised a Series B, note: 'Describe the companies to find. minLength:
+            1. maxLength: 500.'}
+        filters: {type: object, required: false, note: 'Additional constraints every result must match. Fields: countries, employees_min, employees_max.'}
+        cursor: {type: string, required: false, note: 'Use next_cursor with the same query and filters to fetch the next page. maxLength: 64.'}
+        tags: {type: 'array[string]', required: false, example: [production, team-alpha], maxItems: 20, note: Labels for filtering usage in the dashboard.}
+      note: Returns up to 10 companies per page; there is no limit parameter. Reuse query and filters with next_cursor. A nonempty page costs 2 credits; empty
+        results are free.
+    test_request:
+      body:
+        query: Stripe
+    skipped: Live verification is blocked by a disabled Context.dev credential; response and billed cost have not been observed.
+    platform_blocked: Live response and billing verification is pending; connect your own Context.dev key.
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      unit: call
+      source: docs
+      source_url: https://docs.context.dev/api-reference/company/search
+      checked: '2026-10-27'
+      confidence: documented
+      note: Returns up to 10 companies per page; there is no limit parameter. Reuse query and filters with next_cursor. A nonempty page costs 2 credits; empty
+        results are free.
+    added: '2026-10-27'
+    docs_url: https://docs.context.dev/api-reference/company/search
+  - id: branddev.people.search
+    capability: people.search
+    platform: people
+    domain: search
+    scope: any_account
+    method: POST
+    path: /people/search
+    name: Find people by role, employer and experience
+    summary: Find people with a natural-language query.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: VPs of sales at solar companies in California, note: 'Describe the people to find. Up to 500 characters
+            in `fast` mode and 5000 in `ultra` mode. minLength: 1. maxLength: 5000.'}
+        mode: {type: string, required: false, enum: [fast, ultra], default: fast, note: '`fast` matches people on basic criteria (e.g. their role, location
+            or background); `ultra` plans a deeper search, judges each candidate against every criterion in the query and explains each match.'}
+        filters: {type: object, required: false, note: 'Additional constraints every result must match. Fields: countries, years_of_experience_min, years_of_experience_max.'}
+        cursor: {type: string, required: false, note: 'Use next_cursor with the same query, mode and filters to fetch the next page. maxLength: 65536.'}
+        tags: {type: 'array[string]', required: false, example: [production, team-alpha], maxItems: 20, note: Labels for filtering usage in the dashboard.}
+      note: 'Fast is the default: 10 credits per nonempty page, query up to 500 characters. Ultra costs 50 credits per nonempty page, query up to 5000 characters.
+        Both return up to 10 people; there is no limit parameter. Reuse query, mode and filters with next_cursor. Empty results are free. Ultra is in the
+        current server contract but not yet reflected in the docs snapshot; live verification is required.'
+    test_request:
+      body:
+        query: Microsoft CEO
+        mode: fast
+    skipped: Live verification is blocked by a disabled Context.dev credential; response and billed cost have not been observed.
+    platform_blocked: Live response and billing verification is pending; connect your own Context.dev key.
+    cost:
+      type: per_success
+      currency: credit
+      unit: call
+      source: docs
+      source_url: https://docs.context.dev/api-reference/people/search
+      checked: '2026-10-27'
+      confidence: documented
+      note: 'Fast is the default: 10 credits per nonempty page, query up to 500 characters. Ultra costs 50 credits per nonempty page, query up to 5000 characters.
+        Both return up to 10 people; there is no limit parameter. Reuse query, mode and filters with next_cursor. Empty results are free. Ultra is in the
+        current server contract but not yet reflected in the docs snapshot; live verification is required.'
+      table:
+      - when:
+          body.mode: fast
+        value: 10
+      - when:
+          body.mode: ultra
+        value: 50
+      fallback:
+        value: 50
+        note: The higher priced mode is the reserve ceiling.
+    added: '2026-10-27'
+    docs_url: https://docs.context.dev/api-reference/people/search
+
 proposed_capabilities:
   # Brand assets are a genuine gap: the enrichment platform has companies.enrich for firmographics,
   # but nothing for the visual identity an agent can actually render.
@@ -495,3 +1049,6 @@ proposed_capabilities:
   companies.website.screenshot: "Capture a screenshot of a company's website"
   companies.website.extract: "Extract named, caller-defined datapoints from a company's website"
   companies.transaction.identify: "Identify the company behind a card or bank transaction descriptor"
+
+  web.extract.website: Extract typed JSON from multiple pages of a website
+  web.document.parse: Convert uploaded document bytes into Markdown or HTML
