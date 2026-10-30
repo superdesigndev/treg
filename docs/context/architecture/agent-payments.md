@@ -30,8 +30,8 @@ related:
 
 An agent with no treg account calls a paid catalog tool on `/call/` and pays for that call with
 MPP (the Machine Payments Protocol, Tempo `charge` intent) or x402 (v2, `exact` scheme, EIP-3009).
-The payment is the authentication: no signup, no token. Default off; a rail is offered only when
-its recipient address is set.
+The payment is the authentication: no signup, no token. Default off; each rail has its own switch
+(`agent_payments_mpp_enabled`, `agent_payments_x402_enabled`).
 
 ## Who takes the payment path
 
@@ -217,15 +217,23 @@ the facilitator. Settlement is synchronous, before the relay, to treg's own reci
 
 ## Settings
 
-`agent_payments_enabled`, `agent_payments_secret` (32+ characters; startup refuses without it),
-`agent_payments_realm`, `agent_payments_min_payment_micro`; Tempo: `..._tempo_recipient`,
+`agent_payments_enabled`, `agent_payments_secret` (32+ characters), `agent_payments_realm`,
+`agent_payments_min_payment_micro`; the rail switches `..._mpp_enabled` and `..._x402_enabled`;
+Tempo: `..._tempo_recipient`,
 `..._tempo_chain_id` (42431 Moderato testnet by default), `..._tempo_rpc_url`,
 `..._tempo_currency`; x402: `..._x402_pay_to`, `..._x402_network` (`eip155:84532` Base Sepolia by
 default), `..._x402_asset`, `..._x402_asset_name`, `..._x402_asset_version`,
 `..._x402_facilitator_url`, `..._x402_max_timeout_s`, `..._x402_rpc_url` (empty: the network's
-public RPC), `..._x402_cdp_api_key_id` and `..._x402_cdp_api_key_secret` (both or neither, and only with Coinbase's facilitator URL);
+public RPC), `..._x402_cdp_api_key_id` and `..._x402_cdp_api_key_secret` (both or neither);
 `agent_payments_settlement` (`wallet` | `stripe`), `agent_payments_reconcile_min_age_s`. Every
 address is checked to be 20 bytes.
+
+With the feature on, startup checks the whole set and refuses with one error that names every
+problem (`Settings._agent_payments_problems`): the secret; at least one rail switch; each enabled
+rail's recipient; for `stripe` settlement the Stripe key and an explicit Tempo currency; on Base
+mainnet a CDP key, Base mainnet USDC as the asset and its EIP-712 name `USD Coin`; a CDP key only
+with Coinbase's facilitator URL; and both rails on the same kind of network (Tempo 4217 with Base
+mainnet, or both testnets).
 
 ## Not built
 

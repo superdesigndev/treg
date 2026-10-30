@@ -701,8 +701,11 @@ class Settings(BaseSettings):
 
     # Agent payments (docs/context/architecture/agent-payments.md): a caller with no treg
     # credential pays a catalog call with MPP (Tempo charge) or x402 (`exact`). Off by default.
-    # A rail is offered only when its recipient address is set. Testnet defaults throughout.
+    # Each rail has its own switch; a rail that is on needs its recipient address. Testnet defaults
+    # throughout.
     agent_payments_enabled: bool = False
+    agent_payments_mpp_enabled: bool = False
+    agent_payments_x402_enabled: bool = False
     # Binds MPP challenge ids (HMAC). Required when the feature is on; never reuse another secret.
     agent_payments_secret: str = ""
     # MPP realm; empty means the host of `public_url`.
@@ -736,8 +739,6 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _agent_payments_configuration(self):
-        if self.agent_payments_enabled and len(self.agent_payments_secret) < 32:
-            raise ValueError("agent payments require TREG_AGENT_PAYMENTS_SECRET of 32+ characters")
         for name in ("agent_payments_tempo_recipient", "agent_payments_x402_pay_to",
                      "agent_payments_tempo_currency", "agent_payments_x402_asset"):
             value = getattr(self, name)
@@ -745,19 +746,47 @@ class Settings(BaseSettings):
                 raise ValueError(f"{name} must be a 0x-prefixed 20-byte address")
         if bool(self.agent_payments_x402_cdp_api_key_id) != bool(self.agent_payments_x402_cdp_api_key_secret):
             raise ValueError("set both TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET, or neither")
+        if self.agent_payments_enabled:
+            if problems := self._agent_payments_problems():
+                raise ValueError("agent payments cannot start: " + "; ".join(problems))
+        return self
+
+    def _agent_payments_problems(self) -> list[str]:
+        """Every setting the enabled rails are missing or get wrong, so one start names them all."""
         coinbase = "https://api.cdp.coinbase.com/platform/v2/x402"
+        base_usdc = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+        problems = []
+        if len(self.agent_payments_secret) < 32:
+            problems.append("TREG_AGENT_PAYMENTS_SECRET of 32+ characters")
+        mpp, x402 = self.agent_payments_mpp_enabled, self.agent_payments_x402_enabled
+        if not (mpp or x402):
+            problems.append("TREG_AGENT_PAYMENTS_MPP_ENABLED or TREG_AGENT_PAYMENTS_X402_ENABLED")
+        stripe = self.agent_payments_settlement == "stripe"
+        if stripe and not self.stripe_secret_key:
+            problems.append("TREG_STRIPE_SECRET_KEY (settlement stripe)")
+        if mpp:
+            if not self.agent_payments_tempo_recipient:
+                problems.append("TREG_AGENT_PAYMENTS_TEMPO_RECIPIENT")
+            if stripe and not self.agent_payments_tempo_currency:
+                problems.append("TREG_AGENT_PAYMENTS_TEMPO_CURRENCY (a token Stripe accepts)")
+        x402_mainnet = self.agent_payments_x402_network == "eip155:8453"
+        if x402:
+            if not self.agent_payments_x402_pay_to:
+                problems.append("TREG_AGENT_PAYMENTS_X402_PAY_TO")
+            if x402_mainnet and not self.agent_payments_x402_cdp_api_key_id:
+                problems.append("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET (Base mainnet)")
+            if x402_mainnet and self.agent_payments_x402_asset.lower() != base_usdc:
+                problems.append(f"TREG_AGENT_PAYMENTS_X402_ASSET={base_usdc} (Base mainnet USDC)")
+            if (self.agent_payments_x402_asset.lower() == base_usdc
+                    and self.agent_payments_x402_asset_name != "USD Coin"):
+                problems.append('TREG_AGENT_PAYMENTS_X402_ASSET_NAME="USD Coin" (Base mainnet USDC)')
         if (self.agent_payments_x402_cdp_api_key_id
                 and self.agent_payments_x402_facilitator_url.rstrip("/") != coinbase):
             # The key signs each request for Coinbase's host and path; no other facilitator reads it.
-            raise ValueError("a CDP API key needs "
-                             f"TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL={coinbase}")
-        if self.agent_payments_enabled and self.agent_payments_settlement == "stripe":
-            if not self.stripe_secret_key:
-                raise ValueError("agent payments settling to Stripe require TREG_STRIPE_SECRET_KEY")
-            if self.agent_payments_tempo_recipient and not self.agent_payments_tempo_currency:
-                raise ValueError("agent payments settling to Stripe require "
-                                 "TREG_AGENT_PAYMENTS_TEMPO_CURRENCY (a token Stripe accepts)")
-        return self
+            problems.append(f"TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL={coinbase} (a CDP API key)")
+        if mpp and x402 and (self.agent_payments_tempo_chain_id == 4217) != x402_mainnet:
+            problems.append("one network kind: Tempo and Base both mainnet or both testnet")
+        return problems
 
     # Additive Claude directory MCP. Default OFF so deploying code cannot publish a new connector
     # surface before its production Inspector and custom-connector gates have passed.

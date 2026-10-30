@@ -113,6 +113,10 @@ def payments_on(monkeypatch, chain, facilitator):
         "TREG_PLATFORM_KEY_TIKHUB": "PLATFORM-TIKHUB-KEY",
         "TREG_PLATFORM_PROVIDERS": "tikhub",
         "TREG_AGENT_PAYMENTS_ENABLED": "1",
+        "TREG_AGENT_PAYMENTS_MPP_ENABLED": "1",
+        "TREG_AGENT_PAYMENTS_X402_ENABLED": "1",
+        "TREG_AGENT_PAYMENTS_TEMPO_RECIPIENT": RECIPIENT,
+        "TREG_AGENT_PAYMENTS_X402_PAY_TO": RECIPIENT,
         "TREG_AGENT_PAYMENTS_SECRET": "s" * 40,
         "TREG_AGENT_PAYMENTS_MIN_PAYMENT_MICRO": str(FLOOR),
         "TREG_PUBLIC_URL": "https://registry.test",
@@ -813,11 +817,69 @@ def test_a_cdp_key_needs_both_halves(monkeypatch):
     monkeypatch.delenv("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_SECRET", raising=False)
     with pytest.raises(ValueError, match="CDP_API_KEY"):
         Settings()
-    monkeypatch.setenv("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_SECRET", "s")
-    with pytest.raises(ValueError, match="FACILITATOR_URL"):
+
+
+def _mainnet_x402(monkeypatch):
+    for name, value in {
+        "TREG_AGENT_PAYMENTS_ENABLED": "1", "TREG_AGENT_PAYMENTS_SECRET": "s" * 40,
+        "TREG_AGENT_PAYMENTS_X402_ENABLED": "1", "TREG_AGENT_PAYMENTS_X402_PAY_TO": RECIPIENT,
+        "TREG_AGENT_PAYMENTS_X402_NETWORK": "eip155:8453",
+        "TREG_AGENT_PAYMENTS_X402_ASSET": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "TREG_AGENT_PAYMENTS_X402_ASSET_NAME": "USD Coin",
+        "TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL": COINBASE,
+        "TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID": "k",
+        "TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_SECRET": "s",
+    }.items():
+        monkeypatch.setenv(name, value)
+
+
+def test_a_complete_mainnet_x402_configuration_starts(monkeypatch):
+    from treg.config import Settings
+
+    _mainnet_x402(monkeypatch)
+    assert Settings().agent_payments_x402_enabled
+
+
+@pytest.mark.parametrize(("name", "value", "named"), [
+    ("TREG_AGENT_PAYMENTS_X402_ASSET_NAME", "USDC", "X402_ASSET_NAME"),
+    ("TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL", "https://x402.org/facilitator",
+     "X402_FACILITATOR_URL"),
+    ("TREG_AGENT_PAYMENTS_X402_ASSET", X402_ASSET, "X402_ASSET="),
+])
+def test_a_wrong_mainnet_setting_is_named(monkeypatch, name, value, named):
+    from treg.config import Settings
+
+    _mainnet_x402(monkeypatch)
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValueError, match=named):
         Settings()
-    monkeypatch.setenv("TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL", COINBASE)
-    assert Settings().agent_payments_x402_cdp_api_key_id == "k"
+
+
+def test_one_error_names_every_missing_setting(monkeypatch):
+    from treg.config import Settings
+
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_ENABLED", "1")
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_MPP_ENABLED", "1")
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_X402_ENABLED", "1")
+    for name in ("SECRET", "TEMPO_RECIPIENT", "X402_PAY_TO"):
+        monkeypatch.delenv(f"TREG_AGENT_PAYMENTS_{name}", raising=False)
+    with pytest.raises(ValueError) as error:
+        Settings()
+    for name in ("SECRET", "TEMPO_RECIPIENT", "X402_PAY_TO"):
+        assert f"TREG_AGENT_PAYMENTS_{name}" in str(error.value)
+
+
+def test_mainnet_and_testnet_rails_never_mix(monkeypatch):
+    from treg.config import Settings
+
+    _mainnet_x402(monkeypatch)
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_MPP_ENABLED", "1")
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_RECIPIENT", RECIPIENT)
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_CHAIN_ID", "42431")
+    with pytest.raises(ValueError, match="both mainnet or both testnet"):
+        Settings()
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_CHAIN_ID", "4217")
+    assert Settings().agent_payments_mpp_enabled
 
 
 # ---- settlement to Stripe ------------------------------------------------------------------------

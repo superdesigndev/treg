@@ -712,7 +712,7 @@ def configure_agent_payments() -> None:
     s = get_settings()
     rails = []
     if s.agent_payments_enabled:
-        if s.agent_payments_tempo_recipient:
+        if s.agent_payments_mpp_enabled:
             from .infra.agent_payments.tempo import MppTempoRail
 
             rails.append(MppTempoRail(
@@ -722,7 +722,7 @@ def configure_agent_payments() -> None:
                 chain_id=s.agent_payments_tempo_chain_id,
                 rpc_url=s.agent_payments_tempo_rpc_url,
                 currency=s.agent_payments_tempo_currency))
-        if s.agent_payments_x402_pay_to:
+        if s.agent_payments_x402_enabled:
             from .infra.agent_payments.x402 import X402Rail
 
             rails.append(X402Rail(

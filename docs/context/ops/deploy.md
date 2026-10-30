@@ -553,10 +553,13 @@ contract:
   the archive's object store when archive R2 is on, else rebuilt by each process.
 
 - `TREG_AGENT_PAYMENTS_ENABLED` lets a caller with no treg credential pay a catalog call with
-  MPP or x402. Needs `TREG_AGENT_PAYMENTS_SECRET` (32+ characters; startup refuses without it) and a
-  recipient address per rail; testnet defaults. Off by default. On mainnet the x402 facilitator is
+  MPP or x402. Needs `TREG_AGENT_PAYMENTS_SECRET` (32+ characters), at least one of
+  `TREG_AGENT_PAYMENTS_MPP_ENABLED` / `TREG_AGENT_PAYMENTS_X402_ENABLED`, and each enabled rail's
+  recipient address; testnet defaults; startup names every missing setting in one error. Off by
+  default. On mainnet the x402 facilitator is
   Coinbase's (`TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402`)
-  and needs `TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID` and `_SECRET`. `TREG_AGENT_PAYMENTS_SETTLEMENT`
+  and needs `TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID` and `_SECRET`, plus Base mainnet USDC as
+  `TREG_AGENT_PAYMENTS_X402_ASSET` with `TREG_AGENT_PAYMENTS_X402_ASSET_NAME="USD Coin"`. `TREG_AGENT_PAYMENTS_SETTLEMENT`
   is `wallet` (the recipients are treg's own wallet) or `stripe` (they are Stripe deposit addresses
   from `treg-worker agentpay stripe-address`; needs `TREG_STRIPE_SECRET_KEY` and an explicit
   `TREG_AGENT_PAYMENTS_TEMPO_CURRENCY`). See [agent payments](../architecture/agent-payments.md).
