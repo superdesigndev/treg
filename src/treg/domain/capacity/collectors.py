@@ -1045,6 +1045,15 @@ async def _piapi(c, key):
             "note": "equivalent_in_usd from account info"}
 
 
+async def _harmar(c, key):
+    # GET /v1/balance answers {"seconds_remaining", "minutes_remaining"}; the catalog meters
+    # Harmar in media seconds (fx.yaml unit_rates_usd.harmar.media_second).
+    d = await _get(c, "https://api.harmar.ai/v1/balance",
+                   headers={"Authorization": f"Bearer {key}"})
+    return {"value": _balance(d.get("seconds_remaining"), "Harmar"), "unit": "media seconds",
+            "note": "seconds_remaining from /v1/balance"}
+
+
 BALANCE_ROUTES = {
     "orbisearch": _orbisearch,
     "dropcontact": _dropcontact,
@@ -1121,6 +1130,7 @@ BALANCE_ROUTES = {
     "apify": _apify,
     "serpstat": _serpstat,
     "thecompaniesapi": _thecompaniesapi,
+    "harmar": _harmar,
 }
 
 # Verified to publish NO free standalone balance/credits API. Some are dashboard-only; Scrubby
