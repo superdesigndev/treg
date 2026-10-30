@@ -1,0 +1,26 @@
+[
+  {
+    "video_id": "jNQXAC9IVRw",
+    "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+    "scraped_at": "2026-10-30T15:53:57.163538+00:00",
+    "title": "Me at the zoo",
+    "channel_id": "UC4QobU6STFB0P71PMvOGN5A",
+    "channel_name": "jawed",
+    "duration_seconds": 19,
+    "published_at": "2005-04-24T03:31:52+00:00",
+    "view_count": 447182465,
+    "description": "Microplastics are accumulating in human brains at an alarming rate\nhttps://www.youtube.com/watch?v=0PT5c1z3LL8\n\n“Nanoplastics and Human Health” with Matthew J Campen, PhD, MSPH\nhttps://www.youtube.com/watch?v=RRBN_4L09Mg\n\n00:00 Intro\n00:05 The cool thing\n00:17 End",
+    "thumbnail_url": "https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg?sqp=-oaymwEmCOADEOgC8quKqQMa8AEB-AG-AoAC8AGKAgwIABABGFUgWShlMA8=&rs=AOn4CLA9eLBatYv9WbkD4BbZ2Im-biSPTw",
+    "language": "en",
+    "is_generated": false,
+    "transcript_text": "All right, so here we are, in front of the elephants\nthe cool thing about these guys is that they have really...\nreally really long trunks\nand that's cool\n(baaaaaaaaaaahhh!!)\nand that's pretty much all there is to say",
+    "transcript_segments": "[{\"text\": \"All right, so here we are, in front of the elephants\", \"start\": 1.2, \"duration\": 2.16}, {\"text\": \"the cool thing about these guys is that they have really...\", \"start\": 5.318, \"duration\": 2.656}, {\"text\": \"really really long trunks\", \"start\": 7.974, \"duration\": 4.642}, {\"text\": \"and that's cool\", \"start\": 12.616, \"duration\": 1.751}, {\"text\": \"(baaaaaaaaaaahhh!!)\", \"start\": 14.421, \"duration\": 1.312}, {\"text\": \"and that's pretty much all there is to say\", \"start\": 16.881, \"duration\": 2.0}]",
+    "transcript_formatted": null,
+    "available_languages": "[{\"code\": \"en\", \"name\": \"English\", \"is_generated\": false}, {\"code\": \"de\", \"name\": \"German\", \"is_generated\": false}]",
+    "_meta": {
+      "author": "https://apify.com/herus13",
+      "status": "ok",
+      "message": null
+    }
+  }
+]

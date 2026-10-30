@@ -1,0 +1,35 @@
+[
+  {
+    "source_input": "1xjiofl",
+    "scraped_at": "2026-10-30T15:54:38+00:00",
+    "kind": "comment",
+    "comment_id": "19rvxq0bhfawy",
+    "post_id": "1xjiofl",
+    "post_title": "How curl was accidentally Turing-complete for nine months",
+    "subreddit": "programming",
+    "parent_id": null,
+    "depth": 0,
+    "author": "example_author",
+    "author_id": "t2_example",
+    "author_flair": null,
+    "body": "I love how the first paragraph reads like my first recitation in college. Then it dives into discrete math midterm.",
+    "created_at": "2026-10-30T15:45:16.867000+0000",
+    "edited_at": null,
+    "score": 4,
+    "permalink": "https://www.reddit.com/r/programming/comments/1xjiofl/how_curl_was_accidentally_turingcomplete_for_nine/19rvxq0bhfawy/",
+    "award_count": 0,
+    "is_op": false,
+    "is_stickied": false,
+    "is_score_hidden": false,
+    "is_removed": false,
+    "is_deleted": false,
+    "removed_by_category": null,
+    "distinguished_as": null,
+    "source": "post",
+    "_meta": {
+      "author": "https://apify.com/herus13",
+      "status": "ok",
+      "message": null
+    }
+  }
+]
