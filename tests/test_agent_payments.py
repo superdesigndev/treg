@@ -213,6 +213,17 @@ async def test_a_keyless_paid_call_is_challenged_by_both_protocols(anon: AsyncCl
     assert required.resource.url == f"https://registry.test/call/{EP}?aweme_id=7"
 
 
+async def test_a_challenge_names_only_the_protocols_offered(anon: AsyncClient, payments_on):
+    agent_payments.configure([
+        MppTempoRail(secret="s" * 40, realm="registry.test", recipient=RECIPIENT, chain_id=42431)])
+    r = await anon.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 402, r.text
+    detail = r.json()["detail"]
+    assert detail["protocols"] == ["mpp"]
+    assert "x402" not in detail["message"] and "PAYMENT-REQUIRED" not in detail["message"]
+    assert "payment-required" not in r.headers
+
+
 async def test_free_own_and_passthrough_calls_get_no_challenge(anon: AsyncClient, payments_on):
     free = next(ep["id"] for ep in catalog_store.load().by_id.values()
                 if (ep.get("cost") or {}).get("type") == "free")

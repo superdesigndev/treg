@@ -118,6 +118,9 @@ async def quote(*, rest: str, method: str, path: str, query: str,
     return PaidOffer(endpoint_id=ep["id"], quote_micro=charged, offer=offer)
 
 
+_HOW_TO_PAY = {"mpp": "MPP (WWW-Authenticate: Payment)", "x402": "x402 (PAYMENT-REQUIRED)"}
+
+
 async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "") -> PaymentChallenge:
     headers: list[tuple[str, str]] = []
     for rail in _rails:
@@ -125,6 +128,7 @@ async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "") -> 
             headers += await rail.challenge(paid.offer)
         except Exception:
             log.exception("agent payments: %s challenge failed", rail.protocol)
+    ways = " or ".join(_HOW_TO_PAY.get(rail.protocol, rail.protocol) for rail in _rails)
     detail = {
         "error": "payment_required",
         "endpoint_id": paid.endpoint_id,
@@ -133,9 +137,9 @@ async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "") -> 
         "protocols": [rail.protocol for rail in _rails],
         "message": (
             f"{paid.endpoint_id} costs ~${ledger.usd(paid.quote_micro):g}. Pay "
-            f"${ledger.usd(paid.offer.amount_micro):g} with MPP (WWW-Authenticate: Payment) or "
-            "x402 (PAYMENT-REQUIRED) and send the request again; what the call does not use stays "
-            "as credit for this wallet's next calls. Or sign in and use a treg key."),
+            f"${ledger.usd(paid.offer.amount_micro):g} with {ways} and send the request again; "
+            "what the call does not use stays as credit for this wallet's next calls. Or sign in "
+            "and use a treg key."),
     }
     if reason:
         detail["reason"] = reason
