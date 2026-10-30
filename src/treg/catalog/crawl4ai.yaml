@@ -119,10 +119,11 @@ endpoints:
       bodyType: json
       body:
         url: {type: string, required: true, format: uri, example: "https://example.com"}
-        format: {type: string, required: false, enum: [both, md, html], default: both, example: md}
+        format: {type: string, required: false, enum: [both, md, html], default: both, example: md, note: "md to read; both adds the full HTML."}
         proxy: {type: string, required: false, enum: [none, isp, residential], default: none, note: "Costs more: isp 0.30 credits, residential 0.60 (plain page 0.15). Use only for a site that blocked a plain request, and try isp before residential."}
         country: {type: string, required: false, note: "Two-letter exit country for isp or residential, e.g. us, gb. A country without isp addresses is served through residential at 0.60."}
         parse: {type: object, required: false, note: "true for all, or pick {links, media, metadata, tables}"}
+        engine: {type: string, required: false, enum: [auto, browser-light, browser], default: auto, note: "Force a fresh fetch, same price. Use when auto misses content or answers from engine: cache."}
       note: "Most pages answer in 1-2 s; a page that needs a real browser takes 10-30 s, and a failed page ends within about 55 s. A PDF URL returns the PDF's text as Markdown. Images and other binary files answer 422 binary-body within about a second, free. Blocked (403), unreachable (502) and fleet-busy (503) answers are free; retry a 503 after a few seconds."
     test_request: {body: {url: "https://example.com", format: md}}
     cost:
