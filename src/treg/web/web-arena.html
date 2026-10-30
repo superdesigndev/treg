@@ -130,7 +130,7 @@
         <section v-if="run.task==='fetch'&&a.state==='hit'" class="web-fetch-preview" :aria-label="providerName(a.provider)+' page preview'"><a :href="run.input" target="_blank" rel="noopener noreferrer">{{resultHost(run.input)}}</a><p v-if="fetchPreview(a)">{{fetchPreview(a)}}</p></section>
         <div class="wa-lane-more">
           <button v-if="a.state==='hit'&&run.task!=='fetch'&&searchResults(a).length>2" type="button" class="web-results-toggle" :class="{'wa-phone-only':searchResults(a).length<=linkLimit}" :aria-expanded="!!expandedResults[a.id]" @click="toggleCardResults(a.id,$event)">{{expandedResults[a.id]?'Show fewer':'View all '+searchResults(a).length+(run.task==='sitemap'?' URLs':' results')}}</button>
-          <details v-if="a.output&&Object.keys(a.output).length" class="wa-raw"><summary>View provider response</summary><pre>{{JSON.stringify(a.output,null,2)}}</pre></details>
+          <details v-if="a.output&&Object.keys(a.output).length" class="wa-raw"><summary>{{a.detail&&a.output.count!=null&&!searchResults(a).length?'View result summary':'View provider response'}}</summary><pre>{{JSON.stringify(a.output,null,2)}}</pre></details>
           <div v-if="canRate(a)" class="wa-lane-actions wa-lane-votes"><button v-for="value in ['up','down']" :key="value" class="rating-button" :class="'thumb-'+value" :aria-label="'Thumbs '+value+': '+providerName(a.provider)" :title="value==='up'?'Thumbs up':'Thumbs down'" :aria-pressed="a.rating===value" @click="rate(a,value)"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M14 3H6a2 2 0 0 0-2 1.6L2.6 10a2 2 0 0 0 2 2.5H8v4a1.5 1.5 0 0 0 2.6 1L14 12V3Z M14 3h3v9h-3"/></svg></button></div>
         </div>
       </div>

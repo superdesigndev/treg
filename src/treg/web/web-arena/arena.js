@@ -338,7 +338,7 @@
         if(a.state==='running')return ({search:'Searching the web…',news:'Searching the news…',papers:'Searching papers…',youtube:'Searching videos…',maps:'Searching places…',fetch:'Reading the page…',sitemap:'Mapping the site…'})[task]||'Running…';
         if(this.checking(a))return 'Checking quality…';
         if(a.state==='hit'){
-          const n=this.searchResults(a).length;
+          const n=this.resultCount(a);
           const valid=a.quality?.unique_valid_urls;
           const found=task==='fetch'?'':task==='sitemap'?(valid==null?n+' site URLs':valid===n?n+' valid site URLs':n+' site URLs · '+valid+' valid'):n+' '+(({news:'articles',papers:'papers',youtube:'videos',maps:'places'})[task]||'results');
           const match=a.quality?.estimated_match!=null?' · '+Math.round(a.quality.estimated_match)+'% intent match':'';
@@ -438,6 +438,11 @@
       awardClass(badge){return badge.toLowerCase().replaceAll(' ','-');},
       awardDescription(badge){return ({Fastest:'Lowest provider time among successful, non-downvoted results',Cheapest:'Lowest actual charge among successful, non-downvoted results','Most Relevant':'Highest estimated intent match among scored successful, non-downvoted results','Token Efficient':'Fewest counted words and symbols per kept fact among scored results'})[badge]||badge;},
       attemptLabel(a){return ({hit:'Hit',miss:'No result',error:'Error',timeout:'Timed out',running:'Running',queued:'Waiting',not_attempted:'Not called',cancelled:'Stopped',interrupted:'Interrupted'})[a.state]||a.state;},
+      resultCount(a){
+        const visible=this.searchResults(a).length;
+        const reported=a.output?.count;
+        return visible || (a.state==='hit'&&Number.isSafeInteger(reported)&&reported>0?reported:0);
+      },
       searchResults(a){
         const items=this.task==='youtube'?a.output?.videos:this.task==='maps'?a.output?.places:a.output?.results;
         if(!Array.isArray(items))return [];

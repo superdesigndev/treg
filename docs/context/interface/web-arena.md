@@ -33,9 +33,10 @@ related:
 
 Brave Search joins Search and News Search through their verified adapters. Its LLM context,
 image, video, and place endpoints have different result semantics from the Arena tasks. Brave's
-response-retention rule means a completed run keeps only aggregate result counts and quality
-scores for Brave attempts; result links and bodies remain available in the live response but are
-not saved in the run record. The card explains this when the result is a hit.
+response-retention rule means a run keeps only aggregate result counts and quality scores for
+Brave attempts. The worker uses result links transiently for the quality check, then discards
+them before the run can be read. The card shows the reported count and explains why links are
+not available; its count-only panel is a result summary, not a provider response.
 
 `/web-arena` is one standalone Vue page; the old `/web-arena/leaderboard` path redirects there.
 The page shares Enrich Arena's tokens, type, light canvas, fighter sprites, and dialogs, with its
