@@ -1738,6 +1738,13 @@ adapters:
     const: {body.fields: [job_details.title, job_details.url]}
     out: {jobs: job_listings, count: total_count, next_cursor: next_cursor}
     miss: "job_listings == []"
+  apify.companies.jobs.search:
+    accepts: [[name]]
+    in:  {name: body.company}
+    in_expr: {body.company: "list(name)", body.maxItems: limit, queryParams.maxItems: limit}
+    const: {queryParams.maxTotalChargeUsd: "0.1", queryParams.timeout: "90"}
+    out: {jobs: ".", count: "len(.)"}
+    miss: ". == []"
   leadmagic.x.jobs-search-v3:
     accepts: [[domain]]
     in:  {domain: body.companies.include}
