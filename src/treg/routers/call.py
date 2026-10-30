@@ -337,9 +337,12 @@ async def _paid_call(rest: str, request: Request) -> Response:
             rest=rest, method=request.method,
             path=raw_path.decode("ascii", "replace") if raw_path else request.url.path,
             query=request.url.query or "", query_items=tuple(request.query_params.multi_items()),
-            body=body, headers=request.headers, raw_headers=request.headers.raw)
+            body=body, headers=request.headers, raw_headers=request.headers.raw,
+            client_ip=_client_ip(request))
     except agent_payments.NotServed as exc:
         raise HTTPException(status_code=401, detail=exc.detail) from None
+    except agent_payments.RateLimited as exc:
+        return await _payment_refusal(request, 429, exc.detail, [("Retry-After", "60")])
     except agent_payments.PaymentChallenge as exc:
         return await _payment_refusal(request, 402, exc.detail, exc.headers)
     except agent_payments.PaymentPending as exc:

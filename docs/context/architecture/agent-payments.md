@@ -57,6 +57,12 @@ endpoints, providers without a configured platform key, and a zero estimate. The
 `free`, `own_key_only`, `invalid_request`, and the message says to sign in.
 Own tools and URL passthrough need a team, so they never reach a payment.
 
+Requests that carry a payment credential are limited per client address
+(`agent_payments_max_payments_per_ip_minute`, default 30, `ratestore` under `agent_payments`),
+because each costs a signature check and an x402 one a facilitator request. Over the limit the
+answer is 429 `rate_limited` with `Retry-After: 60` and no payment is checked; a request without a
+payment still gets its challenge.
+
 One kind of free endpoint is served: an async utility (`resolve.async_utility`: a poll or result
 fetch named by a catalog `async` descriptor, or one with `resource_ownership.requires`). Its quote
 is a **proof only** (`PaidOffer.proof_only`): the 402 (`reason: proof_required`) asks for a
@@ -171,6 +177,10 @@ headers (`X-Treg-Payment` among them) and no receipt.
 
 ## The reconciler (`treg-worker agentpay reconcile`)
 
+Each run prints its result as JSON. `stuck` counts the rows still `settling` past
+`agent_payments_stuck_after_s` (default an hour), and a non-zero count is also logged as a
+warning: that is the number to alert on.
+
 A row left `settling` (the node or facilitator went silent after the transfer may have been sent, or
 the process died between settlement and top-up) is resolved by `agent_payments.reconcile`, once it
 is older than `agent_payments_reconcile_min_age_s` (default 300; younger rows belong to their
@@ -241,7 +251,8 @@ Tempo: `..._tempo_recipient`,
 default), `..._x402_asset`, `..._x402_asset_name`, `..._x402_asset_version`,
 `..._x402_facilitator_url`, `..._x402_max_timeout_s`, `..._x402_rpc_url` (empty: the network's
 public RPC), `..._x402_cdp_api_key_id` and `..._x402_cdp_api_key_secret` (both or neither);
-`agent_payments_settlement` (`wallet` | `stripe`), `agent_payments_reconcile_min_age_s`. Every
+`agent_payments_settlement` (`wallet` | `stripe`), `agent_payments_reconcile_min_age_s`,
+`agent_payments_stuck_after_s`, `agent_payments_max_payments_per_ip_minute`. Every
 address is checked to be 20 bytes.
 
 With the feature on, startup checks the whole set and refuses with one error that names every

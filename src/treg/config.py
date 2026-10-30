@@ -736,6 +736,11 @@ class Settings(BaseSettings):
     agent_payments_settlement: Literal["wallet", "stripe"] = "wallet"
     # A `settling` payment younger than this is left to the request that started it.
     agent_payments_reconcile_min_age_s: int = Field(default=300, ge=60)
+    # A `settling` payment older than this is counted as stuck in each reconcile result.
+    agent_payments_stuck_after_s: int = Field(default=3600, ge=300)
+    # Requests carrying a payment credential, per client IP per minute: each one costs a
+    # signature check, and an x402 one a facilitator request.
+    agent_payments_max_payments_per_ip_minute: int = Field(default=30, ge=1)
 
     @model_validator(mode="after")
     def _agent_payments_configuration(self):

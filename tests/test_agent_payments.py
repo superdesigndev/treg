@@ -500,6 +500,21 @@ async def test_a_cancelled_call_releases_the_hold_once(anon: AsyncClient, paymen
     await _released_once(payer)
 
 
+async def test_payments_from_one_address_are_limited(anon: AsyncClient, payments_on, facilitator,
+                                                     monkeypatch):
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_MAX_PAYMENTS_PER_IP_MINUTE", "1")
+    get_settings.cache_clear()
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    for expected in (200, 429):
+        credential, _ = _x402_credential(challenge)
+        r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+        assert r.status_code == expected, r.text
+    assert r.json()["detail"]["reason"] == "rate_limited" and r.headers["retry-after"] == "60"
+    assert facilitator.settles == 1
+    # A request with no payment still gets its challenge.
+    assert (await anon.get(f"/call/{EP}?aweme_id=7")).status_code == 402
+
+
 # ---- 402s that are not payment challenges ---------------------------------------------------------
 async def test_treg_own_balance_refusal_is_a_503_on_the_paid_path(anon: AsyncClient, payments_on,
                                                                  facilitator, monkeypatch):
@@ -813,6 +828,19 @@ async def test_the_reconciler_leaves_young_payments_to_their_request(anon: Async
     await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
     result = await agent_payments.reconcile()
     assert (result.landed, result.failed, result.pending) == (0, 0, 0)
+
+
+async def test_the_reconciler_counts_payments_stuck_for_an_hour(anon: AsyncClient, facilitator,
+                                                                evm):
+    row = await _stuck(anon, facilitator)
+    evm.now = row.created_at  # the authorization can still land: the row stays `settling`
+    assert (await agent_payments.reconcile()).stuck == 0
+    async with session_maker() as db:
+        aged = await db.get(AgentPayment, row.id)
+        aged.created_at = aged.created_at - timedelta(hours=1)
+        db.add(aged)
+        await db.commit()
+    assert (await agent_payments.reconcile()).stuck == 1
 
 
 async def test_a_payment_credited_twice_tops_up_once(anon: AsyncClient, facilitator, evm):

@@ -21,8 +21,9 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import select
+from sqlmodel import func, select
 
+from .. import ratestore
 from ..config import get_settings
 from ..domain import money as ledger
 from ..domain.governance.teams import make_payer_team
@@ -89,6 +90,27 @@ class PaymentPending(Exception):
     def __init__(self, detail: dict) -> None:
         super().__init__(detail["message"])
         self.detail = detail
+
+
+class RateLimited(Exception):
+    """Too many payments from one client address; no payment was checked."""
+
+    detail = {"error": "rate_limited", "reason": "rate_limited",
+              "message": "too many payments from this address; wait a minute and send it again"}
+
+
+RATE_NS = "agent_payments"
+RATE_WINDOW_S = 60
+
+
+async def _admit_ip(client_ip: str) -> bool:
+    async with session_maker() as db:
+        ok = await ratestore.rate_check(
+            db, RATE_NS,
+            [(f"ip:{client_ip}", get_settings().agent_payments_max_payments_per_ip_minute)],
+            RATE_WINDOW_S)
+        await db.commit()
+    return ok
 
 
 class PaymentChallenge(Exception):
@@ -402,11 +424,13 @@ class PaidCall:
 async def open_call(*, rest: str, method: str, path: str, query: str,
                     query_items: tuple[tuple[str, str], ...], body: bytes,
                     headers: Mapping[str, str],
-                    raw_headers: Sequence[tuple[bytes, bytes]]) -> PaidCall:
+                    raw_headers: Sequence[tuple[bytes, bytes]], client_ip: str) -> PaidCall:
     """Price the call, take its payment or draw credit, and return the call to run. Raises
-    NotServed, PaymentChallenge or PaymentPending; no call has run when it raises."""
+    NotServed, RateLimited, PaymentChallenge or PaymentPending; no call has run when it raises."""
     paid = await quote(rest=rest, method=method, path=path, query=query,
                        query_items=query_items, body=body)
+    if any(rail.presented(headers) for rail in _rails) and not await _admit_ip(client_ip):
+        raise RateLimited
     admission = await admit(paid, headers)
     relayed = [(name, value) for name, value in raw_headers
                if not consumes(name.decode("latin-1"), value.decode("latin-1"))]
@@ -435,6 +459,7 @@ class ReconcileResult:
     pending: int = 0
     recorded: int = 0
     record_errors: int = 0
+    stuck: int = 0      # still `settling` past `agent_payments_stuck_after_s`: alert on this
     reasons: dict[str, int] = field(default_factory=dict)
 
 
@@ -469,6 +494,14 @@ async def reconcile(*, limit: int = 50) -> ReconcileResult:
             result.pending += 1
     if settings.agent_payments_settlement == "stripe":
         await _record_to_stripe(result, limit=limit, api_key=settings.stripe_secret_key)
+    stuck_before = _now() - timedelta(seconds=settings.agent_payments_stuck_after_s)
+    async with session_maker() as db:
+        result.stuck = int((await db.execute(
+            select(func.count()).select_from(AgentPayment).where(
+                AgentPayment.status == "settling",
+                AgentPayment.created_at < stuck_before))).scalar_one())
+    if result.stuck:
+        log.warning("agent payments: %d payments still unconfirmed", result.stuck)
     return result
 
 

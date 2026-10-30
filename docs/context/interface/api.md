@@ -306,7 +306,8 @@ normal call, its body unchanged; every such answer carries `X-Treg-Payment: paid
 `X-Treg-Payment-Reference`, plus `Cache-Control: private` when the answer set none; a 2xx also
 carries `Payment-Receipt` or `PAYMENT-RESPONSE`. treg's own 402s (`insufficient_balance`,
 `route_max_cost`) answer 503 there. A settlement treg cannot confirm answers 503
-`payment_outcome_unknown` with no call. A keyless body over 1 MiB is 413. Every other keyless call
+`payment_outcome_unknown` with no call. A keyless body over 1 MiB is 413; too many payments from one address answer 429
+`rate_limited` with `Retry-After`. Every other keyless call
 is a 401 `{"detail": {"error": "not_authenticated", "reason", "message"}}`. A free poll or result fetch
 of an async tool is served to a wallet that already paid for a call: its 402 has `reason:
 proof_required`, and the payment it asks for is checked and never settled. While the feature is
