@@ -78,6 +78,9 @@ sources:
   - src/treg/catalog/examples/linkup.web.answer.json
   - src/treg/catalog/examples/linkup.web.answer.status.json
   - src/treg/catalog/parallel.yaml
+  - src/treg/catalog/examples/parallel.ai-judge.decide.json
+  - tests/test_parallel_decisions.py
+  - examples/parallel-decisions.md
   - src/treg/catalog/pdl.yaml
   - src/treg/catalog/pdl.extended.yaml
   - src/treg/web/logos/parallel.svg
@@ -443,6 +446,15 @@ modes report the same `sku_search` name at different prices, so each price is it
 further Extract URL. An unreadable URL returns 200 under `errors[]` with an empty `usage[]`, and the
 routing miss releases the hold. Entity Search reports no usage: its people and companies rows settle
 the documented flat price and allow `match_limit` up to the 100 included results.
+
+`parallel.ai-judge.decide` exposes the Decisions API as a direct `ai-judge.decide` tool. It relays
+one to 100 named `noul`, `choice`, and `score` questions over shared JSON `state` without reshaping
+the vendor response. Answers can include probabilities, confidence, a refusal, and citations shared
+across questions. Its `usage` object reports token counts, not a billable SKU or charge. The catalog
+records Parallel's documented $0.001 per `fast` request and uses `platform_blocked` to keep this row
+on team-owned Parallel keys until the shared key's actual billing and settlement are verified.
+`examples/parallel-decisions.md` includes CLI calls and the verification ledger; the catalog fixture
+is synthetic, and `tests/test_parallel_decisions.py` exercises the relay with a mocked upstream.
 
 Spider's `spidercloud.yaml` curates Scrape, Crawl, Search, Links, Unblocker and Screenshot. The
 standard routes are live-verified with public targets. Only the bounded Search listing is offered

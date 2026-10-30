@@ -2,11 +2,44 @@ provider: parallel
 source:
   docs: https://docs.parallel.ai/getting-started/overview
   openapi: https://docs.parallel.ai/public-openapi.json
-  curated: '2026-10-09'
+  curated: '2026-10-30'
 pricing_url: https://docs.parallel.ai/getting-started/pricing
-limits: "Search, Extract and Entity Search each allow 600 requests per minute on a rolling 60-second window. HTTP 429 is a rate limit; HTTP 402 is insufficient credit, which in-flight requests count against."
+limits: "Search, Extract, Entity Search and Decisions each allow 600 requests per minute on a rolling 60-second window. HTTP 429 is a rate limit; HTTP 402 is insufficient credit, which in-flight requests count against."
 
 endpoints:
+  - id: parallel.ai-judge.decide
+    capability: ai-judge.decide
+    platform: ai-judge
+    domain: decisions
+    scope: any_account
+    method: POST
+    path: /v1/decisions
+    platform_blocked: "Platform-key billing and settlement for Decisions have not been live-verified; connect your team's own Parallel key."
+    name: Make web-grounded decisions
+    summary: Answer up to 100 named predicate, choice or score questions using shared state and current web evidence.
+    input:
+      bodyType: json
+      body:
+        state: {type: any, required: true, example: {company: "Parallel", website: "https://parallel.ai"}, note: "Any JSON value shared by all questions. State plus the largest question is limited to 32,000 estimated input tokens."}
+        questions: {type: object, required: true, example: {has_api: {type: noul, instructions: "Does Parallel offer an API?"}}, note: "1–100 names matching [A-Za-z0-9_-]+. Each value has type noul, choice or score and instructions. Noul may include criteria {true, false}; choice requires 2–255 named option descriptions; score requires 2–10 ordered level descriptions. Each rendered question is limited to 5,000 characters."}
+        mode: {type: string, required: false, default: fast, enum: [fast], note: "Only fast mode is currently supported."}
+        include_excerpts: {type: boolean, required: false, default: true, note: "False keeps citation URLs and titles but returns empty excerpts arrays."}
+      note: "Answers are keyed by question name. Noul returns a probability; choice returns the chosen key and option probabilities; score returns a weighted mean, legend and probabilities. Choice and score may include confidence. Any answer may be a refusal. The raw response also includes mode, decision_id, token usage and citations shared across all questions; citations are not mapped to individual answers."
+    test_request: {body: {state: {company: "Parallel", website: "https://parallel.ai"}, questions: {has_api: {type: noul, instructions: "Does Parallel offer an API?"}}, include_excerpts: false}}
+    cost:
+      type: per_call
+      value: 0.001
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://docs.parallel.ai/getting-started/pricing
+      checked: '2026-10-30'
+      confidence: documented
+      note: "$0.001 per fast request, including up to 100 questions. Documented rate only; platform-key billing and settlement remain unverified, so this tool is team-key only. The response's usage is token counts, not a charge."
+    added: '2026-10-30'
+    example_response: examples/parallel.ai-judge.decide.json
+    docs_url: https://docs.parallel.ai/decisions/decisions-quickstart
+
   - id: parallel.web.search
     capability: web.search
     platform: web
