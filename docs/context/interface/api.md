@@ -293,6 +293,27 @@ notice on stderr and `treg --json call` sets `_treg.capacity`. Only treg's own
 MCP's hint and `treg call`'s top-up line; a provider's 402 on the team's own key is marked
 `whose_error: provider`, and `route_max_cost` is the caller's ceiling.
 
+## `402 payment_required` - a keyless call that can pay (off by default)
+
+With `TREG_AGENT_PAYMENTS_ENABLED`, a `/call/<catalog id>` request carrying no treg credential at
+all, for a tool treg's own key serves, answers 402 `{"detail": {"error": "payment_required",
+"reason", "endpoint_id", "amount_micro", "estimated_cost_micro", "minimum_payment_micro",
+"protocols", "message"}}` with
+`X-Treg-Error: 1`, `Cache-Control: no-store`, `WWW-Authenticate: Payment ...` (MPP) and
+`PAYMENT-REQUIRED` (x402). The request sent again with a payment credential is answered as a
+normal call, its body unchanged; every such answer carries `X-Treg-Payment: paid|credit`,
+`X-Treg-Credit-Micro` (the credit left) and, when it paid, `X-Treg-Paid-Micro` and
+`X-Treg-Payment-Reference`, plus `Cache-Control: private` when the answer set none; a 2xx also
+carries `Payment-Receipt` or `PAYMENT-RESPONSE`. treg's own 402s (`insufficient_balance`,
+`route_max_cost`) answer 503 there. A settlement treg cannot confirm answers 503
+`payment_outcome_unknown` with no call. A keyless body over 1 MiB is 413; too many payments from one address answer 429
+`rate_limited` with `Retry-After`. Every other keyless call
+is a 401 `{"detail": {"error": "not_authenticated", "reason", "message"}}`. A free poll or result fetch
+of an async tool is served to a wallet that already paid for a call: its 402 has `reason:
+proof_required`, and the payment it asks for is checked and never settled. While the feature is
+on, `/catalog/search` rows and `/catalog/endpoints/<id>` carry `wallet` (`payable`, and `reason`
+when it is not). See [agent payments](../architecture/agent-payments.md).
+
 ## `X-Treg-Smoothed` - the call waited for treg's own rate limit
 
 On platform calls, including owned free polling: `wait=<ms>` when the call was spaced behind other callers on the

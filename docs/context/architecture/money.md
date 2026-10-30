@@ -1473,6 +1473,20 @@ guard; webhook order and sequential redelivery do not change attribution or dupl
 Missing/legacy attribution is `unknown`. No query inputs, URLs, API keys or provider results are
 copied into this metadata. Amounts, reservations, settlement and payment authorization are unchanged.
 
+## Agent payer top-ups
+
+A keyless caller that pays a catalog call (MPP or x402, [agent payments](agent-payments.md)) is a
+payer team per wallet address. A payment confirmed on chain is an ordinary `topup` on that team,
+`payment_ref = agentpay:<proof id>`, with `meta.source = agent_payment` and the settlement
+transaction; then the call reserves, settles or releases as any team's call. The topup is booked
+only after the chain or facilitator confirms the transfer, so the ledger never credits money treg
+has not received. A payment the team's existing credit already covers is not settled and books
+nothing. When the settlement answer never arrives, `treg-worker agentpay reconcile` reads the chain
+later and books the same topup (same reference, so at most once) only for a transfer that landed.
+No money entry is added. With `TREG_AGENT_PAYMENTS_SETTLEMENT=stripe` the transfers go to Stripe
+crypto deposit addresses and each settled payment is also recorded as a Stripe PaymentIntent; the
+ledger is the same.
+
 ## Response evidence size and free final downloads
 
 Settlement evidence must be complete. The call application's 8 MiB buffer raises a typed 502 on

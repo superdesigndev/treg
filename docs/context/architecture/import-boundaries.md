@@ -74,6 +74,11 @@ The required `gitleaks` job scans the complete history reachable from checked-ou
 proposed branch histories are included. Deleted secrets remain detectable; unrelated fetched
 branch tips do not block this PR. Detection rules and allowlists are unchanged.
 
+The payment protocol SDKs (`mpp` from `pympp`, and `x402`) are installed only through `[server]`
+and may be imported only by `treg.infra.agent_payments.tempo` and `treg.infra.agent_payments.x402`
+(contract "Payment protocol SDKs live only in the agent-payments infrastructure"); bootstrap builds
+the concrete rails ([agent payments](agent-payments.md)).
+
 Stage 1 activated the first two contracts:
 
 - The explicit lightweight CLI module list cannot directly import any server-extra package, including

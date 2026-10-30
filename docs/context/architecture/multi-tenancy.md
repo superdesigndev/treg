@@ -492,6 +492,16 @@ bearer path refuses it once expired rather than reviving an expired cookie.
   `register_user`'s default team name, and `rename_org` (`PATCH /orgs/{id}`); a superadmin may bypass
   it (`allow_reserved`).
 
+## Agent payer teams
+
+`governance.teams.make_payer_team` creates the team of one agent-payments wallet address: a
+machine user `<address>@payers.treg.local` (`identity.access.PAYER_DOMAIN`, counted by
+`_is_machine_email` and `api_keys.is_machine_email`, so no sign-in door and no signup credit), one
+`member` membership with an empty `token_hash`, and the `AgentPayer` row. No token or session can
+reach it; `routers.call._paid_call` acts for it only after a verified payment from that address
+([agent payments](agent-payments.md)). `AgentPayer` and `AgentPayment` are in
+`ORG_SCOPED_MODELS`, so a deleted payer team takes them with it.
+
 ## Schema ownership
 Alembic owns the multi-tenant schema. The 0.14.x adoption release converted and stamped legacy
 databases; current releases refuse a non-empty unstamped database and direct the operator through that

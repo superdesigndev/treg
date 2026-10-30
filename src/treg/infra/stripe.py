@@ -65,6 +65,38 @@ async def schedule_subscription_cancel(subscription_id: str, *, api_key: str) ->
     return result.to_dict() if isinstance(result, stripe_sdk.StripeObject) else result
 
 
+# Crypto deposit addresses and on-chain PaymentIntent verification exist only in these preview API
+# versions, as Stripe's machine-payments guides use them.
+CRYPTO_DEPOSIT_VERSION = "2026-07-29.preview"
+CRYPTO_PAYMENT_VERSION = "2026-05-27.preview"
+
+
+def _raw(api_key: str, version: str, method: str, path: str, **params) -> dict:
+    client = stripe_sdk.StripeClient(api_key, stripe_version=version)
+    return client.deserialize(client.raw_request(method, path, **params), api_mode="V1").to_dict()
+
+
+async def create_crypto_deposit_address(network: str, *, api_key: str) -> dict:
+    """A reusable address on `network` (`tempo`, `base`) whose deposits Stripe converts to fiat."""
+    return await anyio.to_thread.run_sync(lambda: _raw(
+        api_key, CRYPTO_DEPOSIT_VERSION, "post", "/v1/crypto/deposit_addresses", network=network))
+
+
+async def record_crypto_payment(*, amount_cents: int, network: str, transaction_hash: str,
+                                api_key: str) -> dict:
+    """Record an on-chain payment to a deposit address as a PaymentIntent. The transaction hash
+    is the idempotency key, so a retry records it once."""
+    return await anyio.to_thread.run_sync(lambda: _raw(
+        api_key, CRYPTO_PAYMENT_VERSION, "post", "/v1/payment_intents",
+        amount=amount_cents, currency="usd", confirm=True,
+        payment_method_data={"type": "crypto"}, payment_method_types=["crypto"],
+        payment_method_options={"crypto": {
+            "mode": "transaction_verification",
+            "transaction_verification_options": {
+                "network": network, "transaction_hash": transaction_hash}}},
+        idempotency_key=f"agentpay:{transaction_hash}"))
+
+
 def verify_event(payload: bytes, signature: str, secret: str) -> dict:
     try:
         # `verify_header` signs a STRING (`f"{t}.{payload}"`), so bytes must be decoded first or the

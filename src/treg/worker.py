@@ -4,6 +4,8 @@
     treg-worker overflow sync [--live]          # seed (+ live aggregator catalogs) → overflow_route
     treg-worker overflow verify [--all] [--max-usd 0.02]   # weekly re-verify of enabled routes
     treg-worker asynctasks settle [--limit 50]       # complete deferred metered-call holds
+    treg-worker agentpay reconcile [--limit 50]      # resolve agent payments whose settlement went unanswered
+    treg-worker agentpay stripe-address --network tempo|base   # one-time setup for settlement `stripe`
     treg-worker arena insights [--max-seconds 110]   # fold new audit rows into the Arena aggregate
     treg-worker catalog stats [--max-rows 500000]    # fold new audit rows into per-day endpoint stats
     treg-worker catalog requeue-async-stats [--apply]   # preview or queue one async-window repair
@@ -24,7 +26,9 @@
 Not the light `treg` CLI: these need the server extra (DB, platform keys in the env) and make
 outbound calls to third parties, so they run as Render cron jobs with the server's env — never as
 dataplane lifespan work (refactor plan §2.2). The worker never originates a money movement. It may
-complete a hold opened by the request path, settling or releasing it with full call and org attribution.
+complete a hold opened by the request path, settling or releasing it with full call and org attribution,
+and it may complete an agent payment the request path verified but could not confirm: the `topup` for
+a transfer the chain shows landed, under the same reference the request would have used.
 
 The audit-table analytics commands exist so that no web process walks `callrecord` next to the money path:
 each is a bounded incremental pass over the audit table that a cron repeats, and the request path
@@ -260,6 +264,30 @@ async def _asynctasks_settle(args) -> int:
     finally:
         await call_events.drain()  # the terminal events this tick observed
     print(json.dumps(result.__dict__, sort_keys=True))
+    return 0
+
+
+async def _agentpay_reconcile(args) -> int:
+    from .application import agent_payments
+    from .bootstrap import configure_agent_payments
+    from .infra.db import verify_db
+
+    await verify_db()
+    configure_agent_payments()
+    if not agent_payments.enabled():
+        print(json.dumps({"skipped": "agent payments are off"}))
+        return 0
+    result = await agent_payments.reconcile(limit=args.limit)
+    print(json.dumps(result.__dict__, sort_keys=True))
+    return 0
+
+
+async def _agentpay_stripe_address(args) -> int:
+    from .application import agent_payments
+
+    address = await agent_payments.create_stripe_deposit_address(args.network)
+    print(json.dumps({k: address.get(k) for k in ("id", "network", "address", "supported_tokens",
+                                                   "livemode")}, sort_keys=True))
     return 0
 
 
@@ -678,6 +706,15 @@ def main(argv: list[str] | None = None) -> int:
     settle = tasksub.add_parser("settle", help="poll due tasks and complete their existing holds")
     settle.add_argument("--limit", type=int, default=50)
     settle.set_defaults(fn=_asynctasks_settle)
+    pay = sub.add_parser("agentpay", help="agent payments (MPP, x402)")
+    paysub = pay.add_subparsers(dest="cmd", required=True)
+    rec = paysub.add_parser("reconcile", help="credit or fail payments whose settlement went unanswered; "
+                                              "record settled payments to Stripe when they settle there")
+    rec.add_argument("--limit", type=_positive_int, default=50)
+    rec.set_defaults(fn=_agentpay_reconcile)
+    addr = paysub.add_parser("stripe-address", help="create a Stripe crypto deposit address (prints it)")
+    addr.add_argument("--network", choices=("tempo", "base"), required=True)
+    addr.set_defaults(fn=_agentpay_stripe_address)
     hub = sub.add_parser("hub", help="the tool hub")
     hubsub = hub.add_subparsers(dest="cmd", required=True)
     chk = hubsub.add_parser("check", help="run every live hub tool's check.json once, as its maker (spends the maker's balance at step prices)")

@@ -11,6 +11,7 @@ from fastapi.responses import Response, StreamingResponse
 from .. import audit, oauth_providers
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..application import agent_payments
 from ..application import catalog_find as find
 from ..application import feedback as feedback_app
 from ..config import get_settings
@@ -315,6 +316,13 @@ async def _verdicts_or_empty() -> dict[str, dict]:
         return {}
 
 
+def _wallet(ep: dict) -> dict:
+    """Whether a caller with no treg account can pay for this tool with a wallet, while agent
+    payments are on (docs/context/architecture/agent-payments.md)."""
+    view = agent_payments.wallet_view(ep)
+    return {"wallet": view} if view is not None else {}
+
+
 @app.get("/catalog/search")
 async def catalog_search(request: Request, q: str = "", limit: int = 25,
                          added_within_days: int | None = None, sort: str = "", engine: str = "",
@@ -367,7 +375,8 @@ async def catalog_search(request: Request, q: str = "", limit: int = 25,
         (dict(ep) | {"score": None if led else score, "observed": stats.get(ep["id"])}) if ep.get("kind") == "hub" else
         (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat)
          | catalog_store.endpoint_context(ep, cat)
-         | {"score": None if led else score, "observed": stats.get(ep["id"])})
+         | {"score": None if led else score, "observed": stats.get(ep["id"])}
+         | _wallet(ep))
         for ep, score in ranked
     ]
     results = catalog_store.group_routed(results, max_children=catalog_store.MAX_ROUTED_CHILDREN)[:limit]
@@ -656,7 +665,8 @@ async def catalog_endpoint(
     # And what other teams' agents said after using each of them (`reviews`, where there are any):
     # the other half of the choice, attached here for the same reason as `observed`.
     verdicts = await _verdicts_or_empty()
-    view = _with_reviews(view | {"observed": stats.get(endpoint_id)} | overflow, verdicts)
+    view = _with_reviews(view | {"observed": stats.get(endpoint_id)} | overflow | _wallet(ep),
+                         verdicts)
     siblings = [_with_reviews(s | {"observed": stats.get(s["id"])}, verdicts, quotes=False) for s in siblings]
     # Hub tools treg approved for this job sit beside its providers (docs/hub-listing-decisions.md
     # round 3), with a seeded success rate while they are new. Shown for comparison only: they are

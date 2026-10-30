@@ -552,6 +552,18 @@ contract:
   `TREG_FIND_EMBED_URL` an empty value uses `TREG_PLATFORM_KEY_OPENROUTER`. Card vectors are cached in
   the archive's object store when archive R2 is on, else rebuilt by each process.
 
+- `TREG_AGENT_PAYMENTS_ENABLED` lets a caller with no treg credential pay a catalog call with
+  MPP or x402. Needs `TREG_AGENT_PAYMENTS_SECRET` (32+ characters), at least one of
+  `TREG_AGENT_PAYMENTS_MPP_ENABLED` / `TREG_AGENT_PAYMENTS_X402_ENABLED`, and each enabled rail's
+  recipient address; testnet defaults; startup names every missing setting in one error. Off by
+  default. On mainnet the x402 facilitator is
+  Coinbase's (`TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402`)
+  and needs `TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID` and `_SECRET`, plus Base mainnet USDC as
+  `TREG_AGENT_PAYMENTS_X402_ASSET` with `TREG_AGENT_PAYMENTS_X402_ASSET_NAME="USD Coin"`. `TREG_AGENT_PAYMENTS_SETTLEMENT`
+  is `wallet` (the recipients are treg's own wallet) or `stripe` (they are Stripe deposit addresses
+  from `treg-worker agentpay stripe-address`; needs `TREG_STRIPE_SECRET_KEY` and an explicit
+  `TREG_AGENT_PAYMENTS_TEMPO_CURRENCY`). See [agent payments](../architecture/agent-payments.md).
+
 Exact treg.to values, funded accounts and rollout instructions live in the private
 [provider-capacity runbook](https://github.com/superdesigndev/treg-internal/blob/main/docs/production/provider-capacity.md).
 
@@ -564,6 +576,12 @@ without importing the heavy database stack into the light `treg` CLI.
 - `treg-worker overflow verify` obtains route evidence and spends real money when configured.
 - `treg-worker overflow sync` derives enabled overflow routes from current evidence.
 - `treg-worker asynctasks settle` completes durable holds for asynchronous upstream operations.
+- `treg-worker agentpay reconcile` resolves agent payments whose settlement went unanswered (older
+  than `TREG_AGENT_PAYMENTS_RECONCILE_MIN_AGE_S`, default 300) from the chain, and with settlement
+  `stripe` records settled payments to Stripe. Schedule it every few minutes when agent payments are
+  on; it exits at once when they are off.
+- `treg-worker agentpay stripe-address --network tempo|base` creates one reusable Stripe crypto
+  deposit address and prints it (setup for settlement `stripe`; run once per network).
 - `treg-worker arena insights` folds new audit rows into the rolling Arena aggregate
   (`--max-seconds`, default 110, bounds one pass; schedule it every two minutes).
   It requires the archive object-store settings when R2 reads are enabled, opens the same client

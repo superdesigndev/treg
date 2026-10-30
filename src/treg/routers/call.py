@@ -6,14 +6,15 @@ import json
 import uuid
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.background import BackgroundTask
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import analytics
 from .. import audit
+from ..application import agent_payments
 from .. import sandbox as demo_sandbox
 from ..application.call.access import catalog_endpoint_access as get_catalog_endpoint_access
 from ..application.call.idempotency import (
@@ -293,6 +294,22 @@ def _capture_hint(request: Request, context, kind: str) -> None:
     }, groups={"team": slug} if slug else None)
 
 
+async def member_or_payer(
+    request: Request,
+    x_treg_token: str = Header(default=""),
+    x_treg_org: str = Header(default=""),
+    treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_session),
+) -> Caller | None:
+    """`require_member`, except that a `/call/` request carrying no treg credential at all (no
+    token header, even an empty one, and no session cookie) returns None for the agent-payments
+    path while that feature is on. Any credential, valid or not, takes the account path."""
+    if (agent_payments.enabled() and "x-treg-token" not in request.headers
+            and "treg_session" not in request.cookies):
+        return None
+    return await require_member(request, x_treg_token, x_treg_org, treg_session, db)
+
+
 @app.api_route(
     "/call/{rest:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
@@ -300,10 +317,82 @@ def _capture_hint(request: Request, context, kind: str) -> None:
 async def call_tool(
     rest: str,
     request: Request,
-    caller: Caller = Depends(require_member),
+    caller: Caller | None = Depends(member_or_payer),
 ):
+    if caller is None:
+        return await _paid_call(rest, request)
     prefix = "/catalog/call/" if getattr(request.state, "catalog_only", False) else "/call/"
     return await run_call_surface(rest, request, caller, prefix=prefix, finish=_relay_answer)
+
+
+async def _paid_call(rest: str, request: Request) -> Response:
+    """A keyless call that pays for itself (docs/context/architecture/agent-payments.md). A call
+    the payment path does not serve answers exactly as an unauthenticated call always has."""
+    if reason := agent_payments.unserved(rest, request.method):
+        raise HTTPException(status_code=401, detail=agent_payments.NotServed(reason).detail)
+    body = await _capped_body(request) if _may_have_body(request) else b""
+    raw_path = request.scope.get("raw_path")
+    try:
+        paid = await agent_payments.open_call(
+            rest=rest, method=request.method,
+            path=raw_path.decode("ascii", "replace") if raw_path else request.url.path,
+            query=request.url.query or "", query_items=tuple(request.query_params.multi_items()),
+            body=body, headers=request.headers, raw_headers=request.headers.raw,
+            client_ip=_client_ip(request))
+    except agent_payments.NotServed as exc:
+        raise HTTPException(status_code=401, detail=exc.detail) from None
+    except agent_payments.RateLimited as exc:
+        return await _payment_refusal(request, 429, exc.detail, [("Retry-After", "60")])
+    except agent_payments.PaymentChallenge as exc:
+        return await _payment_refusal(request, 402, exc.detail, exc.headers)
+    except agent_payments.PaymentPending as exc:
+        return await _payment_refusal(request, 503, exc.detail, [])
+    try:
+        response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
+                                          finish=_relay_answer, headers=paid.headers)
+    except HTTPException as exc:
+        if exc.status_code == 402:
+            # A payment client answers every 402 with a payment; treg's own balance refusal is
+            # not a payment challenge.
+            exc.status_code = 503
+        exc.headers = {"Cache-Control": "private", **(exc.headers or {}),
+                       **dict(await paid.answer_headers())}
+        raise
+    for name, value in await paid.answer_headers():
+        response.headers[name] = value
+    for name, value in paid.receipt_headers(response.status_code):
+        response.headers.append(name, value)
+    response.headers.setdefault("Cache-Control", "private")
+    return response
+
+
+async def _capped_body(request: Request) -> bytes:
+    limit = agent_payments.MAX_BODY_BYTES
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status_code=413, detail="request body too large")
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            raise HTTPException(status_code=413, detail="request body too large")
+        chunks.append(chunk)
+    body = b"".join(chunks)
+    # Starlette serves a later `request.body()` / `request.stream()` from `_body` once the stream
+    # has been consumed; the call road reads the body again through those.
+    request._body = body
+    return body
+
+
+async def _payment_refusal(request: Request, status: int, detail: dict,
+                           headers: list[tuple[str, str]]) -> Response:
+    resp = JSONResponse({"detail": detail}, status_code=status)
+    for name, value in headers:
+        resp.headers.append(name, value)
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Treg-Error"] = "1"
+    await _stamp_call_exit(request, resp, status)
+    return resp
 
 
 async def _relay_answer(request: Request, context, upstream: UpstreamResponse, rest: str) -> Response:
@@ -347,7 +436,7 @@ async def run_call_surface(rest: str, request: Request, caller: Caller, *, prefi
     which turns the answer into the HTTP response, differs. `finish(request, context, upstream,
     rest)` runs inside the same try, so a fault there is audited and released like any other.
     `headers`, when given, replaces the request's raw headers for the upstream call (`/table/` asks
-    the provider for uncompressed bytes); `/call/` never passes it."""
+    the provider for uncompressed bytes; a paid `/call/` drops its payment credential)."""
     org_traffic.identify(request.scope, caller.org_id, enter=True,
                          api_key_id=caller.api_key.id if caller.api_key else None)
     # Identity for the refusal fallback in `_mark_treg_own_errors`: a raise anywhere below (unknown

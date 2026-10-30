@@ -699,6 +699,100 @@ class Settings(BaseSettings):
     # script id is a setting, not a code change. Empty = the client does not exist.
     sheets_redirect_uris: str = ""
 
+    # Agent payments (docs/context/architecture/agent-payments.md): a caller with no treg
+    # credential pays a catalog call with MPP (Tempo charge) or x402 (`exact`). Off by default.
+    # Each rail has its own switch; a rail that is on needs its recipient address. Testnet defaults
+    # throughout.
+    agent_payments_enabled: bool = False
+    agent_payments_mpp_enabled: bool = False
+    agent_payments_x402_enabled: bool = False
+    # Binds MPP challenge ids (HMAC). Required when the feature is on; never reuse another secret.
+    agent_payments_secret: str = ""
+    # MPP realm; empty means the host of `public_url`.
+    agent_payments_realm: str = ""
+    # The smallest amount one payment may carry. A cheaper call buys this much credit and the
+    # payer's next calls draw on it. Integer micro-USD.
+    agent_payments_min_payment_micro: int = Field(default=50_000, ge=1)
+    agent_payments_tempo_recipient: str = ""
+    agent_payments_tempo_chain_id: int = 42431          # Tempo Moderato testnet; 4217 is mainnet
+    agent_payments_tempo_rpc_url: str = ""              # empty: the chain's public RPC
+    agent_payments_tempo_currency: str = ""             # empty: the chain's default TIP-20 USD token
+    agent_payments_x402_pay_to: str = ""
+    agent_payments_x402_network: str = "eip155:84532"   # Base Sepolia; eip155:8453 is Base mainnet
+    agent_payments_x402_asset: str = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"  # Base Sepolia USDC
+    agent_payments_x402_asset_name: str = "USDC"        # the token's EIP-712 domain name
+    agent_payments_x402_asset_version: str = "2"
+    agent_payments_x402_facilitator_url: str = "https://x402.org/facilitator"
+    agent_payments_x402_max_timeout_s: int = Field(default=120, ge=10, le=3600)
+    agent_payments_x402_rpc_url: str = ""               # empty: the network's public RPC
+    # A Coinbase Developer Platform API key, for its facilitator (mainnet). Both empty: no auth,
+    # which the public testnet facilitator accepts. The secret is the Ed25519 key (base64) or a
+    # legacy EC PEM key.
+    agent_payments_x402_cdp_api_key_id: str = ""
+    agent_payments_x402_cdp_api_key_secret: str = ""
+    # Where settled payments land. `wallet`: the recipient addresses above are treg's own wallet.
+    # `stripe`: they are Stripe crypto deposit addresses (`treg-worker agentpay stripe-address`);
+    # payments are whole cents and the worker records each one as a Stripe PaymentIntent.
+    agent_payments_settlement: Literal["wallet", "stripe"] = "wallet"
+    # A `settling` payment younger than this is left to the request that started it.
+    agent_payments_reconcile_min_age_s: int = Field(default=300, ge=60)
+    # A `settling` payment older than this is counted as stuck in each reconcile result.
+    agent_payments_stuck_after_s: int = Field(default=3600, ge=300)
+    # Requests carrying a payment credential, per client IP per minute: each one costs a
+    # signature check, and an x402 one a facilitator request.
+    agent_payments_max_payments_per_ip_minute: int = Field(default=30, ge=1)
+
+    @model_validator(mode="after")
+    def _agent_payments_configuration(self):
+        for name in ("agent_payments_tempo_recipient", "agent_payments_x402_pay_to",
+                     "agent_payments_tempo_currency", "agent_payments_x402_asset"):
+            value = getattr(self, name)
+            if value and not re.fullmatch(r"0x[0-9a-fA-F]{40}", value):
+                raise ValueError(f"{name} must be a 0x-prefixed 20-byte address")
+        if bool(self.agent_payments_x402_cdp_api_key_id) != bool(self.agent_payments_x402_cdp_api_key_secret):
+            raise ValueError("set both TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET, or neither")
+        if self.agent_payments_enabled:
+            if problems := self._agent_payments_problems():
+                raise ValueError("agent payments cannot start: " + "; ".join(problems))
+        return self
+
+    def _agent_payments_problems(self) -> list[str]:
+        """Every setting the enabled rails are missing or get wrong, so one start names them all."""
+        coinbase = "https://api.cdp.coinbase.com/platform/v2/x402"
+        base_usdc = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+        problems = []
+        if len(self.agent_payments_secret) < 32:
+            problems.append("TREG_AGENT_PAYMENTS_SECRET of 32+ characters")
+        mpp, x402 = self.agent_payments_mpp_enabled, self.agent_payments_x402_enabled
+        if not (mpp or x402):
+            problems.append("TREG_AGENT_PAYMENTS_MPP_ENABLED or TREG_AGENT_PAYMENTS_X402_ENABLED")
+        stripe = self.agent_payments_settlement == "stripe"
+        if stripe and not self.stripe_secret_key:
+            problems.append("TREG_STRIPE_SECRET_KEY (settlement stripe)")
+        if mpp:
+            if not self.agent_payments_tempo_recipient:
+                problems.append("TREG_AGENT_PAYMENTS_TEMPO_RECIPIENT")
+            if stripe and not self.agent_payments_tempo_currency:
+                problems.append("TREG_AGENT_PAYMENTS_TEMPO_CURRENCY (a token Stripe accepts)")
+        x402_mainnet = self.agent_payments_x402_network == "eip155:8453"
+        if x402:
+            if not self.agent_payments_x402_pay_to:
+                problems.append("TREG_AGENT_PAYMENTS_X402_PAY_TO")
+            if x402_mainnet and not self.agent_payments_x402_cdp_api_key_id:
+                problems.append("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET (Base mainnet)")
+            if x402_mainnet and self.agent_payments_x402_asset.lower() != base_usdc:
+                problems.append(f"TREG_AGENT_PAYMENTS_X402_ASSET={base_usdc} (Base mainnet USDC)")
+            if (self.agent_payments_x402_asset.lower() == base_usdc
+                    and self.agent_payments_x402_asset_name != "USD Coin"):
+                problems.append('TREG_AGENT_PAYMENTS_X402_ASSET_NAME="USD Coin" (Base mainnet USDC)')
+        if (self.agent_payments_x402_cdp_api_key_id
+                and self.agent_payments_x402_facilitator_url.rstrip("/") != coinbase):
+            # The key signs each request for Coinbase's host and path; no other facilitator reads it.
+            problems.append(f"TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL={coinbase} (a CDP API key)")
+        if mpp and x402 and (self.agent_payments_tempo_chain_id == 4217) != x402_mainnet:
+            problems.append("one network kind: Tempo and Base both mainnet or both testnet")
+        return problems
+
     # Additive Claude directory MCP. Default OFF so deploying code cannot publish a new connector
     # surface before its production Inspector and custom-connector gates have passed.
     claude_connector_enabled: bool = False
