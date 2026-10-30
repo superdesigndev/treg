@@ -1,0 +1,388 @@
+# DevTune measures what AI answer engines say about a company's product: it runs the company's
+# tracked prompts on a schedule, records each answer, who was cited and who was named, counts the
+# AI crawlers, answer fetches and referrals hitting the company's site, and ranks fixes.
+#
+# Every route is own_account: a dtk_live_ key is bound to exactly ONE project, and every path
+# carries that project's id. GET /connection (no scope, free) returns it, so an agent's first call
+# is always /connection and the rest take its data.projectId. A key for project A gets 404 on
+# project B's id, never B's data.
+#
+# Reads are included in the plan: no per-call charge, only the per-key rate limit (Plus 100,
+# Pro 500, Enterprise 1,000 requests/minute). Credit-spending routes (agent runs, Agent Picks tests,
+# brief and draft generation) and every write are deliberately NOT catalogued here — see the PR's
+# surface map.
+#
+# Windows are fixed, not arbitrary date ranges: windowDays accepts only the listed values and
+# anything else is a 400. Measurement routes read daily rollups, so today's probes appear the
+# next day.
+provider: devtune
+source:
+  docs: https://docs.devtune.ai/api-reference/overview
+  openapi: https://devtune.ai/api/v2/openapi.json
+  curated: 2026-10-30
+limits: "Per key: Plus 100, Pro 500, Enterprise 1,000 requests/minute (X-RateLimit-* headers on every response)"
+pricing_url: https://devtune.ai/pricing  # API access is included in every paid plan; reads are not metered
+
+proposed_capabilities:
+  ai-search.prompts.list: "List the prompts tracked against AI answer engines"
+  ai-search.citations.stats: "Get citation totals and share of voice for your own site"
+  ai-search.traffic.summary: "Get AI crawler, answer-fetch and AI-referral totals for your site"
+  ai-search.traffic.missing_pages: "List missing pages AI systems keep requesting from your site"
+  ai-search.content_gaps.list: "List topics and sources where competitors are cited and you are not"
+  ai-search.actions.list: "List ranked fixes to improve how AI answers describe you"
+  ai-search.outcomes.ledger: "Get before/after results for shipped AI-visibility fixes"
+  ai-search.audit.summary: "Get answer-engine readiness scores for your site"
+
+endpoints:
+  - id: devtune.account.identity
+    added: '2026-10-30'
+    kind: account
+    domain: account
+    capability: account.identity
+    platform: account
+    scope: own_account
+    method: GET
+    path: /connection
+    name: "Discover the key's project"
+    summary: "Discover the authorized project"
+    input:
+      note: "no parameters. Returns data.projectId (pass it as {projectId} everywhere else), the key's scopes and the features it can use. Free and needs no scope; this is also the connect-time probe"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request: {queryParams: {}}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.account.usage
+    added: '2026-10-30'
+    kind: account
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/usage
+    name: "Project status and usage"
+    summary: "Get project status and usage"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      note: "needs no scope. Shows whether the project is paused, plan allowances and current usage"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.ai-search.mentions.summary
+    added: '2026-10-30'
+    capability: ai-search.mentions.summary
+    platform: ai-search
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/visibility/summary
+    name: "AI visibility summary"
+    summary: "Get visibility summary metrics"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams:
+        windowDays: {type: integer, required: false, note: "30 (default) or 90; any other value is a 400", example: 30}
+        platform: {type: string, required: false, note: "one AI platform id, e.g. chatgpt-search, perplexity, google-ai, google-ai-mode", example: "perplexity"}
+        topicId: {type: string, required: false, note: "only prompts in this topic, by id from the topics list"}
+        includeHistoricalPlatforms: {type: boolean, required: false, note: "let a platform no longer probed return its history; default false"}
+      note: "scope visibility.read. Mentions (brand named) and citations (URL sourced) are separate metrics"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams: {windowDays: 30}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.ai-search.prompts.list
+    added: '2026-10-30'
+    capability: ai-search.prompts.list
+    platform: ai-search
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/visibility/prompts
+    name: "Tracked prompts"
+    summary: "List tracked prompts"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams:
+        topicId: {type: string, required: false, note: "only prompts in this topic"}
+        includeInactive: {type: boolean, required: false, note: "include switched-off prompts; default false", example: false}
+        pageSize: {type: integer, required: false, note: "1–100, default 50", example: 5}
+        cursor: {type: string, required: false, note: "pagination.nextCursor from the previous page"}
+      note: "scope visibility.read. Prompt ids feed the responses and citations filters"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams: {pageSize: 5}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.ai-search.mentions.search
+    added: '2026-10-30'
+    capability: ai-search.mentions.search
+    platform: ai-search
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/visibility/responses
+    name: "Recent AI responses"
+    summary: "List recent AI responses"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams:
+        promptId: {type: string, required: false, note: "only answers to this tracked prompt"}
+        platform: {type: string, required: false, note: "one AI platform id, e.g. chatgpt-search", example: "chatgpt-search"}
+      note: "scope visibility.read. Each response carries whether the brand was mentioned and which URLs were cited"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams: {platform: "chatgpt-search"}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.ai-search.citations.stats
+    added: '2026-10-30'
+    capability: ai-search.citations.stats
+    platform: ai-search
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/citations/stats
+    name: "Citation statistics"
+    summary: "Get aggregate citation statistics"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams:
+        windowDays: {type: integer, required: false, note: "30 (default) or 90", example: 30}
+      note: "scope citations.read. Share of voice is your citations over yours plus your configured competitors' — other cited sources are not in the denominator"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams: {windowDays: 30}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.ai-search.mentions.top_domains
+    added: '2026-10-30'
+    capability: ai-search.mentions.top_domains
+    platform: ai-search
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/citations/top-domains
+    name: "Top cited domains"
+    summary: "Get top citation domains"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams:
+        windowDays: {type: integer, required: false, note: "30 (default) or 90", example: 30}
+        pageSize: {type: integer, required: false, note: "1–100, default 25", example: 5}
+        cursor: {type: string, required: false, note: "opaque cursor from the previous response"}
+        search: {type: string, required: false, note: "prefix search within canonical domains", example: "github"}
+        sourceVertical: {type: string, required: false, note: "community | social | editorial | reference | government | education | commercial | video | marketplace | nonprofit | other"}
+        topicId: {type: string, required: false}
+        promptId: {type: string, required: false}
+        platform: {type: string, required: false, note: "chatgpt-search | perplexity | google-ai | google-ai-mode | …"}
+      note: "scope citations.read. Domains AI answers cited for your tracked prompts — yours, competitors' and third parties'"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams: {windowDays: 30, pageSize: 5}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.ai-search.mentions.top_pages
+    added: '2026-10-30'
+    capability: ai-search.mentions.top_pages
+    platform: ai-search
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/citations/top-pages
+    name: "Top cited pages"
+    summary: "Get top citation pages"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams:
+        windowDays: {type: integer, required: false, note: "30 (default) or 90", example: 30}
+        pageSize: {type: integer, required: false, note: "1–100, default 25", example: 5}
+        cursor: {type: string, required: false}
+        search: {type: string, required: false, note: "prefix search within citation URLs and domains"}
+        sourceVertical: {type: string, required: false}
+        topicId: {type: string, required: false}
+        promptId: {type: string, required: false}
+        platform: {type: string, required: false}
+      note: "scope citations.read"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams: {windowDays: 30, pageSize: 5}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.ai-search.mentions.multi_target
+    added: '2026-10-30'
+    capability: ai-search.mentions.multi_target
+    platform: ai-search
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/competitive/position
+    name: "Competitive position"
+    summary: "Get competitive positioning data"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams:
+        windowDays: {type: integer, required: false, note: "30 (default) or 90", example: 30}
+        platform: {type: string, required: false}
+        topicId: {type: string, required: false}
+        grouping: {type: string, required: false, note: "daily (default) | weekly | monthly", example: "weekly"}
+        includeHistoricalPlatforms: {type: boolean, required: false}
+      note: "scope competitive.read. Your brand against the project's configured competitors"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams: {windowDays: 30, grouping: "weekly"}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.ai-search.traffic.summary
+    added: '2026-10-30'
+    capability: ai-search.traffic.summary
+    platform: ai-search
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/traffic/summary
+    name: "AI traffic summary"
+    summary: "Get traffic summary"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams:
+        windowDays: {type: integer, required: false, note: "30 (default) or 90", example: 30}
+        domain: {type: string, required: false, note: "one tracked domain"}
+        pathPrefix: {type: string, required: false, note: "this path and its descendants; requires domain"}
+      note: "scope traffic.read. Crawls, answer fetches and AI referrals are counted separately. Empty until the project connects a traffic sensor"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams: {windowDays: 30}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.ai-search.traffic.missing_pages
+    added: '2026-10-30'
+    capability: ai-search.traffic.missing_pages
+    platform: ai-search
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/traffic/404-demand
+    name: "404 demand"
+    summary: "Get 404 Demand"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams:
+        windowDays: {type: integer, required: false, note: "7 or 30 (default)", example: 7}
+      note: "scope traffic.read. Pages AI systems repeatedly request that don't exist. Needs a server-side sensor (Cloudflare log pull or edge middleware); a browser snippet alone cannot see it"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams: {windowDays: 7}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.ai-search.content_gaps.list
+    added: '2026-10-30'
+    capability: ai-search.content_gaps.list
+    platform: ai-search
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/content-gaps/list
+    name: "Content gaps"
+    summary: "List content gaps"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams:
+        windowDays: {type: integer, required: false, note: "30 (default) or 90", example: 30}
+        gapType: {type: string, required: false, note: "topic | source | brand", example: "topic"}
+        search: {type: string, required: false, note: "case-insensitive search on the label"}
+        pageSize: {type: integer, required: false, note: "1–100, default 25", example: 5}
+        cursor: {type: string, required: false}
+      note: "scope intelligence.read"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams: {windowDays: 30, pageSize: 5}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.ai-search.actions.list
+    added: '2026-10-30'
+    capability: ai-search.actions.list
+    platform: ai-search
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/actions/list
+    name: "Action queue"
+    summary: "List actions"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams:
+        status: {type: string, required: false, note: "suggested | accepted | live | archived; omit for all, suggested first in rank order", example: "suggested"}
+        detailLevel: {type: string, required: false, note: "summary (default) | context — context adds the evidence behind each action", example: "summary"}
+        source: {type: string, required: false, note: "ai_search | agent_picks | both (default)"}
+        pageUrl: {type: string, required: false, note: "only actions targeting this page"}
+        priority: {type: string, required: false}
+        channel: {type: string, required: false}
+        pageSize: {type: integer, required: false, note: "1–100, default 25", example: 5}
+        cursor: {type: string, required: false}
+      note: "scope actions.read"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams: {status: "suggested", pageSize: 5}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.ai-search.outcomes.ledger
+    added: '2026-10-30'
+    capability: ai-search.outcomes.ledger
+    platform: ai-search
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/outcomes/ledger
+    name: "Results ledger"
+    summary: "List measured results"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams:
+        windowDays: {type: integer, required: false, note: "7, 30 (default), 90 or 365", example: 30}
+        status: {type: string, required: false, note: "e.g. improved | mixed | no_clear_change | declined | still_measuring | unmeasured"}
+        source: {type: string, required: false, note: "ai_search | agent_picks | both (default)"}
+        interventionId: {type: string, required: false, note: "add fixed 7/14/30/90-day windows for this completion"}
+        pageSize: {type: integer, required: false, note: "1–100, default 25", example: 5}
+        cursor: {type: string, required: false, note: "expires after ~48 hours"}
+      note: "scope outcomes.read. Each result is a before/after window on citations, presence and answer fetches — what moved, not what caused it"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams: {windowDays: 30, pageSize: 5}
+    docs_url: https://docs.devtune.ai/api-reference/overview
+
+  - id: devtune.ai-search.audit.summary
+    added: '2026-10-30'
+    capability: ai-search.audit.summary
+    platform: ai-search
+    scope: own_account
+    method: GET
+    path: /projects/{projectId}/audit/summary
+    name: "Audit summary"
+    summary: "Get Audit summary"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "data.projectId from GET /connection", example: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams:
+        windowDays: {type: integer, required: false, note: "7, 30 (default) or 90", example: 30}
+      note: "scope audit.read. Crawlability, extractability, llms.txt and citability for the project's pages"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included in every paid plan; no per-call charge"}
+    test_request:
+      pathParams: {projectId: "321e11dc-aaf8-498b-8c3c-a3e52c34a043"}
+      queryParams: {windowDays: 30}
+    docs_url: https://docs.devtune.ai/api-reference/overview

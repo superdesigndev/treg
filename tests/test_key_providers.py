@@ -54,6 +54,30 @@ def test_key_providers_are_offerable_without_deployment_credentials():
         assert P.is_configured(p) is True, p.service
 
 
+async def test_devtune_key_uses_free_connection_probe(clients, monkeypatch):
+    def valid(request):
+        assert request.method == "GET"
+        assert request.url.path == "/api/v2/connection"
+        assert request.headers["authorization"] == "Bearer own-key"
+        return httpx.Response(200, json={"data": {"projectId": "00000000-0000-0000-0000-000000000000"}})
+
+    async with AsyncClient(transport=httpx.MockTransport(valid)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "devtune", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+    async with AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(401, json={
+                "error": "unauthorized", "message": "Invalid or missing API key", "status": 401}))) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        rejected = await clients.post(
+            "/connections/token", json={"provider": "devtune", "token": "bad-key"},
+        )
+    assert rejected.status_code == 422 and "rejected" in rejected.text
+
+
 async def test_spidercloud_key_uses_free_balance_probe(clients, monkeypatch):
     def probe(request):
         assert request.method == "GET"
