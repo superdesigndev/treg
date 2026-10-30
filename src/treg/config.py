@@ -745,6 +745,12 @@ class Settings(BaseSettings):
                 raise ValueError(f"{name} must be a 0x-prefixed 20-byte address")
         if bool(self.agent_payments_x402_cdp_api_key_id) != bool(self.agent_payments_x402_cdp_api_key_secret):
             raise ValueError("set both TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET, or neither")
+        coinbase = "https://api.cdp.coinbase.com/platform/v2/x402"
+        if (self.agent_payments_x402_cdp_api_key_id
+                and self.agent_payments_x402_facilitator_url.rstrip("/") != coinbase):
+            # The key signs each request for Coinbase's host and path; no other facilitator reads it.
+            raise ValueError("a CDP API key needs "
+                             f"TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL={coinbase}")
         if self.agent_payments_enabled and self.agent_payments_settlement == "stripe":
             if not self.stripe_secret_key:
                 raise ValueError("agent payments settling to Stripe require TREG_STRIPE_SECRET_KEY")

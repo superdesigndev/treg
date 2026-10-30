@@ -194,20 +194,23 @@ still `settling`. `pending` (not knowable yet, node unavailable): left for the n
 
 `PaymentRail` is the seam: `presented`, `challenge`, `verify`, `settle`, `consumed_headers`.
 `bootstrap.configure_agent_payments` builds the configured rails; tests install their own with
-`agent_payments.configure`. The SDKs load only inside the concrete rails (an import-linter
-contract keeps `mpp` and `x402` there).
+`agent_payments.configure`. One SDK, `pympp`, serves both rails; it loads only inside the concrete
+rails (an import-linter contract keeps `mpp` there, and the `x402` SDK out of `treg`).
 
 - `MppTempoRail` uses `pympp` (`mpp.server.Mpp`, `mpp.methods.tempo.server.charge`):
   `validate_credential` to verify without broadcasting, `broadcast_credential` to settle. Two
   private pympp helpers (the canonical transaction hash, the RLP decoder) are used, so the
   dependency is pinned below the next minor version.
   Fees are not sponsored (`feePayer` off): the client pays its own fee in a USD TIP-20 token.
-- `X402Rail` uses the official `x402` SDK: header codecs, `PaymentRequirements`, and an
-  `HTTPFacilitatorClient` for `verify` and `settle`; the facilitator pays gas. The public
-  `x402.org` facilitator serves testnets only. On mainnet the facilitator is Coinbase's, which
-  takes a Coinbase Developer Platform API key: `CdpAuth` signs a fresh two-minute JWT per request
-  (`EdDSA` for an Ed25519 secret, `ES256` for a legacy EC PEM), bound to the request's method and
-  URL in its `uri` claim. Coinbase's own SDK is not used: it pulls in the Solana stack.
+- `X402Rail` uses `pympp`'s x402 support (`mpp.x402`): the header codecs, which validate the
+  untrusted payload, and an `HttpFacilitator` for `verify` and `settle`; the facilitator pays gas.
+  treg's own checks stay in the rail: the accepted terms and resource URL against the offer, the
+  verified payer against the signer, and the proof id. The public `x402.org` facilitator serves
+  testnets only. On mainnet the facilitator is Coinbase's, which takes a Coinbase Developer
+  Platform API key: `mpp.x402.cdp.create_cdp_auth_headers` signs a fresh JWT per request
+  (`EdDSA` for an Ed25519 secret, `ES256` for a legacy EC PEM), bound to Coinbase's host and the
+  request's path. Startup refuses a CDP key with any other facilitator URL. The `x402` and
+  Coinbase SDKs are not used.
 
 treg holds no private key for either rail: it broadcasts the client's signed transaction or asks
 the facilitator. Settlement is synchronous, before the relay, to treg's own recipient address.
@@ -220,7 +223,7 @@ the facilitator. Settlement is synchronous, before the relay, to treg's own reci
 `..._tempo_currency`; x402: `..._x402_pay_to`, `..._x402_network` (`eip155:84532` Base Sepolia by
 default), `..._x402_asset`, `..._x402_asset_name`, `..._x402_asset_version`,
 `..._x402_facilitator_url`, `..._x402_max_timeout_s`, `..._x402_rpc_url` (empty: the network's
-public RPC), `..._x402_cdp_api_key_id` and `..._x402_cdp_api_key_secret` (both or neither);
+public RPC), `..._x402_cdp_api_key_id` and `..._x402_cdp_api_key_secret` (both or neither, and only with Coinbase's facilitator URL);
 `agent_payments_settlement` (`wallet` | `stripe`), `agent_payments_reconcile_min_age_s`. Every
 address is checked to be 20 bytes.
 

@@ -74,24 +74,20 @@ class FakeFacilitator:
         self.gate: asyncio.Event | None = None
 
     async def verify(self, payload, requirements):
-        from x402.schemas import VerifyResponse
-
-        return VerifyResponse(is_valid=True, payer=payload.payload["authorization"]["from"])
+        return {"isValid": True, "payer": payload["payload"]["authorization"]["from"]}
 
     async def settle(self, payload, requirements):
-        from x402.schemas import SettleResponse
-
         if self.gate is not None:
             await self.gate.wait()
         if self.unreachable:
             raise httpx.ReadTimeout("facilitator timed out after submitting")
         if self.fail:
-            return SettleResponse(success=False, error_reason="insufficient_funds", transaction="",
-                                  network=requirements.network)
+            return {"success": False, "errorReason": "insufficient_funds", "transaction": "",
+                    "network": requirements["network"]}
         self.settles += 1
-        return SettleResponse(success=True, transaction=f"0x{self.settles:064x}",
-                              network=requirements.network,
-                              payer=payload.payload["authorization"]["from"])
+        return {"success": True, "transaction": f"0x{self.settles:064x}",
+                "network": requirements["network"],
+                "payer": payload["payload"]["authorization"]["from"]}
 
 
 @pytest.fixture
@@ -150,18 +146,26 @@ def _mpp_credential(challenge_response: httpx.Response, signature: str = "0x76" 
 
 
 def _x402_credential(challenge_response: httpx.Response, account=None) -> tuple[str, str]:
-    from x402.http import decode_payment_required_header, encode_payment_signature_header
-    from x402.mechanisms.evm.exact.client import ExactEvmScheme
-    from x402.mechanisms.evm.signers import EthAccountSigner
-    from x402.schemas import PaymentPayload
+    import os
+    import time
+
+    from mpp.methods.evm._eip3009 import authorization_domain, sign_authorization
+    from mpp.x402 import decode_payment_required, encode_payment_signature
 
     account = account or Account.create()
-    required = decode_payment_required_header(challenge_response.headers["payment-required"])
-    accepted = required.accepts[0]
-    signed = ExactEvmScheme(EthAccountSigner(account)).create_payment_payload(accepted)
-    payload = PaymentPayload(x402_version=2, payload=signed, accepted=accepted,
-                             resource=required.resource)
-    return encode_payment_signature_header(payload), account.address.lower()
+    required = decode_payment_required(challenge_response.headers["payment-required"])
+    accepted = required["accepts"][0]
+    now = int(time.time())
+    authorization = {"from": account.address, "to": accepted["payTo"], "value": accepted["amount"],
+                     "validAfter": str(now - 600),
+                     "validBefore": str(now + int(accepted["maxTimeoutSeconds"])),
+                     "nonce": "0x" + os.urandom(32).hex()}
+    signature = sign_authorization(account, payload=authorization, domain=authorization_domain(
+        name=accepted["extra"]["name"], version=accepted["extra"]["version"],
+        chain_id=int(accepted["network"].split(":")[1]), currency=accepted["asset"]))
+    payload = {"x402Version": 2, "accepted": accepted, "resource": required["resource"],
+               "payload": {"authorization": authorization, "signature": signature}}
+    return encode_payment_signature(payload), account.address.lower()
 
 
 async def _payer_org(address: str) -> int:
@@ -206,7 +210,7 @@ async def test_flag_off_a_keyless_call_is_refused_as_before(anon: AsyncClient):
 
 
 async def test_a_keyless_paid_call_is_challenged_by_both_protocols(anon: AsyncClient, payments_on):
-    from x402.http import decode_payment_required_header
+    from mpp.x402 import decode_payment_required
 
     r = await anon.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 402, r.text
@@ -217,9 +221,9 @@ async def test_a_keyless_paid_call_is_challenged_by_both_protocols(anon: AsyncCl
     assert detail["minimum_payment_micro"] == FLOOR
     assert "payment minimum" in detail["message"] and "not refunded" in detail["message"]
     assert all(v.startswith("Payment ") for v in r.headers.get_list("www-authenticate"))
-    required = decode_payment_required_header(r.headers["payment-required"])
-    assert required.accepts[0].amount == str(FLOOR)
-    assert required.resource.url == f"https://registry.test/call/{EP}?aweme_id=7"
+    required = decode_payment_required(r.headers["payment-required"])
+    assert required["accepts"][0]["amount"] == str(FLOOR)
+    assert required["resource"]["url"] == f"https://registry.test/call/{EP}?aweme_id=7"
 
 
 async def test_a_challenge_names_only_the_protocols_offered(anon: AsyncClient, payments_on):
@@ -370,7 +374,7 @@ async def test_a_payment_for_a_different_amount_is_refused(anon: AsyncClient, pa
 async def test_x402_version_1_is_refused_and_never_relayed(anon: AsyncClient, payments_on):
     r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"X-PAYMENT": "e30="})
     assert r.status_code == 402
-    assert r.json()["detail"]["reason"] in {"unsupported_version", "malformed_credential"}
+    assert r.json()["detail"]["reason"] == "unsupported_version"
 
 
 async def test_a_failed_settlement_runs_no_call_and_credits_nothing(anon: AsyncClient, payments_on,
@@ -577,11 +581,8 @@ async def test_an_unknown_settlement_runs_no_call_and_stays_open(anon: AsyncClie
 
 async def test_a_caller_that_leaves_mid_settlement_is_still_credited(anon: AsyncClient, payments_on,
                                                                     facilitator):
-    from x402.http import decode_payment_signature_header
-
     challenge = await anon.get(f"/call/{EP}?aweme_id=7")
     credential, payer = _x402_credential(challenge)
-    assert decode_payment_signature_header(credential)
     paid = await agent_payments.quote(
         rest=EP, method="GET", path=f"/call/{EP}", query="aweme_id=7",
         query_items=(("aweme_id", "7"),), body=b"")
@@ -763,48 +764,46 @@ async def test_a_payment_credited_twice_tops_up_once(anon: AsyncClient, facilita
 
 
 # ---- the Coinbase facilitator's API key -----------------------------------------------------------
-def _decode(header: str, key):
+COINBASE = "https://api.cdp.coinbase.com/platform/v2/x402"
+
+
+async def _signed(secret: str, key, endpoint: str):
     import jwt
 
-    return (jwt.get_unverified_header(header.removeprefix("Bearer ")),
-            jwt.decode(header.removeprefix("Bearer "), key, algorithms=["EdDSA", "ES256"],
-                       audience="cdp_service"))
+    rail = X402Rail(pay_to=RECIPIENT, network="eip155:8453", asset=X402_ASSET, asset_name="USD Coin",
+                    asset_version="2", facilitator_url=COINBASE, max_timeout_s=120,
+                    cdp_api_key_id="key-1", cdp_api_key_secret=secret)
+    token = (await rail._facilitator._auth_headers(endpoint))["Authorization"].removeprefix("Bearer ")
+    return (jwt.get_unverified_header(token),
+            jwt.decode(token, key, algorithms=["EdDSA", "ES256"]))
 
 
-def test_an_ed25519_cdp_key_signs_each_facilitator_request():
+async def test_an_ed25519_cdp_key_signs_each_facilitator_request():
     import base64
 
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-    from treg.infra.agent_payments.x402 import CdpAuth
-
     key = Ed25519PrivateKey.generate()
     public = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-    seed = key.private_bytes_raw()
-    auth = CdpAuth("https://api.cdp.coinbase.com/platform/v2/x402", "key-1",
-                   base64.b64encode(seed + public).decode())
-    headers = auth.get_auth_headers()
-    header, claims = _decode(headers.verify["Authorization"], key.public_key())
+    secret = base64.b64encode(key.private_bytes_raw() + public).decode()
+    header, claims = await _signed(secret, key.public_key(), "verify")
     assert header["kid"] == "key-1" and header["alg"] == "EdDSA" and header["nonce"]
-    assert claims["uri"] == "POST api.cdp.coinbase.com/platform/v2/x402/verify"
-    assert (claims["sub"], claims["iss"], claims["exp"] - claims["nbf"]) == ("key-1", "cdp", 120)
-    _, settle = _decode(headers.settle["Authorization"], key.public_key())
-    assert settle["uri"] == "POST api.cdp.coinbase.com/platform/v2/x402/settle"
+    assert claims["uris"] == ["POST api.cdp.coinbase.com/platform/v2/x402/verify"]
+    assert (claims["sub"], claims["iss"]) == ("key-1", "cdp")
+    _, settle = await _signed(secret, key.public_key(), "settle")
+    assert settle["uris"] == ["POST api.cdp.coinbase.com/platform/v2/x402/settle"]
 
 
-def test_a_legacy_ec_cdp_key_signs_with_es256():
+async def test_a_legacy_ec_cdp_key_signs_with_es256():
     from cryptography.hazmat.primitives.asymmetric import ec
     from cryptography.hazmat.primitives.serialization import (
         Encoding, NoEncryption, PrivateFormat)
 
-    from treg.infra.agent_payments.x402 import CdpAuth
-
     key = ec.generate_private_key(ec.SECP256R1())
     pem = key.private_bytes(Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption()).decode()
-    auth = CdpAuth("https://api.cdp.coinbase.com/platform/v2/x402", "k", pem.replace("\n", "\\n"))
-    header, claims = _decode(auth.get_auth_headers().verify["Authorization"], key.public_key())
-    assert header["alg"] == "ES256" and claims["uri"].endswith("/x402/verify")
+    header, claims = await _signed(pem.replace("\n", "\\n"), key.public_key(), "verify")
+    assert header["alg"] == "ES256" and claims["uris"][0].endswith("/x402/verify")
 
 
 def test_a_cdp_key_needs_both_halves(monkeypatch):
@@ -814,6 +813,11 @@ def test_a_cdp_key_needs_both_halves(monkeypatch):
     monkeypatch.delenv("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_SECRET", raising=False)
     with pytest.raises(ValueError, match="CDP_API_KEY"):
         Settings()
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_SECRET", "s")
+    with pytest.raises(ValueError, match="FACILITATOR_URL"):
+        Settings()
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL", COINBASE)
+    assert Settings().agent_payments_x402_cdp_api_key_id == "k"
 
 
 # ---- settlement to Stripe ------------------------------------------------------------------------

@@ -1036,15 +1036,6 @@ wheels = [
 ]
 
 [[package]]
-name = "nest-asyncio"
-version = "1.6.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/83/f8/51569ac65d696c8ecbee95938f89d4abf00f47d58d48f6fbabfe8f0baefe/nest_asyncio-1.6.0.tar.gz", hash = "sha256:6f172d5449aca15afd6c646851f4e31e02c598d553a667e38cafa997cfec55fe", size = 7418, upload-time = "2024-01-21T14:25:19.227Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a0/c4/c2971a3ba4c6103a3d10c4b0f24f461ddc027f0f09763220cf35ca1401b3/nest_asyncio-1.6.0-py3-none-any.whl", hash = "sha256:87af6efd6b5e897c81050477ef65c62e2b2f35d51703cae01aff2905b1852e1c", size = 5195, upload-time = "2024-01-21T14:25:17.223Z" },
-]
-
-[[package]]
 name = "numpy"
 version = "2.5.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1452,6 +1443,9 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+cdp = [
+    { name = "pyjwt", extra = ["crypto"] },
+]
 tempo = [
     { name = "attrs" },
     { name = "eth-abi" },
@@ -1464,13 +1458,6 @@ tempo = [
     { name = "rlp" },
     { name = "urllib3" },
     { name = "yarl" },
-]
-x402 = [
-    { name = "eth-account" },
-    { name = "eth-hash", extra = ["pycryptodome"] },
-    { name = "fastapi" },
-    { name = "pydantic" },
-    { name = "x402", extra = ["evm", "httpx"] },
 ]
 
 [[package]]
@@ -1896,8 +1883,7 @@ server = [
     { name = "obstore" },
     { name = "pillow" },
     { name = "pydantic-settings" },
-    { name = "pyjwt", extra = ["crypto"] },
-    { name = "pympp", extra = ["tempo", "x402"] },
+    { name = "pympp", extra = ["cdp", "tempo"] },
     { name = "pyyaml" },
     { name = "quickjs" },
     { name = "redis" },
@@ -1934,8 +1920,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'server'", specifier = ">=11" },
     { name = "posthog", specifier = ">=7.47.3" },
     { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.5" },
-    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'server'", specifier = ">=2.10" },
-    { name = "pympp", extras = ["tempo", "x402"], marker = "extra == 'server'", specifier = ">=0.17,<0.18" },
+    { name = "pympp", extras = ["cdp", "tempo"], marker = "extra == 'server'", specifier = ">=0.18,<0.19" },
     { name = "pyyaml", marker = "extra == 'server'", specifier = ">=6" },
     { name = "questionary", specifier = ">=2.0" },
     { name = "quickjs", marker = "extra == 'server'", specifier = ">=1.19.4" },
@@ -2184,32 +2169,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/86/eb/20b6cdf273913d0ad05a6a14aed4b9a85591c18a987a3d47f20fa13dcc47/websockets-15.0.1-cp313-cp313-win32.whl", hash = "sha256:ba9e56e8ceeeedb2e080147ba85ffcd5cd0711b89576b83784d8605a7df455fa", size = 176393, upload-time = "2025-03-05T20:02:53.814Z" },
     { url = "https://files.pythonhosted.org/packages/1b/6c/c65773d6cab416a64d191d6ee8a8b1c68a09970ea6909d16965d26bfed1e/websockets-15.0.1-cp313-cp313-win_amd64.whl", hash = "sha256:e09473f095a819042ecb2ab9465aee615bd9c2028e4ef7d933600a8401c79561", size = 176837, upload-time = "2025-03-05T20:02:55.237Z" },
     { url = "https://files.pythonhosted.org/packages/fa/a8/5b41e0da817d64113292ab1f8247140aac61cbf6cfd085d6a0fa77f4984f/websockets-15.0.1-py3-none-any.whl", hash = "sha256:f7a866fbc1e97b5c617ee4116daaa09b722101d4a3c170c787450ba409f9736f", size = 169743, upload-time = "2025-03-05T20:03:39.41Z" },
-]
-
-[[package]]
-name = "x402"
-version = "2.26.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "nest-asyncio" },
-    { name = "pydantic" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/50/67/f195ac6ec6d00d1c0d25e150f73697d88a8447ddb5f2533c176889609926/x402-2.26.0.tar.gz", hash = "sha256:045d41b9e6a7c595673fd41cfa14a94ec45d810dfc0bc7f1c8c112ee4e2ba53a", size = 2166041, upload-time = "2026-10-28T18:29:09.509Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/5c/72/f0162874cf3859dd50eac441994cbb908d76f2e3f307287fc96df757197e/x402-2.26.0-py3-none-any.whl", hash = "sha256:6cdcdfe553a9b698dca81357101fc6e98de35c5c6f4ea2b3cce344ea54486c1b", size = 2307822, upload-time = "2026-10-28T18:29:07.14Z" },
-]
-
-[package.optional-dependencies]
-evm = [
-    { name = "eth-abi" },
-    { name = "eth-account" },
-    { name = "eth-keys" },
-    { name = "eth-utils" },
-    { name = "web3" },
-]
-httpx = [
-    { name = "httpx" },
 ]
 
 [[package]]
