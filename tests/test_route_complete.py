@@ -55,6 +55,12 @@ THIN = _example("anyapi.linkedin.user.profile")      # name, location, followers
 NOT_FOUND = (404, {"error": "LinkedIn profile not found", "code": "PROFILE_NOT_FOUND"})
 
 
+def _without_anyapi(monkeypatch):
+    """Leave AnyAPI's full profile, priced between fetchin and harvest, out of a fetchin-then-harvest route."""
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "fetchinio,harvestapi")
+    get_settings.cache_clear()
+
+
 async def test_without_the_header_the_cheapest_thin_answer_ends_the_route(clients, profile_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({"anyapi": [(200, THIN)]}, seen))
@@ -85,6 +91,7 @@ async def test_a_thin_answer_is_weak_and_still_returned_when_nothing_fuller_turn
 
 
 async def test_another_identifier_needs_a_second_provider(clients, profile_on, monkeypatch):
+    _without_anyapi(monkeypatch)
     renamed = "https://www.linkedin.com/in/bill-gates-renamed"
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
@@ -112,6 +119,7 @@ async def test_the_contract_names_what_a_complete_answer_carries(clients, profil
     people cost 3 points of net correct fields."""
     from treg.domain.catalog import store
     assert store.load().contracts["linkedin.user.profile"].complete == ("full_name", "headline", "location")
+    _without_anyapi(monkeypatch)
     headless = _fetchin()
     headless["title"] = None
     seen = []

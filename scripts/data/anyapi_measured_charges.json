@@ -1,0 +1,2108 @@
+{
+ "_comment": "Measured AnyAPI charges. Each row is the distribution of the exact USD AnyAPI billed for a settled, charged request over the trailing 7 days, exported from AnyAPI's own request ledger. Calls that were not charged (a miss no source could serve) are excluded, since treg reserves against a call it expects to succeed. Only SKUs with at least 5 charged calls in the window appear; the rest fall back to the live rate card's cheapest-source price.",
+ "as_of": "2026-10-30",
+ "skus": {
+  "ahrefs.backlinks": {
+   "calls": 28,
+   "max_usd": 0.00501,
+   "p50_usd": 0.00501,
+   "p90_usd": 0.00501
+  },
+  "ahrefs.keyword_ideas": {
+   "calls": 36,
+   "max_usd": 0.00501,
+   "p50_usd": 0.00501,
+   "p90_usd": 0.00501
+  },
+  "ahrefs.keywords": {
+   "calls": 5,
+   "max_usd": 0.00501,
+   "p50_usd": 0.00501,
+   "p90_usd": 0.00501
+  },
+  "ahrefs.overview": {
+   "calls": 139,
+   "max_usd": 0.00501,
+   "p50_usd": 0.00501,
+   "p90_usd": 0.00501
+  },
+  "ahrefs.traffic": {
+   "calls": 101,
+   "max_usd": 0.00501,
+   "p50_usd": 0.00501,
+   "p90_usd": 0.00501
+  },
+  "airbnb.search": {
+   "calls": 1387,
+   "max_usd": 0.03309,
+   "p50_usd": 0.01824,
+   "p90_usd": 0.03309
+  },
+  "alibaba.search": {
+   "calls": 277,
+   "max_usd": 0.022,
+   "p50_usd": 0.0088,
+   "p90_usd": 0.022
+  },
+  "aliexpress.product": {
+   "calls": 5,
+   "max_usd": 0.0009,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.0009
+  },
+  "aliexpress.reviews": {
+   "calls": 8,
+   "max_usd": 0.00107,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00107
+  },
+  "aliexpress.search": {
+   "calls": 8,
+   "max_usd": 0.00107,
+   "p50_usd": 0.00107,
+   "p90_usd": 0.00107
+  },
+  "amazon.asins": {
+   "calls": 267,
+   "max_usd": 0.0385,
+   "p50_usd": 0.00385,
+   "p90_usd": 0.02695
+  },
+  "amazon.bestsellers": {
+   "calls": 48,
+   "max_usd": 0.0902,
+   "p50_usd": 0.00105,
+   "p90_usd": 0.00105
+  },
+  "amazon.deals": {
+   "calls": 5,
+   "max_usd": 0.00107,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00107
+  },
+  "amazon.offers": {
+   "calls": 7,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "amazon.product": {
+   "calls": 384,
+   "max_usd": 0.0018,
+   "p50_usd": 0.0009,
+   "p90_usd": 0.0009
+  },
+  "amazon.reviews": {
+   "calls": 491,
+   "max_usd": 0.0583,
+   "p50_usd": 0.0013,
+   "p90_usd": 0.018
+  },
+  "amazon.search": {
+   "calls": 622,
+   "max_usd": 0.0021,
+   "p50_usd": 0.0013,
+   "p90_usd": 0.0021
+  },
+  "apollo.organization_enrich": {
+   "calls": 370,
+   "max_usd": 0.012,
+   "p50_usd": 0.012,
+   "p90_usd": 0.012
+  },
+  "apollo.organization_jobs": {
+   "calls": 155,
+   "max_usd": 0.012,
+   "p50_usd": 0.012,
+   "p90_usd": 0.012
+  },
+  "apollo.organization_news": {
+   "calls": 75,
+   "max_usd": 0.012,
+   "p50_usd": 0.012,
+   "p90_usd": 0.012
+  },
+  "apollo.organizations_bulk_enrich": {
+   "calls": 98,
+   "max_usd": 0.06,
+   "p50_usd": 0.06,
+   "p90_usd": 0.06
+  },
+  "apollo.organizations_search": {
+   "calls": 49,
+   "max_usd": 0.012,
+   "p50_usd": 0.012,
+   "p90_usd": 0.012
+  },
+  "apollo.people_search": {
+   "calls": 832,
+   "max_usd": 0.01,
+   "p50_usd": 0.01,
+   "p90_usd": 0.01
+  },
+  "apollo.person_enrich": {
+   "calls": 2071,
+   "max_usd": 0.012,
+   "p50_usd": 0.012,
+   "p90_usd": 0.012
+  },
+  "appstore.reviews": {
+   "calls": 603,
+   "max_usd": 0.011,
+   "p50_usd": 0.0009,
+   "p90_usd": 0.0055
+  },
+  "appstore.search": {
+   "calls": 32,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "asos.search": {
+   "calls": 6,
+   "max_usd": 0.00107,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00107
+  },
+  "bestbuy.search": {
+   "calls": 7,
+   "max_usd": 0.0009,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.0009
+  },
+  "bing.copilot": {
+   "calls": 267,
+   "max_usd": 0.00644,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00644
+  },
+  "bing.search": {
+   "calls": 24,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "bluesky.profile": {
+   "calls": 6,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0012
+  },
+  "booking.search": {
+   "calls": 37,
+   "max_usd": 0.1012,
+   "p50_usd": 0.0418,
+   "p90_usd": 0.0616
+  },
+  "brave.search": {
+   "calls": 56,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "capterra.reviews": {
+   "calls": 55,
+   "max_usd": 0.0495,
+   "p50_usd": 0.01606,
+   "p90_usd": 0.0495
+  },
+  "chatgpt.search": {
+   "calls": 238,
+   "max_usd": 0.0048,
+   "p50_usd": 0.0025,
+   "p90_usd": 0.0048
+  },
+  "coinmarketcap.listings": {
+   "calls": 11,
+   "max_usd": 0.0495,
+   "p50_usd": 0.0198,
+   "p90_usd": 0.0495
+  },
+  "company_enrichment.crustdata": {
+   "calls": 108,
+   "max_usd": 0.096,
+   "p50_usd": 0.096,
+   "p90_usd": 0.096
+  },
+  "company_enrichment.datalegion": {
+   "calls": 5,
+   "max_usd": 0.04806,
+   "p50_usd": 0.04806,
+   "p90_usd": 0.04806
+  },
+  "company_identify.crustdata_v3": {
+   "calls": 75,
+   "max_usd": 0.001,
+   "p50_usd": 0.001,
+   "p90_usd": 0.001
+  },
+  "company_search.crustdata": {
+   "calls": 767,
+   "max_usd": 0.3612,
+   "p50_usd": 0.00264,
+   "p90_usd": 0.1452
+  },
+  "douyin.profile": {
+   "calls": 6,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "douyin.search_videos": {
+   "calls": 688,
+   "max_usd": 0.012,
+   "p50_usd": 0.012,
+   "p90_usd": 0.012
+  },
+  "douyin.user_posts": {
+   "calls": 469,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "douyin.video": {
+   "calls": 37,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "douyin.video_comments": {
+   "calls": 542,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "ebay.product": {
+   "calls": 415,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "ebay.product_full": {
+   "calls": 45,
+   "max_usd": 0.0018,
+   "p50_usd": 0.0018,
+   "p90_usd": 0.0018
+  },
+  "ebay.search": {
+   "calls": 4183,
+   "max_usd": 0.0655,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "ebay.sold_listings": {
+   "calls": 1889,
+   "max_usd": 0.0135,
+   "p50_usd": 0.003,
+   "p90_usd": 0.003
+  },
+  "ebay.sold_listings_thin": {
+   "calls": 577,
+   "max_usd": 0.06606,
+   "p50_usd": 0.003,
+   "p90_usd": 0.003
+  },
+  "email.find": {
+   "calls": 1123,
+   "max_usd": 0.033,
+   "p50_usd": 0.0308,
+   "p90_usd": 0.033
+  },
+  "email.verify": {
+   "calls": 11291,
+   "max_usd": 0.0066,
+   "p50_usd": 0.0066,
+   "p90_usd": 0.0066
+  },
+  "email_finding.hunter_count": {
+   "calls": 6,
+   "max_usd": 0.001,
+   "p50_usd": 0.001,
+   "p90_usd": 0.001
+  },
+  "email_finding.hunter_domain": {
+   "calls": 524,
+   "max_usd": 0.025,
+   "p50_usd": 0.025,
+   "p90_usd": 0.025
+  },
+  "email_finding.icypeas": {
+   "calls": 1835,
+   "max_usd": 0.0168,
+   "p50_usd": 0.0168,
+   "p90_usd": 0.0168
+  },
+  "email_finding.quickenrich": {
+   "calls": 728,
+   "max_usd": 0.0072,
+   "p50_usd": 0.0072,
+   "p90_usd": 0.0072
+  },
+  "email_verification.icypeas": {
+   "calls": 875,
+   "max_usd": 0.0024,
+   "p50_usd": 0.0024,
+   "p90_usd": 0.0024
+  },
+  "etsy.product": {
+   "calls": 106,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "etsy.search": {
+   "calls": 49,
+   "max_usd": 0.00213,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "etsy.shop": {
+   "calls": 89,
+   "max_usd": 0.00213,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "facebook.ad_details": {
+   "calls": 1294,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.ad_details_full": {
+   "calls": 28,
+   "max_usd": 0.00462,
+   "p50_usd": 0.00462,
+   "p90_usd": 0.00462
+  },
+  "facebook.ad_transcript": {
+   "calls": 359,
+   "max_usd": 0.036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.ads_search": {
+   "calls": 57002,
+   "max_usd": 0.018,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0012
+  },
+  "facebook.comment_replies": {
+   "calls": 1905,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.company_ads": {
+   "calls": 63242,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0011
+  },
+  "facebook.event_details": {
+   "calls": 363,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.events_search": {
+   "calls": 1076,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.group_posts": {
+   "calls": 17118,
+   "max_usd": 0.0067,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.marketplace": {
+   "calls": 2273,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.marketplace_item": {
+   "calls": 3084,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.marketplace_location_search": {
+   "calls": 8,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.page_contact": {
+   "calls": 6593,
+   "max_usd": 0.011,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.page_lookup": {
+   "calls": 57,
+   "max_usd": 0.00975,
+   "p50_usd": 0.00975,
+   "p90_usd": 0.00975
+  },
+  "facebook.photos": {
+   "calls": 206,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.post": {
+   "calls": 242631,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.post_comments": {
+   "calls": 3383,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.post_transcript": {
+   "calls": 64,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.profile": {
+   "calls": 1788,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.profile_events": {
+   "calls": 219,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.profile_posts": {
+   "calls": 16346,
+   "max_usd": 0.0067,
+   "p50_usd": 0.0022,
+   "p90_usd": 0.0022
+  },
+  "facebook.profile_reels": {
+   "calls": 49022,
+   "max_usd": 0.0067,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "facebook.search_companies": {
+   "calls": 9066,
+   "max_usd": 0.004,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0011
+  },
+  "facebook.search_pages": {
+   "calls": 90,
+   "max_usd": 0.1221,
+   "p50_usd": 0.0616,
+   "p90_usd": 0.11
+  },
+  "facebook.search_posts": {
+   "calls": 2775,
+   "max_usd": 0.06487,
+   "p50_usd": 0.03,
+   "p90_usd": 0.05515
+  },
+  "fiverr.search": {
+   "calls": 8,
+   "max_usd": 0.00825,
+   "p50_usd": 0.00495,
+   "p90_usd": 0.00825
+  },
+  "g2.reviews": {
+   "calls": 678,
+   "max_usd": 0.0745,
+   "p50_usd": 0.00211,
+   "p90_usd": 0.00256
+  },
+  "gemini.search": {
+   "calls": 172,
+   "max_usd": 0.0048,
+   "p50_usd": 0.002,
+   "p90_usd": 0.0048
+  },
+  "github.issue_comments": {
+   "calls": 170,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "github.repository": {
+   "calls": 240,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "github.repository_contributors": {
+   "calls": 208,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "github.repository_forks": {
+   "calls": 59,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "github.repository_issues": {
+   "calls": 64,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "github.repository_readme": {
+   "calls": 65,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "github.search_issues": {
+   "calls": 146,
+   "max_usd": 0.0024,
+   "p50_usd": 0.0024,
+   "p90_usd": 0.0024
+  },
+  "github.trending_repositories": {
+   "calls": 6,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "github.user": {
+   "calls": 2677,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "github.user_following": {
+   "calls": 32,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "github.user_repositories": {
+   "calls": 852,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "glassdoor.jobs": {
+   "calls": 14,
+   "max_usd": 0.11,
+   "p50_usd": 0.007,
+   "p90_usd": 0.11
+  },
+  "google.ai_mode": {
+   "calls": 405,
+   "max_usd": 0.00336,
+   "p50_usd": 0.002,
+   "p90_usd": 0.002
+  },
+  "google.ai_overview": {
+   "calls": 3834,
+   "max_usd": 0.0048,
+   "p50_usd": 0.0018,
+   "p90_usd": 0.0048
+  },
+  "google.autocomplete": {
+   "calls": 5482,
+   "max_usd": 0.00099,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "google.images": {
+   "calls": 2863,
+   "max_usd": 0.00189,
+   "p50_usd": 0.00189,
+   "p90_usd": 0.00189
+  },
+  "google.job": {
+   "calls": 8,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "google.jobs": {
+   "calls": 108,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "google.lens": {
+   "calls": 6145,
+   "max_usd": 0.00297,
+   "p50_usd": 0.00297,
+   "p90_usd": 0.00297
+  },
+  "google.local_services": {
+   "calls": 14,
+   "max_usd": 0.01167,
+   "p50_usd": 0.01167,
+   "p90_usd": 0.01167
+  },
+  "google.news": {
+   "calls": 16414,
+   "max_usd": 0.00099,
+   "p50_usd": 0.00099,
+   "p90_usd": 0.00099
+  },
+  "google.patents": {
+   "calls": 1243,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "google.scholar": {
+   "calls": 867,
+   "max_usd": 0.00099,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00099
+  },
+  "google.search": {
+   "calls": 312501,
+   "max_usd": 0.002,
+   "p50_usd": 0.0005,
+   "p90_usd": 0.0009
+  },
+  "google.search_100": {
+   "calls": 418,
+   "max_usd": 0.024,
+   "p50_usd": 0.0018,
+   "p90_usd": 0.024
+  },
+  "google.trends": {
+   "calls": 362,
+   "max_usd": 0.018,
+   "p50_usd": 0.002,
+   "p90_usd": 0.018
+  },
+  "google.videos": {
+   "calls": 12,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "google_ads.ad_details": {
+   "calls": 3809,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "google_ads.advertiser_search": {
+   "calls": 116,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "google_ads.company_ads": {
+   "calls": 66553,
+   "max_usd": 0.0012,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "google_ads.search": {
+   "calls": 27,
+   "max_usd": 0.02008,
+   "p50_usd": 0.00149,
+   "p90_usd": 0.00721
+  },
+  "google_finance.quote": {
+   "calls": 7,
+   "max_usd": 0.0022,
+   "p50_usd": 0.0022,
+   "p90_usd": 0.0022
+  },
+  "google_shopping.search": {
+   "calls": 368,
+   "max_usd": 0.0638,
+   "p50_usd": 0.018,
+   "p90_usd": 0.018
+  },
+  "hackernews.search": {
+   "calls": 446,
+   "max_usd": 0.0015,
+   "p50_usd": 0.0015,
+   "p90_usd": 0.0015
+  },
+  "hackernews.story_comments": {
+   "calls": 99,
+   "max_usd": 0.0015,
+   "p50_usd": 0.0015,
+   "p90_usd": 0.0015
+  },
+  "ikea.search": {
+   "calls": 5,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "indeed.jobs": {
+   "calls": 849,
+   "max_usd": 0.00264,
+   "p50_usd": 0.00151,
+   "p90_usd": 0.00264
+  },
+  "instagram.audio_reels": {
+   "calls": 47,
+   "max_usd": 0.0011,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0011
+  },
+  "instagram.basic_profile": {
+   "calls": 1156,
+   "max_usd": 0.0012,
+   "p50_usd": 0.001,
+   "p90_usd": 0.001
+  },
+  "instagram.comment_replies": {
+   "calls": 6645,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0011
+  },
+  "instagram.embed": {
+   "calls": 6,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "instagram.followers": {
+   "calls": 171,
+   "max_usd": 0.018,
+   "p50_usd": 0.00188,
+   "p90_usd": 0.00188
+  },
+  "instagram.following": {
+   "calls": 988,
+   "max_usd": 0.00188,
+   "p50_usd": 0.00188,
+   "p90_usd": 0.00188
+  },
+  "instagram.hashtag_analytics": {
+   "calls": 677,
+   "max_usd": 0.00297,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.00297
+  },
+  "instagram.hashtag_recent_posts": {
+   "calls": 10042,
+   "max_usd": 0.0024,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "instagram.hashtag_top_posts": {
+   "calls": 5752,
+   "max_usd": 0.018,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0011
+  },
+  "instagram.highlight_detail": {
+   "calls": 116,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "instagram.location_posts": {
+   "calls": 144,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "instagram.media_transcript": {
+   "calls": 6174,
+   "max_usd": 0.005,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "instagram.post": {
+   "calls": 111628,
+   "max_usd": 0.00638,
+   "p50_usd": 0.0005,
+   "p90_usd": 0.0011
+  },
+  "instagram.post_comments": {
+   "calls": 87947,
+   "max_usd": 0.018,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0008
+  },
+  "instagram.post_likers": {
+   "calls": 168,
+   "max_usd": 0.0024,
+   "p50_usd": 0.0024,
+   "p90_usd": 0.0024
+  },
+  "instagram.profile": {
+   "calls": 68914,
+   "max_usd": 0.0024,
+   "p50_usd": 0.001,
+   "p90_usd": 0.001
+  },
+  "instagram.profile_contact": {
+   "calls": 63418,
+   "max_usd": 0.00721,
+   "p50_usd": 0.00175,
+   "p90_usd": 0.00175
+  },
+  "instagram.reel_transcript": {
+   "calls": 2499,
+   "max_usd": 0.0786,
+   "p50_usd": 0.0078,
+   "p90_usd": 0.0163
+  },
+  "instagram.reels_search": {
+   "calls": 39753,
+   "max_usd": 0.0024,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.00188
+  },
+  "instagram.search": {
+   "calls": 424,
+   "max_usd": 0.0209,
+   "p50_usd": 0.0036,
+   "p90_usd": 0.0036
+  },
+  "instagram.search_followers": {
+   "calls": 29,
+   "max_usd": 0.0022,
+   "p50_usd": 0.0022,
+   "p90_usd": 0.0022
+  },
+  "instagram.search_following": {
+   "calls": 5,
+   "max_usd": 0.0022,
+   "p50_usd": 0.0022,
+   "p90_usd": 0.0022
+  },
+  "instagram.search_hashtag": {
+   "calls": 4163,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "instagram.search_locations": {
+   "calls": 154,
+   "max_usd": 0.0011,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0011
+  },
+  "instagram.search_profiles": {
+   "calls": 958,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0036
+  },
+  "instagram.similar_profiles": {
+   "calls": 1740,
+   "max_usd": 0.027,
+   "p50_usd": 0.0024,
+   "p90_usd": 0.027
+  },
+  "instagram.stories_full": {
+   "calls": 1337,
+   "max_usd": 0.0024,
+   "p50_usd": 0.0022,
+   "p90_usd": 0.0022
+  },
+  "instagram.stories_thin": {
+   "calls": 245,
+   "max_usd": 0.0022,
+   "p50_usd": 0.00188,
+   "p90_usd": 0.00188
+  },
+  "instagram.tagged_posts": {
+   "calls": 1811,
+   "max_usd": 0.0024,
+   "p50_usd": 0.00188,
+   "p90_usd": 0.00188
+  },
+  "instagram.trending_reels": {
+   "calls": 127,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "instagram.user_highlights": {
+   "calls": 1189,
+   "max_usd": 0.00188,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "instagram.user_posts": {
+   "calls": 64408,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.00095
+  },
+  "instagram.user_reels": {
+   "calls": 63950,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.00095
+  },
+  "instagram.user_reposts": {
+   "calls": 261,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0011
+  },
+  "instagram.web_reels_search": {
+   "calls": 21651,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "job_search.theirstack": {
+   "calls": 10,
+   "max_usd": 0.672,
+   "p50_usd": 0.1344,
+   "p90_usd": 0.672
+  },
+  "linkedin.ad": {
+   "calls": 301,
+   "max_usd": 0.00253,
+   "p50_usd": 0.00253,
+   "p90_usd": 0.00253
+  },
+  "linkedin.ads": {
+   "calls": 91,
+   "max_usd": 0.03306,
+   "p50_usd": 0.00171,
+   "p90_usd": 0.01656
+  },
+  "linkedin.ads_search": {
+   "calls": 3849,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "linkedin.article": {
+   "calls": 88,
+   "max_usd": 0.00569,
+   "p50_usd": 0.00569,
+   "p90_usd": 0.00569
+  },
+  "linkedin.company": {
+   "calls": 35599,
+   "max_usd": 0.00253,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0011
+  },
+  "linkedin.company_employees": {
+   "calls": 924,
+   "max_usd": 0.11,
+   "p50_usd": 0.0176,
+   "p90_usd": 0.0512
+  },
+  "linkedin.company_posts": {
+   "calls": 896,
+   "max_usd": 0.03976,
+   "p50_usd": 0.0029,
+   "p90_usd": 0.005
+  },
+  "linkedin.company_posts_thin": {
+   "calls": 8882,
+   "max_usd": 0.00253,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "linkedin.company_thin": {
+   "calls": 63,
+   "max_usd": 0.002,
+   "p50_usd": 0.001,
+   "p90_usd": 0.002
+  },
+  "linkedin.email": {
+   "calls": 4594,
+   "max_usd": 0.011,
+   "p50_usd": 0.011,
+   "p90_usd": 0.011
+  },
+  "linkedin.job": {
+   "calls": 89,
+   "max_usd": 0.0015,
+   "p50_usd": 0.0015,
+   "p90_usd": 0.0015
+  },
+  "linkedin.jobs": {
+   "calls": 1272,
+   "max_usd": 0.0286,
+   "p50_usd": 0.0195,
+   "p90_usd": 0.0286
+  },
+  "linkedin.jobs_thin": {
+   "calls": 14434,
+   "max_usd": 0.0008,
+   "p50_usd": 0.00066,
+   "p90_usd": 0.00066
+  },
+  "linkedin.post": {
+   "calls": 1622,
+   "max_usd": 0.00253,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0012
+  },
+  "linkedin.post_comments": {
+   "calls": 1628,
+   "max_usd": 0.11,
+   "p50_usd": 0.005,
+   "p90_usd": 0.005
+  },
+  "linkedin.post_reactions": {
+   "calls": 1004,
+   "max_usd": 0.005,
+   "p50_usd": 0.0029,
+   "p90_usd": 0.0029
+  },
+  "linkedin.profile": {
+   "calls": 240819,
+   "max_usd": 0.0042,
+   "p50_usd": 0.0029,
+   "p90_usd": 0.004
+  },
+  "linkedin.profile_comments": {
+   "calls": 63,
+   "max_usd": 0.005,
+   "p50_usd": 0.0029,
+   "p90_usd": 0.005
+  },
+  "linkedin.profile_posts_full": {
+   "calls": 1281,
+   "max_usd": 0.09959,
+   "p50_usd": 0.005,
+   "p90_usd": 0.005
+  },
+  "linkedin.profile_posts_thin": {
+   "calls": 2223,
+   "max_usd": 0.143,
+   "p50_usd": 0.005,
+   "p90_usd": 0.005
+  },
+  "linkedin.profile_reactions": {
+   "calls": 48,
+   "max_usd": 0.0029,
+   "p50_usd": 0.0029,
+   "p90_usd": 0.0029
+  },
+  "linkedin.profile_thin": {
+   "calls": 100521,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0012
+  },
+  "linkedin.search_companies": {
+   "calls": 687,
+   "max_usd": 0.0891,
+   "p50_usd": 0.005,
+   "p90_usd": 0.005
+  },
+  "linkedin.search_leads": {
+   "calls": 133,
+   "max_usd": 0.07,
+   "p50_usd": 0.07,
+   "p90_usd": 0.07
+  },
+  "linkedin.search_posts": {
+   "calls": 52130,
+   "max_usd": 0.018,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.008
+  },
+  "linkedin.search_posts_full": {
+   "calls": 34020,
+   "max_usd": 0.194,
+   "p50_usd": 0.005,
+   "p90_usd": 0.005
+  },
+  "linkedin.search_profiles": {
+   "calls": 270,
+   "max_usd": 0.198,
+   "p50_usd": 0.1012,
+   "p90_usd": 0.198
+  },
+  "linkedin.search_profiles_email": {
+   "calls": 893,
+   "max_usd": 0.187,
+   "p50_usd": 0.0979,
+   "p90_usd": 0.1375
+  },
+  "linkedin.search_profiles_thin": {
+   "calls": 303,
+   "max_usd": 0.036,
+   "p50_usd": 0.036,
+   "p90_usd": 0.036
+  },
+  "linktree.profile": {
+   "calls": 170,
+   "max_usd": 0.0011,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0011
+  },
+  "maps.contacts": {
+   "calls": 8744,
+   "max_usd": 0.09906,
+   "p50_usd": 0.00325,
+   "p90_usd": 0.00325
+  },
+  "maps.place": {
+   "calls": 27889,
+   "max_usd": 0.00297,
+   "p50_usd": 0.00175,
+   "p90_usd": 0.00175
+  },
+  "maps.reviews": {
+   "calls": 11307,
+   "max_usd": 0.04406,
+   "p50_usd": 0.0035,
+   "p90_usd": 0.0035
+  },
+  "maps.search": {
+   "calls": 20645,
+   "max_usd": 0.11566,
+   "p50_usd": 0.00175,
+   "p90_usd": 0.00175
+  },
+  "maps.search_nearby": {
+   "calls": 64,
+   "max_usd": 0.0013,
+   "p50_usd": 0.0013,
+   "p90_usd": 0.0013
+  },
+  "mobile_phone.ai_ark": {
+   "calls": 196,
+   "max_usd": 0.084,
+   "p50_usd": 0.084,
+   "p90_usd": 0.084
+  },
+  "people_search.crustdata": {
+   "calls": 7261,
+   "max_usd": 0.0372,
+   "p50_usd": 0.00408,
+   "p90_usd": 0.0084
+  },
+  "people_search.quickenrich": {
+   "calls": 26,
+   "max_usd": 0.0005,
+   "p50_usd": 0.0005,
+   "p90_usd": 0.0005
+  },
+  "people_search.quickenrich_company": {
+   "calls": 1412,
+   "max_usd": 0.0072,
+   "p50_usd": 0.0072,
+   "p90_usd": 0.0072
+  },
+  "perplexity.search": {
+   "calls": 320,
+   "max_usd": 0.0111,
+   "p50_usd": 0.0025,
+   "p90_usd": 0.01106
+  },
+  "person.skip_trace": {
+   "calls": 434,
+   "max_usd": 0.0077,
+   "p50_usd": 0.0077,
+   "p90_usd": 0.0077
+  },
+  "person_enrichment.datalegion": {
+   "calls": 31,
+   "max_usd": 0.09606,
+   "p50_usd": 6e-05,
+   "p90_usd": 0.09606
+  },
+  "person_enrichment.fullenrich_reverse_email": {
+   "calls": 5,
+   "max_usd": 0.2016,
+   "p50_usd": 0.2016,
+   "p90_usd": 0.2016
+  },
+  "person_enrichment.peopledatalabs": {
+   "calls": 34,
+   "max_usd": 0.24,
+   "p50_usd": 0.24,
+   "p90_usd": 0.24
+  },
+  "person_enrichment.quickenrich": {
+   "calls": 34,
+   "max_usd": 0.0072,
+   "p50_usd": 0.0072,
+   "p90_usd": 0.0072
+  },
+  "pinterest.search": {
+   "calls": 1194,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0036
+  },
+  "playstore.reviews": {
+   "calls": 373,
+   "max_usd": 0.0121,
+   "p50_usd": 0.00364,
+   "p90_usd": 0.0078
+  },
+  "playstore.search": {
+   "calls": 33,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "realtor.search": {
+   "calls": 56,
+   "max_usd": 0.04675,
+   "p50_usd": 0.0319,
+   "p90_usd": 0.0418
+  },
+  "reddit.avatar": {
+   "calls": 1064,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "reddit.post": {
+   "calls": 23874,
+   "max_usd": 0.00224,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0008
+  },
+  "reddit.post_comments": {
+   "calls": 18243,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "reddit.profile": {
+   "calls": 3201,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0012
+  },
+  "reddit.search": {
+   "calls": 92403,
+   "max_usd": 0.0012,
+   "p50_usd": 0.00035,
+   "p90_usd": 0.0008
+  },
+  "reddit.subreddit_details": {
+   "calls": 882,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "reddit.subreddit_posts": {
+   "calls": 20879,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0008
+  },
+  "reddit.subreddit_search": {
+   "calls": 20857,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0008
+  },
+  "reddit.trending_posts": {
+   "calls": 170,
+   "max_usd": 0.0003,
+   "p50_usd": 0.0003,
+   "p90_usd": 0.0003
+  },
+  "reddit.user_comments": {
+   "calls": 1340,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "reddit.user_posts": {
+   "calls": 3002,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0008
+  },
+  "rednote.note": {
+   "calls": 1205,
+   "max_usd": 0.012,
+   "p50_usd": 0.012,
+   "p90_usd": 0.012
+  },
+  "rednote.note_comments": {
+   "calls": 69,
+   "max_usd": 0.012,
+   "p50_usd": 0.012,
+   "p90_usd": 0.012
+  },
+  "rednote.profile": {
+   "calls": 473,
+   "max_usd": 0.012,
+   "p50_usd": 0.012,
+   "p90_usd": 0.012
+  },
+  "rednote.search": {
+   "calls": 727,
+   "max_usd": 0.012,
+   "p50_usd": 0.012,
+   "p90_usd": 0.012
+  },
+  "rednote.user_notes": {
+   "calls": 1197,
+   "max_usd": 0.012,
+   "p50_usd": 0.012,
+   "p90_usd": 0.012
+  },
+  "sec.filings": {
+   "calls": 113,
+   "max_usd": 0.0044,
+   "p50_usd": 0.0044,
+   "p90_usd": 0.0044
+  },
+  "semrush.keywords": {
+   "calls": 774,
+   "max_usd": 0.00495,
+   "p50_usd": 0.00495,
+   "p90_usd": 0.00495
+  },
+  "semrush.overview": {
+   "calls": 224,
+   "max_usd": 0.00495,
+   "p50_usd": 0.00495,
+   "p90_usd": 0.00495
+  },
+  "seo.backlinks": {
+   "calls": 10,
+   "max_usd": 0.0388,
+   "p50_usd": 0.0318,
+   "p90_usd": 0.0388
+  },
+  "seo.backlinks_summary": {
+   "calls": 9,
+   "max_usd": 0.02885,
+   "p50_usd": 0.02885,
+   "p90_usd": 0.02885
+  },
+  "seo.domain_intersection": {
+   "calls": 38,
+   "max_usd": 0.04464,
+   "p50_usd": 0.0424,
+   "p90_usd": 0.04464
+  },
+  "seo.domain_rank_overview": {
+   "calls": 37,
+   "max_usd": 0.01455,
+   "p50_usd": 0.01455,
+   "p90_usd": 0.01455
+  },
+  "seo.domain_technologies": {
+   "calls": 25,
+   "max_usd": 0.0144,
+   "p50_usd": 0.0144,
+   "p90_usd": 0.0144
+  },
+  "seo.domains_by_technology": {
+   "calls": 12,
+   "max_usd": 0.02664,
+   "p50_usd": 0.01584,
+   "p90_usd": 0.02664
+  },
+  "seo.keyword_difficulty": {
+   "calls": 6,
+   "max_usd": 0.03182,
+   "p50_usd": 0.0147,
+   "p90_usd": 0.03182
+  },
+  "seo.keyword_ideas": {
+   "calls": 64,
+   "max_usd": 0.11096,
+   "p50_usd": 0.02296,
+   "p90_usd": 0.04696
+  },
+  "seo.keyword_overview": {
+   "calls": 23,
+   "max_usd": 0.03566,
+   "p50_usd": 0.01966,
+   "p90_usd": 0.02718
+  },
+  "seo.keyword_suggestions": {
+   "calls": 42,
+   "max_usd": 0.03896,
+   "p50_usd": 0.01576,
+   "p90_usd": 0.03096
+  },
+  "seo.llm_mentions": {
+   "calls": 6,
+   "max_usd": 0.1284,
+   "p50_usd": 0.1212,
+   "p90_usd": 0.1284
+  },
+  "seo.llm_top_domains": {
+   "calls": 6,
+   "max_usd": 0.144,
+   "p50_usd": 0.144,
+   "p90_usd": 0.144
+  },
+  "seo.local_pack": {
+   "calls": 23,
+   "max_usd": 0.0024,
+   "p50_usd": 0.0015,
+   "p90_usd": 0.0024
+  },
+  "seo.ranked_keywords": {
+   "calls": 43,
+   "max_usd": 0.05448,
+   "p50_usd": 0.0172,
+   "p90_usd": 0.03096
+  },
+  "seo.referring_domains": {
+   "calls": 22,
+   "max_usd": 0.0768,
+   "p50_usd": 0.04335,
+   "p90_usd": 0.0768
+  },
+  "seo.related_keywords": {
+   "calls": 32,
+   "max_usd": 0.01848,
+   "p50_usd": 0.01576,
+   "p90_usd": 0.0164
+  },
+  "seo.search_volume": {
+   "calls": 53,
+   "max_usd": 0.108,
+   "p50_usd": 0.108,
+   "p90_usd": 0.108
+  },
+  "seo.top_pages": {
+   "calls": 38,
+   "max_usd": 0.0294,
+   "p50_usd": 0.0159,
+   "p90_usd": 0.0174
+  },
+  "shopify.products": {
+   "calls": 5,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "shopify.search": {
+   "calls": 7,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "shopify.store": {
+   "calls": 5,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "similarweb.overview": {
+   "calls": 11557,
+   "max_usd": 0.00209,
+   "p50_usd": 0.00167,
+   "p90_usd": 0.00209
+  },
+  "similarweb.similar_sites": {
+   "calls": 80,
+   "max_usd": 0.00167,
+   "p50_usd": 0.00167,
+   "p90_usd": 0.00167
+  },
+  "slickdeals.search": {
+   "calls": 5,
+   "max_usd": 0.00213,
+   "p50_usd": 0.00213,
+   "p90_usd": 0.00213
+  },
+  "snapchat.profile": {
+   "calls": 6,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0012
+  },
+  "social.finder": {
+   "calls": 65,
+   "max_usd": 0.0231,
+   "p50_usd": 0.0077,
+   "p90_usd": 0.0121
+  },
+  "substack.posts": {
+   "calls": 114,
+   "max_usd": 0.01051,
+   "p50_usd": 0.00435,
+   "p90_usd": 0.00479
+  },
+  "target.product": {
+   "calls": 5,
+   "max_usd": 0.00085,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00085
+  },
+  "target.search": {
+   "calls": 8,
+   "max_usd": 0.00107,
+   "p50_usd": 0.00085,
+   "p90_usd": 0.00107
+  },
+  "telegram.channel": {
+   "calls": 16,
+   "max_usd": 0.0011,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0011
+  },
+  "threads.profile": {
+   "calls": 184,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "threads.search": {
+   "calls": 3537,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "threads.search_users": {
+   "calls": 60,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "threads.user_posts": {
+   "calls": 244,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "tiktok.ad_library_ad": {
+   "calls": 341,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "tiktok.ad_library_search": {
+   "calls": 1352,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0012
+  },
+  "tiktok.ad_transparency_search": {
+   "calls": 50,
+   "max_usd": 0.0008,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0008
+  },
+  "tiktok.audience_demographics": {
+   "calls": 647,
+   "max_usd": 0.0312,
+   "p50_usd": 0.018,
+   "p90_usd": 0.018
+  },
+  "tiktok.comment_replies": {
+   "calls": 6106,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0006,
+   "p90_usd": 0.0006
+  },
+  "tiktok.followers": {
+   "calls": 8,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0012
+  },
+  "tiktok.following": {
+   "calls": 17,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0012
+  },
+  "tiktok.hashtag_videos": {
+   "calls": 2234,
+   "max_usd": 0.0066,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0066
+  },
+  "tiktok.photos": {
+   "calls": 4426,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "tiktok.profile": {
+   "calls": 41838,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0004,
+   "p90_usd": 0.0004
+  },
+  "tiktok.profile_contact": {
+   "calls": 16148,
+   "max_usd": 0.00187,
+   "p50_usd": 0.00116,
+   "p90_usd": 0.00187
+  },
+  "tiktok.profile_region": {
+   "calls": 607,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "tiktok.profile_reposts": {
+   "calls": 511,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "tiktok.profile_videos": {
+   "calls": 91569,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0006,
+   "p90_usd": 0.0008
+  },
+  "tiktok.search_hashtag": {
+   "calls": 817,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "tiktok.search_keyword": {
+   "calls": 46627,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0006,
+   "p90_usd": 0.0006
+  },
+  "tiktok.search_photos": {
+   "calls": 10,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "tiktok.search_suggestions": {
+   "calls": 102,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0008
+  },
+  "tiktok.search_top": {
+   "calls": 1606,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0006,
+   "p90_usd": 0.0006
+  },
+  "tiktok.search_users": {
+   "calls": 5926,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0006,
+   "p90_usd": 0.0006
+  },
+  "tiktok.song": {
+   "calls": 2170,
+   "max_usd": 0.0006,
+   "p50_usd": 0.0006,
+   "p90_usd": 0.0006
+  },
+  "tiktok.song_videos": {
+   "calls": 737,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0006,
+   "p90_usd": 0.0006
+  },
+  "tiktok.top_ads_search": {
+   "calls": 1410,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "tiktok.trending_feed": {
+   "calls": 2549,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0012
+  },
+  "tiktok.trending_hashtags": {
+   "calls": 1041,
+   "max_usd": 0.11,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0358
+  },
+  "tiktok.video": {
+   "calls": 2145,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0004,
+   "p90_usd": 0.0008
+  },
+  "tiktok.video_comments": {
+   "calls": 61428,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0006,
+   "p90_usd": 0.0006
+  },
+  "tiktok.video_download": {
+   "calls": 19218,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0008
+  },
+  "tiktok.video_transcript": {
+   "calls": 6267,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0011
+  },
+  "tiktok.video_transcript_full": {
+   "calls": 763,
+   "max_usd": 0.095,
+   "p50_usd": 0.0065,
+   "p90_usd": 0.0134
+  },
+  "tiktok_shop.creator": {
+   "calls": 165,
+   "max_usd": 0.0055,
+   "p50_usd": 0.0055,
+   "p90_usd": 0.0055
+  },
+  "tiktok_shop.product": {
+   "calls": 66,
+   "max_usd": 0.0012,
+   "p50_usd": 0.00095,
+   "p90_usd": 0.0012
+  },
+  "tiktok_shop.product_reviews": {
+   "calls": 1788,
+   "max_usd": 0.0012,
+   "p50_usd": 0.00095,
+   "p90_usd": 0.00095
+  },
+  "tiktok_shop.search": {
+   "calls": 9282,
+   "max_usd": 0.0015,
+   "p50_usd": 0.00095,
+   "p90_usd": 0.00095
+  },
+  "tiktok_shop.search_suggestions": {
+   "calls": 777,
+   "max_usd": 0.0012,
+   "p50_usd": 0.00095,
+   "p90_usd": 0.00095
+  },
+  "tiktok_shop.shop_products": {
+   "calls": 103,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "tiktok_shop.user_showcase": {
+   "calls": 6,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "tripadvisor.reviews": {
+   "calls": 18,
+   "max_usd": 0.003,
+   "p50_usd": 0.00055,
+   "p90_usd": 0.003
+  },
+  "tripadvisor.search": {
+   "calls": 10,
+   "max_usd": 0.05506,
+   "p50_usd": 0.00831,
+   "p90_usd": 0.01381
+  },
+  "trustpilot.reviews": {
+   "calls": 454,
+   "max_usd": 0.165,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.033
+  },
+  "truthsocial.profile": {
+   "calls": 5,
+   "max_usd": 0.0011,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.0011
+  },
+  "twitter.article": {
+   "calls": 1684,
+   "max_usd": 0.00075,
+   "p50_usd": 0.00054,
+   "p90_usd": 0.00075
+  },
+  "twitter.community": {
+   "calls": 51,
+   "max_usd": 0.0001,
+   "p50_usd": 0.0001,
+   "p90_usd": 0.0001
+  },
+  "twitter.community_tweets": {
+   "calls": 60,
+   "max_usd": 0.00045,
+   "p50_usd": 0.00045,
+   "p90_usd": 0.00045
+  },
+  "twitter.followers": {
+   "calls": 7013,
+   "max_usd": 0.00075,
+   "p50_usd": 0.00045,
+   "p90_usd": 0.00045
+  },
+  "twitter.following": {
+   "calls": 26121,
+   "max_usd": 0.0036,
+   "p50_usd": 0.00045,
+   "p90_usd": 0.00045
+  },
+  "twitter.profile": {
+   "calls": 129048,
+   "max_usd": 0.00075,
+   "p50_usd": 0.00022,
+   "p90_usd": 0.00022
+  },
+  "twitter.replies": {
+   "calls": 69531,
+   "max_usd": 0.0138,
+   "p50_usd": 0.00045,
+   "p90_usd": 0.00054
+  },
+  "twitter.search": {
+   "calls": 529301,
+   "max_usd": 0.0154,
+   "p50_usd": 0.0006,
+   "p90_usd": 0.0006
+  },
+  "twitter.search_communities": {
+   "calls": 114,
+   "max_usd": 0.0011,
+   "p50_usd": 0.0009,
+   "p90_usd": 0.0011
+  },
+  "twitter.search_users": {
+   "calls": 7078,
+   "max_usd": 0.0021,
+   "p50_usd": 0.0007,
+   "p90_usd": 0.0021
+  },
+  "twitter.thread": {
+   "calls": 1741,
+   "max_usd": 0.00375,
+   "p50_usd": 0.00269,
+   "p90_usd": 0.00375
+  },
+  "twitter.trends": {
+   "calls": 702,
+   "max_usd": 0.00075,
+   "p50_usd": 0.0001,
+   "p90_usd": 0.00075
+  },
+  "twitter.tweet": {
+   "calls": 30922,
+   "max_usd": 0.0012,
+   "p50_usd": 0.00022,
+   "p90_usd": 0.00022
+  },
+  "twitter.tweet_transcript": {
+   "calls": 134,
+   "max_usd": 0.036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "twitter.user_posts": {
+   "calls": 57110,
+   "max_usd": 0.0021,
+   "p50_usd": 0.00045,
+   "p90_usd": 0.00045
+  },
+  "twitter.user_tweets": {
+   "calls": 75469,
+   "max_usd": 0.0022,
+   "p50_usd": 0.00045,
+   "p90_usd": 0.00045
+  },
+  "upwork.jobs": {
+   "calls": 1122,
+   "max_usd": 0.0286,
+   "p50_usd": 0.0176,
+   "p90_usd": 0.0176
+  },
+  "walmart.product": {
+   "calls": 56,
+   "max_usd": 0.00405,
+   "p50_usd": 0.001,
+   "p90_usd": 0.0018
+  },
+  "walmart.search": {
+   "calls": 93,
+   "max_usd": 0.00225,
+   "p50_usd": 0.0009,
+   "p90_usd": 0.0009
+  },
+  "web.crawl": {
+   "calls": 95,
+   "max_usd": 0.00375,
+   "p50_usd": 0.00125,
+   "p90_usd": 0.00125
+  },
+  "web.map": {
+   "calls": 254,
+   "max_usd": 0.001,
+   "p50_usd": 0.001,
+   "p90_usd": 0.001
+  },
+  "web.scrape": {
+   "calls": 166922,
+   "max_usd": 0.0015,
+   "p50_usd": 0.0007,
+   "p90_usd": 0.00125
+  },
+  "web.screenshot": {
+   "calls": 1364,
+   "max_usd": 0.0016,
+   "p50_usd": 0.0013,
+   "p90_usd": 0.0013
+  },
+  "weibo.search": {
+   "calls": 9,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "yahoo_finance.quote": {
+   "calls": 56,
+   "max_usd": 0.00105,
+   "p50_usd": 0.00105,
+   "p90_usd": 0.00105
+  },
+  "yelp.search": {
+   "calls": 13,
+   "max_usd": 0.0605,
+   "p50_usd": 0.04815,
+   "p90_usd": 0.0605
+  },
+  "youtube.channel": {
+   "calls": 5538,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0005,
+   "p90_usd": 0.0005
+  },
+  "youtube.channel_contact": {
+   "calls": 1557,
+   "max_usd": 0.0718,
+   "p50_usd": 0.0718,
+   "p90_usd": 0.0718
+  },
+  "youtube.channel_lives": {
+   "calls": 341,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "youtube.channel_playlists": {
+   "calls": 5,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "youtube.channel_public_email": {
+   "calls": 886,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "youtube.channel_shorts": {
+   "calls": 2828,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "youtube.channel_videos": {
+   "calls": 5303,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0008
+  },
+  "youtube.playlist": {
+   "calls": 12,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "youtube.search": {
+   "calls": 20075,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0005,
+   "p90_usd": 0.0005
+  },
+  "youtube.search_hashtag": {
+   "calls": 18,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "youtube.search_shorts": {
+   "calls": 2752,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "youtube.trending_shorts": {
+   "calls": 42,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "youtube.video": {
+   "calls": 16064,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0012
+  },
+  "youtube.video_comments": {
+   "calls": 15221,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.002
+  },
+  "youtube.video_sponsors": {
+   "calls": 22,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "youtube.video_transcript": {
+   "calls": 85595,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0009,
+   "p90_usd": 0.0009
+  },
+  "youtube.video_transcript_full": {
+   "calls": 3133,
+   "max_usd": 0.00308,
+   "p50_usd": 0.003,
+   "p90_usd": 0.003
+  },
+  "zhihu.search_articles": {
+   "calls": 6,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "zillow.property": {
+   "calls": 201,
+   "max_usd": 0.0008,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0008
+  },
+  "zillow.search": {
+   "calls": 2273,
+   "max_usd": 0.08305,
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0008
+  }
+ },
+ "unit": "usd_per_call",
+ "window_days": 7
+}
