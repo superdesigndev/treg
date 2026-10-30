@@ -1334,6 +1334,38 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+DEVTUNE = OAuthProvider(
+    service="devtune",
+    display_name="DevTune",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="dtk_live_…",
+    # DevTune reads a project API key from `Authorization: Bearer dtk_live_<64 hex>`. Each key is
+    # bound to exactly one project, so every route below is own-account data; GET /connection
+    # returns the bound project's id, which the other routes take as {projectId}.
+    setup_url="https://devtune.ai/home",
+    setup_action_label="Get your DevTune API key",
+    setup_steps=(
+        "Sign in to DevTune and open API Keys in the team account sidebar.",
+        "Create a key, choose the project it reads, and copy it — the full key is shown only once.",
+    ),
+    setup_note=(
+        "API access comes with every paid DevTune plan; reads carry no per-call charge, only the "
+        "plan's per-key rate limit. Connecting reads only the key's own project id."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary=(
+        "Read what ChatGPT, Perplexity, Google AI and other answer engines say about your product: "
+        "visibility, citations, competitors, AI crawler traffic, and a ranked queue of fixes."
+    ),
+    base_url="https://devtune.ai/api/v2",
+    docs_url="https://docs.devtune.ai/api-reference/overview",
+    probe_path="/connection",  # free, no scope needed — a bad key gets a 401 here
+)
+
 MOBIUSENGINE_JOBS = OAuthProvider(
     service="mobiusengine-jobs",
     display_name="MobiusEngine Jobs Data",
@@ -4150,7 +4182,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
-        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
+        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO, DEVTUNE,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
