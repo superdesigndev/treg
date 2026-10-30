@@ -271,9 +271,26 @@ class Settings(BaseSettings):
     # refused, not charged. 0 turns the gate off (TREG_FAIR_SHARE_WAIT_S=0).
     fair_share_wait_s: float = Field(default=2.0, ge=0, le=30)
     # A shared rate window on treg's own keys (domain/capacity/rate_observe.py). `observe` asks it
-    # about every platform call that goes upstream and logs what it would refuse; nothing is refused.
-    # It needs TREG_KV_URL; without one every verdict is unknown.
+    # about every platform call that goes upstream and logs its verdicts; the buckets named in
+    # `provider_rate_enforce` (comma-separated, `view.rate_bucket` keys without the `#account`
+    # suffix) are also refused when full. Both need a Redis TREG_KV_URL.
     provider_rate_mode: Literal["off", "observe"] = "off"
+    provider_rate_enforce: str = ""
+
+    @model_validator(mode="after")
+    def _provider_rate_configuration(self):
+        if self.provider_rate_enforce.strip() and self.provider_rate_mode != "observe":
+            raise ValueError("TREG_PROVIDER_RATE_ENFORCE needs TREG_PROVIDER_RATE_MODE=observe")
+        if self.provider_rate_mode != "off":
+            try:
+                url = urlsplit(self.kv_url)
+                valid = (url.scheme in {"redis", "rediss"} and bool(url.hostname)
+                         or url.scheme == "unix" and bool(url.path))
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError("TREG_PROVIDER_RATE_MODE=observe requires a valid Redis kv_url")
+        return self
 
     # Flat bounties, not a percentage of top-ups. At 0% platform margin a percentage would be a
     # permanent share of pass-through GMV, and — unlike a flat figure — it rewards farming in

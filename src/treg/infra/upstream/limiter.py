@@ -7,8 +7,9 @@ being relayed into a 429 the caller cannot fix. The hold is already placed, so t
 org latency, never money; beyond `max_wait_ms` the call proceeds as today (no refusal here, ever).
 
 In-process and DB-free on purpose: this runs between "DB phase ended" and the relay, where the
-call must hold no connection. A second replica doubles the effective rate; the `rate_pressure`
-alert (step C) is the signal to tighten, not a shared counter on the request path.
+call must hold no connection, and its wait needs no round trip. Each replica adds its own
+allowance; the shared window (domain/capacity/rate_observe.py) is what holds the declared rate
+across replicas.
 """
 
 from __future__ import annotations
