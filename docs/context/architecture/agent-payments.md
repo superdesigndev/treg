@@ -10,6 +10,7 @@ sources:
   - src/treg/infra/stripe.py
   - src/treg/worker.py
   - src/treg/routers/call.py
+  - src/treg/routers/catalog.py
   - src/treg/bootstrap.py
   - src/treg/config.py
   - src/treg/models.py
@@ -54,7 +55,22 @@ endpoints, providers without a configured platform key, and a zero estimate. The
 `{"detail": {"error": "not_authenticated", "reason", "message"}}`; `reason` is one of
 `not_a_catalog_tool`, `wrong_method`, `routed`, `unavailable`, `needs_connection`, `paused`,
 `free`, `own_key_only`, `invalid_request`, and the message says to sign in.
-Own tools and URL passthrough need a team, so they never reach a payment. Only `/call/` takes this
+Own tools and URL passthrough need a team, so they never reach a payment.
+
+One kind of free endpoint is served: an async utility (`resolve.async_utility`: a poll or result
+fetch named by a catalog `async` descriptor, or one with `resource_ownership.requires`). Its quote
+is a **proof only** (`PaidOffer.proof_only`): the 402 (`reason: proof_required`) asks for a
+payment of the minimum, which `admit` verifies and never settles. The wallet must already have a
+payer team (`unknown_wallet` otherwise; none is made) and the payment must be one treg can check
+without settling (`signature_needed` otherwise). The call then runs as that team, so the call
+runtime's own ownership check (`_enforce_platform_async_ownership`) decides whether the task is
+this wallet's; no money moves. A challenge for a tool that starts a task says the hold stays open
+until the task ends and that polling with the same wallet is free.
+
+While the feature is on, catalog search rows and tool details carry `wallet`
+(`agent_payments.wallet_view`): `{payable: true, protocols, minimum_payment_micro, note}`, or
+`{payable: true, free_for_task_owner: true, note}` for an async utility, or
+`{payable: false, reason, note}` with the same reasons as the 401. Off, the field is absent. Only `/call/` takes this
 path; `/catalog/call/`, `/table/` and MCP do not.
 
 ## The payer team: how a keyless payer fits the money rules

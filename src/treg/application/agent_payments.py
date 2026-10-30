@@ -32,7 +32,8 @@ from ..infra.agent_payments import (
     Offer, PaymentRail, PaymentRejected, Settlement, Unconfirmed, Verified)
 from ..infra.db import session_maker
 from ..models import AgentPayer, AgentPayment, Membership, Org, User, _now
-from .call.resolve import QueryValues, _catalog_endpoint_for, platform_quote
+from .call.resolve import (
+    QueryValues, _catalog_endpoint_for, async_utility, platform_quote, wallet_refusal)
 
 log = logging.getLogger("treg.agent_payments")
 
@@ -71,6 +72,8 @@ class PaidOffer:
     endpoint_id: str
     quote_micro: int     # what the call will reserve, margin included
     offer: Offer         # what one payment must carry: max(quote, the payment floor)
+    proof_only: bool = False   # a free poll or fetch: the payment proves the wallet, never settles
+    is_async: bool = False     # the call starts a task that is polled later
 
 
 @dataclass(frozen=True)
@@ -113,11 +116,15 @@ async def quote(*, rest: str, method: str, path: str, query: str,
     if reason := unserved(rest, method):
         raise NotServed(reason)
     ep = _catalog_endpoint_for(rest)
-    raw, reason = platform_quote(ep, QueryValues(query_items), body)
+    query_values = QueryValues(query_items)
+    raw, reason = platform_quote(ep, query_values, body)
+    proof_only = reason == "free" and async_utility(ep)
+    if proof_only:
+        raw, reason = platform_quote(ep, query_values, body, allow_free=True)
     if reason:
         raise NotServed(reason)
     charged = ledger.with_margin(raw)
-    if charged <= 0:
+    if charged <= 0 and not proof_only:
         raise NotServed("free")
     settings = get_settings()
     base = settings.public_url.rstrip("/")
@@ -128,7 +135,28 @@ async def quote(*, rest: str, method: str, path: str, query: str,
         amount_micro=amount, method=method.upper(), path=path, query=query,
         resource_url=f"{base}{path}" + (f"?{query}" if query else ""),
         description=f"{ep['id']} on treg")
-    return PaidOffer(endpoint_id=ep["id"], quote_micro=charged, offer=offer)
+    return PaidOffer(endpoint_id=ep["id"], quote_micro=charged, offer=offer,
+                     proof_only=proof_only, is_async=bool(ep.get("async")))
+
+
+def wallet_view(ep: dict) -> dict | None:
+    """What a keyless agent needs to know before it calls `ep` with a wallet, for catalog search
+    and tool details; None while the feature is off."""
+    if not enabled() or ep.get("kind") == "hub":
+        return None
+    if async_utility(ep) and not wallet_refusal(ep, allow_free=True):
+        return {"payable": True, "free_for_task_owner": True,
+                "note": "free for the wallet that started the task; sign a payment that is never "
+                        "settled"}
+    if reason := wallet_refusal(ep):
+        return {"payable": False, "reason": reason,
+                "note": f"{_NOT_SERVED.get(reason, reason)}; sign in to call it"}
+    minimum = get_settings().agent_payments_min_payment_micro
+    return {"payable": True, "protocols": [rail.protocol for rail in _rails],
+            "minimum_payment_micro": minimum,
+            "note": f"pay per call with a wallet, no account; one payment is at least "
+                    f"${ledger.usd(minimum):g}, only the real price is charged, and what is not "
+                    "used stays as credit for the next calls (not refunded)"}
 
 
 _HOW_TO_PAY = {"mpp": "MPP (WWW-Authenticate: Payment)", "x402": "x402 (PAYMENT-REQUIRED)"}
@@ -146,20 +174,30 @@ async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "") -> 
     amount, hold = paid.offer.amount_micro, paid.quote_micro
     why = (f"the payment minimum, ${ledger.usd(minimum):g}" if amount > hold
            else "the highest price this call can cost")
+    if paid.proof_only:
+        message_text = (
+            f"This call is free for the wallet that started the task. Sign a "
+            f"${ledger.usd(amount):g} payment with that wallet ({ways}) and send the same request "
+            "again: treg checks the signature and never settles it.")
+    else:
+        message_text = (
+            f"Pay ${ledger.usd(amount):g} ({why}) with {ways} and send the same request again. "
+            f"The call holds up to ${ledger.usd(hold):g} and is charged only its real price; a "
+            "failed call or a call with no billable result is charged nothing. What the call does "
+            "not use stays as credit for this wallet's next calls and is not refunded. Or sign in "
+            "and use a treg key.")
+        if paid.is_async:
+            message_text += (" This tool starts a task: the hold stays open until the task ends. "
+                             "Poll it with the same wallet; polling is free.")
     detail = {
         "error": "payment_required",
-        "reason": reason or "payment_required",
+        "reason": reason or ("proof_required" if paid.proof_only else "payment_required"),
         "endpoint_id": paid.endpoint_id,
         "amount_micro": amount,
         "estimated_cost_micro": hold,
         "minimum_payment_micro": minimum,
         "protocols": [rail.protocol for rail in _rails],
-        "message": (
-            f"Pay ${ledger.usd(amount):g} ({why}) with {ways} and send the same request again. "
-            f"The call holds up to ${ledger.usd(hold):g} and is charged only its real price; a "
-            "failed call or a call with no billable result is charged nothing. What the call does "
-            "not use stays as credit for this wallet's next calls and is not refunded. Or sign in "
-            "and use a treg key."),
+        "message": message_text,
     }
     if reason:
         detail["message"] = f"{message or reason}. " + detail["message"]
@@ -181,7 +219,17 @@ async def admit(paid: PaidOffer, headers: Mapping[str, str]) -> PayerAdmission:
     except PaymentRejected as exc:
         raise await challenge(paid, reason=exc.code, message=exc.message) from exc
 
-    org_id = await _payer_org(verified.payer)
+    if paid.proof_only:
+        org_id = await _known_payer_org(verified.payer)
+        if org_id is None:
+            raise await challenge(paid, reason="unknown_wallet",
+                                  message="this wallet has started no task on treg")
+        if not verified.deferrable:
+            raise await challenge(paid, reason="signature_needed",
+                                  message="send a signed payment that treg can check without "
+                                          "settling it")
+    else:
+        org_id = await _payer_org(verified.payer)
     payment_id, draw = await _claim(verified, org_id, paid.quote_micro)
     if draw is None:
         raise await challenge(paid, reason="payment_replayed",
@@ -228,6 +276,12 @@ async def _settle_and_credit(rail: PaymentRail, verified: Verified, paid: PaidOf
         raise
     await _credit(payment_id, settlement.reference)
     return settlement
+
+
+async def _known_payer_org(address: str) -> int | None:
+    async with session_maker() as db:
+        payer = await db.get(AgentPayer, address)
+        return payer.org_id if payer is not None else None
 
 
 async def _payer_org(address: str) -> int:

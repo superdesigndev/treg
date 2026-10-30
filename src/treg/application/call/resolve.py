@@ -2539,9 +2539,16 @@ def provider_paused(service: str, endpoint_id: str | None = None) -> ResolutionF
                             detail=oauth_providers.paused_detail(service, endpoint_id))
 
 
-def wallet_refusal(ep: dict) -> str:
+def async_utility(ep: dict) -> bool:
+    """A free poll or result fetch that treg authorizes through the caller team's own submission
+    (`_enforce_platform_async_ownership`)."""
+    return bool((ep.get("resource_ownership") or {}).get("requires") or _async_resource_refs(ep))
+
+
+def wallet_refusal(ep: dict, *, allow_free: bool = False) -> str:
     """Why treg's own key cannot serve `ep` to a caller that holds no credential of its own, or
-    "" when it can for some query. Pure: no session, no network."""
+    "" when it can for some query. `allow_free` admits a free endpoint. Pure: no session, no
+    network."""
     if ep["id"].startswith("treg."):
         return "routed"
     if ep.get("status"):
@@ -2555,19 +2562,22 @@ def wallet_refusal(ep: dict) -> str:
         return "paused"
     cat = catalog_store.load()
     cost = cat.cost_view(ep.get("cost"), ep["provider"])
-    if ep.get("platform_auth") == "anonymous" or not cost or cost.get("type") == "free":
+    if ep.get("platform_auth") == "anonymous" or not cost:
+        return "free"
+    if cost.get("type") == "free" and not allow_free:
         return "free"
     if not cat.platform_eligible(ep) or not get_settings().platform_key_for(ep["provider"]):
         return "own_key_only"
     return ""
 
 
-def platform_quote(ep: dict, query: QueryValues, body: bytes) -> tuple[int, str]:
+def platform_quote(ep: dict, query: QueryValues, body: bytes, *,
+                   allow_free: bool = False) -> tuple[int, str]:
     """The raw estimate a tier-4 call of `ep` would reserve for this query and body, and "", or
     0 and the reason a caller holding no credential cannot pay for it. The agent-payments
     challenge prices from this, before any team exists
     (docs/context/architecture/agent-payments.md)."""
-    if reason := wallet_refusal(ep):
+    if reason := wallet_refusal(ep, allow_free=allow_free):
         return 0, reason
     provider = oauth_providers.get(ep["provider"])
     try:
@@ -2575,7 +2585,7 @@ def platform_quote(ep: dict, query: QueryValues, body: bytes) -> tuple[int, str]
     except ResolutionFailed:
         return 0, "invalid_request"
     estimate = price_call(ep, query, body, consumed).estimate_micro
-    return (estimate, "") if estimate > 0 else (0, "free")
+    return (estimate, "") if estimate > 0 or allow_free else (0, "free")
 
 
 async def resolve_marketplace_target(

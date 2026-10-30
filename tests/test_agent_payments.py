@@ -33,6 +33,7 @@ from treg.models import AgentPayer, AgentPayment, Hold, LedgerEntry
 EP = "tikhub.tiktok.video.comments"   # $0.001 per call on treg's key
 EP_MICRO = 1_000
 FLOOR = 50_000
+POLL = "bounceban.people.email.verify.status"
 RECIPIENT = "0x742d35Cc6634c0532925a3b844bC9e7595F8fE00"
 TEMPO_PAYER = "0x" + "ab" * 20
 X402_ASSET = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
@@ -111,7 +112,8 @@ def facilitator():
 def payments_on(monkeypatch, chain, facilitator):
     for name, value in {
         "TREG_PLATFORM_KEY_TIKHUB": "PLATFORM-TIKHUB-KEY",
-        "TREG_PLATFORM_PROVIDERS": "tikhub",
+        "TREG_PLATFORM_KEY_BOUNCEBAN": "PLATFORM-BOUNCEBAN-KEY",
+        "TREG_PLATFORM_PROVIDERS": "tikhub,bounceban",
         "TREG_AGENT_PAYMENTS_ENABLED": "1",
         "TREG_AGENT_PAYMENTS_MPP_ENABLED": "1",
         "TREG_AGENT_PAYMENTS_X402_ENABLED": "1",
@@ -275,6 +277,59 @@ async def test_any_treg_credential_takes_the_account_path(anon: AsyncClient, cli
     assert "X-Treg-Payment" not in r.headers
     async with session_maker() as db:
         assert (await db.execute(select(AgentPayment))).first() is None
+
+
+# ---- what the catalog tells a keyless agent -------------------------------------------------------
+async def test_search_and_details_say_whether_a_wallet_can_pay(anon: AsyncClient, payments_on):
+    detail = (await anon.get(f"/catalog/endpoints/{EP}")).json()["endpoint"]["wallet"]
+    assert detail["payable"] and detail["minimum_payment_micro"] == FLOOR
+    assert detail["protocols"] == ["mpp", "x402"] and "not refunded" in detail["note"]
+    poll = (await anon.get(f"/catalog/endpoints/{POLL}")).json()["endpoint"]["wallet"]
+    assert poll["payable"] and poll["free_for_task_owner"]
+    rows = (await anon.get("/catalog/search", params={"q": "tiktok video comments", "limit": 50})).json()["results"]
+    row = next(r for r in rows if r["id"] == EP)
+    assert row["wallet"]["payable"]
+    assert any(r.get("wallet", {}).get("payable") is False and r["wallet"]["reason"] for r in rows)
+
+
+async def test_the_catalog_says_nothing_about_wallets_while_payments_are_off(anon: AsyncClient):
+    assert "wallet" not in (await anon.get(f"/catalog/endpoints/{EP}")).json()["endpoint"]
+
+
+# ---- polling a task the wallet started ------------------------------------------------------------
+async def test_a_poll_is_refused_to_a_wallet_treg_does_not_know(anon: AsyncClient, payments_on,
+                                                               facilitator):
+    challenge = await anon.get(f"/call/{POLL}?id=task-1")
+    assert challenge.status_code == 402, challenge.text
+    assert challenge.json()["detail"]["reason"] == "proof_required"
+    assert "never settles" in challenge.json()["detail"]["message"]
+    credential, payer = _x402_credential(challenge)
+    r = await anon.get(f"/call/{POLL}?id=task-1", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 402 and r.json()["detail"]["reason"] == "unknown_wallet"
+    assert facilitator.settles == 0
+    async with session_maker() as db:
+        assert await db.get(AgentPayer, payer) is None
+
+
+async def test_a_known_wallet_polls_as_its_team_and_never_pays(anon: AsyncClient, payments_on,
+                                                               facilitator, monkeypatch):
+    calls: list = []
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, calls=calls))
+    account = Account.create()
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, payer = _x402_credential(challenge, account)
+    assert (await anon.get(f"/call/{EP}?aweme_id=7",
+                           headers={"PAYMENT-SIGNATURE": credential})).status_code == 200
+    balance = await _balance(payer)
+    challenge = await anon.get(f"/call/{POLL}?id=someone-elses-task")
+    credential, _ = _x402_credential(challenge, account)
+    r = await anon.get(f"/call/{POLL}?id=someone-elses-task",
+                       headers={"PAYMENT-SIGNATURE": credential})
+    # The poll ran as the payer team, and treg's ownership check refused another team's task.
+    assert r.status_code == 403 and r.json()["detail"]["error"] == "async_resource_not_owned"
+    assert r.headers["X-Treg-Payment"] == "credit"
+    assert facilitator.settles == 1 and len(calls) == 1
+    assert await _balance(payer) == balance
 
 
 # ---- paying -------------------------------------------------------------------------------------
