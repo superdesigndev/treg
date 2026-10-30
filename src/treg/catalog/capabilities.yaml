@@ -94,6 +94,7 @@ platforms:
   imdb: {label: "IMDb", category: "Reviews & Apps", featured: 4, summary: "Titles, ratings, cast, box office and reviews from IMDb."}
   tripadvisor: {label: "Tripadvisor", category: "Reviews & Apps", summary: "Hotels, restaurants and reviews from Tripadvisor."}
   douban: {label: "Douban (film, TV and book reviews)", category: "Reviews & Apps", summary: "Movie, TV and book ratings and reviews from Douban."}
+  web-games: {label: "Free browser games", category: "Reviews & Apps", summary: "Free games you play in a web browser, each checked playable and content-rated: search, recommendations, similar games, trending and new games, with play links."}
 
   # --- Advertising: ad platforms & creator marketplaces ----------------------------------------
   google-ads: {label: "Google Ads", category: "Advertising", featured: 1, summary: "Query your own Google Ads accounts with GAQL, and manage campaign budgets."}

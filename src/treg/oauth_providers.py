@@ -3925,6 +3925,38 @@ FINANCIALDATASETS = OAuthProvider(
     ),
 )
 
+ARCADEINDEX = OAuthProvider(
+    service="arcadeindex",
+    display_name="ArcadeIndex",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="arcadeindex_live_…",
+    # ArcadeIndex accepts the key as X-API-Key or Authorization: Bearer. Use the header form so the
+    # key never lands in a logged URL.
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://arcadeindex.io/portal/api-keys",
+    setup_action_label="Get your ArcadeIndex API key",
+    setup_steps=(
+        "Open the ArcadeIndex API keys page and sign in with the emailed link.",
+        "Under Create a key, create a key and copy it (it is shown once).",
+    ),
+    setup_note=(
+        "Every read is free per call. A free key raises the limits to 600 requests per minute and "
+        "100,000 per day; the full catalog export needs the Business plan."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Search, describe and recommend free browser games, each checked playable, with play links.",
+    base_url="https://arcadeindex.io/api/v1",
+    docs_url="https://arcadeindex.io/api/docs",
+    # Every data GET checks the key: a malformed, unknown or revoked key gets 401 UNAUTHORIZED.
+    # The genre list is the smallest such route; it costs one rate-limit unit and no money.
+    probe_path="/taxonomy/genres",
+)
+
 
 # Alpha Vantage is DELIBERATELY absent. Its API serves real quote data to a garbage key (bogus
 # key -> HTTP 200 with the IBM quote; even premium endpoints answer 200 with an upsell note), so a
@@ -4141,6 +4173,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
+        # Research & public data API-key providers
+        ARCADEINDEX,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,

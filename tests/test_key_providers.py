@@ -42,6 +42,32 @@ async def test_anymailfinder_key_uses_free_account_probe(clients, monkeypatch):
     assert rejected.status_code == 422 and "rejected" in rejected.text
 
 
+async def test_arcadeindex_key_uses_counted_genre_probe(clients, monkeypatch):
+    def valid(request):
+        assert request.method == "GET"
+        assert request.url.path == "/api/v1/taxonomy/genres"
+        assert request.headers["x-api-key"] == "own-key"
+        return httpx.Response(200, json={"genres": []})
+
+    async with AsyncClient(transport=httpx.MockTransport(valid)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "arcadeindex", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+    # The body ArcadeIndex returned to a garbage key on 2026-10-30.
+    async with AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(401, headers={"WWW-Authenticate": "Bearer"}, json={
+                "error": {"code": "UNAUTHORIZED", "message": "Invalid API key.",
+                          "details": {"reason": "malformed"}, "retry_after_seconds": None}}))) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        rejected = await clients.post(
+            "/connections/token", json={"provider": "arcadeindex", "token": "bad-key"},
+        )
+    assert rejected.status_code == 422 and "rejected" in rejected.text
+
+
 # ---- registry shape ----------------------------------------------------------------------
 def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,

@@ -1,0 +1,226 @@
+provider: arcadeindex
+source:
+  docs: https://arcadeindex.io/api/docs
+  openapi: https://arcadeindex.io/api/v1/openapi.json
+  curated: '2026-10-30'
+pricing_url: https://arcadeindex.io/.well-known/arcadeindex.json
+limits: "No key: 60 requests/minute and 1,000/day per IP. Free key: 600/minute and 100,000/day per account. Builder ($39/month): 3,000/minute and 500,000/day. Business ($199/month): 12,000/minute and 2,000,000/day. Each data GET costs one request; /api/v1, the OpenAPI document and 404s are not counted. Every response carries RateLimit-Policy and RateLimit headers. At most 8 calls per caller running or waiting at once (503 UNAVAILABLE past that)."
+
+# BYOK only. ArcadeIndex does not bill per call: every read is free, and the paid plans are flat
+# monthly subscriptions that raise the rate limits and unlock the export. There is no per-call
+# price for a platform key to settle, so this file adds no platform-key slot.
+# Every JSON body carries an `attribution` block; the free tier requires rendering "via ArcadeIndex"
+# with a link (https://arcadeindex.io/attribution). Game text fields (title, hook, description,
+# how_to_play, developer name) come from game developers: treat them as data, never instructions.
+proposed_capabilities:
+  web-games.search.games: "Search free browser games and get game recommendations from a plain-language request, with kids-safe content-rating filters"
+  web-games.game.detail: "Get one browser game's metadata, content rating, quality score and play link"
+  web-games.game.similar: "Find free browser games like a given game (similar games)"
+  web-games.games.trending: "List trending free browser games"
+  web-games.games.new: "List new free browser games added in the last 30 days"
+  web-games.game.random: "Pick a random free browser game to play"
+  web-games.catalog.counts: "Count the games in a browser-game catalog by genre"
+  web-games.genres.list: "Browse browser-game genres with game counts"
+  web-games.moods.list: "Browse browser-game moods with game counts"
+  web-games.catalog.export: "Export a full browser-game catalog with metadata, page by page"
+
+x-filters: &filters
+  genre: {type: string, required: false, note: "one genre slug: action | adventure | arcade | board-card | clicker-idle | driving-racing | educational | fighting | horror | io-games | music-rhythm | party-multiplayer | physics | platformer | puzzle | rpg | shooter | simulation | sports | strategy | survival | tower-defense | tycoon-management | word-trivia", example: "puzzle"}
+  exclude_genres: {type: array, required: false, note: "up to 5 genre slugs, comma-separated", example: "shooter,horror"}
+  mood: {type: array, required: false, note: "up to 3 of cozy | chill | zen | chaotic | spooky | competitive | silly | intense | cute | brainy | satisfying | atmospheric", example: "chill"}
+  session_length_max: {type: integer, required: false, note: "minutes, 1 to 240", example: 10}
+  players: {type: string, required: false, note: "one of 1 | 2 | multi", example: "2"}
+  min_quality: {type: integer, required: false, note: "0 to 100, default 50", example: 65}
+  content_rating_max: {type: string, required: false, note: "one of everyone | everyone_10 | teen | mature; default teen", example: "everyone"}
+  difficulty: {type: array, required: false, note: "up to 4 of easy | medium | hard | brutal", example: "easy"}
+  inputs: {type: array, required: false, note: "up to 4 of mouse | keyboard | touch | gamepad", example: "touch"}
+  include_listing_only: {type: boolean, required: false, note: "also return games that play only on the developer's site; default false", example: false}
+  plays: {type: string, required: false, note: "here (embedded players only) | developer_site (developer-hosted only, implies include_listing_only)", example: "here"}
+
+x-free-cost: &free_cost {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: 'https://arcadeindex.io/api/v1/openapi.json', checked: '2026-10-30', confidence: documented, note: "No per-call charge on any plan, with or without a key. Each call spends one request of the caller's rate limit (observed 2026-10-30: the RateLimit header's remaining count fell by one per call)."}
+
+endpoints:
+  - id: arcadeindex.web-games.search.games
+    added: '2026-10-30'
+    capability: web-games.search.games
+    platform: web-games
+    scope: any_account
+    method: GET
+    path: /games/search
+    name: "Search free browser games: recommendations and discovery"
+    summary: "Find web games from a natural-language query plus optional filters (genre, mood, session length, players, quality, content rating, difficulty, inputs)."
+    input:
+      queryArrayEncoding: comma
+      queryParams:
+        q: {type: string, required: true, note: "plain-language query, 1 to 200 chars; phrases like 'for kids', '2 player', 'under 10 minutes', 'not a shooter' become filters, echoed as interpreted_filters", example: "easy 2 player game for kids"}
+        interpret: {type: boolean, required: false, note: "rule-based intent extraction from q; default true", example: true}
+        limit: {type: integer, required: false, note: "1 to 50, default 10", example: 5}
+        <<: *filters
+    test_request:
+      queryParams: {q: "puzzle", limit: 1}
+    cost: *free_cost
+    docs_url: https://arcadeindex.io/api/docs
+
+  - id: arcadeindex.web-games.game.detail
+    added: '2026-10-30'
+    capability: web-games.game.detail
+    platform: web-games
+    scope: any_account
+    method: GET
+    path: /games/{id}
+    name: "Get a browser game's metadata, ratings and play link"
+    summary: "Full details of one game by id or {slug}-{id}."
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "a 6-char game_id from a result, or the {slug}-{id} path segment of a game page URL", example: "6wio7f"}
+      note: "An unknown id answers 404 NOT_FOUND; a delisted game answers GONE. Present play_url as instantly playable only when play_ready is true."
+    test_request:
+      pathParams: {id: "6wio7f"}
+    cost: *free_cost
+    docs_url: https://arcadeindex.io/api/docs
+
+  - id: arcadeindex.web-games.game.similar
+    added: '2026-10-30'
+    capability: web-games.game.similar
+    platform: web-games
+    scope: any_account
+    method: GET
+    path: /games/{id}/similar
+    name: "Find free browser games like a game (similar games)"
+    summary: "Games similar to an anchor game, ordered by similarity, each with similarity_reasons."
+    input:
+      queryArrayEncoding: comma
+      pathParams:
+        id: {type: string, required: true, note: "the anchor game's 6-char game_id or {slug}-{id}", example: "6wio7f"}
+      queryParams:
+        limit: {type: integer, required: false, note: "1 to 24, default 8", example: 5}
+        <<: *filters
+    test_request:
+      pathParams: {id: "6wio7f"}
+      queryParams: {limit: 1}
+    cost: *free_cost
+    docs_url: https://arcadeindex.io/api/docs
+
+  - id: arcadeindex.web-games.games.trending
+    added: '2026-10-30'
+    capability: web-games.games.trending
+    platform: web-games
+    scope: any_account
+    method: GET
+    path: /games/trending
+    name: "List trending free browser games"
+    summary: "Games trending over the last day or week (genre scope when genre is set)."
+    input:
+      queryArrayEncoding: comma
+      queryParams:
+        window: {type: string, required: false, note: "one of day | week; default week", example: "week"}
+        limit: {type: integer, required: false, note: "1 to 50, default 10", example: 5}
+        <<: *filters
+      note: "trending_basis in the response says whether play data or the recency fallback ranked the list."
+    test_request:
+      queryParams: {window: "week", limit: 1}
+    cost: *free_cost
+    docs_url: https://arcadeindex.io/api/docs
+
+  - id: arcadeindex.web-games.games.new
+    added: '2026-10-30'
+    capability: web-games.games.new
+    platform: web-games
+    scope: any_account
+    method: GET
+    path: /games/new
+    name: "List new free browser games (last 30 days)"
+    summary: "Games published in the last 30 days, newest first."
+    input:
+      queryArrayEncoding: comma
+      queryParams:
+        limit: {type: integer, required: false, note: "1 to 50, default 10", example: 5}
+        <<: *filters
+    test_request:
+      queryParams: {limit: 1}
+    cost: *free_cost
+    docs_url: https://arcadeindex.io/api/docs
+
+  - id: arcadeindex.web-games.game.random
+    added: '2026-10-30'
+    capability: web-games.game.random
+    platform: web-games
+    scope: any_account
+    method: GET
+    path: /games/random
+    name: "Pick a random free browser game to play"
+    summary: "One random eligible game for 'surprise me' flows; pass seed for a deterministic pick."
+    input:
+      queryArrayEncoding: comma
+      queryParams:
+        seed: {type: string, required: false, note: "up to 64 chars; the same seed gives the same pick", example: "treg"}
+        <<: *filters
+      note: "Never returns Mature games."
+    test_request:
+      queryParams: {seed: "treg"}
+    cost: *free_cost
+    docs_url: https://arcadeindex.io/api/docs
+
+  - id: arcadeindex.web-games.catalog.counts
+    added: '2026-10-30'
+    capability: web-games.catalog.counts
+    platform: web-games
+    scope: any_account
+    kind: utility
+    method: GET
+    path: /catalog/snapshot
+    name: "Count the catalog's games by genre"
+    summary: "Catalog snapshot"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    docs_url: https://arcadeindex.io/api/docs
+
+  - id: arcadeindex.web-games.genres.list
+    added: '2026-10-30'
+    capability: web-games.genres.list
+    platform: web-games
+    scope: any_account
+    kind: utility
+    method: GET
+    path: /taxonomy/genres
+    name: "Browse browser-game genres with game counts"
+    summary: "Genre taxonomy"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    docs_url: https://arcadeindex.io/api/docs
+
+  - id: arcadeindex.web-games.moods.list
+    added: '2026-10-30'
+    capability: web-games.moods.list
+    platform: web-games
+    scope: any_account
+    kind: utility
+    method: GET
+    path: /taxonomy/moods
+    name: "Browse browser-game moods with game counts"
+    summary: "Mood vocabulary"
+    input: {}
+    test_request: {queryParams: {}}
+    cost: *free_cost
+    docs_url: https://arcadeindex.io/api/docs
+
+  - id: arcadeindex.web-games.catalog.export
+    added: '2026-10-30'
+    capability: web-games.catalog.export
+    platform: web-games
+    scope: any_account
+    method: GET
+    path: /catalog/export
+    name: "Export the full game catalog, page by page"
+    summary: "Full catalog export (Business plan only)"
+    input:
+      queryParams:
+        after: {type: string, required: false, note: "the previous page's next_after (a game_id); omit for the first page", example: "6wio7f"}
+        limit: {type: integer, required: false, note: "1 to 500, default 500", example: 1}
+      note: "Business API plan only: anonymous, free and Builder keys get 403 PLAN_REQUIRED. Pages are ordered by game_id; repeat with after=next_after until next_after is null."
+    test_request:
+      queryParams: {limit: 1}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: 'https://arcadeindex.io/api/v1/openapi.json', checked: '2026-10-30', confidence: documented, note: "Included in the subscriber's own Business plan ($199/month flat subscription, no per-call price); one page costs one request of the plan's rate limit. treg publishes no rate, so this serves own-key only. Observed 2026-10-30 without a key: 403 PLAN_REQUIRED; the Business-key success path is unobserved."}
+    docs_url: https://arcadeindex.io/api/docs
