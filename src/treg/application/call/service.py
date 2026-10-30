@@ -49,6 +49,7 @@ from .evidence import (
     _error_response_evidence,
     _redact_snippet,
     _ERROR_SCAN_MAX,
+    _EVIDENCE_HEADERS,
     UNSCANNABLE_ERROR_BODY,
     _safe_secret_renderings,
     redact_error_response,
@@ -73,7 +74,7 @@ from .resolve import (
 )
 from . import overflow as overflow_cycle
 from . import route as routed
-from .settle import _dig
+from .settle import _CREDIT_HEADERS, _dig
 from .settle import (
     _finish_cancelled_call as finish_cancelled_call,
     _note_capacity_recovery,
@@ -150,6 +151,26 @@ def _echoes_own_credential(tool, secrets, body: bytes) -> bool:
     if renderings is None:
         return True
     return any(r and r.encode("utf-8", "replace") in body for r in renderings)
+
+
+# The response headers an archived answer keeps: the ones a settle reads a charge from and the
+# failure-evidence allowlist. Never the whole bag: `authorization` and `set-cookie` live there too.
+_ARCHIVED_HEADERS = frozenset(name for name, _ in _CREDIT_HEADERS.values()) | frozenset(_EVIDENCE_HEADERS)
+
+
+def _archived_headers(tool, secrets, raw_headers) -> dict[str, str]:
+    """The allowlisted headers of an answer, repeated names joined as httpx joins them. A value
+    quoting an injected credential is left out, and nothing is kept when the credentials cannot be
+    rendered to check."""
+    renderings = _safe_secret_renderings(tool, secrets)
+    if renderings is None:
+        return {}
+    kept: dict[str, str] = {}
+    for key, value in raw_headers:
+        name, text = key.decode("latin-1").lower(), value.decode("latin-1")
+        if name in _ARCHIVED_HEADERS and not any(r and r in text for r in renderings):
+            kept[name] = f"{kept[name]}, {text}" if name in kept else text
+    return kept
 
 
 def _identity_encoded(response: UpstreamResponse) -> bool:
@@ -719,6 +740,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     # archive records or serves; kept on the audit row so `/calls/{id}/result` can find it.
     archive_key_hash: str | None = None
     archive_content_hash: str | None = None
+    archive_history_only = False
     smoothed: list[str] = []  # what burst smoothing did (`wait=<ms>`, `retry=1`) - set on the relay path
     mk: MarketplaceCall | None = None
     own_tool_miss: dict | None = None
@@ -1469,25 +1491,32 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 if (mk.metered and archive.recording() and not archive_opted_out
                         and 200 <= response.status < 300
                         and spooled_bytes is None and not _unfinished_submission(mk, body)
-                        and catalog_results.fails_expect(mk.endpoint_id, body) is None
                         and not (own_credential and _echoes_own_credential(tool, secrets, body))
                         and not _account_out_2xx(mk, response, body)):
-                    _ct = next((v.decode("latin-1") for k, v in response.raw_headers
-                                if k.lower() == b"content-type"), "")
-                    body_observation = archive.archive_bodies.StorageReport(
-                        call_ref=call_ref, emit=lambda props: analytics.capture(
-                            audit_email, "archive_body_stored", props, groups={"team": audit_slug}))
-                    archive_key_hash, archive_content_hash = archive.record(
-                        method=request.method, endpoint_id=mk.endpoint_id, provider=mk.provider,
-                        url=archive.key_url(upstream_url,
-                                            list(request.query_params.multi_items()),
-                                            drop_params or set()),
-                        caller_body=caller_body,
-                        headers={k: request.headers.get(k, "") for k in ("accept", "accept-language")},
-                        status_code=response.status, media_type=_ct, body=body,
-                        observation=body_observation,
-                        origin_org_id=caller.org_id if own_credential else None,
-                        scope=cache_scopes[0])
+                    # A 2xx the endpoint's `expect` rule rejects is the provider saying the request
+                    # failed: kept as history only, and only where the bytes may be kept at all.
+                    archive_history_only = (
+                        catalog_results.fails_expect(mk.endpoint_id, body) is not None)
+                    if not archive_history_only or archive.storable(
+                            catalog_store.load().by_id.get(mk.endpoint_id)):
+                        _ct = next((v.decode("latin-1") for k, v in response.raw_headers
+                                    if k.lower() == b"content-type"), "")
+                        body_observation = archive.archive_bodies.StorageReport(
+                            call_ref=call_ref, emit=lambda props: analytics.capture(
+                                audit_email, "archive_body_stored", props, groups={"team": audit_slug}))
+                        archive_key_hash, archive_content_hash = archive.record(
+                            method=request.method, endpoint_id=mk.endpoint_id, provider=mk.provider,
+                            url=archive.key_url(upstream_url,
+                                                list(request.query_params.multi_items()),
+                                                drop_params or set()),
+                            caller_body=caller_body,
+                            headers={k: request.headers.get(k, "") for k in ("accept", "accept-language")},
+                            status_code=response.status, media_type=_ct, body=body,
+                            observation=body_observation,
+                            origin_org_id=caller.org_id if own_credential else None,
+                            scope=cache_scopes[0],
+                            caller_query=list(request.query_params.multi_items()),
+                            response_headers=_archived_headers(tool, secrets, response.raw_headers))
             elif (served is None and own_key_archivable and 200 <= response.status < 300
                   and _identity_encoded(response)):
                 # An own-key answer: read whole when it fits the archive's cap (bounded, before
@@ -1512,7 +1541,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         headers={k: request.headers.get(k, "") for k in ("accept", "accept-language")},
                         status_code=response.status, media_type=_ct, body=body,
                         observation=body_observation, origin_org_id=caller.org_id,
-                        scope=cache_scopes[0])
+                        scope=cache_scopes[0],
+                        caller_query=list(request.query_params.multi_items()),
+                        response_headers=_archived_headers(tool, secrets, response.raw_headers))
             elif response.status >= 400:
                 # A provider can echo the injected credential anywhere in an error body, so the
                 # caller receives only a body scanned whole (bounded). One too large to scan streams
@@ -1647,9 +1678,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     # for a question that CAN be served: `record()` hands back a hash for every
                     # metered 2xx (the phase-0 statistics count actions and forbidden providers
                     # too), and a mark for an answer that can never be a hit is a wasted write on
-                    # the money path.
+                    # the money path. A history-only answer was a failure: the team has not paid
+                    # for the question.
                     archive_use=((caller.org_id, archive_key_hash)
                                  if archive_key_hash and 200 <= response.status < 300
+                                 and not archive_history_only
                                  and archive.storable(catalog_store.load().by_id.get(mk.endpoint_id))
                                  else None),
                     cached_hit=served_hit, cached_repeat=served_repeat,

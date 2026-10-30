@@ -111,9 +111,10 @@ def fails_expect(endpoint_id: str, body: bytes) -> str | None:
     """`path=value` when a 2xx body fails the endpoint's own `expect` success rule, else None.
 
     The provider said, inside a 2xx, that this request failed (a DataForSEO task status other than
-    20000 under a 20000 envelope). The caller is told, the answer is never archived or called
-    found, and the charge is untouched: settle still bills what the provider reported. An endpoint
-    without a rule, or a body that is not JSON, is not judged here."""
+    20000 under a 20000 envelope). The caller is told, the answer is never served from the
+    archive (which keeps it as history only) or called found, and the charge is untouched: settle
+    still bills what the provider reported. An endpoint without a rule, or a body that is not
+    JSON, is not judged here."""
     try:
         doc = json.loads(body)
     except (ValueError, RecursionError, UnicodeDecodeError, TypeError):

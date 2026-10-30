@@ -270,7 +270,8 @@ deployment can relay - the price a "free" endpoint may actually bill, stated bef
 `<json_path>=<value>` on a metered 2xx whose body fails the endpoint's own `expect` success rule,
 for example `tasks.0.status_code=40101` when a DataForSEO task failed under a 20000 envelope. The
 body is relayed untouched and `X-Treg-Cost-Micro` is what the provider reported for the attempt
-(settlement is unchanged). Such an answer is never archived or replayed and never counts as found.
+(settlement is unchanged). Such an answer is kept in the archive only as history: it is never
+served from it, and never counts as found.
 The MCP `call` result carries it as `upstream_failed` with a `hint`, `treg call` prints a stderr
 line, and `treg --json call` puts it in `_treg.upstream_failed`. A routed child that fails this way
 is a `miss` whose `detail` names the failed value. Absent on an overflow answer, an idempotent

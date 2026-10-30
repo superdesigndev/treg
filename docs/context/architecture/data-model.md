@@ -68,6 +68,7 @@ sources:
   - src/treg/alembic/versions/0088_call_usage_rollup.py
   - src/treg/alembic/versions/0089_ledgerentry_settle_spend_index.py
   - src/treg/alembic/versions/0090_ledgerentry_topup_index.py
+  - src/treg/alembic/versions/0091_archive_replay_fields.py
   - src/treg/application/call_usage_rollup.py
   - src/treg/application/call_usage.py
   - tests/test_call_usage_rollup.py
@@ -183,6 +184,10 @@ question, written by archive inside the metered settle transaction and read by l
 a repeat hit. See [archive](archive.md#own-key-answers),
 [sharing](archive.md#sharing-whose-question-is-it) and
 [pricing a hit](archive.md#pricing-a-hit).
+Migration `0090` adds nullable `ArchiveKey.req_query` (the caller's own query items) and
+`ArchiveSnapshot.response_headers` (allowlisted response headers) and `history_only` (a 2xx the
+endpoint's `expect` rule rejects, never served). Archive remains the only writer; no backfill,
+index or default. See [archive](archive.md#what-a-recording-keeps).
 
 Revision `0033` adds nullable `User.email_verified_at` and non-null `signup_promo_available`,
 with a retained database default of false for existing rows and old writers. New application users

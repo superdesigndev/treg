@@ -1935,6 +1935,10 @@ class ArchiveKey(SQLModel, table=True):
     # "org" | "conn" for a private key (see archive.scope_tags); NULL = public. Declared LAST
     # (migration 0039).
     scope: str | None = Field(default=None)
+    # The caller's own query items, `[[name, value], ...]` in the order sent, path-placeholder
+    # names included (`req_url` is vendor-facing and has them substituted into the path). NULL on
+    # a key no caller has asked since migration 0090.
+    req_query: list | None = Field(default=None, sa_column=Column(JSON))
 
 
 class ArchiveSnapshot(SQLModel, table=True):
@@ -1991,6 +1995,12 @@ class ArchiveSnapshot(SQLModel, table=True):
     # Provenance for the admin views - what confines the answer is the KEY's scope, not this
     # column. Declared LAST (migration 0039).
     origin_org_id: int | None = Field(default=None)
+    # The answer's allowlisted response headers (archive.md, "What a recording keeps"), names
+    # lowercased; NULL when none was sent or the bytes were not kept (migration 0090).
+    response_headers: dict | None = Field(default=None, sa_column=Column(JSON))
+    # True for a 2xx the endpoint's `expect` rule rejects: history only, never served, compared or
+    # learned from. NULL otherwise, and on every snapshot before migration 0090.
+    history_only: bool | None = Field(default=None)
 
 
 class ArchiveKeyOrg(SQLModel, table=True):

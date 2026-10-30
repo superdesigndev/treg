@@ -31,6 +31,8 @@ sources:
   - src/treg/application/archive_erasure.py
   - src/treg/alembic/versions/0067_org_archive_opt_out.py
   - tests/test_archive_opt_out.py
+  - src/treg/alembic/versions/0091_archive_replay_fields.py
+  - tests/test_archive_replay_record.py
 related:
   - architecture/data-model.md
   - architecture/proxy-model.md
@@ -408,7 +410,9 @@ against a fixture does not imply full response-schema validation.
 
 Endpoints without enabled hit/miss rules retain their original latest-snapshot serving, TTL
 learning, and refresh behavior, with one exception on every endpoint: a body failing the `expect`
-rule is never recorded, and one already stored is never served (lookup reports `result_error`). Their unknown business-result metric does not reject caching.
+rule is recorded as history only and never served (see "What a recording keeps"); one an older
+binary stored as an ordinary answer reports `result_error` on lookup. Their unknown
+business-result metric does not reject caching.
 The mode, serving allowlist, cohort and retention gates remain authoritative for every endpoint.
 This policy does not enable cache serving for additional endpoints.
 
@@ -468,7 +472,8 @@ built by the ONE authoritative builder (`oauth_providers.platform_bindings` — 
 api.py so this worker never imports api; the routers→api import boundary forbids that chain)
 and the key value from settings. The refresh spend is treg's own, attached to no org and absent from the ledger — the
 cap is the brake. Each refresh records through the same `_store` (`origin="refresh"`), so
-refreshing IS the sampling that teaches the timer.
+refreshing IS the sampling that teaches the timer. A key holding only history-only answers is
+never a candidate: it has no answer to keep fresh.
 
 ## Serving (PR 4)
 
@@ -567,6 +572,39 @@ caller params, resolution-consumed names excluded) — credential injection happ
 relay, so a credential cannot enter the key or the store from the request side. One considered
 edge for PR 3's per-provider judgment: a vendor that ECHOES the request credential in a 2xx body
 would have it stored — judge `cache` per provider with that in mind.
+
+## What a recording keeps
+
+Besides the body, a recording keeps what a replay of the exchange needs without reconstructing
+it. Migration `0091` adds three nullable columns; NULL is every row from before it.
+
+- **The caller's query** (`ArchiveKey.req_query`): the query items exactly as the caller sent
+  them, order and repeats kept, including the names a `{placeholder}` path consumed. `req_url`
+  stays vendor-facing. The first caller writes it with the key; a key from before the column
+  takes it from its next caller, since every caller of a key asked the same question. A
+  `ceiling_param` treg appends is not in it.
+- **Allowlisted response headers** (`ArchiveSnapshot.response_headers`): the headers a settle
+  reads a charge from (`settle._CREDIT_HEADERS`) and the failure-evidence allowlist
+  (`evidence._EVIDENCE_HEADERS`: `retry-after`, `www-authenticate`, the rate-limit trio, request
+  ids), names lowercased and repeats joined with `, `. Never the whole bag: auth headers and
+  cookies are not on the list, a value that quotes an injected credential is dropped, and nothing
+  is kept when the credentials cannot be rendered to check. Kept only with the body's bytes, so a
+  hash-only row carries none. Refresh and async terminal recordings keep none, and a served hit
+  is not a recording.
+- **History-only answers** (`ArchiveSnapshot.history_only`): a 2xx the endpoint's `expect` rule
+  rejects (`results.fails_expect`) is recorded and marked true, on a caller, own-key or refresh
+  recording alike, wherever the endpoint's bytes may be kept (`archive.storable`); elsewhere it is
+  not recorded at all. It is never served: a legacy key serves its newest answer that is not
+  history-only, and a result-aware key its decisive one (the rejected body classifies as an
+  `expect_failed` error). It is never a comparison baseline or learning evidence (no stable or
+  change count, no timer step, no change event), a caller's does not move the key's `fetched_at`,
+  which refresh ages (a refresh's does, so a failed refresh waits a full window), and it does
+  not mark the team as having paid for the question (`ArchiveKeyOrg`).
+  The call row still links to it, so `/calls/{id}/result` shows the team the failure it got.
+
+Every other recording rule still holds: an opted-out team records nothing, an answer quoting
+the team's own credential is never recorded, the size cap and licence decide whether bytes are
+kept, and erasure removes these columns with their rows.
 
 ## The mode switch
 
@@ -769,7 +807,7 @@ rebuilding JSON from stored values risks the byte-verbatim promise the hashes de
 Profit-shaped shelf clearing: a served hit is revenue with no vendor cost, so a body's right to
 disk is its earning potential. `prune_once` strips BYTES only — every version row keeps its hash,
 size and timestamp, the newest version of every key stays whole (serving and change-detection
-need it), the decisive snapshot and its carrier remain protected even after later errors, and the strip set is decided before carrier protection so a surviving dedup reference
+need it), and so does the newest answer it serves when history-only rows sit above it, the decisive snapshot and its carrier remain protected even after later errors, and the strip set is decided before carrier protection so a surviving dedup reference
 never loses its carrier. Rank of removal: never-servable keys (TTL_NEVER) keep exactly one body,
 age no defense; then old (`archive_prune_min_age_days`, 7) versions beyond the newest
 `archive_prune_keep_versions` (2) on keys undemanded for 14 days. Archive-policy endpoints are

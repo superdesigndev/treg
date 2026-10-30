@@ -85,7 +85,9 @@ the team's CallRecord before resolving its archive reference. A hash is an ident
 access credential. Upstream answers are retained under the existing archive policy. A provider
 that echoes treg's PLATFORM credential in a 2xx body is not sanitized by these guards (judge that
 provider's `cache` with it in mind); an answer that echoes a team's OWN credential is refused by
-the recorder (`_echoes_own_credential`). An own-credential answer is stored under a cache key that
+the recorder (`_echoes_own_credential`). Response headers are kept only from a fixed allowlist
+(charge headers and the failure-evidence set, never auth or cookies), and a header value quoting
+any injected credential is dropped (`_archived_headers`). An own-credential answer is stored under a cache key that
 folds in the org (or the connection, on an `own_account` endpoint), so another team never computes
 the hash that would find it; only an endpoint-level `cache.sharing: public` declaration puts such an
 answer on the public key.

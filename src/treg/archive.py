@@ -361,6 +361,10 @@ def key_url(upstream_url: str, query_items: list[tuple[str, str]], exclude: set[
     return f"{upstream_url}&{q}" if "?" in upstream_url else f"{upstream_url}?{q}"
 
 
+def _query_pairs(items: list[tuple[str, str]] | None) -> list[list[str]] | None:
+    return None if items is None else [[k, v] for k, v in items]
+
+
 def _write_plan(endpoint_id: str, body: bytes, origin: str) -> archive_bodies.WritePlan:
     from .domain.catalog import store as catalog_store
     keep = ((origin == "async_terminal" or storable(catalog_store.load().by_id.get(endpoint_id)))
@@ -384,12 +388,16 @@ def record(
     observation: archive_bodies.StorageReport | None = None,
     origin_org_id: int | None = None,
     scope: str = "",
+    caller_query: list[tuple[str, str]] | None = None,
+    response_headers: dict[str, str] | None = None,
 ) -> tuple[str, str]:
     """Schedule one observation of a catalog answer. Returns immediately; the write runs
     off-request on its own session. Call sites gate on `recording()` and 2xx — this function
     trusts them and never raises. `origin_org_id` names the team whose OWN credential fetched
     the answer (None on treg's platform key) - provenance; `scope` (the first of the caller's
-    `scope_tags`) is what actually confines the answer, by keying it.
+    `scope_tags`) is what actually confines the answer, by keying it. `caller_query` is the
+    query the caller sent and `response_headers` the answer's allowlisted headers, both kept for
+    a replay of the exchange ("What a recording keeps").
 
     Returns `(key_hash, content_hash)` — the identities of the question and of this exact
     answer. They are what the audit row keeps so a call can later be joined back to its stored
@@ -406,7 +414,8 @@ def record(
             method=method, endpoint_id=endpoint_id, provider=provider, url=url,
             caller_body=caller_body, headers=headers, status_code=status_code,
             media_type=media_type, body=body, origin=origin, key_hash=kh, body_hash=ch,
-            observation=observation, plan=plan, origin_org_id=origin_org_id, scope=scope),
+            observation=observation, plan=plan, origin_org_id=origin_org_id, scope=scope,
+            caller_query=caller_query, response_headers=response_headers),
             len(body), observation, content_hash=ch)
         if rejection is None:
             return kh, ch
@@ -429,7 +438,8 @@ def record(
         method=method, endpoint_id=endpoint_id, provider=provider, url=url,
         caller_body=caller_body, headers=headers, status_code=status_code,
         media_type=media_type, body=body, origin=origin, key_hash=kh, body_hash=ch,
-        observation=observation, plan=plan, origin_org_id=origin_org_id, scope=scope))
+        observation=observation, plan=plan, origin_org_id=origin_org_id, scope=scope,
+        caller_query=caller_query, response_headers=response_headers))
     _pending.add(task)
     # Release bytes AND task when done. NOT redundant with drain()'s own removal: on a running
     # server drain() never fires, and this callback is the only exit from `_pending` — without it
@@ -666,6 +676,8 @@ async def _store(
     plan: archive_bodies.WritePlan | None = None,
     origin_org_id: int | None = None,
     scope: str = "",
+    caller_query: list[tuple[str, str]] | None = None,
+    response_headers: dict[str, str] | None = None,
 ) -> None:
     """One recording: upsert the key, append a version, keep the change statistics honest.
 
@@ -700,11 +712,15 @@ async def _store(
                 plan = await archive_bodies.prepare(body, ch, mode=plan.storage, observation=observation)
 
         from .domain.catalog import store as catalog_store
+        from .domain.catalog.results import fails_expect
         cache = (catalog_store.load().by_id.get(endpoint_id) or {}).get("cache")
         ignore_paths = cache.get("ignore_paths", []) if isinstance(cache, dict) else []
+        # The provider said inside a 2xx that the request failed: history, never an answer.
+        history_only = (origin != "async_terminal" and 200 <= status_code < 300
+                        and fails_expect(endpoint_id, body) is not None)
         ignored_matches = set()
         initial_results = {}
-        if plan.storage is not None and origin in ("caller", "refresh"):
+        if plan.storage is not None and origin in ("caller", "refresh") and not history_only:
             async with observation.wait(_get_sem(), "compare_sem_wait"):
                 with observation.measure("compare"):
                     ignored_matches = await _ignored_matches(kh, body, ignore_paths, initial_results)
@@ -727,7 +743,9 @@ async def _store(
                                 caller_body=caller_body, headers=headers, status_code=status_code,
                                 media_type=media_type, body=body, origin=origin,
                                 key_hash=kh, body_hash=ch, plan=plan, ignored_matches=ignored_matches,
-                                initial_results=initial_results, origin_org_id=origin_org_id, scope=scope)
+                                initial_results=initial_results, origin_org_id=origin_org_id, scope=scope,
+                                caller_query=caller_query, response_headers=response_headers,
+                                history_only=history_only)
                             stored, reason = plan.storage, plan.reason
                             break
                         except IntegrityError:
@@ -851,10 +869,18 @@ async def _ignored_matches(key_hash: str, body: bytes, paths: list[str],
                     ArchiveKey.key_hash == key_hash))).scalar_one_or_none()
                 if key is None:
                     return matches
-                latest = (await s.execute(select(ArchiveSnapshot.id).where(
-                    ArchiveSnapshot.key_id == key.id).order_by(ArchiveSnapshot.version.desc())
-                    .limit(1))).scalar_one_or_none()
-                ids = {i for i in (latest, key.result_snapshot_id) if i is not None}
+                latest_row = (await s.execute(select(ArchiveSnapshot.id, ArchiveSnapshot.history_only)
+                    .where(ArchiveSnapshot.key_id == key.id).order_by(ArchiveSnapshot.version.desc())
+                    .limit(1))).first()
+                latest = latest_row[0] if latest_row else None
+                serving = None
+                if latest_row is not None and latest_row[1]:
+                    # A legacy key compares against its newest answer, which a history-only row
+                    # is not.
+                    serving = (await s.execute(select(ArchiveSnapshot.id).where(
+                        ArchiveSnapshot.key_id == key.id, ArchiveSnapshot.history_only.is_not(True))
+                        .order_by(ArchiveSnapshot.version.desc()).limit(1))).scalar_one_or_none()
+                ids = {i for i in (latest, serving, key.result_snapshot_id) if i is not None}
                 rows = (await s.execute(select(ArchiveSnapshot).where(
                     ArchiveSnapshot.key_id == key.id, ArchiveSnapshot.id.in_(ids))
                     .options(*archive_bodies.read_options("observation")))).scalars().all()
@@ -1015,6 +1041,9 @@ async def _store_locked(
     initial_results: dict | None = None,
     origin_org_id: int | None = None,
     scope: str = "",
+    caller_query: list[tuple[str, str]] | None = None,
+    response_headers: dict[str, str] | None = None,
+    history_only: bool = False,
 ) -> tuple[int, bool] | None:
     from sqlalchemy import select
     from sqlalchemy.exc import IntegrityError
@@ -1049,6 +1078,7 @@ async def _store_locked(
                              ttl_s=ttl_for(entry),
                              req_method=method.upper(), req_url=url,
                              req_body=caller_body or None, req_headers=kept,
+                             req_query=_query_pairs(caller_query),
                              # "org" | "conn" for a private key; NULL = public (and every
                              # key from before the column). The refresh worker skips private
                              # keys: treg's platform key cannot re-ask a private question.
@@ -1066,6 +1096,10 @@ async def _store_locked(
         # two processes from both choosing version N+1. Re-lock after the key-creation commit
         # as well, because that commit necessarily released the insert transaction's locks.
         key = await _lock_archive_key(s, key.id)
+        if key.req_query is None and caller_query is not None:
+            # A key from before the column learns its caller query from the next caller. Every
+            # caller of one key asked the same question, so any of their queries is the query.
+            key.req_query = _query_pairs(caller_query)
 
         newest_row = (await s.execute(
             select(ArchiveSnapshot, ArchiveSnapshot.body.is_not(None))
@@ -1082,7 +1116,9 @@ async def _store_locked(
             status_code=status_code, media_type=media_type, content_hash=ch,
             body=stored, enc=enc, size_bytes=len(body),
             fetched_at=now, origin=origin, body_storage=plan.storage,
-            origin_org_id=origin_org_id)
+            origin_org_id=origin_org_id,
+            response_headers=(response_headers or None) if plan.storage is not None else None,
+            history_only=True if history_only else None)
         # Byte deduplication is independent of usefulness, including empty history.
         if newest is not None and newest.content_hash == ch:
             carrier = newest.body_of or (newest.id if newest_has_body else None)
@@ -1092,6 +1128,11 @@ async def _store_locked(
         baseline = None
         if not result_aware:
             baseline = newest
+            if newest is not None and newest.history_only:
+                baseline = (await s.execute(
+                    select(ArchiveSnapshot).options(*archive_bodies.read_options("initialization"))
+                    .where(ArchiveSnapshot.key_id == key.id, ArchiveSnapshot.history_only.is_not(True))
+                    .order_by(ArchiveSnapshot.version.desc()).limit(1))).scalars().first()
             key.result_state = key.result_snapshot_id = None
         elif (key.result_state is None or
                 (newest is not None and key.result_observed_version != newest.version)):
@@ -1123,7 +1164,7 @@ async def _store_locked(
                 baseline = None
 
         previous_state = key.result_state if result_aware else "found"
-        next_state = result.state if result_aware else "found"
+        next_state = result.state if result_aware else "error" if history_only else "found"
         masked_by_ignore = False
         comparison_baseline = None
         decisive = next_state in ("found", "empty") and origin != "async_terminal"
@@ -1140,7 +1181,9 @@ async def _store_locked(
             # Both event properties must describe the pair that drove TTL learning. The
             # newest row may only be intervening unknown/error evidence, not this baseline.
             comparison_baseline = baseline
-        key.fetched_at, key.policy = now, pol
+        key.policy = pol
+        if not history_only or origin == "refresh":
+            key.fetched_at = now
         if origin == "caller":     # a refresh is treg asking itself — never demand
             key.last_requested_at = now
         s.add(key)
@@ -1239,8 +1282,10 @@ async def prune_once() -> int:
             # Decide the strip set FIRST, then protect the carriers of everything that survives —
             # a surviving version may reference a body on an older row (dedup), and stripping the
             # carrier would silently orphan it.
+            # The answer a legacy key serves is its newest one that is not history-only.
+            serving = next((v.id for v in versions if not v.history_only), None)
             candidates = [v for v in versions[budget:]
-                          if v.id != key.result_snapshot_id
+                          if v.id not in (key.result_snapshot_id, serving)
                           and v.body is not None
                           and (key.ttl_s == TTL_NEVER or v.fetched_at <= min_age)]
             surviving = [v for v in versions if v not in candidates]
@@ -1501,7 +1546,11 @@ async def _lookup_key(kh: str, *, entry, endpoint_id: str, result_aware: bool,
         if window <= 0:
             return miss("ttl_disabled")
         newest = (await s.execute(
-            select(ArchiveSnapshot).options(*archive_bodies.read_options("lookup")).where(ArchiveSnapshot.key_id == key.id)
+            select(ArchiveSnapshot).options(*archive_bodies.read_options("lookup")).where(
+                ArchiveSnapshot.key_id == key.id,
+                # Result-aware keys point at their decisive answer below; a legacy key serves
+                # its newest answer, and history-only rows are not answers.
+                *([] if result_aware else [ArchiveSnapshot.history_only.is_not(True)]))
             .order_by(ArchiveSnapshot.version.desc()).limit(1))).scalars().first()
         # Older writers can still append during a rolling deploy. A version they wrote
         # invalidates our saved decision; classify that newest body as legacy evidence.
@@ -1692,7 +1741,7 @@ async def refresh_once(client) -> int:
     record the answers (origin="refresh"). Returns how many were refreshed."""
     if not worker_enabled():
         return 0
-    from sqlalchemy import func, select
+    from sqlalchemy import exists, func, select
 
     from .domain.catalog import store as catalog_store
     from .infra.db import background_session_maker
@@ -1706,7 +1755,10 @@ async def refresh_once(client) -> int:
             .where(*([ArchiveKey.endpoint_id.in_(serve_endpoints())] if serve_ids_only() else []),
                    ArchiveKey.ttl_s > 0,
                    ArchiveKey.req_url != "",
-                   ArchiveKey.last_requested_at.is_not(None))
+                   ArchiveKey.last_requested_at.is_not(None),
+                   # A question only ever answered with failures has no answer to keep fresh.
+                   exists().where(ArchiveSnapshot.key_id == ArchiveKey.id,
+                                  ArchiveSnapshot.history_only.is_not(True)))
             .order_by(ArchiveKey.fetched_at))).scalars().all()
         # Today's refresh spend per provider — counted from the snapshots themselves, no extra
         # bookkeeping table to drift.
