@@ -332,32 +332,28 @@ async def _paid_call(rest: str, request: Request) -> Response:
         raise HTTPException(status_code=401, detail="not authenticated")
     body = await _capped_body(request) if _may_have_body(request) else b""
     raw_path = request.scope.get("raw_path")
-    path = raw_path.decode("ascii", "replace") if raw_path else request.url.path
-    paid = await agent_payments.quote(
-        rest=rest, method=request.method, path=path, query=request.url.query or "",
-        query_items=tuple(request.query_params.multi_items()), body=body)
-    if paid is None:
-        raise HTTPException(status_code=401, detail="not authenticated")
     try:
-        admission = await agent_payments.admit(paid, request.headers)
+        paid = await agent_payments.open_call(
+            rest=rest, method=request.method,
+            path=raw_path.decode("ascii", "replace") if raw_path else request.url.path,
+            query=request.url.query or "", query_items=tuple(request.query_params.multi_items()),
+            body=body, headers=request.headers, raw_headers=request.headers.raw)
+    except agent_payments.NotServed:
+        raise HTTPException(status_code=401, detail="not authenticated") from None
     except agent_payments.PaymentChallenge as exc:
         return await _payment_refusal(request, 402, exc.detail, exc.headers)
     except agent_payments.PaymentPending as exc:
         return await _payment_refusal(request, 503, exc.detail, [])
-    paid_headers = agent_payments.payment_headers(admission)
-    headers = [(name, value) for name, value in request.headers.raw
-               if not agent_payments.consumes(name.decode("latin-1"), value.decode("latin-1"))]
     try:
-        response = await run_call_surface(rest, request, admission.caller, prefix="/call/",
-                                          finish=_relay_answer, headers=headers)
+        response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
+                                          finish=_relay_answer, headers=paid.headers)
     except HTTPException as exc:
-        exc.headers = {**(exc.headers or {}), **dict(paid_headers)}
+        exc.headers = {**(exc.headers or {}), **dict(paid.answer_headers())}
         raise
-    for name, value in paid_headers:
+    for name, value in paid.answer_headers():
         response.headers[name] = value
-    if 200 <= response.status_code < 300:
-        for name, value in agent_payments.receipt_headers(admission):
-            response.headers.append(name, value)
+    for name, value in paid.receipt_headers(response.status_code):
+        response.headers.append(name, value)
     return response
 
 

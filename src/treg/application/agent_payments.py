@@ -290,6 +290,41 @@ async def _caller(org_id: int) -> Caller:
         return Caller(membership=membership, user=user, org=org, api_key=None)
 
 
+class NotServed(Exception):
+    """The payment path does not serve this call; it answers as an unauthenticated call."""
+
+
+@dataclass(frozen=True)
+class PaidCall:
+    """A paid call ready to run: who it runs as, the headers it may relay, and what every answer
+    adds."""
+    caller: Caller
+    headers: list[tuple[bytes, bytes]]   # the request's headers minus the payment credential
+    admission: PayerAdmission
+
+    def answer_headers(self) -> list[tuple[str, str]]:
+        return payment_headers(self.admission)
+
+    def receipt_headers(self, status: int) -> list[tuple[str, str]]:
+        return receipt_headers(self.admission) if 200 <= status < 300 else []
+
+
+async def open_call(*, rest: str, method: str, path: str, query: str,
+                    query_items: tuple[tuple[str, str], ...], body: bytes,
+                    headers: Mapping[str, str],
+                    raw_headers: Sequence[tuple[bytes, bytes]]) -> PaidCall:
+    """Price the call, take its payment or draw credit, and return the call to run. Raises
+    NotServed, PaymentChallenge or PaymentPending; no call has run when it raises."""
+    paid = await quote(rest=rest, method=method, path=path, query=query,
+                       query_items=query_items, body=body)
+    if paid is None:
+        raise NotServed
+    admission = await admit(paid, headers)
+    relayed = [(name, value) for name, value in raw_headers
+               if not consumes(name.decode("latin-1"), value.decode("latin-1"))]
+    return PaidCall(caller=admission.caller, headers=relayed, admission=admission)
+
+
 def payment_headers(admission: PayerAdmission) -> list[tuple[str, str]]:
     """Every answer after a payment says which money the call used, and the settlement
     transaction when this payment settled, whatever the call's outcome."""

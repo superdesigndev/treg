@@ -43,8 +43,10 @@ goes through `require_member` exactly as before, and is never challenged.
 `routers.call._paid_call` first checks, without reading the body, that `rest` is a catalog id for
 the request's method (`agent_payments.serves`); anything else is today's 401. Only then is the body
 read, at most `agent_payments.MAX_BODY_BYTES` (1 MiB; more is 413), because a keyless caller is not
-yet anyone. Then `_paid_call` asks `agent_payments.quote` for a price. The quote is None, and the
-answer is today's `401 not authenticated`, unless `rest` is a catalog id that treg's own key serves
+yet anyone. Then `_paid_call` hands the request to `agent_payments.open_call`, which prices it
+(`quote`), takes the payment or draws credit (`admit`) and drops the payment headers from what
+the call relays; the router only maps its three refusals to 401, 402 and 503. The quote is None
+(`NotServed`), and the answer is today's `401 not authenticated`, unless `rest` is a catalog id that treg's own key serves
 to a caller holding no credential: `application.call.resolve.platform_quote_micro` (pure, no session)
 refuses routed `treg.*` ids, endpoints with a `status`, endpoints with OAuth authorization methods,
 anonymous and free endpoints, providers without a configured platform key, and a zero estimate.
