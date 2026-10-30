@@ -18,6 +18,7 @@ import pytest
 from httpx import AsyncClient
 
 from treg import oauth_providers as P
+from treg.domain.catalog import find_recall
 from treg.domain.catalog import store as cs
 
 
@@ -380,6 +381,36 @@ async def test_search_finds_the_job_across_providers_best_first(clients: AsyncCl
     assert first["provider_display"] == P.get(first["provider"]).display_name
     assert first["cost"]["usd"] is not None, "a search row prices in one currency or comparison is fiction"
     assert any(h.startswith(f"treg catalog get {rows[0]['id']}") or h.startswith(f"treg catalog get {first['id']}") for h in body["hints"])
+
+
+async def test_exa_podcast_transcripts_are_discoverable_with_a_native_request(clients: AsyncClient):
+    cat = cs.load()
+    index = find_recall.index(cat)
+    for query in ("Exa podcast search", "search podcast transcripts", "Exa web search"):
+        found = (await clients.get("/catalog/search", params={"q": query, "limit": 8})).json()
+        ids = [row["id"] for row in found["results"]]
+        assert "exa.web.search" in ids[:2], query
+        if query.startswith("Exa"):
+            assert ids[0] == "exa.web.search", query
+        assert any(c.unit.id == "exa.web.search" for c in find_recall.recall(query, index, cat.aliases)), query
+
+    detail = (await clients.get("/catalog/endpoints/exa.web.search")).json()
+    endpoint = detail["endpoint"]
+    assert endpoint["method"] == "POST" and endpoint["path"] == "/search"
+    body = endpoint["input"]["body"]
+    assert body["includeDomains"]["example"] == ["exa.ai/library/podcast"]
+    assert body["contents"]["example"] == {"text": True}
+    note = endpoint["input"]["note"]
+    recipe = json.JSONDecoder().raw_decode(note[note.index('{"query":'):])[0]
+    assert recipe == {
+        "query": "podcast episodes where founders discuss pricing mistakes",
+        "includeDomains": ["exa.ai/library/podcast"],
+        "numResults": 2,
+        "contents": {"text": True},
+    }
+    assert "speaker labels and timestamps" in body["contents"]["note"]
+    assert "actual charge" in note and "need not cost the same" in endpoint["cost"]["note"]
+    assert "open source vector database written in rust" in detail["call_template"]
 
 
 async def test_search_requires_every_token_to_match(clients: AsyncClient):
