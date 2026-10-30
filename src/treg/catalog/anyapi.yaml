@@ -103,24 +103,6 @@ endpoints:
         note: 'Result ranking: ''Latest'', ''Top'', ''Photos'', or ''Videos'' (e.g. Latest).'
         default: Latest
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       query: openai
@@ -167,24 +149,6 @@ endpoints:
         note: Twitter/X handle without the leading @.
         example: nasa
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       handle: nasa
@@ -239,24 +203,6 @@ endpoints:
         note: Search keyword (e.g. "crossfit").
         example: travel
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       query: travel
@@ -360,24 +306,6 @@ endpoints:
         note: 'Restrict results to a recent time window: 1h, 1d, 7d, 1y, or all. Default all (no time
           restriction).'
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       query: best coffee maker
@@ -440,24 +368,6 @@ endpoints:
         note: The post search query.
         example: hiring
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       query: hiring
@@ -521,24 +431,6 @@ endpoints:
         max: 100
         example: 20
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       handle: levelsio
@@ -651,24 +543,6 @@ endpoints:
         - onsite
         example: remote
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       query: software engineer
@@ -715,24 +589,6 @@ endpoints:
         note: TikTok username without the leading @ (e.g. "stoolpresidente").
         example: zachking
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       handle: zachking
@@ -782,24 +638,6 @@ endpoints:
         note: Full LinkedIn profile URL.
         example: https://www.linkedin.com/in/williamhgates
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       url: https://www.linkedin.com/in/williamhgates
@@ -898,24 +736,6 @@ endpoints:
         - withWebsite
         - withoutWebsite
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       query: coffee
@@ -1032,24 +852,6 @@ endpoints:
         - date
         example: relevance
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       query: artificial intelligence
@@ -1109,24 +911,6 @@ endpoints:
           instead of charged for an empty result.'
         example: https://www.instagram.com/reel/DWzrfE2kaY8/
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       url: https://www.instagram.com/reel/DWzrfE2kaY8/
@@ -1184,24 +968,6 @@ endpoints:
         required: false
         note: Instagram user id (faster than handle when known).
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       handle: nasa
@@ -1250,24 +1016,6 @@ endpoints:
         note: Instagram username without the leading @.
         example: nasa
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       handle: nasa
@@ -1314,24 +1062,6 @@ endpoints:
         note: Full LinkedIn profile URL.
         example: https://www.linkedin.com/in/patrickcollison
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       url: https://www.linkedin.com/in/patrickcollison
@@ -1387,24 +1117,6 @@ endpoints:
         note: Twitter/X handle without the leading @.
         example: levelsio
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       handle: levelsio
@@ -1478,24 +1190,6 @@ endpoints:
         - reel
         example: reel
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       datePosted: last-month
@@ -1546,24 +1240,6 @@ endpoints:
         note: TikTok username without the leading @.
         example: zachking
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       handle: zachking
@@ -1612,24 +1288,6 @@ endpoints:
         note: Full Instagram post or reel URL.
         example: https://www.instagram.com/reel/DWzrfE2kaY8/
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       url: https://www.instagram.com/reel/DWzrfE2kaY8/
@@ -1690,24 +1348,6 @@ endpoints:
         required: false
         note: 'Sort order: relevance, most-liked, date-posted.'
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       query: funny
@@ -1756,24 +1396,6 @@ endpoints:
         note: Full TikTok video URL.
         example: https://www.tiktok.com/@zachking/video/7650468599424945422?_r=1&u_code=f0hj7d780760m9&preview_pb=0&sharer_language=en&_d=f0hj7blh067h71&share_item_id=7650468599424945422&source=h5_m
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       url: https://www.tiktok.com/@zachking/video/7650468599424945422?_r=1&u_code=f0hj7d780760m9&preview_pb=0&sharer_language=en&_d=f0hj7blh067h71&share_item_id=7650468599424945422&source=h5_m
@@ -1831,24 +1453,6 @@ endpoints:
         note: The URL of a public Facebook group to fetch posts from (e.g. https://www.facebook.com/groups/1270525996445602/).
         example: https://www.facebook.com/groups/1270525996445602/
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       url: https://www.facebook.com/groups/1270525996445602/
@@ -1901,24 +1505,6 @@ endpoints:
         note: Full Facebook page/profile URL.
         example: https://www.facebook.com/nike
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       url: https://www.facebook.com/nike
@@ -1963,24 +1549,6 @@ endpoints:
         note: Full Facebook post URL.
         example: https://www.facebook.com/reel/2166091230582141/
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       url: https://www.facebook.com/reel/2166091230582141/
@@ -2056,24 +1624,6 @@ endpoints:
         - '2'
         example: 0
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       datePosted: 0
@@ -2119,24 +1669,6 @@ endpoints:
         note: Full TikTok video URL.
         example: https://www.tiktok.com/@washingtonpost/video/7609177768793787679
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       url: https://www.tiktok.com/@washingtonpost/video/7609177768793787679
@@ -2212,24 +1744,6 @@ endpoints:
           y years. So 2h is the last two hours, 30d the last thirty days, 6m the last six months. Omit
           this field, or send ''all'', to search without a time limit.'
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       gl: us
@@ -2288,24 +1802,6 @@ endpoints:
         note: Full URL of the X (Twitter) post to fetch replies for (e.g. https://x.com/nasa/status/1846987139428634858).
         example: https://x.com/jack/status/20
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       url: https://x.com/i/status/20
@@ -2363,24 +1859,6 @@ endpoints:
         max: 10
         example: 3
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       company: stripe
@@ -2434,24 +1912,6 @@ endpoints:
           work email for.
         example: https://www.linkedin.com/in/satyanadella
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   cost:
     type: per_success
     value: 0.011
@@ -2496,24 +1956,6 @@ endpoints:
         note: The question or prompt to answer with a Google AI Overview.
         example: How does photosynthesis work?
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       prompt: How does photosynthesis work?
@@ -2653,24 +2095,6 @@ endpoints:
         - onsite
         example: remote
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       limit: 3
@@ -2723,24 +2147,6 @@ endpoints:
         note: The keyword to search TikTok accounts for.
         example: chef
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       query: chef
@@ -2822,24 +2228,6 @@ endpoints:
         - highestRanking
         - lowestRanking
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       limit: 3
@@ -2931,24 +2319,6 @@ endpoints:
         - withWebsite
         - withoutWebsite
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       location: San Francisco, CA
@@ -3005,24 +2375,6 @@ endpoints:
         note: The partial Google search query.
         example: best coff
     bodyType: json
-    queryParams:
-      fields:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
-      max_items:
-        type: integer
-        required: false
-        min: 0
-        note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
-      summary:
-        type: boolean
-        required: false
-        note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
-      jq:
-        type: string
-        required: false
-        note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
   test_request:
     body:
       query: best coff
