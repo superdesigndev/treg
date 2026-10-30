@@ -9,6 +9,7 @@ x402 facilitator (so the EIP-3009 payload is a real signature made offline).
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -23,6 +24,7 @@ from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
 from treg.domain import money as ledger
 from treg.domain.catalog import store as catalog_store
+from treg.infra.agent_payments.evm import TRANSFER_TOPIC, Chain, topic_address
 from treg.infra.agent_payments.tempo import MppTempoRail
 from treg.infra.agent_payments.x402 import X402Rail
 from treg.infra.db import session_maker
@@ -42,6 +44,7 @@ class FakeTempoChain:
     def __init__(self) -> None:
         self.broadcasts = 0
         self.fail = False
+        self.unknown = False
 
     async def validate(self, intent, credential, request):
         from mpp._validation import Validation
@@ -55,6 +58,10 @@ class FakeTempoChain:
 
         if self.fail:
             raise VerificationFailedError("transaction reverted")
+        if self.unknown:
+            from mpp.errors import InternalPaymentError
+
+            raise InternalPaymentError()
         self.broadcasts += 1
         return Receipt.success(reference=f"0x{self.broadcasts:064x}")
 
@@ -580,3 +587,287 @@ async def test_a_keyless_body_is_capped(anon: AsyncClient, payments_on):
     assert r.status_code == 413
     r = await anon.post("/call/not-a-catalog-id/x", content=big)
     assert r.status_code == 401
+
+
+# ---- the reconciler: payments whose settlement went unanswered -----------------------------------
+class FakeEvm(Chain):
+    """A chain the reconciler reads: receipts by hash, AuthorizationUsed logs, the head's time."""
+
+    def __init__(self) -> None:
+        super().__init__("http://chain.invalid")
+        self.receipts: dict[str, dict] = {}
+        self.authorizations: dict[tuple[str, str], str] = {}   # (payer, nonce) -> tx hash
+        self.now = datetime.now(UTC).replace(tzinfo=None)
+
+    async def receipt(self, tx_hash):
+        return self.receipts.get(tx_hash.lower())
+
+    async def head(self):
+        return 1_000, self.now
+
+    async def block_at(self, when):
+        return 1
+
+    async def logs(self, *, address, topics, from_block, to_block):
+        tx = self.authorizations.get((topics[1], topics[2].lower()))
+        return [{"transactionHash": tx}] if tx else []
+
+    def pays(self, tx_hash: str, *, asset: str, payer: str, to: str, amount: int,
+             status: str = "0x1") -> None:
+        self.receipts[tx_hash.lower()] = {"transactionHash": tx_hash, "status": status, "logs": [{
+            "address": asset, "data": "0x" + f"{amount:064x}",
+            "topics": [TRANSFER_TOPIC, topic_address(payer), topic_address(to)]}]}
+
+
+@pytest.fixture
+def evm(payments_on):
+    fake = FakeEvm()
+    for rail in agent_payments._rails:
+        rail._chain = fake
+    return fake
+
+
+async def _stuck(anon: AsyncClient, facilitator) -> AgentPayment:
+    """One x402 payment left `settling` (the facilitator went silent), aged past the minimum."""
+    facilitator.unreachable = True
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge)
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 503
+    facilitator.unreachable = False
+    return await _age_all()
+
+
+async def _age_all() -> AgentPayment:
+    async with session_maker() as db:
+        row = (await db.execute(select(AgentPayment))).scalars().first()
+        row.created_at = row.created_at - timedelta(minutes=10)
+        db.add(row)
+        await db.commit()
+        await db.refresh(row)
+        return row
+
+
+async def _row() -> AgentPayment:
+    async with session_maker() as db:
+        return (await db.execute(select(AgentPayment))).scalar_one()
+
+
+async def test_the_reconciler_credits_an_x402_payment_that_landed(anon: AsyncClient, facilitator,
+                                                                  evm):
+    row = await _stuck(anon, facilitator)
+    nonce = row.proof_id.rsplit(":", 1)[-1]
+    evm.authorizations[(topic_address(row.payer_address), nonce)] = "0xfeed"
+    evm.pays("0xfeed", asset=row.asset, payer=row.payer_address, to=row.pay_to, amount=FLOOR)
+    result = await agent_payments.reconcile()
+    assert (result.landed, result.failed, result.pending) == (1, 0, 0)
+    assert await _balance(row.payer_address) == FLOOR
+    assert ((await _row()).status, (await _row()).reference) == ("settled", "0xfeed")
+    again = await agent_payments.reconcile()
+    assert again.landed == 0
+    assert [e.kind for e in await _entries(row.payer_address)] == ["topup"]
+
+
+async def test_the_reconciler_credits_an_mpp_payment_that_landed(anon: AsyncClient, chain, evm):
+    chain.unknown = True
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    r = await anon.get(f"/call/{EP}?aweme_id=7",
+                       headers={"Authorization": _mpp_credential(challenge, _tempo_tx(b"\x01" * 65))})
+    assert r.status_code == 503, r.text
+    row = await _age_all()
+    tx_hash = row.proof_id.rsplit(":", 1)[-1]
+    evm.pays(tx_hash, asset=row.asset, payer=row.payer_address, to=row.pay_to, amount=FLOOR)
+    assert (await agent_payments.reconcile()).landed == 1
+    assert await _balance(TEMPO_PAYER) == FLOOR
+
+
+async def test_the_reconciler_fails_a_payment_that_can_no_longer_land(anon: AsyncClient,
+                                                                       facilitator, evm):
+    row = await _stuck(anon, facilitator)
+    evm.now = row.expires_at + timedelta(minutes=5)
+    result = await agent_payments.reconcile()
+    assert result.failed == 1 and result.reasons == {"expired_unsettled": 1}
+    assert ((await _row()).status, (await _row()).error) == ("failed", "expired_unsettled")
+    assert await _entries(row.payer_address) == []
+
+
+async def test_the_reconciler_waits_while_a_payment_can_still_land(anon: AsyncClient, facilitator,
+                                                                   evm):
+    row = await _stuck(anon, facilitator)
+    evm.now = row.expires_at - timedelta(seconds=30)
+    assert (await agent_payments.reconcile()).pending == 1
+    assert (await _row()).status == "settling"
+
+
+async def test_the_reconciler_never_credits_a_transfer_to_someone_else(anon: AsyncClient,
+                                                                       facilitator, evm):
+    row = await _stuck(anon, facilitator)
+    nonce = row.proof_id.rsplit(":", 1)[-1]
+    evm.authorizations[(topic_address(row.payer_address), nonce)] = "0xbad"
+    evm.pays("0xbad", asset=row.asset, payer=row.payer_address, to="0x" + "99" * 20, amount=FLOOR)
+    result = await agent_payments.reconcile()
+    assert result.failed == 1 and result.reasons == {"transfer_mismatch": 1}
+    assert await _entries(row.payer_address) == []
+
+
+async def test_the_reconciler_leaves_young_payments_to_their_request(anon: AsyncClient, facilitator,
+                                                                     evm):
+    facilitator.unreachable = True
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge)
+    await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    result = await agent_payments.reconcile()
+    assert (result.landed, result.failed, result.pending) == (0, 0, 0)
+
+
+async def test_a_payment_credited_twice_tops_up_once(anon: AsyncClient, facilitator, evm):
+    row = await _stuck(anon, facilitator)
+    await asyncio.gather(agent_payments._credit(row.id, "0xa"), agent_payments._credit(row.id, "0xa"))
+    assert [e.kind for e in await _entries(row.payer_address)] == ["topup"]
+    assert await _balance(row.payer_address) == FLOOR
+
+
+# ---- the Coinbase facilitator's API key -----------------------------------------------------------
+def _decode(header: str, key):
+    import jwt
+
+    return (jwt.get_unverified_header(header.removeprefix("Bearer ")),
+            jwt.decode(header.removeprefix("Bearer "), key, algorithms=["EdDSA", "ES256"],
+                       audience="cdp_service"))
+
+
+def test_an_ed25519_cdp_key_signs_each_facilitator_request():
+    import base64
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+    from treg.infra.agent_payments.x402 import CdpAuth
+
+    key = Ed25519PrivateKey.generate()
+    public = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    seed = key.private_bytes_raw()
+    auth = CdpAuth("https://api.cdp.coinbase.com/platform/v2/x402", "key-1",
+                   base64.b64encode(seed + public).decode())
+    headers = auth.get_auth_headers()
+    header, claims = _decode(headers.verify["Authorization"], key.public_key())
+    assert header["kid"] == "key-1" and header["alg"] == "EdDSA" and header["nonce"]
+    assert claims["uri"] == "POST api.cdp.coinbase.com/platform/v2/x402/verify"
+    assert (claims["sub"], claims["iss"], claims["exp"] - claims["nbf"]) == ("key-1", "cdp", 120)
+    _, settle = _decode(headers.settle["Authorization"], key.public_key())
+    assert settle["uri"] == "POST api.cdp.coinbase.com/platform/v2/x402/settle"
+
+
+def test_a_legacy_ec_cdp_key_signs_with_es256():
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.serialization import (
+        Encoding, NoEncryption, PrivateFormat)
+
+    from treg.infra.agent_payments.x402 import CdpAuth
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    pem = key.private_bytes(Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption()).decode()
+    auth = CdpAuth("https://api.cdp.coinbase.com/platform/v2/x402", "k", pem.replace("\n", "\\n"))
+    header, claims = _decode(auth.get_auth_headers().verify["Authorization"], key.public_key())
+    assert header["alg"] == "ES256" and claims["uri"].endswith("/x402/verify")
+
+
+def test_a_cdp_key_needs_both_halves(monkeypatch):
+    from treg.config import Settings
+
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID", "k")
+    monkeypatch.delenv("TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_SECRET", raising=False)
+    with pytest.raises(ValueError, match="CDP_API_KEY"):
+        Settings()
+
+
+# ---- settlement to Stripe ------------------------------------------------------------------------
+@pytest.fixture
+def stripe_mode(monkeypatch, payments_on):
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_SETTLEMENT", "stripe")
+    monkeypatch.setenv("TREG_STRIPE_SECRET_KEY", "sk_test_agentpay")
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_TEMPO_CURRENCY", "0x" + "20" * 20)
+    get_settings.cache_clear()
+    recorded: list[dict] = []
+
+    async def _record(**kwargs):
+        recorded.append(kwargs)
+        return {"id": f"pi_{len(recorded)}"}
+
+    monkeypatch.setattr(agent_payments.stripe_api, "record_crypto_payment", _record)
+    yield recorded
+    get_settings.cache_clear()
+
+
+async def test_settling_to_stripe_charges_whole_cents(monkeypatch, stripe_mode):
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_MIN_PAYMENT_MICRO", "12345")
+    get_settings.cache_clear()
+    paid = await agent_payments.quote(rest=EP, method="GET", path=f"/call/{EP}",
+                                      query="aweme_id=7", query_items=(("aweme_id", "7"),), body=b"")
+    assert paid.offer.amount_micro == 20_000
+
+
+async def test_each_payment_settled_to_stripe_is_recorded_once(anon: AsyncClient, stripe_mode):
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge)
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 200, r.text
+    reference = r.headers["X-Treg-Payment-Reference"]
+    assert (await agent_payments.reconcile()).recorded == 1
+    assert stripe_mode == [{"amount_cents": FLOOR // 10_000, "network": "base",
+                            "transaction_hash": reference, "api_key": "sk_test_agentpay"}]
+    assert (await _row()).stripe_payment_intent == "pi_1"
+    assert (await agent_payments.reconcile()).recorded == 0
+
+
+async def test_a_payment_settled_to_an_earlier_wallet_is_not_stripes(anon: AsyncClient,
+                                                                    stripe_mode):
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge)
+    await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    async with session_maker() as db:
+        row = (await db.execute(select(AgentPayment))).scalar_one()
+        row.pay_to = "0x" + "77" * 20
+        db.add(row)
+        await db.commit()
+    assert (await agent_payments.reconcile()).recorded == 0 and stripe_mode == []
+
+
+def test_settling_to_stripe_needs_a_stripe_key(monkeypatch):
+    from treg.config import Settings
+
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_ENABLED", "1")
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_SECRET", "s" * 40)
+    monkeypatch.setenv("TREG_AGENT_PAYMENTS_SETTLEMENT", "stripe")
+    monkeypatch.delenv("TREG_STRIPE_SECRET_KEY", raising=False)
+    with pytest.raises(ValueError, match="TREG_STRIPE_SECRET_KEY"):
+        Settings()
+
+
+async def test_the_chain_search_stays_near_the_head_and_asks_for_logs_in_spans():
+    from treg.infra.agent_payments import evm as evm_module
+
+    class Pruned(Chain):
+        """10,000,000 blocks two seconds apart; nothing below block 9,990,000 is kept."""
+
+        def __init__(self):
+            super().__init__("http://chain.invalid")
+            self.ranges: list[tuple[int, int]] = []
+
+        async def call(self, method, params):
+            if method == "eth_getBlockByNumber":
+                n = 10_000_000 if params[0] == "latest" else int(params[0], 16)
+                if n < 9_990_000:
+                    raise evm_module.ChainUnavailable("pruned history unavailable")
+                return {"number": hex(n), "timestamp": hex(1_700_000_000 + 2 * n)}
+            assert method == "eth_getLogs"
+            start, end = int(params[0]["fromBlock"], 16), int(params[0]["toBlock"], 16)
+            assert end - start < evm_module.LOG_SPAN
+            self.ranges.append((start, end))
+            return [{"transactionHash": "0xhit"}] if start <= 9_999_500 <= end else []
+
+    chain = Pruned()
+    when = datetime.fromtimestamp(1_700_000_000 + 2 * 9_999_000 + 1, UTC).replace(tzinfo=None)
+    assert await chain.block_at(when) == 9_999_000
+    logs = await chain.logs(address="0x", topics=[], from_block=9_999_000, to_block=9_999_900)
+    assert logs == [{"transactionHash": "0xhit"}] and len(chain.ranges) == 3

@@ -730,7 +730,10 @@ def configure_agent_payments() -> None:
                 asset=s.agent_payments_x402_asset, asset_name=s.agent_payments_x402_asset_name,
                 asset_version=s.agent_payments_x402_asset_version,
                 facilitator_url=s.agent_payments_x402_facilitator_url,
-                max_timeout_s=s.agent_payments_x402_max_timeout_s))
+                max_timeout_s=s.agent_payments_x402_max_timeout_s,
+                rpc_url=s.agent_payments_x402_rpc_url,
+                cdp_api_key_id=s.agent_payments_x402_cdp_api_key_id,
+                cdp_api_key_secret=s.agent_payments_x402_cdp_api_key_secret))
     agent_payments.configure(rails)
 
 

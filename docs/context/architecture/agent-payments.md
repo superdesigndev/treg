@@ -6,6 +6,9 @@ sources:
   - src/treg/infra/agent_payments/__init__.py
   - src/treg/infra/agent_payments/tempo.py
   - src/treg/infra/agent_payments/x402.py
+  - src/treg/infra/agent_payments/evm.py
+  - src/treg/infra/stripe.py
+  - src/treg/worker.py
   - src/treg/routers/call.py
   - src/treg/bootstrap.py
   - src/treg/config.py
@@ -100,8 +103,9 @@ WebAuthn signatures only *name* their account and are authenticated by the chain
    `rail.settle`. A definite refusal marks the row `failed` and answers 402; no call runs and no
    money moves. An unknown outcome (`settlement_unknown`: the node or facilitator did not answer
    after the transfer may have been sent, or x402 `settlement_pending`) leaves the row `settling`
-   and answers 503 `payment_outcome_unknown` with no call; the proof cannot be sent again.
-   Success tops up and marks the row `settled` in one transaction (`_credit`).
+   and answers 503 `payment_outcome_unknown` with no call; the proof cannot be sent again; the
+   reconciler resolves it later. Success tops up and marks the row `settled` in one transaction
+   (`_credit`).
 5. The request headers minus the payment credential (`agent_payments.consumes`) go to the call as
    the payer team. Every answer after this point, a refusal included, carries
    `X-Treg-Payment: settled|credit` and, when this payment settled,
@@ -135,6 +139,43 @@ headers (`X-Treg-Payment` among them) and no receipt.
 - `MppTempoRail._check_binding` compares the HMAC-authenticated challenge's route scope with the
   request; `X402Rail.verify` compares the accepted terms and the resource URL with the offer.
 
+## The reconciler (`treg-worker agentpay reconcile`)
+
+A row left `settling` (the node or facilitator went silent after the transfer may have been sent, or
+the process died between settlement and top-up) is resolved by `agent_payments.reconcile`, once it
+is older than `agent_payments_reconcile_min_age_s` (default 300; younger rows belong to their
+request). Each row stores what the chain must show: `asset`, `pay_to`, `amount_micro`, the payer, and
+`expires_at` (the last moment the authorization can settle). `rail.find` reads the chain with plain
+JSON-RPC (`infra/agent_payments/evm.py`), no session open:
+
+- MPP: the receipt of the proof's transaction hash. `expires_at` is the signed transaction's
+  `valid_before` (a day when it has none; the moment of the request in push mode, which is mined
+  already).
+- x402: the token's `AuthorizationUsed(payer, nonce)` log (EIP-3009), searched only between shortly
+  before the claim and shortly after `validBefore`, then that transaction's receipt. Public nodes
+  prune old blocks and refuse wide log ranges, so `Chain.block_at` searches from the head and
+  `Chain.logs` asks in spans of `LOG_SPAN` blocks.
+
+The answer is `landed` (a successful receipt with a transfer of exactly that amount of that asset
+from the payer to `pay_to`): `_credit` books the same `topup` under the same `agentpay:<proof id>`
+reference, so a request and the reconciler crediting together book it once. `absent` (expired
+unsettled, reverted, or a transaction that moved something else): the row becomes `failed`, only if
+still `settling`. `pending` (not knowable yet, node unavailable): left for the next run.
+
+## Where the money lands (`agent_payments_settlement`)
+
+- `wallet` (default): the recipient addresses are treg's own wallet; payouts are off-chain work.
+- `stripe`: the recipient addresses are Stripe crypto deposit addresses, reusable, one per network,
+  made once with `treg-worker agentpay stripe-address --network tempo|base`
+  (`infra.stripe.create_crypto_deposit_address`). Stripe converts deposits to fiat in the Stripe
+  balance. Payments are rounded up to whole cents (`CENT_MICRO`), because Stripe records cents.
+  After settlement the reconciler records each settled payment as a PaymentIntent in
+  `transaction_verification` mode (`infra.stripe.record_crypto_payment`, the transaction hash as
+  idempotency key) and stores its id in `stripe_payment_intent`; a payment settled to an address
+  the rail no longer offers (an earlier wallet) is not recorded. Startup refuses `stripe` without
+  `stripe_secret_key`, and without an explicit Tempo currency (one Stripe accepts). x402 on mainnet
+  still settles through Coinbase's facilitator in this mode.
+
 ## Rails (`infra/agent_payments/`)
 
 `PaymentRail` is the seam: `presented`, `challenge`, `verify`, `settle`, `consumed_headers`.
@@ -148,7 +189,11 @@ contract keeps `mpp` and `x402` there).
   dependency is pinned below the next minor version.
   Fees are not sponsored (`feePayer` off): the client pays its own fee in a USD TIP-20 token.
 - `X402Rail` uses the official `x402` SDK: header codecs, `PaymentRequirements`, and an
-  `HTTPFacilitatorClient` for `verify` and `settle`; the facilitator pays gas.
+  `HTTPFacilitatorClient` for `verify` and `settle`; the facilitator pays gas. The public
+  `x402.org` facilitator serves testnets only. On mainnet the facilitator is Coinbase's, which
+  takes a Coinbase Developer Platform API key: `CdpAuth` signs a fresh two-minute JWT per request
+  (`EdDSA` for an Ed25519 secret, `ES256` for a legacy EC PEM), bound to the request's method and
+  URL in its `uri` claim. Coinbase's own SDK is not used: it pulls in the Solana stack.
 
 treg holds no private key for either rail: it broadcasts the client's signed transaction or asks
 the facilitator. Settlement is synchronous, before the relay, to treg's own recipient address.
@@ -160,12 +205,14 @@ the facilitator. Settlement is synchronous, before the relay, to treg's own reci
 `..._tempo_chain_id` (42431 Moderato testnet by default), `..._tempo_rpc_url`,
 `..._tempo_currency`; x402: `..._x402_pay_to`, `..._x402_network` (`eip155:84532` Base Sepolia by
 default), `..._x402_asset`, `..._x402_asset_name`, `..._x402_asset_version`,
-`..._x402_facilitator_url`, `..._x402_max_timeout_s`. Every address is checked to be 20 bytes.
+`..._x402_facilitator_url`, `..._x402_max_timeout_s`, `..._x402_rpc_url` (empty: the network's
+public RPC), `..._x402_cdp_api_key_id` and `..._x402_cdp_api_key_secret` (both or neither);
+`agent_payments_settlement` (`wallet` | `stripe`), `agent_payments_reconcile_min_age_s`. Every
+address is checked to be 20 bytes.
 
 ## Not built
 
 - MPP sessions (payment channels with cumulative vouchers): `pympp` has no session server yet.
-- Stripe as a settlement rail.
-- A worker that reconciles a `settling` row (an unknown settlement outcome, or a crash between
-  settlement and top-up), or a credit-first authorization someone else submitted before it expired.
+- Reconciling a credit-first authorization that someone other than treg submitted before it
+  expired (the money arrives with no `settling` row to resolve).
 - Withdrawing or expiring credit (there is no refund entry).

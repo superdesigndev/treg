@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from datetime import datetime
+from typing import Any, Literal, Protocol
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,9 @@ class Verified:
     proof_id: str                # single-use: the database refuses a second use
     payer: str                   # lowercase 0x address
     amount_micro: int
+    asset: str                   # the token contract, lowercase
+    pay_to: str                  # the credited address, lowercase
+    expires_at: datetime         # naive UTC; past it the authorization cannot settle
     # False: the payer already moved the money (MPP push mode); treg cannot decline to settle.
     deferrable: bool = True
     credential: Any = field(default=None, repr=False, compare=False)
@@ -42,6 +46,30 @@ class Verified:
 class Settlement:
     reference: str               # the settlement transaction
     receipt_headers: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class Unconfirmed:
+    """A payment whose settlement outcome treg never learned, as the reconciler reads it."""
+
+    proof_id: str
+    payer: str
+    amount_micro: int
+    asset: str
+    pay_to: str
+    created_at: datetime         # naive UTC
+    expires_at: datetime         # naive UTC
+
+
+@dataclass(frozen=True)
+class Lookup:
+    """What the chain says about an `Unconfirmed` payment. `landed`: the transfer is final, and
+    `reference` is its transaction. `absent`: it never landed and no longer can (or it moved
+    something else). `pending`: not knowable yet; ask again later."""
+
+    state: Literal["landed", "absent", "pending"]
+    reference: str | None = None
+    reason: str | None = None
 
 
 class PaymentRejected(Exception):
@@ -55,6 +83,9 @@ class PaymentRejected(Exception):
 
 class PaymentRail(Protocol):
     protocol: str
+    network: str
+    pay_to: str                  # lowercase; where this rail's payments land
+    stripe_network: str | None   # Stripe's name for the network, when Stripe takes it
     # Lowercase request header names this rail reads; treg removes them before the relay.
     consumed_headers: tuple[str, ...]
 
@@ -65,6 +96,8 @@ class PaymentRail(Protocol):
     async def verify(self, credential: str, offer: Offer) -> Verified: ...
 
     async def settle(self, verified: Verified, offer: Offer) -> Settlement: ...
+
+    async def find(self, payment: Unconfirmed) -> Lookup: ...
 
 
 def micro_to_decimal(amount_micro: int) -> str:

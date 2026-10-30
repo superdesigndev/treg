@@ -721,6 +721,18 @@ class Settings(BaseSettings):
     agent_payments_x402_asset_version: str = "2"
     agent_payments_x402_facilitator_url: str = "https://x402.org/facilitator"
     agent_payments_x402_max_timeout_s: int = Field(default=120, ge=10, le=3600)
+    agent_payments_x402_rpc_url: str = ""               # empty: the network's public RPC
+    # A Coinbase Developer Platform API key, for its facilitator (mainnet). Both empty: no auth,
+    # which the public testnet facilitator accepts. The secret is the Ed25519 key (base64) or a
+    # legacy EC PEM key.
+    agent_payments_x402_cdp_api_key_id: str = ""
+    agent_payments_x402_cdp_api_key_secret: str = ""
+    # Where settled payments land. `wallet`: the recipient addresses above are treg's own wallet.
+    # `stripe`: they are Stripe crypto deposit addresses (`treg-worker agentpay stripe-address`);
+    # payments are whole cents and the worker records each one as a Stripe PaymentIntent.
+    agent_payments_settlement: Literal["wallet", "stripe"] = "wallet"
+    # A `settling` payment younger than this is left to the request that started it.
+    agent_payments_reconcile_min_age_s: int = Field(default=300, ge=60)
 
     @model_validator(mode="after")
     def _agent_payments_configuration(self):
@@ -731,6 +743,14 @@ class Settings(BaseSettings):
             value = getattr(self, name)
             if value and not re.fullmatch(r"0x[0-9a-fA-F]{40}", value):
                 raise ValueError(f"{name} must be a 0x-prefixed 20-byte address")
+        if bool(self.agent_payments_x402_cdp_api_key_id) != bool(self.agent_payments_x402_cdp_api_key_secret):
+            raise ValueError("set both TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID and _SECRET, or neither")
+        if self.agent_payments_enabled and self.agent_payments_settlement == "stripe":
+            if not self.stripe_secret_key:
+                raise ValueError("agent payments settling to Stripe require TREG_STRIPE_SECRET_KEY")
+            if self.agent_payments_tempo_recipient and not self.agent_payments_tempo_currency:
+                raise ValueError("agent payments settling to Stripe require "
+                                 "TREG_AGENT_PAYMENTS_TEMPO_CURRENCY (a token Stripe accepts)")
         return self
 
     # Additive Claude directory MCP. Default OFF so deploying code cannot publish a new connector

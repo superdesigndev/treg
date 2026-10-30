@@ -975,7 +975,8 @@ class AgentPayment(SQLModel, table=True):
     """One payment proof presented by an agent payer, used at most once (`proof_id` UNIQUE).
     `credit` = proved key control and drew existing credit, never settled; `settling` = chain
     settlement started; `settled` = confirmed and topped up under `agentpay:<proof_id>`;
-    `failed` = settlement refused. Written only by `application/agent_payments.py`."""
+    `failed` = settlement refused or expired unsettled. `treg-worker agentpay reconcile` resolves a
+    `settling` row from the chain. Written only by `application/agent_payments.py`."""
 
     id: int | None = Field(default=None, primary_key=True)
     proof_id: str = Field(sa_column_kwargs={"unique": True}, index=True)
@@ -984,8 +985,12 @@ class AgentPayment(SQLModel, table=True):
     payer_address: str = Field(index=True)
     org_id: int = Field(foreign_key="org.id", index=True)
     amount_micro: int = Field(sa_column=Column("amount_micro", BigInteger, nullable=False))
-    status: str
+    status: str = Field(index=True)
+    asset: str             # the token contract the transfer moves
+    pay_to: str            # the address the transfer credits
+    expires_at: NaiveUTC   # after this the authorization can no longer be settled
     reference: str | None = Field(default=None)  # the settlement transaction
+    stripe_payment_intent: str | None = Field(default=None)  # settlement `stripe`: the record
     error: str | None = Field(default=None)
     created_at: NaiveUTC = Field(default_factory=_now)
     updated_at: NaiveUTC = Field(default_factory=_now)

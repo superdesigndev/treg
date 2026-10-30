@@ -1481,7 +1481,11 @@ payer team per wallet address. A payment confirmed on chain is an ordinary `topu
 transaction; then the call reserves, settles or releases as any team's call. The topup is booked
 only after the chain or facilitator confirms the transfer, so the ledger never credits money treg
 has not received. A payment the team's existing credit already covers is not settled and books
-nothing. No money entry is added.
+nothing. When the settlement answer never arrives, `treg-worker agentpay reconcile` reads the chain
+later and books the same topup (same reference, so at most once) only for a transfer that landed.
+No money entry is added. With `TREG_AGENT_PAYMENTS_SETTLEMENT=stripe` the transfers go to Stripe
+crypto deposit addresses and each settled payment is also recorded as a Stripe PaymentIntent; the
+ledger is the same.
 
 ## Response evidence size and free final downloads
 

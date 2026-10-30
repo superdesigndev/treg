@@ -40,7 +40,11 @@ def upgrade() -> None:
         sa.Column("org_id", sa.Integer(), nullable=False),
         sa.Column("amount_micro", sa.BigInteger(), nullable=False),
         sa.Column("status", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+        sa.Column("asset", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+        sa.Column("pay_to", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+        sa.Column("expires_at", sa.DateTime(), nullable=False),
         sa.Column("reference", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+        sa.Column("stripe_payment_intent", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
         sa.Column("error", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
@@ -50,9 +54,11 @@ def upgrade() -> None:
     op.create_index("ix_agentpayment_proof_id", "agentpayment", ["proof_id"], unique=True)
     op.create_index("ix_agentpayment_payer_address", "agentpayment", ["payer_address"])
     op.create_index("ix_agentpayment_org_id", "agentpayment", ["org_id"])
+    op.create_index("ix_agentpayment_status", "agentpayment", ["status"])
 
 
 def downgrade() -> None:
+    op.drop_index("ix_agentpayment_status", table_name="agentpayment")
     op.drop_index("ix_agentpayment_org_id", table_name="agentpayment")
     op.drop_index("ix_agentpayment_payer_address", table_name="agentpayment")
     op.drop_index("ix_agentpayment_proof_id", table_name="agentpayment")

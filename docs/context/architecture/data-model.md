@@ -229,7 +229,9 @@ An application rollback leaves the table in place; a schema downgrade deletes it
   service. Both cascade from the original report. See [feedback](feedback.md).
 
 - **`AgentPayer` / `AgentPayment`** - the payer team of one agent-payments wallet address, and
-  each payment proof it presented (`proof_id` UNIQUE, status `credit|settling|settled|failed`).
+  each payment proof it presented (`proof_id` UNIQUE, status `credit|settling|settled|failed`;
+  `asset`, `pay_to` and `expires_at` let the reconciler find the transfer on chain;
+  `stripe_payment_intent` is set once a payment settled to Stripe is recorded there).
   Revision `0091`; `governance.teams.make_payer_team` stages `AgentPayer`,
   `application.agent_payments` is the only writer of `AgentPayment`. Team deletion removes both.
   See [agent payments](agent-payments.md).

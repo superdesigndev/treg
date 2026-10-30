@@ -179,7 +179,9 @@ agents then built against a constitution that was wrong.
   on chain is an ordinary `topup` on its wallet's payer team (`governance.teams.make_payer_team`:
   a machine user, a member with no token); the call then runs the normal road as that team. What
   a call does not use stays as that team's credit. `application/agent_payments.py` is the only
-  writer of `AgentPayment`; the protocol SDKs live only in `infra/agent_payments/`. See
+  writer of `AgentPayment`; the protocol SDKs live only in `infra/agent_payments/`. A payment whose
+  settlement went unanswered is resolved by `treg-worker agentpay reconcile` from the chain: the
+  same `topup`, under the same reference, only for a transfer that landed. See
   `docs/context/architecture/agent-payments.md`.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
   only in `infra/stripe.py`, orchestration in `application/billing.py`, and `reconcile.py` is
