@@ -105,8 +105,9 @@ Fetchin capacity is `credits / manual / api`. `collectors._fetchinio` calls the 
 `creditsRemaining`, and retains plan status, PAYG remainder, renewal date and the account's reported
 RPS limit as informational notes. The route can be polled after quota exhaustion and remains
 internal capacity evidence rather than a catalog tool. The funded account reported 5 requests per
-second. Because combined post engagement consumes two rate-limit units and smoothing is not
-endpoint-weighted, the shared-key policy conservatively uses two calls per second; BYOK bypasses it.
+second. Combined post engagement consumes two rate-limit units and smoothing is not
+endpoint-weighted, so the shared-key policy uses four calls per second, leaving room for the
+second unit of the few engagement calls; BYOK bypasses it.
 The account was not deliberately exhausted, so the documented generic HTTP 402 is acknowledged
 without a provider-specific empty-balance body or overflow route.
 
