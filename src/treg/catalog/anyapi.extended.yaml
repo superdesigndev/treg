@@ -42,6 +42,24 @@ endpoints:
         required: false
         note: Meta Ad Library ad URL (e.g. "https://www.facebook.com/ads/library?id=1185617869915074"). Provide either id or url.
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -79,6 +97,24 @@ endpoints:
         note: Meta Ad Library ad ID - the numeric id in an Ad Library URL (e.g. "1519158199783790" from https://www.facebook.com/ads/library/?id=1519158199783790).
         example: '1519158199783790'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00462
@@ -120,6 +156,24 @@ endpoints:
         required: false
         note: Meta Ad Library ad URL (e.g. "https://www.facebook.com/ads/library?id=1020359190509080"). Provide either id or url.
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -216,6 +270,24 @@ endpoints:
         - ACTIVE
         - INACTIVE
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -265,6 +337,24 @@ endpoints:
         note: The feedback_id of the comment (not the comment id).
         example: ZmVlZGJhY2s6MTM5MzQ2MTExNTQ4MTkyN18yMDgyNjUzMjQ1ODA5Mzg2
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -352,6 +442,24 @@ endpoints:
         - ACTIVE
         - INACTIVE
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -394,6 +502,24 @@ endpoints:
         required: false
         note: The event's Facebook URL.
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -443,6 +569,24 @@ endpoints:
         note: URL of a city's or place's Facebook Events page (e.g. https://www.facebook.com/events/explore/saint-petersburg-florida/111326725552547).
         example: https://www.facebook.com/events/explore/saint-petersburg-florida/111326725552547
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -484,6 +628,24 @@ endpoints:
         note: The query to search events for.
         example: music festival
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -533,6 +695,24 @@ endpoints:
         note: Facebook page or profile URL to list follows for (e.g. https://www.facebook.com/nasa).
         example: https://www.facebook.com/nike
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.12
@@ -641,6 +821,24 @@ endpoints:
         - price_ascend
         - price_descend
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -686,6 +884,24 @@ endpoints:
         note: Facebook Marketplace item URL.
         example: https://www.facebook.com/marketplace/item/1656586118821988/
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -723,6 +939,24 @@ endpoints:
         note: Location search query (e.g. a city name).
         example: Austin
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -765,6 +999,24 @@ endpoints:
         note: Facebook Page URL or page ID to look up (e.g. https://www.facebook.com/nasa).
         example: https://www.facebook.com/joesstonecrab
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -806,6 +1058,24 @@ endpoints:
         note: URL of the public Facebook page or profile to fetch photos from (e.g. https://www.facebook.com/Spurs).
         example: https://www.facebook.com/Spurs
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -851,6 +1121,24 @@ endpoints:
         note: Full Facebook post URL.
         example: https://www.facebook.com/reel/2166091230582141/
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -888,6 +1176,24 @@ endpoints:
         note: The Facebook post or video URL.
         example: https://www.facebook.com/reel/2166091230582141/
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -929,6 +1235,24 @@ endpoints:
         note: Full Facebook page URL.
         example: https://www.facebook.com/nike
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -970,6 +1294,24 @@ endpoints:
         note: The Facebook page URL.
         example: https://www.facebook.com/brickyardoldtown
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -1011,6 +1353,24 @@ endpoints:
         note: Full Facebook page/profile URL.
         example: https://www.facebook.com/nike
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -1048,6 +1408,24 @@ endpoints:
         note: Keyword to search advertiser pages for (e.g. "nike").
         example: nike
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -1096,6 +1474,24 @@ endpoints:
         note: Keyword to search Facebook Pages for (e.g. 'coffee roasters').
         example: nike
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.1221
@@ -1153,6 +1549,24 @@ endpoints:
         required: false
         note: Only return posts published on or after this date, format YYYY-MM-DD (e.g. 2024-01-01).
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.06606
@@ -1191,6 +1605,24 @@ endpoints:
         note: The question or prompt to answer with Google AI Mode.
         example: What is AnyAPI at getanyapi.com, and what does it offer?
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0007
@@ -1260,6 +1692,24 @@ endpoints:
         required: false
         note: 'Restrict results to a recent time window: 1h, 1d, 7d, 1y, or all. Default all (no time restriction).'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00198
@@ -1300,6 +1750,24 @@ endpoints:
         note: Public URL of the image to search with.
         example: https://i.imgur.com/HBrB8p0.png
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00297
@@ -1337,6 +1805,24 @@ endpoints:
         note: The Google Patents search query.
         example: wireless charging
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00099
@@ -1374,6 +1860,24 @@ endpoints:
         note: The Google Scholar search query.
         example: attention is all you need
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00099
@@ -1432,6 +1936,24 @@ endpoints:
         required: false
         note: 'Restrict results to a recent time window: 1h, 1d, 7d, 1y, or all. Default all (no time restriction).'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0018
@@ -1492,6 +2014,24 @@ endpoints:
         required: false
         note: 'Restrict results to a recent time window: 1h, 1d, 7d, 1y, or all. Default all (no time restriction).'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00099
@@ -1566,6 +2106,24 @@ endpoints:
         - HIGHEST_PRICE
         - TOP_RATED
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0638
@@ -1646,6 +2204,24 @@ endpoints:
         - withoutWebsite
         example: withWebsite
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0946
@@ -1691,6 +2267,24 @@ endpoints:
         required: false
         note: Pagination cursor returned by a previous response.
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0011
@@ -1728,6 +2322,24 @@ endpoints:
         note: Instagram numeric user id.
         example: '314216'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -1774,6 +2386,24 @@ endpoints:
         note: Full Instagram post or reel URL the comment belongs to.
         example: https://www.instagram.com/p/C8rKmYvsrck/
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0011
@@ -1812,6 +2442,24 @@ endpoints:
         note: Instagram username without the leading @.
         example: nasa
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -1856,6 +2504,24 @@ endpoints:
         max: 20
         example: 5
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00297
@@ -1898,6 +2564,24 @@ endpoints:
         note: 'Hashtag to monitor, without the leading #.'
         example: skincare
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0024
@@ -1939,6 +2623,24 @@ endpoints:
         note: 'Hashtag to fetch, without the leading #.'
         example: skincare
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0015
@@ -1976,6 +2678,24 @@ endpoints:
         note: The id of the highlight to retrieve details for.
         example: '18201653992314974'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -2026,6 +2746,24 @@ endpoints:
         - recent
         example: recent
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -2061,6 +2799,24 @@ endpoints:
         note: Instagram post or reel URL.
         example: https://www.instagram.com/reel/DHsD6HGqJhp/
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -2098,6 +2854,24 @@ endpoints:
         note: Canonical URL of a public Instagram post or reel.
         example: https://www.instagram.com/reel/DWzrfE2kaY8/
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0024
@@ -2135,6 +2909,24 @@ endpoints:
         note: Instagram username without the leading @.
         example: nasa
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -2172,6 +2964,24 @@ endpoints:
         note: Instagram username without the leading @.
         example: eminenceorganics
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00721
@@ -2215,6 +3025,24 @@ endpoints:
         default: false
         example: false
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0308
@@ -2268,6 +3096,24 @@ endpoints:
         - hashtag
         - place
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0036
@@ -2305,6 +3151,24 @@ endpoints:
         note: Place name, address or city to search for.
         example: Eiffel Tower
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0011
@@ -2346,6 +3210,24 @@ endpoints:
         note: Bio or caption keyword/phrase to search for.
         example: coffee roaster
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -2383,6 +3265,24 @@ endpoints:
         note: Instagram username without the leading @.
         example: nasa
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00175
@@ -2420,6 +3320,24 @@ endpoints:
         note: Instagram username or handle without the @.
         example: natgeo
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0022
@@ -2457,6 +3375,24 @@ endpoints:
         note: Instagram username/handle to fetch currently live stories for (without the @).
         example: natgeo
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0015
@@ -2498,6 +3434,24 @@ endpoints:
         note: Instagram username without the leading @.
         example: nasa
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0024
@@ -2531,6 +3485,24 @@ endpoints:
   input:
     body: {}
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -2565,6 +3537,24 @@ endpoints:
         required: false
         note: Instagram numeric user id (optional, faster than handle).
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -2606,6 +3596,24 @@ endpoints:
         note: Instagram's numeric account id, as returned by instagram.profile.
         example: '787132'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0011
@@ -2643,6 +3651,24 @@ endpoints:
         note: LinkedIn Ad Library ad URL (e.g. "https://www.linkedin.com/ad-library/detail/666281156").
         example: https://www.linkedin.com/ad-library/detail/1487405616
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -2687,6 +3713,24 @@ endpoints:
         note: LinkedIn Ad Library search URL or a LinkedIn company URL (e.g. https://www.linkedin.com/ad-library/search?companyIds=1035).
         example: https://www.linkedin.com/company/stripe
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.01656
@@ -2749,6 +3793,24 @@ endpoints:
         required: false
         note: Search start date in YYYY-MM-DD format.
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -2786,6 +3848,24 @@ endpoints:
         note: Public LinkedIn article or newsletter issue URL, e.g. https://www.linkedin.com/pulse/your-article-slug. Pair it with the attachmentUrl returned by linkedin.search_posts_full to read the article behind a post.
         example: https://www.linkedin.com/pulse/artificial-intelligence-primer-stephen-dover
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00569
@@ -2823,6 +3903,24 @@ endpoints:
         note: Full LinkedIn company page URL.
         example: https://www.linkedin.com/company/stripe
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00253
@@ -2889,6 +3987,24 @@ endpoints:
         note: Full LinkedIn company page URL.
         example: https://www.linkedin.com/company/stripe
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.02046
@@ -2932,6 +4048,24 @@ endpoints:
         note: Full LinkedIn company page URL.
         example: https://www.linkedin.com/company/stripe
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -2969,6 +4103,24 @@ endpoints:
         note: Full LinkedIn company page URL.
         example: https://www.linkedin.com/company/stripe
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -3006,6 +4158,24 @@ endpoints:
         note: Full LinkedIn post or article URL.
         example: https://www.linkedin.com/posts/stripe_last-week-agent-traffic-surpassed-human-activity-7470882737390940160-2Nxs
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -3063,6 +4233,24 @@ endpoints:
         note: Full URL of the LinkedIn post to list comments for.
         example: https://www.linkedin.com/posts/stripe_philip-kl%C3%B6ckner-in-conversation-with-conor-activity-7477791740645564416-tIbZ
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00685
@@ -3108,6 +4296,24 @@ endpoints:
         note: URL of the LinkedIn post to list reactions for (a /posts/...-activity-... or /feed/update/urn:li:activity:... link).
         example: https://www.linkedin.com/posts/satyanadella_today-were-bringing-skills-to-copilot-for-activity-7475945433668694017--kvG
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0084
@@ -3146,6 +4352,24 @@ endpoints:
         note: The full URL of the LinkedIn post to get the video transcript from.
         example: https://www.linkedin.com/posts/artificial-analysis_gemini-35-flash-is-a-step-forward-for-google-activity-7465082408409870337-4Pm-
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -3232,6 +4456,24 @@ endpoints:
         note: Full URL of the public LinkedIn profile whose posts should be returned.
         example: https://www.linkedin.com/in/williamhgates/
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.01951
@@ -3282,6 +4524,24 @@ endpoints:
         note: Full URL of the public LinkedIn profile whose posts should be returned.
         example: https://www.linkedin.com/in/williamhgates/
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0274
@@ -3332,6 +4592,24 @@ endpoints:
         note: Keyword to search LinkedIn companies for (e.g. marketing agency).
         example: fintech
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.041
@@ -3483,6 +4761,24 @@ endpoints:
         required: false
         note: 'Filter by total years of experience. Codes: 1=Less than 1 year, 2=1 to 2 years, 3=3 to 5 years, 4=6 to 10 years, 5=More than 10 years.'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.18
@@ -3635,6 +4931,24 @@ endpoints:
         required: false
         note: 'Filter by total years of experience. Codes: 1=Less than 1 year, 2=1 to 2 years, 3=3 to 5 years, 4=6 to 10 years, 5=More than 10 years.'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.305
@@ -3678,6 +4992,24 @@ endpoints:
         note: Search query for LinkedIn profiles - a role, name, or keywords (e.g. 'Marketing Manager').
         example: recruiter
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.036
@@ -3715,6 +5047,24 @@ endpoints:
         note: Full Reddit post URL in the /r/<subreddit>/comments/<id>/<slug>/ form, e.g. "https://www.reddit.com/r/IAmA/comments/z1c9z/i_am_barack_obama_president_of_the_united_states/". The short "reddit.com/comments/<id>" form is not accepted.
         example: https://www.reddit.com/r/IAmA/comments/z1c9z/i_am_barack_obama_president_of_the_united_states/
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00215
@@ -3756,6 +5106,24 @@ endpoints:
         note: Full Reddit post URL.
         example: https://www.reddit.com/r/IAmA/comments/z1c9z/i_am_barack_obama_president_of_the_united_states/
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -3797,6 +5165,24 @@ endpoints:
         note: Reddit post URL or direct v.redd.it video URL to transcribe.
         example: https://www.reddit.com/r/youseeingthisshit/comments/1oiu9xm/
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -3834,6 +5220,24 @@ endpoints:
         note: 'Reddit username, without the u/ prefix. Example: "spez".'
         example: spez
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -3896,6 +5300,24 @@ endpoints:
         - year
         - all
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -3933,6 +5355,24 @@ endpoints:
         note: Subreddit name without the r/ prefix. Case-sensitive (e.g. "AskReddit", not "askreddit").
         example: programming
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -4006,6 +5446,24 @@ endpoints:
         - day
         - hour
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -4061,6 +5519,24 @@ endpoints:
         required: false
         note: 'Optional time filter: all, year, month, week, day, hour.'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -4106,6 +5582,24 @@ endpoints:
         max: 100
         example: 25
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0002
@@ -4163,6 +5657,24 @@ endpoints:
         note: 'Reddit username, without the u/ prefix. Example: "spez".'
         example: spez
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -4213,6 +5725,24 @@ endpoints:
         note: Reddit username without the leading u/ prefix (e.g. "spez").
         example: spez
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -4250,6 +5780,24 @@ endpoints:
         note: TikTok Top Ads material/ad ID, or a Top Ads detail URL (e.g. 7648493525660270600).
         example: '7648493525660270600'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -4302,6 +5850,24 @@ endpoints:
         note: Two-letter region code for TikTok's Commercial Content Library, such as DE, FR, GB or IT. Omit it for the library default, DE. Coverage is the EU and EEA; a non-EU code such as US is not served.
         example: GB
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -4377,6 +5943,24 @@ endpoints:
         note: Upstream sort expression. Defaults to last_shown_date,desc.
         default: last_shown_date,desc
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0005
@@ -4417,6 +6001,24 @@ endpoints:
         note: TikTok username without the leading @ (e.g. "shakira").
         example: shakira
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.018
@@ -4463,6 +6065,24 @@ endpoints:
         note: TikTok video URL the comment belongs to.
         example: https://www.tiktok.com/@stoolpresidente/video/7623818255903329566
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0009
@@ -4505,6 +6125,24 @@ endpoints:
         note: TikTok username whose followers to list, without the @ prefix (e.g. stoolpresidente).
         example: stoolpresidente
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -4546,6 +6184,24 @@ endpoints:
         note: TikTok username without the leading @ (e.g. "stoolpresidente").
         example: stoolpresidente
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -4594,6 +6250,24 @@ endpoints:
         max: 20
         example: 3
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0036
@@ -4632,6 +6306,24 @@ endpoints:
         note: TikTok username without the leading @ (e.g. "thejustalex").
         example: thejustalex
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -4669,6 +6361,24 @@ endpoints:
         note: Full TikTok photo-mode post URL. TikTok serves slideshow posts under the same /video/<id> path as videos, so the normal share link works.
         example: https://www.tiktok.com/@foodbyfranchi/video/7479916555602513174
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -4706,6 +6416,24 @@ endpoints:
         note: TikTok username without the leading @.
         example: gordonramsayofficial
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00116
@@ -4743,6 +6471,24 @@ endpoints:
         note: TikTok username without the leading @ (e.g. "stoolpresidente").
         example: stoolpresidente
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -4784,6 +6530,24 @@ endpoints:
         note: 'Hashtag or keyword to search for (without the leading #).'
         example: recipe
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -4821,6 +6585,24 @@ endpoints:
         note: The clip identifier for the song, found in TikTok music URLs (e.g. 7439295283975702544).
         example: '7439295283975702544'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0009
@@ -4862,6 +6644,24 @@ endpoints:
         required: false
         note: Pagination cursor for retrieving the next page of results.
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0009
@@ -4979,6 +6779,24 @@ endpoints:
         note: Country code used to select the Creative Center market (default US).
         default: US
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -5020,6 +6838,24 @@ endpoints:
         required: false
         note: Set to true to return a simplified response.
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -5125,6 +6961,24 @@ endpoints:
         - VN
         example: US
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -5168,6 +7022,24 @@ endpoints:
         note: Full TikTok video URL.
         example: https://www.tiktok.com/@mrbeast/video/7654638524729216287?_r=1&u_code=elgjf3ff8cajhk&preview_pb=0&sharer_language=en&_d=elh6737j6kjl71&share_item_id=7654638524729216287&source=h5_m
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -5205,6 +7077,24 @@ endpoints:
         note: Full TikTok video URL. Share links and tracking query params are fine.
         example: https://www.tiktok.com/@mrbeast/video/7654638524729216287
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -5242,6 +7132,24 @@ endpoints:
         note: TikTok video URL (e.g. "https://www.tiktok.com/@user/video/1234567890").
         example: https://www.tiktok.com/@thatdudecancook/video/7649086431641521421
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0176
@@ -5283,6 +7191,24 @@ endpoints:
         - VN
         example: US
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -5325,6 +7251,24 @@ endpoints:
         note: Lowercase two-letter country code of the TikTok Shop market (e.g. us).
         default: us
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0055
@@ -5366,6 +7310,24 @@ endpoints:
         note: TikTok Shop product detail page URL (e.g. https://www.tiktok.com/shop/pdp/.../1729587769570529799).
         example: https://www.tiktok.com/shop/pdp/goli-ashwagandha-gummies-with-vitamin-d-ksm-66-vegan-non-gmo/1729587769570529799
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -5413,6 +7375,24 @@ endpoints:
         note: TikTok Shop product URL (e.g. https://www.tiktok.com/shop/pdp/.../1729385633899532161).
         example: https://www.tiktok.com/shop/pdp/cat-nail-clipper-by-potaroma-adjustable-sizes-built-in-file-safe-for-kittens-cats/1731578642912612516
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00095
@@ -5478,6 +7458,24 @@ endpoints:
         note: Search keyword for TikTok Shop products (e.g. wireless earbuds).
         example: phone case
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -5527,6 +7525,24 @@ endpoints:
         note: Seed keyword to expand (e.g. ashwagandha gummies).
         example: ashwagandha gummies
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -5581,6 +7597,24 @@ endpoints:
         note: TikTok Shop store URL (e.g. https://www.tiktok.com/shop/store/...).
         example: https://www.tiktok.com/shop/store/goli-nutrition/7495794203056835079
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -5626,6 +7660,24 @@ endpoints:
         required: false
         note: Geographical region for proxy placement (defaults to US).
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -5671,6 +7723,24 @@ endpoints:
         note: The website URL or domain to crawl.
         example: https://example.com
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0045
@@ -5732,6 +7802,24 @@ endpoints:
         note: The base URL of the site to map into a list of links.
         example: https://www.iana.org
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.001
@@ -5809,6 +7897,24 @@ endpoints:
         min: 0
         max: 15000
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0009
@@ -5854,6 +7960,24 @@ endpoints:
         note: Browser viewport width in pixels (e.g. 1280).
         default: 1280
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00174
@@ -5891,6 +8015,24 @@ endpoints:
         note: Canonical x.com or twitter.com URL of the public wrapper post for an X Article.
         example: https://x.com/Decentralisedco/status/1905545699552375179
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00075
@@ -5928,6 +8070,24 @@ endpoints:
         note: Community URL (e.g. https://x.com/i/communities/1926186499399139650).
         example: https://x.com/i/communities/1926186499399139650
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0001
@@ -5965,6 +8125,24 @@ endpoints:
         note: Community URL (e.g. https://x.com/i/communities/1926186499399139650).
         example: https://x.com/i/communities/1926186499399139650
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00045
@@ -6014,6 +8192,24 @@ endpoints:
         note: The X (Twitter) username to fetch followers for, without the @ prefix (e.g. elonmusk).
         example: nasa
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00075
@@ -6064,6 +8260,24 @@ endpoints:
         note: The X (Twitter) username to fetch the following list for, without the @ prefix (e.g. elonmusk).
         example: nasa
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00075
@@ -6106,6 +8320,24 @@ endpoints:
         note: Keyword to match against X (Twitter) community names and topics (e.g. artificial intelligence).
         example: artificial intelligence
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0011
@@ -6147,6 +8379,24 @@ endpoints:
         note: 'Keyword to match against X (Twitter) handles, display names, and profile bios. This is the People tab of X search: pass a topic (''ai agents''), a name (''Elon Musk''), or a handle (''openai'') and get back accounts, not posts. Use twitter.search for posts.'
         example: ai agents
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00075
@@ -6184,6 +8434,24 @@ endpoints:
         note: Canonical x.com or twitter.com status URL with a numeric tweet ID. Any tweet in the self-thread can be supplied; the provider resolves the thread root.
         example: https://x.com/SpaceX/status/1732824684683784516
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00375
@@ -6229,6 +8497,24 @@ endpoints:
         note: Country name, city name, or ISO country code. Omit for worldwide trends.
         example: US
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00075
@@ -6267,6 +8553,24 @@ endpoints:
         note: Canonical x.com or twitter.com status URL with a numeric tweet ID, including /i/web/status and media-share variants.
         example: https://x.com/SpaceX/status/1732824684683784516
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00075
@@ -6304,6 +8608,24 @@ endpoints:
         note: Tweet URL of the video to transcribe (e.g. https://x.com/TheoVon/status/1916982720317821050).
         example: https://x.com/TheoVon/status/1916982720317821050
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -6345,6 +8667,24 @@ endpoints:
         note: YouTube channel handle.
         example: '@mkbhd'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -6390,6 +8730,24 @@ endpoints:
         note: YouTube channel handle.
         example: '@MrBeast'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -6431,6 +8789,24 @@ endpoints:
         note: YouTube channel handle, with or without the leading @.
         example: '@mkbhd'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0718
@@ -6476,6 +8852,24 @@ endpoints:
         note: YouTube channel handle.
         example: '@IShowSpeed'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -6521,6 +8915,24 @@ endpoints:
         note: YouTube channel handle.
         example: '@veritasium'
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -6575,6 +8987,24 @@ endpoints:
         - popular
         example: latest
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -6628,6 +9058,24 @@ endpoints:
         - latest
         - popular
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -6665,6 +9113,24 @@ endpoints:
         note: Replies continuation token from the comments endpoint, or the continuationToken from a previous replies response for further pagination.
         example: Eg0SC19fZm1EajBaSjFRGAYygwEaUBIaVWd3aXRjRk9fdmtpM0x4LUNfZDRBYUFCQWciAggAKhhVQ1g2T1EzRGtjc2JZTkU2SDh1UVF1VkEyC19fZm1EajBaSjFRQABICoIBAggBQi9jb21tZW50LXJlcGxpZXMtaXRlbS1VZ3dpdGNGT192a2kzTHgtQ19kNEFhQUJBZw==
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -6702,6 +9168,24 @@ endpoints:
         note: URL of the YouTube community post.
         example: https://www.youtube.com/post/Ugkx1LonSRBBUqASv-J8j9_FesxwlMAhT3_e
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -6739,6 +9223,24 @@ endpoints:
         note: 'The playlist ID: the "list" parameter in a playlist URL (e.g. "PLu0W_9lII9ahIappRPN0MCAgtOu3lQjQi").'
         example: PLMC9KNkIncKtPzgY-5rmhvj7fax8fdxoj
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -6797,6 +9299,24 @@ endpoints:
         - this_month
         - this_year
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -6844,6 +9364,24 @@ endpoints:
         enum:
         - all
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -6902,6 +9440,24 @@ endpoints:
         - this_month
         - this_year
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -6935,6 +9491,24 @@ endpoints:
   input:
     body: {}
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -6969,6 +9543,24 @@ endpoints:
         note: Full YouTube video URL. Shorts (youtube.com/shorts/...), youtu.be, live, and embed URLs all work.
         example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -7014,6 +9606,24 @@ endpoints:
         note: Full YouTube video URL. Shorts (youtube.com/shorts/...) and youtu.be URLs also work.
         example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -7055,6 +9665,24 @@ endpoints:
         note: YouTube video or Short URL.
         example: https://www.youtube.com/watch?v=AVO0ifle-OU
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.0012
@@ -7096,6 +9724,24 @@ endpoints:
         note: Full YouTube video URL. Shorts (youtube.com/shorts/...), youtu.be, live, and embed URLs all work.
         example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.002
@@ -7146,6 +9792,24 @@ endpoints:
         note: YouTube video or Short URL (e.g. "https://www.youtube.com/watch?v=dQw4w9WgXcQ" or "https://www.youtube.com/shorts/Fir1x9cw2vg").
         example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
     bodyType: json
+    queryParams:
+      fields:
+        type: string
+        required: false
+        note: Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.
+      max_items:
+        type: integer
+        required: false
+        min: 0
+        note: Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.
+      summary:
+        type: boolean
+        required: false
+        note: Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.
+      jq:
+        type: string
+        required: false
+        note: Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.
   cost:
     type: per_success
     value: 0.00308

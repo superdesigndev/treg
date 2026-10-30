@@ -1432,6 +1432,26 @@ ANYAPI_KEEP_PLATFORMS = frozenset({
 # shape of the answer. Carrying them into every one of 300+ entries would bury the real parameters.
 ANYAPI_SKIP_PARAMS = {"preferLatencyUnderMs", "requireCursor", "requireSinglePage"}
 
+# Response-budget controls AnyAPI takes on the QUERY of every /v1/run call, never in the body (the
+# body schema rejects unknown fields). A large answer's own `large_result` hint names them without
+# saying where they go, so every entry declares them as query parameters. They shape only what
+# comes back; the charge is the same.
+ANYAPI_RESPONSE_PARAMS = {
+    "fields": {"type": "string", "required": False,
+               "note": "Query parameter, not a body field. Comma-separated keys (dotted paths descend) "
+                       "to keep on each result item. Trims the response, never the charge."},
+    "max_items": {"type": "integer", "required": False, "min": 0,
+                  "note": "Query parameter, not a body field. Caps the result rows returned; a "
+                          "`_truncated` note says how many were withheld. Never changes the charge."},
+    "summary": {"type": "boolean", "required": False,
+                "note": "Query parameter, not a body field. `true` returns only an outline (keys, "
+                        "item counts, per-field sizes). Never changes the charge."},
+    "jq": {"type": "string", "required": False,
+           "note": "Query parameter, not a body field. A jq expression over the result envelope; its "
+                   "output replaces `output`, and a failed expression returns the full result with "
+                   "`jqError`. Never changes the charge."},
+}
+
 ANYAPI_RATE_CARD = "https://api.getanyapi.com/v1/apis?limit=1000"
 ANYAPI_OPENAPI = "https://api.getanyapi.com/openapi.json"
 # Bumped by hand when the rate card is re-read, so a re-run with no price change is byte-identical.
@@ -1483,9 +1503,10 @@ def _anyapi_measured_window() -> tuple[str, int]:
     return blob.get("as_of", ANYAPI_CHECKED), blob.get("window_days", 60)
 
 
-def _anyapi_input(schema: dict, example: dict) -> dict:
+def _anyapi_input(schema: dict, example: dict, op: dict | None = None) -> dict:
     """AnyAPI publishes one strict JSON Schema per SKU; carry it across verbatim minus the
-    routing controls, so a generated `test_request` is built from the vendor's own examples."""
+    routing controls, so a generated `test_request` is built from the vendor's own examples.
+    The response-budget query controls are added wherever the operation lists them."""
     required = set(schema.get("required") or [])
     body = {}
     for name, spec in (schema.get("properties") or {}).items():
@@ -1502,7 +1523,9 @@ def _anyapi_input(schema: dict, example: dict) -> dict:
         if name in example:
             field["example"] = example[name]
         body[name] = field
-    return {"body": body, "bodyType": "json"}
+    listed = {p.get("name") for p in (op or {}).get("parameters") or [] if p.get("in") == "query"}
+    query = {name: dict(spec) for name, spec in ANYAPI_RESPONSE_PARAMS.items() if name in listed}
+    return {"body": body, "bodyType": "json", **({"queryParams": query} if query else {})}
 
 
 def _anyapi_cost(api: dict) -> dict:
@@ -1652,7 +1675,7 @@ def ingest_anyapi(refresh: bool = False):
             "path": path,
             "name": clean(api["name"])[:60],
             "summary": clean(api["description"])[:400],
-            "input": _anyapi_input(content.get("schema") or {}, example),
+            "input": _anyapi_input(content.get("schema") or {}, example, op),
             "cost": _anyapi_cost(api),
             # One public page per SKU: live price, source routing and measured 30-day uptime.
             "docs_url": ("https://getanyapi.com/api/"
