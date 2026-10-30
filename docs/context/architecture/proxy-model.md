@@ -561,7 +561,7 @@ Many callers share one platform key, so tier 4 makes its own bursts: leadsforge 
 calls, crustdata 34%, with `retry-after` headers nobody downstream could act on. Two bounded
 mechanisms in `service._execute_call`, both **after the DB phase ended and before the relay** (the
 pool-discipline rule holds through the wait; proven by test), both platform-tier only, neither ever a
-refusal:
+refusal (the shared window below is the refusing gate):
 
 1. **Spacer** - `infra/upstream/limiter.py`: one call per `window_s / limit` per provider (a token
    bucket of capacity one - a burst of `limit` at t=0 is legal for a classic bucket and exactly what a
@@ -573,10 +573,11 @@ refusal:
    differs from its provider's is its own bucket (`policy._ENDPOINT_RATE_LIMITS`, read through
    `view.rate_bucket`); it replaces the provider's limit for that route and does not draw from the
    provider's bucket. Each account other than the primary has its own allowance, so its own
-   bucket (`<key>#<label>`). In-process on purpose: a second replica
-   doubles the effective rate. A shared window over the same buckets can run beside it in observe
-   mode (`TREG_PROVIDER_RATE_MODE=observe`, [capacity](../ops/capacity.md)), which logs what it
-   would refuse and refuses nothing.
+   bucket (`<key>#<label>`). The spacer stays in-process because its wait needs no round trip, so
+   each replica adds its own allowance. The shared window over the same buckets
+   ([capacity](../ops/capacity.md) § part four) holds the declared rate across replicas: it
+   observes every bucket and refuses, with the typed `provider_rate_limited` 429, only on the
+   buckets listed in `TREG_PROVIDER_RATE_ENFORCE`.
 2. **One bounded `retry-after` re-send** - on a tier-4 **429** classified `burst` with
    `retry-after ≤ 5 s` (`SMOOTHING_RETRY_MAX_S`), for a **body-less GET/HEAD only**: close the first
    response, sleep, send the identical `UpstreamRequest` once more on the same hold, settle on the

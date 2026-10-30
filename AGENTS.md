@@ -150,8 +150,8 @@ agents then built against a constitution that was wrong.
   credentials, catalog prices and balances, and writes only what `tests/test_call_architecture.py`
   allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
-  archive-question marks, durable provider-resource ownership, and Redis org/endpoint
-  quota admission counters). Extend the
+  archive-question marks, durable provider-resource ownership, Redis org/endpoint
+  quota admission counters, and the shared provider rate window's members). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary
   calls: every step goes through `execute_call` under its own hold, a catalog step as the caller and

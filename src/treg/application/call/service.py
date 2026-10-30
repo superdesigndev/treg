@@ -355,6 +355,15 @@ def _idempotent_read(request: _ApplicationRequest) -> bool:
     return request.method.upper() in ("GET", "HEAD") and not request.has_body
 
 
+def _provider_rate_limited(mk: MarketplaceCall, seen: rate_observe.Seen) -> GatewayFailed:
+    return GatewayFailed("provider_rate_limited", status_code=429, detail={
+        "error": "provider_rate_limited", "provider": mk.provider, "endpoint_id": mk.endpoint_id,
+        "retry_after_s": seen.retry_after_s,
+        "message": f"treg's account for {mk.provider} is at its rate limit; nothing was sent or "
+                   f"charged, try again in {seen.retry_after_s} s"},
+        retry_after_s=seen.retry_after_s)
+
+
 def _burst_retry_after(provider: str, response: UpstreamResponse, body: bytes) -> float | None:
     """Seconds to wait before ONE re-send, or None when this 429 must be relayed as is: a quota
     429 (exhausted — marked after the settle), an unknown one, or a burst longer than the cap."""
@@ -1475,18 +1484,29 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     if share_slot.waited_ms:
                         smoothed.append(f"share_wait={share_slot.waited_ms}")
                 rate_seen = None
+
+                async def admit_outbound():
+                    nonlocal sent, rate_seen
+                    if platform_tier:
+                        rate_seen = await rate_observe.observe(mk.provider, rl)
+                        if rate_seen is not None and rate_seen.refuses:
+                            refused, rate_seen = rate_seen, None
+                            rate_observe.record(refused, "refused")
+                            raise _provider_rate_limited(mk, refused)
+                    if mk is not None:
+                        try:
+                            await _admit_org_endpoint(request, mk.endpoint_id)
+                        except BaseException:
+                            rate_observe.release(rate_seen)
+                            rate_seen = None
+                            raise
+                    sent = True
+
                 relay_options = {}
                 if mk is not None and _quota_targets(request, mk.endpoint_id):
-                    async def before_outbound():
-                        nonlocal sent, rate_seen
-                        await _admit_org_endpoint(request, mk.endpoint_id)
-                        rate_seen = await rate_observe.observe(mk.provider, rl) if platform_tier else None
-                        sent = True
-
-                    relay_options["before_outbound"] = before_outbound
+                    relay_options["before_outbound"] = admit_outbound
                 else:
-                    rate_seen = await rate_observe.observe(mk.provider, rl) if platform_tier else None
-                    sent = True
+                    await admit_outbound()
                 upstream_started = _now_ms()
                 try:
                     response = await relay(
@@ -1518,15 +1538,24 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     # Half two: ONE bounded wait on the provider's own `retry-after`, then the identical
                     # request again on the same hold — idempotent reads only, only when the provider
                     # said when, never on 401/402/5xx (the "no retries" rule stands for those).
-                    await response.close()
-                    await asyncio.sleep(retry_s)
-                    retry_started = _now_ms()
-                    response = await relay(
-                        upstream_request, upstream_url, tool, secrets, upstream_client,
-                        drop_params=drop_params or None, force_identity=True)
-                    response, body, spooled_bytes = await _read_evidence(mk, response)
-                    upstream_ms += _now_ms() - retry_started
-                    smoothed.append("retry=1")
+                    retry_seen = await rate_observe.observe(mk.provider, rl)
+                    if retry_seen is not None and retry_seen.refuses:
+                        rate_observe.record(retry_seen, "refused")
+                    else:
+                        await response.close()
+                        await asyncio.sleep(retry_s)
+                        retry_started = _now_ms()
+                        retry_response = None
+                        try:
+                            retry_response = await relay(
+                                upstream_request, upstream_url, tool, secrets, upstream_client,
+                                drop_params=drop_params or None, force_identity=True)
+                        finally:
+                            rate_observe.record(retry_seen, retry_response.status
+                                                if retry_response is not None else None)
+                        response, body, spooled_bytes = await _read_evidence(mk, retry_response)
+                        upstream_ms += _now_ms() - retry_started
+                        smoothed.append("retry=1")
                 if mk.async_owner_call_id and 200 <= response.status < 300:
                     try:
                         await async_task_app.observe_owned_poll(

@@ -301,6 +301,10 @@ same platform key, `retry=1` when a burst-429 with a short `retry-after` was re-
 (`ops/capacity.md` § fair share). Informational; the status and body are the provider's. See
 `architecture/proxy-model.md` § Burst smoothing. A call that waited too long is refused instead with the
 typed `share_busy` 429 (`retry_after_s`, not charged); a routed job asks its next provider.
+On a bucket listed in `TREG_PROVIDER_RATE_ENFORCE`, a call that the shared rate window finds full
+(`ops/capacity.md` § part four) is refused before it is sent with the typed `provider_rate_limited`
+429: `detail` carries `provider`, `endpoint_id`, `retry_after_s` and a message, `Retry-After` the
+same seconds, `X-Treg-Error: 1`, not charged; a routed job asks its next provider.
 
 ## `X-Treg-Error` - whose refusal is this?
 `bootstrap_handlers._mark_treg_own_errors` tags treg's **own**

@@ -73,6 +73,8 @@ os.environ["TREG_WORKOS_CLIENT_ID"] = ""
 os.environ["TREG_WORKOS_WEBHOOK_SECRET"] = ""
 os.environ["TREG_PUBLIC_URL"] = "https://treg.to"
 os.environ["TREG_OVERFLOW_MODE"] = "off"
+os.environ["TREG_PROVIDER_RATE_MODE"] = "off"
+os.environ["TREG_PROVIDER_RATE_ENFORCE"] = ""
 os.environ["TREG_OVERFLOW_KEY_ORTHOGONAL"] = ""
 os.environ["TREG_OVERFLOW_KEY_MONID"] = ""
 # A merged local .env can carry newly added funded platform keys that the fixed list below has not
