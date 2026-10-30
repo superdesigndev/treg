@@ -1,0 +1,15 @@
+{
+  "phones": [],
+  "no_phone": [
+    "example-0001",
+    "example-0002"
+  ],
+  "billing": {
+    "card": "payg",
+    "charge_usd": 0.001,
+    "charge_micro": 1000,
+    "events": {
+      "fetch_min": 1
+    }
+  }
+}

@@ -1334,6 +1334,32 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+ARIHAAN_PEOPLE = OAuthProvider(
+    service="arihaan-people",
+    display_name="Arihaan People API",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Arihaan People API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://people-api.arihaan.ai/pay-per-person",
+    setup_action_label="Get your Arihaan People API key",
+    setup_steps=(
+        "Open the pay-per-person page and sign in with Google.",
+        "Copy the API key shown under API keys.",
+        "Add funds to the prepaid balance: calls are charged from it.",
+    ),
+    setup_note="Billed per call from a prepaid balance. The balance, usage, meta and rates routes are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="People data",
+    summary="Search B2B leads and work emails by role, company and location, look people up by LinkedIn profile URL, email or phone, and get phone numbers. Pay per call.",
+    base_url="https://people-api.arihaan.ai",
+    docs_url="https://people-api.arihaan.ai/docs",
+    probe_path="/v2/balance",  # free; a bad or missing key gets HTTP 401
+)
+
 MOBIUSENGINE_JOBS = OAuthProvider(
     service="mobiusengine-jobs",
     display_name="MobiusEngine Jobs Data",
@@ -4123,6 +4149,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
+        ARIHAAN_PEOPLE,
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
@@ -4151,7 +4178,7 @@ DEFAULT_CAPABILITY = "read"
 
 # Shelf order in the marketplace. Anything carrying a category not named here sorts last, so a
 # provider added without one is visible rather than lost between the shelves.
-CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Enrichment",
+CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Enrichment", "People data",
                   "Market data", "Research & public data", "Jobs data", "Community", "Other")
 
 

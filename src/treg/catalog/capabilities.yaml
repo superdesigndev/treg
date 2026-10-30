@@ -1114,6 +1114,7 @@ capabilities:
 
   # people
   people.decision_makers: "Rank a company's decision-makers"
+  people.profile.from_phone: "Find social profiles from a contact phone number."
   people.identity.resolve: "Resolve an email or profile to linked identities"
   people.lookalike: "Find contacts similar to seed profiles"
   people.school.clean: "Clean and standardize a school name"

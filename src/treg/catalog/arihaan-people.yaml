@@ -1,0 +1,294 @@
+provider: arihaan-people
+source:
+  docs: https://people-api.arihaan.ai/docs
+  openapi: https://people-api.arihaan.ai/v2/openapi.json
+  curated: 2026-10-28
+# Prepaid pay-per-use balance. Each call reserves the price in `cost.value`, the most that call can be charged under the
+# public rate card, and settles on the exact figure the response carries at `billing.charge_usd` (a search that reads
+# less, or returns fewer people, settles lower; a miss is charged less than a hit). The rate card is public:
+# GET /v2/rates. Every 2xx carries the `billing` block and the X-Cost-USD and X-Balance-USD headers. Errors and the
+# free routes (/v2/meta, /v2/rates, /v2/balance, /v2/usage, /v2/openapi.json, /v2/people/estimate) are not charged.
+# City, state and country on a person are the company's headquarters, not where the person lives.
+# Probe: GET /v2/balance is free; a bad or missing key answers 401.
+limits: "100 people per search page; 25 keys per lookup; 100 ids per fetch or phone call; a search that would read more than the scan cap is refused with HTTP 400 and nothing is charged; HTTP 402 when the prepaid balance is below the estimated charge"
+pricing_url: https://people-api.arihaan.ai/pay-per-person
+endpoints:
+  - id: arihaan-people.people.search
+    verified: '2026-10-28'
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.search.json
+    domain: people
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/search
+    body_allowlist: true
+    name: "Search people by role, company and location"
+    summary: "Find business contacts by title, department, seniority, company, industry, size, revenue and company location. Each person has name, title, department, level, company, company location, work email when on file and LinkedIn URL. Cursor paging."
+    input:
+      bodyType: json
+      body:
+        title: {type: "array[string]", required: false, max: 50, note: "job title keywords; a person matches if the title contains ANY of them", example: ["head of sales"]}
+        title_exclude: {type: "array[string]", required: false, max: 50, note: "drop people whose title contains ANY of these", example: ["assistant"]}
+        title_whole_words: {type: boolean, required: false, note: "match title and title_exclude as whole words"}
+        company: {type: "array[string]", required: false, max: 50, note: "company name contains ANY of these", example: ["stripe"]}
+        company_exact: {type: boolean, required: false, note: "match company names exactly instead of 'contains'"}
+        exclude_company: {type: "array[string]", required: false, max: 50, note: "drop people at companies whose name contains ANY of these"}
+        department: {type: "array[string]", required: false, max: 50, note: "job family; accepted values are listed by GET /v2/meta", example: ["Sales"]}
+        level: {type: "array[string]", required: false, max: 50, note: "seniority; accepted values are listed by GET /v2/meta", example: ["C-suite", "VP"]}
+        industry: {type: "array[string]", required: false, max: 50, note: "the company's industry contains ANY of these", example: ["software"]}
+        company_size: {type: "array[string]", required: false, max: 50, note: "company headcount bucket; accepted values are listed by GET /v2/meta"}
+        revenue: {type: "array[string]", required: false, max: 50, note: "company annual revenue range; accepted values are listed by GET /v2/meta", example: ["$10-50M"]}
+        countries: {type: "array[string]", required: false, max: 50, note: "ISO-3166 alpha-2 codes of the COMPANY's headquarters country", example: ["US"]}
+        states: {type: "array[string]", required: false, max: 50, note: "state or province codes of the COMPANY's headquarters", example: ["TX"]}
+        city: {type: "array[string]", required: false, max: 50, note: "company headquarters city contains ANY of these", example: ["austin"]}
+        has_email: {type: boolean, required: false, note: "only people with an email on file"}
+        has_phone: {type: boolean, required: false, note: "only people with a phone number on file"}
+        has_linkedin: {type: boolean, required: false, note: "only people with a LinkedIn profile on file"}
+        has_company_phone: {type: boolean, required: false, note: "only people whose company has a main phone number on file"}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100, note: "people per page", example: 1}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page; null means the last page"}
+    test_request: {body: {title: ["head of sales"], countries: ["US"], has_email: true, limit: 1}}
+    cost:
+      type: per_call
+      value: 0.10
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-10-28'
+      confidence: documented
+      note: "Reserves the most one page can be charged: up to 10 scan units at $0.005 plus up to 100 people at $0.0004. Settles on billing.charge_usd: one scan unit for a narrow search ($0.005) plus $0.0004 per person returned. A search that finds nobody is still charged its scan units. A refusal as too broad, and every 4xx, is not charged. POST /v2/people/estimate (free) returns the scan units before you run it."
+    docs_url: https://people-api.arihaan.ai/docs
+
+  - id: arihaan-people.people.count
+    verified: '2026-10-28'
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.count.json
+    domain: people
+    capability: people.search.count
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/count
+    body_allowlist: true
+    name: "Count the people a search would return"
+    summary: "How many people match these filters, and how many of them have a work email, a phone and a LinkedIn URL. Use it before a large pull to size it."
+    input:
+      bodyType: json
+      body:
+        title: {type: "array[string]", required: false, max: 50, note: "job title keywords; a person matches if the title contains ANY of them", example: ["head of sales"]}
+        title_exclude: {type: "array[string]", required: false, max: 50, note: "drop people whose title contains ANY of these", example: ["assistant"]}
+        title_whole_words: {type: boolean, required: false, note: "match title and title_exclude as whole words"}
+        company: {type: "array[string]", required: false, max: 50, note: "company name contains ANY of these", example: ["stripe"]}
+        company_exact: {type: boolean, required: false, note: "match company names exactly instead of 'contains'"}
+        exclude_company: {type: "array[string]", required: false, max: 50, note: "drop people at companies whose name contains ANY of these"}
+        department: {type: "array[string]", required: false, max: 50, note: "job family; accepted values are listed by GET /v2/meta", example: ["Sales"]}
+        level: {type: "array[string]", required: false, max: 50, note: "seniority; accepted values are listed by GET /v2/meta", example: ["C-suite", "VP"]}
+        industry: {type: "array[string]", required: false, max: 50, note: "the company's industry contains ANY of these", example: ["software"]}
+        company_size: {type: "array[string]", required: false, max: 50, note: "company headcount bucket; accepted values are listed by GET /v2/meta"}
+        revenue: {type: "array[string]", required: false, max: 50, note: "company annual revenue range; accepted values are listed by GET /v2/meta", example: ["$10-50M"]}
+        countries: {type: "array[string]", required: false, max: 50, note: "ISO-3166 alpha-2 codes of the COMPANY's headquarters country", example: ["US"]}
+        states: {type: "array[string]", required: false, max: 50, note: "state or province codes of the COMPANY's headquarters", example: ["TX"]}
+        city: {type: "array[string]", required: false, max: 50, note: "company headquarters city contains ANY of these", example: ["austin"]}
+        has_email: {type: boolean, required: false, note: "only people with an email on file"}
+        has_phone: {type: boolean, required: false, note: "only people with a phone number on file"}
+        has_linkedin: {type: boolean, required: false, note: "only people with a LinkedIn profile on file"}
+        has_company_phone: {type: boolean, required: false, note: "only people whose company has a main phone number on file"}
+    test_request: {body: {title: ["head of sales"], countries: ["US"]}}
+    cost:
+      type: per_call
+      value: 0.05
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-10-28'
+      confidence: documented
+      note: "Reserves the most one count can be charged: up to 25 count units at $0.002. Settles on billing.charge_usd: one count unit for a narrow count ($0.002), more for very broad filters. Not charged when refused as too broad."
+    docs_url: https://people-api.arihaan.ai/docs
+
+  - id: arihaan-people.people.lookup.linkedin
+    verified: '2026-10-28'
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.lookup.linkedin.json
+    domain: people
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/lookup
+    body_allowlist: true
+    name: "Look people up by LinkedIn URL"
+    summary: "The people behind up to 25 LinkedIn profile URLs, one result per key. A key can match up to 5 people, all returned for the one key price. Keys are normalised before matching."
+    input:
+      bodyType: json
+      body:
+        linkedin_urls: {type: "array[string]", required: true, min: 1, max: 25, note: "1 to 25 LinkedIn profile URLs", example: ["https://www.linkedin.com/in/example"]}
+    test_request: {body: {linkedin_urls: ["https://www.linkedin.com/in/example-person-zz9"]}}
+    cost:
+      type: per_call
+      value: 0.025
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-10-28'
+      confidence: documented
+      note: "Reserves 25 keys at $0.001, the price of a key that matched. Settles on billing.charge_usd: $0.001 per key that matched (up to 5 people returned per key at no extra charge), $0.0003 per key not found. The reserve is therefore the true ceiling."
+    docs_url: https://people-api.arihaan.ai/docs
+
+  - id: arihaan-people.people.lookup.email
+    verified: '2026-10-28'
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.lookup.email.json
+    domain: people
+    capability: people.identity.resolve
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/lookup
+    body_allowlist: true
+    name: "Reverse email lookup: LinkedIn profile from an email"
+    summary: "Find the person behind an email address: their LinkedIn URL, name, title and employer, for up to 25 emails per call, one result per key. A key can match up to 5 people, all returned for the one key price. Keys are normalised before matching."
+    input:
+      bodyType: json
+      body:
+        emails: {type: "array[string]", required: true, min: 1, max: 25, note: "1 to 25 email addresses", example: ["name@example.com"]}
+    test_request: {body: {emails: ["nobody-zz9@example.com"]}}
+    cost:
+      type: per_call
+      value: 0.025
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-10-28'
+      confidence: documented
+      note: "Reserves 25 keys at $0.001, the price of a key that matched. Settles on billing.charge_usd: $0.001 per key that matched (up to 5 people returned per key at no extra charge), $0.0003 per key not found. The reserve is therefore the true ceiling."
+    docs_url: https://people-api.arihaan.ai/docs
+
+  - id: arihaan-people.people.lookup.phone
+    verified: '2026-10-28'
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.lookup.phone.json
+    domain: people
+    capability: people.profile.from_phone
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/lookup
+    body_allowlist: true
+    name: "Reverse phone lookup: LinkedIn profile from a phone"
+    summary: "Find the person behind a phone number: their LinkedIn URL, name, title and employer, for up to 25 numbers per call, one result per key. A key can match up to 5 people, all returned for the one key price. Keys are normalised before matching."
+    input:
+      bodyType: json
+      body:
+        phones: {type: "array[string]", required: true, min: 1, max: 25, note: "1 to 25 phone numbers", example: ["+14155550100"]}
+    test_request: {body: {phones: ["+15550100100"]}}
+    cost:
+      type: per_call
+      value: 0.025
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-10-28'
+      confidence: documented
+      note: "Reserves 25 keys at $0.001, the price of a key that matched. Settles on billing.charge_usd: $0.001 per key that matched (up to 5 people returned per key at no extra charge), $0.0003 per key not found. The reserve is therefore the true ceiling."
+    docs_url: https://people-api.arihaan.ai/docs
+
+  - id: arihaan-people.people.batch
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.batch.json
+    domain: people
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/batch
+    body_allowlist: true
+    name: "Fetch up to 100 people by id"
+    summary: "The people for up to 100 ids a search or lookup returned, with the same fields as a search."
+    input:
+      bodyType: json
+      body:
+        ids: {type: "array[string]", required: true, min: 1, max: 100, note: "1 to 100 person ids from a search or lookup", example: ["example-id"]}
+    untestable: "needs ids that a search returned; none is published as a fixed example"
+    cost:
+      type: per_call
+      value: 0.05
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-10-28'
+      confidence: documented
+      note: "Reserves 100 people at $0.0004. Settles on billing.charge_usd: $0.0004 per person returned with a minimum of $0.001 per call."
+    docs_url: https://people-api.arihaan.ai/docs
+
+  - id: arihaan-people.people.phones
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.people.phones.json
+    domain: people
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/phones
+    body_allowlist: true
+    name: "Get phone numbers for up to 100 people"
+    summary: "The phone number and phone type for each of up to 100 person ids that has one. People without a phone are left out."
+    input:
+      bodyType: json
+      body:
+        ids: {type: "array[string]", required: true, min: 1, max: 100, note: "1 to 100 person ids from a search or lookup", example: ["example-id"]}
+    untestable: "needs ids that a search returned; none is published as a fixed example"
+    cost:
+      type: per_call
+      value: 0.15
+      currency: USD
+      reported_charge: {path: billing.charge_usd, unit: usd}
+      source: rate_card_api
+      source_url: https://people-api.arihaan.ai/v2/rates
+      checked: '2026-10-28'
+      confidence: documented
+      note: "Reserves 100 phones at $0.0015. Settles on billing.charge_usd: $0.0015 per person who has a phone; people without one are not charged."
+    docs_url: https://people-api.arihaan.ai/docs
+
+  - id: arihaan-people.meta
+    verified: '2026-10-28'
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.meta.json
+    domain: people
+    capability: people.search.filters
+    platform: people
+    scope: any_account
+    method: GET
+    path: /v2/meta
+    name: "List the accepted filter values"
+    summary: "The values the department, level, industry, company size, revenue and country filters accept, plus the rate card."
+    input:
+      note: "no parameters"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free"}
+    docs_url: https://people-api.arihaan.ai/docs
+
+  - id: arihaan-people.account.balance
+    verified: '2026-10-28'
+    added: '2026-10-28'
+    example_response: examples/arihaan-people.account.balance.json
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v2/balance
+    name: "Get your prepaid balance"
+    summary: "Your pay-per-use balance in dollars (free). This is the registry's health probe."
+    input:
+      note: "no parameters; the key rides in the Authorization header"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free; a bad or missing key gets HTTP 401"}
+    docs_url: https://people-api.arihaan.ai/docs
