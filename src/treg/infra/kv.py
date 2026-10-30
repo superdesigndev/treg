@@ -63,6 +63,12 @@ ReleaseResult = Literal["released", "lost", "not_owned", "unavailable"]
 
 
 @dataclass(frozen=True)
+class RateWindowResult:
+    outcome: Literal["admit", "over", "unavailable"]
+    retry_after_ms: int = 0
+
+
+@dataclass(frozen=True)
 class OrgAdmissionResult:
     outcome: Literal["acquired", "busy", "rate_limited", "unavailable"]
     retry_after_s: int = 0
@@ -108,6 +114,17 @@ _RENEW_SLOT = _SLOT_CLOCK + """
 if not redis.call('ZSCORE', KEYS[1], ARGV[1]) then return 0 end
 """ + _SLOT_EXTEND
 _RELEASE_SLOT = "return redis.call('ZREM', KEYS[1], ARGV[1])"
+# A sliding window: members expire `ttl_ms` after admission; a refusal says when the oldest expires.
+_RATE_WINDOW = _SLOT_CLOCK + """
+if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then
+    local first = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+    return {0, math.max(0, math.ceil(tonumber(first[2]) - now))}
+end
+redis.call('ZADD', KEYS[1], now + tonumber(ARGV[2]), ARGV[1])
+local last = redis.call('ZRANGE', KEYS[1], -1, -1, 'WITHSCORES')
+redis.call('PEXPIREAT', KEYS[1], math.ceil(tonumber(last[2])))
+return {1, 0}
+"""
 
 # One persistent bucket identity across published versions. Rate and optional slot admission
 # happen together: refusals may refill/update bucket metadata, but spend neither resource.
@@ -246,6 +263,9 @@ class Store(Protocol):
 
     async def release_slot(self, key: str, token: str) -> ReleaseResult: ...
 
+    async def rate_window(self, key: str, token: str, ttl_ms: int, limit: int) -> RateWindowResult:
+        """Admit one member into a sliding window of `limit`, or say how long until one expires."""
+
     async def aclose(self) -> None: ...
 
 
@@ -304,6 +324,9 @@ class LocalStore:
 
     async def release_slot(self, key: str, token: str) -> ReleaseResult:
         return "unavailable"
+
+    async def rate_window(self, key: str, token: str, ttl_ms: int, limit: int) -> RateWindowResult:
+        return RateWindowResult("unavailable")
 
 
 class RedisStore:
@@ -393,6 +416,15 @@ class RedisStore:
     async def release_slot(self, key: str, token: str) -> ReleaseResult:
         result = await self._slot_eval(_RELEASE_SLOT, key, token)
         return "unavailable" if result is None else "released" if result else "not_owned"
+
+    async def rate_window(self, key: str, token: str, ttl_ms: int, limit: int) -> RateWindowResult:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                result = await self._client.eval(_RATE_WINDOW, 1, key, token, ttl_ms, limit)
+            admitted, wait_ms = int(result[0]), int(result[1])
+        except Exception:  # noqa: BLE001 - any Redis fault reads as an unknown window
+            return RateWindowResult("unavailable")
+        return RateWindowResult("admit") if admitted else RateWindowResult("over", wait_ms)
 
     async def ping(self) -> bool:
         try:

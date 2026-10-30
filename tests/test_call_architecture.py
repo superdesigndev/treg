@@ -118,12 +118,14 @@ _DATAPLANE_DERIVED_WRITES = {
         (provider_concurrency.Lease._renew, "self.store.renew_slot"),
         (provider_concurrency.Lease._release, "self.store.release_slot"),
     ),
-    # Observe mode for a shared rate window: a platform call about to go upstream takes a
-    # self-expiring member of its bucket's window (Redis, after the DB phase ended); nothing refuses.
+    # A shared rate window: a platform call about to go upstream takes a self-expiring member of its
+    # bucket's window (Redis, after the DB phase ended), given back when it is refused before sending.
     "provider_rate_window": (
         (service._execute_call, "rate_observe.observe"),
         (rate_observe.observe, "provider_rate.admit"),
-        (provider_rate.admit, "store.acquire_slot"),
+        (provider_rate.admit, "store.rate_window"),
+        (rate_observe.release, "provider_rate.release"),
+        (provider_rate._release, "store.release_slot"),
     ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
@@ -174,8 +176,8 @@ _DERIVED_WRITE_FILES = {
     _SRC / "infra" / "provider_concurrency.py": {
         "store.acquire_slot", "self.store.renew_slot", "self.store.release_slot",
     },
-    _SRC / "domain" / "capacity" / "rate_observe.py": {"provider_rate.admit"},
-    _SRC / "infra" / "provider_rate.py": {"store.acquire_slot"},
+    _SRC / "domain" / "capacity" / "rate_observe.py": {"provider_rate.admit", "provider_rate.release"},
+    _SRC / "infra" / "provider_rate.py": {"store.rate_window", "store.release_slot"},
     _SRC / "application" / "call" / "service.py": {
         "org_endpoint_quota.admit",
         "fair_share.acquire",
@@ -251,9 +253,11 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("infra/provider_concurrency.py", "_renew", "self.store.renew_slot"),
     ("infra/provider_concurrency.py", "_release", "self.store.release_slot"),
     ("application/call/service.py", "_execute_call", "rate_observe.observe"),
-    ("application/call/service.py", "before_outbound", "rate_observe.observe"),
+    ("application/call/service.py", "admit_outbound", "rate_observe.observe"),
     ("domain/capacity/rate_observe.py", "observe", "provider_rate.admit"),
-    ("infra/provider_rate.py", "admit", "store.acquire_slot"),
+    ("domain/capacity/rate_observe.py", "release", "provider_rate.release"),
+    ("infra/provider_rate.py", "admit", "store.rate_window"),
+    ("infra/provider_rate.py", "_release", "store.release_slot"),
     ("domain/capacity/marks.py", "strike", "ratestore.kv_put"),
     ("domain/capacity/marks.py", "clear", "ratestore.kv_pop"),
     ("domain/capacity/marks.py", "clear_sweep_state", "ratestore.kv_put"),
