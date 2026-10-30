@@ -60,6 +60,9 @@ _TABLE: list[Signature] = [
     # MobiusEngine Jobs Data: an empty prepaid balance is a 402 {"error": {"code": "insufficient_balance", ...}}.
     Signature("mobiusengine-jobs", 402, r"insufficient_balance", "balance", tripwire=True),
     Signature("leadmagic", 402, r"insufficient_credits", "balance"),
+    # Harmar: an empty prepaid balance is a 402 {"error": {"code": "insufficient_credits",
+    # "seconds_needed", "seconds_available"}} from POST /v1/transcripts and the export route.
+    Signature("harmar", 402, r"insufficient_credits", "balance"),
     Signature("thecompaniesapi", 403, r"noCreditsRemaining", "balance", tripwire=True),
     Signature("companyenrich", 402, r"payment required", "balance", tripwire=True),
     Signature("akta", 402, r"insufficient credits", "balance"),
