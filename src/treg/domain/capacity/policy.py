@@ -128,9 +128,9 @@ _RATE_LIMITS: dict[str, dict] = {
     # Agent's entry-tier limit is one request per second. Shared-key smoothing is provider-wide,
     # so Search also uses this conservative pace even though its own allowance is higher.
     "perplexity": {"limit": 1, "window_s": 1, "source": "docs"},
-    # The account reports 5 requests/s, but /post/engagement consumes two rate-limit units. The
-    # provider-wide limiter cannot weight one endpoint, so two calls/s is the safe shared-key pace.
-    "fetchinio": {"limit": 2, "window_s": 1, "source": "policy"},
+    # The account reports 5 requests/s, and /post/engagement consumes two rate-limit units. The
+    # provider-wide limiter cannot weight one endpoint; four calls/s leaves room for the second unit.
+    "fetchinio": {"limit": 4, "window_s": 1, "source": "policy"},
     # No published provider-wide limit. The shared-key smoother uses the documented
     # balance-check allowance as a conservative policy ceiling for all routes.
     "sixtyfour": {"limit": 60, "window_s": 60, "source": "policy"},
