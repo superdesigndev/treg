@@ -212,8 +212,10 @@ async def test_a_keyless_paid_call_is_challenged_by_both_protocols(anon: AsyncCl
     assert r.status_code == 402, r.text
     assert r.headers["X-Treg-Error"] == "1" and r.headers["cache-control"] == "no-store"
     detail = r.json()["detail"]
-    assert detail["error"] == "payment_required"
+    assert detail["error"] == "payment_required" and detail["reason"] == "payment_required"
     assert detail["amount_micro"] == FLOOR and detail["estimated_cost_micro"] == EP_MICRO
+    assert detail["minimum_payment_micro"] == FLOOR
+    assert "payment minimum" in detail["message"] and "not refunded" in detail["message"]
     assert all(v.startswith("Payment ") for v in r.headers.get_list("www-authenticate"))
     required = decode_payment_required_header(r.headers["payment-required"])
     assert required.accepts[0].amount == str(FLOOR)
@@ -233,11 +235,20 @@ async def test_a_challenge_names_only_the_protocols_offered(anon: AsyncClient, p
 
 async def test_free_own_and_passthrough_calls_get_no_challenge(anon: AsyncClient, payments_on):
     free = next(ep["id"] for ep in catalog_store.load().by_id.values()
-                if (ep.get("cost") or {}).get("type") == "free")
-    for path in (f"/call/{free}", "/call/echo/anything", "/call/https://api.tikhub.io/x"):
+                if (ep.get("cost") or {}).get("type") == "free"
+                and (ep.get("method") or "GET") == "GET")
+    for path, reason in ((f"/call/{free}", "free"), ("/call/echo/anything", "not_a_catalog_tool"),
+                         ("/call/https://api.tikhub.io/x", "not_a_catalog_tool"),
+                         (f"/call/{EP}", "wrong_method")):
+        if reason == "wrong_method":
+            r = await anon.delete(path)
+            assert r.status_code == 401 and r.json()["detail"]["reason"] == reason, r.text
+            continue
         r = await anon.get(path)
         assert r.status_code == 401, (path, r.text)
         assert "payment-required" not in r.headers and "www-authenticate" not in r.headers
+        detail = r.json()["detail"]
+        assert detail["reason"] == reason and "Sign in" in detail["message"], (path, detail)
 
 
 async def test_any_treg_credential_takes_the_account_path(anon: AsyncClient, clients: AsyncClient,
@@ -268,8 +279,11 @@ async def test_an_mpp_payment_relays_the_answer_and_settles_the_cost(anon: Async
     assert r.json()["query"] == {"aweme_id": "7"}
     upstream_auth = r.json()["headers"].get("authorization", "")
     assert not upstream_auth.startswith("Payment "), "the payment credential reached upstream"
-    assert r.headers["X-Treg-Payment"] == "settled" and "payment-receipt" in r.headers
+    assert r.headers["X-Treg-Payment"] == "paid" and "payment-receipt" in r.headers
     assert int(r.headers["X-Treg-Cost-Micro"]) == EP_MICRO
+    assert int(r.headers["X-Treg-Paid-Micro"]) == FLOOR
+    assert int(r.headers["X-Treg-Credit-Micro"]) == FLOOR - EP_MICRO
+    assert r.headers["cache-control"] == "private"
     assert chain.broadcasts == 1
     assert await _balance(TEMPO_PAYER) == FLOOR - EP_MICRO
     kinds = {e.kind: e.amount_micro for e in await _entries(TEMPO_PAYER)}
@@ -286,7 +300,7 @@ async def test_an_x402_payment_relays_the_answer_and_settles_the_cost(anon: Asyn
     r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
     assert r.status_code == 200, r.text
     assert "payment-signature" not in r.json()["headers"]
-    assert r.headers["X-Treg-Payment"] == "settled" and "payment-response" in r.headers
+    assert r.headers["X-Treg-Payment"] == "paid" and "payment-response" in r.headers
     assert facilitator.settles == 1
     assert await _balance(payer) == FLOOR - EP_MICRO
 
@@ -294,7 +308,7 @@ async def test_an_x402_payment_relays_the_answer_and_settles_the_cost(anon: Asyn
 async def test_credit_pays_the_next_call_without_settling_again(anon: AsyncClient, payments_on,
                                                                 facilitator):
     account = Account.create()
-    for expected_settles, mode in ((1, "settled"), (1, "credit"), (1, "credit")):
+    for expected_settles, mode in ((1, "paid"), (1, "credit"), (1, "credit")):
         challenge = await anon.get(f"/call/{EP}?aweme_id=7")
         credential, payer = _x402_credential(challenge, account)
         r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
@@ -400,7 +414,7 @@ async def test_a_failed_call_releases_the_hold_once_and_keeps_the_credit(
     r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
     assert r.status_code in (503, 502), r.text
     assert r.headers["X-Treg-Cost-Micro"] == "0"
-    assert r.headers["X-Treg-Payment"] == "settled" and r.headers["X-Treg-Payment-Reference"]
+    assert r.headers["X-Treg-Payment"] == "paid" and r.headers["X-Treg-Payment-Reference"]
     await _released_once(payer)
     # The payer was not charged: the next call draws the kept credit, nothing settles on chain.
     monkeypatch.setattr(call_service, "relay", _fake_relay(200))
@@ -424,6 +438,27 @@ async def test_a_cancelled_call_releases_the_hold_once(anon: AsyncClient, paymen
 
 
 # ---- 402s that are not payment challenges ---------------------------------------------------------
+async def test_treg_own_balance_refusal_is_a_503_on_the_paid_path(anon: AsyncClient, payments_on,
+                                                                 facilitator, monkeypatch):
+    opened = agent_payments.open_call
+
+    async def _drained(**kwargs):
+        paid = await opened(**kwargs)
+        async with session_maker() as db:  # a concurrent call spent the credit meanwhile
+            org_id = int(paid.caller.org.id)
+            await ledger.reserve(db, org_id, EP, await ledger.balance_of(db, org_id))
+        return paid
+
+    monkeypatch.setattr(agent_payments, "open_call", _drained)
+    challenge = await anon.get(f"/call/{EP}?aweme_id=7")
+    credential, _ = _x402_credential(challenge)
+    r = await anon.get(f"/call/{EP}?aweme_id=7", headers={"PAYMENT-SIGNATURE": credential})
+    assert r.status_code == 503, r.text
+    assert r.json()["detail"]["error"] == "insufficient_balance"
+    assert r.headers["X-Treg-Payment"] == "paid" and r.headers["X-Treg-Credit-Micro"] == "0"
+    assert "payment-required" not in r.headers and "www-authenticate" not in r.headers
+
+
 async def test_a_vendor_402_is_relayed_verbatim(anon: AsyncClient, payments_on, monkeypatch):
     vendor = b'{"vendor":"out of credit"}'
     monkeypatch.setattr(call_service, "relay", _fake_relay(
@@ -436,7 +471,7 @@ async def test_a_vendor_402_is_relayed_verbatim(anon: AsyncClient, payments_on, 
     assert r.headers.get_list("www-authenticate") == ['Payment id="vendor"']
     assert "X-Treg-Error" not in r.headers and "payment-required" not in r.headers
     # treg's own headers only: which money paid, never a receipt on a non-2xx answer.
-    assert r.headers["X-Treg-Payment"] == "settled" and "payment-response" not in r.headers
+    assert r.headers["X-Treg-Payment"] == "paid" and "payment-response" not in r.headers
 
 
 async def test_the_insufficient_balance_402_is_unchanged(clients: AsyncClient, payments_on):
@@ -502,7 +537,7 @@ async def test_an_unrecovered_mpp_signature_never_draws_credit(anon: AsyncClient
         r = await anon.get(f"/call/{EP}?aweme_id=7", headers={
             "Authorization": _mpp_credential(challenge, _tempo_tx(keychain))})
         assert r.status_code == 200, r.text
-        assert r.headers["X-Treg-Payment"] == "settled"
+        assert r.headers["X-Treg-Payment"] == "paid"
     assert chain.broadcasts == 2  # the wallet held credit, but a named signer must settle
 
 

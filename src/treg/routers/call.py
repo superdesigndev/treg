@@ -328,8 +328,8 @@ async def call_tool(
 async def _paid_call(rest: str, request: Request) -> Response:
     """A keyless call that pays for itself (docs/context/architecture/agent-payments.md). A call
     the payment path does not serve answers exactly as an unauthenticated call always has."""
-    if not agent_payments.serves(rest, request.method):
-        raise HTTPException(status_code=401, detail="not authenticated")
+    if reason := agent_payments.unserved(rest, request.method):
+        raise HTTPException(status_code=401, detail=agent_payments.NotServed(reason).detail)
     body = await _capped_body(request) if _may_have_body(request) else b""
     raw_path = request.scope.get("raw_path")
     try:
@@ -338,8 +338,8 @@ async def _paid_call(rest: str, request: Request) -> Response:
             path=raw_path.decode("ascii", "replace") if raw_path else request.url.path,
             query=request.url.query or "", query_items=tuple(request.query_params.multi_items()),
             body=body, headers=request.headers, raw_headers=request.headers.raw)
-    except agent_payments.NotServed:
-        raise HTTPException(status_code=401, detail="not authenticated") from None
+    except agent_payments.NotServed as exc:
+        raise HTTPException(status_code=401, detail=exc.detail) from None
     except agent_payments.PaymentChallenge as exc:
         return await _payment_refusal(request, 402, exc.detail, exc.headers)
     except agent_payments.PaymentPending as exc:
@@ -348,12 +348,18 @@ async def _paid_call(rest: str, request: Request) -> Response:
         response = await run_call_surface(rest, request, paid.caller, prefix="/call/",
                                           finish=_relay_answer, headers=paid.headers)
     except HTTPException as exc:
-        exc.headers = {**(exc.headers or {}), **dict(paid.answer_headers())}
+        if exc.status_code == 402:
+            # A payment client answers every 402 with a payment; treg's own balance refusal is
+            # not a payment challenge.
+            exc.status_code = 503
+        exc.headers = {"Cache-Control": "private", **(exc.headers or {}),
+                       **dict(await paid.answer_headers())}
         raise
-    for name, value in paid.answer_headers():
+    for name, value in await paid.answer_headers():
         response.headers[name] = value
     for name, value in paid.receipt_headers(response.status_code):
         response.headers.append(name, value)
+    response.headers.setdefault("Cache-Control", "private")
     return response
 
 

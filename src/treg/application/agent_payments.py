@@ -32,7 +32,7 @@ from ..infra.agent_payments import (
     Offer, PaymentRail, PaymentRejected, Settlement, Unconfirmed, Verified)
 from ..infra.db import session_maker
 from ..models import AgentPayer, AgentPayment, Membership, Org, User, _now
-from .call.resolve import QueryValues, _catalog_endpoint_for, platform_quote_micro
+from .call.resolve import QueryValues, _catalog_endpoint_for, platform_quote
 
 log = logging.getLogger("treg.agent_payments")
 
@@ -50,10 +50,13 @@ def configure(rails: Sequence[PaymentRail]) -> None:
 MAX_BODY_BYTES = 1 << 20
 
 
-def serves(rest: str, method: str) -> bool:
-    """A cheap first check, before any body is read: is `rest` a catalog id for this method?"""
+def unserved(rest: str, method: str) -> str:
+    """A cheap first check, before any body is read: "" when `rest` is a catalog id for this
+    method, else the reason."""
     ep = _catalog_endpoint_for(rest)
-    return ep is not None and method.upper() == (ep.get("method") or "GET").upper()
+    if ep is None:
+        return "not_a_catalog_tool"
+    return "" if method.upper() == (ep.get("method") or "GET").upper() else "wrong_method"
 
 
 CENT_MICRO = 10_000
@@ -104,18 +107,18 @@ def consumes(name: str, value: str) -> bool:
 
 
 async def quote(*, rest: str, method: str, path: str, query: str,
-                query_items: tuple[tuple[str, str], ...], body: bytes) -> PaidOffer | None:
-    """The price of this call for a payer, or None when the payment path does not serve it
-    (not a catalog id, free, routed, own-account, or not on treg's key here)."""
+                query_items: tuple[tuple[str, str], ...], body: bytes) -> PaidOffer:
+    """The price of this call for a payer. Raises NotServed when the payment path does not serve
+    it (not a catalog id, free, routed, own-account, or not on treg's key here)."""
+    if reason := unserved(rest, method):
+        raise NotServed(reason)
     ep = _catalog_endpoint_for(rest)
-    if ep is None or method.upper() != (ep.get("method") or "GET").upper():
-        return None
-    raw = platform_quote_micro(ep, QueryValues(query_items), body)
-    if raw is None:
-        return None
+    raw, reason = platform_quote(ep, QueryValues(query_items), body)
+    if reason:
+        raise NotServed(reason)
     charged = ledger.with_margin(raw)
     if charged <= 0:
-        return None
+        raise NotServed("free")
     settings = get_settings()
     base = settings.public_url.rstrip("/")
     amount = max(charged, settings.agent_payments_min_payment_micro)
@@ -139,20 +142,26 @@ async def challenge(paid: PaidOffer, *, reason: str = "", message: str = "") -> 
         except Exception:
             log.exception("agent payments: %s challenge failed", rail.protocol)
     ways = " or ".join(_HOW_TO_PAY.get(rail.protocol, rail.protocol) for rail in _rails)
+    minimum = get_settings().agent_payments_min_payment_micro
+    amount, hold = paid.offer.amount_micro, paid.quote_micro
+    why = (f"the payment minimum, ${ledger.usd(minimum):g}" if amount > hold
+           else "the highest price this call can cost")
     detail = {
         "error": "payment_required",
+        "reason": reason or "payment_required",
         "endpoint_id": paid.endpoint_id,
-        "amount_micro": paid.offer.amount_micro,
-        "estimated_cost_micro": paid.quote_micro,
+        "amount_micro": amount,
+        "estimated_cost_micro": hold,
+        "minimum_payment_micro": minimum,
         "protocols": [rail.protocol for rail in _rails],
         "message": (
-            f"{paid.endpoint_id} costs ~${ledger.usd(paid.quote_micro):g}. Pay "
-            f"${ledger.usd(paid.offer.amount_micro):g} with {ways} and send the request again; "
-            "what the call does not use stays as credit for this wallet's next calls. Or sign in "
+            f"Pay ${ledger.usd(amount):g} ({why}) with {ways} and send the same request again. "
+            f"The call holds up to ${ledger.usd(hold):g} and is charged only its real price; a "
+            "failed call or a call with no billable result is charged nothing. What the call does "
+            "not use stays as credit for this wallet's next calls and is not refunded. Or sign in "
             "and use a treg key."),
     }
     if reason:
-        detail["reason"] = reason
         detail["message"] = f"{message or reason}. " + detail["message"]
     return PaymentChallenge(detail, headers)
 
@@ -290,8 +299,32 @@ async def _caller(org_id: int) -> Caller:
         return Caller(membership=membership, user=user, org=org, api_key=None)
 
 
+_NOT_SERVED = {
+    "not_a_catalog_tool": "only a catalog tool can be paid for with a wallet",
+    "wrong_method": "this tool takes another HTTP method",
+    "routed": "a routed treg tool needs a treg account",
+    "unavailable": "this tool is not available now",
+    "needs_connection": "this tool runs on a connected account, which needs a treg account",
+    "paused": "this provider is paused on treg's key now",
+    "free": "this call is free, and free calls need a treg account",
+    "own_key_only": "this tool runs only on a team's own key",
+    "invalid_request": "treg cannot price this request; check the tool's parameters",
+}
+
+
 class NotServed(Exception):
-    """The payment path does not serve this call; it answers as an unauthenticated call."""
+    """The payment path does not serve this call; it answers 401, with the reason."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+    @property
+    def detail(self) -> dict:
+        base = get_settings().public_url.rstrip("/")
+        return {"error": "not_authenticated", "reason": self.reason,
+                "message": f"{_NOT_SERVED.get(self.reason, self.reason)}. Sign in at {base} "
+                           "and send a treg key."}
 
 
 @dataclass(frozen=True)
@@ -302,8 +335,11 @@ class PaidCall:
     headers: list[tuple[bytes, bytes]]   # the request's headers minus the payment credential
     admission: PayerAdmission
 
-    def answer_headers(self) -> list[tuple[str, str]]:
-        return payment_headers(self.admission)
+    async def answer_headers(self) -> list[tuple[str, str]]:
+        """Which money paid, and the credit left once the call has settled or released."""
+        async with session_maker() as db:
+            credit = await ledger.balance_of(db, int(self.caller.org.id))
+        return [*payment_headers(self.admission), ("X-Treg-Credit-Micro", str(max(credit, 0)))]
 
     def receipt_headers(self, status: int) -> list[tuple[str, str]]:
         return receipt_headers(self.admission) if 200 <= status < 300 else []
@@ -317,8 +353,6 @@ async def open_call(*, rest: str, method: str, path: str, query: str,
     NotServed, PaymentChallenge or PaymentPending; no call has run when it raises."""
     paid = await quote(rest=rest, method=method, path=path, query=query,
                        query_items=query_items, body=body)
-    if paid is None:
-        raise NotServed
     admission = await admit(paid, headers)
     relayed = [(name, value) for name, value in raw_headers
                if not consumes(name.decode("latin-1"), value.decode("latin-1"))]
@@ -330,7 +364,8 @@ def payment_headers(admission: PayerAdmission) -> list[tuple[str, str]]:
     transaction when this payment settled, whatever the call's outcome."""
     if admission.settlement is None:
         return [("X-Treg-Payment", "credit")]
-    return [("X-Treg-Payment", "settled"),
+    return [("X-Treg-Payment", "paid"),
+            ("X-Treg-Paid-Micro", str(admission.verified.amount_micro)),
             ("X-Treg-Payment-Reference", admission.settlement.reference)]
 
 

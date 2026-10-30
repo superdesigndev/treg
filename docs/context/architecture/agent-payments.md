@@ -41,15 +41,19 @@ is configured, and the request carries **no treg credential at all**: no `X-Treg
 goes through `require_member` exactly as before, and is never challenged.
 
 `routers.call._paid_call` first checks, without reading the body, that `rest` is a catalog id for
-the request's method (`agent_payments.serves`); anything else is today's 401. Only then is the body
+the request's method (`agent_payments.unserved`); anything else is a 401. Only then is the body
 read, at most `agent_payments.MAX_BODY_BYTES` (1 MiB; more is 413), because a keyless caller is not
 yet anyone. Then `_paid_call` hands the request to `agent_payments.open_call`, which prices it
 (`quote`), takes the payment or draws credit (`admit`) and drops the payment headers from what
-the call relays; the router only maps its three refusals to 401, 402 and 503. The quote is None
-(`NotServed`), and the answer is today's `401 not authenticated`, unless `rest` is a catalog id that treg's own key serves
-to a caller holding no credential: `application.call.resolve.platform_quote_micro` (pure, no session)
-refuses routed `treg.*` ids, endpoints with a `status`, endpoints with OAuth authorization methods,
-anonymous and free endpoints, providers without a configured platform key, and a zero estimate.
+the call relays; the router only maps its three refusals to 401, 402 and 503. The answer is a
+401 (`NotServed`) unless `rest` is a catalog id that treg's own key serves to a caller holding no
+credential: `application.call.resolve.wallet_refusal` (pure, no session, the static part) and
+`platform_quote` (the estimate for this query) refuse routed `treg.*` ids, endpoints with a
+`status`, endpoints with OAuth authorization methods, paused providers, anonymous and free
+endpoints, providers without a configured platform key, and a zero estimate. The 401 body is
+`{"detail": {"error": "not_authenticated", "reason", "message"}}`; `reason` is one of
+`not_a_catalog_tool`, `wrong_method`, `routed`, `unavailable`, `needs_connection`, `paused`,
+`free`, `own_key_only`, `invalid_request`, and the message says to sign in.
 Own tools and URL passthrough need a team, so they never reach a payment. Only `/call/` takes this
 path; `/catalog/call/`, `/table/` and MCP do not.
 
@@ -110,23 +114,31 @@ WebAuthn signatures only *name* their account and are authenticated by the chain
    (`_credit`).
 5. The request headers minus the payment credential (`agent_payments.consumes`) go to the call as
    the payer team. Every answer after this point, a refusal included, carries
-   `X-Treg-Payment: settled|credit` and, when this payment settled,
-   `X-Treg-Payment-Reference: <transaction>`; a 2xx answer also carries the protocol receipt
-   (`Payment-Receipt`, `PAYMENT-RESPONSE`).
+   `X-Treg-Payment: paid|credit`, `X-Treg-Credit-Micro` (the payer's credit once the call has
+   settled or released) and, when this payment settled, `X-Treg-Paid-Micro` and
+   `X-Treg-Payment-Reference: <transaction>`; `X-Treg-Cost-Micro` is the call's charge as on
+   every call. A 2xx answer also carries the protocol receipt (`Payment-Receipt`,
+   `PAYMENT-RESPONSE`). The answer body is never changed. A paid answer that sets no
+   `Cache-Control` gets `Cache-Control: private`. treg's own 402 refusals after a payment
+   (`insufficient_balance`, `route_max_cost`) answer 503 on this path, because a payment client
+   answers every 402 with another payment.
 
 ## The challenge, and the 402s it is not
 
 A missing or unusable payment answers 402 with every rail's challenge: `WWW-Authenticate: Payment`
 (one per accepted Tempo currency, HMAC-bound by `pympp` with `agent_payments_secret`, bound to the
 method, path and query) and `PAYMENT-REQUIRED` (x402 v2, `resource.url` is the full request URL).
-The body is `{"detail": {"error": "payment_required", "amount_micro", "estimated_cost_micro",
-"protocols", "reason"?}}`, with `X-Treg-Error: 1` and `Cache-Control: no-store`. A refusal names
+The body is `{"detail": {"error": "payment_required", "reason", "amount_micro",
+"estimated_cost_micro", "minimum_payment_micro", "protocols", "message"}}`, with `X-Treg-Error: 1`
+and `Cache-Control: no-store`. The message says what to pay and why that amount (the top price, or
+the payment minimum), that only the real price is charged, and that what is not used stays as
+credit that is not refunded. A first challenge has `reason: payment_required`; a refusal names
 `reason`: `payment_replayed`, `invalid_challenge` (another route, query or amount),
 `payment_expired`, `malformed_credential`, `unsupported_version` (x402 v1 `X-PAYMENT`),
 `verification_failed`, `settlement_failed`, `ambiguous_payment`.
 
-It is told apart from treg's `insufficient_balance` and `route_max_cost` 402s by `detail.error`
-and the protocol headers, and from a provider's 402 by `X-Treg-Error`. A provider's 402 on a paid
+It is told apart from treg's `insufficient_balance` and `route_max_cost` 402s (a signed-in
+caller's; a payer gets them as 503) by `detail.error` and the protocol headers, and from a provider's 402 by `X-Treg-Error`. A provider's 402 on a paid
 call is relayed verbatim, its own `WWW-Authenticate` included; treg adds only its usual `X-Treg-*`
 headers (`X-Treg-Payment` among them) and no receipt.
 
