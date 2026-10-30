@@ -1,0 +1,23 @@
+{
+  "status": "not_found",
+  "confidence": 0,
+  "domain": "relevant.com",
+  "domain_intelligence": {
+    "mx_provider": "Google Workspace",
+    "catch_all": false,
+    "deliverability_index": "moderate",
+    "patterns": [
+      {
+        "pattern": "f.last"
+      },
+      {
+        "pattern": "first.l"
+      },
+      {
+        "pattern": "first.last"
+      }
+    ]
+  },
+  "diagnosis": "No matching email found for this domain",
+  "credits_used": 0.0
+}

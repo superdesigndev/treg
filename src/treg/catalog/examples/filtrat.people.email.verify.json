@@ -1,0 +1,29 @@
+{
+  "email": "m.buriak@relevant.software",
+  "status": "verified",
+  "confidence": 98,
+  "syntax_valid": true,
+  "disposable": false,
+  "role_account": false,
+  "domain_intelligence": {
+    "mx_provider": "Google Workspace",
+    "gateway": null,
+    "real_provider": "Google Workspace",
+    "catch_all": false,
+    "deliverability_index": "very_low",
+    "spf": "v=spf1 a mx include:_spf.google.com  include:sendgrid.net include:zcsend.net include:mxsspf.sendpulse.com ~all",
+    "dmarc": "v=DMARC1; p=reject; fo=1; sp=quarantine",
+    "email_patterns": null,
+    "example_emails": [
+      "m.buriak@relevant.software"
+    ],
+    "email_patterns_source": "internal"
+  },
+  "diagnosis": null,
+  "resolution_method": null,
+  "catchall_resolved": null,
+  "last_checked_at": "2026-10-29T12:43:04.650960",
+  "is_cached": false,
+  "cached_checked_at": null,
+  "credits_used": 1.0
+}

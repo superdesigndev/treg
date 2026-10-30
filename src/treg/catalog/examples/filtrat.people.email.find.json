@@ -1,0 +1,22 @@
+{
+  "found_email": "michael.buriak@tallium.com",
+  "status": "found",
+  "confidence": 98,
+  "pattern_used": "first.last",
+  "domain": "tallium.com",
+  "domain_intelligence": {
+    "mx_provider": "Google Workspace",
+    "catch_all": true,
+    "deliverability_index": "very_low",
+    "patterns": [
+      {
+        "pattern": "first"
+      },
+      {
+        "pattern": "first.last"
+      }
+    ]
+  },
+  "diagnosis": "Email address verified",
+  "credits_used": 20.0
+}

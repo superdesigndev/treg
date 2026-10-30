@@ -1,0 +1,29 @@
+{
+  "email": "mykhailo.buriak@reckitt.com",
+  "status": "verified",
+  "confidence": 98,
+  "syntax_valid": true,
+  "disposable": false,
+  "role_account": false,
+  "domain_intelligence": {
+    "mx_provider": "Proofpoint",
+    "gateway": "Proofpoint",
+    "real_provider": "Unknown",
+    "catch_all": true,
+    "deliverability_index": "moderate",
+    "spf": "v=spf1 include:%{ir}.%{v}.%{d}.spf.has.pphosted.com ~all",
+    "dmarc": "v=DMARC1; p=none; fo=1",
+    "email_patterns": null,
+    "example_emails": [
+      "mykhailo.buriak@reckitt.com"
+    ],
+    "email_patterns_source": "internal"
+  },
+  "diagnosis": null,
+  "resolution_method": null,
+  "catchall_resolved": true,
+  "last_checked_at": "2026-10-29T12:33:03.862711",
+  "is_cached": false,
+  "cached_checked_at": null,
+  "credits_used": 5.0
+}

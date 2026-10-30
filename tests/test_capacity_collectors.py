@@ -1049,6 +1049,7 @@ async def test_getleadsio_rejects_payload_without_a_meter(payload):
     (collectors._piapi, {"data": {"account_id": "a", "equivalent_in_usd": 3.2}}, 3.2, "USD"),
     (collectors._piapi, {"equivalent_in_usd": 0}, 0, "USD"),
     (collectors._enrow, {"credits": 10007.5, "credits_breakdown": {}}, 10007.5, "credits"),
+    (collectors._filtrat, {"balance": 9981.0}, 9981.0, "credits"),
 ])
 async def test_documented_balance_collectors(collector, payload, value, unit):
     row = await _serve_json(collector, payload)
@@ -1056,7 +1057,7 @@ async def test_documented_balance_collectors(collector, payload, value, unit):
 
 
 @pytest.mark.parametrize("collector", [collectors._anyapi, collectors._reapi, collectors._piapi,
-                                        collectors._enrow])
+                                        collectors._enrow, collectors._filtrat])
 @pytest.mark.parametrize("payload", [{}, {"usd": -1, "balance": -1, "equivalent_in_usd": -1,
                                         "credits": -1}])
 async def test_documented_balance_collectors_reject_missing_or_negative(collector, payload):

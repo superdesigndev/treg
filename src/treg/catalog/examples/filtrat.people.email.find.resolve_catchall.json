@@ -1,0 +1,25 @@
+{
+  "found_email": "mykhailo_buriak@epam.com",
+  "status": "found",
+  "confidence": 98,
+  "pattern_used": "first_last",
+  "domain": "epam.com",
+  "domain_intelligence": {
+    "mx_provider": "Microsoft 365",
+    "catch_all": false,
+    "deliverability_index": "very_low",
+    "patterns": [
+      {
+        "pattern": "fl"
+      },
+      {
+        "pattern": "lf"
+      },
+      {
+        "pattern": "first_last"
+      }
+    ]
+  },
+  "diagnosis": "Email address verified",
+  "credits_used": 20.0
+}

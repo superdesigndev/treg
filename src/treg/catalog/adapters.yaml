@@ -38,6 +38,14 @@ adapters:
     out: {email: email, first_name: info.firstname, last_name: info.lastname,
           verified: "qualification == 'valid'"}
     miss: "email == null"
+  filtrat.people.email.find:
+    accepts: [[first_name, last_name, domain]]
+    in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain}
+    const: {body.resolve_catchall: false}
+    # A found address was checked against the mail server unless the domain is a catch-all,
+    # where it comes back as the most likely address with catchall_unverified: true.
+    out: {email: found_email, confidence: "confidence / 100", verified: "catchall_unverified != true"}
+    miss: "found_email == null"
   contactout.people.contact.work:
     accepts: [[linkedin_url]]
     in: {linkedin_url: queryParams.profile}
@@ -522,6 +530,14 @@ adapters:
     in: {email: body.email}
     out: {valid: "qualification == 'valid'", status: qualification}
     miss: "qualification == null"
+  filtrat.people.email.verify:
+    accepts: [[email]]
+    in: {email: body.email}
+    const: {body.resolve_catchall: false}
+    out: {valid: "status == 'verified'", status: status, score: confidence}
+    # unknown is free (credits_used 0) and not an answer: a miss, so a waterfall goes on.
+    miss: "coalesce(status, 'unknown') == 'unknown'"
+    verdicts: {verified: valid, catchall: catch_all}
   anymailfinder.people.email.verify:
     accepts: [[email]]
     in: {email: body.email}

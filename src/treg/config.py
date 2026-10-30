@@ -367,6 +367,7 @@ class Settings(BaseSettings):
     platform_key_findymail: str = ""      # Bearer key
     platform_key_anymailfinder: str = ""  # raw Authorization key; prepaid credits
     platform_key_enrow: str = ""          # x-api-key; prepaid email and phone credits
+    platform_key_filtrat: str = ""        # Bearer key (ak_…); prepaid credits, a partner account
     platform_key_branddev: str = ""       # Bearer key
     platform_key_icypeas: str = ""        # raw key (Authorization, no Bearer)
     platform_key_leadsforge: str = ""     # Bearer key
