@@ -29,6 +29,11 @@ PUBLIC_HOST_ALIASES: tuple[str, ...] = ("treg.superdesign.dev", "treg.to")
 # old→new 301 can never meet a new→old redirect and loop, even while a rollback is in effect.
 LEGACY_PUBLIC_HOSTS: tuple[str, ...] = ("treg.superdesign.dev",)
 
+_EVM_ADDRESS = re.compile(r"0x[0-9a-fA-F]{40}")
+_PRIVATE_KEY = re.compile(r"0x[0-9a-fA-F]{64}")
+# A facilitator on this machine (local development) may speak plain HTTP.
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
 
 PRIMARY_SLOT = "primary"
 _SLOT_LABEL = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
@@ -170,6 +175,99 @@ class Settings(BaseSettings):
         default=1, ge=1, le=60, validation_alias=AliasChoices(
             "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
             "money_admission_retry_after_s"))
+
+    # Pay per call: a caller with no treg token pays one /call/ in stablecoins over x402 or MPP
+    # (docs/context/architecture/pay-per-call.md). Each protocol is switched on alone and checks
+    # only its own settings; the shared ones are checked when either is on.
+    # Shared: the team whose balance runs paid calls (its API token), the challenge HMAC key, the
+    # realm bound into every challenge, and the smallest price offered (Stripe's one-cent minimum).
+    pay_per_call_team_token: str = ""
+    payments_secret_key: str = ""
+    payments_realm: str = ""
+    pay_per_call_min_price_micro: int = Field(default=10_000, ge=10_000)
+    # x402 (USDC by EIP-3009 on Base), settled through an x402 facilitator. The method answers
+    # MPP clients too.
+    x402_enabled: bool = False
+    x402_recipient: str = ""
+    x402_network: Literal["base", "base-sepolia"] = "base"
+    x402_facilitator_url: str = ""
+    # Sent as the facilitator's Authorization header when its API requires one.
+    x402_facilitator_authorization: str = ""
+    # Coinbase's facilitator (CDP): an API key that signs a JWT per request. With it set and no
+    # facilitator URL, payments settle through Coinbase's facilitator.
+    x402_cdp_api_key_id: str = ""
+    x402_cdp_api_key_secret: str = ""
+    # MPP on Tempo (TIP-20 stablecoins). Currencies default by chain: OUSD then USDC.e on
+    # mainnet, OUSD then pathUSD on the Moderato testnet.
+    mpp_enabled: bool = False
+    mpp_tempo_recipient: str = ""
+    mpp_tempo_chain_id: int = 4217
+    mpp_tempo_currencies: str = ""
+    mpp_tempo_rpc_url: str = ""
+    # Sponsors payers' Tempo fees, so a wallet holding only OUSD (not a fee token) can pay.
+    mpp_tempo_fee_payer_key: str = ""
+
+    @model_validator(mode="after")
+    def _payments_configuration(self):
+        problems: list[str] = []
+
+        def need(enabled_by: str, names: tuple[str, ...]) -> None:
+            missing = [f"TREG_{name.upper()}" for name in names
+                       if not str(getattr(self, name)).strip()]
+            if missing:
+                problems.append(f"{enabled_by} requires {', '.join(missing)}")
+
+        def address(name: str) -> None:
+            value = getattr(self, name)
+            if value and not _EVM_ADDRESS.fullmatch(value):
+                problems.append(f"TREG_{name.upper()} must be a 0x-prefixed 20-byte address")
+
+        if self.x402_enabled or self.mpp_enabled:
+            switch = "TREG_X402_ENABLED" if self.x402_enabled else "TREG_MPP_ENABLED"
+            need(switch, ("pay_per_call_team_token", "payments_secret_key", "payments_realm",
+                          "kv_url"))
+            if self.payments_secret_key and len(self.payments_secret_key.encode()) < 32:
+                problems.append("TREG_PAYMENTS_SECRET_KEY must be at least 32 bytes")
+        if self.x402_enabled:
+            need("TREG_X402_ENABLED", ("x402_recipient",))
+            address("x402_recipient")
+            cdp = (self.x402_cdp_api_key_id, self.x402_cdp_api_key_secret)
+            if any(cdp) and not all(cdp):
+                problems.append("TREG_X402_CDP_API_KEY_ID and TREG_X402_CDP_API_KEY_SECRET "
+                                "are set together")
+            if all(cdp) and (self.x402_facilitator_url or self.x402_facilitator_authorization):
+                problems.append("set either a CDP API key (Coinbase's facilitator) or "
+                                "TREG_X402_FACILITATOR_URL, not both")
+            if not any(cdp) and not self.x402_facilitator_url:
+                problems.append("TREG_X402_ENABLED requires TREG_X402_FACILITATOR_URL or "
+                                "TREG_X402_CDP_API_KEY_ID and TREG_X402_CDP_API_KEY_SECRET")
+            facilitator = urlsplit(self.x402_facilitator_url)
+            if self.x402_facilitator_url and not (
+                    facilitator.scheme == "https"
+                    or facilitator.scheme == "http" and facilitator.hostname in _LOOPBACK_HOSTS):
+                problems.append("TREG_X402_FACILITATOR_URL must be an https URL")
+        if self.mpp_enabled:
+            need("TREG_MPP_ENABLED", ("mpp_tempo_recipient",))
+            if self.mpp_tempo_chain_id not in (4217, 42431):
+                problems.append("TREG_MPP_TEMPO_CHAIN_ID must be 4217 (mainnet) or 42431 (Moderato)")
+            address("mpp_tempo_recipient")
+            for currency in self.mpp_tempo_currency_list:
+                if not _EVM_ADDRESS.fullmatch(currency):
+                    problems.append(f"TREG_MPP_TEMPO_CURRENCIES has an invalid address: {currency}")
+            if self.mpp_tempo_fee_payer_key and not _PRIVATE_KEY.fullmatch(self.mpp_tempo_fee_payer_key):
+                problems.append("TREG_MPP_TEMPO_FEE_PAYER_KEY must be a 0x-prefixed 32-byte hex key")
+        if self.x402_enabled and self.mpp_enabled:
+            if (self.x402_network == "base") != (self.mpp_tempo_chain_id == 4217):
+                problems.append("TREG_X402_NETWORK and TREG_MPP_TEMPO_CHAIN_ID mix a mainnet "
+                                "and a testnet")
+        if problems:
+            raise ValueError("pay per call is misconfigured: " + "; ".join(problems))
+        return self
+
+    @property
+    def mpp_tempo_currency_list(self) -> list[str]:
+        return [part.strip() for part in self.mpp_tempo_currencies.split(",") if part.strip()]
+
 
     # SQLite locally, Postgres in production - same code path, just swap the URL.
     database_url: str = "sqlite+aiosqlite:///./treg.db"

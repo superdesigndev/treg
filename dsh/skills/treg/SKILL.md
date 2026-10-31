@@ -264,6 +264,10 @@ each call, not the loop.
 - **A "free" tool can still bill** when treg's own account for its provider runs out and the call is
   relayed (`X-Treg-Served-Via: overflow:<name>`): if `catalog_get` shows `overflow_price_usd`, quote
   that price.
+- **No account?** Where a deployment turns on pay per call, a catalog tool with a fixed price of at
+  least one cent answers a call without a token with `402` and x402 / MPP payment offers; an x402
+  or MPP client pays it and the answer carries `X-Treg-Payment: charged`. A failed call (4xx/5xx)
+  is not charged (`X-Treg-Payment: not-charged`). Each payment buys one call.
 - `treg balance` shows the balance and recent charges, and the dashboard's Activity page shows the
   settled cost of every call. `treg topup` adds funds or sets up automatic top-ups.
 

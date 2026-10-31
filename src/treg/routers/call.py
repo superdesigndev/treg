@@ -6,8 +6,10 @@ import json
 import uuid
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import Response, StreamingResponse
+import logging
+
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.background import BackgroundTask
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import analytics
 from .. import audit
 from .. import sandbox as demo_sandbox
+from ..application import pay_per_call
 from ..application.call.access import catalog_endpoint_access as get_catalog_endpoint_access
 from ..application.call.idempotency import (
     _release_idempotent_claim as release_idempotent_claim,
@@ -46,11 +49,13 @@ from ..domain.governance import usage as usage_policy
 from ..domain.identity.access import Caller, require_member
 from ..infra.db import get_session
 from ..infra import org_concurrency, org_flow_control, org_traffic
+from ..infra import payments as payment_rail
 from ..models import Tool
 from .auth import _client_ip
 
 
 app = APIRouter()
+_log = logging.getLogger(__name__)
 router = app
 
 
@@ -293,6 +298,121 @@ def _capture_hint(request: Request, context, kind: str) -> None:
     }, groups={"team": slug} if slug else None)
 
 
+async def member_or_payer(
+    request: Request,
+    x_treg_token: str = Header(default=""),
+    x_treg_org: str = Header(default=""),
+    treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_session),
+) -> Caller:
+    """A signed-in member, or, with no treg credential while pay per call is on, the pay-per-call
+    team, which runs calls that pay for themselves."""
+    if x_treg_token or treg_session or not payment_rail.enabled():
+        return await require_member(request, x_treg_token, x_treg_org, treg_session, db)
+    request.state.pay_per_call = True
+    return await require_member(request, get_settings().pay_per_call_team_token, "", "", db)
+
+
+def _pay_response(response) -> Response:
+    """A payment-engine response (a 402 with its challenges) as a Starlette response."""
+    body = response.body or b""
+    result = Response(content=body, status_code=response.status)
+    result.raw_headers = [
+        *((name.lower().encode("latin-1"), value.encode("latin-1"))
+          for name, value in response.headers.multi_items() if name.lower() != "content-length"),
+        (b"content-length", str(len(body)).encode()),
+    ]
+    return result
+
+
+def _not_charged(exc: HTTPException) -> HTTPException:
+    """A refusal on a paid call: the payer was not charged. treg's own 402 (the team's balance)
+    must not read as a payment challenge, which a payment client would try to pay."""
+    headers = {**(exc.headers or {}), "X-Treg-Payment": "not-charged"}
+    if exc.status_code == 402:
+        return HTTPException(status_code=503, headers=headers, detail={
+            "error": "pay_per_call_unavailable",
+            "message": "pay per call is unavailable right now; you were not charged"})
+    return HTTPException(status_code=exc.status_code, detail=exc.detail, headers=headers)
+
+
+def _settled_micro(upstream: UpstreamResponse) -> int:
+    """What the call settled on the team, from the X-Treg-Cost-Micro the call road stamps."""
+    for key, value in upstream.raw_headers:
+        if key.lower() == b"x-treg-cost-micro":
+            try:
+                return int(value)
+            except ValueError:
+                return 0
+    return 0
+
+
+async def _pay_per_call(rest: str, request: Request, caller: Caller) -> Response:
+    """One call that pays for itself: a 402 to pay, or the call with its payment taken only when
+    it settled a charge (application/pay_per_call.py)."""
+    raw_path = request.scope.get("raw_path")
+    if raw_path:
+        _, sep, raw_rest = raw_path.decode("ascii", "replace").partition("/call/")
+        if sep:
+            rest = raw_rest
+    try:
+        offer = pay_per_call.offer_for(rest, request.method)
+    except pay_per_call.NotPayable as exc:
+        raise HTTPException(status_code=401, detail={
+            "error": "not_authenticated", "reason": exc.reason, "message": exc.message}) from None
+    path = (raw_path or request.url.path.encode()).decode("ascii", "replace")
+    url = get_settings().public_url.rstrip("/") + path + (f"?{request.url.query}" if request.url.query else "")
+    rail = payment_rail.payments()
+
+    async def challenge(headers):
+        return await rail.validate(
+            payment_rail.to_request(request.method, url, headers),
+            price_micro=offer.price_micro, description=offer.endpoint_id,
+            meta={"endpoint": offer.endpoint_id})
+
+    result = await challenge(request.headers.items())
+    if not isinstance(result, payment_rail.Validated):
+        return _pay_response(result.challenge)
+    if not await rail.claim(result):
+        return JSONResponse(status_code=409, headers={"X-Treg-Payment": "not-charged"}, content={
+            "detail": {"error": "payment_already_used",
+                       "message": "this payment credential was already presented; sign a new one"}})
+
+    async def finish(request: Request, context, upstream: UpstreamResponse, rest: str) -> Response:
+        marketplace = context.marketplace
+        billable = (marketplace is not None and marketplace.metered
+                    and _settled_micro(upstream) > 0)
+        if not billable:
+            response = await _relay_answer(request, context, upstream, rest)
+            response.headers["X-Treg-Payment"] = "not-charged"
+            return response
+        try:
+            receipt = await result.pending.take()
+        except payment_rail.PaymentFailed as exc:
+            await upstream.close()
+            _log.warning("pay per call: payment for %s failed after the call: %s",
+                         context.call_ref, exc)
+            fresh = await challenge(pay_per_call.forwarded_headers(
+                (k.encode("latin-1"), v.encode("latin-1")) for k, v in request.headers.items()))
+            return _pay_response(fresh.challenge)
+        await pay_per_call.record_payment(
+            caller.org_id, offer.price_micro, method=receipt.method, reference=receipt.reference,
+            payer=receipt.payer, endpoint_id=offer.endpoint_id, call_ref=context.call_ref)
+        response = await _relay_answer(request, context, upstream, rest)
+        for name, value in result.receipt_headers(receipt).items():
+            response.headers[name] = value
+        response.headers["X-Treg-Payment"] = "charged"
+        response.headers["X-Treg-Paid-Micro"] = str(offer.price_micro)
+        return response
+
+    try:
+        return await run_call_surface(
+            rest, request, caller, prefix="/call/", finish=finish,
+            headers=pay_per_call.forwarded_headers(request.headers.raw))
+    except HTTPException as exc:
+        raise _not_charged(exc) from exc
+
+
 @app.api_route(
     "/call/{rest:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
@@ -300,8 +420,10 @@ def _capture_hint(request: Request, context, kind: str) -> None:
 async def call_tool(
     rest: str,
     request: Request,
-    caller: Caller = Depends(require_member),
+    caller: Caller = Depends(member_or_payer),
 ):
+    if getattr(request.state, "pay_per_call", False):
+        return await _pay_per_call(rest, request, caller)
     prefix = "/catalog/call/" if getattr(request.state, "catalog_only", False) else "/call/"
     return await run_call_surface(rest, request, caller, prefix=prefix, finish=_relay_answer)
 
