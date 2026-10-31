@@ -18,7 +18,7 @@ def test_header_query_params_merge_into_every_row_and_the_row_wins(tmp_path):
            [ROW.format(id="demo.core", tier="core", extra=""),
             ROW.format(id="demo.own", tier="core",
                        extra="      queryParams: {jq: {type: string, note: own}}\n")])
-    # The extended file sorts first; the core file's block still wins.
+    # The core file's block wins over the extended file's.
     _write(tmp_path, "demo.extended.yaml", "queryParams:\n  jq: {type: string, note: extended}\n",
            [ROW.format(id="demo.ext", tier="extended", extra="")])
     cat = cs.load(directory=tmp_path)

@@ -529,6 +529,10 @@ to cost $0.001 (depth). The catalog carries both, in separate files, distinguish
 | example size | ~10 KB, arrays → 2 items | ~2 KB, arrays → 1 item (shape, not fidelity) |
 | `cost` | required | present when the provider publishes per-route prices |
 
+Both files load under one provider, the core file first: its header facts (`limits`,
+`pricing_url`, `source.docs`, `cache`, `ceiling_param`, `queryParams`) win over the extended file's,
+and an id declared in both resolves to the core row.
+
 The extended tier originally carried no `input`, `test_request` or verification at all — the tiers
 split on *curated vs. generated*, and it read as if it also split on *tested vs. untested*. It does
 not, and it should not: a provider that documents its parameters (with example values, as TikHub
@@ -666,7 +670,9 @@ endpoints:
         uniqueId: {type: string, required: false, note: "username from the profile URL", example: "tiktok"}
         secUid:   {type: string, required: false}
       note: "one of uniqueId | secUid; uniqueId preferred"
-      # also allowed: pathParams, body, bodyType (json|form)
+      # also allowed: pathParams, headers, body, bodyType (json|form). The validator rejects any
+      # other `input` key and any parameter-spec key outside its vocabulary (PARAM_SPEC_KEYS):
+      # a misspelt location or an unquoted note with a comma is otherwise silently dropped.
     test_request:                    # EXACT params catalog_verify.py sends — must be cheap
       queryParams: {uniqueId: "tiktok"}
     expect:                          # optional; default is "HTTP 2xx"
