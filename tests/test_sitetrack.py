@@ -61,3 +61,37 @@ def test_no_page_loads_a_tracking_script_by_relative_path():
             if not m.group(1).startswith("/"):
                 bad.append(f"{page.name}: {m.group(0)}")
     assert not bad, f"relative tracking script paths: {bad}"
+
+
+# Pages that load /sitetrack.js but should not have full autocapture or session recording enabled.
+# These are external-facing or app pages where the privacy contract demands minimal tracking.
+# Marketing landing pages intentionally omit this attribute — they need full analytics.
+PRIVATE_PAGE_REQUIRED = {
+    "sheets.html",        # Google Workspace Marketplace review page, effectively public API
+    "enrich-arena.html",  # App page with user data, not a marketing page
+}
+
+PRIVATE_PAGE_TAG = re.compile(r'<script\s+src="/sitetrack\.js"\s+data-private-page="true"')
+
+
+def test_private_pages_use_sitetrack_mitigation():
+    """Pages in PRIVATE_PAGE_REQUIRED must load /sitetrack.js with data-private-page="true".
+
+    The attribute disables autocapture and session recording in sitetrack.js. Without it, PostHog
+    records pageviews and sessions with full defaults — contradicting the privacy policy's promise
+    of minimal tracking on these external-facing pages. See GitHub issue #1324.
+    """
+    missing = []
+    for page_name in sorted(PRIVATE_PAGE_REQUIRED):
+        page = WEB_DIR / page_name
+        if not page.exists():
+            continue
+        text = page.read_text()
+        if not SITETRACK_TAG.search(text):
+            continue  # page does not load sitetrack.js at all — ok, nothing to mitigate
+        if not PRIVATE_PAGE_TAG.search(text):
+            missing.append(page_name)
+    assert not missing, (
+        f"pages requiring data-private-page='true' but missing it: {missing}. "
+        "Add data-private-page=\"true\" to the /sitetrack.js script tag."
+    )
