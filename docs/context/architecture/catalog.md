@@ -2358,7 +2358,9 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   semantics ride on the endpoint") is a MISS instead, not a fault. An adapter method
   (`to_upstream`, `from_upstream`, `is_miss`) that throws is recorded as an error attempt and the
   waterfall continues; the identity's `linkedin_url` is normalised once at planning time
-  (`canonical_identity`: scheme-less URL or bare handle → public URL) so no adapter forwards an
+  (`canonical_identity`: scheme-less URL or bare handle → public URL; a placeholder such as
+  `N/A` / `null` or a non-LinkedIn host is dropped so the variant is incomplete and the call
+  returns `identity_incomplete` instead of inventing `/in/{garbage}`) so no adapter forwards an
   invalid URL. Our 5xx/503/429 or a vendor 5xx/429/402 = error →
   next candidate, at most two extra, only for idempotent contracts. A treg-side
   `tool_access_denied`, `policy_denied`, or `capability_pinned` refusal is local to that child and

@@ -382,13 +382,25 @@ def canonical_identity(contract: Contract, given: dict[str, Any]) -> tuple[dict[
     """The caller's fields + everything derivable → (identity, the variant they supplied), or
     (identity, None) when no variant is complete. Derived keys count for matching adapters."""
     ident = {k: v for k, v in given.items() if k in contract.identity_types and v not in (None, "")}
-    supplied = next((v for v in contract.identity if all(k in ident for k in v)), None)
-    if supplied is None:
-        return ident, None
+    # Normalise LinkedIn identity before choosing a variant: a placeholder (`N/A`) or non-LinkedIn
+    # host must not count as `{linkedin_url}` / `{linkedin_handle}` and reach a provider.
     if isinstance(ident.get("linkedin_url"), str):
         # One normalisation for every adapter that forwards the URL raw: a scheme-less
         # `linkedin.com/in/x` is refused by some providers; a handle becomes the public URL.
-        ident["linkedin_url"] = P.linkedin_url(ident["linkedin_url"]) or ident["linkedin_url"]
+        normalized = P.linkedin_url(ident["linkedin_url"])
+        if normalized is None:
+            del ident["linkedin_url"]
+        else:
+            ident["linkedin_url"] = normalized
+    if isinstance(ident.get("linkedin_handle"), str):
+        handle = P.linkedin_handle(ident["linkedin_handle"])
+        if handle is None:
+            del ident["linkedin_handle"]
+        else:
+            ident["linkedin_handle"] = handle
+    supplied = next((v for v in contract.identity if all(k in ident for k in v)), None)
+    if supplied is None:
+        return ident, None
     for _ in range(2):  # derive until stable (join needs first+last; split needs full_name)
         for k, expr in contract.derive.items():
             if ident.get(k) in (None, ""):

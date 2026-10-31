@@ -131,26 +131,54 @@ def at_most(v: Any, ceiling: Any) -> int:
         return int(ceiling)
 
 
+# LinkedIn vanity slugs are letters, digits and hyphens; placeholders and multi-segment
+# garbage must not become `/in/{value}` (that made providers invent a stranger's email).
+_LINKEDIN_SLUG = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,98}[A-Za-z0-9])?$")
+_LINKEDIN_PROFILE = re.compile(
+    r"(?i)^(?:https?://)?((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com)/(in|company)/([^/?#]+)(/)?(?:[?#].*)?$"
+)
+_LINKEDIN_PLACEHOLDERS = frozenset({
+    "n/a", "na", "n.a", "n.a.", "null", "none", "nil", "undefined", "-", "--", ".", "...",
+})
+
+
+def _linkedin_slug(value: str) -> str | None:
+    s = value.strip().strip("/")
+    if not s or s.lower() in _LINKEDIN_PLACEHOLDERS or not _LINKEDIN_SLUG.fullmatch(s):
+        return None
+    return s
+
+
 def linkedin_handle(v: Any) -> str | None:
     """`https://www.linkedin.com/in/patrickcollison/` → `patrickcollison` (hunter wants the handle)."""
     if not isinstance(v, str) or not v:
         return None
-    m = re.search(r"linkedin\.com/(?:in|company)/([^/?#]+)", v)
-    return m.group(1) if m else (v if "/" not in v else None)
+    v = v.strip()
+    m = _LINKEDIN_PROFILE.match(v)
+    if m:
+        return _linkedin_slug(m.group(3))
+    return None if "/" in v else _linkedin_slug(v)
 
 
 def linkedin_url(v: Any) -> str | None:
-    """A handle → the public profile URL; a URL passes through; a scheme-less URL
-    (`linkedin.com/in/x`, `www.linkedin.com/in/x`) gets `https://`."""
+    """A handle → the public profile URL; a LinkedIn URL passes through; a scheme-less URL
+    (`linkedin.com/in/x`, `www.linkedin.com/in/x`) gets `https://`. Placeholders and non-LinkedIn
+    hosts return None so routing refuses them instead of inventing `/in/N/A`."""
     if not isinstance(v, str) or not v:
         return None
     v = v.strip()
-    if v.startswith("http"):
-        return v
-    m = re.match(r"^((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com)(/.*)$", v, re.I)  # anchored: the HOST is linkedin, not a path that mentions it
+    m = _LINKEDIN_PROFILE.match(v)
     if m:
-        return f"https://{m.group(1).lower()}{m.group(2)}"   # lower-cased host so linkedin_handle() can derive from it
-    return f"https://www.linkedin.com/in/{v.strip('/')}"
+        slug = _linkedin_slug(m.group(3))
+        if slug is None:
+            return None
+        if v.lower().startswith("http"):
+            return v  # already-qualified LinkedIn URL: preserve as supplied
+        # lower-cased host so linkedin_handle() can derive from it; keep slug + trailing slash
+        trail = m.group(4) or ""
+        return f"https://{m.group(1).lower()}/{m.group(2)}/{slug}{trail}"
+    slug = _linkedin_slug(v)
+    return None if slug is None else f"https://www.linkedin.com/in/{slug}"
 
 
 def free_mail(domain: Any) -> bool:

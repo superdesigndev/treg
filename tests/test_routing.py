@@ -1846,15 +1846,37 @@ def test_linkedin_url_is_normalised_once_for_every_adapter():
 
 
 @pytest.mark.parametrize(("raw", "expected"), [
-    # a path that merely mentions linkedin.com is a handle-shaped string, never promoted to that host
-    ("evil.example/?linkedin.com/in/x", "https://www.linkedin.com/in/evil.example/?linkedin.com/in/x"),
+    # a path that merely mentions linkedin.com is refused, never promoted to that host
+    ("evil.example/?linkedin.com/in/x", None),
     ("uk.linkedin.com/in/x", "https://uk.linkedin.com/in/x"),
     # the host is lowercased so the handle derives
     ("LinkedIn.com/in/Patrick", "https://linkedin.com/in/Patrick"),
+    # placeholders and non-LinkedIn hosts must not become /in/{value}
+    ("N/A", None),
+    ("n/a", None),
+    ("null", None),
+    ("-", None),
+    ("https://example.com/in/x", None),
+    ("https://www.linkedin.com/in/N/A", None),
+    ("https://www.linkedin.com/in/patrickcollison", "https://www.linkedin.com/in/patrickcollison"),
 ])
 def test_linkedin_url_only_trusts_a_linkedin_host(raw, expected):
     from treg.domain.catalog.routing import paths as P
     assert P.linkedin_url(raw) == expected
+
+
+def test_placeholder_linkedin_url_is_identity_incomplete():
+    """A caller-sent placeholder must not route: identity_incomplete, not a billed stranger hit."""
+    from treg.domain.catalog.routing.contracts import canonical_identity
+    contract = catalog_store.load().contracts["people.email.find"]
+    for raw in ("N/A", "n/a", "NA", "null", "-", "https://example.com/x"):
+        ident, variant = canonical_identity(contract, {"linkedin_url": raw})
+        assert variant is None, raw
+        assert "linkedin_url" not in ident, raw
+    ident, variant = canonical_identity(contract, {"linkedin_url": "patrickcollison"})
+    assert variant == ("linkedin_url",)
+    assert ident["linkedin_url"] == "https://www.linkedin.com/in/patrickcollison"
+    assert ident["linkedin_handle"] == "patrickcollison"
 
 
 def test_arena_and_router_read_the_miss_block_the_same_way():
