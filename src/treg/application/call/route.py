@@ -457,11 +457,6 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     contract = cat.contracts.get(ep["capability"])
     if contract is None:
         raise ResolutionFailed("target_not_found", status_code=404, detail=f"{ep['id']} has no contract")
-    if invalid := invalid_identity(contract, identity_given):
-        raise ResolutionFailed("route_no_candidate", status_code=422, detail={
-            "error": "invalid_identity", "endpoint_id": ep["id"], "invalid": invalid,
-            "message": "; ".join(f"{i['field']} must be a {i['type']}" for i in invalid)
-                       + ". Omit a field you don't have rather than sending a placeholder."})
     identity, variant = canonical_identity(contract, identity_given)
     if variant is None:
         raise ResolutionFailed("route_no_candidate", status_code=422, detail={
@@ -709,6 +704,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "route_upgrade_unsupported", "endpoint_id": ep["id"],
             "message": f"{UPGRADE_HEADER} names an identity key the answer carries and {ep['id']} accepts on its own; "
                        f"{options.upgrade!r} is not one. Nothing was charged."})
+    if contract and (invalid := invalid_identity(contract, given)):
+        raise ResolutionFailed("route_no_candidate", status_code=422, detail={
+            "error": "invalid_identity", "endpoint_id": ep["id"], "invalid": invalid,
+            "message": "; ".join(f"{i['field']} must be a {i['type']}" for i in invalid)
+                       + ". Omit a field you don't have rather than sending a placeholder. Nothing was charged."})
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
