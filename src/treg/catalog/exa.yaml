@@ -32,7 +32,7 @@ endpoints:
     method: POST
     path: /search
     name: "Search the web"
-    summary: "The search endpoint lets you intelligently search the web and extract contents from the results."
+    summary: "Search web pages and podcast episodes or transcripts, including guest appearances and podcast mentions; retrieve result content when needed."
     input:
       bodyType: json
       body:
@@ -40,13 +40,19 @@ endpoints:
         numResults: {type: integer, required: false, note: "1-100, default 10. The first 10 are covered by the base price; each result beyond 10 adds $0.001", example: 5}
         type: {type: string, required: false, note: "auto (default) | instant | fast | deep-lite | deep | deep-reasoning. auto/instant/fast bill the base; use exa.web.search.deep for the deep modes", example: "auto"}
         category: {type: string, required: false, note: "focus on one sub-index: company | people | news | publication | personal site | financial report. The people/company/news/publication categories have their own curated routes below"}
-        includeDomains: {type: "array[string]", required: false, note: "only these hosts or host paths"}
+        includeDomains: {type: "array[string]", required: false, note: "only these hosts or host paths; use [\"exa.ai/library/podcast\"] for podcast-only results", example: ["exa.ai/library/podcast"]}
         excludeDomains: {type: "array[string]", required: false}
         startPublishedDate: {type: string, required: false, note: "ISO 8601; only pages published after this"}
         endPublishedDate: {type: string, required: false, note: "ISO 8601"}
         userLocation: {type: string, required: false, note: "two-letter ISO country code to localise results, e.g. US"}
-        contents: {type: object, required: false, note: "attach page content to each result: {text: true|{maxCharacters}, highlights: true|{query, maxCharacters}, summary: {query}}. Observed 2026-08-27: highlights on a search were not billed on top of the base; text/summary follow the $1/1k-page contents rate"}
-      note: "results carry url, title, publishedDate, author, score and any requested contents. Keep numResults at 10 or below to stay at the base price."
+        contents: {type: object, required: false, note: "attach page content to each result: {text: true|{maxCharacters}, highlights: true|{query, maxCharacters}, summary: {query}}. For podcast results, text retrieves transcript content that may include speaker labels and timestamps; maxCharacters can limit or truncate it. Observed 2026-08-27: highlights on a search were not billed on top of the base; text/summary follow the $1/1k-page contents rate", example: {text: true}}
+      note: >-
+        Results carry url, title, publishedDate, author, score and any requested contents.
+        Podcast transcript recipe: send this native Exa JSON body through exa.web.search:
+        {"query":"podcast episodes where founders discuss pricing mistakes","includeDomains":["exa.ai/library/podcast"],"numResults":2,"contents":{"text":true}}.
+        includeDomains restricts results to Exa's podcast library; contents.text requests transcript text.
+        Podcast searches use ordinary Exa search and content pricing, and Treg reports the actual charge for each call.
+        See https://exa.ai/library/podcast.
     test_request:
       body: {query: "open source vector database written in rust", numResults: 3}
     verified: '2026-08-27'
@@ -62,7 +68,7 @@ endpoints:
       source_url: https://exa.ai/pricing
       checked: '2026-08-27'
       confidence: verified
-      note: "$0.007 per call for up to 10 results, plus $0.001 per result beyond 10 (OBSERVED 2026-08-27: numResults 10 → costDollars.total 0.007; numResults 20 → 0.016, i.e. 19 returned = base + 9 riders). type fast and instant billed the same 0.007. Platform billing settles the exact costDollars.total the response reports, so the rider is charged as Exa charges it."
+      note: "$0.007 base for up to 10 results, plus $0.001 per result beyond 10 and ordinary content charges when requested (OBSERVED 2026-08-27: numResults 10 → costDollars.total 0.007; numResults 20 → 0.016, i.e. 19 returned = base + 9 riders; fast and instant billed the same base). Podcast search has no separate price. Treg settles the exact costDollars.total Exa reports, so transcript requests need not cost the same amount."
     docs_url: https://docs.exa.ai/reference/search
 
   - id: exa.web.search.deep
