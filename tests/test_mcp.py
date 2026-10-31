@@ -1192,6 +1192,11 @@ async def test_catalog_query_arrays_use_the_endpoints_declared_wire_encoding(mon
     cat = cs.load()
     meta = cat.by_id["meta-ad-library.meta-ads.library.search"]
     assert _mcp._query_values(meta, "ad_reached_countries", ["US"]) == ['["US"]']
+    tinyfish = cat.by_id["tinyfish.web.search"]
+    assert (tinyfish.get("input") or {}).get("queryArrayEncoding") == "comma"
+    assert _mcp._query_values(
+        tinyfish, "include_domains", ["docs.python.org", "realpython.com"],
+    ) == ["docs.python.org,realpython.com"]
     assert _mcp._query_values(None, "tag", ["a", "b"]) == ["a", "b"]
 
     captured = {}
