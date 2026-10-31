@@ -121,27 +121,30 @@ user pick.
   engagement, dated against the inflection. Note every contest, hackathon, quote-post campaign,
   waitlist or invite-code drop.
 
-## 7 · TARGET's own content, channel by channel — ~$0.05 + image reads (free)
+## 7 · TARGET's own content, channel by channel — ~$0.013 + image reads (free)
 
 Step 6 is what others say; this step is what TARGET publishes and how it is made. Run it for every
-handle from step 1. Five parts: pull, rank, look, read against the checklist, write up.
+handle from step 1. Five parts: pull, rank, look, read against the checklist, write up. Measured on
+five channels at two pages each, 12 charged calls; LinkedIn's 411-post window is the one that grows
+past that (about $0.002 a page).
 
 **Pull.** Per channel, the latest 60 posts or the past 6 months, whichever comes first, page by page;
 stop early if the cap would be passed. Save the rows to `rea/<channel>/posts.csv` with the date pulled.
 
 | Channel | Call (and how to page) | Keep |
 |---|---|---|
-| YouTube | `scrapecreators.x.v1-youtube-channel-videos` {"handle":"handle","sort":"latest"}, next page with `continuationToken`; once more with "sort":"popular" (first page) for the all-time best | title, thumbnail, views, published, length; Shorts vs long |
+| YouTube | `scrapecreators.x.v1-youtube-channel-videos` {"handle":"handle","sort":"latest"}, next page with `continuationToken`; once more with "sort":"popular" (first page) for the all-time best. Dates: read `publishDate`, never `publishedTime` (that one is rebuilt from the "2 weeks ago" label). The free `youtube.youtube.channel.videos` row is own-channel only (`forMine`), so it cannot read TARGET | title, thumbnail, views, published, length; Shorts vs long |
 | TikTok | `crawl4ai.tiktok.user.videos` {"account":"handle","limit":60} (up to 100 in one call) | description, hashtags, cover, plays, saves, shares, length, sound |
 | Instagram | `scrapecreators.instagram.user.posts` {"handle":"handle"}, next page with `next_max_id` | kind (reel, carousel, photo), image, caption, likes, comments |
 | X | `anyapi.x.user.posts.timeline` {"handle":"handle"} (about 20 a page), next page with `cursor` = previous `nextCursor`; media with `tikhub.x.twitter-web-fetch-user-media` {"screen_name":"handle"}, paged by `cursor` | text, views, likes, reposts, media |
-| LinkedIn | `harvestapi.linkedin.company.posts` {"companyUniversalName":"slug","scrapePostedLimit":"6months","page":1}, then page 2, 3…, passing `paginationToken` when returned | text, images, document carousels, reactions; staff reposts vs page posts |
-| Reddit | TARGET's own account if it has one; otherwise step 6's Reddit rows (content mode: run step 6's Reddit call here) | title, subreddit, self or link post, score, comments |
+| LinkedIn | `harvestapi.linkedin.company.posts` {"companyUniversalName":"slug","scrapePostedLimit":"6months","page":1}, then page 2, 3…, passing `paginationToken` when returned. `postImages` are `{url,width,height}` objects, not URLs; a document carousel's first page is `document.coverPages[0].imageUrls[0]` | text, images, document carousels, reactions; staff reposts vs page posts |
+| Reddit | TARGET's own account if it has one; otherwise step 6's Reddit rows (content mode: run step 6's Reddit call here). `score` and `comments` come back `null` from this endpoint, so rank nothing: read the rows in the `sort`:top order the provider returned and say so | title, subreddit, self or link post, score, comments |
 
 **Rank.** Engagement per channel: views on YouTube, TikTok and X; likes + comments on Instagram;
-reactions on LinkedIn; score on Reddit. Drop posts under 7 days old (not settled). With Python, mark
-the top quarter and the bottom half. Compare only within a channel, never across. Under 20 posts →
-report them, call no pattern ("too few posts to call a pattern").
+reactions on LinkedIn; on Reddit the score is missing, so the provider's order stands. Drop posts
+under 7 days old (not settled). With Python, mark the top quarter and the bottom half. Compare only
+within a channel, never across. Under 20 posts → report them, call no pattern ("too few posts to
+call a pattern").
 
 **Look.** Download the thumbnail, cover, first slide or image of every top-quarter post and of 5
 bottom posts into `rea/<channel>/` at once (TikTok and Instagram links expire within hours), then
