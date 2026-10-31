@@ -483,6 +483,13 @@ async def load_terminal_responses(tasks: list[tuple[str, str]]) -> dict[str, byt
     """The archived terminal JSON for each `(call_id, endpoint_id)` that has one. Bytes only,
     verbatim: the caller decides how to read them. Misses are absent from the mapping, never None.
     Looked up by the same key hash `store_terminal_response` wrote under (indexed), not by URL."""
+    return {call_id: body for call_id, (_, body) in (await load_terminal_snapshots(tasks)).items()}
+
+
+async def load_terminal_snapshots(tasks: list[tuple[str, str]], *,
+                                  session_factory=None) -> dict[str, tuple[int, bytes]]:
+    """`load_terminal_responses` with the status each terminal answer was recorded with, read
+    through `session_factory` (the API pool by default) for the metadata and any DB fallback."""
     if not tasks:
         return {}
     from sqlalchemy import select
@@ -492,8 +499,8 @@ async def load_terminal_responses(tasks: list[tuple[str, str]]) -> dict[str, byt
 
     hashes = {cache_key("GET", endpoint_id, f"treg://asynctasks/{call_id}", b"", {}): call_id
               for call_id, endpoint_id in tasks}
-    out: dict[str, bytes] = {}
-    async with session_maker() as s:
+    out: dict[str, tuple[int, bytes]] = {}
+    async with (session_factory or session_maker)() as s:
         keys = (await s.execute(
             select(ArchiveKey).where(ArchiveKey.key_hash.in_(list(hashes))))).scalars().all()
         if not keys:
@@ -507,11 +514,13 @@ async def load_terminal_responses(tasks: list[tuple[str, str]]) -> dict[str, byt
             newest.setdefault(snap.key_id, snap)
         pointers = {by_key[key_id]: await archive_bodies.pointer(s, snap, "terminal")
                     for key_id, snap in newest.items()}
+        statuses = {by_key[key_id]: snap.status_code for key_id, snap in newest.items()}
     semaphore = asyncio.Semaphore(8)
     async def load(call_id, pointer):
         async with semaphore:
-            return call_id, await archive_bodies.read(pointer, "terminal")
-    return {call_id: body for call_id, body in await asyncio.gather(
+            return call_id, await archive_bodies.read(pointer, "terminal",
+                                                      session_factory=session_factory)
+    return {call_id: (statuses[call_id], body) for call_id, body in await asyncio.gather(
         *(load(call_id, pointer) for call_id, pointer in pointers.items())) if body is not None}
 
 

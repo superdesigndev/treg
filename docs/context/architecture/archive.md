@@ -281,9 +281,10 @@ and observed-version guards, then classifies the resolved body after closing the
 results retain the decisive snapshot; empty results invalidate serving without deleting history.
 Pruning protects the decisive snapshot and DB carriers of surviving versions. Eligible `both`
 rows lose DB bytes and become `r2`; their objects remain untouched. `db` does not contact R2,
-including for R2-only rows. Admin and Arena follow the result read switch; comparison and lazy
-initialization follow lookup. Admin fallback uses the admin pool; observation/initialization use
-the background pool; Arena uses its worker session factory. Read switches should be enabled
+including for R2-only rows. Admin, Arena and the replay export follow the result read switch;
+comparison and lazy initialization follow lookup. Admin fallback uses the admin pool;
+observation/initialization use the background pool; Arena and the replay export use their worker
+session factory, the export's terminal reads included. Read switches should be enabled
 before any future R2-only write rollout. No serving allowlist, cohort or production setting is
 changed here.
 

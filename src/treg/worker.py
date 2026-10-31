@@ -17,6 +17,8 @@
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
     treg-worker admin erase-archive --org <id>             # erase what an opted-out team stored in the archive
+    treg-worker admin export-replay-corpus --endpoints <ids> --out <file> --manifest <file>
+                                                           # recorded exchanges -> a replay corpus
     treg-worker enterprise reconcile [--org <id>]          # repair missed Directory Sync removals
     treg-worker enterprise cleanup [--org <id>]            # remove WorkOS setup after paid SSO ends
     treg-worker enterprise purge-audit [--days 400]        # delete expired SSO audit evidence
@@ -37,6 +39,7 @@ import argparse
 import asyncio
 import json
 import sys
+from pathlib import Path
 
 
 def _need_server() -> None:
@@ -511,6 +514,31 @@ async def _admin_erase_archive(args) -> int:
     return 0
 
 
+async def _admin_export_replay_corpus(args) -> int:
+    """Write recorded production exchanges as a replay corpus (application/replay/export): up to
+    `--per-class` per endpoint and class, distinct questions first. Prints counts only."""
+    from . import bootstrap
+    from .application.replay import export
+    from .infra.db import verify_db
+
+    try:
+        endpoints = export.select_endpoints(_names(args.endpoints), _names(args.provider))
+    except ValueError as exc:
+        print(json.dumps({"error": str(exc)}, sort_keys=True))
+        return 2
+    await verify_db()
+    async with bootstrap.archive_object_store():
+        summary = await export.export(
+            endpoints, args.out, args.manifest, per_class=args.per_class, days=args.days,
+            statement_timeout_s=args.statement_timeout_s)
+    print(json.dumps(summary, sort_keys=True))
+    return 0
+
+
+def _names(value: str | None) -> list[str]:
+    return [name.strip() for name in (value or "").split(",") if name.strip()]
+
+
 async def _enterprise_reconcile(args) -> int:
     """Bounded full-roster repair; run periodically, independent of webhook delivery."""
     import time
@@ -619,6 +647,15 @@ def _positive_int(value: str) -> int:
     if n < 1:
         raise argparse.ArgumentTypeError("must be >= 1")
     return n
+
+
+def _bounded_int(low: int, high: int):
+    def parse(value: str) -> int:
+        n = int(value)
+        if not low <= n <= high:
+            raise argparse.ArgumentTypeError(f"must be {low}..{high}")
+        return n
+    return parse
 
 
 async def _run_command(args) -> int:
@@ -770,6 +807,22 @@ def main(argv: list[str] | None = None) -> int:
     erase = adminsub.add_parser("erase-archive", help="erase what an opted-out team stored in the archive")
     erase.add_argument("--org", type=_positive_int, required=True, help="the team's org id")
     erase.set_defaults(fn=_admin_erase_archive)
+    replay = adminsub.add_parser(
+        "export-replay-corpus",
+        help="write recorded exchanges as a replay corpus and a private rid manifest")
+    chosen = replay.add_mutually_exclusive_group(required=True)
+    chosen.add_argument("--endpoints", help="comma-separated endpoint ids")
+    chosen.add_argument("--provider", help="comma-separated providers: every priced endpoint of each")
+    replay.add_argument("--per-class", type=_bounded_int(1, 100), default=20,
+                        help="records per endpoint and class (default 20, at most 100)")
+    replay.add_argument("--days", type=_bounded_int(1, 90), default=30,
+                        help="how far back to read (default 30, at most 90)")
+    replay.add_argument("--statement-timeout-s", type=_bounded_int(1, 60), default=20,
+                        help="per query; a query that times out is retried on half its window")
+    replay.add_argument("--out", type=Path, required=True, help="the corpus (JSON lines); must not exist")
+    replay.add_argument("--manifest", type=Path, required=True,
+                        help="rid -> call row id (JSON lines); private, must not exist")
+    replay.set_defaults(fn=_admin_export_replay_corpus)
     enterprise = sub.add_parser("enterprise", help="enterprise identity maintenance")
     enterprisesub = enterprise.add_subparsers(dest="cmd", required=True)
     reconcile = enterprisesub.add_parser("reconcile", help="repair missed WorkOS Directory Sync changes")
