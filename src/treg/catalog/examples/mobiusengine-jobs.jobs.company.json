@@ -1,0 +1,65 @@
+{
+  "jobs": [
+    {
+      "id": "greenhouse:stripe:8329718",
+      "title": "Staff Software Engineer, Dashboard Product",
+      "organization": "Stripe",
+      "organization_key": "Stripe",
+      "organization_url": "https://stripe.com",
+      "organization_logo": "https://media.licdn.com/dms/image/v2/D560BAQE2ZfJyfn-VCg/company-logo_200_200/B56ZlyKwpUKIAI-/0/1758557047806/stripe_logo?e=2147483647&v=beta&t=En4Hm6NDGbDTYCoOQ0Ko5Ne2gylx0WRb0yL2GlOeXBQ",
+      "org_linkedin_slug": "stripe",
+      "org_linkedin_industry": "Technology, Information and Internet",
+      "org_linkedin_size": "5001-10000",
+      "org_linkedin_recruitment_agency_derived": false,
+      "url": "https://stripe.com/jobs/search?gh_jid=8329718",
+      "apply_url": "https://stripe.com/jobs/search?gh_jid=8329718",
+      "source": "greenhouse",
+      "source_type": "ats",
+      "date_posted": "2026-10-28",
+      "date_first_seen": "2026-10-28",
+      "locations_derived": [
+        "Seattle"
+      ],
+      "cities_derived": [
+        "Seattle"
+      ],
+      "regions_derived": [],
+      "countries_derived": [],
+      "remote_friendly": false,
+      "arrangement": "unclear",
+      "arrangement_confidence": 0.0,
+      "arrangement_source": "model",
+      "ai_employment_type": [],
+      "ai_experience_level": "10+",
+      "has_salary": false,
+      "ai_salary_min_value": null,
+      "ai_salary_max_value": null,
+      "ai_salary_currency": null,
+      "ai_salary_unit_text": null,
+      "estimated_pay": {
+        "min": 150000.0,
+        "max": 250000.0,
+        "currency": "USD",
+        "unit": "YEAR",
+        "is_estimate": true
+      },
+      "department": "8414 MerchantXP - Eng",
+      "seniority": null,
+      "ai_key_skills": [
+        "React",
+        "AI agents",
+        "frontend performance",
+        "design system",
+        "UI quality",
+        "visual precision",
+        "code review",
+        "A/B testing"
+      ],
+      "requisition_id": "See Opening ID",
+      "salary_period": null,
+      "last_seen_at": "2026-10-28"
+    }
+  ],
+  "count": 1,
+  "next_cursor": "MjAyNi0xMC0yOHxncmVlbmhvdXNlOnN0cmlwZTo4MzI5NzE4"
+}

@@ -1,0 +1,71 @@
+{
+  "jobs": [
+    {
+      "id": "adp:d76b90b1-0981-447d-87d6-b355c2406fe4:9201270447004_91",
+      "title": "Assistant Branch Manager",
+      "organization": "Southwest Boulder & Stone",
+      "organization_key": "Southwest Boulder & Stone",
+      "organization_url": null,
+      "organization_logo": null,
+      "org_linkedin_slug": null,
+      "org_linkedin_industry": null,
+      "org_linkedin_size": null,
+      "org_linkedin_recruitment_agency_derived": null,
+      "url": "https://workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?cid=d76b90b1-0981-447d-87d6-b355c2406fe4&jobId=9201270447004_91&lang=en_US",
+      "apply_url": "https://workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?cid=d76b90b1-0981-447d-87d6-b355c2406fe4&jobId=9201270447004_91&lang=en_US",
+      "source": "adp",
+      "source_type": "ats",
+      "date_posted": "2026-10-29",
+      "date_first_seen": "2026-10-28",
+      "locations_derived": [
+        "Chula Vista, CA"
+      ],
+      "cities_derived": [
+        "Chula Vista"
+      ],
+      "regions_derived": [
+        "CA"
+      ],
+      "countries_derived": [
+        "US"
+      ],
+      "remote_friendly": false,
+      "arrangement": "unclear",
+      "arrangement_confidence": 0.0,
+      "arrangement_source": "model",
+      "ai_employment_type": [
+        "FULL_TIME"
+      ],
+      "ai_experience_level": "2-5",
+      "has_salary": true,
+      "ai_salary_min_value": 41600.0,
+      "ai_salary_max_value": 47840.0,
+      "ai_salary_currency": "USD",
+      "ai_salary_unit_text": "YEAR",
+      "estimated_pay": {
+        "min": 20.0,
+        "max": 23.0,
+        "currency": "USD",
+        "unit": "HOUR",
+        "is_estimate": false
+      },
+      "department": null,
+      "seniority": null,
+      "ai_key_skills": [
+        "inventory management",
+        "customer service",
+        "point of sales systems",
+        "computer systems",
+        "Microsoft Office",
+        "organizational skills",
+        "leadership skills",
+        "communication skills"
+      ],
+      "requisition_id": "1662",
+      "salary_period": "hour",
+      "last_seen_at": "2026-10-28"
+    }
+  ],
+  "count": 1,
+  "next_cursor": "MjAyNi0xMC0yOXxhZHA6ZDc2YjkwYjEtMDk4MS00NDdkLTg3ZDYtYjM1NWMyNDA2ZmU0OjkyMDEyNzA0NDcwMDRfOTE="
+}

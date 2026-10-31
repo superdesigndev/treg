@@ -1,0 +1,69 @@
+{
+  "jobs": [
+    {
+      "id": "workday:zoetis__zoetis_intl:/job/Bangkok/Demand-and-Logistics-Specialist_JR00021958",
+      "title": "Demand and Logistics Specialist",
+      "organization": "Zoetis",
+      "organization_key": "zoetis",
+      "organization_url": "http://www.zoetis.com",
+      "organization_logo": "https://media.licdn.com/dms/image/v2/C4D0BAQEt-j2WyFxLEg/company-logo_200_200/company-logo_200_200/0/1630510471552/zoetis_logo?e=2147483647&v=beta&t=JS_FMSC53FLmIbQyOJJeCtN5glLxrglaUqKN_ktHAis",
+      "org_linkedin_slug": "zoetis",
+      "org_linkedin_industry": "Pharmaceutical Manufacturing",
+      "org_linkedin_size": "10000+",
+      "org_linkedin_recruitment_agency_derived": false,
+      "url": "https://zoetis.wd5.myworkdayjobs.com/zoetis_intl/job/Bangkok/Demand-and-Logistics-Specialist_JR00021958",
+      "apply_url": "https://zoetis.wd5.myworkdayjobs.com/zoetis_intl/job/Bangkok/Demand-and-Logistics-Specialist_JR00021958",
+      "source": "workday",
+      "source_type": "ats",
+      "date_posted": "2026-10-28",
+      "date_first_seen": "2026-10-28",
+      "locations_derived": [
+        "Bangkok"
+      ],
+      "cities_derived": [
+        "Bangkok"
+      ],
+      "regions_derived": [],
+      "countries_derived": [
+        "TH"
+      ],
+      "remote_friendly": true,
+      "arrangement": "hybrid",
+      "arrangement_confidence": 0.9775,
+      "arrangement_source": "model",
+      "ai_employment_type": [
+        "FULL_TIME"
+      ],
+      "ai_experience_level": "2-5",
+      "has_salary": false,
+      "ai_salary_min_value": null,
+      "ai_salary_max_value": null,
+      "ai_salary_currency": null,
+      "ai_salary_unit_text": null,
+      "estimated_pay": {
+        "min": null,
+        "max": null,
+        "currency": null,
+        "unit": null,
+        "is_estimate": false
+      },
+      "department": null,
+      "seniority": null,
+      "ai_key_skills": [
+        "Demand Planning",
+        "Logistics Operations",
+        "Inventory Management",
+        "SAP APO DP/SNP",
+        "SAP IBP",
+        "Analytical Skills",
+        "Excel",
+        "GDP Compliance"
+      ],
+      "requisition_id": null,
+      "salary_period": null,
+      "last_seen_at": "2026-10-28"
+    }
+  ],
+  "count": 1,
+  "next_cursor": "MjAyNi0xMC0yOHx3b3JrZGF5OnpvZXRpc19fem9ldGlzX2ludGw6L2pvYi9CYW5na29rL0RlbWFuZC1hbmQtTG9naXN0aWNzLVNwZWNpYWxpc3RfSlIwMDAyMTk1OA=="
+}

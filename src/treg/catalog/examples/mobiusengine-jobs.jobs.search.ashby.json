@@ -1,0 +1,69 @@
+{
+  "jobs": [
+    {
+      "id": "ashby:zuru:b30e5e37-f441-402a-8b4a-267a1310eb3d",
+      "title": "Senior Key Account Manager | Growth Channels",
+      "organization": "ZURU",
+      "organization_key": "zuru",
+      "organization_url": "https://zuru.com",
+      "organization_logo": "https://media.licdn.com/dms/image/v2/D560BAQHVKVEQ8nFOYQ/company-logo_200_200/B56Z_J91HEGUAE-/0/1785799856777/zurugroup_logo?e=2147483647&v=beta&t=aErH4NWacG2JexlRKC5zOwt0Rc-8YB5anod2MKOf174",
+      "org_linkedin_slug": "zurugroup",
+      "org_linkedin_industry": "Manufacturing",
+      "org_linkedin_size": "1001-5000",
+      "org_linkedin_recruitment_agency_derived": false,
+      "url": "https://jobs.ashbyhq.com/zuru/b30e5e37-f441-402a-8b4a-267a1310eb3d",
+      "apply_url": "https://jobs.ashbyhq.com/zuru/b30e5e37-f441-402a-8b4a-267a1310eb3d/application",
+      "source": "ashby",
+      "source_type": "ats",
+      "date_posted": "2026-10-28",
+      "date_first_seen": "2026-10-28",
+      "locations_derived": [
+        "Bentonville | United States"
+      ],
+      "cities_derived": [
+        "Bentonville"
+      ],
+      "regions_derived": [],
+      "countries_derived": [
+        "US"
+      ],
+      "remote_friendly": false,
+      "arrangement": "on_site",
+      "arrangement_confidence": 1.0,
+      "arrangement_source": "ats",
+      "ai_employment_type": [
+        "FULL_TIME"
+      ],
+      "ai_experience_level": "2-5",
+      "has_salary": false,
+      "ai_salary_min_value": null,
+      "ai_salary_max_value": null,
+      "ai_salary_currency": null,
+      "ai_salary_unit_text": null,
+      "estimated_pay": {
+        "min": 75000.0,
+        "max": 120000.0,
+        "currency": "USD",
+        "unit": "YEAR",
+        "is_estimate": true
+      },
+      "department": "ZURU Toys",
+      "seniority": null,
+      "ai_key_skills": [
+        "Channel ownership",
+        "Financial ownership",
+        "Account management",
+        "Broker management",
+        "Key account leadership",
+        "In-store execution",
+        "Cross-functional leadership",
+        "Team mentoring"
+      ],
+      "requisition_id": null,
+      "salary_period": null,
+      "last_seen_at": "2026-10-28"
+    }
+  ],
+  "count": 1,
+  "next_cursor": "MjAyNi0xMC0yOHxhc2hieTp6dXJ1OmIzMGU1ZTM3LWY0NDEtNDAyYS04YjRhLTI2N2ExMzEwZWIzZA=="
+}

@@ -1,0 +1,69 @@
+{
+  "jobs": [
+    {
+      "id": "lever:yuno:7e626ff0-7b47-4888-8d65-d92dcaf4f651",
+      "title": "Technical Support Analyst",
+      "organization": "Yuno",
+      "organization_key": "yuno",
+      "organization_url": "https://y.uno",
+      "organization_logo": "https://media.licdn.com/dms/image/v2/D560BAQGe-nlKrCnIpg/company-logo_200_200/B56Zcy8UdyHoAM-/0/1748906363071/yunopay_logo?e=2147483647&v=beta&t=TsBFIO5oCeS1kKPi_XkTXAHFFZyOGpdBTZVFWree4I0",
+      "org_linkedin_slug": "yunopay",
+      "org_linkedin_industry": "Financial Services",
+      "org_linkedin_size": "51-200",
+      "org_linkedin_recruitment_agency_derived": false,
+      "url": "https://jobs.lever.co/yuno/7e626ff0-7b47-4888-8d65-d92dcaf4f651",
+      "apply_url": "https://jobs.lever.co/yuno/7e626ff0-7b47-4888-8d65-d92dcaf4f651/apply",
+      "source": "lever",
+      "source_type": "ats",
+      "date_posted": "2026-10-28",
+      "date_first_seen": "2026-10-28",
+      "locations_derived": [
+        "Hyderabad"
+      ],
+      "cities_derived": [
+        "Hyderabad"
+      ],
+      "regions_derived": [],
+      "countries_derived": [
+        "IN"
+      ],
+      "remote_friendly": false,
+      "arrangement": "on_site",
+      "arrangement_confidence": 1.0,
+      "arrangement_source": "ats",
+      "ai_employment_type": [
+        "FULL_TIME"
+      ],
+      "ai_experience_level": "2-5",
+      "has_salary": false,
+      "ai_salary_min_value": null,
+      "ai_salary_max_value": null,
+      "ai_salary_currency": null,
+      "ai_salary_unit_text": null,
+      "estimated_pay": {
+        "min": 300000.0,
+        "max": 600000.0,
+        "currency": "INR",
+        "unit": "YEAR",
+        "is_estimate": true
+      },
+      "department": "Go To Market",
+      "seniority": null,
+      "ai_key_skills": [
+        "technical support",
+        "NOC operations",
+        "monitoring tools",
+        "scripting",
+        "debugging",
+        "log analysis",
+        "APIs",
+        "problem-solving"
+      ],
+      "requisition_id": null,
+      "salary_period": null,
+      "last_seen_at": "2026-10-28"
+    }
+  ],
+  "count": 1,
+  "next_cursor": "MjAyNi0xMC0yOHxsZXZlcjp5dW5vOjdlNjI2ZmYwLTdiNDctNDg4OC04ZDY1LWQ5MmRjYWY0ZjY1MQ=="
+}

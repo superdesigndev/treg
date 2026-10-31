@@ -1,0 +1,69 @@
+{
+  "jobs": [
+    {
+      "id": "smartrecruiters:ZhuShiHuiSheFFL:744000158204508",
+      "title": "⭐️足立区【高報酬】軽貨物配送ドライバー｜日額21,030円〜23,450円＋インセンティブ｜リース代無料・未経験歓迎",
+      "organization": "株式会社FFL",
+      "organization_key": "株式会社FFL",
+      "organization_url": null,
+      "organization_logo": null,
+      "org_linkedin_slug": null,
+      "org_linkedin_industry": null,
+      "org_linkedin_size": null,
+      "org_linkedin_recruitment_agency_derived": null,
+      "url": "https://jobs.smartrecruiters.com/ZhuShiHuiSheFFL/744000158204508",
+      "apply_url": "https://jobs.smartrecruiters.com/ZhuShiHuiSheFFL/744000158204508",
+      "source": "smartrecruiters",
+      "source_type": "ats",
+      "date_posted": "2026-10-28",
+      "date_first_seen": "2026-10-28",
+      "locations_derived": [
+        "足立区, 東京都, Japan"
+      ],
+      "cities_derived": [
+        "東京都"
+      ],
+      "regions_derived": [],
+      "countries_derived": [
+        "JP"
+      ],
+      "remote_friendly": false,
+      "arrangement": "unclear",
+      "arrangement_confidence": 0.0,
+      "arrangement_source": "model",
+      "ai_employment_type": [
+        "CONTRACTOR"
+      ],
+      "ai_experience_level": "0-2",
+      "has_salary": false,
+      "ai_salary_min_value": null,
+      "ai_salary_max_value": null,
+      "ai_salary_currency": null,
+      "ai_salary_unit_text": null,
+      "estimated_pay": {
+        "min": 4800000.0,
+        "max": 5300000.0,
+        "currency": "JPY",
+        "unit": "YEAR",
+        "is_estimate": true
+      },
+      "department": "Supply Chain",
+      "seniority": "Entry Level",
+      "ai_key_skills": [
+        "軽貨物配送",
+        "普通自動車運転免許",
+        "AT限定可",
+        "未経験歓迎",
+        "経験者歓迎",
+        "学歴不問",
+        "専用アプリ使用",
+        "個人宅配送"
+      ],
+      "requisition_id": "REF5X",
+      "salary_period": null,
+      "last_seen_at": "2026-10-28"
+    }
+  ],
+  "count": 1,
+  "next_cursor": "MjAyNi0xMC0yOHxzbWFydHJlY3J1aXRlcnM6Wmh1U2hpSHVpU2hlRkZMOjc0NDAwMDE1ODIwNDUwOA=="
+}

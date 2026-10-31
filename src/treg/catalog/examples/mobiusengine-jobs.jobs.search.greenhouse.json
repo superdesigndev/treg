@@ -1,0 +1,67 @@
+{
+  "jobs": [
+    {
+      "id": "greenhouse:zscaler:5261573007",
+      "title": "Sr. Staff Data Center Operations Engineer",
+      "organization": "Zscaler",
+      "organization_key": "Zscaler",
+      "organization_url": "https://www.zscaler.com",
+      "organization_logo": "https://media.licdn.com/dms/image/v2/D560BAQHswWh4VGNL3A/company-logo_200_200/B56Za2TSlsGoAM-/0/1746815232721/zscaler_logo?e=2147483647&v=beta&t=2HV37mzVXNDt7k_bHnZ7Mh879iatRdm_U0k3q1GapnE",
+      "org_linkedin_slug": "zscaler",
+      "org_linkedin_industry": "Computer and Network Security",
+      "org_linkedin_size": "5001-10000",
+      "org_linkedin_recruitment_agency_derived": false,
+      "url": "https://job-boards.greenhouse.io/zscaler/jobs/5261573007",
+      "apply_url": "https://job-boards.greenhouse.io/zscaler/jobs/5261573007",
+      "source": "greenhouse",
+      "source_type": "ats",
+      "date_posted": "2026-10-28",
+      "date_first_seen": "2026-10-28",
+      "locations_derived": [
+        "Singapore, SGP"
+      ],
+      "cities_derived": [
+        "SGP"
+      ],
+      "regions_derived": [],
+      "countries_derived": [
+        "SG"
+      ],
+      "remote_friendly": true,
+      "arrangement": "unclear",
+      "arrangement_confidence": 0.0,
+      "arrangement_source": "model",
+      "ai_employment_type": [],
+      "ai_experience_level": "5-10",
+      "has_salary": false,
+      "ai_salary_min_value": null,
+      "ai_salary_max_value": null,
+      "ai_salary_currency": null,
+      "ai_salary_unit_text": null,
+      "estimated_pay": {
+        "min": 70000.0,
+        "max": 120000.0,
+        "currency": "SGD",
+        "unit": "YEAR",
+        "is_estimate": true
+      },
+      "department": "Cloud Ops",
+      "seniority": null,
+      "ai_key_skills": [
+        "hardware automation",
+        "build environment",
+        "Linux/Unix",
+        "ILO",
+        "SAA",
+        "iDRAC",
+        "IPMI",
+        "Ansible"
+      ],
+      "requisition_id": "261008_I85318",
+      "salary_period": null,
+      "last_seen_at": "2026-10-28"
+    }
+  ],
+  "count": 1,
+  "next_cursor": "MjAyNi0xMC0yOHxncmVlbmhvdXNlOnpzY2FsZXI6NTI2MTU3MzAwNw=="
+}

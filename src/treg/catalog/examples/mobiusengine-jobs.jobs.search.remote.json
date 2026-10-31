@@ -1,0 +1,71 @@
+{
+  "jobs": [
+    {
+      "id": "workday:vumc__vumccareers:/job/Nashville-TN/Lead-Revenue-Cycle-Advisor--PB-HB-Billing---Claims-preferred--EPIC-exp-required----REMOTE_R-70060",
+      "title": "Lead Revenue Cycle Advisor (PB/HB Billing & Claims preferred; EPIC exp required) - REMOTE",
+      "organization": "Vanderbilt University Medical Center",
+      "organization_key": "vumc",
+      "organization_url": "http://www.vanderbilthealth.com",
+      "organization_logo": "https://media.licdn.com/dms/image/v2/C4D0BAQGyyWOSOHIQ6g/company-logo_200_200/company-logo_200_200/0/1630505790243/vanderbilt_university_medical_center_logo?e=2147483647&v=beta&t=0Ej8loEWXPD91pFeY8_5P82A9hx40kLmUdfpMOhCsNc",
+      "org_linkedin_slug": "vanderbilt-university-medical-center",
+      "org_linkedin_industry": "Hospitals and Health Care",
+      "org_linkedin_size": "10000+",
+      "org_linkedin_recruitment_agency_derived": false,
+      "url": "https://vumc.wd1.myworkdayjobs.com/vumccareers/job/Nashville-TN/Lead-Revenue-Cycle-Advisor--PB-HB-Billing---Claims-preferred--EPIC-exp-required----REMOTE_R-70060",
+      "apply_url": "https://vumc.wd1.myworkdayjobs.com/vumccareers/job/Nashville-TN/Lead-Revenue-Cycle-Advisor--PB-HB-Billing---Claims-preferred--EPIC-exp-required----REMOTE_R-70060",
+      "source": "workday",
+      "source_type": "ats",
+      "date_posted": "2026-10-28",
+      "date_first_seen": "2026-10-28",
+      "locations_derived": [
+        "Nashville, TN"
+      ],
+      "cities_derived": [
+        "Nashville"
+      ],
+      "regions_derived": [
+        "TN"
+      ],
+      "countries_derived": [
+        "US"
+      ],
+      "remote_friendly": true,
+      "arrangement": "remote",
+      "arrangement_confidence": 1.0,
+      "arrangement_source": "ats",
+      "ai_employment_type": [
+        "FULL_TIME"
+      ],
+      "ai_experience_level": "5-10",
+      "has_salary": false,
+      "ai_salary_min_value": null,
+      "ai_salary_max_value": null,
+      "ai_salary_currency": null,
+      "ai_salary_unit_text": null,
+      "estimated_pay": {
+        "min": 60000.0,
+        "max": 120000.0,
+        "currency": "USD",
+        "unit": "YEAR",
+        "is_estimate": true
+      },
+      "department": null,
+      "seniority": null,
+      "ai_key_skills": [
+        "Revenue Cycle",
+        "Problem Solving",
+        "Process Improvement",
+        "Epic Professional Billing",
+        "Claims",
+        "Billing",
+        "Excel",
+        "Charge Capture"
+      ],
+      "requisition_id": null,
+      "salary_period": null,
+      "last_seen_at": "2026-10-28"
+    }
+  ],
+  "count": 1,
+  "next_cursor": "MjAyNi0xMC0yOHx3b3JrZGF5OnZ1bWNfX3Z1bWNjYXJlZXJzOi9qb2IvTmFzaHZpbGxlLVROL0xlYWQtUmV2ZW51ZS1DeWNsZS1BZHZpc29yLS1QQi1IQi1CaWxsaW5nLS0tQ2xhaW1zLXByZWZlcnJlZC0tRVBJQy1leHAtcmVxdWlyZWQtLS0tUkVNT1RFX1ItNzAwNjA="
+}
