@@ -112,7 +112,8 @@ adapters:
     in:  {linkedin_url: queryParams.url}
     out: {email: data.email, confidence: "data.score / 100", first_name: data.first_name,
           last_name: data.last_name, verified: "data.verification.status == 'valid'"}
-    miss: "data.email == null"
+    # work-email child: a free-mail mailbox (or none) is a miss
+    miss: "email_domain(data.email) == null"
   aviato.people.email.find:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: queryParams.linkedinURL}
