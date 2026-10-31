@@ -62,7 +62,8 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
         "name": f"{cap} — routed: best of {len(kids)} providers, own keys first",
         "summary": contract.summary,
         "input": {"bodyType": "json", "body": body,
-                  "note": ("Send what you know; treg sends each provider only the fields it accepts "
+                  "note": ("Send what you know and omit what you don't: a placeholder such as N/A in a "
+                           "url field is refused (422 invalid_identity). treg sends each provider only the fields it accepts "
                            f"({variants})"
                            + (f" and fills {', '.join(sorted(contract.derive))} from the rest" if contract.derive else "")
                            + ". On a miss it tries the next provider, cheapest first. Options are "

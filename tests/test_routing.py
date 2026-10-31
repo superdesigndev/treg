@@ -828,6 +828,20 @@ async def test_identity_no_provider_accepts_is_422_naming_variants(clients: Asyn
     assert ["domain", "full_name"] in r.json()["detail"]["variants"]
 
 
+async def test_identity_not_of_its_declared_type_is_422_before_any_call(clients: AsyncClient, enrichment_on, monkeypatch):
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"tomba": [(200, {})]}, seen))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "P C", "domain": "stripe.com", "linkedin_url": "N/A"})
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "invalid_identity" and seen == []
+    assert r.json()["detail"]["invalid"] == [{"field": "linkedin_url", "type": "url", "value": "N/A"}]
+
+
+async def test_access_check_plans_a_url_row_from_its_own_example(clients: AsyncClient):
+    """The type check guards what a caller sends; the access view plans from the row's placeholder."""
+    r = await clients.get("/catalog/endpoints/treg.web.extract/access")
+    assert r.status_code == 200, r.text
+
+
 async def test_caller_fault_on_a_child_stops_and_own_key_ranks_first(clients: AsyncClient, enrichment_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
@@ -1855,6 +1869,23 @@ def test_linkedin_url_is_normalised_once_for_every_adapter():
 def test_linkedin_url_only_trusts_a_linkedin_host(raw, expected):
     from treg.domain.catalog.routing import paths as P
     assert P.linkedin_url(raw) == expected
+
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    ("https://www.linkedin.com/in/patrickcollison", "https://www.linkedin.com/in/patrickcollison"),
+    ("https://www.linkedin.com/in/%E5%BC%A0%E4%B8%89-1a2b3c/en", "https://www.linkedin.com/in/%E5%BC%A0%E4%B8%89-1a2b3c/en"),
+    ("WWW.LinkedIn.com/in/Patrick", "https://www.linkedin.com/in/Patrick"),
+    ("m.linkedin.com/in/x?trk=a", "https://m.linkedin.com/in/x?trk=a"),
+    ("stripe.com", "https://stripe.com"),
+    ("http://bücher.de/x", "http://bücher.de/x"),
+    ("https://example.com/a page", "https://example.com/a page"),
+    ("N/A", None), ("null", None), ("-", None), ("patrickcollison", None),
+    ("ftp://stripe.com/x", None), ("https://", None), ("see https://stripe.com", None), (".com/x", None),
+    ("http://localhost/", None), ("https://a.com,b.com", None), ("https://…", None),
+])
+def test_url_identity_is_checked_by_its_declared_type(raw, expected):
+    from treg.domain.catalog.routing.contracts import _as_url
+    assert _as_url(raw) == expected
 
 
 def test_arena_and_router_read_the_miss_block_the_same_way():

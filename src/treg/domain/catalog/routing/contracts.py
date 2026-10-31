@@ -378,6 +378,36 @@ def _body_matches(when: Any, body: Any) -> bool:
         return False
 
 
+def _as_url(v: Any) -> str | None:
+    """An http(s) URL, or None. A scheme-less `host.tld/path` gets `https://` and a lower-cased
+    host (some providers refuse it bare); a URL with a scheme passes through as sent."""
+    if not isinstance(v, str) or not (s := v.strip()):
+        return None
+    scheme, sep, rest = s.partition("://")
+    if not sep:
+        scheme, rest = "https", s
+    elif scheme.lower() not in ("http", "https"):
+        return None
+    host = re.split(r"[/?#]", rest, maxsplit=1)[0].rsplit("@", 1)[-1].split(":")[0]
+    if not re.fullmatch(r"[^\W_](?:[\w-]*[^\W_])?(?:\.[^\W_](?:[\w-]*[^\W_])?)+", host):
+        return None
+    return s if sep else f"https://{host.lower()}{rest[len(host):]}"
+
+
+# A declared identity type → its normaliser (None when the value is not of that type).
+_TYPE_NORMALISERS = {"url": _as_url}
+
+
+def invalid_identity(contract: Contract, given: dict[str, Any]) -> list[dict[str, Any]]:
+    """The caller's identity fields that are present but not of their declared type."""
+    bad = []
+    for k, t in contract.identity_types.items():
+        v = given.get(k)
+        if v not in (None, "") and (norm := _TYPE_NORMALISERS.get(t)) and norm(v) is None:
+            bad.append({"field": k, "type": t, "value": str(v)[:200]})
+    return bad
+
+
 def canonical_identity(contract: Contract, given: dict[str, Any]) -> tuple[dict[str, Any], tuple[str, ...] | None]:
     """The caller's fields + everything derivable → (identity, the variant they supplied), or
     (identity, None) when no variant is complete. Derived keys count for matching adapters."""
@@ -385,10 +415,9 @@ def canonical_identity(contract: Contract, given: dict[str, Any]) -> tuple[dict[
     supplied = next((v for v in contract.identity if all(k in ident for k in v)), None)
     if supplied is None:
         return ident, None
-    if isinstance(ident.get("linkedin_url"), str):
-        # One normalisation for every adapter that forwards the URL raw: a scheme-less
-        # `linkedin.com/in/x` is refused by some providers; a handle becomes the public URL.
-        ident["linkedin_url"] = P.linkedin_url(ident["linkedin_url"]) or ident["linkedin_url"]
+    for k, t in contract.identity_types.items():
+        if k in ident and (norm := _TYPE_NORMALISERS.get(t)):
+            ident[k] = norm(ident[k]) or ident[k]
     for _ in range(2):  # derive until stable (join needs first+last; split needs full_name)
         for k, expr in contract.derive.items():
             if ident.get(k) in (None, ""):
