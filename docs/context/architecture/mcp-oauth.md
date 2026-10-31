@@ -157,7 +157,7 @@ same-named team tool. A change is incomplete if only one relevant MCP test file 
 | Tool | Job |
 |---|---|
 | `catalog_search` | find endpoints by what you want to DO, with prices; in the experiment's `v2` mode a verdict and the jobs on the page ([search-experiment](search-experiment.md)) |
-| `catalog_get` | one endpoint in full: params, cost, reliability, sibling providers (the routing plan instead on a routed row, as in the CLI) |
+| `catalog_get` | one endpoint in full: params, cost, reliability, sibling providers (the routing plan instead on a routed row, as in the CLI; a crowded non-routed job keeps a ranked page of 10 siblings and `siblings_total`) |
 | `call` | a catalog endpoint by id, or `<tool-name>/<path>` for the team's own tool |
 | `call_media` | the same `/call/` path for audio endpoints, returned as native `AudioContent` plus structured call/cost metadata |
 | `resources_list` | calls the unified provider-resource API; Fish voice listing uses the connected Fish account when BYOK exists, otherwise the active team's platform voices |

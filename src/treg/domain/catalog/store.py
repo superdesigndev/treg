@@ -871,23 +871,29 @@ def quote_cost(cost: dict | None) -> dict | None:
 
 def sibling_view(ep: dict, provider_display: str, cat: Catalog) -> dict:
     """One row of an endpoint's comparison with the other providers of its job; the full view is
-    that endpoint's own detail."""
-    return {
+    that endpoint's own detail. Price is the quote (`quote_cost`), not settle/usage evidence — same
+    shape as a routed plan row — so dozens of siblings stay readable in one round-trip."""
+    row = {
         "id": ep["id"],
         "provider": ep["provider"],
         "provider_display": provider_display,
         "name": ep.get("name") or "",
         "scope": ep["scope"],
         "kind": ep.get("kind") or DEFAULT_KIND,
-        "cost": cost_row(ep, cat),
+        "cost": quote_cost(cost_row(ep, cat)),
         "platform_eligible": cat.platform_eligible(ep),
-        "status": ep.get("status") or None,
-        "status_note": ep.get("status_note") or None,
-        "superseded_by": ep.get("superseded_by") or None,
         "verified": ep["verified"],
         "params": [k for where in ("pathParams", "queryParams", "body")
                    if isinstance(params := (ep.get("input") or {}).get(where), dict) for k in params],
     }
+    # Retired / superseded rows say so; an ordinary sibling omits the three nulls.
+    if ep.get("status"):
+        row["status"] = ep["status"]
+        if ep.get("status_note"):
+            row["status_note"] = ep["status_note"]
+        if ep.get("superseded_by"):
+            row["superseded_by"] = ep["superseded_by"]
+    return row
 
 
 def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None) -> dict:
