@@ -1262,3 +1262,19 @@ def test_an_auto_route_row_files_where_its_providers_do():
     for ep in routed:
         kids = {e["domain"] for e in cat.for_capability(ep["capability"]) if e.get("kind") != "routed"}
         assert ep["domain"] in kids, ep["id"]
+
+
+def test_sibling_view_quotes_price_and_omits_empty_status():
+    """Comparison rows carry a quote price (no settle/usage) and skip null status fields so a
+    crowded capability stays small; retired rows still name their status."""
+    from treg.domain.catalog import store as catalog_store
+    cat = catalog_store.load()
+    live = next(ep for ep in cat.by_id.values()
+                if ep.get("capability") == "web.search" and not ep.get("status") and ep.get("kind") != "routed")
+    row = catalog_store.sibling_view(live, "Display", cat)
+    assert "settle" not in (row.get("cost") or {})
+    assert "usage" not in (row.get("cost") or {})
+    assert "status" not in row and "status_note" not in row and "superseded_by" not in row
+    retired = cat.by_id["tikhub.x.linkedin-web-search-jobs"]
+    retired_row = catalog_store.sibling_view(retired, "TikHub", cat)
+    assert retired_row["status"] == "retired" and retired_row.get("superseded_by")

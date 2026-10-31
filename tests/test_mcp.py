@@ -1664,9 +1664,24 @@ async def test_catalog_get_gives_the_caller_its_own_team_values(clients, monkeyp
     assert out["endpoint"]["your_values"] == {"queryParams.agent": call_resolution.team_label(org_id)}
 
 
+
+def test_catalog_siblings_for_agent_ranks_and_caps():
+    """MCP keeps a CLI-sized page of siblings and reports the full count."""
+    from treg import mcp as mcp_mod
+    rows = (
+        [{"id": "treg.job", "kind": "routed", "cost": {"usd": 0}, "observed": None}]
+        + [{"id": f"p{i}.job", "kind": "data", "cost": {"usd": 1 - i * 0.01},
+            "observed": {"ok_rate": 0.5 + i * 0.01}} for i in range(15)]
+    )
+    capped, total = mcp_mod._catalog_siblings_for_agent(rows)
+    assert total == 16 and len(capped) == 10 and capped[0]["id"] == "treg.job"
+    assert capped[1]["id"] == "p14.job"  # highest ok_rate among non-routed
+
+
 async def test_catalog_get_stays_within_an_mcp_client_output_limit(clients):
     """Hosts cap a tool result (Claude Code at about 25k tokens) and read `structuredContent`; a job
-    with dozens of providers returned 150k+ characters, and a routed row lost its plan to the schema."""
+    with dozens of providers returned 150k+ characters, and a routed row lost its plan to the schema.
+    Non-routed crowded jobs keep a ranked sibling page (CLI compare default), with `siblings_total`."""
     token = (await clients.post("/users", json={"email": "size@superdesign.dev"})).json()["token"]
     results = {}
     async with mcp_session(clients) as c:
@@ -1678,9 +1693,12 @@ async def test_catalog_get_stays_within_an_mcp_client_output_limit(clients):
     routed = results["treg.people.search"]["structuredContent"]
     crowded = results["aiark.people.search"]["structuredContent"]
     assert routed["routing"]["plan"] and routed["related_capabilities"] and not routed["siblings"]
-    assert len(crowded["siblings"]) > 20
+    assert len(crowded["siblings"]) == 10
+    assert crowded["siblings_total"] > 20
+    # Quote-priced siblings: settle/usage evidence stays on each sibling's own detail.
+    assert all("settle" not in (s.get("cost") or {}) for s in crowded["siblings"])
     for result in results.values():
-        assert len(json.dumps(result)) < 100_000
+        assert len(json.dumps(result)) < 50_000
 
 
 async def test_tool_called_names_the_mcp_host(clients, monkeypatch, posthog_events):

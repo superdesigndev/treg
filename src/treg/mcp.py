@@ -423,6 +423,7 @@ class CatalogGetOut(TypedDict, total=False):
                                            # and `reviews` (what other teams' agents said after using it)
     provider: dict[str, Any] | None
     siblings: list[dict[str, Any]] | None  # other providers of the same capability, for comparison
+    siblings_total: int | None             # when siblings is capped, how many the job has in full
     routing: dict[str, Any] | None
     related_capabilities: list[dict[str, Any]] | None
     observed_pending: bool | None
@@ -1253,8 +1254,43 @@ async def _catalog_get_impl(
             out["overflow_price_unit"] = ep.get("overflow_price_unit")
             out["overflow_via"] = ep.get("overflow_via")
     if isinstance(out, dict) and (out.get("routing") or {}).get("plan"):
+        # The plan already ranks every routed child; repeating them as siblings doubles the page.
         out.pop("siblings", None)
+    elif isinstance(out, dict) and isinstance(out.get("siblings"), list):
+        # Same default the CLI uses for `catalog get` compare rows: enough to pick, not every
+        # provider of a crowded job. HTTP detail still returns the full set; another sibling's
+        # catalog_get shows the rest under the same ranking.
+        capped, total = _catalog_siblings_for_agent(out["siblings"])
+        out["siblings"] = capped
+        if total is not None:
+            out["siblings_total"] = total
     return out
+
+
+# How many capability siblings MCP catalog_get keeps for a non-routed row (CLI compare default).
+_CATALOG_GET_SIBLING_LIMIT = 10
+
+
+def _catalog_sibling_rank(s: dict) -> tuple:
+    """Measured before unmeasured; higher ok_rate; then lower known USD — mirrors CLI compare rank."""
+    rate = (s.get("observed") or {}).get("ok_rate")
+    cost = s.get("cost") or {}
+    usd = cost.get("usd")
+    known = isinstance(usd, (int, float)) and not cost.get("varies")
+    return (rate is None, -round(rate or 0, 2), usd if known else float("inf"))
+
+
+def _catalog_siblings_for_agent(siblings: list[dict]) -> tuple[list[dict], int | None]:
+    """Ranked, capped sibling rows for an MCP host. Returns `(rows, total_or_None)`."""
+    if len(siblings) <= _CATALOG_GET_SIBLING_LIMIT:
+        return siblings, None
+    routed = [s for s in siblings if s.get("kind") == "routed"]
+    others = sorted((s for s in siblings if s.get("kind") != "routed"), key=_catalog_sibling_rank)
+    # A routed id of the same job rides first under the cap: it is the other way to call, not one
+    # more provider to rank.
+    ranked = [*routed, *others]
+    keep = max(_CATALOG_GET_SIBLING_LIMIT, len(routed))
+    return ranked[:keep], len(siblings)
 
 
 # Everything below spends money or reads a team's data - all of it goes back through the API.
