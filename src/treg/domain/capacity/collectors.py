@@ -37,6 +37,21 @@ async def _orbisearch(c, key):
     return {"value": balance, "unit": "credits", "note": "prepaid credit balance"}
 
 
+async def _minerva(c, key):
+    d = await _get(c, "https://api.minerva.io/billing/usage", headers={"x-api-key": key})
+    term = d.get("current_term") if isinstance(d, dict) else None
+    capacity = term.get("full_record_capacity_available") if isinstance(term, dict) else None
+    if type(capacity) is int and capacity >= 0:
+        return {"value": capacity, "unit": "unique records", "informational": True,
+                "note": "export capacity including overage; zero does not prohibit search or "
+                        "re-exporting records already licensed in this contract term"}
+    if (isinstance(d, dict) and "current_term" in d and term is None
+            and d.get("access_status") == "active" and d.get("product_tier") == "enterprise"):
+        return {"value": None, "unit": "unique records", "informational": True,
+                "note": "active Enterprise account reports no finite term capacity"}
+    raise ValueError("Minerva returned no valid record capacity")
+
+
 def _finite(raw):
     """A finite JSON number, sign kept; None for anything else (Booleans and strings included)."""
     return raw if type(raw) in (int, float) and math.isfinite(raw) else None
@@ -1046,6 +1061,7 @@ async def _piapi(c, key):
 
 
 BALANCE_ROUTES = {
+    "minerva": _minerva,
     "orbisearch": _orbisearch,
     "dropcontact": _dropcontact,
     "theirstack": _theirstack,

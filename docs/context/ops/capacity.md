@@ -72,6 +72,13 @@ and sums every pool that can pay for a call (Fiber AI's trial and paid pools). V
 `OVERDRAFT_SERVED` keep serving past zero, so their low balance is informational and `overdrawn`;
 each needs a refusal signature.
 
+Minerva's collector reads the documented `GET /billing/usage` route with `x-api-key` and reports
+`current_term.full_record_capacity_available` as unique records, including overage capacity. The
+reading is informational: zero new-record capacity does not prohibit search or re-export of an
+already licensed record. An active Enterprise account with a null term reports no finite capacity,
+not zero. Shared-key serving remains unpriced and disabled; live capacity and exhaustion evidence
+are pending.
+
 TheirStack's free balance route returns allocated `api_credits` and `used_api_credits`. The dashboard
 shows usage against the allocation, so the collector reports the nonnegative difference as remaining
 API credits. The upstream docs label `api_credits` as available, but it does not fall as usage rises.

@@ -1,0 +1,203 @@
+provider: minerva
+source:
+  docs: https://docs.minerva.io/api-reference/introduction
+  openapi: null
+  curated: '2026-10-30'
+pricing_url: https://www.minerva.io/pricing
+limits: "Data API access is organization-scoped. Published batch limits differ by endpoint; person search has a separate daily delivery quota. Use account usage routes to inspect the current organization."
+endpoints:
+  - id: minerva.people.search
+    added: '2026-10-30'
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    path: /person-search/v0/search
+    name: "Find people from an audience description"
+    summary: "Find people using a natural-language audience description and return matching Minerva PIDs with contact-channel coverage stats"
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, note: "Audience attributes, not a named-person lookup; 1–500 characters.", example: "Software engineers in Denver with a professional email on file"}
+        size: {type: integer, required: false, note: "1–100 PIDs; default 100. These are identifiers, not full profiles.", example: 1}
+      note: "Returns search_id, results (PIDs), total_count and contact coverage. Enrich only the returned PIDs you need. Search results are saved within the calling organization."
+    test_request:
+      body: {query: "Software engineers in Denver with a professional email on file", size: 1}
+    cost:
+      type: per_call
+      value: null
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.minerva.io/pricing
+      checked: '2026-10-29'
+      confidence: unknown
+      note: "Search is included with eligible Minerva access and subject to operational quotas. No standalone USD-per-call rate is published; a subscription price is not a per-call price."
+    platform_blocked: "Shared-key pricing and independent live verification are pending. Use your own Minerva key."
+    docs_url: https://docs.minerva.io/api-reference/person-search
+
+  - id: minerva.people.search.get
+    added: '2026-10-30'
+    capability: people.search
+    platform: people
+    kind: utility
+    scope: own_account
+    method: GET
+    path: /person-search/v0/search/{search_id}
+    name: "Retrieve a saved people search"
+    summary: "Retrieve a previously created person search by id, returning the same payload as the original search"
+    input:
+      pathParams:
+        search_id: {type: string, required: true, note: "UUID returned by minerva.people.search in this organization."}
+      note: "Returns the stored PID and coverage payload. Searches belonging to another organization return 404."
+    untestable: "Requires a search_id created with the reviewer's own credential; no organization-specific identifier is included in this public listing."
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: https://docs.minerva.io/api-reference/person-search-get, checked: '2026-10-29', confidence: documented, note: "Retrieves an existing search; does not export full person records. Requires eligible account access."}
+    docs_url: https://docs.minerva.io/api-reference/person-search-get
+
+  - id: minerva.people.enrich
+    added: '2026-10-30'
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/enrich
+    name: "Enrich people with contact and consumer attributes"
+    summary: "Enhanced enrichment with direct lookups, flexible matching, and selective field returns"
+    input:
+      bodyType: json
+      body:
+        records: {type: "array[object]", required: true, note: "At most 500. Each requires record_id and either minerva_pid, linkedin_url, or a valid full name plus email, US phone or postal address. PID takes precedence over LinkedIn, then person matching."}
+        return_fields: {type: "array[string]", required: false, note: "Select additional top-level fields, e.g. full_name, linkedin_url, work_experience, personal_emails, professional_emails, phones, estimated_income_range, estimated_wealth_range or home_ownership_status. Do not list always-returned base fields.", example: [full_name, linkedin_url, work_experience]}
+        match_condition_fields: {type: "array[string]", required: false, note: "At most 3 required data-availability conditions: linkedin_url, gender, estimated_income_range, estimated_wealth_range, email, personal_email, professional_email, phone, mobile_phone or home_ownership_status."}
+        include_premium_fields: {type: boolean, required: false, note: "Default false. Separately licensed premium attributes require the organization's premium-fields entitlement."}
+      note: "HTTP 200 may contain is_match=false or per-record validation errors. Evaluate each result. Selecting fewer fields does not establish a lower price. Income and wealth are estimates."
+    untestable: "Person-level enrichment needs a reviewer-approved target and credential; this public-only submission makes no automatic contact lookup and stores no real person's output."
+    cost:
+      type: per_result
+      value: null
+      currency: USD
+      per: 1
+      unit: record
+      reserve: {entities: {}}
+      source: docs
+      source_url: https://www.minerva.io/pricing
+      checked: '2026-10-29'
+      confidence: unknown
+      note: "Unique exported people use organization allowance once per contract term across channels. Published plan allowances and overage rates are not universal per-response prices. Partner rate and metered hit/miss verification are pending."
+    platform_blocked: "No agreed shared-key price or per-response settlement contract. Use your own Minerva key."
+    docs_url: https://docs.minerva.io/api-reference/enrich-v2
+
+  - id: minerva.people.identity.resolve
+    added: '2026-10-30'
+    capability: people.identity.resolve
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/resolve
+    name: "Resolve an email or phone to a person identity"
+    summary: "Enhanced resolve with reverse lookup capabilities and match condition filters"
+    input:
+      bodyType: json
+      body:
+        records: {type: "array[object]", required: true, note: "At most 1000 records. Each can contain record_id, full_name or first_name/last_name, emails (array), and phones (array). A single email or phone supports reverse lookup without a name. record_id is optional in v2."}
+        match_condition_fields: {type: "array[string]", required: false, note: "Require minerva_pid and/or linkedin_url in the matched result.", example: [linkedin_url]}
+      note: "Returns matching identities and LinkedIn URLs, not a full enriched profile. Use minerva.people.enrich for additional fields."
+    untestable: "Identity resolution requires a reviewer-approved person and credential; no personal input is committed for automatic verification."
+    cost:
+      type: per_call
+      value: null
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.minerva.io/pricing
+      checked: '2026-10-29'
+      confidence: unknown
+      note: "No standalone per-call rate for identity resolution is published. Plan access and any partner-specific rate must be confirmed before shared-key use."
+    platform_blocked: "Shared-key pricing and independent live verification are pending. Use your own Minerva key."
+    docs_url: https://docs.minerva.io/api-reference/resolve-v2
+
+  - id: minerva.people.contacts
+    added: '2026-10-30'
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/get_li_contact_info
+    name: "Find contact details for LinkedIn profiles"
+    summary: "Retrieve contact information for LinkedIn profiles"
+    input:
+      bodyType: json
+      body:
+        records: {type: "array[string]", required: true, note: "At most 1000 LinkedIn usernames or profile URLs. The provider normalizes supported LinkedIn URL forms."}
+        presence_only: {type: boolean, required: false, note: "Default false. Set true for personal_email_match, professional_email_match and phone_match flags instead of contact values."}
+      note: "Full lookup returns ranked personal emails, professional emails and phone numbers where available. is_match=false is a normal miss. presence_only checks availability without exporting contact values; it must not be priced as full delivery."
+    untestable: "Contact lookup requires a reviewer-approved target and credential. No real LinkedIn identifier or returned email/phone is committed for automatic verification."
+    cost:
+      type: per_result
+      value: null
+      currency: USD
+      per: 1
+      unit: record
+      reserve: {entities: {}}
+      source: docs
+      source_url: https://www.minerva.io/pricing
+      checked: '2026-10-29'
+      confidence: unknown
+      note: "Full contact delivery consumes unique-record allowance under the account's contract; repeat delivery and presence_only have different accounting. No universal standalone per-response price is published. Partner rate and live billing evidence are pending."
+    platform_blocked: "Shared-key pricing must account for presence-only calls, misses and previously delivered records. Use your own Minerva key."
+    docs_url: https://docs.minerva.io/api-reference/get-li-contact-info
+
+  - id: minerva.account.usage
+    added: '2026-10-30'
+    capability: account.usage
+    platform: account
+    kind: account
+    scope: own_account
+    method: GET
+    path: /usage
+    name: "Read organization API usage"
+    summary: "Retrieve org-wide API usage metrics for the endpoints available to your organization"
+    input:
+      queryParams:
+        start_date: {type: string, required: false, note: "YYYY-MM-DD; provide with end_date."}
+        end_date: {type: string, required: false, note: "YYYY-MM-DD; provide with start_date."}
+        bucketing_size: {type: string, required: false, note: "hour, day, week, month, quarter or year; default day."}
+        timezone: {type: string, required: false, note: "IANA time zone; default UTC."}
+        include_unused_endpoints: {type: boolean, required: false, note: "Default false."}
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: https://docs.minerva.io/api-reference/usage-endpoints, checked: '2026-10-29', confidence: documented, note: "Account usage read; no person records exported."}
+    docs_url: https://docs.minerva.io/api-reference/usage-endpoints
+
+  - id: minerva.account.billing
+    added: '2026-10-30'
+    capability: account.usage
+    platform: account
+    kind: account
+    scope: own_account
+    method: GET
+    path: /billing/usage
+    name: "Check organization record export allowance"
+    summary: "Check remaining record allowance, overage spend and current record export capacity"
+    input:
+      note: "No parameters. The organization comes from the authenticated key; account-level billing data must not be exposed across shared-key customers."
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: https://docs.minerva.io/api-reference/billing-usage, checked: '2026-10-29', confidence: documented, note: "Account billing read and credential probe; no person records exported."}
+    docs_url: https://docs.minerva.io/api-reference/billing-usage
+
+  - id: minerva.account.search.usage
+    added: '2026-10-30'
+    capability: account.usage
+    platform: account
+    kind: account
+    scope: own_account
+    method: GET
+    path: /person-search/v0/usage
+    name: "Check organization people-search quota"
+    summary: "Retrieve your organization's daily person-search delivery limits, current-day consumption, and recent per-day history"
+    input:
+      queryParams:
+        days: {type: integer, required: false, note: "History window from 1 to 90 days; default 30.", example: 1}
+    test_request:
+      queryParams: {days: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: https://docs.minerva.io/api-reference/person-search-usage, checked: '2026-10-29', confidence: documented, note: "Account quota read; no person records exported."}
+    docs_url: https://docs.minerva.io/api-reference/person-search-usage

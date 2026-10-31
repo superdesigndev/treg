@@ -1277,6 +1277,32 @@ PDL = OAuthProvider(
     probe_path="/autocomplete?field=title&text=data",  # Autocomplete API is free (no credits)
 )
 
+MINERVA = OAuthProvider(
+    service="minerva",
+    display_name="Minerva",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="Paste your Minerva API key",
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://app.minerva.io",
+    setup_action_label="Sign up or get your API key",
+    setup_steps=(
+        "Sign up or sign in to Minerva, then select your organization.",
+        "Open Settings → API, create an Organization API key, and copy it.",
+        "Return here, paste your key below, and click Connect.",
+    ),
+    setup_note="Your Minerva organization needs Data API access. Record exports use your Minerva allowance; TReg does not meter calls made with your own key. Connecting the key exports no records.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Search people and enrich identities with contact, professional, household and estimated income/wealth data.",
+    base_url="https://api.minerva.io",
+    docs_url="https://docs.minerva.io/api-reference/introduction",
+    probe_path="/billing/usage",
+)
+
 AKTA = OAuthProvider(
     service="akta",
     display_name="Akta by Wokelo",
@@ -4144,7 +4170,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, MINERVA, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

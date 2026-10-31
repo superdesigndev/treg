@@ -21,11 +21,12 @@ Bare `treg upload` does **both** sides of the dir; `treg upload env` / `treg upl
   registers the chosen ones as secrets + tools.
   Octen's `OCTEN` token uses an `x-api-key` header on `https://api.octen.ai`.
   Parallel's `PARALLEL` token uses an `x-api-key` header on `https://api.parallel.ai`.
+  Minerva's `MINERVA` token uses `x-api-key` on `https://api.minerva.io`, with `/billing/usage` as its probe.
 - **skill side** (`skills.py`): scans a directory of skills (each a subdir with SKILL.md) and registers
   each as a tool (+ recipe) or a recipe-only bundle — see "Skill directories" below.
 
 ## The provider catalog (`CATALOG`)
-Curated providers (`CATALOG_VERSION`, now **26** — Spider Bearer-key detection and its free balance probe joined; ScrapeGraphAI, LimaData, MoltSets, Financial Datasets, Exa, Crustdata, Aviato and TheirStack are included, and
+Curated providers (`CATALOG_VERSION`, now **27** — Minerva key detection and its billing probe joined; Spider, ScrapeGraphAI, LimaData, MoltSets, Financial Datasets, Exa, Crustdata, Aviato and TheirStack are included, and
 `required_headers` can describe a fixed protocol header such as Crustdata's API-version pin; `probe`
 remains the cheap authenticated GET path per provider so an imported tool self-validates, followed by
 a wave of `cli` local-run blocks plus the CLI-only
@@ -59,7 +60,7 @@ real machine test (docs lie — Vercel ships an env var it ignores, so it inject
 verified); `beta` marks an unverified entry. Several entries now carry **`deny`** patterns for subcommands
 that would print the injected key or run member code as the isolated runner (`gh extension`/`alias`/`auth
 token`/`--show-token`, `flyctl|turso auth token`, `doppler|infisical run`, …) — enforced by `check_deny` at
-grant (see [local-run](../architecture/local-run.md)). `CATALOG_VERSION` is now **26**. An `unsupported:true` block is first-class: it tells the analyzer
+grant (see [local-run](../architecture/local-run.md)). `CATALOG_VERSION` is now **27**. An `unsupported:true` block is first-class: it tells the analyzer
 WHY and what to do instead (e.g. **Azure** — device-login only → register a service principal as an HTTP tool).
 The catalog can never ENABLE a local run — only the owner's `tool.cli.enabled` does.
 
