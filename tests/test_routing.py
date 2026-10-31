@@ -91,6 +91,26 @@ def _relay_by_provider(answers: dict[str, list[tuple[int, dict]]], seen: list):
     return _relay
 
 
+
+def test_limit_exceeded_note_names_adapter_shape():
+    """why distinguishes a child that never maps limit from one that floors it."""
+    from types import SimpleNamespace
+    bare = SimpleNamespace(in_map={"q": "queryParams.q"}, in_expr={})
+    floored = SimpleNamespace(in_map={"q": "body.objective"},
+                              in_expr={"body.match_limit": "at_least(at_most(limit, 100), 5)"})
+    assert call_route._adapter_uses_limit(bare) is False
+    assert call_route._adapter_uses_limit(floored) is True
+    assert call_route._limit_exceeded_note(
+        asked=2, returned=5, served_by="parallel.people.search", merged=False, adapter=floored
+    ) == {"asked": 2, "returned": 5, "why": "parallel.people.search returned more rows than asked"}
+    assert call_route._limit_exceeded_note(
+        asked=3, returned=10, served_by="crawl4ai.web.search", merged=False, adapter=bare
+    )["why"] == "crawl4ai.web.search does not accept limit"
+    assert call_route._limit_exceeded_note(
+        asked=2, returned=3, served_by="icypeas.people.search", merged=True, adapter=floored
+    )["why"] == "merged answers exceeded the asked limit"
+
+
 # ---- pure ------------------------------------------------------------------------------------
 
 def test_expression_language():
@@ -1438,6 +1458,92 @@ async def test_merge_unions_the_rows_the_caller_already_paid_for(
     r2 = await clients.post("/call/treg.people.search", json=body,
                             headers={"X-Treg-Route-Min-Results": "5"})
     assert "merged_from" not in r2.json()["_treg"] and len(r2.json()["output"]["people"]) == 2
+
+
+async def test_routed_child_that_ignores_limit_keeps_every_row_and_discloses(
+    clients: AsyncClient, monkeypatch
+):
+    """A serving child with no place for `limit` (crawl4ai.web.search) still returns its full page.
+    The route keeps every billed row and names the excess on `_treg.limit_exceeded` — it never
+    trims the child's answer. Strict-Filters does not change this: `limit` is a page size, not a
+    narrowing filter, so it stays out of `ignored_filters`."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "PLATFORM-C4AI")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai")
+    get_settings.cache_clear()
+    rows = [{"title": f"t{i}", "url": f"https://example.com/{i}", "snippet": "s", "source": "gs"}
+            for i in range(10)]
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"crawl4ai": [(200, {"results": rows, "n": 10})]}, seen))
+    r = await clients.post("/call/treg.web.search",
+                           json={"q": "golden retriever", "limit": 3},
+                           headers={"X-Treg-Route-Strict-Filters": "1"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["served_by"] == "crawl4ai.web.search"
+    assert len(d["output"]["results"]) == 10 and d["output"]["count"] == 10,         "every row the child returned reaches the caller"
+    note = d["_treg"]["limit_exceeded"]
+    assert note == {"asked": 3, "returned": 10, "why": "crawl4ai.web.search does not accept limit"}
+    assert r.headers["X-Treg-Limit-Exceeded"] == "asked=3,returned=10"
+    assert "ignored_filters" not in d["_treg"] and "X-Treg-Ignored-Filters" not in r.headers
+    # without a sent limit, the contract default is not a question anyone asked
+    seen.clear()
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"crawl4ai": [(200, {"results": rows, "n": 10})]}, seen))
+    r2 = await clients.post("/call/treg.web.search", json={"q": "golden retriever"})
+    assert r2.status_code == 200 and "limit_exceeded" not in r2.json()["_treg"]
+    get_settings.cache_clear()
+
+
+async def test_merge_past_limit_keeps_every_row_and_discloses(
+    clients: AsyncClient, enrichment_on, monkeypatch
+):
+    """`X-Treg-Route-Merge: 1` used to slice the union to `limit` even though its docstring said
+    discarding paid rows is waste. Keep the full union and disclose the excess."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_EXA", "PLATFORM-EXA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,exa,fiber-ai,icypeas")
+    get_settings.cache_clear()
+    icy = {"leads": [{"firstname": "Ada", "lastname": "L", "profileUrl": "https://linkedin.com/in/ada"},
+                     {"firstname": "Bo", "lastname": "M", "profileUrl": "https://linkedin.com/in/bo"}], "total": 2}
+    other = {"results": [{"name": "Ada L", "url": "https://www.linkedin.com/in/Ada/"},
+                         {"name": "Cy N", "url": "https://linkedin.com/in/cy"}]}
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"icypeas": [(200, icy)], "*": [(200, other)] * 8}, seen))
+    r = await clients.post("/call/treg.people.search",
+                           json={"q": "backend engineer", "title": "Backend Engineer", "limit": 2},
+                           headers={"X-Treg-Route-Min-Results": "5", "X-Treg-Route-Merge": "1"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    people = d["output"]["people"]
+    assert len(people) == 3 and d["output"]["count"] == 3, "full union, not sliced to limit=2"
+    assert d["_treg"]["limit_exceeded"] == {
+        "asked": 2, "returned": 3, "why": "merged answers exceeded the asked limit"}
+    assert r.headers["X-Treg-Limit-Exceeded"] == "asked=2,returned=3"
+    get_settings.cache_clear()
+
+
+async def test_child_that_returns_exactly_limit_does_not_claim_excess(
+    clients: AsyncClient, monkeypatch
+):
+    """When returned row count equals the sent `limit`, there is nothing to disclose — even if the
+    child never mapped `limit` (crawl4ai). Excess disclosure is about count, not adapter shape."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "PLATFORM-C4AI")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai")
+    get_settings.cache_clear()
+    rows = [{"title": f"t{i}", "url": f"https://example.com/{i}", "snippet": "s", "source": "gs"}
+            for i in range(3)]
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"crawl4ai": [(200, {"results": rows, "n": 3})]}, seen))
+    r = await clients.post("/call/treg.web.search", json={"q": "rust web crawler", "limit": 3})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["served_by"] == "crawl4ai.web.search"
+    assert len(d["output"]["results"]) == 3 and "limit_exceeded" not in d["_treg"]
+    assert "X-Treg-Limit-Exceeded" not in r.headers
+    get_settings.cache_clear()
 
 
 def test_a_per_success_endpoint_with_no_adapter_settles_on_the_providers_own_success_rule():
