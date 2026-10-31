@@ -1,0 +1,311 @@
+provider: vigil
+source:
+  docs: https://renolabshq.com/vigil/api
+  openapi: https://renolabshq.com/vigil/api/openapi.json
+  curated: '2026-10-20'
+limits: "Vigil keys carry a monthly successful-data-call cap (free 500, paid 100000 per key per UTC month, adjustable per key). treg platform calls run on treg's own shared key, so the shared cap covers all platform users; an org BYOK key consumes that key's own cap instead."
+pricing_url: https://renolabshq.com/vigil/api
+# Every Vigil answer is a metered, per-call sale: never store or replay it.
+cache: forbidden
+
+# BYOK and treg's platform key expose the same paths and the same X-Vigil-Key auth.
+# A team's own key is unmetered by treg; on treg's key the documented USD rates below
+# settle after success. stocks.insider-trades.list is REUSED from Financial Datasets
+# (same id, same description) — not a second proposal for the same job. The same holds
+# for stocks.institutional-holdings.list, reused from Financial Datasets.
+proposed_capabilities:
+  stocks.congressional-trades.list: "List congressional STOCK Act disclosures"
+  stocks.insider-trades.list: "List insider trades"
+  stocks.insider-intent.list: "List Form 144 sale-intent notices"
+  stocks.reference.ticker-cik: "Resolve a ticker, CIK or issuer-name prefix to its CIK"
+  stocks.funds.search: "Search institutional 13F fund managers"
+  stocks.funds.profile: "Show a fund's latest 13F profile"
+  stocks.funds.filings: "List a fund's 13F filings"
+  stocks.funds.changes: "List a fund's quarterly 13F holding changes"
+  stocks.institutional-holdings.list: "List institutional holdings"
+  stocks.funds.position-history: "Show a fund's 13F position history in a ticker"
+  stocks.funds.new-positions: "List credible new 13F positions"
+  stocks.funds.compare-filings: "Compare two 13F filings of one fund"
+
+endpoints:
+  - id: vigil.stocks.congressional-trades
+    added: '2026-10-20'
+    domain: stocks
+    capability: stocks.congressional-trades.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/congressional-trades
+    name: "Congressional trades by filter"
+    summary: "List blended House and Senate STOCK Act disclosures with per-row source chamber and per-chamber coverage"
+    input:
+      queryParams:
+        ticker: {type: string, required: false, note: "US stock ticker", example: NVDA}
+        bioguide_id: {type: string, required: false, note: "Member Bioguide ID, e.g. P000197"}
+        chamber: {type: string, required: false, note: "house | senate"}
+        side: {type: string, required: false, note: "buy | sell"}
+        since: {type: string, required: false, note: "transaction on or after YYYY-MM-DD"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {ticker: NVDA, limit: 1}}
+    cost: {type: per_success, value: 0.02, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.stocks.insider-trades
+    added: '2026-10-20'
+    domain: stocks
+    capability: stocks.insider-trades.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/insider-trades
+    name: "Insider trades by filter"
+    summary: "List as-filed SEC Form 4 transactions with pass-through shares, price and 10b5-1 flag"
+    input:
+      queryParams:
+        ticker: {type: string, required: false, note: "US stock ticker", example: NVDA}
+        cik: {type: string, required: false, note: "issuer or insider SEC CIK; zero-padding accepted"}
+        side: {type: string, required: false, note: "buy | sell"}
+        since: {type: string, required: false, note: "transaction on or after YYYY-MM-DD"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {ticker: NVDA, side: sell, limit: 1}}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.stocks.insider-intent
+    added: '2026-10-20'
+    domain: stocks
+    capability: stocks.insider-intent.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/insider-intent
+    name: "Insider sale-intent notices"
+    summary: "List Form 144 planned-sale notices with same-issuer 30-day insider clustering; intent, not executed sales"
+    input:
+      queryParams:
+        ticker: {type: string, required: false, note: "US stock ticker", example: NVDA}
+        cik: {type: string, required: false, note: "issuer or insider SEC CIK; zero-padding accepted"}
+        since: {type: string, required: false, note: "notice on or after YYYY-MM-DD"}
+        min_shares: {type: integer, required: false, min: 0, note: "planned shares at or above this count"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {ticker: NVDA, limit: 1}}
+    cost: {type: per_success, value: 0.02, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Per successful request, not per notice row. Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.stocks.reference.ticker-cik
+    added: '2026-10-20'
+    domain: stocks
+    capability: stocks.reference.ticker-cik
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/reference/ticker-cik
+    name: "Ticker-CIK probe"
+    summary: "Resolve a ticker, CIK or issuer-name prefix to its SEC directory identity; also the registry's key check"
+    input:
+      queryParams:
+        q: {type: string, required: true, minLength: 1, maxLength: 100, note: "ticker, CIK or case-insensitive issuer-name prefix", example: NVDA}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+    test_request: {queryParams: {q: NVDA}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Free and unbilled, but still keyed: a successful call consumes the calling key's monthly cap like a dataset call."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.funds.search
+    added: '2026-10-19'
+    domain: stocks
+    capability: stocks.funds.search
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/funds
+    name: "Fund search"
+    summary: "Browse and search institutional 13F managers over each fund's latest eligible filing"
+    input:
+      note: "Coverage: 13F report periods from 2021-03-31. Only managers with a filing in coverage are listed; pre-2021 filings are never served."
+      queryParams:
+        q: {type: string, required: false, minLength: 1, maxLength: 100, note: "manager name or CIK prefix", example: BERKSHIRE}
+        fund_type: {type: string, required: false, note: "manager type filter"}
+        featured: {type: boolean, required: false, note: "curated managers only"}
+        min_reported_value_usd: {type: integer, required: false, min: 0, note: "latest reported value at or above this USD"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {q: BERKSHIRE, limit: 1}}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 503 data_not_ready. Paid keys need expanded-terms consent."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.funds.profile
+    added: '2026-10-19'
+    domain: stocks
+    capability: stocks.funds.profile
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/fund
+    name: "Fund profile"
+    summary: "Scalar fund profile with latest eligible 13F filing metadata; reported value, never total AUM"
+    input:
+      note: "Coverage: 13F report periods from 2021-03-31. A manager whose filings all predate 2021 returns 404 period_outside_coverage (unbilled); an unknown CIK returns 404."
+      queryParams:
+        cik: {type: string, required: true, note: "manager SEC CIK; zero-padding accepted", example: "1067983"}
+    test_request: {queryParams: {cik: "1067983"}}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.funds.filings
+    added: '2026-10-19'
+    domain: stocks
+    capability: stocks.funds.filings
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/fund-filings
+    name: "Fund filings"
+    summary: "Eligible canonical 13F filing history for one manager"
+    input:
+      note: "Coverage: 13F report periods from 2021-03-31. The list starts there; a since before 2021 is accepted but returns nothing older. A manager whose filings all predate 2021 returns 404 period_outside_coverage (unbilled)."
+      queryParams:
+        cik: {type: string, required: true, note: "manager SEC CIK; zero-padding accepted", example: "1067983"}
+        since: {type: string, required: false, note: "report period on or after YYYY-MM-DD; rows before 2021-03-31 are never returned"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {cik: "1067983", limit: 1}}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.funds.holdings
+    added: '2026-10-19'
+    domain: stocks
+    capability: stocks.institutional-holdings.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/holdings-13f
+    name: "13F holdings"
+    summary: "Reported 13F positions for one filing; options and share classes stay separate, values in whole USD"
+    input:
+      note: "Coverage: 13F report periods from 2021-03-31. An explicit period before 2021-03-31, or a manager whose filings all predate 2021, returns 404 period_outside_coverage (unbilled); the default selection skips pre-2021 filings."
+      queryParams:
+        cik: {type: string, required: true, note: "manager SEC CIK; zero-padding accepted", example: "1067983"}
+        period: {type: string, required: false, note: "quarter-end date YYYY-MM-DD, 2021-03-31 or later; default latest eligible filing"}
+        security_type: {type: string, required: false, note: "all | shares | put | call"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {cik: "1067983", limit: 1}}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.funds.changes
+    added: '2026-10-19'
+    domain: stocks
+    capability: stocks.funds.changes
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/holding-changes-13f
+    name: "13F holding changes"
+    summary: "Quarterly holding changes against the matched immediate prior quarter filing"
+    input:
+      note: "Coverage: 13F report periods from 2021-03-31. An explicit period before 2021-03-31, or a manager whose filings all predate 2021, returns 404 period_outside_coverage (unbilled); the default selection skips pre-2021 filings. A 2021-03-31 filing returns baseline_available=false because its 2020-12-31 baseline is outside coverage."
+      queryParams:
+        cik: {type: string, required: true, note: "manager SEC CIK; zero-padding accepted", example: "1067983"}
+        period: {type: string, required: false, note: "quarter-end date YYYY-MM-DD, 2021-03-31 or later; default latest eligible filing"}
+        status: {type: string, required: false, note: "NEW | SOLD | INCREASED | DECREASED | UNCHANGED"}
+        security_type: {type: string, required: false, note: "all | shares | put | call"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {cik: "1067983", limit: 1}}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.stocks.institutional-holders
+    added: '2026-10-27'
+    domain: stocks
+    capability: stocks.institutional-holdings.list
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/institutional-holders
+    name: "13F institutional holders of a ticker"
+    summary: "Which 13F managers hold a US ticker, from each manager's latest eligible filing (or one quarter), largest value first; options and share classes stay separate, values in whole USD"
+    input:
+      note: "Coverage: 13F report periods from 2021-03-31. An explicit period before 2021-03-31 returns 404 period_outside_coverage (unbilled); the default selection uses each manager's latest eligible filing and skips pre-2021 filings."
+      queryParams:
+        ticker: {type: string, required: true, note: "US stock ticker", example: NVDA}
+        period: {type: string, required: false, note: "quarter-end date YYYY-MM-DD, 2021-03-31 or later; default each manager's latest eligible filing"}
+        exclude_passive: {type: boolean, required: false, note: "drop passive index managers; default false"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {ticker: NVDA, limit: 1}}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-27', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.funds.position-history
+    added: '2026-10-19'
+    domain: stocks
+    capability: stocks.funds.position-history
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/fund-position-history
+    name: "Fund position history"
+    summary: "One manager's observed 13F rows in a ticker across eligible periods; gaps stay gaps"
+    input:
+      note: "Coverage: 13F report periods from 2021-03-31. History starts there; a since before 2021 is accepted but returns nothing older. A manager whose filings all predate 2021 returns 404 period_outside_coverage (unbilled)."
+      queryParams:
+        cik: {type: string, required: true, note: "manager SEC CIK; zero-padding accepted", example: "1067983"}
+        ticker: {type: string, required: true, note: "US stock ticker", example: NVDA}
+        since: {type: string, required: false, note: "report period on or after YYYY-MM-DD; rows before 2021-03-31 are never returned"}
+        security_type: {type: string, required: false, note: "all | shares | put | call"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {cik: "1067983", ticker: NVDA, limit: 1}}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.funds.new-positions
+    added: '2026-10-19'
+    domain: stocks
+    capability: stocks.funds.new-positions
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/new-13f-positions
+    name: "New 13F positions"
+    summary: "Credible new 13F positions from curated non-passive non-market-maker managers"
+    input:
+      note: "Coverage: only the newest 4 calendar quarter-ends that credible managers have filed for, all after the fund data's 2021-03-31 floor. An explicit period older than that window returns 404 period_outside_coverage (unbilled)."
+      queryParams:
+        period: {type: string, required: false, note: "quarter-end date YYYY-MM-DD within the newest 4 calendar quarter-ends; default latest credible quarter"}
+        min_value_usd: {type: integer, required: false, min: 0, note: "default 100000000"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {limit: 1}}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    docs_url: https://renolabshq.com/vigil/api
+
+  - id: vigil.funds.compare-filings
+    added: '2026-10-19'
+    domain: stocks
+    capability: stocks.funds.compare-filings
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /v1/compare-13f-filings
+    name: "Compare 13F filings"
+    summary: "Same-manager 13F filing comparison on two explicitly selected accessions"
+    input:
+      note: "Coverage: 13F report periods from 2021-03-31. An accession with a report period before 2021-03-31, or a manager whose filings all predate 2021, returns 404 period_outside_coverage (unbilled). The baseline must be an earlier report quarter of the same manager."
+      queryParams:
+        cik: {type: string, required: true, note: "manager SEC CIK; zero-padding accepted", example: "1067983"}
+        current_accession: {type: string, required: true, note: "later filing accession number"}
+        baseline_accession: {type: string, required: true, note: "earlier filing accession number"}
+        status: {type: string, required: false, note: "NEW | SOLD | INCREASED | DECREASED | UNCHANGED"}
+        security_type: {type: string, required: false, note: "all | shares | put | call"}
+        limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
+        cursor: {type: string, required: false, note: "opaque cursor from the response next_cursor; pass back verbatim"}
+    test_request: {queryParams: {cik: "1067983", current_accession: "0001193125-26-352200", baseline_accession: "0001193125-26-226661", limit: 1}}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Every HTTP 200 bills the full rate, including zero-row 200s. Errors never bill, including 404 period_outside_coverage and 503 data_not_ready. Paid keys need expanded-terms consent."}
+    docs_url: https://renolabshq.com/vigil/api
