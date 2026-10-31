@@ -2270,6 +2270,13 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   When nothing decides, the first undecided answer comes back. `_treg.decision` is
   `{decided, decided_by, ordered_by}` and `X-Treg-Route-Decided` says `true` or `false`. A contract
   without deciding words, or the header with `X-Treg-Route-Waterfall: 0`, is refused with a 422.
+  A `check` whose own contract has the verdict word `live` (`people.phone.find`'s HLR lookup) also
+  serves `X-Treg-Route-Live`: after each hit the router runs it as a direct child `:l<n>` (hold in
+  the find's `pending`), keeps walking unless the word is `live`, looks each number (by
+  `e164_digits`) up once, and adds the lookup's catalog price to every candidate's price before the
+  `X-Treg-Route-Max-Cost` stop. No live number returns the first hit, `_treg.live.live: false`.
+  With `X-Treg-Route-Verify` too, the winner's lookup is reused as `_treg.verification`. A contract
+  without such a check, or the header with the waterfall off, is a 422 `route_live_unsupported`.
 - **Adapters** — `adapters.yaml`, one per endpoint: `accepts` (identity variants), `in` (contract
   field → `queryParams.x` / `body.x`), `const` (fixed provider params), `out` (core field →
   expression over the body), `miss`, and `route: false` for an adapter that only judges hit/miss

@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **`X-Treg-Route-Live` on `treg.people.phone.find`.** An opt-in header: a found number counts only
+  once a live HLR network lookup says its line is LIVE; a dead or unknown line sends the call on to
+  the next provider. Each lookup is billed at its own price inside `X-Treg-Route-Max-Cost`. When no
+  number is live, the first one comes back marked not live in `_treg.live` and
+  `X-Treg-Route-Line`. Without the header nothing changes.
+
 - **`X-Treg-Route-Confirm` on `treg.people.email.find`.** An opt-in header: a hit counts only once
   a second provider returns the same address, so one provider's wrong guess no longer comes back
   alone. Each extra attempt is billed at its own price inside `X-Treg-Route-Max-Cost`. The first
