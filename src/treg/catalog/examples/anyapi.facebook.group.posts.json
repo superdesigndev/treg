@@ -1,27 +1,45 @@
 {
   "output": {
     "data": {
-      "nextCursor": "Ska0hUzmDqqfpJdBSX640b3UWZLwj1TbjtM7kljTq6y9xehBoAvMyx1webhQ0XATDqAglyiUMKXiDkMA7oIEuiCqczCUxldgLbSjaXrsOAT5kVd87dAlH6bxanMVnuC4VTympCdl64F4ahdIsOGUKYrvO2cKNSlJSX76XizsCCWWh0miYIQiMC4yuehyYLbOnxX7oADMSo3GhwytCsQmOwS0nHPfL6tntazN2ercoFNs1-hiMS67xERHNFFtdLnS42BfrfdGGExGjl18_Yf9jrfKWcLKLYnnYgpLg85wIyQXXMS14Fhoq5y1zsAOV30yXLrJWYB5njhiuPjIY3hNU9Oy4yWnFDjR44hOa18FSJV4IGL5p88lGmewz8sGMdRNOEf3Z64MC56ceQA",
+      "nextCursor": "cur_mc3fDw38m0YXCzU9MsyDzA",
       "posts": [
         {
-          "authorId": "726790628",
-          "authorName": "Jane Freund",
-          "commentCount": 0,
-          "id": "3792519607579549",
-          "publishTime": 1789570515,
-          "reactionCount": 0,
-          "text": "",
-          "url": "https://www.facebook.com/groups/1270525996445602/permalink/3792519607579549/"
+          "authorId": "1150735875",
+          "authorName": "Ricky Pope",
+          "commentCount": 1,
+          "id": "3827490910749085",
+          "publishTime": 1792077671,
+          "reactionCount": 29,
+          "reactions": {
+            "angry": 0,
+            "care": 0,
+            "haha": 10,
+            "like": 19,
+            "love": 0,
+            "sad": 0,
+            "wow": 0
+          },
+          "text": "If you replace \"W\" with \"T\" in \"What, Where and When\", you get the answer to each of them.",
+          "url": "https://www.facebook.com/groups/1270525996445602/permalink/3827490910749085/"
         },
         {
-          "authorId": "567142575",
-          "authorName": "Mike Cadotte",
-          "commentCount": 3,
-          "id": "3792550250909818",
-          "publishTime": 1789572585,
-          "reactionCount": 76,
-          "text": "I don't always tell dad jokes...\n\nBut when I do, he laughs.",
-          "url": "https://www.facebook.com/groups/1270525996445602/permalink/3792550250909818/"
+          "authorId": "1150735875",
+          "authorName": "Ricky Pope",
+          "commentCount": 11,
+          "id": "3827490504082459",
+          "publishTime": 1792077649,
+          "reactionCount": 85,
+          "reactions": {
+            "angry": 0,
+            "care": 0,
+            "haha": 17,
+            "like": 61,
+            "love": 3,
+            "sad": 0,
+            "wow": 4
+          },
+          "text": "The word \"swims\" upside-down is still \"swims\"",
+          "url": "https://www.facebook.com/groups/1270525996445602/permalink/3827490504082459/"
         },
         "… 2 more item(s) truncated"
       ]
@@ -38,5 +56,5 @@
     "kind": "anonymous",
     "artworkKey": "giraffe"
   },
-  "resultId": "051730b1-17e8-4a79-9511-e109913abe55"
+  "resultId": "943789d5-a1e3-436b-b603-534585ac8a38"
 }

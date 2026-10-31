@@ -5,7 +5,7 @@
     "reason": "not_found"
   },
   "provider": "AnyAPI",
-  "costUsd": 0.0012,
+  "costUsd": 0,
   "items": 0,
   "replayed": false,
   "source": {
@@ -14,5 +14,5 @@
     "kind": "anonymous",
     "artworkKey": "giraffe"
   },
-  "resultId": "3b3251bc-5409-4f9d-b128-841e4cccaeea"
+  "resultId": "12ffb67e-2d1e-452b-8126-40d25d0b4e5e"
 }
