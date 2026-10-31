@@ -2521,6 +2521,15 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   unbilled, when none is left — a 503 stays reserved for capacity/key drops. Off by default: the
   ignored-but-billed call (`{full_name, country: GT}` → New York, voice-ai-outbound 2026-09-03) is
   the documented behaviour, and the fix for that case was to give the candidate the filter.
+- **More rows than `limit` are kept and disclosed (2026-11-01)**: a serving child that ignores
+  `limit`, floors it (`at_least(limit, 5)`), or a merge that unions past it, used to return the
+  excess with no signal — or, on merge, silently slice paid rows to `limit` despite its own
+  docstring. Routed endpoints wrap the child's answer and never alter it (AGENTS.md §4); the
+  extra rows are already billed. When the caller SENT `limit` and the list answer has more rows,
+  every row and an honest `count` stay, and `_treg.limit_exceeded` /
+  `X-Treg-Limit-Exceeded` name `{asked, returned, why}` (e.g. the child does not accept limit, or
+  merged answers exceeded). A contract default is not a question anyone asked, so it does not
+  trigger the note. `limit` stays out of `ignored_filters` (page size, not a narrowing filter).
 - **Lusha is the sixth phone rung (2026-09-04)**: `lusha.people.phone.find` — the phone-only view
   of search-and-enrich — accepts every phone.find identity and ranks last on price (6 credits a
   hit; a miss free, a matched-but-no-number profile the 1-credit search, all settled from
