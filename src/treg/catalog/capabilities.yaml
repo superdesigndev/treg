@@ -10,6 +10,7 @@
 # `account` that should not appear as a browsable tab tile.
 
 platforms:
+  blog: {label: "Blog publishing", category: "Publishing", summary: "Your blogs, posts, pages, tags and collections."}
   # --- SEO: search engines & the open web ------------------------------------------------------
   google: {label: "Google Keyword Data", category: "SEO/AEO", featured: 1, summary: "Organic rankings, keyword volume and full SERP data from Google."}
   web: {label: "Open web & SEO data", category: "SEO/AEO", featured: 2, summary: "Search, extract and crawl the open web, plus backlinks, referring domains and authority metrics."}
