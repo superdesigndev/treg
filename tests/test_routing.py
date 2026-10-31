@@ -1878,8 +1878,10 @@ def test_linkedin_url_only_trusts_a_linkedin_host(raw, expected):
     ("m.linkedin.com/in/x?trk=a", "https://m.linkedin.com/in/x?trk=a"),
     ("stripe.com", "https://stripe.com"),
     ("http://bücher.de/x", "http://bücher.de/x"),
+    ("https://example.com/a page", "https://example.com/a page"),
     ("N/A", None), ("null", None), ("-", None), ("patrickcollison", None),
     ("ftp://stripe.com/x", None), ("https://", None), ("see https://stripe.com", None), (".com/x", None),
+    ("http://localhost/", None), ("https://a.com,b.com", None), ("https://…", None),
 ])
 def test_url_identity_is_checked_by_its_declared_type(raw, expected):
     from treg.domain.catalog.routing.contracts import _as_url

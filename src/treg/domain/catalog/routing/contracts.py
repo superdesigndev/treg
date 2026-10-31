@@ -381,7 +381,7 @@ def _body_matches(when: Any, body: Any) -> bool:
 def _as_url(v: Any) -> str | None:
     """An http(s) URL, or None. A scheme-less `host.tld/path` gets `https://` and a lower-cased
     host (some providers refuse it bare); a URL with a scheme passes through as sent."""
-    if not isinstance(v, str) or not (s := v.strip()) or any(c.isspace() for c in s):
+    if not isinstance(v, str) or not (s := v.strip()):
         return None
     scheme, sep, rest = s.partition("://")
     if not sep:
