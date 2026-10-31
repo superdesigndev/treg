@@ -1183,8 +1183,10 @@ async def test_catalog_query_arrays_use_the_endpoints_declared_wire_encoding(mon
     """A structured MCP list is not synonymous with repeated query keys.
 
     Meta declares one compact JSON array value for every array on the endpoint, while an unmodelled
-    team tool keeps the longstanding repeated-key default. This goes through `call`, not only
-    `_query_values`: the first version stayed green if the MCP call site stopped using the helper.
+    team tool keeps the longstanding repeated-key default. Comma encoding is covered with a
+    synthetic endpoint declaration so the mechanism stays tested without coupling to a shipped row.
+    This goes through `call`, not only `_query_values`: the first version stayed green if the MCP
+    call site stopped using the helper.
     """
     from treg.domain.catalog import store as cs
     from treg import mcp as _mcp
@@ -1192,10 +1194,9 @@ async def test_catalog_query_arrays_use_the_endpoints_declared_wire_encoding(mon
     cat = cs.load()
     meta = cat.by_id["meta-ad-library.meta-ads.library.search"]
     assert _mcp._query_values(meta, "ad_reached_countries", ["US"]) == ['["US"]']
-    tinyfish = cat.by_id["tinyfish.web.search"]
-    assert (tinyfish.get("input") or {}).get("queryArrayEncoding") == "comma"
+    comma_ep = {"input": {"queryArrayEncoding": "comma"}}
     assert _mcp._query_values(
-        tinyfish, "include_domains", ["docs.python.org", "realpython.com"],
+        comma_ep, "include_domains", ["docs.python.org", "realpython.com"],
     ) == ["docs.python.org,realpython.com"]
     assert _mcp._query_values(None, "tag", ["a", "b"]) == ["a", "b"]
 
