@@ -818,7 +818,9 @@ that all notice the low balance produces exactly ONE charge.
 The monthly cap counts automatic top-ups only (`monthly_autotopup_spend`, from the ledger) and
 refuses a charge that would pass it (`autotopup_cap_reached`). Neither dashboard path names a cap,
 so a stored 0 resolves to the single-top-up ceiling (`TOPUP_MAX_USD`) and moves with it; `treg
-topup --cap` stores a lower one (0 restores the default), and a cap below one refill is refused. The
+topup --cap` stores a chosen cap (0 restores the default), and a cap below one refill is refused.
+The maximum a team can set is `AUTOTOPUP_MONTHLY_CAP_MAX_USD`, which is deliberately higher than
+`TOPUP_MAX_USD`: the monthly cap bounds total unattended spend, not any single charge. The
 billing page shows the month's automatic spend against the limit, and a banner from
 `billing_state.autotopup.cap_reached` when the next charge would pass it. The inline credit in
 `attempt_auto_topup` emits `topup_completed` (`auto: true`) itself: the webhook that follows finds
