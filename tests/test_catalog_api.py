@@ -765,6 +765,45 @@ def test_an_extended_file_merges_into_the_same_provider(tmp_path):
     assert tiers["tikhub.tiktok.user.mix"] == "extended"
 
 
+def test_the_core_file_wins_over_its_extended_file(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text("platforms: {web: Web}\ncapabilities: {}\n")
+    row = "  - id: demo.web.page\n    platform: web\n    name: {name}\n    method: GET\n    path: /{name}\n"
+    (tmp_path / "demo.yaml").write_text(
+        "provider: demo\npricing_url: https://core.example/pricing\nlimits: core limits\n"
+        "source: {docs: https://core.example/docs}\n"
+        "cache: {mode: public, ttl: 1d, licence: core}\n"
+        "ceiling_param: {in: query, name: core_max, unit: usd}\n"
+        "endpoints:\n" + row.format(name="core"))
+    (tmp_path / "demo.extended.yaml").write_text(
+        "provider: demo\npricing_url: https://ext.example/pricing\nlimits: ext limits\n"
+        "source: {docs: https://ext.example/docs}\n"
+        "cache: {mode: forbidden, licence: extended}\n"
+        "ceiling_param: {in: query, name: ext_max, unit: usd}\n"
+        "endpoints:\n" + row.format(name="extended").replace("platform: web", "platform: web\n    tier: extended")
+        + "  - id: demo.web.other\n    platform: web\n    tier: extended\n    method: GET\n    path: /other\n")
+
+    cat = cs.load(directory=tmp_path)
+    assert cat.provider_meta["demo"]["pricing_url"] == "https://core.example/pricing"
+    assert cat.provider_meta["demo"]["limits"] == "core limits"
+    assert cat.provider_meta["demo"]["docs"] == "https://core.example/docs"
+    assert cat.provider_meta["demo"]["cache"]["licence"] == "core"
+    assert cat.ceiling_params["demo"]["name"] == "core_max"
+    assert cat.by_id["demo.web.page"]["name"] == "core"
+    assert cat.by_id["demo.web.other"]["cache"]["licence"] == "core"
+
+
+def test_observed_from_reaches_the_loaded_row(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text("platforms: {web: Web}\ncapabilities: {}\n")
+    (tmp_path / "demo.yaml").write_text(
+        "provider: demo\nendpoints:\n"
+        "  - id: demo.web.page\n    platform: web\n    method: GET\n    path: /a\n"
+        "    observed_from: '2026-01-02'\n"
+        "  - id: demo.web.other\n    platform: web\n    method: GET\n    path: /b\n")
+    cat = cs.load(directory=tmp_path)
+    assert cat.by_id["demo.web.page"]["observed_from"] == "2026-01-02"
+    assert cat.by_id["demo.web.other"]["observed_from"] is None
+
+
 def test_async_defaults_apply_per_endpoint_and_an_endpoint_block_replaces_them_whole(tmp_path):
     (tmp_path / "capabilities.yaml").write_text(
         "platforms: {video-gen: Video}\ncapabilities: {video-gen.from_text: Generate}\n")

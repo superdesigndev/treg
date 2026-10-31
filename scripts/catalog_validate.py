@@ -91,6 +91,13 @@ KINDS = {"data", "action", "account", "utility"}
 ENDPOINT_STATUSES = {"retired", "broken"}
 QUERY_ARRAY_ENCODINGS = {"json", "comma", "repeated"}
 ASYNC_PARAM_LOCATIONS = {"pathParams", "queryParams"}
+INPUT_KEYS = {"pathParams", "queryParams", "headers", "body", "bodyType", "queryArrayEncoding", "note"}
+PARAM_SPEC_KEYS = {
+    "type", "required", "note", "description", "example", "examples", "default", "enum", "format",
+    "min", "max", "minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems",
+    "items", "properties", "additionalProperties", "anyOf",
+    "authorization_methods", "item_required_any", "item_required_all",
+}
 _IDENT = r"[A-Za-z_][A-Za-z0-9_-]*"
 JSON_PATH = re.compile(rf"(?:{_IDENT}|[0-9]+)(?:\.(?:{_IDENT}|[0-9]+))*")
 # A `resource_ownership.produces` path may also take every list item with `*` (`tasks.*.id`).
@@ -229,6 +236,41 @@ def _input_fields(input_schema: object) -> dict[str, dict]:
                 if isinstance(nested, dict):
                     add_fields(nested, field)
     return fields
+
+
+def check_input_keys(input_schema: object, where: str, errors: list[str]) -> None:
+    """Every key of an endpoint's `input` and of each parameter spec in it is one the readers know.
+
+    An unknown key is silently ignored: a misspelt location (`query:` for `queryParams:`) drops its
+    required parameter from the call line and from enforcement, and an unquoted flow-mapping note
+    containing commas splits into junk keys and serves only its first clause.
+    """
+    if not isinstance(input_schema, dict):
+        return
+    for key in input_schema:
+        if key not in INPUT_KEYS:
+            fail(errors, where, f"input.{key} is not one of {sorted(INPUT_KEYS)}")
+    for location in ("pathParams", "queryParams", "headers", "body"):
+        block = input_schema.get(location)
+        if not isinstance(block, dict):
+            continue
+        if isinstance(block.get("properties"), dict):
+            block = block["properties"]
+        check_param_specs(block, f"input.{location}", where, errors)
+
+
+def check_param_specs(fields: dict, prefix: str, where: str, errors: list[str]) -> None:
+    for name, spec in fields.items():
+        if not isinstance(spec, dict):
+            continue
+        for key in spec:
+            if key not in PARAM_SPEC_KEYS:
+                fail(errors, where, f"{prefix}.{name}: unknown parameter-spec key {key!r} "
+                                    "(an unquoted note with a comma splits into keys like this)")
+        if isinstance(spec.get("properties"), dict):
+            check_param_specs(spec["properties"], f"{prefix}.{name}", where, errors)
+        if isinstance(spec.get("items"), dict):
+            check_param_specs({"items": spec["items"]}, f"{prefix}.{name}", where, errors)
 
 
 def _finite_number(value: object) -> bool:
@@ -976,6 +1018,7 @@ def check_provider_query_params(block, where: str, errors: list[str]) -> None:
             fail(errors, where, f"queryParams.{pname} must be an identifier mapped to a field spec")
         elif spec.get("required"):
             fail(errors, where, f"queryParams.{pname}: a provider-level query parameter cannot be required")
+    check_param_specs(block, "queryParams", where, errors)
 
 
 def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
@@ -1494,6 +1537,7 @@ def main(argv: list[str]) -> int:
                         fail(errors, where, f"host '{host}' is not an approved catalog target for '{service}'")
             check_status_marker(ep, where, endpoint_status, errors)
             inp = ep.get("input") or {}
+            check_input_keys(inp, where, errors)
             check_strict_query(ep, where, errors)
             if "observed_from" in ep and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(ep["observed_from"])):
                 fail(errors, where, "observed_from must be a YYYY-MM-DD date")

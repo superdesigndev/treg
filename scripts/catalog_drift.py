@@ -68,9 +68,10 @@ def _github_raw(url: str) -> str:
 def discover_specs(catalog_dir: Path) -> dict[str, str]:
     """Find one public spec per provider from catalog source provenance."""
     found: dict[str, str] = {}
-    files = sorted(p for p in catalog_dir.glob("*.yaml")
-                   if p.name not in {"capabilities.yaml", "fx.yaml"})
-    # Core files sort before `.extended` and their explicit `source.openapi` is the curated choice.
+    # Core files come before `.extended` and their explicit `source.openapi` is the curated choice.
+    files = sorted((p for p in catalog_dir.glob("*.yaml")
+                    if p.name not in {"capabilities.yaml", "fx.yaml"}),
+                   key=lambda p: (p.stem.removesuffix(".extended"), p.stem.endswith(".extended")))
     for path in files:
         data = yaml.safe_load(path.read_text()) or {}
         if not isinstance(data, dict) or not data.get("provider"):

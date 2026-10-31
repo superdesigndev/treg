@@ -26,7 +26,7 @@ endpoints:
       bodyType: json
       body:
         account: {type: object, required: false, example: {domain: {any: {include: [example.com]}}}, note: Native company filters from the AI Ark schema.}
-        contact: {type: object, required: false, example: {seniority: {any: {include: [founder]}}}, note: Native person, role, location, skill and education filters.}
+        contact: {type: object, required: false, example: {seniority: {any: {include: [founder]}}}, note: "Native person, role, location, skill and education filters."}
         lists: {type: object, required: false, note: Exclude temporary people_id lists created with aiark.lists.upsert.}
         page: {type: integer, required: true, min: 0, example: 0}
         size: {type: integer, required: true, min: 1, max: 100, enum: [1], example: 1}
