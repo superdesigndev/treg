@@ -1334,6 +1334,37 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+PAXMOD = OAuthProvider(
+    service="paxmod",
+    display_name="Paxmod",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Paxmod API key",
+    # Paxmod takes the key as a bearer token. It also accepts api_key in the JSON body for
+    # backward compatibility; the header is used so the key never reaches a logged body.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.paxmod.com/console",
+    setup_action_label="Get your Paxmod API key",
+    setup_steps=(
+        "Sign in to the Paxmod console and open a project (or create one).",
+        "Copy the project's API key from Settings.",
+        "No account yet? POST https://www.paxmod.com/api/v1/agent-key returns a working key for "
+        "100 messages over 72 hours with no signup, plus a claim_url to keep it.",
+    ),
+    setup_note="Billed from monthly message credits: Indie $29 for 50,000, Studio $149 for 500,000. One credit per standard call, two per advanced call.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Trust & safety",
+    summary="Moderate player chat and user-generated text and images in real time, with per-category scores.",
+    base_url="https://www.paxmod.com/api/v1",
+    docs_url="https://www.paxmod.com/llms-full.txt",
+    # Cheapest authenticated call: one message credit (about $0.00058 on Indie). A bad key is
+    # rejected with 401 INVALID_API_KEY before any provider call and costs nothing.
+    probe_path="/text", probe_method="POST", probe_json={"message": "ok", "user_id": "treg_probe"},
+)
+
 MOBIUSENGINE_JOBS = OAuthProvider(
     service="mobiusengine-jobs",
     display_name="MobiusEngine Jobs Data",
@@ -4144,6 +4175,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
+        PAXMOD,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
