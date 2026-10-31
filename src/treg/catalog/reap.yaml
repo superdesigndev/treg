@@ -25,7 +25,7 @@ proposed_capabilities:
 
 endpoints:
   - id: reap.video.presets.list
-    added: '2026-10-13'
+    added: '2026-10-31'
     kind: utility
     capability: video.presets.list
     platform: video
@@ -44,7 +44,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/get-all-presets
 
   - id: reap.video.languages.translation.list
-    added: '2026-10-13'
+    added: '2026-10-31'
     kind: utility
     capability: video.languages.translation.list
     platform: video
@@ -59,7 +59,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/get-translation-languages
 
   - id: reap.video.languages.dubbing.list
-    added: '2026-10-13'
+    added: '2026-10-31'
     kind: utility
     capability: video.languages.dubbing.list
     platform: video
@@ -74,7 +74,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/get-dubbing-languages
 
   - id: reap.video.upload.url.create
-    added: '2026-10-13'
+    added: '2026-10-31'
     kind: utility
     capability: video.upload.url.create
     platform: video
@@ -94,7 +94,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/get-upload-url
 
   - id: reap.video.clips.create
-    added: '2026-10-13'
+    added: '2026-10-31'
     kind: action
     capability: video.clips.create
     platform: video
@@ -139,7 +139,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/create-clips
 
   - id: reap.video.captions.create
-    added: '2026-10-13'
+    added: '2026-10-31'
     kind: action
     capability: video.captions.create
     platform: video
@@ -177,7 +177,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/create-captions
 
   - id: reap.video.transcription.create
-    added: '2026-10-13'
+    added: '2026-10-31'
     kind: action
     capability: video.transcription.create
     platform: video
@@ -211,7 +211,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/create-transcription
 
   - id: reap.video.reframe.create
-    added: '2026-10-13'
+    added: '2026-10-31'
     kind: action
     capability: video.reframe.create
     platform: video
@@ -248,7 +248,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/create-reframe
 
   - id: reap.video.dubbing.create
-    added: '2026-10-13'
+    added: '2026-10-31'
     kind: action
     capability: video.dubbing.create
     platform: video
@@ -279,7 +279,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/create-dubbing
 
   - id: reap.video.project.status
-    added: '2026-10-13'
+    added: '2026-10-31'
     capability: video.project.status
     platform: video
     scope: own_account
@@ -295,7 +295,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/get-project-status
 
   - id: reap.video.project.clips
-    added: '2026-10-13'
+    added: '2026-10-31'
     capability: video.project.clips
     platform: video
     scope: own_account
@@ -313,7 +313,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/get-project-clips
 
   - id: reap.video.integrations.list
-    added: '2026-10-13'
+    added: '2026-10-31'
     kind: account
     capability: video.integrations.list
     platform: video
@@ -328,7 +328,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/get-integrations
 
   - id: reap.video.clip.publish
-    added: '2026-10-13'
+    added: '2026-10-31'
     kind: action
     capability: video.clip.publish
     platform: video
@@ -352,7 +352,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/publish-clip
 
   - id: reap.video.clips.schedule
-    added: '2026-10-13'
+    added: '2026-10-31'
     kind: action
     capability: video.clips.schedule
     platform: video
@@ -374,7 +374,7 @@ endpoints:
     docs_url: https://docs.reap.video/api-reference/schedule-clips
 
   - id: reap.account.usage
-    added: '2026-10-13'
+    added: '2026-10-31'
     kind: account
     capability: account.usage
     platform: account
