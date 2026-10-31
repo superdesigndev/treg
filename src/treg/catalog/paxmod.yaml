@@ -1,0 +1,76 @@
+# Paxmod: real-time text and image moderation for player chat and user-generated content.
+# Two public endpoints, which is well under the usual 8-15: the API deliberately does one job.
+# The console-only routes (projects, thresholds, allow lists, player findings) need a session
+# cookie rather than the API key, so they are not callable through the proxy and are excluded.
+provider: paxmod
+source:
+  docs: https://www.paxmod.com/llms-full.txt
+  openapi: https://www.paxmod.com/openapi.json
+  curated: '2026-10-31'
+pricing_url: https://www.paxmod.com/pricing
+limits: "Per-project request rate limiting; over it the API answers 429 RATE_LIMITED with Retry-After. Plan message credits are monthly: Indie 50,000, Studio 500,000."
+proposed_capabilities:
+  moderation.text.check: Check a chat message for abuse, and get a verdict with per-category scores
+  moderation.image.check: Check an image for unsafe content, and get a verdict with per-category scores
+
+endpoints:
+  - id: paxmod.moderation.text.check
+    domain: moderation
+    capability: moderation.text.check
+    platform: moderation
+    scope: any_account
+    method: POST
+    path: /text
+    name: Moderate a chat message
+    summary: Check one message for abuse, harassment, PII, grooming risk, spam and profanity
+    input:
+      json:
+        message: {type: string, required: true, note: "the text to check, up to 5000 characters", example: "gg good game everyone"}
+        user_id: {type: string, required: false, note: "the player or user who sent it; enables per-player history", example: "player_123"}
+        context_id: {type: string, required: false, note: "the room, channel or session the message was sent in", example: "room_456"}
+        advanced_threshold: {type: number, required: false, note: "0-1, overrides the project threshold; advanced mode only", example: 0.7}
+      note: "Branch on content_moderation.flagged. reason names the categories that tripped, and content_moderation.categories carries a score, threshold and flagged for each of 13 categories. Unicode lookalikes, zero-width characters and leetspeak are normalised before scoring. A Server-Timing response header reports per-stage latency."
+    test_request: {json: {message: "gg good game everyone", user_id: "treg_probe", context_id: "treg"}}
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.paxmod.com/pricing
+      checked: '2026-10-31'
+      confidence: verified
+      note: "One message credit per call in standard mode, two in advanced mode. Indie is $29/month for 50,000 credits (about $0.00058 a call), then $0.40 per 1,000; Studio is $149/month for 500,000, then $0.25 per 1,000. A 401 for a bad key is charged nothing."
+    verified: '2026-10-31'
+    added: '2026-10-31'
+
+  - id: paxmod.moderation.image.check
+    domain: moderation
+    capability: moderation.image.check
+    platform: moderation
+    scope: any_account
+    method: POST
+    path: /image
+    name: Moderate an image
+    summary: Check one image for unsafe content before it reaches other users
+    input:
+      json:
+        image_url: {type: string, required: false, note: "publicly reachable URL of the image to check", example: "https://www.paxmod.com/og/paxmod-og.png"}
+        user_id: {type: string, required: false, note: "the player or user who uploaded it", example: "player_123"}
+        context_id: {type: string, required: false, note: "where it was uploaded", example: "room_456"}
+      note: "Same verdict shape as the text endpoint. Image moderation needs the Studio plan or an active trial; other plans answer 403 PLAN_UPGRADE_REQUIRED, and an unclaimed agent key answers 403 AGENT_KEY_TEXT_ONLY."
+    test_request: {json: {image_url: "https://www.paxmod.com/og/paxmod-og.png", user_id: "treg_probe"}}
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.paxmod.com/pricing
+      checked: '2026-10-31'
+      confidence: reported
+      note: "Charged from the same monthly message credits as text. Studio plan only."
+    verified: '2026-10-31'
+    added: '2026-10-31'
