@@ -8,8 +8,9 @@ description: Use when the user wants to know how a company gets its users, rever
 A company in, a playbook out: when it grew, which moves did it, how its content is made on each
 channel and what wins there, and ten plays the user can copy, each with a ready prompt.
 
-Runs on treg. If it isn't set up (`treg --version` fails), read {BASE}/llms.txt and follow it to
-install and sign in, then come back here.
+Runs on treg, through its MCP tools or the `treg` CLI; either is enough, and every step here is a
+tool call, so with the tools connected nothing needs the CLI. With neither, treg is not set up:
+{BASE}/llms.txt says how. Install only if the human asked you to; otherwise tell them how and stop.
 
 ## Modes
 
@@ -37,7 +38,8 @@ install and sign in, then come back here.
 - Public evidence only. Create no accounts, fill no forms, contact no one.
 - Before an endpoint's first call: `catalog_get` it, quote its price, check it fits the cap. Every
   DataForSEO endpoint takes a JSON array body: [{…}].
-- Free first: `treg.web.search` and `treg.web.extract` with header `X-Treg-Route-Prefer: tinyfish`.
+- Free first: `treg.web.search` and `treg.web.extract` with header `X-Treg-Route-Prefer: tinyfish`
+  (over MCP that pair goes in `call`'s `headers` argument).
   Blocked page → the route tries the next vendor; still blocked → list it as blocked, move on.
 - An endpoint fails → `catalog_search` the same job, try one alternative → else "unavailable".
 - Python does all math; every number shown comes from code output. Date every count.
