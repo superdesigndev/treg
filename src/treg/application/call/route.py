@@ -72,7 +72,8 @@ from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import paths as P
 from ...domain.catalog.routing import quality as route_quality
-from ...domain.catalog.routing.contracts import canonical_identity, declared_miss, declared_not_found, miss_status
+from ...domain.catalog.routing.contracts import (canonical_identity, declared_miss, declared_not_found,
+                                                 invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
     MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank, unscoped,
 )
@@ -456,6 +457,11 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     contract = cat.contracts.get(ep["capability"])
     if contract is None:
         raise ResolutionFailed("target_not_found", status_code=404, detail=f"{ep['id']} has no contract")
+    if invalid := invalid_identity(contract, identity_given):
+        raise ResolutionFailed("route_no_candidate", status_code=422, detail={
+            "error": "invalid_identity", "endpoint_id": ep["id"], "invalid": invalid,
+            "message": "; ".join(f"{i['field']} must be a {i['type']}" for i in invalid)
+                       + ". Omit a field you don't have rather than sending a placeholder."})
     identity, variant = canonical_identity(contract, identity_given)
     if variant is None:
         raise ResolutionFailed("route_no_candidate", status_code=422, detail={
