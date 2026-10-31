@@ -1859,6 +1859,13 @@ def test_linkedin_url_is_normalised_once_for_every_adapter():
     ("https://example.com/in/x", None),
     ("https://www.linkedin.com/in/N/A", None),
     ("https://www.linkedin.com/in/patrickcollison", "https://www.linkedin.com/in/patrickcollison"),
+    # opaque member ids (ACo…) may contain underscores; keep them on a LinkedIn host
+    ("https://www.linkedin.com/in/ACoAABtYmkABVKEbSrmv_CisUYCeBsTWFH7UmAE",
+     "https://www.linkedin.com/in/ACoAABtYmkABVKEbSrmv_CisUYCeBsTWFH7UmAE"),
+    ("linkedin.com/in/ACoAABtYmkABVKEbSrmv_CisUYCeBsTWFH7UmAE",
+     "https://linkedin.com/in/ACoAABtYmkABVKEbSrmv_CisUYCeBsTWFH7UmAE"),
+    # bare non-vanity strings are not promoted to a URL
+    ("ACoAABtYmkABVKEbSrmv_CisUYCeBsTWFH7UmAE", None),
 ])
 def test_linkedin_url_only_trusts_a_linkedin_host(raw, expected):
     from treg.domain.catalog.routing import paths as P
@@ -1877,6 +1884,11 @@ def test_placeholder_linkedin_url_is_identity_incomplete():
     assert variant == ("linkedin_url",)
     assert ident["linkedin_url"] == "https://www.linkedin.com/in/patrickcollison"
     assert ident["linkedin_handle"] == "patrickcollison"
+    opaque = "https://www.linkedin.com/in/ACoAABtYmkABVKEbSrmv_CisUYCeBsTWFH7UmAE"
+    ident, variant = canonical_identity(contract, {"linkedin_url": opaque})
+    assert variant == ("linkedin_url",)
+    assert ident["linkedin_url"] == opaque
+    assert ident["linkedin_handle"] == "ACoAABtYmkABVKEbSrmv_CisUYCeBsTWFH7UmAE"
 
 
 def test_arena_and_router_read_the_miss_block_the_same_way():

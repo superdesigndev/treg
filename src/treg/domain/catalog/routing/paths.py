@@ -131,9 +131,11 @@ def at_most(v: Any, ceiling: Any) -> int:
         return int(ceiling)
 
 
-# LinkedIn vanity slugs are letters, digits and hyphens; placeholders and multi-segment
-# garbage must not become `/in/{value}` (that made providers invent a stranger's email).
+# Bare LinkedIn vanity handles are letters, digits and hyphens. Qualified /in|/company path
+# segments also admit opaque member ids (ACo…) that contain underscores. Placeholders and
+# multi-segment garbage must not become `/in/{value}` (that made providers invent a stranger's email).
 _LINKEDIN_SLUG = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,98}[A-Za-z0-9])?$")
+_LINKEDIN_PATH_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
 _LINKEDIN_PROFILE = re.compile(
     r"(?i)^(?:https?://)?((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com)/(in|company)/([^/?#]+)(/)?(?:[?#].*)?$"
 )
@@ -142,9 +144,9 @@ _LINKEDIN_PLACEHOLDERS = frozenset({
 })
 
 
-def _linkedin_slug(value: str) -> str | None:
+def _linkedin_segment(value: str, pattern: re.Pattern[str]) -> str | None:
     s = value.strip().strip("/")
-    if not s or s.lower() in _LINKEDIN_PLACEHOLDERS or not _LINKEDIN_SLUG.fullmatch(s):
+    if not s or s.lower() in _LINKEDIN_PLACEHOLDERS or not pattern.fullmatch(s):
         return None
     return s
 
@@ -156,20 +158,21 @@ def linkedin_handle(v: Any) -> str | None:
     v = v.strip()
     m = _LINKEDIN_PROFILE.match(v)
     if m:
-        return _linkedin_slug(m.group(3))
-    return None if "/" in v else _linkedin_slug(v)
+        return _linkedin_segment(m.group(3), _LINKEDIN_PATH_ID)
+    return None if "/" in v else _linkedin_segment(v, _LINKEDIN_SLUG)
 
 
 def linkedin_url(v: Any) -> str | None:
     """A handle → the public profile URL; a LinkedIn URL passes through; a scheme-less URL
     (`linkedin.com/in/x`, `www.linkedin.com/in/x`) gets `https://`. Placeholders and non-LinkedIn
-    hosts return None so routing refuses them instead of inventing `/in/N/A`."""
+    hosts return None so routing refuses them instead of inventing `/in/N/A`. Opaque ACo… path
+    ids on a LinkedIn host are preserved; bare non-vanity strings are not promoted to a URL."""
     if not isinstance(v, str) or not v:
         return None
     v = v.strip()
     m = _LINKEDIN_PROFILE.match(v)
     if m:
-        slug = _linkedin_slug(m.group(3))
+        slug = _linkedin_segment(m.group(3), _LINKEDIN_PATH_ID)
         if slug is None:
             return None
         if v.lower().startswith("http"):
@@ -177,7 +180,7 @@ def linkedin_url(v: Any) -> str | None:
         # lower-cased host so linkedin_handle() can derive from it; keep slug + trailing slash
         trail = m.group(4) or ""
         return f"https://{m.group(1).lower()}/{m.group(2)}/{slug}{trail}"
-    slug = _linkedin_slug(v)
+    slug = _linkedin_segment(v, _LINKEDIN_SLUG)
     return None if slug is None else f"https://www.linkedin.com/in/{slug}"
 
 
