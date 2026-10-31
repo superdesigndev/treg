@@ -43,6 +43,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "thecompaniesapi": ("credits", "manual", "api"),
     "tomba": ("monthly_quota", "quota_reset", "api"),
     "hunter": ("monthly_quota", "quota_reset", "api"),
+    "emailverifier": ("credits", "manual", "api"),
     "quickenrich": ("monthly_quota", "quota_reset", "none"),
     "prospeo": ("monthly_quota", "quota_reset", "api"),
     "aiark": ("monthly_quota", "quota_reset", "api"),
@@ -118,6 +119,7 @@ _QUOTAS: dict[str, dict] = {
     "aiark": {"limit": 15000, "period": "billing", "resets_at_rule": "monthly subscription; date not reported by API"},
 }
 _RATE_LIMITS: dict[str, dict] = {
+    "emailverifier": {"limit": 60, "window_s": 60, "source": "docs"},
     "orbisearch": {"limit": 15, "window_s": 1, "source": "policy"},
     "enrow": {"limit": 8, "window_s": 1, "source": "policy"},
     # The published 60 requests/second is shared across enrichment and result polling. Leave
