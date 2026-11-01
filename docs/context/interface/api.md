@@ -1061,6 +1061,21 @@ so settlement on a provider that reports its own charge cannot exceed the ceilin
 provider's refusal is a non-2xx and is not charged. For every other provider the header remains a
 pre-reservation guard. Asked for by a customer whose runner approved $0.23 and was billed $0.56 (2026-09-04).
 
+**`X-Treg-Route-Live: true`** on `treg.people.phone.find` (opt-in, off by default) makes a found
+number count only once a live network lookup says its line is LIVE. After each phone hit the router
+runs `hlrlookup.people.phone.verify` (live, never from a cache) as its own linked child
+`<call_id>:l<n>`, with its own hold that settles or releases with the find's. A LIVE line ends the
+call; any other answer (dead, unknown, not looked up) sends the waterfall on, and the same number from
+a second provider is not looked up twice. When no number is live, the first hit comes back marked not
+live, never a miss. Each lookup is billed at HLR's price and counts against
+`X-Treg-Route-Max-Cost` (default $1): a candidate starts only while its price plus one lookup still
+fits. `_treg.live` is `{live, verdict, checks: [{for, verdict, checked, served_by, cost_micro,
+call_id | reason}]}` and `X-Treg-Route-Line` carries the returned number's word (`live`, `dead`,
+`unknown`); `X-Treg-Cost-Micro` is every find plus every lookup. With `X-Treg-Route-Verify` as well,
+the returned number's lookup is its `_treg.verification`; no second check runs. The header on another
+endpoint, or with `X-Treg-Route-Waterfall: 0`, is a 422 `route_live_unsupported` before anything is
+held.
+
 Metered responses also carry `X-Treg-Cost-Micro`; a reserved call that fails before a provider answer
 carries an explicit `0`. That `0` is what the call ends up costing, but the **balance can lag it**:
 if returning the hold itself fails, the money comes back when the hold is reaped rather than at once

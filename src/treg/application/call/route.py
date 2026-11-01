@@ -32,6 +32,13 @@ contract's `confirm` field: the waterfall goes on after an unconfirmed hit, each
 price. The first provider's answer is returned either way, reported in `_treg.confirmation`; when
 no second provider agrees, it comes back marked unconfirmed rather than as a miss.
 
+`X-Treg-Route-Live` makes a found phone number count only once a live network lookup (the
+contract's check, `hlrlookup.people.phone.verify`, no cache) says its line is LIVE. Each number is
+looked up once, as its own linked child `:l{n}` whose hold closes with the find's; a number that is
+not live sends the waterfall on, and a candidate starts only while its price plus one lookup fits
+under the route cost stop. When no number is live, the first hit comes back marked not live. Every
+lookup is reported in `_treg.live`; with `X-Treg-Route-Verify` too, the winner's lookup is the check.
+
 `X-Treg-Route-Decisive` makes an answer count only when its verdict word is one the contract's
 `verdict.decisive` lists (an email check: valid or invalid). Any other word (unknown, catch-all,
 risky) or a failed attempt sends the call on, at most two more providers, each at its own price;
@@ -143,13 +150,15 @@ DECISIVE_HEADER = "x-treg-route-decisive"
 QUALITY_HEADER = "x-treg-route-quality"
 UPGRADE_HEADER = "x-treg-route-upgrade"
 COMPLETE_HEADER = "x-treg-route-complete"
+LIVE_HEADER = "x-treg-route-live"
 _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-encoding", b"idempotency-key",
                               b"x-treg-route-waterfall", b"x-treg-route-max-cost", b"x-treg-route-prefer",
                               b"x-treg-route-exclude", b"x-treg-route-min-results",
                               b"x-treg-route-merge", b"x-treg-route-strict-filters",
                               b"x-treg-route-verify", b"x-treg-route-confirm",
                               b"x-treg-route-decisive", b"x-treg-route-quality",
-                              b"x-treg-route-upgrade", b"x-treg-route-complete", b"host"})
+                              b"x-treg-route-upgrade", b"x-treg-route-complete",
+                              b"x-treg-route-live", b"host"})
 _CALLER_FAULT = frozenset({400, 401, 403, 404, 405, 409, 422})
 _CANDIDATE_LOCAL_FAILURES = frozenset({"tool_access_denied", "policy_denied", "capability_pinned",
                                        "org_endpoint_quota_exceeded"})
@@ -336,6 +345,7 @@ class RouteOptions:
     quality: bool = False    # ask providers in order of measured answer quality (`X-Treg-Route-Quality`)
     upgrade: str | None = None  # re-ask by this identity key when the hit carries it (`X-Treg-Route-Upgrade`)
     complete: bool = False   # only a full answer about the subject asked counts (`X-Treg-Route-Complete`, see `_complete_check`)
+    live: bool = False       # a phone hit counts once a live lookup says LIVE (`X-Treg-Route-Live`)
 
     @classmethod
     def from_headers(cls, get, default_max_cost_micro: int | None = None) -> "RouteOptions":
@@ -362,12 +372,14 @@ class RouteOptions:
         ql = str(get(QUALITY_HEADER) or "").strip().lower()
         up = str(get(UPGRADE_HEADER) or "").strip()
         cp = str(get(COMPLETE_HEADER) or "").strip().lower()
+        lv = str(get(LIVE_HEADER) or "").strip().lower()
         return cls(waterfall=wf not in ("0", "false", "no", "off"),
                    max_cost_micro=max_cost, prefer=_list(get(PREFER_HEADER)), exclude=_list(get(EXCLUDE_HEADER)),
                    min_results=mr, merge=mg in ("1", "true", "yes", "on"), strict_filters=sf in ("1", "true", "yes", "on"),
                    verify=vf in ("1", "true", "yes", "on"), confirm=cf in ("1", "true", "yes", "on"),
                    decisive=dc in ("1", "true", "yes", "on"), quality=ql in ("1", "true", "yes", "on"),
-                   upgrade=up or None, complete=cp in ("1", "true", "yes", "on"))
+                   upgrade=up or None, complete=cp in ("1", "true", "yes", "on"),
+                   live=lv in ("1", "true", "yes", "on"))
 
 
 class _Bytes:
@@ -696,6 +708,15 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "message": (f"{DECISIVE_HEADER} needs the waterfall; drop {WATERFALL_HEADER}: 0. " if contract and contract.verdict_decisive else
                         f"{DECISIVE_HEADER} works only on {', '.join(decidable)}; {ep['id']} has no deciding verdict words. ")
                        + "Nothing was charged."})
+    if options.live and (_live_check(contract) is None or not options.waterfall):
+        # Refused before anything is planned or held, like confirm: the caller would believe a
+        # line was looked up, or that a dead number was walked past.
+        livable = sorted(f"treg.{cap}" for cap, c in catalog_store.load().contracts.items() if _live_check(c))
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=422, detail={
+            "error": "route_live_unsupported", "endpoint_id": ep["id"],
+            "message": (f"{LIVE_HEADER} needs the waterfall; drop {WATERFALL_HEADER}: 0. " if _live_check(contract) else
+                        f"{LIVE_HEADER} works only on {', '.join(livable)}; {ep['id']} has no live line check. ")
+                       + "Nothing was charged."})
     if options.upgrade and (contract is None or (options.upgrade,) not in contract.identity
                             or options.upgrade not in contract.output):
         # Refused before anything is planned or held: the caller would believe a second lookup ran.
@@ -745,6 +766,13 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     undecided: list[tuple] = []
     undecided_words: list[str] = []
     decided_by: str | None = None
+    # X-Treg-Route-Live: each number's lookup (one per number), what each lookup reported, and the
+    # hits whose line was not live, the first of which comes back when no number is.
+    live_check = _live_check(plan.contract) if options.live else None
+    live_reserve = _live_reserve(live_check) if live_check else 0
+    looked_up: dict[str, dict] = {}
+    live_checks: list[dict] = []
+    not_live: list[tuple] = []
     quality = await _route_quality(ep["capability"]) if options.decisive or options.quality else None
     ordered_on: str | None = None
     queue = list(enumerate(plan.candidates))
@@ -769,7 +797,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     quality = None
                 ordered_on = on
         n, cand = queue.pop(0)
-        if options.max_cost_micro is not None and spent + (cand.price_micro or 0) > options.max_cost_micro:
+        if options.max_cost_micro is not None and spent + (cand.price_micro or 0) + live_reserve > options.max_cost_micro:
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0, "would exceed max cost"))
             cost_capped = True
             continue
@@ -1041,6 +1069,23 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     break
                 continue
             decided_by = cand.endpoint["provider"]
+        if live_check is not None:
+            # The holds so far stay open in `pending` while the lookup runs, and the lookup's own
+            # hold joins them, so a cancellation releases everything and each closes exactly once.
+            key = P.e164_digits(core.get(live_check.field)) or str(core.get(live_check.field) or "")
+            view = looked_up.get(key)
+            if view is None:
+                remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
+                view, check_cost = await _run_check(parent, live_check, core, remaining, pending,
+                                                    execute_child, upstream_client, suffix=f"l{n}")
+                spent += check_cost
+                looked_up[key] = view
+                live_checks.append({"for": cand.endpoint["id"], **view,
+                                    **({"call_id": f"{parent.call_ref}:l{n}"} if view["checked"] else {})})
+            if view["verdict"] != "live":
+                tried[-1].detail = f"line {view['verdict'] if view['checked'] else 'not checked: ' + view['reason']}; walked on"
+                not_live.append((cand, doc, core, raw))
+                continue
         if options.confirm:
             # A hit counts once ANOTHER provider returns the same value (one provider's two
             # endpoints share a source). The earlier hit is the answer: it was the cheaper ask.
@@ -1057,6 +1102,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         answers.append((cand, doc, core, raw))
         winner = (cand, doc, core, raw)
         break
+    if winner is None and not_live:
+        winner = not_live[0]         # no number is live: the first hit, already paid for, marked not live
     if winner is None and unconfirmed:
         winner = unconfirmed[0][1]   # nobody agreed: the first hit, marked unconfirmed
     if winner is None and undecided:
@@ -1128,13 +1175,21 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     advice_locked = False  # a check's disagree/skip advice wins over domain-mismatch advice
     verification = None
     check = plan.contract.check
-    if options.verify and check is not None and winner_outcome in ("hit", "weak"):
-        # The find's holds stay open in `pending` while the check runs: a cancellation releases
-        # them with everything else, and `run_routed` still closes each exactly once.
-        remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
-        verification, check_cost = await _run_check(parent, check, output, remaining,
-                                                    pending, execute_child, upstream_client)
-        spent += check_cost
+    # X-Treg-Route-Live already looked the winner's number up: that lookup is its check, never run twice.
+    live_view = (looked_up.get(P.e164_digits(output.get(check.field)) or str(output.get(check.field) or ""))
+                 if live_check is not None and winner_outcome in ("hit", "weak") else None)
+    if live_view is not None:
+        live_view = {k: v for k, v in live_view.items() if k != "call_id"}
+    if (options.verify or live_view is not None) and check is not None and winner_outcome in ("hit", "weak"):
+        if live_view is not None:
+            verification = live_view
+        else:
+            # The find's holds stay open in `pending` while the check runs: a cancellation releases
+            # them with everything else, and `run_routed` still closes each exactly once.
+            remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
+            verification, check_cost = await _run_check(parent, check, output, remaining,
+                                                        pending, execute_child, upstream_client)
+            spent += check_cost
         if verification["checked"]:
             advice = ""   # the verdict answers what the advice suggests
             if (check.disagree_advice and output.get("verified") is True and not verification.get("pending")
@@ -1154,6 +1209,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         advice = plan.contract.advice_domain_mismatch
     confirmation = ({"field": plan.contract.confirm, "confirmed": confirmed_by is not None, "confirmed_by": confirmed_by}
                     if options.confirm and winner_outcome in ("hit", "weak") else None)
+    live = ({"live": (live_view or {}).get("verdict") == "live", "verdict": (live_view or {}).get("verdict", "unknown"),
+             "checks": live_checks}
+            if live_check is not None and winner_outcome in ("hit", "weak") else None)
     decision = ({"decided": decided_by is not None, "decided_by": decided_by,
                  "ordered_by": "quality" if ordered_on and quality else "price"}
                 if options.decisive and winner_outcome in ("hit", "weak") else None)
@@ -1163,7 +1221,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"advice": advice} if advice else {}),
                           **({"domain_match": domain_match} if domain_match is not None else {}),
                           "outcome": winner_outcome, "tried": [t.view() for t in tried], "charged_micro": spent,
-                          **({"verification": verification} if verification is not None else {}),
+                          **({"verification": verification} if verification is not None and options.verify else {}),
+                          **({"live": live} if live is not None else {}),
                           **({"confirmation": confirmation} if confirmation is not None else {}),
                           **({"decision": decision} if decision is not None else {}),
                           **({"upgrade": upgrade} if upgrade is not None else {}),
@@ -1183,6 +1242,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                  **({"X-Treg-Route-Capped": "true"} if cost_capped else {}),
                                  **({"X-Treg-Route-Confirmed": str(confirmation["confirmed"]).lower()} if confirmation else {}),
                                  **({"X-Treg-Route-Decided": str(decision["decided"]).lower()} if decision else {}),
+                                 **({"X-Treg-Route-Line": live["verdict"]} if live else {}),
                                  **({"X-Treg-Route-Upgraded": str(upgrade["upgraded"]).lower()} if upgrade else {}),
                                  "X-Treg-Route-Outcome": winner_outcome}), spent
 
@@ -1193,12 +1253,29 @@ _CHECK_REASONS = {"route_max_cost": "over_cost_limit", "route_no_candidate": "no
                   "org_endpoint_quota_exceeded": "quota_exceeded"}
 
 
+def _live_check(contract):
+    """The contract's check when its verdict says whether a line is live (`X-Treg-Route-Live`), else None."""
+    if contract is None or contract.check is None:
+        return None
+    cat = catalog_store.load()
+    ep = cat.by_id.get(contract.check.endpoint)
+    target = cat.contracts.get(ep.get("capability")) if ep else None
+    return contract.check if target is not None and "live" in target.verdict_words else None
+
+
+def _live_reserve(check) -> int:
+    """What one live lookup may cost at most: added to each candidate's price before the cost stop."""
+    cat = catalog_store.load()
+    ep = cat.by_id[check.endpoint]
+    return cost_at(cat.cost_view(ep.get("cost"), ep["provider"]), {}, cat.adapters.get(ep["id"])) or 0
+
+
 def _unchecked(reason: str) -> dict:
     return {"verdict": "unknown", "checked": False, "served_by": None, "cost_micro": 0, "reason": reason}
 
 
 async def _run_check(parent: CallContext, check, output: dict, remaining: int | None, pending: list,
-                     execute_child, upstream_client) -> tuple[dict, int]:
+                     execute_child, upstream_client, *, suffix: str = "v") -> tuple[dict, int]:
     """The contract's check on a hit, as an ordinary call: (`_treg.verification`, money it moved).
 
     A routed check (`treg.people.email.verify`) runs its own waterfall and closes its own holds;
@@ -1225,7 +1302,7 @@ async def _run_check(parent: CallContext, check, output: dict, remaining: int | 
         query, body = adapter.to_upstream(identity, variant)
     prefer = ((PREFER_HEADER.encode(), ",".join(check.prefer).encode()),) if routed and check.prefer else ()
     child = CallContext(input=_child_input(parent, ep, query, body, remaining, prefer),
-                        call_ref=f"{parent.call_ref}:v", meta=parent.meta,
+                        call_ref=f"{parent.call_ref}:{suffix}", meta=parent.meta,
                         deferred_settles=None if routed else pending,
                         quota_admissions=parent.quota_admissions,
                         quota_pending=parent.quota_pending)
