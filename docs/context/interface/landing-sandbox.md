@@ -132,9 +132,11 @@ installs the official
 **tools-registry skill** into every detected agent via `treg skill bootstrap` (Claude Code, Cursor, Codex,
 Gemini, Copilot, OpenCode, Windsurf …). The other skills in `/.well-known/skills/index.json` (the
 workflow skills such as `make-ugc` and `lead-signals`) are opt-in: `install.sh --skills <names|all>`
-passes the choice through, one already installed is refreshed, and the rest are listed with that
-command so the agent running the installer asks its human; it never prompts (best-effort, and an
-index name must be a plain slug before it becomes a folder). It falls back on older CLIs to a Claude-only drop that curls
+passes the choice through, a copy treg itself wrote is refreshed where it is (never a same-named skill
+it did not write; see [skill.md](skill.md)), and the rest are listed with that command so the agent
+running the installer asks its human; it never prompts (best-effort, and an index name must be a
+plain slug before it becomes a folder). A CLI that rejects `--skills` is rerun without it. It falls
+back on CLIs without `skill bootstrap` to a Claude-only drop that curls
 `{BASE}/skill.md` into `~/.claude/skills/treg`. Because the package is public on PyPI,
 `curl … /install.sh | sh` now works for anyone with no repo/git access needed. The **Getting started**
 dashboard view (`view==='start'`) surfaces this install command + `treg login`/`onboard`/`add`/`call` and

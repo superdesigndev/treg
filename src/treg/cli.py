@@ -22,6 +22,7 @@ import importlib
 import importlib.util
 import itertools
 import getpass
+import hashlib
 import json
 import os
 import re
@@ -4143,34 +4144,82 @@ def cmd_mcp_install(args, cfg) -> None:
            " (and hub_create, hub_update, hub_mine where the hub is on)")
 
 
-def _optional_skills(base_url: str) -> list[tuple[str, str]]:
+def _optional_skills(base_url: str) -> list[tuple[str, str]] | None:
     """The registry's other public skills as (name, one-line summary for the human): the same
-    well-known index `npx skills add` reads, so that one list decides what is offered. Empty when it
+    well-known index `npx skills add` reads, so that one list decides what is offered. None when it
     can't be read."""
     try:
         idx = httpx.get(f"{base_url}/.well-known/skills/index.json", timeout=15, follow_redirects=True).json()
-        entries = idx.get("skills", [])
-    except Exception:  # noqa: BLE001 — optional extras; the treg skill installs without them
-        return []
-    out = []
-    for entry in entries:
-        name = str(entry.get("name", ""))
-        # the name becomes a directory: only a plain slug, never a path the server could steer
-        if name != "treg" and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", name):
-            blurb = entry.get("summary") or textwrap.shorten(str(entry.get("description", "")), 100, placeholder="…")
-            out.append((name, " ".join(str(blurb).split())))
-    return out
+        out = []
+        for entry in idx.get("skills") or []:
+            if not isinstance(entry, dict):
+                continue
+            name = str(entry.get("name", ""))
+            # the name becomes a directory: only a plain slug, never a path the server could steer
+            if name != "treg" and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", name):
+                blurb = entry.get("summary") or textwrap.shorten(str(entry.get("description", "")), 100, placeholder="…")
+                out.append((name, " ".join(str(blurb).split())))
+        return out
+    except Exception:  # noqa: BLE001 - network, HTTP or a malformed index
+        return None
+
+
+def _skill_ledger_path() -> Path:
+    return CONFIG_PATH.parent / "skills.json"
+
+
+def _skill_ledger() -> dict[str, str]:
+    """SKILL.md path -> sha256 of the text `treg skill bootstrap` last wrote there."""
+    try:
+        data = json.loads(_skill_ledger_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
+
+
+def _save_skill_ledger(ledger: dict[str, str]) -> None:
+    path = _skill_ledger_path()
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.write_text(json.dumps(ledger, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _skill_sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _skill_is_ours(path: Path, name: str, base_url: str, ledger: dict[str, str]) -> bool:
+    """True when bootstrap may write this SKILL.md: it is missing, or it is the copy bootstrap wrote
+    and nobody has edited it since. A copy from before the ledger counts as ours only when it is a
+    lone SKILL.md that names this skill and links this registry."""
+    if not path.exists():
+        return True
+    try:
+        text = path.read_text(encoding="utf-8")
+        lone = [q.name for q in path.parent.iterdir()] == ["SKILL.md"]
+    except (OSError, UnicodeDecodeError):
+        return False
+    key = str(path.resolve())
+    if key in ledger:
+        return ledger[key] == _skill_sha(text)
+    names_it = re.search(rf"(?m)^name:\s*{re.escape(name)}\s*$", text) is not None
+    return lone and names_it and f"{base_url}/" in text
+
+
+def _write_skill(path: Path, text: str, ledger: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    ledger[str(path.resolve())] = _skill_sha(text)
 
 
 def cmd_skill_bootstrap(args, cfg) -> None:
     """Fetch the official treg skill from the server and drop it into every detected agent's
     skills dir, so whatever agent the user runs already knows how to use treg. install.sh calls this
-    right after installing the CLI; it's also runnable by hand. Global (per-user) scope by default —
-    it runs outside any project — with `--project` to target repo-local dirs instead.
+    right after installing the CLI; it's also runnable by hand. Global (per-user) scope by default,
+    with `--project` to target repo-local dirs instead.
 
-    The registry's other skills are opt-in: `--skills` names them (or `all`), and one already on this
-    machine is refreshed. It never prompts, since an agent usually runs it; the rest are listed with
-    the command that adds them, so the agent can ask its user."""
+    The registry's other skills install only when `--skills` names them (or `all`); a copy treg
+    already wrote is refreshed in place. A SKILL.md treg did not write, or one edited since, is never
+    overwritten."""
     base_url = (cfg.get("base_url") or "https://treg.to").rstrip("/")
     say = (lambda *_: None) if _JSON_OVERRIDE else print
     try:
@@ -4185,62 +4234,88 @@ def cmd_skill_bootstrap(args, cfg) -> None:
         resp = httpx.get(f"{base_url}/skill.md", headers=headers, timeout=15, follow_redirects=True)
         resp.raise_for_status()
         recipe = resp.text
-    except Exception as exc:  # noqa: BLE001 — network/HTTP; report and exit non-zero for install.sh
+    except Exception as exc:  # noqa: BLE001 - network/HTTP; report and exit non-zero for install.sh
         sys.exit(f"could not fetch the treg skill from {base_url}: {exc}")
     if not recipe.strip():
         sys.exit("the server returned an empty skill")
     bases = _agents.resolve_targets(scope_global=not args.project, all_agents=args.all_agents)
+    ledger = _skill_ledger()
+    skipped: list[Path] = []
     n = 0
-    for b in bases:
-        dest = b / "treg"
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / "SKILL.md").write_text(recipe, encoding="utf-8")
-        say(f"  ✓ treg → {dest / 'SKILL.md'}"); n += 1
-        # the skill used to install as "tools-registry"; a leftover copy would load as a duplicate
-        # skill and confuse agents, so retire it — but only if it's exactly ours (just a SKILL.md).
-        legacy = b / "tools-registry"
-        try:
-            if legacy.is_dir() and [q.name for q in legacy.iterdir()] == ["SKILL.md"]:
-                (legacy / "SKILL.md").unlink(); legacy.rmdir()
-                say("    (removed the old tools-registry skill folder — renamed to treg)")
-        except OSError:
-            pass
-
-    optional = _optional_skills(base_url)
-    names = [nm for nm, _ in optional]
-    asked = [s.strip() for s in (args.skills or "").split(",") if s.strip()]
-    if asked == ["all"]:
-        asked = names
-    elif asked == ["none"]:
-        asked = []
-    unknown = [s for s in asked if s not in names]
-    present = [nm for nm in names if any((b / nm / "SKILL.md").is_file() for b in bases)]
-    installed = []
-    for name in names:
-        if name not in asked and name not in present:
-            continue
-        try:
-            r = httpx.get(f"{base_url}/.well-known/skills/{name}/SKILL.md", timeout=15, follow_redirects=True)
-        except Exception:  # noqa: BLE001 — best-effort: the treg skill is already in place
-            continue
-        if r.status_code != 200 or not r.text.startswith("---"):
-            continue
+    try:
         for b in bases:
-            (b / name).mkdir(parents=True, exist_ok=True)
-            (b / name / "SKILL.md").write_text(r.text, encoding="utf-8")
-        installed.append(name)
-        say(f"  ✓ {name} → {len(bases)} location(s)")
-    available = [(nm, desc) for nm, desc in optional if nm not in installed]
+            dest = b / "treg" / "SKILL.md"
+            if not _skill_is_ours(dest, "treg", base_url, ledger):
+                skipped.append(dest)
+                continue
+            _write_skill(dest, recipe, ledger)
+            say(f"  ✓ treg → {dest}"); n += 1
+            # the skill used to install as "tools-registry"; a leftover copy would load as a duplicate
+            # skill and confuse agents, so retire it, but only if it's exactly ours (just a SKILL.md).
+            legacy = b / "tools-registry"
+            try:
+                if legacy.is_dir() and [q.name for q in legacy.iterdir()] == ["SKILL.md"]:
+                    (legacy / "SKILL.md").unlink(); legacy.rmdir()
+                    say("    (removed the old tools-registry skill folder, renamed to treg)")
+            except OSError:
+                pass
+
+        optional = _optional_skills(base_url)
+        names = [nm for nm, _ in optional or []]
+        asked = {s.strip().lower() for s in (args.skills or "").split(",") if s.strip()}
+        if "all" in asked:
+            asked = (asked - {"all"}) | set(names)
+        unknown = sorted(asked - set(names)) if optional is not None else []
+        unread = sorted(asked) if optional is None else []
+        installed, failed = [], []
+        for name in names:
+            targets = [b / name / "SKILL.md" for b in bases]
+            owned = [p for p in targets if _skill_is_ours(p, name, base_url, ledger)]
+            if name in asked:
+                skipped += [p for p in targets if p not in owned]
+                write_to = owned
+            else:
+                write_to = [p for p in owned if p.exists()]
+            if not write_to:
+                continue
+            try:
+                r = httpx.get(f"{base_url}/.well-known/skills/{name}/SKILL.md", timeout=15, follow_redirects=True)
+                text = r.text if r.status_code == 200 and r.text.startswith("---") else None
+            except Exception:  # noqa: BLE001 - reported below; the treg skill is already in place
+                text = None
+            if text is None:
+                if name in asked:
+                    failed.append(name)
+                continue
+            for p in write_to:
+                _write_skill(p, text, ledger)
+            installed.append(name)
+            say(f"  ✓ {name} → {len(write_to)} location(s)")
+    finally:
+        _save_skill_ledger(ledger)
+    available = [(nm, desc) for nm, desc in optional or [] if nm not in installed and nm not in failed]
 
     if _JSON_OVERRIDE:
-        print(json.dumps({"installed": ["treg", *installed], "locations": n, "unknown": unknown,
-                          "available": [{"name": nm, "summary": d} for nm, d in available]}, indent=2))
+        body = {"installed": ["treg", *installed] if n else installed, "locations": n,
+                "unknown": unknown, "failed": failed, "skipped": [str(p) for p in skipped],
+                "available": [{"name": nm, "summary": d} for nm, d in available]}
+        if optional is None:
+            body["error"] = f"could not read the skill list from {base_url}"
+        print(json.dumps(body, indent=2))
         return
     detected = _agents.detect_installed()
-    tail = f"detected: {', '.join(detected)}" if detected else "no agents detected — used sensible defaults"
-    print(f"\nInstalled {', '.join(['treg', *installed])} into {n} location(s)  ({tail}).")
+    tail = f"detected: {', '.join(detected)}" if detected else "no agents detected, used sensible defaults"
+    done = (["treg"] if n else []) + installed
+    print(f"\nInstalled {', '.join(done) or 'nothing'} into {n} location(s)  ({tail}).")
+    for p in skipped:
+        print(f"Left alone, not written by treg: {p}")
+    if unread:
+        print(f"Could not read the skill list from {base_url}, so these were not installed: {', '.join(unread)}")
+        print("Rerun the same command to retry.")
     if unknown:
         print(f"Not a skill on this registry: {', '.join(unknown)}")
+    if failed:
+        print(f"Could not download: {', '.join(failed)}. Rerun the same command to retry.")
     if available:
         width = max(len(nm) for nm, _ in available)
         print("\nOptional skills from this registry (not installed):")

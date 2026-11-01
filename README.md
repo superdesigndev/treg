@@ -115,14 +115,14 @@ Ready-made recipes your agent runs end to end, every call through treg:
 | [`jev-memory`](skills/jev-memory/SKILL.md) | Give Claude Code a memory: a Claude Code mod where Jev judges each prompt after the turn and keeps your lasting preferences, installed ready-made or built from one prompt ([the mod](examples/claude-code-mods/jev-memory)) |
 
 `install.sh` installs only `treg` and lists the others; name the ones you want with
-`sh -s -- --skills lead-signals,recruit` (or `--skills all`; `jev-memory` is never in that set). In Claude Code each one is
+`sh -s -- --skills lead-signals,recruit` (or `--skills all`; the opt-in `jev-memory` and `rea-growth` are never in that set). In Claude Code each one is
 also its own plugin in treg's marketplace: `/plugin install recruit@treg`, or pick them from `/plugin`. To add
 them to an existing agent instead ([skills.sh](https://skills.sh) CLI):
 
 ```bash
 npx skills add superdesigndev/treg                        # every public skill
 npx skills add superdesigndev/treg --skill lead-signals   # just one
-treg skill bootstrap --skills all                         # same set, with the treg CLI you already have
+treg skill bootstrap --skills all                         # the installer's set, with the treg CLI you already have
 ```
 
 The workflow skills run on treg, so set it up first (the Quickstart above, or point your agent at

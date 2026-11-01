@@ -18,6 +18,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTe
                                RedirectResponse, Response)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
+import yaml
 
 from ..timeutil import utcnow_naive as _utcnow_naive
 from .. import adsconv, agent_pages, client_ip, oauth_providers
@@ -4506,8 +4507,8 @@ public_docs_router = APIRouter()
 app = public_docs_router
 
 
-def _skill_frontmatter(name: str = "skill.md") -> dict[str, str]:
-    """The bundled skill's frontmatter, read at request time rather than duplicated in code — the
+def _skill_frontmatter(name: str = "skill.md") -> dict:
+    """The bundled skill's frontmatter, read at request time rather than duplicated in code. The
     description is what drives discovery in every registry, and a second copy of it would drift."""
     f = _WEB_DIR / name
     if not f.exists():
@@ -4515,16 +4516,8 @@ def _skill_frontmatter(name: str = "skill.md") -> dict[str, str]:
     text = _fill_headline(f.read_text(encoding="utf-8"))
     if not text.startswith("---"):
         raise HTTPException(status_code=404, detail=f"{name} has no frontmatter")
-    out: dict[str, str] = {}
-    parent = ""
-    for line in text.split("---", 2)[1].strip().splitlines():
-        key, _, value = line.partition(":")
-        if line[:1].isspace() and parent:
-            out[f"{parent}.{key.strip()}"] = value.strip()
-            continue
-        out[key.strip()] = value.strip()
-        parent = key.strip() if not value.strip() else ""
-    return out
+    fm = yaml.safe_load(text.split("---", 2)[1])
+    return fm if isinstance(fm, dict) else {}
 
 
 @app.get("/.well-known/skills/index.json", include_in_schema=False)
@@ -4541,7 +4534,7 @@ async def well_known_skills_index():
                        ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md")):
         fm = _skill_frontmatter(path)
         entry = {"name": fm.get("name", name), "description": fm.get("description", ""), "files": ["SKILL.md"]}
-        if summary := fm.get("metadata.summary"):
+        if summary := (fm.get("metadata") or {}).get("summary"):
             entry["summary"] = summary
         entries.append(entry)
     return JSONResponse({"skills": entries})
