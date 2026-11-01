@@ -7,7 +7,8 @@ from .contracts import Adapter, Contract
 ROUTED_KIND = "routed"
 # Example values for the generated row's `test_request`, by identity key (the call template reads it).
 _EXAMPLE_VALUES = {"full_name": "Patrick Collison", "first_name": "Patrick", "last_name": "Collison",
-                   "domain": "stripe.com", "linkedin_url": "https://www.linkedin.com/in/patrickcollison"}
+                   "domain": "stripe.com", "linkedin_url": "https://www.linkedin.com/in/patrickcollison",
+                   "url": "https://example.com"}
 ROUTED_PROVIDER = "treg"
 
 
@@ -67,6 +68,8 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
                   "note": ("Send what you know; treg sends each provider only the fields it accepts "
                            f"({variants})"
                            + (f" and fills {', '.join(sorted(contract.derive))} from the rest" if contract.derive else "")
+                           + (". Omit a field you don't have: a url field holding something else, such as N/A, "
+                              "is refused (422 invalid_identity)" if "url" in contract.identity_types.values() else "")
                            + ". On a miss it tries the next provider, cheapest first. Options are "
                            "X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; "
                            "X-Treg-Served-By names the provider. When you sent a domain, _treg.domain_match "

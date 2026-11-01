@@ -669,7 +669,7 @@ adapters:
     in:  {email: queryParams.email, linkedin_handle: queryParams.linkedin_handle}
     out: {full_name: data.name.fullName, first_name: data.name.givenName, last_name: data.name.familyName,
           title: data.employment.title, company: data.employment.name, company_domain: data.employment.domain,
-          linkedin_url: data.linkedin.handle, location: "coalesce(data.location, data.geo.country)"}
+          linkedin_url: "linkedin_url(data.linkedin.handle)", location: "coalesce(data.location, data.geo.country)"}
     miss: "data.name.fullName == null"
   # hunter.x.combined-find: no adapter — its captured example truncates data.person.name, so `out`
   # cannot be fixture-verified; hunter.people.enrich covers the same identity.
