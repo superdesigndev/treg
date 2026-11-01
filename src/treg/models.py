@@ -513,7 +513,12 @@ class CallRecord(SQLModel, table=True):
                             sqlite_where=text("kind = 'local_run'")),
                       Index("ix_callrecord_org_key_id", "org_id", "api_key_id", "id",
                             postgresql_where=text("api_key_id IS NOT NULL"),
-                            sqlite_where=text("api_key_id IS NOT NULL")),)
+                            sqlite_where=text("api_key_id IS NOT NULL")),
+                      # The errors report's shape: a status, newest first, over the rows that hold
+                      # failure evidence (a rare status would otherwise walk the whole window).
+                      Index("ix_callrecord_error_status_code_id", "status_code", "id",
+                            postgresql_where=text("error_request IS NOT NULL OR error_response IS NOT NULL"),
+                            sqlite_where=text("error_request IS NOT NULL OR error_response IS NOT NULL")),)
 
     id: int | None = Field(default=None, primary_key=True)
     org_id: int | None = Field(default=None, foreign_key="org.id")
