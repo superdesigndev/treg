@@ -67,7 +67,7 @@ export default async function run(ctx) {
 function identity(i) {
   const s = v => (v === undefined || v === null) ? "" : String(v).trim();
   const domain = s(i.domain).toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
-  if (s(i.linkedin_url)) return { linkedin_url: s(i.linkedin_url) };
+  if (s(i.linkedin_url)) return /linkedin\.com\//i.test(s(i.linkedin_url)) ? { linkedin_url: s(i.linkedin_url) } : { linkedin_handle: s(i.linkedin_url) };
   if (s(i.first_name) && s(i.last_name) && domain) return { first_name: s(i.first_name), last_name: s(i.last_name), domain };
   if (s(i.full_name) && domain) return { full_name: s(i.full_name), domain };
   return null;

@@ -199,10 +199,11 @@ def _can_answer_fully(contract, adapter) -> bool:
 
 
 def _subject(key: str, value) -> str:
-    """A comparable form of an identity value: the profile handle for a LinkedIn URL, else the text."""
+    """A comparable form of an identity value: the profile handle for a LinkedIn URL, else the text
+    without a URL's scheme, `www.` and trailing slash (the identity's URL is normalised, a provider's echo is not)."""
     if key == "linkedin_url" or key.endswith("_handle"):
         return (P.linkedin_handle(value) or str(value)).strip("/").lower()
-    return str(value).strip().lower()
+    return re.sub(r"^(?:https?://)?(?:www\.)?", "", str(value).strip().lower()).rstrip("/")
 
 
 def _other_subject(contract, identity: dict, core: dict) -> str | None:

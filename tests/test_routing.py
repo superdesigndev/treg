@@ -1860,8 +1860,10 @@ def test_linkedin_url_is_normalised_once_for_every_adapter():
 
 
 @pytest.mark.parametrize(("raw", "expected"), [
-    # a path that merely mentions linkedin.com is a handle-shaped string, never promoted to that host
-    ("evil.example/?linkedin.com/in/x", "https://www.linkedin.com/in/evil.example/?linkedin.com/in/x"),
+    # a path that merely mentions linkedin.com is never promoted to that host
+    ("evil.example/?linkedin.com/in/x", None),
+    # a derived URL is built only from something handle-shaped, never `/in/N/A`
+    ("N/A", None), ("#N/A", None), ("-", None), ("patrickcollison", "https://www.linkedin.com/in/patrickcollison"),
     ("uk.linkedin.com/in/x", "https://uk.linkedin.com/in/x"),
     # the host is lowercased so the handle derives
     ("LinkedIn.com/in/Patrick", "https://linkedin.com/in/Patrick"),
@@ -1874,18 +1876,30 @@ def test_linkedin_url_only_trusts_a_linkedin_host(raw, expected):
 @pytest.mark.parametrize(("raw", "expected"), [
     ("https://www.linkedin.com/in/patrickcollison", "https://www.linkedin.com/in/patrickcollison"),
     ("https://www.linkedin.com/in/%E5%BC%A0%E4%B8%89-1a2b3c/en", "https://www.linkedin.com/in/%E5%BC%A0%E4%B8%89-1a2b3c/en"),
-    ("WWW.LinkedIn.com/in/Patrick", "https://www.linkedin.com/in/Patrick"),
+    ("WWW.LinkedIn.com/in/Patrick", "https://WWW.LinkedIn.com/in/Patrick"),
     ("m.linkedin.com/in/x?trk=a", "https://m.linkedin.com/in/x?trk=a"),
     ("stripe.com", "https://stripe.com"),
     ("http://bücher.de/x", "http://bücher.de/x"),
     ("https://example.com/a page", "https://example.com/a page"),
     ("N/A", None), ("null", None), ("-", None), ("patrickcollison", None),
     ("ftp://stripe.com/x", None), ("https://", None), ("see https://stripe.com", None), (".com/x", None),
-    ("http://localhost/", None), ("https://a.com,b.com", None), ("https://…", None),
+    ("http://localhost/", None), ("https://…", None),
+    ("john@stripe.com", None), ("mailto:a@b.com", None), ("user:pw@stripe.com/x", None), ("   ", None),
+    ("linkedin.com/in/x?r=https://g.com/", "https://linkedin.com/in/x?r=https://g.com/"),
+    ("https://ตัวอย่าง.ไทย/", "https://ตัวอย่าง.ไทย/"), ("https://stripe.com./", "https://stripe.com./"),
+    ("https://[2001:db8::1]/", "https://[2001:db8::1]/"),
 ])
 def test_url_identity_is_checked_by_its_declared_type(raw, expected):
     from treg.domain.catalog.routing.contracts import _as_url
     assert _as_url(raw) == expected
+
+
+def test_identity_type_check_treats_blank_as_absent_and_echoes_safely():
+    from treg.domain.catalog.routing.contracts import invalid_identity
+    contract = catalog_store.load().contracts["people.email.find"]
+    assert invalid_identity(contract, {"full_name": "P C", "domain": "stripe.com", "linkedin_url": "   "}) == []
+    [bad] = invalid_identity(contract, {"linkedin_url": "\ud83d"})
+    bad["value"].encode("utf-8")
 
 
 def test_arena_and_router_read_the_miss_block_the_same_way():

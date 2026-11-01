@@ -9,7 +9,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from pydantic import HttpUrl, TypeAdapter, ValidationError
+
 from . import paths as P
+
+_HTTP_URL = TypeAdapter(HttpUrl)
 
 
 @dataclass(frozen=True)
@@ -379,23 +383,26 @@ def _body_matches(when: Any, body: Any) -> bool:
 
 
 def _as_url(v: Any) -> str | None:
-    """An http(s) URL, or None. A scheme-less `host.tld/path` gets `https://` and a lower-cased
-    host (some providers refuse it bare); a URL with a scheme passes through as sent."""
+    """An http(s) URL with a dotted host and no userinfo, or None. Parsing is the WHATWG parser's;
+    the value is kept as sent, a scheme-less one with `https://` added."""
     if not isinstance(v, str) or not (s := v.strip()):
         return None
-    scheme, sep, rest = s.partition("://")
-    if not sep:
-        scheme, rest = "https", s
-    elif scheme.lower() not in ("http", "https"):
+    candidate = s if re.match(r"(?i)https?://", s) else "https://" + s
+    try:
+        url = _HTTP_URL.validate_python(candidate)
+    except ValidationError:
         return None
-    host = re.split(r"[/?#]", rest, maxsplit=1)[0].rsplit("@", 1)[-1].split(":")[0]
-    if not re.fullmatch(r"[^\W_](?:[\w-]*[^\W_])?(?:\.[^\W_](?:[\w-]*[^\W_])?)+", host):
+    host = (url.host or "").strip(".")
+    if url.username is not None or not ("." in host or host.startswith("[")):
         return None
-    return s if sep else f"https://{host.lower()}{rest[len(host):]}"
+    return candidate
 
 
-# A declared identity type → its normaliser (None when the value is not of that type).
 _TYPE_NORMALISERS = {"url": _as_url}
+
+
+def _sent(v: Any) -> bool:
+    return v is not None and not (isinstance(v, str) and not v.strip())
 
 
 def invalid_identity(contract: Contract, given: dict[str, Any]) -> list[dict[str, Any]]:
@@ -403,15 +410,17 @@ def invalid_identity(contract: Contract, given: dict[str, Any]) -> list[dict[str
     bad = []
     for k, t in contract.identity_types.items():
         v = given.get(k)
-        if v not in (None, "") and (norm := _TYPE_NORMALISERS.get(t)) and norm(v) is None:
-            bad.append({"field": k, "type": t, "value": str(v)[:200]})
+        if _sent(v) and (norm := _TYPE_NORMALISERS.get(t)) and norm(v) is None:
+            shown = v if isinstance(v, str) else json.dumps(v, default=str)
+            bad.append({"field": k, "type": t,
+                        "value": shown[:200].encode("utf-8", "backslashreplace").decode("utf-8")})
     return bad
 
 
 def canonical_identity(contract: Contract, given: dict[str, Any]) -> tuple[dict[str, Any], tuple[str, ...] | None]:
     """The caller's fields + everything derivable → (identity, the variant they supplied), or
     (identity, None) when no variant is complete. Derived keys count for matching adapters."""
-    ident = {k: v for k, v in given.items() if k in contract.identity_types and v not in (None, "")}
+    ident = {k: v for k, v in given.items() if k in contract.identity_types and _sent(v)}
     supplied = next((v for v in contract.identity if all(k in ident for k in v)), None)
     if supplied is None:
         return ident, None
