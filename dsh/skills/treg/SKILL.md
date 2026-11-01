@@ -65,7 +65,10 @@ or the CLI is enough, and having both is fine.
    `my_tools`): treg is connected. Use them and install nothing; every `treg` command on this page
    maps onto a tool (see "Over MCP" below). A tool that answers "not authenticated" means the human
    signs in through the app's MCP or connector settings (in Claude Code: `/mcp`, pick treg,
-   Authenticate).
+   Authenticate). A tool that answers "not signed in, or this token is invalid or expired" while
+   the CLI on the same machine still works means the MCP server's **saved key** is dead — it is
+   separate from the CLI login. Run `treg mcp install --oauth` (needs no login), restart the agent,
+   then authorize in the client (Claude Code `/mcp`, Codex `codex mcp login treg`).
 2. **`treg` runs in your terminal**: run `treg`. It prints the account, the active team and your
    role, the balance, the team's own tools and the next commands to run; a blocker (not signed in,
    no team, an empty balance) comes first in its `help` lines. Not signed in:
