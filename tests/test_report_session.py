@@ -20,7 +20,8 @@ from treg import crypto
 from treg.api import app
 from treg.bootstrap_handlers import _report_busy
 from treg.infra import db as infra_db
-from treg.infra.db import ReportBusy, get_report_session, reset_db, session_maker
+from treg.infra.db import (ReportBusy, get_admin_read_session, get_report_session, reset_db,
+                           session_maker)
 from treg.models import Membership, Org, User
 
 REPORT_ROUTES = {"/orgs/{org_id}/usage", "/orgs/{org_id}/usage/by-tag",
@@ -124,3 +125,21 @@ async def test_other_database_errors_pass_through_unchanged():
         await gen.athrow(other)
     assert caught.value is other
     assert infra_db._report_slots()._value == infra_db._REPORT_SLOTS
+
+
+async def test_an_admin_read_cut_off_by_its_timeout_becomes_report_busy():
+    """A polled admin report must not hold the read pool the dashboard reports share."""
+    gen = get_admin_read_session()
+    await gen.__anext__()
+    with pytest.raises(ReportBusy) as caught:
+        await gen.athrow(DBAPIError("SELECT 1", {}, _Canceled()))
+    assert caught.value.reason == "timeout"
+
+
+async def test_other_admin_read_errors_pass_through_unchanged():
+    gen = get_admin_read_session()
+    await gen.__anext__()
+    other = DBAPIError("SELECT 1", {}, Exception("boom"))
+    with pytest.raises(DBAPIError) as caught:
+        await gen.athrow(other)
+    assert caught.value is other

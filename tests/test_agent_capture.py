@@ -201,7 +201,8 @@ async def test_call_emits_one_tool_called_event(env, posthog_events):
     """The audit funnel also mirrors each /call to PostHog (when a key is set): one `tool_called`
     per call, carrying the runtime attribution and — for own tools — the upstream host as vendor."""
     r = await env.c.get("/call/alpha/ok", headers={**_h(env.member, "claude-code"),
-                                                   "X-Treg-Mcp-Client": "cursor"})
+                                                   "X-Treg-Mcp-Client": "cursor", "X-Treg-Client-Version": "0.28.0",
+                                                   "X-Treg-Session": "0123456789abcdef", "X-Treg-Agent": "codex"})
     assert r.status_code == 200
     (e,) = await posthog_events()
     assert e["distinct_id"] == "m@x.dev"
@@ -214,6 +215,8 @@ async def test_call_emits_one_tool_called_event(env, posthog_events):
     assert p["call_ref"] == r.headers["X-Treg-Call-Id"]
     assert p["cached"] is False and p["smoothed"] is None and p["hit"] is None
     assert p["ua_family"] == "python-httpx" and p["user_agent"].startswith("python-httpx/")
+    assert p["client_version"] == "0.28.0", "the CLI release, so an output change can be compared across versions"
+    assert p["session"] == "0123456789abcdef" and p["agent"] == "codex", "links one agent task's calls"
     assert p["mcp_client"] is None, "only the MCP surfaces' own traffic names an MCP host"
     assert "capacity_signal" not in p, "a capacity reading belongs to catalog calls only"
 

@@ -1186,12 +1186,13 @@ wheels = [
 
 [[package]]
 name = "tools-registry"
-version = "0.27.0"
+version = "0.28.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
     { name = "posthog" },
     { name = "questionary" },
+    { name = "toon-format" },
 ]
 
 [package.optional-dependencies]
@@ -1238,7 +1239,7 @@ requires-dist = [
     { name = "cryptography", marker = "extra == 'proxy'", specifier = ">=43" },
     { name = "cryptography", marker = "extra == 'server'", specifier = ">=43" },
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115" },
-    { name = "httpx", specifier = ">=0.27" },
+    { name = "httpx", specifier = ">=0.27,<1" },
     { name = "mcp", marker = "extra == 'server'", specifier = ">=2" },
     { name = "numpy", marker = "extra == 'server'", specifier = ">=2.1" },
     { name = "obstore", marker = "extra == 'server'", specifier = ">=0.11,<0.12" },
@@ -1252,6 +1253,7 @@ requires-dist = [
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'server'", specifier = ">=2.0.42" },
     { name = "sqlmodel", marker = "extra == 'server'", specifier = ">=0.0.22,<0.0.45" },
     { name = "stripe", marker = "extra == 'server'", specifier = ">=12" },
+    { name = "toon-format", specifier = "==1.2.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.32" },
 ]
 provides-extras = ["server", "proxy"]
@@ -1265,6 +1267,15 @@ dev = [
     { name = "tools-registry", extras = ["server"] },
 ]
 test = [{ name = "playwright", specifier = ">=1.62.0" }]
+
+[[package]]
+name = "toon-format"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/06/9e/88b94e00ae3589130bb2bde233c60b55776deb670cc3d077657d6a8b9a2e/toon_format-1.2.0.tar.gz", hash = "sha256:ed09c0cb8ba58f17372f876df1e43400d2d916aef67c641f152d8a28c5898669", size = 20775, upload-time = "2026-10-18T13:23:36.594Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f3/9e/69331571d5b91b3f34f0dcd7c8135bb3241e41c3c3effb4af8f57772a9ca/toon_format-1.2.0-py3-none-any.whl", hash = "sha256:d94db4b088a281a7bbc85e75d7fbd24e6a0ec7bc110edb129285259eca6522c0", size = 22863, upload-time = "2026-10-18T13:23:35.557Z" },
+]
 
 [[package]]
 name = "truststore"

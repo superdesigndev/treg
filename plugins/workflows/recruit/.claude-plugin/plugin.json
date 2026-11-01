@@ -1,6 +1,6 @@
 {
   "name": "recruit",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "description": "Use when the user wants candidates for a role; they paste a LinkedIn job post (or a job description) and want the people who fit it, ranked, with a reason for each and a personal email and phone to reach them. Also for \"source candidates\", \"find people for this job\", \"build a shortlist\", or turning a job post into a contactable candidate list.",
   "author": {
     "name": "Superdesign dev, Inc.",

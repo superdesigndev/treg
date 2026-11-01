@@ -23,7 +23,7 @@ from starlette.routing import BaseRoute, Mount
 
 from . import adsconv, analytics, archive, audit, call_events
 from .application.call import route as routed_call
-from .application import arena, find_index
+from .application import arena, find_index, media
 from . import bootstrap_handlers, policy
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
@@ -270,6 +270,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/oauth/grants', ('GET',), 'oauth_grants'),
     ('/oauth/grants/{family_id}/team', ('POST',), 'oauth_grant_set_team'),
     ('/orgs', ('GET',), 'list_orgs'),
+    ('/home', ('GET',), 'home'),
     ('/orgs/{org_id}/invites', ('POST',), 'create_invite'),
     ('/invites/accept', ('POST',), 'accept_invite'),
     ('/invites/mine', ('GET',), 'my_invites'),
@@ -728,6 +729,7 @@ def _lifespan(role: AppRole):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         async with archive_object_store(getattr(app.state, "archive_object_store", None)):
+            media.validate_configuration()
             await verify_db()
             if kv.configured() and not await kv.store().ping():
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it
@@ -824,6 +826,8 @@ def _lifespan(role: AppRole):
                     await analytics.drain()
                     await app.state.http.aclose()
                     await kv.close()
+                    from .infra import org_endpoint_quota
+                    await org_endpoint_quota.close()
                 finally:
                     if traffic_reporting:
                         org_traffic.stop_reporting()

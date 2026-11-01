@@ -1,6 +1,6 @@
 {
   "name": "make-ugc",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "description": "Make AI UGC videos end to end through treg. Pull the trending TikTok and Instagram videos in a vertical, extract the hook patterns, create a character with the same vibe as a presenter the user picks, generate 5-10 talking-head hook clips on Seedance 2.5 (less-restriction route), add a voiced demo clip, burn captions, and report the bill per clip. Use when the user asks for UGC ads, creator-style product videos, TikTok/Reels hooks, or an AI presenter for their product.",
   "author": {
     "name": "Superdesign dev, Inc.",

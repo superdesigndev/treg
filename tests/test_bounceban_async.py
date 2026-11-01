@@ -57,6 +57,8 @@ class Upstream:
         self.seen: list[str] = []
 
     async def __call__(self, request, upstream_url, tool, secrets, client, **kwargs):
+        if before_outbound := kwargs.get("before_outbound"):
+            await before_outbound()
         if "bounceban" not in upstream_url:
             self.seen.append("other")
             return _upstream(200, {"data": {"status": "valid", "score": 90}})

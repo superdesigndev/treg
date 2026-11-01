@@ -70,6 +70,23 @@ _FAULT_VALUE_MAX = 500
 _FAULT_WINDOW_S = 10.0     # one event per (fault type, site) per window; the rest are counted
 _FAULT_MAX_KEYS = 500      # bound the ledger — it is what caps the cost, so it must be finite
 _FAULT_QUEUE_SHARE = 0.5   # faults may fill at most this much of the shared queue
+_QUOTA_WINDOW_S = 60.0
+_QUOTA_MAX_EXAMPLES = 10
+
+
+class _QuotaWindow:
+    __slots__ = ("opened", "admissions", "target_count", "examples", "truncated")
+
+    def __init__(self, now: float):
+        self.opened = now
+        self.admissions = 0
+        self.target_count = 0
+        self.examples: dict[tuple[int, str], None] = {}
+        self.truncated = False
+
+
+_quota_lock = threading.Lock()
+_quota_window: _QuotaWindow | None = None
 
 
 class _FaultWindow:
@@ -180,6 +197,51 @@ def capture(distinct_id: str, event: str, properties: dict | None = None,
         _ensure_flusher()
     except Exception:  # noqa: BLE001 — analytics must never surface into a caller's path
         pass
+
+
+def capture_quota_fail_open(targets: tuple[tuple[int, str], ...]) -> None:
+    """Count one logical admission of trusted canonical targets; never block on I/O or raise."""
+    global _quota_window
+    try:
+        if not targets or not enabled():
+            return
+        with _quota_lock:
+            if _quota_window is None:
+                _quota_window = _QuotaWindow(time.monotonic())
+            _quota_window.admissions += 1
+            _quota_window.target_count += len(targets)
+            for target in targets:
+                if target in _quota_window.examples:
+                    continue
+                if len(_quota_window.examples) < _QUOTA_MAX_EXAMPLES:
+                    _quota_window.examples[target] = None
+                else:
+                    _quota_window.truncated = True
+        _ensure_flusher()
+    except Exception:  # noqa: BLE001 — observation cannot change a permitted call
+        pass
+
+
+def _quota_summary_pending() -> bool:
+    with _quota_lock:
+        return _quota_window is not None
+
+
+def _emit_quota_summary(*, force: bool = False) -> None:
+    global _quota_window
+    with _quota_lock:
+        window = _quota_window
+        if window is None or (not force and time.monotonic() - window.opened < _QUOTA_WINDOW_S):
+            return
+        _quota_window = None
+    capture(SERVER_DISTINCT_ID, "org_endpoint_quota_fail_open", {
+        "admissions": window.admissions,
+        "target_count": window.target_count,
+        "target_examples": [
+            {"org_id": org_id, "endpoint_id": endpoint_id} for org_id, endpoint_id in window.examples
+        ],
+        "targets_truncated": window.truncated,
+    })
 
 
 def capture_service_started(role: str) -> None:
@@ -369,9 +431,10 @@ def _ensure_flusher() -> None:
 
 
 async def _flush_loop() -> None:
-    while _queue or _fault_summaries_pending():
+    while _queue or _fault_summaries_pending() or _quota_summary_pending():
         await asyncio.sleep(_FLUSH_INTERVAL_S)
         _emit_fault_summaries()
+        _emit_quota_summary()
         while _queue:
             batch, _queue[:_BATCH_MAX] = _queue[:_BATCH_MAX], []
             try:
@@ -398,6 +461,7 @@ async def drain() -> None:
     """
     global _flusher
     _emit_fault_summaries(force=True)
+    _emit_quota_summary(force=True)
     if _flusher is not None and not _flusher.done():
         _flusher.cancel()
         try:

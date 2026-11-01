@@ -126,6 +126,16 @@ sources:
   - src/treg/catalog/contracts.yaml
   - src/treg/catalog/millionverifier.yaml
   - src/treg/catalog/adapters.yaml
+  - src/treg/catalog/bravesearch.yaml
+  - src/treg/web/logos/bravesearch.svg
+  - src/treg/catalog/examples/bravesearch.web.search.json
+  - src/treg/catalog/examples/bravesearch.web.search.news.json
+  - src/treg/catalog/examples/bravesearch.web.search.context.json
+  - src/treg/catalog/examples/bravesearch.web.search.images.json
+  - src/treg/catalog/examples/bravesearch.web.search.videos.json
+  - src/treg/catalog/examples/bravesearch.places.search.json
+  - src/treg/catalog/examples/bravesearch.places.detail.json
+  - src/treg/catalog/examples/bravesearch.places.description.json
   - src/treg/catalog/capabilities.yaml
   - src/treg/catalog/prospeo.yaml
   - tests/test_route_cost_ceiling.py
@@ -206,6 +216,15 @@ related:
 ---
 
 # Endpoint catalog — platform-grouped operations per provider
+
+`response_retention: forbidden` on a provider or endpoint is distinct from `cache: forbidden`.
+The latter prevents archive storage and replay; the former also suppresses response bodies in
+call events, failure evidence, idempotency response bodies, routed parent output, and Web Arena
+run records. Idempotency retains a 410 charge receipt so repeating the same key cannot call the
+provider again. `/call/` still returns the upstream body to the active caller. A provider-level
+declaration is inherited by each endpoint at catalog load. Brave Search uses both declarations
+because its terms prohibit retaining API response data. Its committed adapter examples are
+synthetic shapes, while the `verified` dates record live upstream checks.
 
 ## Fetchin
 
@@ -1258,6 +1277,13 @@ source instead of settling it. The validator requires `in: query`, `unit: usd` a
 onto every cost, so catalog reads stay unchanged. A row-level `cost.ceiling_param` overrides it.
 The appended pair is outbound only: `params_hash` and the archive key stay the inbound query.
 
+A provider file may declare a header `queryParams` block: optional query parameters every endpoint of
+that provider accepts (AnyAPI's response-budget controls `fields`, `max_items`, `summary`, `jq`).
+The loader merges it into each endpoint's `input.queryParams`; a name the endpoint declares itself
+wins, and the core file's block wins over the extended file's, as with `ceiling_param`. One block
+in the core file therefore covers both tiers, and a generated extended file needs none. The validator
+requires a non-empty mapping of identifiers to field specs, none `required`.
+
 `spooled_response: true` marks a synchronous endpoint whose answer inlines media too large for
 the 8 MiB settlement buffer (Gemini returns images as base64 in its JSON: ~9 MB at 2K, ~23 MB at
 4K; Lyria songs arrive as base64 MP3). Its metered 2xx is read to disk and settled from exactly
@@ -2182,8 +2208,14 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   (`no_hit` when the find missed, which is never checked).
   Its `verdict` is `results.verdict` on the serving child, the same word `CallRecord.verdict`
   stores. `X-Treg-Cost-Micro` and `_treg.charged_micro` are find plus check; a check still pending
-  after the routed async wait reports its hold and `pending: true`, settled later by the worker. A
-  hit's advice is dropped once a check ran. The header on a contract without `check` is a 422
+  after the routed async wait reports its hold as `cost_micro`, `pending: true`, the check child's
+  `call_id`, and that child's `async` poll descriptor (`task_id` + poll endpoint), settled later by
+  the worker (`GET /calls/{call_id}` shows the settle). A
+  hit's advice is dropped once a check ran, with one exception: the check wins over the finder's
+  own claim. A completed (not pending) verdict other than `valid` on a `verified: true` hit
+  attaches the check's `disagree_advice` instead (both email finds), so an agent reading
+  `output.verified` first is told the check contradicted it. `output.verified` itself stays what the provider said: the find's answer is not altered, and
+  the field means the same with or without the header. The header on a contract without `check` is a 422
   before anything is planned. `people.phone.find`'s check is direct: `hlrlookup.people.phone.verify`
   under its own `people.phone.live` contract (`live` / `dead` / `unknown`; the format check stays
   `people.phone.verify`), `routed: false` because it has one provider, and its adapter
@@ -2291,11 +2323,15 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   per call or per result, whose provider bills an answer treg judges a miss: the caller pays those
   too, and the cost note says so). When `miss_billed_by` is non-empty the cost carries `varies:
   true` and `advertised_usd` quotes `usd_per_call: null`: the $0 floor of the range read as "free"
-  to an agent that then paid for hundreds of billed misses. The note leads with "NOT free" and
-  carries the range. Never hand-written; not in any
+  to an agent that then paid for hundreds of billed misses. The note leads with "Not free" and
+  carries the range, how many children bill a miss and the one-provider escape
+  (`X-Treg-Route-Waterfall: 0`); with none it says misses are free. The `input` note names the
+  identity variants, the fields `derive` fills (only when the contract has any) and that options are
+  `X-Treg-Route-*` headers, listed once in the quote's `headers`. Never hand-written; not in any
   provider file.
   `catalog_get` on it returns the contract and the ranked **plan** (the quote) —
-  nothing is reserved. A child the router would not call on treg's key (paused, not
+  nothing is reserved. Each plan and `also` row carries `cost` as `store.quote_cost` cuts it: price and
+  unit only, without settlement detail or what every row would repeat. A child the router would not call on treg's key (paused, not
   `platform_eligible`, no key on this deployment) ranks after the rest with a `skipped` reason.
 - **Ranking** — `routing/plan.py`: own keys (tier 2) first at cost 0; then
   `expected_cost_per_hit = cost_at(request) × P(billed) / P(hit)` where `cost_at` prices *this*
@@ -2468,6 +2504,14 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   qualified/query −0.53 ([−1.84, +0.77]) — and ahead of the published Lessie 68.2, Exa 64.7 and
   Claude Code 50.5. The remaining differences are agent-side, not routing: the hand-written policy
   post-filtered rows on location and over-fetched (`size: 20`, trimmed to 15).
+- **Domain match on email finds (2026-10-31)**: when the caller sent a `domain` (or
+  `company_domain` / `website`) and the hit carries an `email`, `_treg.domain_match` and
+  `X-Treg-Domain-Match` say whether the mailbox host matches that domain — the same comparison
+  call-events already stores as `answer_flags.domain_match`. A LinkedIn-only child that returns a
+  former employer still counts as a hit and is billed; the flag discloses the mismatch and, when
+  the contract sets `advice_domain_mismatch`, `_treg.advice` names it (unless a Route-Verify check
+  already spoke). The child's `output` and `raw` are not altered.
+
 - **The answer says what it ignored (2026-08-29)**: `ignored_filters` was on `_treg.tried[]` only,
   which no caller reads. It is now also on `_treg` itself for the child that served and on an
   `X-Treg-Ignored-Filters` response header, so an agent can post-filter, or say why the rows are

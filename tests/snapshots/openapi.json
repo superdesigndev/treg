@@ -7623,6 +7623,69 @@
         "summary": "Run Health"
       }
     },
+    "/home": {
+      "get": {
+        "description": "Bare `treg` in one round trip. A member (an agent key included) answers in full; a signed-in\nuser whose team does not resolve (none created or chosen yet, or one they have left) answers\nwith `team: null`; every other refusal (an invalid token, a suspended account or team, SSO) is\nrefused as everywhere else, so the CLI can say which.",
+        "operationId": "home_home_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Home Home Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Home"
+      }
+    },
     "/hub/run": {
       "post": {
         "operationId": "run_hub_folder_hub_run_post",

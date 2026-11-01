@@ -110,7 +110,10 @@ The stream has no map type; they travel as JSON objects (`json` columns):
 - `answer_values` — `{field: value}` for output fields declared `analytics: value`, as strings
   (256 characters at most), exactly as the adapter produced them.
 - `answer_flags` — derived from email-shaped keys: `is_role`, `free_mail`, and `domain_match`
-  when the input named a domain (prefixed `<field>_` for a field other than `email`).
+  when the input named a domain (prefixed `<field>_` for a field other than `email`). The same
+  `domain_match` comparison is disclosed to callers on a routed email-find hit as
+  `_treg.domain_match` / `X-Treg-Domain-Match` (see [catalog.md](catalog.md)); this event flag
+  stays the analytics form.
 
 Where an output field goes is declared on the contract (`contracts.yaml`), default `skip`:
 

@@ -143,6 +143,7 @@ async def relay(
     client: httpx.AsyncClient,
     drop_params: set[str] | None = None,
     force_identity: bool = False,
+    before_outbound: Callable[[], Awaitable[None]] | None = None,
 ) -> UpstreamResponse:
     # Headers: preserve everything (incl. duplicates / cookies) except hop-by-hop + our token.
     # `.raw` is the original (bytes, bytes) pairs; httpx.Headers is a multidict, so binding
@@ -254,6 +255,8 @@ async def relay(
         raise GatewayFailed(
             "ssrf_refused", status_code=502,
             detail="upstream host resolves to a non-public address")
+    if before_outbound is not None:
+        await before_outbound()
     upstream_resp = await client.send(upstream_req, stream=True)
 
     # Response drop set: hop-by-hop + whatever the upstream marked hop-by-hop via its Connection

@@ -17,13 +17,16 @@ class Check:
     """The opt-in check after a hit (`X-Treg-Route-Verify`): one more call, to `endpoint`, with the
     hit's `field` as its identity key of the same name. `prefer` orders that call's providers only.
     `when` is an expression over `{field: value}`; a hit failing it is not checked, for `skip_reason`,
-    and `skip_advice` replaces the find's advice then: the caller already asked for the check."""
+    and `skip_advice` replaces the find's advice then: the caller already asked for the check.
+    The check wins over the finder's own `verified`: a completed verdict other than `valid` on a
+    `verified: true` hit attaches `disagree_advice`, and the finder's answer is left as it said."""
     endpoint: str
     field: str
     prefer: tuple[str, ...] = ()
     when: str = ""
     skip_reason: str = ""
     skip_advice: str = ""
+    disagree_advice: str = ""
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,11 @@ class Contract:
     # set there attaches to EVERY hit — deliberate for `people.search`, whose rows carry emails
     # nobody vouched for. A suggestion only unless the caller asks for the check (`check`, below).
     advice_unverified: str = ""
+    # One sentence the router attaches as `_treg.advice` when a hit's email domain does not match
+    # the domain the caller asked for (`_treg.domain_match: false`). Disclose only — the answer is
+    # not altered. Empty = flag only, no advice. A LinkedIn-only child often returns a former
+    # employer when the caller also sent a domain.
+    advice_domain_mismatch: str = ""
     # False = the contract exists so the archive can judge found/empty (`results.has_result_rules`
     # needs a verified adapter, and an adapter verifies only against a contract); no
     # `treg.<capability>` row is ever generated from it, however many children verify. Used where
@@ -229,6 +237,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             miss=str(c.get("miss") or ""), idempotent=bool(c.get("idempotent", True)),
             default_max_cost_usd=(float(c["default_max_cost_usd"]) if c.get("default_max_cost_usd") is not None else None),
             advice_unverified=str(c.get("advice_unverified") or ""),
+            advice_domain_mismatch=str(c.get("advice_domain_mismatch") or ""),
             routed=bool(c.get("routed", True)),
             scoping=tuple(str(k) for k in scoping),
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
@@ -257,10 +266,13 @@ def _parse_check(cap: str, raw, output: dict) -> Check | None:
         raise ValueError(f"contract {cap}: check `when` and `skip_reason` come together")
     if raw.get("skip_advice") and not raw.get("when"):
         raise ValueError(f"contract {cap}: check `skip_advice` needs a `when`")
+    if raw.get("disagree_advice") and "verified" not in output:
+        raise ValueError(f"contract {cap}: check `disagree_advice` needs a `verified` output")
     return Check(endpoint=str(raw["endpoint"]), field=str(raw["field"]),
                  prefer=tuple(str(p).lower() for p in raw.get("prefer") or ()),
                  when=str(raw.get("when") or ""), skip_reason=str(raw.get("skip_reason") or ""),
-                 skip_advice=str(raw.get("skip_advice") or ""))
+                 skip_advice=str(raw.get("skip_advice") or ""),
+                 disagree_advice=str(raw.get("disagree_advice") or ""))
 
 
 def _parse_confirm(cap: str, raw, output: dict) -> str:

@@ -208,9 +208,11 @@ live call"; 0 makes repeats free. Own-key hits are outside this: never metered, 
 
 `archive_bodies` owns body preparation, object reads, the independent upload queue and completed
 storage observations. `archive.py` retains request keys, snapshots, transactions, TTL learning
-and pruning. `infra.object_store.ObjectStore` exposes only put/get/head (the same store also holds find's card
-vectors as named `find-vectors/...` objects, `NamedObjectStore`; see [find](find.md)); `open_r2` imports
-obstore lazily and bootstrap owns its lifecycle. Tests inject `MemoryObjectStore` through
+and pruning. `infra.object_store.ObjectStore` exposes only put/get/head (the same bucket also holds find's card
+vectors as named `find-vectors/...` objects, `NamedObjectStore`, see [find](find.md), and `treg host`
+bodies as `hosted-media/v1/...` objects, `StreamedObjectStore`, see [media](media.md), through its
+own `build_r2` client sized for 30 MB files); `open_r2` imports obstore lazily and bootstrap owns its
+lifecycle. Tests inject `MemoryObjectStore` through
 `bootstrap.configure_archive_object_store` or `create_app(archive_object_store=...)`.
 
 Every object name is the raw body's SHA-256, with no prefix. The caller supplies its already-computed content hash to PUT, which validates the hash-shaped name and

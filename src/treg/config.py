@@ -125,6 +125,22 @@ class Settings(BaseSettings):
     # The shared key-value store (Redis protocol). Empty = an in-process fallback; see infra/kv.py.
     kv_url: str = ""
 
+    org_endpoint_quota_enabled: bool = False
+    org_endpoint_quota_redis_url: str = ""
+
+    @model_validator(mode="after")
+    def _org_endpoint_quota_configuration(self):
+        if self.org_endpoint_quota_enabled:
+            try:
+                url = urlsplit(self.org_endpoint_quota_redis_url)
+                valid = (url.scheme in {"redis", "rediss"} and bool(url.hostname)
+                         or url.scheme == "unix" and bool(url.path))
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError("enabled endpoint quotas require a valid Redis quota URL")
+        return self
+
     # Published root-call pause, rate and concurrency admission.
     org_flow_control_enabled: bool = False
     org_flow_control_refresh_s: float = Field(default=2.0, ge=0.2, le=10)
@@ -254,6 +270,10 @@ class Settings(BaseSettings):
     # how long a call waits in line for a place before a routed job moves on and a direct call is
     # refused, not charged. 0 turns the gate off (TREG_FAIR_SHARE_WAIT_S=0).
     fair_share_wait_s: float = Field(default=2.0, ge=0, le=30)
+    # A shared rate window on treg's own keys (domain/capacity/rate_observe.py). `observe` asks it
+    # about every platform call that goes upstream and logs what it would refuse; nothing is refused.
+    # It needs TREG_KV_URL; without one every verdict is unknown.
+    provider_rate_mode: Literal["off", "observe"] = "off"
 
     # Flat bounties, not a percentage of top-ups. At 0% platform margin a percentage would be a
     # permanent share of pass-through GMV, and — unlike a flat figure — it rewards farming in
@@ -371,6 +391,7 @@ class Settings(BaseSettings):
     platform_key_you: str = ""        # X-API-Key; prepaid USD balance across You.com web APIs
     platform_key_valyu: str = ""      # X-API-Key; subscription credits shared across Valyu APIs
     platform_key_serper: str = ""     # X-API-KEY; prepaid Google search credits, exact charge in response.credits
+    platform_key_bravesearch: str = ""  # X-Subscription-Token; prepaid Search requests
     platform_key_litescrape: str = ""  # Bearer; prepaid calls, free key status endpoint
     platform_key_keenable: str = ""   # X-API-Key; $4/1,000-request package, 10 requests/s per organization
     platform_key_olostep: str = ""    # Bearer; prepaid credits, platform price $0.002/credit
@@ -607,6 +628,13 @@ class Settings(BaseSettings):
     archive_r2_timeout_s: float = Field(default=10.0, gt=0, le=120)
     archive_r2_read_timeout_s: float = Field(default=2.0, gt=0, le=120)
     archive_r2_terminal_attempts: int = Field(default=3, ge=1, le=5)
+
+    # Where `treg host` bodies go (application/media.py): "db" keeps them in the media row; "r2"
+    # writes new uploads to the archive's bucket above (archive_object_store_*), and startup refuses
+    # it while that bucket is not configured. Reads follow each row's own `object_key`, so a switch
+    # either way needs no backfill. The timeout bounds a whole transfer of one file (up to 30 MB).
+    media_body_write: Literal["db", "r2"] = "db"
+    media_r2_timeout_s: float = Field(default=60.0, gt=0, le=600)
 
     # Pictures (team and user avatars, /showcase leaderboard icons and screenshots): two S3-API
     # buckets, separate from the archive's. Uploads land in the private STAGING bucket; publishing

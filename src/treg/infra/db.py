@@ -379,15 +379,28 @@ async def get_admin_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+_ADMIN_READ_STATEMENT_TIMEOUT_MS = 3_000
+
+
 async def get_admin_read_session() -> AsyncIterator[AsyncSession]:
     """Opt-in admin reports: configured reader, otherwise the original admin primary pool.
 
     Never use the general reader's unconfigured API-pool fallback, or retry a failed replica on
     the primary. Authorization must finish on `get_admin_session` before this dependency runs.
+    Each statement is capped at `_ADMIN_READ_STATEMENT_TIMEOUT_MS`, answered as `ReportBusy`, so a
+    polled admin report cannot hold the read pool the dashboard reports share.
     """
     maker = read_session_maker if _read_db_url else admin_session_maker
     async with maker() as session:
-        yield session
+        if session.get_bind().dialect.name == "postgresql":
+            await session.execute(text(
+                f"SET LOCAL statement_timeout = {_ADMIN_READ_STATEMENT_TIMEOUT_MS}"))
+        try:
+            yield session
+        except DBAPIError as exc:
+            if _canceled_by_timeout(exc):
+                raise ReportBusy("timeout") from exc
+            raise
 
 
 _REPORT_SLOTS = 2

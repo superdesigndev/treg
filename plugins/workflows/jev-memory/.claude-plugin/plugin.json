@@ -1,6 +1,6 @@
 {
   "name": "jev-memory",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "description": "Use when the user wants Claude Code to remember their preferences across sessions, asks for a memory mod or memory harness for Claude Code, mentions the Jev memory classifier or a \"classifier on every turn\" mod, or wants to build a Claude Code mod on treg and Jev. Installs a ready-made Claude Code mod that has Jev judge each prompt after the turn and saves lasting preferences to .claude/jev-memory.md, or builds the same mod from one prompt.",
   "author": {
     "name": "Superdesign dev, Inc.",

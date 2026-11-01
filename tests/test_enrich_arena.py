@@ -1039,12 +1039,16 @@ def test_search_outputs_are_bounded_sanitized_and_survive_presentation():
 
 
 async def test_people_search_executes_a_bounded_direct_query(clients, enrichment_on, monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setenv('TREG_PLATFORM_KEY_EXA','PLATFORM-EXA-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS','hunter,tomba,leadmagic,leadsforge,findymail,aviato,fiber-ai,exa')
+    get_settings.cache_clear()
     seen=[]
-    monkeypatch.setattr(service,'relay',_relay_by_provider({'aviato':[(200,{'items':[{'fullName':'Example Person','headline':'Engineer','linkedinUrl':'https://www.linkedin.com/in/example'}]})]},seen))
-    response=await clients.post('/arena/plans',json={'capability':'people.search','identity':{'q':'software engineer'},'providers':['aviato'],'mode':'compare','max_cost_micro':1_000_000})
+    monkeypatch.setattr(service,'relay',_relay_by_provider({'exa':[(200,{'results':[{'name':'Example Person','title':'Engineer','url':'https://www.linkedin.com/in/example'}]})]},seen))
+    response=await clients.post('/arena/plans',json={'capability':'people.search','identity':{'q':'software engineer'},'providers':['exa'],'mode':'compare','max_cost_micro':1_000_000})
     assert response.status_code==200,response.text
     result=await finish(clients,response.json())
-    assert seen[0][3]['dsl']['limit']==10
+    assert seen[0][3]['numResults']==10
     row=result['results'][0]
     assert row['state']=='hit' and row['output']['count']==1
     assert row['output']['people'][0]['name']=='Example Person'

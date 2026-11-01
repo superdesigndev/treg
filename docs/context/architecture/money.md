@@ -540,7 +540,9 @@ billable work without manufacturing a successful result.
 
 Routed tools and Enrich Arena may wait for an async child through the shared async bridge. Every
 poll still uses the ordinary call path, so BYOK remains unmetered and platform polls enforce task
-ownership. Foreground polling and the worker may observe the same terminal response, but the task
+ownership. Server-created polls continue the admitted submission without another quota check or
+increment; direct caller-initiated polls remain separate calls. Quota or other poll failures after
+a task ID exists preserve that handle and the pending reservation. Foreground polling and the worker may observe the same terminal response, but the task
 row lock lets only one close the original hold. A foreground timeout or inconclusive poll response
 returns a pending result with the reservation still open; the worker later settles or releases it.
 Terminal UI and routed results read the task's settled amount, while pending results expose only the
@@ -1126,8 +1128,10 @@ still pay the provider twice.
   Neither a global nor an org-wide key safely separates independent callers.
 - A short application transaction claims a pending row before relay. The unique constraint
   arbitrates concurrent claims; the loser gets 409. Reusing a label with another fingerprint is 422.
-- Metered successes retain status, body, charge and call id for 24 hours. Uncharged failures
-  (every routed failure since routed children defer their holds to the parent, catalog.md), BYOK
+- Metered successes retain status, body, charge and call id for 24 hours. A catalog endpoint with
+  `response_retention: forbidden` instead keeps a body-free 410 receipt with the call id and charge,
+  including for BYOK, so the same key cannot repeat the provider call. Uncharged failures (every
+  routed failure since routed children defer their holds to the parent, catalog.md), other BYOK
   calls and owned free polls release the label immediately, so a retry tries again.
 - Replays return `X-Treg-Idempotent-Replay: true`, `X-Treg-Cost-Micro: 0` (nothing new was charged,
   so a client summing the header stays right) and the first call's figure in

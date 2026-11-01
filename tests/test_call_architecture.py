@@ -14,14 +14,15 @@ from treg.application import billing, asynctasks as task_app
 from treg.application.hub import runner as hub_runner
 from treg.application.call import authorize, overflow, reserve, service, settle
 from treg.domain import money
-from treg.domain.capacity import fair_share, marks as capacity_marks
+from treg.domain.capacity import fair_share, marks as capacity_marks, rate_observe
 from treg.domain.governance import usage as usage_policy
-from treg.infra import provider_concurrency
+from treg.infra import provider_concurrency, provider_rate
 
 
 _SRC = Path(__file__).parents[1] / "src" / "treg"
 
 _DATAPLANE_DERIVED_WRITES = {
+    "org_endpoint_quota": ((service._admit_org_endpoint, "org_endpoint_quota.admit"),),
     # A best-effort external admission lease precedes the balance session.
     "money_admission_lease": (
         (reserve._platform_reserve, "reserve_admission"),
@@ -117,8 +118,16 @@ _DATAPLANE_DERIVED_WRITES = {
         (provider_concurrency.Lease._renew, "self.store.renew_slot"),
         (provider_concurrency.Lease._release, "self.store.release_slot"),
     ),
+    # Observe mode for a shared rate window: a platform call about to go upstream takes a
+    # self-expiring member of its bucket's window (Redis, after the DB phase ended); nothing refuses.
+    "provider_rate_window": (
+        (service._execute_call, "rate_observe.observe"),
+        (rate_observe.observe, "provider_rate.admit"),
+        (provider_rate.admit, "store.acquire_slot"),
+    ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
+    "org_endpoint_quota",
     "money_admission_lease",
     "archive_body_object",
     "auto_topup_task",
@@ -135,6 +144,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "provider_resource_ownership",
     "member_daily_cap_slot",
     "provider_concurrency_lease",
+    "provider_rate_window",
 })
 _DERIVED_WRITE_FILES = {
     _SRC / "application" / "asynctasks.py": {"money_admission.admit"},
@@ -164,8 +174,12 @@ _DERIVED_WRITE_FILES = {
     _SRC / "infra" / "provider_concurrency.py": {
         "store.acquire_slot", "self.store.renew_slot", "self.store.release_slot",
     },
+    _SRC / "domain" / "capacity" / "rate_observe.py": {"provider_rate.admit"},
+    _SRC / "infra" / "provider_rate.py": {"store.acquire_slot"},
     _SRC / "application" / "call" / "service.py": {
+        "org_endpoint_quota.admit",
         "fair_share.acquire",
+        "rate_observe.observe",
         "archive.record",
         "async_task_app.observe_owned_poll",
         "async_task_app.remember_platform_resources",
@@ -180,6 +194,7 @@ _DERIVED_WRITE_FILES = {
     _SRC / "domain" / "money" / "__init__.py": {"reap_stale_holds", "release"},
 }
 _EXPECTED_DERIVED_WRITE_SITES = {
+    ("application/call/service.py", "_admit_org_endpoint", "org_endpoint_quota.admit"),
     ("application/call/reserve.py", "_platform_reserve", "reserve_admission"),
     ("application/call/reserve.py", "reserve_admission", "money_admission.admit"),
     ("application/call/settle.py", "_platform_settle", "money_admission.admit"),
@@ -235,6 +250,10 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("infra/provider_concurrency.py", "try_acquire", "store.acquire_slot"),
     ("infra/provider_concurrency.py", "_renew", "self.store.renew_slot"),
     ("infra/provider_concurrency.py", "_release", "self.store.release_slot"),
+    ("application/call/service.py", "_execute_call", "rate_observe.observe"),
+    ("application/call/service.py", "before_outbound", "rate_observe.observe"),
+    ("domain/capacity/rate_observe.py", "observe", "provider_rate.admit"),
+    ("infra/provider_rate.py", "admit", "store.acquire_slot"),
     ("domain/capacity/marks.py", "strike", "ratestore.kv_put"),
     ("domain/capacity/marks.py", "clear", "ratestore.kv_pop"),
     ("domain/capacity/marks.py", "clear_sweep_state", "ratestore.kv_put"),

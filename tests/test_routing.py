@@ -110,6 +110,8 @@ def test_expression_language():
     assert P.evaluate("join(a, b)", {"a": "Patrick", "b": "Collison"}) == "Patrick Collison"
     assert P.evaluate("at_most(limit, 10)", {"limit": 3}) == 3
     assert P.evaluate("at_most(limit, 10)", {"limit": 25}) == 10
+    assert P.evaluate("at_least(limit, 10)", {"limit": 3}) == 10
+    assert P.evaluate("at_least(limit, 10)", {"limit": 25}) == 25
     with pytest.raises(ValueError):
         P.evaluate("nope(a)", doc)
 
@@ -614,6 +616,51 @@ async def test_an_unverified_hit_carries_verify_advice(clients: AsyncClient, enr
     assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]) == 8_900, "the find, nothing chained"
 
 
+async def test_off_domain_hit_sets_domain_match_false(clients: AsyncClient, enrichment_on, monkeypatch):
+    """When the caller sent a domain and the child returns an address at another host (a LinkedIn-
+    only finder returning a former employer), the hit is still billed and the address is unchanged,
+    but `_treg.domain_match` / `X-Treg-Domain-Match` disclose the mismatch and advice names it."""
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [(200, {"data": {"email": "alan@othercorp.example", "score": 90,
+                                    "verification": {"status": "valid"}}})]}, []))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Alan Marquez", "domain": "pruittstructures.com"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["output"]["email"] == "alan@othercorp.example", "the child's answer is not rewritten"
+    assert d["_treg"]["outcome"] == "hit" and d["_treg"]["domain_match"] is False
+    assert r.headers["X-Treg-Domain-Match"] == "false"
+    assert "domain_match" in d["_treg"]["advice"] and "different domain" in d["_treg"]["advice"]
+    assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]) == 8_900
+
+
+async def test_matching_domain_hit_sets_domain_match_true(clients: AsyncClient, enrichment_on, monkeypatch):
+    """A hit whose mailbox host equals the domain the caller sent reports domain_match true; the
+    unverified advice still attaches when the provider did not vouch for deliverability."""
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [(200, {"data": {"email": "alan@pruittstructures.com", "score": 96,
+                                    "verification": {"status": "accept_all"}}})]}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Alan Marquez", "domain": "pruittstructures.com"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["domain_match"] is True and r.headers["X-Treg-Domain-Match"] == "true"
+    assert "treg.people.email.verify" in d["_treg"]["advice"], "match does not suppress unverified advice"
+
+
+async def test_linkedin_only_find_omits_domain_match(clients: AsyncClient, enrichment_on, monkeypatch):
+    """No domain in the request means no domain_match field — there is nothing to compare."""
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"findymail": [(200, {"contact": {"name": "Patrick Collison",
+                                           "email": "patrick@stripe.com"}})],
+         "*": [(404, {})] * 8}, []))
+    r = await clients.post(f"/call/{ROUTED}",
+                           json={"linkedin_url": "https://www.linkedin.com/in/patrickcollison"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["output"]["email"] == "patrick@stripe.com"
+    assert "domain_match" not in d["_treg"] and "X-Treg-Domain-Match" not in r.headers
+
+
 async def test_a_people_search_hit_always_carries_verify_advice(clients: AsyncClient, enrichment_on, monkeypatch):
     """Search rows are directory listings: a row's email is found, not confirmed deliverable. The
     contract has no `verified` output, so the advice attaches to every hit — Hunter domain-search
@@ -1030,7 +1077,7 @@ def test_filters_reach_adapters_through_in_expr_and_array_bodies():
     assert cat.by_id["tomba.people.email.verify"]["path"] == "/v1/email-verifier"
     assert cost_at({"usd": 0.00179, "type": "per_result", "per": 1}, req) == 8_950, "priced at the requested limit"
     ep = cat.by_id["treg.google.keywords.ideas"]
-    assert ep["input"]["body"]["country"]["note"].startswith("filter — default 'us'")
+    assert ep["input"]["body"]["country"]["note"].startswith("filter; default 'us'")
 
 
 def test_a_contract_may_set_its_own_default_ceiling():
@@ -1181,7 +1228,8 @@ async def test_the_geo_aware_child_wins_a_filtered_search_and_the_answer_says_wh
     Live 2026-08-29 this went to aviato ($0.0025, maps neither `country` nor `location`) and came
     back with people in Bengaluru and San Francisco for a London brief, reported as a hit."""
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS-KEY")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,aviato,fiber-ai,icypeas")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_EXA", "PLATFORM-EXA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,exa,fiber-ai,icypeas")
     get_settings.cache_clear()
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
@@ -1204,12 +1252,12 @@ async def test_the_geo_aware_child_wins_a_filtered_search_and_the_answer_says_wh
     # …and when the winner cannot express a filter, the answer says which — envelope, header, attempt
     seen2 = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"*": [(200, {"items": [{"fullName": "Ada L", "URLs": {"linkedin": "linkedin.com/in/al"}}], "count": {"value": 1}})] * 12}, seen2))
+        {"*": [(200, {"results": [{"name": "Ada L", "url": "https://linkedin.com/in/al"}]})] * 12}, seen2))
     r2 = await clients.post("/call/treg.people.search", json={"q": "backend engineer", "country": "GB", "limit": 15})
     assert r2.status_code == 200, r2.text
     d2 = r2.json()
-    assert d2["_treg"]["served_by"] == "aviato.people.search", "no geo-aware child answers a {q}-only brief here"
-    assert d2["_treg"]["ignored_filters"] == ["country"], "the caller sent it; aviato has no place for it"
+    assert d2["_treg"]["served_by"] == "exa.people.search", "no geo-aware child answers a {q}-only brief here"
+    assert d2["_treg"]["ignored_filters"] == ["country"], "the caller sent it; exa has no place for it"
     assert r2.headers["X-Treg-Ignored-Filters"] == "country"
     assert d2["_treg"]["tried"][-1]["ignored_filters"] == ["country"], "same set in all three places"
 
@@ -1286,11 +1334,11 @@ async def test_a_thin_hit_does_not_end_the_waterfall_when_the_caller_set_min_res
     search (bench 2026-08-29: the hand-written policy's `if len(rows) < 3 -> fall through` was the
     single behaviour the routed path could not express)."""
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS-KEY")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,aviato,fiber-ai,icypeas")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_EXA", "PLATFORM-EXA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,exa,fiber-ai,icypeas")
     get_settings.cache_clear()
     thin = {"leads": [{"firstname": "Solo", "lastname": "Row", "profileUrl": "https://linkedin.com/in/s"}]}
-    full = {"items": [{"fullName": f"P{i}", "URLs": {"linkedin": f"linkedin.com/in/p{i}"}} for i in range(9)],
-            "count": {"value": 9}}
+    full = {"results": [{"name": f"P{i}", "url": f"https://linkedin.com/in/p{i}"} for i in range(9)]}
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
         {"icypeas": [(200, thin)], "*": [(200, full)] * 12}, seen))
@@ -1312,8 +1360,7 @@ async def test_a_thin_hit_does_not_end_the_waterfall_when_the_caller_set_min_res
     # and when NOBODY clears the bar, the fullest weak answer is still returned, not a miss
     seen3 = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"icypeas": [(200, thin)], "*": [(200, {"items": [{"fullName": "Two"}, {"fullName": "Rows"}],
-                                                "count": {"value": 2}})] * 12}, seen3))
+        {"icypeas": [(200, thin)], "*": [(200, {"results": [{"name": "Two"}, {"name": "Rows"}]})] * 12}, seen3))
     r3 = await clients.post("/call/treg.people.search", json=body, headers={"X-Treg-Route-Min-Results": "5"})
     assert r3.status_code == 200 and len(r3.json()["output"]["people"]) == 2, "best effort beats nothing"
 
@@ -1358,13 +1405,14 @@ async def test_merge_unions_the_rows_the_caller_already_paid_for(
     winner's rows throws away results the team bought. Bench 2026-08-29: a people.search that fell
     through returned the fullest single provider's rows, never icypeas' 5 plus exa's 10."""
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS-KEY")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,aviato,fiber-ai,icypeas")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_EXA", "PLATFORM-EXA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,exa,fiber-ai,icypeas")
     get_settings.cache_clear()
     icy = {"leads": [{"firstname": "Ada", "lastname": "L", "profileUrl": "https://linkedin.com/in/ada"},
                      {"firstname": "Bo", "lastname": "M", "profileUrl": "https://linkedin.com/in/bo"}], "total": 2}
     # one row OVERLAPS on the profile url (different casing/scheme), one is new
-    other = {"items": [{"fullName": "Ada L", "URLs": {"linkedin": "www.linkedin.com/in/Ada/"}},
-                       {"fullName": "Cy N", "URLs": {"linkedin": "linkedin.com/in/cy"}}], "count": {"value": 2}}
+    other = {"results": [{"name": "Ada L", "url": "https://www.linkedin.com/in/Ada/"},
+                         {"name": "Cy N", "url": "https://linkedin.com/in/cy"}]}
     body = {"q": "backend engineer", "title": "Backend Engineer", "limit": 15}
 
     seen = []

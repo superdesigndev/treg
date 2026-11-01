@@ -359,7 +359,10 @@ async def _telemetry(clients: AsyncClient) -> dict:
 def _fake_relay(status_code: int, body: bytes = b"{}", *, raises: Exception | None = None):
     """Stand in for `relay` when the test needs a specific UPSTREAM outcome the echo app can't give
     (a provider 5xx, a network error, a provider-reported cost). Everything else uses the real relay."""
-    async def _relay(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False):
+    async def _relay(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False,
+                     before_outbound=None):
+        if before_outbound is not None:
+            await before_outbound()
         if raises is not None:
             raise raises
 
