@@ -175,6 +175,9 @@ once, base64-encoded with `X-Treg-Body-Encoding: base64`, which the server decod
 [api](api.md)). This is what lets `treg upload` push SQL-bearing recipes and `treg call` proxy
 SQL/HTML bodies through Cloudflare/Render. Transparent — no effect on any request that isn't blocked.
 
+The base CLI includes `httpx[socks]`, so fresh installs and updates include the dependencies needed
+for SOCKS proxies configured through HTTPX's standard proxy environment variables.
+
 `_active_org_id(cfg, c, strict=True)` resolves the active org's numeric id via `GET /orgs`, falling
 back to `/auth/me` when that 403s — which is what a MACHINE identity gets, since the server refuses it
 there on purpose. An invalid token now exits naming the real problem instead of the bare "no active
