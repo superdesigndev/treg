@@ -40,12 +40,9 @@
 #      upstream. AnyAPI then refuses any source dearer than it with HTTP 400 `max_cost_exceeded`
 #      and no charge, so settlement cannot exceed the ceiling. An explicit `max_cost_usd` from
 #      the caller is relayed unchanged.
-#   4. RESPONSE BUDGET. This file declares a header `queryParams` block (`fields`, `max_items`,
-#      `summary`, `jq`) — AnyAPI's response-trimming controls on every `/v1/run/...` path. The
-#      catalog loader merges them into each endpoint's `input.queryParams` (core wins over
-#      extended; an endpoint's own declaration of a name wins). They trim the response body and
-#      never change the charge; `costUsd` still settles the real number. The generated extended
-#      file needs none of this block.
+#   4. RESPONSE BUDGET. The header `queryParams` (`fields`, `max_items`, `summary`, `jq`) are
+#      AnyAPI's response-trimming controls on every `/v1/run/...` path, merged into each endpoint's
+#      inputs. They trim the body, never the charge: `costUsd` still settles the real number.
 # A request that no source could serve returns a non-2xx and is not charged. A source that answers
 # not-found is a 2xx with `output.found: false` and IS charged at the row's price: linkedin.email
 # billed $0.011 for a profile that does not exist (probed 2026-09-19), so a miss is not free here.
@@ -67,20 +64,20 @@ queryParams:
   fields:
     type: string
     required: false
-    note: 'Query parameter, not a body field. Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, never the charge.'
+    note: 'Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, not the charge.'
   max_items:
     type: integer
     required: false
     min: 0
-    note: 'Query parameter, not a body field. Caps the result rows returned; a `_truncated` note says how many were withheld. Never changes the charge.'
+    note: 'Caps the result rows returned; `_truncated` says how many were withheld. Not the charge.'
   summary:
     type: boolean
     required: false
-    note: 'Query parameter, not a body field. `true` returns only an outline (keys, item counts, per-field sizes). Never changes the charge.'
+    note: '`true` returns only an outline: keys, item counts, per-field sizes.'
   jq:
     type: string
     required: false
-    note: 'Query parameter, not a body field. A jq expression over the result envelope; its output replaces `output`, and a failed expression returns the full result with `jqError`. Never changes the charge.'
+    note: 'jq expression over the result envelope; its output replaces `output`. A failed expression returns the full result with `jqError`.'
 pricing_url: https://getanyapi.com/catalog
 proposed_capabilities:
 endpoints:
