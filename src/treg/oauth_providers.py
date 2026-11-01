@@ -4137,6 +4137,39 @@ PINTEREST_ADS = OAuthProvider(
     probe_path="/user_account",  # cheap token check once configured; auto-provisions a Bearer tool
 )
 
+XAGENTID = OAuthProvider(
+    service="xagentid",
+    display_name="xAgent ID",
+    auth_kind="key",
+    token_label="Site Agent Key",
+    token_placeholder="your xAgent ID Site Agent Key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://xagent.id/auth.md",
+    setup_action_label="Get your xAgent ID Site Agent Key",
+    setup_steps=(
+        "Register your website at xagent.id and publish the DNS TXT or file proof it returns.",
+        "Verify domain ownership; the Site Agent Key is issued once, on successful verification.",
+    ),
+    setup_note=(
+        "The catalogued public reads are free and need no key; a connected key is not required "
+        "there. Connect checks the key against the authenticated A2A card route, which rejects "
+        "an invalid key."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Audit a website's AI-agent readiness (SEO/AEO/GEO) and turn any public website into a source-backed company Agent Card.",
+    base_url="https://xagent.id",
+    docs_url="https://xagent.id/llms.txt",
+    # The public routes answer 200 with or without a key, so the key check lives on the
+    # authenticated A2A v0.3 extended-card route, which 401s a missing or invalid Bearer key.
+    # Absolute and probe_path empty: connect-time verification only.
+    probe_url="https://xagent.id/a2a/v0.3/v1/card",
+    probe_path="",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4155,6 +4188,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
+        XAGENTID,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,

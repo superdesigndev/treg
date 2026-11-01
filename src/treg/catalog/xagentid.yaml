@@ -1,0 +1,361 @@
+provider: xagentid
+source:
+  docs: https://xagent.id/llms.txt
+  openapi: https://xagent.id/openapi.json
+  curated: '2026-11-01'
+limits: 'Public reads: 60 requests/minute per IP (HTTP 429 with retry_after, no rate-limit headers).
+  /api/card additionally allows 3 new-site crawls per minute per IP for hosts with no stored card snapshot;
+  cached hosts are served from the snapshot. Audit-family reads (audit_report, evidence_pack, readiness_snapshot,
+  citation_gap_matrix, content_optimization_plan) fetch the target site live and take about 5 s. Public reads
+  need no key; a Site Agent Key (Authorization: Bearer) is only needed for owner-scoped routes, which are not catalogued.'
+pricing_url: https://xagent.id/agent/pricing.json
+proposed_capabilities:
+  web.site.agent-card: Turn a company website into a source-backed agent card
+  ai-search.readiness.evidence: Collect page-level evidence of how readable a website is to AI agents
+  ai-search.readiness.snapshot: Freeze a website's AI-readiness checks into a comparable snapshot
+  ai-search.citation.gaps: Find why AI answers do not cite a website
+  ai-search.content.plan: Plan answer-first content rewrites so AI answers can cite a website
+  web.site.agent-status: Check whether a website has a verified agent installed
+  web.site.agent-install-plan: Get the step-by-step plan to install an agent on a website
+  ai-search.workflow.route: Pick the next AI-visibility workflow for a website and goal
+  ai-search.industries.list: List the industry taxonomy used for AI-visibility benchmarks
+endpoints:
+- id: xagentid.company.card
+  added: '2026-11-01'
+  capability: web.site.agent-card
+  platform: web
+  scope: any_account
+  method: GET
+  path: /api/card
+  name: Company Agent Card from a website
+  summary: Build one source-backed public company Agent Card, including a canonical legal-entity candidate
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        example: https://stripe.com
+        note: Public HTTPS website (homepage). Bounded crawl of public pages only.
+    note: 'Returns {ok, agent_card{name, description, url, agent_id, provider, public_card, ...}, package, company_lifecycle}.
+      Hosts already in the snapshot store answer in under 1 s; a never-seen host triggers a bounded crawl
+      (3 per minute per IP) and may return a progressive/pending card first. Legal-entity matches are
+      candidates, not confirmations. Not an official company statement.'
+  test_request:
+    queryParams:
+      url: https://stripe.com
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://xagent.id/agent/pricing.json
+    checked: '2026-11-01'
+    confidence: documented
+    note: 'Public reads are on the published "Free Check" plan (price_cents 0, billing_type free) in the machine-readable
+      rate card at /agent/pricing.json. No charge header or balance exists for anonymous calls, so the meter column
+      is not observable; the zero price rests on the rate card.'
+  docs_url: https://xagent.id/llms.txt
+- id: xagentid.site.audit-report
+  added: '2026-11-01'
+  capability: web.page.audit
+  platform: web
+  scope: any_account
+  method: GET
+  path: /api/agent/audit_report
+  name: AI-readiness audit report (SEO/AEO/GEO)
+  summary: Return a customer-readable R1 audit report
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        example: https://stripe.com
+        note: Public HTTPS URL to audit; fetched live.
+    note: 'Returns {ok, measurement_status, report{overall_score, grade, scorecard, three_biggest_opportunities,
+      three_fastest_wins, priority_action_plan, fix_guidance, measurement_plan, non_claims, content_hash}}.
+      Methodology: https://xagent.id/docs/audit-methodology.md. Scores are readiness signals, not ranking or
+      citation guarantees. Increments the public audit counter.'
+  test_request:
+    queryParams:
+      url: https://stripe.com
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://xagent.id/agent/pricing.json
+    checked: '2026-11-01'
+    confidence: documented
+    note: 'Public reads are on the published "Free Check" plan (price_cents 0, billing_type free) in the machine-readable
+      rate card at /agent/pricing.json. No charge header or balance exists for anonymous calls, so the meter column
+      is not observable; the zero price rests on the rate card.'
+  docs_url: https://xagent.id/docs/audit-methodology.md
+- id: xagentid.site.evidence-pack
+  added: '2026-11-01'
+  capability: ai-search.readiness.evidence
+  platform: ai-search
+  scope: any_account
+  method: GET
+  path: /api/agent/evidence_pack
+  name: AI-readiness evidence pack
+  summary: Return deterministic E1 audit evidence details
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        example: https://stripe.com
+    note: 'Returns {ok, evidence_pack{sampled_pages, source_refs, checks, non_claims, content_hash}}: the per-check
+      evidence behind the audit score, sampled from public pages.'
+  test_request:
+    queryParams:
+      url: https://stripe.com
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://xagent.id/agent/pricing.json
+    checked: '2026-11-01'
+    confidence: documented
+    note: 'Public reads are on the published "Free Check" plan (price_cents 0, billing_type free) in the machine-readable
+      rate card at /agent/pricing.json. No charge header or balance exists for anonymous calls, so the meter column
+      is not observable; the zero price rests on the rate card.'
+  docs_url: https://xagent.id/openapi.json
+- id: xagentid.site.readiness-snapshot
+  added: '2026-11-01'
+  capability: ai-search.readiness.snapshot
+  platform: ai-search
+  scope: any_account
+  method: GET
+  path: /api/agent/readiness_snapshot
+  name: AI-readiness snapshot
+  summary: Freeze audit evidence into a hash-addressed readiness snapshot
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        example: https://stripe.com
+    note: 'Returns {ok, snapshot{snapshot_id, rule_version, url, captured_at, ...}}. Keep snapshot_id to compare
+      two points in time (comparison is a POST route, not catalogued).'
+  test_request:
+    queryParams:
+      url: https://stripe.com
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://xagent.id/agent/pricing.json
+    checked: '2026-11-01'
+    confidence: documented
+    note: 'Public reads are on the published "Free Check" plan (price_cents 0, billing_type free) in the machine-readable
+      rate card at /agent/pricing.json. No charge header or balance exists for anonymous calls, so the meter column
+      is not observable; the zero price rests on the rate card.'
+  docs_url: https://xagent.id/openapi.json
+- id: xagentid.site.citation-gap-matrix
+  added: '2026-11-01'
+  capability: ai-search.citation.gaps
+  platform: ai-search
+  scope: any_account
+  method: GET
+  path: /api/agent/citation_gap_matrix
+  name: AI citation gap matrix
+  summary: Return a C1 citation-gap matrix
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        example: https://stripe.com
+    note: 'Returns {ok, matrix{factors, score_scale, matrix, measurement_protocol, operator_next_steps, non_claims}}.
+      Derived from public page evidence; it does not query AI engines and fabricates no citation scores.'
+  test_request:
+    queryParams:
+      url: https://stripe.com
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://xagent.id/agent/pricing.json
+    checked: '2026-11-01'
+    confidence: documented
+    note: 'Public reads are on the published "Free Check" plan (price_cents 0, billing_type free) in the machine-readable
+      rate card at /agent/pricing.json. No charge header or balance exists for anonymous calls, so the meter column
+      is not observable; the zero price rests on the rate card.'
+  docs_url: https://xagent.id/openapi.json
+- id: xagentid.site.content-plan
+  added: '2026-11-01'
+  capability: ai-search.content.plan
+  platform: ai-search
+  scope: any_account
+  method: GET
+  path: /api/agent/content_optimization_plan
+  name: Content citability optimization plan
+  summary: Return a C1 content citability optimization plan
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        example: https://stripe.com
+    note: 'Returns {ok, plan{page_profile, citability_diagnosis, question_answer_coverage, answer_first_rewrite,
+      structured_summary_block, six_step_workflow, ...}}. Draft guidance only; nothing is published.'
+  test_request:
+    queryParams:
+      url: https://stripe.com
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://xagent.id/agent/pricing.json
+    checked: '2026-11-01'
+    confidence: documented
+    note: 'Public reads are on the published "Free Check" plan (price_cents 0, billing_type free) in the machine-readable
+      rate card at /agent/pricing.json. No charge header or balance exists for anonymous calls, so the meter column
+      is not observable; the zero price rests on the rate card.'
+  docs_url: https://xagent.id/openapi.json
+- id: xagentid.site.install-status
+  added: '2026-11-01'
+  capability: web.site.agent-status
+  platform: web
+  scope: any_account
+  method: GET
+  path: /api/site_agents/install_status
+  name: Website agent installation status
+  summary: Return a key-free public installation and domain-proof status
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        example: https://stripe.com
+    note: 'Returns {ok, host, agent_id, status (e.g. not_installed), steps{identity_created, public_proof, domain_verified,
+      sdk_active}, proof_url, next_action, public_state}. Free preflight before any install or audit work.'
+  test_request:
+    queryParams:
+      url: https://stripe.com
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://xagent.id/agent/pricing.json
+    checked: '2026-11-01'
+    confidence: documented
+    note: 'Public reads are on the published "Free Check" plan (price_cents 0, billing_type free) in the machine-readable
+      rate card at /agent/pricing.json. No charge header or balance exists for anonymous calls, so the meter column
+      is not observable; the zero price rests on the rate card.'
+  docs_url: https://xagent.id/openapi.json
+  kind: utility
+- id: xagentid.site.install-manifest
+  added: '2026-11-01'
+  capability: web.site.agent-install-plan
+  platform: web
+  scope: any_account
+  method: GET
+  path: /.well-known/xagent-install.json
+  name: Website agent install manifest
+  summary: Return the compact machine-executable xAgent installation manifest
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        example: https://stripe.com
+    note: 'Returns {schema, target, release, contracts, modules, authority, workflow, evidence_policy, failure_policy}.
+      Read-only plan; applying it requires the site owner''s approval and domain verification.'
+  test_request:
+    queryParams:
+      url: https://stripe.com
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://xagent.id/agent/pricing.json
+    checked: '2026-11-01'
+    confidence: documented
+    note: 'Public reads are on the published "Free Check" plan (price_cents 0, billing_type free) in the machine-readable
+      rate card at /agent/pricing.json. No charge header or balance exists for anonymous calls, so the meter column
+      is not observable; the zero price rests on the rate card.'
+  docs_url: https://xagent.id/llms.txt
+  kind: utility
+- id: xagentid.workflow.route
+  added: '2026-11-01'
+  capability: ai-search.workflow.route
+  platform: ai-search
+  scope: any_account
+  method: GET
+  path: /api/agent/workflow_router
+  name: AI-visibility workflow router
+  summary: Return the W1 workflow router for audit, content, measurement, or Site Agent installation
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        example: https://stripe.com
+      intent:
+        type: string
+        required: false
+        example: audit
+        note: 'One of audit | content | measurement | install.'
+    note: 'Returns {target, intent, recommended_route_ids, routes, report_shape, evidence_inputs, next_public_document}.
+      Free pre-flight: no crawl, answers in about 0.3 s.'
+  test_request:
+    queryParams:
+      url: https://stripe.com
+      intent: audit
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://xagent.id/agent/pricing.json
+    checked: '2026-11-01'
+    confidence: documented
+    note: 'Public reads are on the published "Free Check" plan (price_cents 0, billing_type free) in the machine-readable
+      rate card at /agent/pricing.json. No charge header or balance exists for anonymous calls, so the meter column
+      is not observable; the zero price rests on the rate card.'
+  docs_url: https://xagent.id/openapi.json
+  kind: utility
+- id: xagentid.industries.list
+  added: '2026-11-01'
+  capability: ai-search.industries.list
+  platform: ai-search
+  scope: any_account
+  method: GET
+  path: /api/agent/industry_taxonomy
+  name: Industry taxonomy
+  summary: Return the canonical 12-industry taxonomy and buyer/conversion goals
+  input:
+    note: 'No parameters. Returns {schema, industries[12], legacy_mapping}.'
+  test_request:
+    queryParams: {}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://xagent.id/agent/pricing.json
+    checked: '2026-11-01'
+    confidence: documented
+    note: 'Public reads are on the published "Free Check" plan (price_cents 0, billing_type free) in the machine-readable
+      rate card at /agent/pricing.json. No charge header or balance exists for anonymous calls, so the meter column
+      is not observable; the zero price rests on the rate card.'
+  docs_url: https://xagent.id/openapi.json
+  kind: utility
