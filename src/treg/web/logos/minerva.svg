@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Minerva lettermark">
+  <rect width="64" height="64" rx="14" fill="#334155"/>
+  <path d="M14 47V17h7l11 18 11-18h7v30h-7V29L32 46 21 29v18z" fill="#fff"/>
+</svg>

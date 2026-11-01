@@ -349,6 +349,7 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 # Platform providers whose out-of-credit answer nobody has recorded in `_TABLE` yet. An acknowledged
 # gap, not a claim the vendor never runs dry: their 4xx trips `unrecorded` instead.
 _UNRECORDED_SIGNATURE = {
+    "minerva",  # public-docs-only draft; no funded-account exhaustion was observed
     "dropcontact",  # Growth credits remain; no empty-balance error body was forced
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
     "apify", "aviato", "branddev", "brightdata", "coingecko", "coresignal", "crustdata", "dataforseo",

@@ -342,6 +342,7 @@ class Settings(BaseSettings):
     platform_key_leadmagic: str = ""
     platform_key_lusha: str = ""
     platform_key_pdl: str = ""
+    platform_key_minerva: str = ""  # x-api-key; shared use requires an agreed, verified record rate
     platform_key_diffbot: str = ""
     platform_key_akta: str = ""
     platform_key_apify: str = ""

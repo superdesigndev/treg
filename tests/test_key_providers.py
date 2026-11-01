@@ -43,6 +43,29 @@ async def test_anymailfinder_key_uses_free_account_probe(clients, monkeypatch):
 
 
 # ---- registry shape ----------------------------------------------------------------------
+async def test_minerva_connection_uses_header_key_and_billing_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://api.minerva.io/billing/usage"
+        assert "authorization" not in request.headers
+        if request.headers["x-api-key"] == "minerva-test-key":
+            return httpx.Response(200, json={"access_status": "active"})
+        return httpx.Response(403, json={"code": "forbidden"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        accepted = await clients.post(
+            "/connections/token",
+            json={"provider": "minerva", "token": "minerva-test-key"},
+        )
+        assert accepted.status_code == 200, accepted.text
+        rejected = await clients.post(
+            "/connections/token",
+            json={"provider": "minerva", "token": "minerva-invalid-key"},
+        )
+        assert rejected.status_code == 422 and "rejected" in rejected.text
+
+
 def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,
     not shown as 'not configured' the way an unset OAuth provider is."""
