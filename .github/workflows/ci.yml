@@ -302,3 +302,26 @@ jobs:
               assert not [member.name for member in source.getmembers()
                           if member.name.endswith('.mp4')]
           PYCODE
+      - name: Check installed CLI with SOCKS proxies
+        env:
+          TREG_TELEMETRY: "0"
+        run: |
+          set -eu
+          CLI_SMOKE_ENV=$(mktemp -d "$RUNNER_TEMP/treg-cli-smoke.XXXXXX")
+          uv venv --python 3.13 "$CLI_SMOKE_ENV"
+          uv pip install --python "$CLI_SMOKE_ENV/bin/python" dist/*.whl
+          "$CLI_SMOKE_ENV/bin/python" -I - <<'PYCODE'
+          import os
+
+          for name in tuple(os.environ):
+              if name.lower().endswith("_proxy") or name == "TREG_URL":
+                  os.environ.pop(name)
+
+          from treg.cli import _client
+
+          for scheme in ("socks5", "socks5h"):
+              os.environ["ALL_PROXY"] = f"{scheme}://127.0.0.1:9"
+              with _client({"base_url": "https://registry.example"}, auth=False):
+                  pass
+              print(f"{scheme}: client construction passed")
+          PYCODE
