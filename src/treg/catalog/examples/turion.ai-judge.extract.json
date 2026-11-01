@@ -1,0 +1,19 @@
+{
+  "id": "01a198d2-929a-738f-99f8-87890c817cc4",
+  "model": "turion-extract-alpha",
+  "answers": {
+    "total": {
+      "type": "number",
+      "value": 5,
+      "p_null": 0.001062,
+      "confidence": 0.998938
+    }
+  },
+  "truncated": false,
+  "usage": {
+    "input_tokens": 64,
+    "output_tokens": 0,
+    "passes": 1,
+    "cost": 0.0000032
+  }
+}
