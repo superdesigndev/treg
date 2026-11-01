@@ -2193,3 +2193,15 @@ async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: A
     assert {"endpoint_id": "akta.companies.news", "why": "needs limit <= 3"} in over.dropped
     under = await call_route.build_plan(ep, {"domain": "canva.com", "limit": 3}, _Caller(), options)
     assert any(c.endpoint["id"] == "akta.companies.news" for c in under.candidates)
+
+
+def test_routed_miss_count_includes_a_per_success_child_that_bills_a_miss():
+    """A per-success child whose provider still charges for some misses (Lusha bills the 1-credit
+    search on a matched profile with no number) declares `bills_miss`, and the routed row counts it,
+    so the routed note never says "misses are free" while one of its children bills them."""
+    cat = catalog_store.load()
+    assert cat.by_id["lusha.people.phone.find"]["cost"].get("bills_miss") is True
+    phone = cat.by_id["treg.people.phone.find"]
+    assert "lusha.people.phone.find" in phone["miss_billed_by"]
+    assert "misses are free" not in phone["cost"]["note"]
+    assert phone["cost"].get("varies") is True
