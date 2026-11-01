@@ -3207,7 +3207,7 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.formats: [markdown]}
     out: {pages: ".", count: "len(.)"}
-    miss: "coalesce([0].markdown, '') == ''"
+    miss: "coalesce([0].markdown, [0].html, '') == ''"
   tinyfish.web.fetch:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
