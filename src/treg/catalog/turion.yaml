@@ -49,8 +49,6 @@ endpoints:
       confidence: verified
       note: "Settles at the reply's `usage.cost`: input tokens at $0.021 per million; output is free."
     docs_url: https://turion.ai/docs/reference/rest-api/#post-v1systemone
-    verified: '2026-11-01'
-    example_response: examples/turion.ai-judge.decide.json
 
   - id: turion.ai-judge.extract
     added: '2026-11-01'
@@ -86,5 +84,3 @@ endpoints:
       confidence: verified
       note: "Settles at the reply's `usage.cost`: input tokens at $0.05 per million; output is free."
     docs_url: https://turion.ai/docs/reference/rest-api/#post-v1extract
-    verified: '2026-11-01'
-    example_response: examples/turion.ai-judge.extract.json
