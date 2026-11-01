@@ -370,7 +370,10 @@ shape (`req_*`, pre-injection) plus the answer; a hash-only version reports `sto
 `GET /calls/{id}/result` (api.py; `id` is the row id or the `X-Treg-Call-Id`) exposes it to members of the row's org, with a `note` on every
 "nothing on file" branch; `/calls` rows carry `has_result`. A routed parent has no link of its
 own (it wraps a child's answer); its read lists `children`, the child rows (`<ref>:r<n>`, check,
-upgrade) with their status and `has_result`, each readable through the same endpoint. The archive stays platform-scoped —
+upgrade) with their status and `has_result`, each readable through the same endpoint. Children
+are audited as they finish, before the parent, so the lookup reads the hour before the parent's
+row: an `(org_id, created_at)` index read, wide enough for any waterfall of upstream timeouts.
+The archive stays platform-scoped —
 what makes the read safe is that the row belongs to the team and names the exact bytes that
 team already received. Failure evidence (`error_*`) is untouched and still admin-only.
 
