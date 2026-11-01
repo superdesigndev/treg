@@ -4068,11 +4068,50 @@ def _is_transient_network_error(exc: Exception) -> bool:
 
 
 def cmd_mcp_install(args, cfg) -> None:
-    """Register the treg MCP server into every supported agent on this machine, header-authed with
-    the logged-in token (which bakes in the team, so no org to pass). The MCP sibling of
-    `treg skill bootstrap` — install.sh calls it after login, and it is runnable by hand. Needs a
-    token: run `treg login` first (or `treg login --token <key>`)."""
+    """Register the treg MCP server into every supported agent on this machine.
+
+    Default: header-authed with the logged-in token (which bakes in the team, so no org to pass).
+    The MCP sibling of `treg skill bootstrap` — install.sh calls it after login, and it is runnable
+    by hand. Needs a token: run `treg login` first (or `treg login --token <key>`).
+
+    `--oauth`: repair path when a saved MCP bearer is dead. Rewrites every managed agent to the URL
+    only (no Authorization header) so the client can authorize itself. Needs no valid token — the
+    point is that the stored one is already dead. Default install stays header-based.
+    """
     from . import mcp_install
+    import textwrap
+    oauth = bool(getattr(args, "oauth", False))
+    base_url = (cfg.get("base_url") or "https://treg.to").rstrip("/")
+    name = getattr(args, "name", None) or "treg"
+
+    if oauth:
+        out = mcp_install.install_mcp(base_url=base_url, token="", server_name=name, oauth=True)
+        ok = 0
+        _section(f"① Rewrote {name} for OAuth  ({out['mcp_url']})")
+        for display, status, detail in out["results"]:
+            if status == "ok":
+                ok += 1
+                _ok(f"{_B}{display}{_R}  {_M}{detail}{_R}")
+            elif status == "skipped":
+                print(f"  {_M}·{_R} {display}  {_M}skipped: {detail}{_R}")
+            else:
+                print(f"  ✗ {display}  {_M}{detail}{_R}")
+        if not out["results"]:
+            _dim("  no MCP-capable agent found on this machine; nothing to rewrite")
+        if out["manual"]:
+            _section("② By hand")
+            for display, how in out["manual"]:
+                print(f"  {_A}⚠{_R} {_B}{display}{_R}")
+                for line in textwrap.wrap(how, width=76):
+                    _dim(f"      {line}")
+        _section("③ Next")
+        _kv("agents", f"{ok} rewritten without Authorization; restart each agent")
+        _arrow("Claude Code: /mcp → pick treg → Authenticate")
+        _arrow(f"Codex: codex mcp login {name}")
+        _arrow("Cursor / opencode: complete the client's OAuth/sign-in prompt for treg "
+               "(Cursor's prompt after header removal is not yet live-verified)")
+        return
+
     token = os.environ.get("TREG_TOKEN") or cfg.get("token")
     if not token:
         sys.exit("no token — run `treg login` first (or `treg login --token <key>`), then retry")
@@ -4111,13 +4150,11 @@ def cmd_mcp_install(args, cfg) -> None:
     if who.status_code == 401:
         sys.exit("That token was rejected (401 invalid token) — nothing was written. It's expired "
                  "or from a different server; run `treg login` (or copy a fresh token from the "
-                 "dashboard), then retry.")
+                 "dashboard), then retry. If the MCP server already holds a dead key, repair with "
+                 "`treg mcp install --oauth` instead (needs no login).")
     if who.status_code >= 400:
         sys.exit(f"Token check failed ({who.status_code}): {who.text[:120]} — nothing was written.")
-    base_url = (cfg.get("base_url") or "https://treg.to").rstrip("/")
-    name = getattr(args, "name", None) or "treg"
     out = mcp_install.install_mcp(base_url=base_url, token=token, server_name=name)
-    import textwrap
     ok = 0
     _section(f"① Registered {name}  ({out['mcp_url']})")
     for display, status, detail in out["results"]:
@@ -7329,9 +7366,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     mc = mk(sub, "mcp", "Register the treg MCP server into the coding agents on this machine.",
             "treg mcp install").add_subparsers(dest="sub", required=True, metavar="<subcommand>")
-    mci = mk(mc, "install", "Add treg as a header-authed MCP server in every supported detected agent.",
+    mci = mk(mc, "install", "Add treg as a header-authed MCP server in every supported detected agent "
+             "(or rewrite to OAuth with --oauth).",
              "treg mcp install")
     mci.add_argument("--name", default="treg", help="the MCP server name to register (default: treg)")
+    mci.add_argument("--oauth", action="store_true",
+                     help="rewrite every managed agent to URL-only (no Authorization) so the client "
+                          "can authorize itself; needs no login — use when the saved MCP key is dead")
     mci.set_defaults(fn=cmd_mcp_install)
     mk(mc, "grants", "List the MCP connections you've authorised and which team each one spends from.",
        "treg mcp grants").set_defaults(fn=cmd_mcp_grants)

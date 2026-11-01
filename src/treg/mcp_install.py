@@ -4,12 +4,18 @@ The sibling of `treg skill bootstrap`. Bootstrap drops a SKILL.md into each agen
 uniform file-drop). MCP is not uniform: each agent keeps its server list in its OWN file and schema,
 so this writes each format rather than one shared thing.
 
-**Why a static `Authorization` header and not OAuth here.** treg IS an OAuth authorization server,
-and a browser "connect" flow exists — but the whole point of this command is the *headless* path: an
-agent (or install.sh) is handed a team-scoped token and wires every agent up with no browser. A
-client only falls back to OAuth discovery when it gets a 401; treg returns 200 for a valid header, so
-the header is honoured and OAuth never triggers (verified against Claude Code, which otherwise prefers
-OAuth — the determinant is "does the server 200 a valid header", which treg does).
+**Why a static `Authorization` header and not OAuth here (default).** treg IS an OAuth authorization
+server, and a browser "connect" flow exists — but the default path is *headless*: an agent (or
+install.sh) is handed a team-scoped token and wires every agent up with no browser. A client only
+falls back to OAuth discovery when it gets a 401; treg returns 200 for a valid header, so the header
+is honoured and OAuth never triggers (verified against Claude Code, which otherwise prefers OAuth —
+the determinant is "does the server 200 a valid header", which treg does).
+
+**`oauth=True` (`treg mcp install --oauth`) is the repair path.** When the saved header key is dead
+(session-secret rotation, revoke-tokens, Default-key rotation) the only way back to OAuth is to
+remove the Authorization header from each agent's config — Claude Code and Codex refuse OAuth
+fallback while headers.Authorization is set. That mode needs no valid token: it rewrites every
+managed entry to the URL only and tells the human to restart + authorize in the client.
 
 **Kept deliberately small and correct over broad.** Only agents whose MCP format is verified are
 written: Claude Code via its own `claude mcp add` (it owns its format, and redacts the token in its
@@ -54,6 +60,7 @@ MCP_AGENTS: dict[str, dict] = {
     "cursor": {"display": "Cursor", "kind": "json",
                "path": lambda: HOME / ".cursor" / "mcp.json", "root": "mcpServers",
                "entry": lambda url, tok: {"url": url, "headers": {"Authorization": f"Bearer {tok}"}},
+               "entry_oauth": lambda url: {"url": url},
                "marker": lambda: (HOME / ".cursor").exists()},
     "codex": {"display": "Codex", "kind": "toml",
               "path": lambda: HOME / ".codex" / "config.toml",
@@ -62,6 +69,7 @@ MCP_AGENTS: dict[str, dict] = {
                  "path": lambda: _config_home() / "opencode" / "opencode.json", "root": "mcp",
                  "entry": lambda url, tok: {"type": "remote", "url": url, "enabled": True,
                                             "headers": {"Authorization": f"Bearer {tok}"}},
+                 "entry_oauth": lambda url: {"type": "remote", "url": url, "enabled": True},
                  "marker": lambda: (_config_home() / "opencode").exists()},
 }
 
@@ -123,7 +131,21 @@ def _write_private(path: Path, text: str) -> None:
                 tmp_path.unlink(missing_ok=True)
 
 
-def _write_json_agent(meta: dict, name: str, url: str, token: str) -> tuple[str, str]:
+def _json_entry(meta: dict, url: str, token: str, *, oauth: bool) -> dict:
+    """Header-authed entry by default; URL-only (no Authorization) when repairing to OAuth."""
+    if oauth:
+        entry = meta.get("entry_oauth")
+        if entry is not None:
+            return entry(url)
+        # Strip headers from the default shape so Cursor/opencode fall through to OAuth.
+        shaped = dict(meta["entry"](url, token))
+        shaped.pop("headers", None)
+        return shaped
+    return meta["entry"](url, token)
+
+
+def _write_json_agent(meta: dict, name: str, url: str, token: str, *,
+                      oauth: bool = False) -> tuple[str, str]:
     """Merge one server entry into an agent's JSON config, preserving everything else. Returns
     (status, detail). Idempotent: re-running overwrites just our entry."""
     path: Path = meta["path"]()
@@ -135,7 +157,7 @@ def _write_json_agent(meta: dict, name: str, url: str, token: str) -> tuple[str,
         servers = data.get(root)
         if not isinstance(servers, dict):
             servers = {}
-        servers[name] = meta["entry"](url, token)
+        servers[name] = _json_entry(meta, url, token, oauth=oauth)
         data[root] = servers
         _write_private(path, json.dumps(data, indent=2) + "\n")
         return "ok", str(path)
@@ -143,12 +165,14 @@ def _write_json_agent(meta: dict, name: str, url: str, token: str) -> tuple[str,
         return "error", f"{path}: {exc}"
 
 
-def _write_toml_agent(meta: dict, name: str, url: str, token: str) -> tuple[str, str]:
-    """Codex: one `[mcp_servers.<name>]` table with an inline `http_headers` map. Stdlib has a TOML
-    reader but no writer, so the previous `[mcp_servers.<name>]` table (ours, or a hand-written
-    `bearer_token_env_var` one) is cut out as text — header line through the line before the next
-    table header — and a fresh table appended. `tomllib` must parse the result and show exactly our
-    entry, or nothing is written: a file we cannot prove correct is worse than the how-to."""
+def _write_toml_agent(meta: dict, name: str, url: str, token: str, *,
+                      oauth: bool = False) -> tuple[str, str]:
+    """Codex: one `[mcp_servers.<name>]` table. Default writes an inline `http_headers` map; `--oauth`
+    writes URL only so Codex can `codex mcp login`. Stdlib has a TOML reader but no writer, so the
+    previous `[mcp_servers.<name>]` table (ours, or a hand-written `bearer_token_env_var` one) is cut
+    out as text — header line through the line before the next table header — and a fresh table
+    appended. `tomllib` must parse the result and show exactly our entry, or nothing is written: a
+    file we cannot prove correct is worse than the how-to."""
     path: Path = meta["path"]()
     try:
         import tomllib
@@ -164,11 +188,16 @@ def _write_toml_agent(meta: dict, name: str, url: str, token: str) -> tuple[str,
         for k in stale:
             kept = re.sub(rf"(?ms)^\[mcp_servers\.{re.escape(k)}\]\n.*?(?=^\[|\Z)", "", kept)
         kept = kept.rstrip()
-        block = (f"{header}\nurl = {json.dumps(url)}\n"
-                 f"http_headers = {{ \"Authorization\" = {json.dumps('Bearer ' + token)} }}\n")
+        if oauth:
+            block = f"{header}\nurl = {json.dumps(url)}\n"
+            expected = {"url": url}
+        else:
+            block = (f"{header}\nurl = {json.dumps(url)}\n"
+                     f"http_headers = {{ \"Authorization\" = {json.dumps('Bearer ' + token)} }}\n")
+            expected = {"url": url, "http_headers": {"Authorization": f"Bearer {token}"}}
         new = (kept + "\n\n" if kept else "") + block
         servers = tomllib.loads(new)["mcp_servers"]
-        if (servers[name] != {"url": url, "http_headers": {"Authorization": f"Bearer {token}"}}
+        if (servers[name] != expected
                 or any(k != name and isinstance(v, dict) and v.get("url") == url
                        for k, v in servers.items())):
             return "error", f"{path}: a sub-table of {header} survived; edit it by hand"
@@ -178,9 +207,11 @@ def _write_toml_agent(meta: dict, name: str, url: str, token: str) -> tuple[str,
         return "error", f"{path}: {exc}"
 
 
-def _write_claude(name: str, url: str, token: str) -> tuple[str, str]:
+def _write_claude(name: str, url: str, token: str, *, oauth: bool = False) -> tuple[str, str]:
     """Register with Claude Code through its OWN CLI — it owns its config format and redacts the token
-    in its output. Remove-then-add makes it idempotent (a plain add errors if the name exists)."""
+    in its output. Remove-then-add makes it idempotent (a plain add errors if the name exists).
+    `--oauth` omits `--header` so Claude Code shows Needs authentication instead of locking OAuth
+    behind a dead Authorization header."""
     claude = shutil.which("claude")
     if not claude:
         return "skipped", "the `claude` CLI is not on PATH"
@@ -189,23 +220,35 @@ def _write_claude(name: str, url: str, token: str) -> tuple[str, str]:
         # pins it to the current directory). This is a per-machine setup, not a per-repo one.
         subprocess.run([claude, "mcp", "remove", "--scope", "user", name],
                        capture_output=True, text=True, timeout=30)
-        r = subprocess.run(
-            [claude, "mcp", "add", "--scope", "user", "--transport", "http", name, url,
-             "--header", f"Authorization: Bearer {token}"],
-            capture_output=True, text=True, timeout=30)
+        cmd = [claude, "mcp", "add", "--scope", "user", "--transport", "http", name, url]
+        if not oauth:
+            cmd.extend(["--header", f"Authorization: Bearer {token}"])
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if r.returncode != 0:
             return "error", (r.stderr or r.stdout or "claude mcp add failed").strip()[:200]
-        return "ok", "via `claude mcp add --scope user`"
+        detail = ("via `claude mcp add --scope user` (URL only; authorize in `/mcp`)"
+                  if oauth else "via `claude mcp add --scope user`")
+        return "ok", detail
     except Exception as exc:  # noqa: BLE001
         return "error", str(exc)
 
 
+_OAUTH_MANUAL_HOW = {
+    "hermes": "add to ~/.hermes/config.yaml under mcp_servers: a `url` only (no Authorization "
+              "header), restart Hermes, then complete its OAuth/sign-in flow for treg.",
+    "openclaw": "run `openclaw mcp add --transport http treg <url>` WITHOUT `--header`, restart, "
+                "then complete OpenClaw's OAuth/sign-in for treg.",
+}
+
+
 def install_mcp(*, base_url: str, token: str, server_name: str = "treg",
-                only: list[str] | None = None) -> dict:
+                only: list[str] | None = None, oauth: bool = False) -> dict:
     """Register the treg MCP server into every supported, installed agent on this machine.
 
-    Returns {results: [(agent_display, status, detail)], manual: [(display, how)], mcp_url}.
+    Returns {results: [(agent_display, status, detail)], manual: [(display, how)], mcp_url, oauth}.
     `status` ∈ ok | skipped | error. `only` restricts to named agents; None means all detected.
+    `oauth=True` writes URL-only entries (no Authorization) so clients can authorize themselves;
+    `token` is unused in that mode and may be empty.
 
     `only=[]` means NONE, not all. The original `if only and …` guard read an empty list as "no
     filter", so a test that passed `only=[]` expecting a no-op wrote its dummy token into the
@@ -220,12 +263,21 @@ def install_mcp(*, base_url: str, token: str, server_name: str = "treg",
         if not _installed(meta):
             continue
         if meta["kind"] == "claude_cli":
-            status, detail = _write_claude(server_name, url, token)
+            status, detail = _write_claude(server_name, url, token, oauth=oauth)
         elif meta["kind"] == "toml":
-            status, detail = _write_toml_agent(meta, server_name, url, token)
+            status, detail = _write_toml_agent(meta, server_name, url, token, oauth=oauth)
         else:
-            status, detail = _write_json_agent(meta, server_name, url, token)
+            status, detail = _write_json_agent(meta, server_name, url, token, oauth=oauth)
         results.append((meta["display"], status, detail))
-    manual = [(m["display"], m["how"]) for k, m in MANUAL_AGENTS.items()
-              if (only is None or k in only) and _installed(m)]
-    return {"results": results, "manual": manual, "mcp_url": url}
+    manual = []
+    for k, m in MANUAL_AGENTS.items():
+        if only is not None and k not in only:
+            continue
+        if not _installed(m):
+            continue
+        how = _OAUTH_MANUAL_HOW.get(k, m["how"]) if oauth else m["how"]
+        # dsh stays on the bundle path even in oauth mode — it has no MCP config file to rewrite.
+        if oauth and k == "dsh":
+            how = m["how"]
+        manual.append((m["display"], how))
+    return {"results": results, "manual": manual, "mcp_url": url, "oauth": oauth}

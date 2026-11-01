@@ -60,6 +60,19 @@ treg login                                 # GitHub; or:
 treg login --email you@example.com        # emailed 6-digit code (register-or-login)
 ```
 
+## MCP server (agents)
+
+Register the treg MCP server into the coding agents detected on this machine.
+
+| Command | Options | What it does |
+|---|---|---|
+| `treg mcp install` | `--name NAME` | header-authed: writes the logged-in team's Default key as `Authorization: Bearer …` into every supported agent (Claude Code, Cursor, Codex, opencode). Needs a valid login. Restart the agent afterward. |
+| `treg mcp install --oauth` | `--name NAME` | **repair path** when that saved key is dead (session-secret rotation, revoke-tokens, Default-key rotation). Rewrites every managed entry to the URL only — no Authorization header — so the client can authorize itself. Needs **no** login. Restart each agent, then: Claude Code `/mcp` → Authenticate; Codex `codex mcp login <name>`; Cursor/opencode follow the client's sign-in prompt (Cursor's prompt after header removal is not yet live-verified). |
+| `treg mcp grants` | — | list the MCP OAuth connections you've authorised and which team each spends from |
+| `treg mcp use-team` | `GRANT TEAM` | point an authorised MCP connection at another of your teams |
+
+The MCP tools (`balance`, `my_tools`, `call`, …) hold their own grant, separate from the CLI login. A tool that answers "not signed in" with a hint naming `treg mcp install --oauth` means the saved MCP key is dead — re-running `treg login` alone will not fix it.
+
 ## Teams / orgs
 
 An **org** (team) owns the tools/secrets. After `treg login` the CLI holds a single **identity token**

@@ -146,7 +146,10 @@ configuration, then atomically replaces the config from a random same-directory 
 That temporary file is created through `tempfile.mkstemp` before any token bytes are written and is
 set to mode `0600` through its open fd on POSIX regardless of umask; failures remove it and leave
 the original config intact. Windows relies on the config directory's inherited ACL rather than
-claiming POSIX mode semantics.
+claiming POSIX mode semantics. `install_mcp(..., oauth=True)` (`treg mcp install --oauth`) is the
+repair path for a dead saved bearer: the same writers emit URL-only entries (Claude without
+`--header`, JSON without `headers`, Codex without `http_headers`) so the client can authorize; the
+mode needs no token.
 
 ## Feedback
 

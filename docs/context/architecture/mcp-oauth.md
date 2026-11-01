@@ -629,6 +629,19 @@ otherwise prefers OAuth (issue #59467). The determinant is "does the server 200 
 header. `curl {BASE}/install.sh | sh -s -- --token <key>` runs the whole thing — install, sign in,
 `treg mcp install` — in one paste.
 
+**`--oauth` is the repair when that saved header is dead.** Session-secret rotation, `revoke-tokens`,
+and Default-key rotation invalidate the static bearer `treg mcp install` wrote into each agent, while
+the CLI recovers after `treg login`. Claude Code and Codex both refuse OAuth fallback while
+`headers.Authorization` is set (Claude: "OAuth fallback is disabled when headers.Authorization is
+set"; Codex quits the MCP worker on `AuthRequired`). `treg mcp install --oauth` needs no valid token:
+it rewrites every managed entry to the URL only, reports per agent, and tells the human to restart
+and authorize (Claude Code `/mcp`, Codex `codex mcp login <name>`, Cursor/opencode client prompt —
+Cursor's prompt after header removal is not yet live-verified). Default `treg mcp install` stays
+header-based. `_resolve_org` names this cause on both the unpinned 401 path and a pinned `/orgs`
+401 (a dead team key used to be misreported as "the team … is no longer available"); a 200 that
+simply does not list the team keeps the old wording. Transport still passes a non-OAuth bearer
+through so the tool explains it (`test_a_BAD_token_is_the_tool_s_business_not_the_transport_s`).
+
 ## Caller tags over MCP
 
 Catalog-call tools also expose an optional `authorization_method`. MCP maps that explicit argument

@@ -42,6 +42,10 @@ responses use `Cache-Control: no-store`. The CLI stores no key-management state.
 org override, permissions, caps, and billing behavior still come from the live membership.
 The MCP installer refuses a seven-day bootstrap credential before writing any client configuration;
 the user must first choose/create/join a team and install its Default or Agent key.
+`treg mcp install --oauth` is the exception: it rewrites managed agents to URL-only (no Authorization)
+so a dead saved bearer can fall through to OAuth, and needs no login. Default `treg mcp install`
+stays header-based and still verifies the token first. See
+[mcp-oauth](../architecture/mcp-oauth.md).
 
 ## Call review
 

@@ -83,7 +83,7 @@ The MCP server at `{BASE}/mcp/` takes a bearer header or OAuth, and offers `cata
 `catalog_request`, `feedback` and `review`.
 <!--hub-->
 Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
-<!--/hub-->
+<!--/hub--> A saved bearer that answers "not signed in" while the CLI still works is repaired with `treg mcp install --oauth`, then restart and authorize in the client.
 
 **Rules.**
 
