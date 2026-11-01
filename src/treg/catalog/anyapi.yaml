@@ -208,10 +208,11 @@ endpoints:
   path: /v1/run/instagram.reels_search
   name: Instagram Reels Search
   summary: Search Instagram Reels by keyword and get matching reels (caption, likes, comments, creator,
-    and duration). Instagram does not return view or play counts in reels search results. Results are
-    relevance-ranked, not chronological. Recency filtering is not supported on instagram.reels_search
-    (AnyAPI offers it on instagram.web_reels_search). Paging tops out around 110 reels per query
-    (11 pages of 10).
+    duration, and views). Responses do include a numeric `views` field; it is a provider-reported play
+    count that can combine Instagram and Facebook plays, so it is not an Instagram-only view count and
+    should not be used as an IG-only threshold. Results are relevance-ranked, not chronological. Recency
+    filtering is not supported on instagram.reels_search (AnyAPI offers it on instagram.web_reels_search).
+    Paging tops out around 110 reels per query (pages of about 12).
   input:
     body:
       cursor:
