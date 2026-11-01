@@ -112,7 +112,8 @@ adapters:
     in:  {linkedin_url: queryParams.url}
     out: {email: data.email, confidence: "data.score / 100", first_name: data.first_name,
           last_name: data.last_name, verified: "data.verification.status == 'valid'"}
-    miss: "data.email == null"
+    # work-email child: a free-mail mailbox (or none) is a miss
+    miss: "email_domain(data.email) == null"
   aviato.people.email.find:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: queryParams.linkedinURL}
@@ -1120,6 +1121,12 @@ adapters:
     out: {name: "organizations[0].attributes.name", domain: "organizations[0].attributes.url",
           employees: "organizations[0].attributes.employee_count", industry: "organizations[0].attributes.industry"}
     miss: "matched_count == 0"
+  crawl4ai.companies.enrich:
+    accepts: [[domain], [linkedin_url], [linkedin_handle], [name]]
+    in:  {domain: queryParams.domain, linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, name: queryParams.name}
+    out: {name: data.name, domain: data.domain, description: data.description, industry: data.industry,
+          employees: data.people_count, linkedin_url: "fmt('https://www.linkedin.com/company/{}', data.linkedin)"}
+    miss: "data == null"
   hunter.companies.enrich:
     accepts: [[domain]]
     in:  {domain: queryParams.domain}
@@ -2545,6 +2552,8 @@ adapters:
 
   # ---- people.* coverage sweep (2026-08-28): the DSL / list-shaped providers ------------------
   aviato.people.search:
+    # evidence only: `fts` ORs q's words unranked, so every brief got the same rows
+    route: false
     accepts: [[q]]
     in:  {}
     in_expr: {body.dsl: "obj('filters', list(obj('headline', obj('operation', 'fts', 'value', q))), 'limit', limit, 'offset', 0, 'sort', [])"}
@@ -2696,6 +2705,17 @@ adapters:
       body.per_page: limit
     out: {people: people, count: total_entries}
     miss: "coalesce(people, []) == []"
+  crawl4ai.people.search:
+    accepts: [[title, company_domain], [company_domain], [title], [full_name], [q]]
+    in: {company_domain: body.where.company.domain, title: body.where.person.title, full_name: body.where.person.name, q: body.q}
+    in_expr:
+      body.where.person.title: "scalar(title)"
+      body.where.company.country: "upper(country)"
+      body.where.company.city: location
+      body.limit: limit
+    max: {limit: 100}
+    out: {people: data, count: "len(data)"}
+    miss: "coalesce(data, []) == []"
   quickenrich.people.search:
     accepts: [[title, company_domain], [company_domain], [title]]
     in: {company_domain: body.company_url.include, title: body.title.include}
@@ -2827,12 +2847,10 @@ adapters:
     miss: "element.id == null"
   # Lead search is the only Harvest people search whose rows carry names and profile URLs:
   # profile-search hides out-of-network members (no name, no URL), so it stays unrouted.
-  # $0.10 buys a fixed page of 25 rows, so the router prices every request as 25 units.
   harvestapi.linkedin.leads.search:
     accepts: [[company_domain, title], [company_domain], [title]]
     in: {company_domain: queryParams.currentCompanies, title: queryParams.currentJobTitles}
     in_expr: {queryParams.locations: "coalesce(location, country_name(country))", queryParams.search: "csv(keywords)"}
-    cost_units: "25"
     out: {people: elements, count: pagination.totalElements}
     miss: "coalesce(elements, []) == []"
 
@@ -2977,6 +2995,20 @@ adapters:
     miss: "coalesce(output.data.suggestions, []) == []"
 
   # ---- open web -----------------------------------------------------------------------------
+  bravesearch.web.search:
+    accepts: [[q]]
+    max: {limit: 20}
+    in: {q: queryParams.q}
+    in_expr: {queryParams.count: limit}
+    out: {results: web.results, count: "len(coalesce(web.results, []))"}
+    miss: "coalesce(web.results, []) == []"
+  bravesearch.web.search.news:
+    accepts: [[q]]
+    max: {limit: 50}
+    in: {q: queryParams.q}
+    in_expr: {queryParams.count: limit}
+    out: {results: results, count: "len(coalesce(results, []))"}
+    miss: "coalesce(results, []) == []"
   search1api.web.news:
     accepts: [[q]]
     in: {q: body.query}
@@ -3121,7 +3153,9 @@ adapters:
   serper.web.search:
     accepts: [[q]]
     in: {q: body.q}
-    in_expr: {body.gl: "lower(country)", body.hl: language, body.num: limit}
+    # Serper rejects body.num < 10; clamp like lusha.people.search pagination.size.
+    # Caller may receive the provider minimum page when asking for fewer rows.
+    in_expr: {body.gl: "lower(country)", body.hl: language, body.num: "at_least(limit, 10)"}
     out: {results: organic, count: "len(organic)"}
     miss: "coalesce(organic, []) == []"
   spidercloud.web.search:

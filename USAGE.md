@@ -268,7 +268,7 @@ returns `{output, raw, _treg: {served_by, tried, charged_micro}}` plus `X-Treg-S
 vendor 4xx is your request's fault and stops. A **miss** tries the next provider too (the waterfall,
 on by default), cheapest first, within `X-Treg-Route-Max-Cost` (default $1 per call); every
 attempt settles at its real price and misses on per-success providers are free. `X-Treg-Route-Waterfall: 0`
-stops at the first miss. `X-Treg-Route-Prefer` / `X-Treg-Route-Exclude` name providers. A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` (and `_treg.ignored_filters`); `X-Treg-Route-Strict-Filters: 1` refuses such a call with a 422 (unbilled) instead. Vendor endpoints are still relayed verbatim; only `treg.*` rows model an API.
+stops at the first miss. `X-Treg-Route-Prefer` / `X-Treg-Route-Exclude` name providers. A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` (and `_treg.ignored_filters`); `X-Treg-Route-Strict-Filters: 1` refuses such a call with a 422 (unbilled) instead. When you sent a `domain` and the hit has an email, `X-Treg-Domain-Match` / `_treg.domain_match` says whether the mailbox domain matches — a LinkedIn-only provider often returns a former employer; the hit is still billed and the address is not altered. Vendor endpoints are still relayed verbatim; only `treg.*` rows model an API.
 
 `X-Treg-Route-Verify: true` on `treg.people.email.find` checks a hit with `treg.people.email.verify`
 in the same call: your own verifier key first, then BounceBan, then the usual order. The check is

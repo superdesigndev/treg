@@ -19,7 +19,7 @@ import zlib
 from datetime import timedelta
 from urllib.parse import parse_qs, urlsplit
 
-from sqlalchemy import Integer, String, case, column, delete, func, select, values
+from sqlalchemy import Integer, String, case, column, delete, func, select, update, values
 
 from ..domain import arena, arena_insights as rules
 from .. import archive_bodies
@@ -44,11 +44,11 @@ def _catalog():
                  if ep.get("capability") in arena.TASKS and ep.get("capability") not in arena.DISCOVERY_TASKS and eid in cat.adapters
                  and cat.adapters[eid].verified and cat.adapters[eid].route and ep.get("provider") not in {"treg", "wrangle"}
                  and eid not in arena.EXCLUDED and _first_answer_judged(ep) and ".bulk" not in eid}
-    fingerprint = {eid: {"path": ep.get("path"), "method": ep.get("method"),
-                        "adapter": cat.adapters[eid].__dict__, "contract": cat.contracts[ep["capability"]].__dict__}
-                   for eid, ep in sorted(endpoints.items())}
-    version = hashlib.sha256(json.dumps([rules.RULES_VERSION, arena.VERSION, fingerprint], sort_keys=True, default=str).encode()).hexdigest()
-    return cat, endpoints, version
+    return cat, endpoints, _version()
+
+
+def _version() -> str:
+    return hashlib.sha256(json.dumps([rules.RULES_VERSION, arena.VERSION]).encode()).hexdigest()
 
 
 def _first_answer_judged(ep: dict) -> bool:
@@ -171,9 +171,9 @@ async def _evidence_pointers(db, records):
     return keymap, pointers
 
 
-async def _aggregate(db, version, until):
+async def _aggregate(db, version, until, endpoints):
     O = ArenaObservation
-    where = (O.version == version, O.created_at >= until - timedelta(days=WINDOW_DAYS),
+    where = (O.version == version, O.endpoint.in_(endpoints), O.created_at >= until - timedelta(days=WINDOW_DAYS),
              O.created_at < until, O.input != "unknown")
     columns = (O.task, O.input, O.endpoint)
     counts = (await db.execute(select(*columns, O.category, func.count()).where(*where)
@@ -283,7 +283,7 @@ async def collect_batch(session_factory=session_maker):
             state.cursor = records[-1].id
         backlog = len(records) == BATCH_SIZE
         if not backlog:
-            state.payload = await _aggregate(db, version, until)
+            state.payload = await _aggregate(db, version, until, endpoints)
             state.updated_at = current
             # Revisit recent evidence for delayed archive writes / concurrent audit commits. Only
             # the Arena's own endpoints are ever consumed, so the rewind asks about those rows and
@@ -294,10 +294,34 @@ async def collect_batch(session_factory=session_maker):
                 CallRecord.created_at >= until - timedelta(minutes=10)))).scalar_one()
             state.cursor = max(0, rewind - 1) if rewind else state.cursor
             state.scan_until = current - timedelta(seconds=60)
-            await db.execute(delete(ArenaObservation).where(ArenaObservation.created_at < until - timedelta(days=WINDOW_DAYS)))
         db.add(state)
         await db.commit()
     return backlog
+
+
+async def prune(session_factory=session_maker) -> None:
+    """Drop facts older than the window being collected and everything of superseded versions.
+
+    Runs every pass, backlog or not: tying it to publication let the table grow without bound
+    while a backfill was unfinished. A superseded state row is kept until the current version has
+    published, because `public_snapshot` falls back to it until then; its cursor is reset with its
+    facts, so a rolled-back collector rebuilds them instead of publishing over the payload.
+    """
+    _, _, version = _catalog()
+    O = ArenaObservation
+    async with session_factory() as db:
+        state = await db.get(ArenaInsightState, version)
+        until = min(state.scan_until, now()) if state else now()
+        await db.execute(delete(O).where(O.version == version, O.created_at < until - timedelta(days=WINDOW_DAYS)))
+        stale = (await db.execute(select(ArenaInsightState.id).where(ArenaInsightState.id != version))).scalars().all()
+        if stale:
+            await db.execute(delete(O).where(O.version.in_(stale)))
+            await db.execute(update(ArenaInsightState).where(ArenaInsightState.id.in_(stale),
+                (ArenaInsightState.cursor != 0) | ArenaInsightState.updated_at.is_not(None))
+                .values(cursor=0, updated_at=None, scan_until=now() - timedelta(seconds=60)))
+            if state and state.payload.get("status") == "ready":
+                await db.execute(delete(ArenaInsightState).where(ArenaInsightState.id.in_(stale)))
+        await db.commit()
 
 
 async def drain(session_factory=session_maker, *, max_seconds: float = 110.0) -> dict:
@@ -310,6 +334,10 @@ async def drain(session_factory=session_maker, *, max_seconds: float = 110.0) ->
     """
     started = time.monotonic()
     batches = 0
+    try:
+        await prune(session_factory)
+    except Exception:
+        log.exception("Arena observation prune failed; collecting anyway")
     while True:
         try:
             backlog = await collect_batch(session_factory)

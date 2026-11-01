@@ -1,0 +1,15 @@
+{
+  "type": "search",
+  "query": {
+    "original": "example"
+  },
+  "web": {
+    "results": [
+      {
+        "title": "Example Domain",
+        "url": "https://example.com",
+        "description": "Example page"
+      }
+    ]
+  }
+}

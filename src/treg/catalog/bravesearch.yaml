@@ -1,0 +1,218 @@
+provider: bravesearch
+source:
+  docs: https://api-dashboard.search.brave.com/documentation
+  openapi: null
+  curated: '2026-10-30'
+pricing_url: https://brave.com/search/api/
+limits: "Search plan: 50 requests per second. The API returns X-RateLimit headers; it has no key-readable dollar balance endpoint."
+cache:
+  mode: forbidden
+  license_quote: "It is prohibited to retain any and all data received through the Brave Search API."
+  source_url: https://api-dashboard.search.brave.com/documentation/resources/help-feedback
+  checked: '2026-10-30'
+response_retention: forbidden
+proposed_capabilities:
+  web.search.context: "Find ranked, extracted passages for LLM grounding"
+  web.search.images: "Find images across the web"
+  web.search.videos: "Find videos across the web"
+  web.places.search: "Find geographic places by query and location"
+  web.places.detail: "Get details for temporary Brave place identifiers"
+  web.places.description: "Get descriptions for temporary Brave place identifiers"
+
+endpoints:
+  - id: bravesearch.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/web/search
+    name: Search the web with Brave
+    summary: Search Brave's independent web index for ranked pages and rich results.
+    input:
+      queryParams:
+        q: {type: string, required: true, example: "Python programming language"}
+        count: {type: integer, required: false, min: 1, max: 20, default: 20}
+        country: {type: string, required: false, default: US}
+        search_lang: {type: string, required: false, default: en}
+        safesearch: {type: string, required: false, enum: [off, moderate, strict]}
+        freshness: {type: string, required: false, note: "pd, pw, pm, py, or YYYY-MM-DDtoYYYY-MM-DD"}
+        spellcheck: {type: boolean, required: false}
+      note: "Results are in web.results; the web object may be absent on a no-match query. Other rich blocks remain in the raw response."
+    test_request: {queryParams: {q: "Python programming language", count: 1}}
+    verified: '2026-10-30'
+    added: '2026-10-30'
+    example_response: examples/bravesearch.web.search.json
+    cost: &search_cost
+      type: per_call
+      value: 5
+      currency: USD
+      per: 1000
+      unit: call
+      source: docs
+      source_url: https://brave.com/search/api/
+      checked: '2026-10-30'
+      confidence: documented
+      note: "Live probes matched the documented rate; no per-call dollar meter is exposed."
+    docs_url: https://api-dashboard.search.brave.com/api-reference/web/search/get
+
+  - id: bravesearch.web.search.news
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/news/search
+    name: Search news with Brave
+    summary: Find recent news articles in Brave's news index.
+    input:
+      queryParams:
+        q: {type: string, required: true, example: "Federal Reserve"}
+        count: {type: integer, required: false, min: 1, max: 50, default: 20}
+        country: {type: string, required: false, default: US}
+        search_lang: {type: string, required: false, default: en}
+        freshness: {type: string, required: false, note: "pd, pw, pm, py, or YYYY-MM-DDtoYYYY-MM-DD"}
+      note: "A no-match query returned HTTP 200 with results: []."
+    test_request: {queryParams: {q: "Federal Reserve", count: 1}}
+    verified: '2026-10-30'
+    added: '2026-10-30'
+    example_response: examples/bravesearch.web.search.news.json
+    cost: *search_cost
+    docs_url: https://api-dashboard.search.brave.com/api-reference/news/news_search/get
+
+  - id: bravesearch.web.search.context
+    capability: web.search.context
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/llm/context
+    name: Get Brave LLM context
+    summary: Find extracted passages with source URLs for grounding an answer.
+    input:
+      queryParams:
+        q: {type: string, required: true, example: "What is Olympus Mons?"}
+        count: {type: integer, required: false, min: 1, max: 50, default: 20}
+        maximum_number_of_tokens: {type: integer, required: false, min: 1000, max: 32767}
+        country: {type: string, required: false, default: US}
+        search_lang: {type: string, required: false, default: en}
+      note: "Extracted passages are in grounding.generic, not ordinary search result snippets. A no-match query returned an empty grounding list."
+    test_request: {queryParams: {q: "What is Olympus Mons?", count: 1, maximum_number_of_tokens: 1024}}
+    verified: '2026-10-30'
+    added: '2026-10-30'
+    example_response: examples/bravesearch.web.search.context.json
+    cost: *search_cost
+    docs_url: https://api-dashboard.search.brave.com/api-reference/ai/llm_context/get
+
+  - id: bravesearch.web.search.images
+    capability: web.search.images
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/images/search
+    name: Search images with Brave
+    summary: Find image URLs, thumbnails and source pages.
+    input:
+      queryParams:
+        q: {type: string, required: true, example: "red panda"}
+        count: {type: integer, required: false, min: 1, max: 200}
+        country: {type: string, required: false, default: US}
+        search_lang: {type: string, required: false, default: en}
+        safesearch: {type: string, required: false, enum: [off, strict]}
+        spellcheck: {type: boolean, required: false}
+    test_request: {queryParams: {q: "red panda", count: 1}}
+    verified: '2026-10-30'
+    added: '2026-10-30'
+    example_response: examples/bravesearch.web.search.images.json
+    cost: *search_cost
+    docs_url: https://api-dashboard.search.brave.com/api-reference/images/image_search
+
+  - id: bravesearch.web.search.videos
+    capability: web.search.videos
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/videos/search
+    name: Search videos with Brave
+    summary: Find videos with titles, URLs, metadata and thumbnails.
+    input:
+      queryParams:
+        q: {type: string, required: true, example: "Apollo 11 moon landing"}
+        count: {type: integer, required: false, min: 1, max: 50}
+        country: {type: string, required: false, default: US}
+        search_lang: {type: string, required: false, default: en}
+        freshness: {type: string, required: false, note: "pd, pw, pm, py, or a date range"}
+        spellcheck: {type: boolean, required: false}
+    test_request: {queryParams: {q: "Apollo 11 moon landing", count: 1}}
+    verified: '2026-10-30'
+    added: '2026-10-30'
+    example_response: examples/bravesearch.web.search.videos.json
+    cost: *search_cost
+    docs_url: https://api-dashboard.search.brave.com/api-reference/videos/video_search/get
+
+  - id: bravesearch.places.search
+    capability: web.places.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/local/place_search
+    name: Search places with Brave
+    summary: Find businesses, landmarks and other points of interest.
+    input:
+      queryParams:
+        q: {type: string, required: false, example: "Statue of Liberty"}
+        count: {type: integer, required: false, min: 1, max: 100, default: 20}
+        country: {type: string, required: false, default: US}
+        latitude: {type: number, required: false}
+        longitude: {type: number, required: false}
+        radius: {type: number, required: false, note: "Meters; biases ranking, does not strictly bound results"}
+      note: "Results may include places and geographic groupings. A synthetic no-match query returned HTTP 422 VALIDATION for mixed rather than a clean empty response; direct calls relay that error."
+    test_request: {queryParams: {q: "Statue of Liberty", count: 1, country: US}}
+    verified: '2026-10-30'
+    added: '2026-10-30'
+    example_response: examples/bravesearch.places.search.json
+    cost: *search_cost
+    docs_url: https://api-dashboard.search.brave.com/api-reference/web/place_search
+
+  - id: bravesearch.places.detail
+    capability: web.places.detail
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/local/pois
+    name: Get Brave place details
+    summary: Retrieve rich details for place IDs returned by Brave search.
+    input:
+      queryParams:
+        ids: {type: "array[string]", required: true, maxItems: 20, note: "Repeat ids query parameter; IDs expire after about eight hours"}
+      note: "An unknown ID returned results: [{}], so a row count alone does not prove a place was found. A fresh ID from Place Search returned full details live."
+    test_request: {queryParams: {ids: ["locBRAVETREGUNKNOWN937461205"]}}
+    verified: '2026-10-30'
+    added: '2026-10-30'
+    example_response: examples/bravesearch.places.detail.json
+    cost: *search_cost
+    docs_url: https://api-dashboard.search.brave.com/api-reference/web/poi_details
+
+  - id: bravesearch.places.description
+    capability: web.places.description
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/local/descriptions
+    name: Get Brave place descriptions
+    summary: Retrieve generated descriptions for place IDs returned by Brave search.
+    input:
+      queryParams:
+        ids: {type: "array[string]", required: true, maxItems: 20, note: "Repeat ids query parameter; IDs expire after about eight hours"}
+      note: "An unknown ID returned results: []. A fresh ID from Place Search returned a description live."
+    test_request: {queryParams: {ids: ["locBRAVETREGUNKNOWN937461205"]}}
+    verified: '2026-10-30'
+    added: '2026-10-30'
+    example_response: examples/bravesearch.places.description.json
+    cost: *search_cost
+    docs_url: https://api-dashboard.search.brave.com/api-reference/web/poi_descriptions

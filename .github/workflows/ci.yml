@@ -58,6 +58,11 @@ jobs:
       - name: Install dependencies
         if: steps.docs.outputs.only != 'true'
         run: uv sync --locked
+      - name: Install disposable Redis test dependency
+        if: steps.docs.outputs.only != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server
       - name: Verify pause context documentation
         if: steps.docs.outputs.only != 'true'
         run: |

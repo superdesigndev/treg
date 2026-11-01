@@ -1,0 +1,9 @@
+{
+  "type": "local_descriptions",
+  "results": [
+    {
+      "id": "synthetic-place-id",
+      "description": "Example description"
+    }
+  ]
+}

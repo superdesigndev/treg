@@ -113,7 +113,7 @@ endpoints:
     method: POST
     path: /scrape
     body_allowlist: true
-    name: Scrape or crawl a web page to clean Markdown for LLMs
+    name: Scrape or read a web page as clean Markdown, HTML or PDF
     summary: "Scrape one URL, a web page or a PDF, into clean, LLM-ready Markdown text and/or HTML. Crawl4AI picks the cheapest engine that works (archive, plain fetch, real browser that renders JavaScript), with optional links, media, metadata and tables; proxies for sites that block datacenters."
     input:
       bodyType: json
@@ -149,7 +149,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /search
-    name: "Search the web: live ranked results with title, URL, snippet"
+    name: "Web search engine results for a query: title, URL, snippet"
     summary: "Live web search across several engines, ranked and cleaned: each result has a title, URL and snippet. When the live web returns fewer than 10 results, results from the Crawl4AI index fill the list. For follow-up questions, related queries and an entity card, use crawl4ai.web.search.rich."
     input:
       queryParams:
@@ -212,7 +212,7 @@ endpoints:
     method: POST
     path: /extract
     body_allowlist: true
-    name: Extract structured JSON data from a web page with an LLM
+    name: "Extract structured data from a web page (contact, JSON)"
     summary: "Scrape a page (crawled for you) or read your own content, and return typed JSON matching a JSON schema and/or a plain-English instruction, extracted by an LLM."
     input:
       bodyType: json
@@ -254,7 +254,7 @@ endpoints:
     path: /answer
     # The answer service was rebuilt on 2026-10-07; calls before that measured the old one.
     observed_from: '2026-10-08'
-    name: "Answer a question from the web, prose or JSON"
+    name: "Web search answer with sources and citations (research)"
     summary: "Answers a question or a whole agent prompt (up to 4,000 characters) from the web's current top results, with the pages it drew on. Ask for JSON in the question, or pass a JSON Schema, and the answer is JSON of that shape. answer.source says whether the text is Google's own answer (google_ai_mode, google_ai_overview) or written from the pages (crawl4ai). answered is false, and free, when the pages hold no answer. Experimental: fields may be added."
     input:
       queryParams:
@@ -289,7 +289,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /answer
-    name: "Google AI Mode answer for a question (text only)"
+    name: Google AI Mode answer with citations for a question
     summary: "Google's own AI Mode / AI Overview answer for a question, word for word, with answer.source naming which. deep must be 0, so the text is never written by another model; answered is false, and free, when Google shows no direct answer. Text only: no product, place or ad cards."
     strict_query: true
     input:
@@ -324,7 +324,7 @@ endpoints:
     scope: any_account
     method: GET
     path: /serp
-    name: "Google organic results with true rank and page blocks"
+    name: "Google search results (SERP): organic rank, AI overview"
     summary: "One Google results page as JSON: every organic result with its rank (position, and position_absolute counting the blocks above it), and each block Google showed (People also ask, local pack, videos, ...; the AI Overview when Google showed one: always with source=google, otherwise only when the answer came from Google directly, see note). Localised to a country, a language and optionally a city. When results is empty, empty_reason says why: google_no_results (Google matched nothing) or rescue_no_results (another provider may still have results)."
     strict_query: true
     input:
@@ -869,7 +869,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 3.2 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -909,7 +909,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -952,7 +952,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.35 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -996,7 +996,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1047,7 +1047,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 13.5 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1095,7 +1095,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1147,7 +1147,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1188,7 +1188,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1230,7 +1230,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1279,7 +1279,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.25 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1319,7 +1319,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.35 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1370,7 +1370,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1410,7 +1410,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.65 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1451,7 +1451,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.35 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1493,7 +1493,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.35 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1538,7 +1538,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.35 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1581,7 +1581,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.35 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1642,7 +1642,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1714,7 +1714,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1758,7 +1758,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.65 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1799,7 +1799,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.65 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1850,7 +1850,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1901,7 +1901,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1954,7 +1954,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -1974,11 +1974,12 @@ endpoints:
     path: /recipes/google-maps-reviews
     name: Reviews of a place on Google Maps
     summary: 'The reviews Google Maps shows for one place, one row per review: stars, text, date, the reviewer, likes,
-      the owner''s reply and the review''s own link. `place` is the place''s Google Maps link, its place id (ChIJ...)
-      or its cid (the number in a maps?cid= link); `sort` is relevant (Google''s order) or newest; `limit` how many
-      reviews (default 5, up to 100), one price a call at any limit. About 1 to 3 s for a few reviews, 8 to 16 s for
-      100. A reply with fewer than asked and meta.partial true gives the rest when retried a little later. Columns:
-      review_id, place_id, rating, text, date, author, likes, owner_reply, url.'
+      the owner''s reply and the review''s own link. Up to 8 reviews come from the place''s Maps data (about 1 to
+      3 s); above 8, from Google Search''s review list, 10 per page (about 1 s per page, 100 reviews in about 10 to
+      15 s). `place` is the place''s Google Maps link, its place id (ChIJ...) or its cid (the number in a maps?cid=
+      link); `sort` is relevant (Google''s order) or newest; `limit` how many reviews (default 5, at most 100). Past
+      the first 5 to 8 reviews an owner reply''s date is null. Columns: review_id, place_id, rating, text, date, author,
+      likes, owner_reply, url.'
     body_allowlist: true
     input:
       bodyType: json
@@ -1986,7 +1987,7 @@ endpoints:
         limit:
           type: integer
           required: false
-          note: default 5, up to 100
+          note: default 5, at most 100
         place:
           type: string
           required: true
@@ -2004,7 +2005,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2022,7 +2023,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /recipes/google-maps-places
-    name: Places on Google Maps for a search
+    name: Google Maps local business search by keyword, category…
     summary: 'The places Google Maps lists for a search, in Google''s order, one row per place: name, place id and
       cid, category, address, map point, rating and review count, phone, website, today''s opening hours and the place''s
       Maps link. `query` is what you would type in Google Maps ("coffee"); `location` the city or area ("Austin, TX"),
@@ -2055,7 +2056,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2105,7 +2106,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2145,7 +2146,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2198,7 +2199,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2249,7 +2250,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2286,7 +2287,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2341,7 +2342,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2386,7 +2387,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2436,7 +2437,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.7 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2481,7 +2482,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2501,11 +2502,10 @@ endpoints:
     name: Posts of an Instagram account
     summary: 'The latest posts of one Instagram account, newest first, one row per post: code, URL, caption (first
       500 characters), likes, comments, time posted, kind (photo, video, reel, carousel), image, video URL, owner.
-      `username` is the account (@name or an instagram.com URL is fine). Without `session` a call returns the 12
-      latest posts (a larger `limit` returns those 12 with meta.partial true) and a public account is read in 1 to 3 s; when Instagram refuses, a slower second source answers (about 100 s, billed
-      per record). With `session` (your `sessionid` and `csrftoken` cookies from the Crawl4AI Session extension, used
-      once, never stored) it is read as you. Columns: code, url, caption, likes, comments, taken_at, kind, image,
-      video_url, owner.'
+      `username` is the account (@name or an instagram.com URL). Without `session`: the 12 latest posts of a public
+      account, about 3 to 8 s (a larger `limit` gives those 12, marked partial). With `session` (your `sessionid`
+      and `csrftoken` cookies from the Crawl4AI Session extension, used once, never stored) it is read as you, up
+      to 48. Columns: code, url, caption, likes, comments, taken_at, kind, image, video_url, owner.'
     body_allowlist: true
     input:
       bodyType: json
@@ -2527,7 +2527,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2548,11 +2548,11 @@ endpoints:
     name: Profile of an Instagram account
     summary: 'One Instagram account as one row: username, full name, biography, followers, following, posts, verified
       and private, category, external link, picture, user id. `username` is the account (@name or an instagram.com
-      URL). Without `session` a public profile is read in about 2 s; biography, following, category and link are null.
-      `full_profile` true adds biography, following and link from the profile page (3-6 s). A hidden profile comes
-      from a slower source (30-80 s, billed per record). With `session` (your `sessionid` and `csrftoken` cookies,
-      used once, never stored) every column is read as you. Columns: username, full_name, biography, followers, following,
-      posts, is_verified, is_private, category, external_url, profile_pic_url, user_id.'
+      URL). Without `session` a public profile is read from its public pages in about 1 to 3 s, every column but category
+      (no public page shows it); a private account gives its profile without the post count. A missing account answers
+      at once with no row. With `session` (your `sessionid` and `csrftoken` cookies, used once, never stored) every
+      column is read as you. Columns: username, full_name, biography, followers, following, posts, is_verified, is_private,
+      category, external_url, profile_pic_url, user_id.'
     body_allowlist: true
     input:
       bodyType: json
@@ -2574,7 +2574,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2594,12 +2594,10 @@ endpoints:
     path: /recipes/instagram-reels
     name: Reels of an Instagram account
     summary: 'The latest reels of one Instagram account, newest first, one row per reel: id, code, URL, plays, likes,
-      comments, thumbnail. `username` is the account (@name or an instagram.com URL), or `user_id` its numeric id
-      (one lookup fewer). Without `session` a call returns the 12 latest reels (a larger `limit` returns those 12 with
-      meta.partial true) and a public account is read in 2 to 8 s; when
-      Instagram refuses, a slower second source answers when `username` is given (about 100 s, billed per record,
-      plays often empty). With `session` (your `sessionid` and `csrftoken` cookies, used once, never stored) it is
-      read as you. Columns: id, code, url, plays, likes, comments, thumbnail.'
+      comments, thumbnail. `username` is the account (@name or an instagram.com URL), or `user_id` its numeric id.
+      Without `session`: the 12 latest reels of a public account by `username`, about 1 to 3 s (a larger `limit` gives
+      those 12, marked partial). With `session` (your `sessionid` and `csrftoken` cookies, used once, never stored)
+      it is read as you, up to 48. Columns: id, code, url, plays, likes, comments, thumbnail.'
     body_allowlist: true
     input:
       bodyType: json
@@ -2627,7 +2625,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2666,7 +2664,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2712,7 +2710,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.35 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2773,7 +2771,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.45 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2791,7 +2789,7 @@ endpoints:
     scope: any_account
     method: POST
     path: /recipes/linkedin-people-search
-    name: LinkedIn members by name
+    name: LinkedIn people search by first and last name
     summary: 'The public LinkedIn members with a given first and last name, one row per member: name, profile URL,
       headline, location, and the company and school summary LinkedIn shows ("Microsoft, +4 more"). For finding the
       right profile before you read it with linkedin-profile. `first_name` and `last_name` are the name; `limit` caps
@@ -2822,7 +2820,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 3.6 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2869,7 +2867,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2911,7 +2909,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -2968,7 +2966,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3025,7 +3023,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.65 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3083,7 +3081,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.65 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3126,7 +3124,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3164,7 +3162,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3201,7 +3199,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3241,7 +3239,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3292,7 +3290,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3313,11 +3311,10 @@ endpoints:
     name: Reddit search results
     summary: 'Reddit''s search results as posts: title, the post''s page, what it links to, score, comment count,
       author, time, flair and the first 300 characters of the text. Site-wide, or inside one `subreddit`. `sort` relevance,
-      hot, top, new or comments; `t` the window for top; `limit` up to 250. `session` (your `reddit_session` cookie,
-      used for this run only, never stored) is optional. Without `session` it reads Reddit''s public JSON as a visitor
-      (a few seconds; Reddit refuses some of our addresses); when Reddit refuses a site-wide search, a slower second
-      source answers (about 2 min, all time). Columns: title, url, link, score, comments, author, created, flair,
-      subreddit, id, text.'
+      hot, top, new or comments; `t` the window for top; `limit` up to 250. Without `session` it reads Reddit''s public
+      search feed (1 to 3 s per 100 posts; the feed has no score, comment count or flair, so those are null). With
+      `session` (your `reddit_session` cookie, used for this run only, never stored) every column is filled. Columns:
+      title, url, link, score, comments, author, created, flair, subreddit, id, text.'
     body_allowlist: true
     input:
       bodyType: json
@@ -3354,7 +3351,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3375,11 +3372,10 @@ endpoints:
     name: Posts of a subreddit
     summary: 'The posts of one subreddit: title, the post''s page, what it links to, score, comment count, author,
       time, flair and the first 300 characters of the text. `sort` is hot, new, top or rising; `t` the window for
-      top; `limit` up to 250 (100 posts per page). `session` (your `reddit_session` cookie, from the Crawl4AI Session
-      extension, used for this run only, never stored) is optional. Without `session` it reads Reddit''s public JSON
-      as a visitor (a few seconds; Reddit refuses some of our addresses); when Reddit refuses, a slower second source
-      answers (about 2 to 3 minutes, no outside link). Columns: title, url, link, score, comments, author, created,
-      flair, subreddit, id, text.'
+      top; `limit` up to 250 (100 posts per page). Without `session` it reads Reddit''s public feed of the subreddit
+      (1 to 3 s per 100 posts; the feed has no score, comment count or flair, so those are null). With `session` (your
+      `reddit_session` cookie, from the Crawl4AI Session extension, used for this run only, never stored) every column
+      is filled. Columns: title, url, link, score, comments, author, created, flair, subreddit, id, text.'
     body_allowlist: true
     input:
       bodyType: json
@@ -3411,7 +3407,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3472,7 +3468,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3522,7 +3518,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3574,7 +3570,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3626,7 +3622,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3673,7 +3669,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3717,7 +3713,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3760,7 +3756,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3802,7 +3798,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3845,7 +3841,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3887,7 +3883,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3933,7 +3929,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.65 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -3973,7 +3969,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4020,7 +4016,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.5 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4061,7 +4057,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.35 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4107,7 +4103,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.5 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4152,7 +4148,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.5 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4192,7 +4188,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.5 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4213,10 +4209,11 @@ endpoints:
     name: Trustpilot reviews of a company
     summary: 'The reviews on a company''s Trustpilot page, newest first, one row per review: star rating, title, full
       text, publish and experience dates, reviewer name, country and review count, verified flag, likes, the review''s
-      link and its language. `domain` is the company''s site as Trustpilot names it (www.notion.so); `stars` keeps
-      reviews with at least that rating; `page` reads a later page of 20. The page takes 2 to 20 s; when it fails,
-      a slower second source answers page 1 (about a minute). Columns: review_id, url, rating, title, text, date,
-      experience_date, author, author_country, author_review_count, verified, likes, lang.'
+      link and its language. `domain` is the company''s site as Trustpilot names it (www.notion.so); `stars` asks
+      Trustpilot for reviews with at least that rating (20 per page, also for a low-rated company); `page` reads a
+      later page of 20. The page takes 2 to 20 s; when it fails, a slower second source answers page 1 (about a minute).
+      Columns: review_id, url, rating, title, text, date, experience_date, author, author_country, author_review_count,
+      verified, likes, lang.'
     body_allowlist: true
     input:
       bodyType: json
@@ -4245,7 +4242,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.35 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4287,7 +4284,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.35 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4327,7 +4324,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4384,7 +4381,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4425,7 +4422,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4477,7 +4474,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4520,7 +4517,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4569,7 +4566,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4615,7 +4612,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.45 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4666,7 +4663,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.65 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4712,7 +4709,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.45 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4753,7 +4750,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.2 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4793,7 +4790,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.35 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4832,7 +4829,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4873,7 +4870,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4916,7 +4913,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -4959,7 +4956,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -5006,7 +5003,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 1.65 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -5051,7 +5048,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -5090,7 +5087,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.9 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -5131,7 +5128,7 @@ endpoints:
       unit: call
       source: observed
       source_url: https://api.crawl4ai.com/recipes
-      checked: '2026-10-12'
+      checked: '2026-10-31'
       confidence: verified
       note: 'treg''s account price: 0.15 credits a call whatever pages the run fetched, second-source records included;
         a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.'
@@ -5143,3 +5140,116 @@ endpoints:
     example_response: examples/crawl4ai.zillow.property.detail.json
     added: '2026-10-11'
   # <<< recipes
+  # >>> lead: Crawl4AI Lead (company and people search) answers from gate.crawl4ai.com, the same key
+  - id: crawl4ai.companies.enrich
+    async: false
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: GET
+    host: gate.crawl4ai.com
+    path: /lead/company
+    name: Company enrichment by domain
+    summary: 'Enrich a company from its domain, name or LinkedIn company page: name, description, industry, employee count
+      (the people on record), LinkedIn company URL, logo, website technology stack, the work e-mails and phones
+      published on its pages, its social links and mail provider. `domain` is the company''s website (stripe.com);
+      `linkedin` is its LinkedIn page link or handle (when several domains share the page, the most asked one answers
+      and meta.also_on_this_linkedin_page lists the rest); `name` is the company''s name (legal endings such as Inc or
+      GmbH are ignored; answers only when one company clearly has the name, otherwise 404 with up to 5 candidate
+      domains, free). A company not on record answers 404, free. About 0.2 s.'
+    input:
+      queryParams:
+        domain:
+          type: string
+          required: false
+          example: stripe.com
+          note: one of domain, linkedin or name
+        linkedin:
+          type: string
+          required: false
+          example: https://www.linkedin.com/company/stripe/
+          note: a LinkedIn company page link or handle
+        name:
+          type: string
+          required: false
+          example: Stripe
+          note: the company name; one of domain, linkedin or name
+    strict_query: true
+    cost:
+      type: per_success
+      value: 0.5
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://api.crawl4ai.com/v1/prices
+      checked: '2026-10-31'
+      confidence: verified
+      note: 'treg''s account price: 0.5 credits per company found; a 404 (Lead has no such company) is free.
+        The x-c4-cost header settles the actual charge.'
+    miss:
+      status: 404
+      means: "Lead has no record of this domain — a normal outcome, and free"
+    docs_url: https://crawl4ai.com/llms.txt
+    test_request:
+      queryParams:
+        domain: stripe.com
+    verified: '2026-10-31'
+    example_response: examples/crawl4ai.companies.enrich.json
+    added: '2026-10-31'
+  - id: crawl4ai.people.search
+    async: false
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    host: gate.crawl4ai.com
+    path: /lead/people/search
+    name: Find people at a company by job title
+    summary: 'People search by company domain and job title, one row per person: name, job title, LinkedIn profile,
+      work e-mail when one is published (with its kind and status), department, seniority and decision role, the
+      page they were found on, and the company''s facts. Search by company (`where.company.domain`), by job title
+      (`where.person.title`: words in any order, VP = Vice President, Head = Director), by department or seniority
+      (department: marketing, sales, engineering,
+      product, finance, hr, operations, legal, it, design, executive; seniority: owner_founder, c_level, vp, director,
+      manager; decision_role for decision makers), by a person''s name (`where.person.name`), by company country,
+      city or industry, or by a free-text brief (`q`). `limit` is how many people (default 10, up to 100), one
+      price a call at any limit. An empty answer is free. About 0.2 s.'
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        where:
+          type: object
+          required: false
+          example: {company: {domain: stripe.com}, person: {department: [engineering]}}
+          note: "company: domain, country, city, industry; person: title, name, seniority, department, decision_role"
+        q:
+          type: string
+          required: false
+          note: a free-text brief instead of `where` ("marketing leaders at fintech companies in London")
+        limit:
+          type: integer
+          required: false
+          note: default 10, up to 100
+    cost:
+      type: per_success
+      value: 0.5
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://api.crawl4ai.com/v1/prices
+      checked: '2026-10-31'
+      confidence: verified
+      note: 'treg''s account price: 0.5 credits per answer with at least one person, whatever the limit; an empty
+        answer is free. The x-c4-cost header settles the actual charge.'
+    docs_url: https://crawl4ai.com/llms.txt
+    test_request:
+      body:
+        where: {company: {domain: stripe.com}}
+        limit: 3
+    verified: '2026-10-31'
+    example_response: examples/crawl4ai.people.search.json
+    added: '2026-10-31'
+  # <<< lead

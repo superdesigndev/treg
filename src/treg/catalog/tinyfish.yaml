@@ -40,14 +40,17 @@ endpoints:
     name: Search the open web
     summary: Search the web by keyword or meaning, with domain, language, location, and date filters.
     input:
+      # TinyFish's OpenAPI types include_domains/exclude_domains as one comma-separated string
+      # (not repeated keys). Keep array[string] for callers; encode the list as CSV on the wire.
+      queryArrayEncoding: comma
       queryParams:
         query: {type: string, required: true, example: "TinyFish API documentation"}
         domain_type: {type: string, required: true, default: web, enum: [web], example: web}
         purpose: {type: string, required: false, note: "Describe what the results will be used for."}
-        location: {type: string, required: false, example: "United States"}
+        location: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code for geo-targeted results.", example: US}
         language: {type: string, required: false, example: en}
-        include_domains: {type: "array[string]", required: false}
-        exclude_domains: {type: "array[string]", required: false}
+        include_domains: {type: "array[string]", required: false, note: "domains to restrict results to; sent comma-separated on the wire", example: ["github.com", "arxiv.org"]}
+        exclude_domains: {type: "array[string]", required: false, note: "domains to drop from results; sent comma-separated on the wire", example: ["pinterest.com", "quora.com"]}
         after_date: {type: string, required: false, note: "YYYY-MM-DD; only results after this date.", example: "2024-01-01"}
         before_date: {type: string, required: false, note: "YYYY-MM-DD; only results before this date.", example: "2024-12-31"}
         recency_minutes: {type: integer, required: false, min: 1}
@@ -73,14 +76,15 @@ endpoints:
     name: Search recent news
     summary: Search TinyFish's news index with optional recency, date, domain, language, and location filters.
     input:
+      queryArrayEncoding: comma
       queryParams:
         query: {type: string, required: true, example: "AI browser agents"}
         domain_type: {type: string, required: true, default: news, enum: [news], example: news}
         purpose: {type: string, required: false}
-        location: {type: string, required: false}
+        location: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code for geo-targeted results.", example: US}
         language: {type: string, required: false, example: en}
-        include_domains: {type: "array[string]", required: false}
-        exclude_domains: {type: "array[string]", required: false}
+        include_domains: {type: "array[string]", required: false, note: "domains to restrict results to; sent comma-separated on the wire", example: ["github.com", "arxiv.org"]}
+        exclude_domains: {type: "array[string]", required: false, note: "domains to drop from results; sent comma-separated on the wire", example: ["pinterest.com", "quora.com"]}
         after_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2024-01-01"}
         before_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2024-12-31"}
         recency_minutes: {type: integer, required: false, min: 1}
@@ -106,13 +110,14 @@ endpoints:
     name: Search research publications
     summary: Search research papers by topic, publication year, domain, language, and date.
     input:
+      queryArrayEncoding: comma
       queryParams:
         query: {type: string, required: true, example: "browser agent benchmark"}
         domain_type: {type: string, required: true, default: research_paper, enum: [research_paper], example: research_paper}
         purpose: {type: string, required: false}
         language: {type: string, required: false, example: en}
-        include_domains: {type: "array[string]", required: false}
-        exclude_domains: {type: "array[string]", required: false}
+        include_domains: {type: "array[string]", required: false, note: "domains to restrict results to; sent comma-separated on the wire", example: ["github.com", "arxiv.org"]}
+        exclude_domains: {type: "array[string]", required: false, note: "domains to drop from results; sent comma-separated on the wire", example: ["pinterest.com", "quora.com"]}
         after_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2024-01-01"}
         before_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2024-12-31"}
         pub_year_min: {type: integer, required: false, min: 1900}

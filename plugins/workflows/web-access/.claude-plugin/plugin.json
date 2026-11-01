@@ -1,6 +1,6 @@
 {
   "name": "web-access",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "description": "Use whenever a task needs something from the live web — search the web or the news, read a URL, map or crawl a site, pull structured fields from a page, or get data from a platform (X, LinkedIn, Reddit, TikTok, Instagram, YouTube, Xiaohongshu, Amazon, app stores, Google Maps, papers). Picks the right tool for the job, starts free, and lets treg fall back to the next vendor when one fails. No local scrapers, browsers or cookies.",
   "author": {
     "name": "Superdesign dev, Inc.",

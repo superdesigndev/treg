@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, AsyncIterator, Awaitable, Callable, Literal, Protocol
 
@@ -35,6 +35,7 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     "capability_pinned": "caller",
     "policy_denied": "caller",
     "daily_cap_reached": "caller",
+    "org_endpoint_quota_exceeded": "caller",
     "public_demo_rate_limited": "caller",
     "trial_allowance_unavailable": "treg",
     "trial_allowance_reached": "caller",
@@ -274,6 +275,8 @@ class CallContext:
     # Set by a routed parent on each child: the child leaves its hold OPEN here instead of settling,
     # and the parent charges or releases every one at the end (route.py `_close_deferred`).
     deferred_settles: list | None = None
+    quota_admissions: set[tuple[int, str]] = field(default_factory=set)
+    quota_pending: tuple[tuple[int, str], ...] = ()
     # Scalar snapshots for root request logs; never resolve a target just for telemetry.
     tool_name: str | None = None
     endpoint_id: str | None = None

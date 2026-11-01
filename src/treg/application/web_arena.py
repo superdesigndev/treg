@@ -47,6 +47,7 @@ YOUTUBE_ENDPOINTS = {"justoneapi.x.youtube-search-v1", "serpapi.youtube.search.v
 MAPS_ENDPOINTS = {"apify.google.serp.maps", "dataforseo.x.serp-google-maps-live-advanced",
                   "serpapi.x.google-maps"}
 UNBOUNDED_SITEMAP = {"search1api.web.sitemap"}
+ARENA_EXCLUDED = {"bravesearch.web.search", "bravesearch.web.search.news"}
 
 
 def _supports_result_limit(task: str, endpoint_id: str, adapter) -> bool:
@@ -66,10 +67,10 @@ def _capabilities(task: str) -> tuple[str, ...]:
 
 
 def _in_lineup(task: str, endpoint_id: str) -> bool:
-    return task not in {"news", "papers", "youtube", "maps"} or endpoint_id in {
+    return endpoint_id not in ARENA_EXCLUDED and (task not in {"news", "papers", "youtube", "maps"} or endpoint_id in {
         "news": NEWS_ENDPOINTS, "papers": PAPER_ENDPOINTS,
         "youtube": YOUTUBE_ENDPOINTS, "maps": MAPS_ENDPOINTS,
-    }[task]
+    }[task])
 
 
 def enabled() -> bool:
@@ -270,13 +271,26 @@ async def start(caller, run_id, client, client_ip):
 
 
 async def _save(run_id, payload, state=None):
+    retained = dict(payload)
+    retained["attempts"] = []
+    for attempt in payload["attempts"]:
+        saved = dict(attempt)
+        if service._response_retention_forbidden(saved.get("endpoint_id")):
+            output = saved.get("output") or {}
+            saved["output"] = {"count": output["count"]} if isinstance(output.get("count"), int) else {}
+            if saved.get("state") == "hit":
+                saved["detail"] = "Results are not retained under the provider's terms."
+            if isinstance(saved.get("quality"), dict):
+                saved["quality"] = {k: v for k, v in saved["quality"].items()
+                                    if k != "links_checked"}
+        retained["attempts"].append(saved)
     async with session_maker() as db:
         await db.execute(update(WebArenaRun).where(WebArenaRun.id == run_id)
                          .values(cancel_requested=WebArenaRun.cancel_requested))
         row = await db.get(WebArenaRun, run_id)
         if not row or row.state != "running":
             return False
-        row.payload = arena._pack(payload)
+        row.payload = arena._pack(retained)
         if state:
             row.state = "cancelled" if row.cancel_requested else state
         db.add(row)

@@ -1,6 +1,6 @@
 [project]
 name = "tools-registry"
-version = "0.27.0"
+version = "0.28.0"
 description = "A remote registry that turns team skills into shareable, callable tools via a credential-injecting proxy."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -25,9 +25,10 @@ classifiers = [
 # Base install = just the CLI. Light + pure-Python, so `pip install tools-registry` (and Homebrew) are
 # fast. Everything needed to RUN a registry server lives in the `[server]` extra below.
 dependencies = [
-    "httpx>=0.27",
+    "httpx>=0.27,<1",
     "posthog>=7.47.3",
     "questionary>=2.0",
+    "toon-format==1.2.0",
 ]
 
 [project.optional-dependencies]
@@ -124,6 +125,9 @@ name = "Lightweight CLI modules do not import server dependencies"
 type = "forbidden"
 source_modules = [
     "treg.cli",
+    "treg.cli_view",
+    "treg.cli_session",
+    "treg.cli_analytics",
     "treg.convert",
     "treg.skills",
     "treg.providers",

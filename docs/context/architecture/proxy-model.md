@@ -61,6 +61,14 @@ Streaming retains the root slot through response cleanup. Routing children do no
 additional root slots or rate tokens. Published null disables its limit; legacy environment
 maps have no effect.
 
+The separate [exact org/endpoint allowance](org-endpoint-quota.md) runs inside the shared call
+application after canonical resolution and local/money admission, immediately before returning
+a cache hit or sending a direct/overflow request. It counts logical admissions across credential
+tiers and releases unused holds on refusal. An exhausted child may be skipped for another routed
+candidate. Redis uncertainty allows calls, including previously restricted targets, without
+repairing counters; operators can set limits again after loss. Optional verification preserves
+the find result on a known refusal.
+
 Named catalog calls with authorization metadata select the provider and grant method before
 comparing hosts. This separates Facebook and Instagram tools sharing `graph.facebook.com`;
 the resulting tool enters the same relay without provider-specific relay logic.
@@ -341,7 +349,9 @@ After credential refresh and relay, `_audit` records the attempt and mirrors it 
 `_tool_called_props` / `analytics.capture`. Provider identity is the catalog provider or the
 own tool's upstream host. Analytics includes outcome, status, timing, cost, call reference,
 capacity/cache/smoothing signals and user-agent attribution (plus the MCP host for a call made
-through either MCP surface), never params or bodies.
+through either MCP surface), and from the CLI its release (`client_version`), hashed session
+(`session`) and agent label (`agent`), each from its `X-Treg-*` header, truncated, null when
+absent. Never params or bodies.
 
 `domain.catalog.results.classify` shares verified hit/miss rules between business-hit telemetry
 and cache admission. Found means `hit=true`, explicit empty means false, and errors/unknown
@@ -564,8 +574,9 @@ refusal:
    `view.rate_bucket`); it replaces the provider's limit for that route and does not draw from the
    provider's bucket. Each account other than the primary has its own allowance, so its own
    bucket (`<key>#<label>`). In-process on purpose: a second replica
-   doubles the effective rate, and the `rate_pressure` alert (step C) is the answer to that, not a
-   shared counter on the request path.
+   doubles the effective rate. A shared window over the same buckets can run beside it in observe
+   mode (`TREG_PROVIDER_RATE_MODE=observe`, [capacity](../ops/capacity.md)), which logs what it
+   would refuse and refuses nothing.
 2. **One bounded `retry-after` re-send** - on a tier-4 **429** classified `burst` with
    `retry-after ≤ 5 s` (`SMOOTHING_RETRY_MAX_S`), for a **body-less GET/HEAD only**: close the first
    response, sleep, send the identical `UpstreamRequest` once more on the same hold, settle on the

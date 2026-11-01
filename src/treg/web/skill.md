@@ -75,6 +75,12 @@ treg call scrapecreators.reddit.subreddit.posts --query subreddit=news
 treg catalog request "<what you need>"                   # searched and it is not there: file it
 ```
 
+Bare `treg` and `treg catalog …` print TOON from CLI 0.28 on (earlier releases print tables):
+`key: value` lines, and tables as `name[N]{field,…}:` with one row per line. The `call` line and the
+`help[N]` commands print exactly as you type them; `param_examples` shows each parameter's own
+example, not a request to send; `--json` prints the server's JSON instead. `treg call` itself prints
+the provider's answer as it came; `treg --json call` wraps it (see "Scripting many calls" below).
+
 <!--hub-->
 **Six jobs are already built as tools. Call the tool, not the chain.** Each is one call on
 `{BASE}/call/<id>`, runs its steps in parallel, returns one fixed shape whichever provider answered,
@@ -114,20 +120,22 @@ How a routed call works:
 - A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` and
   `_treg.ignored_filters`: filter the rows yourself, or send `X-Treg-Route-Strict-Filters: 1` to be
   refused with an unbilled 422 instead.
+- When you sent a `domain` on an email find, `_treg.domain_match` (and `X-Treg-Domain-Match`) says
+  whether the hit's mailbox domain matches it. A LinkedIn-only provider often returns a former
+  employer; the hit is still billed — read the flag before treating the address as current.
 - An asynchronous provider is polled for up to 60 seconds. If it is still running you get HTTP 202
   with `_treg.outcome: pending`, its poll descriptor, `reserved_micro` and `charged_micro: null`. Do
   not retry or start another provider: the task may still finish and charge.
 - `catalog_get` on a routed id shows the ranked plan and its prices before you spend.
 
 **A found contact is not a confirmed one.** An email or phone find returns the provider's best
-match. Only `output.verified: true` means the mailbox was checked; otherwise `_treg.advice` names
-the verify step. Run it before anyone sends, and never re-send the same find: every hit is billed,
-repeats included.
+match; `_treg.advice` says when it still needs checking. Verify before anyone sends, and never
+re-send the same find: every hit is billed, repeats included.
 
 - Send `X-Treg-Route-Verify: true` on `treg.people.email.find`, `treg.people.email.find.personal` or
   `treg.people.phone.find` to check each hit in the same call, as its own small charge. Read
-  `_treg.verification.verdict` and follow `_treg.advice`. A live phone line does not prove the
-  number is this person's.
+  `_treg.verification.verdict` (it wins over the provider's own `output.verified`) and follow
+  `_treg.advice`. A live phone line does not prove the number is this person's.
 <!--hub-->
 - `treg-hub.verified-email` finds and verifies in one call, and bills its fee only for a usable
   email.
@@ -139,17 +147,20 @@ repeats included.
   a result.
 <!--/routed-->
 
-**Choosing between providers of one job.** `treg catalog get <id>` lists every provider of the same
-job with `COST`, `WORKS` (the success rate treg observed, with its sample size), `SPEED` (median)
-and `LAST OK`. Work down this order:
+**Choosing between providers of one job.** `treg catalog get <id>` compares the providers of the same
+job in `compare` (the ten most reliable and cheapest, with the job's routed `treg.<job>` id second;
+its `help` names the command that lists them all): `price`, `works`
+(the success rate treg observed) over `calls`, `hit` (how often it found something), `p50` (median
+speed), `last_ok_days` and `verified`. Work down this order:
 
 1. **The inputs you actually hold.** A tool that wants a `profile_url` is no substitute when you have
    a name and a domain, whatever it costs.
-2. **Reliability.** A high `WORKS` on a real sample beats a rounder number on a tiny one: `99% (121)`
-   is stronger evidence than `100% (8)`.
+2. **Reliability.** A high `works` on a real sample beats a rounder number on a tiny one: `99%` over
+   121 calls is stronger evidence than `100%` over 8.
 3. **Price.** Spreads inside one job reach 200×, so this is usually where the money is.
-4. **`LAST OK`** breaks ties. A bare age means a real call came back; a `✓` age is the catalog's own
-   verification stamp, not live traffic; `—` means nobody has verified or called it.
+4. **Recency** breaks ties. `last_ok_days` counts from the last real call that came back; `verified`
+   is the catalog's own hand-run stamp, not live traffic; neither means nobody has called or
+   verified it.
 
 After a 429, a 5xx or a timeout, switch to the next provider and say which. **Never retry a 4xx
 elsewhere:** it is almost always your request, and retrying spends money on several providers for
@@ -280,6 +291,7 @@ first call's charge in `X-Treg-Original-Cost-Micro`.
 - Idempotency keys belong to the caller and last 24 hours; a call that fails frees its key at once.
 - 409: the original call is still running; retry shortly.
 - 410 (`idempotency_response_lost`, `idempotency_response_too_large` over the 2 MB replay limit,
+  `idempotency_response_not_retained` when provider terms forbid keeping the answer,
   `idempotency_outcome_unknown`): the first call was, or may have been, charged and its answer was
   not kept. The body names the `call_id`; `GET {BASE}/calls/<call id>` shows the cost and
   `/result` any stored answer. A new idempotency key calls again.
