@@ -1,5 +1,6 @@
 """`POST /media` hosts a reference file for a vendor to fetch; `GET /m/{token}` serves it."""
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 
 from .. import sandbox as demo_sandbox
 from ..application import media as media_app
@@ -45,7 +46,16 @@ async def serve_media(token: str) -> Response:
         raise HTTPException(status_code=404, detail="no such media, or it expired")
     # `sandbox` CSP + nosniff: user bytes served on treg's origin must be inert even if a
     # scriptable type ever slips past the allow-list. Vendors' fetchers ignore both headers.
-    return Response(content=row.body, media_type=row.content_type, headers={
-        "Content-Length": str(row.size), "Cache-Control": "public, max-age=3600",
-        "X-Robots-Tag": "noindex", "Content-Disposition": "inline",
-        "Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff"})
+    headers = {"Content-Length": str(row.size), "Cache-Control": "public, max-age=3600",
+               "X-Robots-Tag": "noindex", "Content-Disposition": "inline",
+               "Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff"}
+    if row.object_key is None:
+        return Response(content=row.body, media_type=row.content_type, headers=headers)
+    try:
+        chunks = await media_app.open_body(row)
+    except media_app.MediaUnavailable:
+        raise HTTPException(status_code=503, detail="media storage is unavailable; try again",
+                            headers={"Retry-After": "5"}) from None
+    if chunks is None:
+        raise HTTPException(status_code=404, detail="no such media, or it expired")
+    return StreamingResponse(chunks, media_type=row.content_type, headers=headers)

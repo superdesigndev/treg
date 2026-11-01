@@ -149,6 +149,9 @@ async def test_postgres_report_releases_primary_before_reading(
     response = await error_client.get("/admin/errors")
     assert response.status_code == 200, response.text
     assert response.json()["errors"][0]["org"] == "primary-team"
-    assert connections_held == [0, 0], "authorization held a primary connection during the report"
+    # Every read of the report (the window's id bound, the rows, the org names) runs with the
+    # primary connection already released; the count of reads is the report's business.
+    assert len(connections_held) >= 2 and set(connections_held) == {0}, \
+        "authorization held a primary connection during the report"
     assert replica._read_engine.pool.checkedout() == 0
     assert infra_db._admin_engine.pool.checkedout() == 0

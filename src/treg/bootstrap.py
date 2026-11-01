@@ -23,7 +23,7 @@ from starlette.routing import BaseRoute, Mount
 
 from . import adsconv, analytics, archive, audit, call_events
 from .application.call import route as routed_call
-from .application import arena, find_index
+from .application import arena, find_index, media
 from . import bootstrap_handlers, policy
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
@@ -729,6 +729,7 @@ def _lifespan(role: AppRole):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         async with archive_object_store(getattr(app.state, "archive_object_store", None)):
+            media.validate_configuration()
             await verify_db()
             if kv.configured() and not await kv.store().ping():
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it

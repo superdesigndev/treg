@@ -188,6 +188,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/alembic/versions/0089_ledgerentry_settle_spend_index.py` | architecture/data-model.md |
 | `src/treg/alembic/versions/0090_ledgerentry_topup_index.py` | architecture/data-model.md |
 | `src/treg/alembic/versions/0091_remove_prefix_covered_indexes.py` | architecture/data-model.md |
+| `src/treg/alembic/versions/0092_media_object_key.py` | architecture/media.md |
 | `src/treg/analytics.py` | architecture/data-model.md, architecture/org-endpoint-quota.md |
 | `src/treg/api.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/super-admin.md, interface/api.md, interface/landing-sandbox.md, interface/seo.md |
 | `src/treg/application/__init__.py` | architecture/import-boundaries.md |
@@ -531,7 +532,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/infra/money_trace_runner.py` | architecture/composition.md, architecture/data-model.md |
 | `src/treg/infra/oauth_exchange.py` | architecture/auth-secrets.md, architecture/instagram-oauth.md, guides/expanding-a-category.md |
 | `src/treg/infra/oauth_refresh.py` | architecture/auth-secrets.md |
-| `src/treg/infra/object_store.py` | architecture/archive.md |
+| `src/treg/infra/object_store.py` | architecture/archive.md, architecture/media.md |
 | `src/treg/infra/org_concurrency.py` | architecture/org-concurrency.md |
 | `src/treg/infra/org_endpoint_quota.py` | architecture/org-endpoint-quota.md |
 | `src/treg/infra/org_flow_control.py` | architecture/org-flow-control.md |
@@ -853,7 +854,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/local-proxy.md` | `localproxy.py`, `server.js` |
 | `architecture/local-run.md` | `localrun.py`, `egress.py`, `fsjail.py` |
 | `architecture/mcp-oauth.md` | `auth.py`, `mcp.py`, `health.py`, `mcp_oauth.py`, `session.py`, `access.py`, `api_keys.py`, `0082_oauth_sso_provenance.py`, `api_keys.py`, `auth.py`, `claude-connector.html`, `connect-demo.html`, `test_mcp.py`, `test_mcp_oauth.py`, `test_mcp_directory.py`, `test_marketplace_call.py` |
-| `architecture/media.md` | `media.py`, `media.py`, `models.py`, `0037_media_hosting.py`, `test_media.py` |
+| `architecture/media.md` | `media.py`, `media.py`, `models.py`, `object_store.py`, `0037_media_hosting.py`, `0092_media_object_key.py`, `test_media.py` |
 | `architecture/money.md` | `policy.py`, `tavily.yaml`, `tinyfish.yaml`, `test_tinyfish.py`, `__init__.py`, `settlement.py`, `__init__.py`, `models.py`, `billing.py`, `billing.py`, `billing.js`, `data.js`, `TeamPage.vue`, `enterprise_billing.py`, `enterprise_sso.py`, `idempotency.py`, `intake.py`, `resolve.py`, `octen.py`, `service.py`, `async_bridge.py`, `route.py`, `reserve.py`, `settle.py`, `tomba.yaml`, `asynctasks.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `referrals.py`, `budgets.py`, `__init__.py`, `money_admission.py`, `money_session.py`, `runner.py`, `stripe.py`, `reconcile.py`, `key_spend_rollup.py`, `0070_api_key_spend_rollup.py`, `test_key_spend_rollup.py`, `referrals.py`, `api.py`, `signup.py`, `promotions.py`, `0033_signup_promo_eligibility.py`, `0071_signup_promo_claim.py`, `admin.py`, `billing.py`, `call.py`, `orgs.py`, `referrals.py`, `test_call_architecture.py`, `test_money_lock_order.py`, `test_money_admission.py`, `test_money_admission_application.py`, `test_money_admission_postgres.py`, `test_archive_batch_postgres.py`, `bench_money_admission.py`, `test_marketplace_call.py`, `test_anyapi_cost_ceiling.py`, `test_asynctasks.py` |
 | `architecture/multi-tenancy.md` | `access.py`, `0042_pinned_read_scope.py`, `test_pinned_read_scope.py`, `models.py`, `api.py`, `caller_metadata.py`, `auth.py`, `asynctasks.py`, `resolve.py`, `provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `0043_provider_resources.py`, `signup.py`, `access.py`, `budgets.py`, `publicdemo.py`, `teams.py`, `usage.py`, `access.py`, `api_keys.py`, `session.py`, `enterprise_sso.py`, `0079_enterprise_sso.py`, `0080_enterprise_sso_audit.py`, `0081_sso_manual_block.py`, `0082_oauth_sso_provenance.py`, `0083_enterprise_sso_safety.py`, `0084_enterprise_workos_cleanup.py`, `0085_enterprise_sso_blocks.py`, `worker.py`, `enterprise_sso.py`, `workos.py`, `test_enterprise_sso.py`, `promotions.py`, `test_team_limit.py`, `test_auth.py`, `test_token_revocation.py`, `auth.py`, `turnstile.py`, `client_ip.py`, `test_client_ip.py`, `captcha.js`, `test_turnstile.py`, `captcha.test.ts`, `orgs.py`, `resources.py`, `bundles.py`, `db.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `test_asynctasks.py` |
 | `architecture/org-concurrency.md` | `org_concurrency.py`, `kv.py`, `config.py`, `call.py`, `mcp.py`, `test_org_concurrency.py`, `test_org_concurrency_redis.py` |

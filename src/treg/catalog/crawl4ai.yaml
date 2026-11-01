@@ -5150,23 +5150,30 @@ endpoints:
     host: gate.crawl4ai.com
     path: /lead/company
     name: Company enrichment by domain
-    summary: 'Enrich a company from its domain or LinkedIn company page: name, description, industry, employee count
+    summary: 'Enrich a company from its domain, name or LinkedIn company page: name, description, industry, employee count
       (the people on record), LinkedIn company URL, logo, website technology stack, the work e-mails and phones
       published on its pages, its social links and mail provider. `domain` is the company''s website (stripe.com);
       `linkedin` is its LinkedIn page link or handle (when several domains share the page, the most asked one answers
-      and meta.also_on_this_linkedin_page lists the rest). A company not on record answers 404, free. About 0.2 s.'
+      and meta.also_on_this_linkedin_page lists the rest); `name` is the company''s name (legal endings such as Inc or
+      GmbH are ignored; answers only when one company clearly has the name, otherwise 404 with up to 5 candidate
+      domains, free). A company not on record answers 404, free. About 0.2 s.'
     input:
       queryParams:
         domain:
           type: string
           required: false
           example: stripe.com
-          note: one of domain or linkedin
+          note: one of domain, linkedin or name
         linkedin:
           type: string
           required: false
           example: https://www.linkedin.com/company/stripe/
           note: a LinkedIn company page link or handle
+        name:
+          type: string
+          required: false
+          example: Stripe
+          note: the company name; one of domain, linkedin or name
     strict_query: true
     cost:
       type: per_success

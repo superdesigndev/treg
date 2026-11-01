@@ -4,7 +4,6 @@ from collections import Counter, OrderedDict
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 import logging
-import re
 import random
 import time
 
@@ -62,16 +61,14 @@ def uses_r2() -> bool:
 def validate_configuration() -> bool:
     s = get_settings()
     from .archive import mode
-    from .infra.object_store import R2_ENDPOINT_RE
+    from .infra.object_store import configured
     if mode() == "off" or not uses_r2():
         return False
     if s.archive_body_write == "r2" and any(
             getattr(s, "archive_body_read_" + path) != "r2-first"
             for path in ("lookup", "result", "terminal")):
         raise RuntimeError("Archive R2-only writing requires all read paths to use r2-first")
-    if (not R2_ENDPOINT_RE.fullmatch(s.archive_object_store_endpoint)
-            or not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", s.archive_object_store_bucket)
-            or not s.archive_object_store_access_key_id or not s.archive_object_store_secret_access_key):
+    if not configured(s):
         raise RuntimeError("Archive R2 is enabled but its endpoint, bucket or credentials are missing/invalid")
     return True
 

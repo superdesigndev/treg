@@ -31,7 +31,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Local proxy — catch a program's own outgoing calls (`treg <command>`)](architecture/local-proxy.md) | shipped | localproxy.py, server.js |
 | [Local CLI runs — run a vendor CLI as a dedicated user with a server-held credential (`treg run`)](architecture/local-run.md) | shipped | localrun.py, egress.py, fsjail.py |
 | [MCP — the front door for assistants, and treg as an OAuth authorization server](architecture/mcp-oauth.md) | shipped | auth.py, mcp.py, health.py, mcp_oauth.py, … |
-| [Media hosting - reference files a vendor can fetch (`treg host`)](architecture/media.md) | shipped | media.py, media.py, models.py, 0037_media_hosting.py, … |
+| [Media hosting - reference files a vendor can fetch (`treg host`)](architecture/media.md) | shipped | media.py, media.py, models.py, object_store.py, … |
 | [Money — prepaid balance, the ledger, Stripe, and the reports that check it](architecture/money.md) | shipped | policy.py, tavily.yaml, tinyfish.yaml, test_tinyfish.py, … |
 | [Multi-tenancy — orgs, memberships, invites, per-org scoping](architecture/multi-tenancy.md) | shipped | access.py, 0042_pinned_read_scope.py, test_pinned_read_scope.py, models.py, … |
 | [Published organization concurrent-request admission](architecture/org-concurrency.md) | shipped | org_concurrency.py, kv.py, config.py, call.py, … |

@@ -1263,3 +1263,16 @@ def test_the_validator_reads_the_settle_count_path_against_the_example(tmp_path,
     _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", rows % "total")
     assert validator.main(["tikhub"]) == 1
     assert "is not a list in the example_response" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("block, ok", [
+    ({"jq": {"type": "string"}}, True),
+    ({}, False),
+    ({"jq": "string"}, False),
+    ({"bad-name": {"type": "string"}}, False),
+    ({"jq": {"type": "string", "required": True}}, False),
+])
+def test_provider_query_params_shape(block, ok):
+    errors: list[str] = []
+    validator.check_provider_query_params(block, "test", errors)
+    assert (not errors) is ok, errors

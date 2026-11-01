@@ -1645,8 +1645,9 @@ class CallReview(SQLModel, table=True):
 
 class Media(SQLModel, table=True):
     """A reference file a member hosted for a vendor to fetch (`treg host`): the image, voice clip
-    or video an AIGC endpoint takes as a public URL. Bytes live in the row, expire by TTL, and are
-    served by an opaque token that names no org or file. See docs/context/architecture/media.md.
+    or video an AIGC endpoint takes as a public URL. The bytes live in the object store under
+    `object_key`, or in `body` when the registry keeps them in the database; they expire by TTL and
+    are served by an opaque token that names no org or file. See docs/context/architecture/media.md.
     """
 
     __table_args__ = (Index("ix_media_org_created", "org_id", "created_at"),)
@@ -1655,7 +1656,8 @@ class Media(SQLModel, table=True):
     org_id: int = Field(foreign_key="org.id")
     content_type: str
     size: int = Field(default=0)
-    body: bytes
+    body: bytes | None = Field(default=None)
+    object_key: str | None = Field(default=None)
     created_at: NaiveUTC = Field(default_factory=_now)
     expires_at: NaiveUTC = Field(index=True)
 

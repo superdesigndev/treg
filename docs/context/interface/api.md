@@ -113,7 +113,7 @@ See [feedback](../architecture/feedback.md) for the contract and provenance boun
 answers `{url, token, content_type, size, expires_at}`; `GET /m/{token}` serves it publicly, no
 token, because the vendor's fetcher has none. 30 MB per file, 300 MB per org per 24 h, 7-day TTL,
 `image/*` / `audio/*` / `video/*` only, refused in the sandbox. Refusals: 415 type, 413 size, 429
-quota, 403 sandbox. Not metered. See [media](../architecture/media.md).
+quota, 403 sandbox, 503 when the object store cannot take or serve the bytes. Not metered. See [media](../architecture/media.md).
 
 ## Pictures and the showcase leaderboard
 
