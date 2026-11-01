@@ -3504,6 +3504,25 @@ DROPCONTACT = OAuthProvider(
 )
 
 
+WHOGOES = OAuthProvider(
+    service="whogoes", display_name="WhoGoes", auth_kind="key",
+    token_label="API key", token_placeholder="wg_ followed by 64 hex characters",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://app.whogoes.co/dashboard/integrations",
+    setup_action_label="Get your WhoGoes API key",
+    setup_steps=("Sign up at app.whogoes.co and buy any credit pack once (free signup credits do not enable the API).",
+                 "Open Dashboard > API & Integrations, create a key and copy it (it is shown once).",
+                 "Recommended: set a daily credit cap on the key so an agent can never overspend."),
+    setup_note="Unlocking contacts and revealing emails spend credits; browsing events, counts, reading owned contacts and the balance check are free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Trade show and conference attendee lists with LinkedIn proof: find an event, count matches by role, seniority or industry, and buy contacts with verified emails.",
+    base_url="https://app.whogoes.co/api/v1",
+    docs_url="https://app.whogoes.co/docs/api",
+    probe_path="/credits",  # free: a bad key gets a 401 JSON error here
+)
+
+
 BRANDDEV = OAuthProvider(
     service="branddev",
     display_name="Context.dev",
@@ -4157,7 +4176,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
-        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
+        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, WHOGOES, ENROW, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,

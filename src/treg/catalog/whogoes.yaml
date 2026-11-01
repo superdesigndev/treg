@@ -1,0 +1,282 @@
+# WhoGoes: trade show and conference attendee lists, each contact backed by the public LinkedIn
+# post that shows the person is going. Find an event, count matches by role / seniority /
+# industry for free, then buy contacts (verified email included on unfiltered unlocks).
+#
+# BYOK only, on purpose. Ownership is per WhoGoes ACCOUNT: an account never pays twice for a
+# contact, and the read endpoints return everything the account has bought. One shared platform
+# key would let every treg team read every other team's purchases for free, so every row is
+# `own_account` or `platform_blocked`. Platform (treg-key) access goes through WhoGoes' separate
+# stateless partner API by agreement: contact hello@whogoes.co.
+#
+# `cache: forbidden`: contact rows are personal data (name, title, work email) and event counts
+# grow daily; nothing here should be stored or replayed.
+provider: whogoes
+source:
+  docs: https://app.whogoes.co/docs/api
+  openapi: null
+  curated: '2026-11-01'
+limits: "60 requests/minute and 3 in flight per key (429 with Retry-After); optional per-key daily credit cap (402 SPEND_CAP_EXCEEDED)"
+pricing_url: https://whogoes.co/#pricing
+cache: forbidden
+proposed_capabilities:
+  people.events.search: Browse trade shows and conferences that have attendee lists
+  people.events.match: Resolve an event name, abbreviation or typo to a listed event
+  people.events.request: Ask the provider to start covering an event it does not list
+  people.event_attendees.summary: See an event's attendee totals and how many you already own
+  people.event_attendees.unlock: Buy an event's attendee contacts that match your filters
+  people.event_attendees.list: Read the attendee contacts you own for one event
+  people.event_attendees.sync: Fetch attendee contacts bought since your last sync
+  people.event_attendees.emails.reveal: Reveal verified emails for attendee contacts you own
+
+endpoints:
+  - id: whogoes.events.search
+    added: '2026-11-01'
+    capability: people.events.search
+    platform: people
+    domain: events
+    scope: any_account
+    method: GET
+    path: /events
+    name: "Browse events with attendee lists"
+    summary: "Browse events. Mirrors the app's Browse Events page exactly: same statuses, same search, same default ordering (active events first, upcoming first, biggest list first)."
+    platform_blocked: "BYOK only: WhoGoes ownership is account-wide, so a shared key would leak purchases across teams. Connect your own WhoGoes key."
+    input:
+      queryParams:
+        status: {type: string, required: false, enum: [active, completed], note: "active = list still growing; completed = event finished, list final", example: "active"}
+        q: {type: string, required: false, note: "name, series, alias or location", example: "black hat"}
+        year: {type: integer, required: false, example: 2026}
+        region: {type: string, required: false, enum: [US, EU, EMEA, APAC, LATAM], example: "US"}
+        country: {type: string, required: false, note: "full English country name", example: "United States"}
+        industry: {type: string, required: false, note: "one of the 21 event categories in the docs, e.g. 'Technology & SaaS' (URL-encode &)", example: "Cybersecurity"}
+        min_contacts: {type: integer, required: false, example: 300}
+        starts_after: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-12-01"}
+        starts_before: {type: string, required: false, note: "YYYY-MM-DD", example: "2027-03-31"}
+        limit: {type: integer, required: false, default: 50, max: 200, example: 20}
+        offset: {type: integer, required: false, default: 0, example: 0}
+      note: "Unknown, empty or repeated query params return 400. Counts are refreshed on a schedule (counts_cached_at); the filter endpoint is the live truth."
+    test_request: {queryParams: {status: active, q: neurips, limit: 1}}
+    cost: &free {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: https://app.whogoes.co/docs/api, checked: '2026-11-01', confidence: verified, note: "free; balance unchanged on a live call"}
+    docs_url: https://app.whogoes.co/docs/api
+
+  - id: whogoes.events.match
+    added: '2026-11-01'
+    capability: people.events.match
+    platform: people
+    domain: events
+    scope: any_account
+    method: GET
+    path: /events/match
+    name: "Match an event name to a WhoGoes event"
+    summary: "Turn whatever event name you have into our event: an acronym, a full form, a short form, a typo, with or without a city or year. Free."
+    platform_blocked: "BYOK only: WhoGoes ownership is account-wide, so a shared key would leak purchases across teams. Connect your own WhoGoes key."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "event name, up to 200 characters; a year inside it is used as the year", example: "black hat eu"}
+        year: {type: integer, required: false, example: 2026}
+        limit: {type: integer, required: false, default: 5, min: 1, max: 10, example: 3}
+      note: "status is matched | ambiguous | not_found. On not_found, request_event carries a ready POST /event-requests body."
+    test_request: {queryParams: {q: NeurIPS, limit: 1}}
+    cost: *free
+    docs_url: https://app.whogoes.co/docs/api
+
+  - id: whogoes.events.request
+    added: '2026-11-01'
+    capability: people.events.request
+    platform: people
+    domain: events
+    scope: own_account
+    kind: action
+    method: POST
+    path: /event-requests
+    name: "Request coverage of a new event"
+    summary: "Ask us to add an event we don't cover yet. Free."
+    input:
+      bodyType: json
+      body:
+        event_name: {type: string, required: true, note: "up to 200 characters", example: "Taipei Cycle Show 2027"}
+        website: {type: string, required: false, example: "https://www.taipeicycle.com.tw"}
+        location: {type: string, required: false, example: "Taipei"}
+        start_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2027-03-03"}
+        note: {type: string, required: false, note: "up to 500 characters"}
+      note: "201 on a new request. The same event name again within 30 days returns the original request with duplicate: true."
+    test_request: {body: {event_name: "Taipei Cycle Show 2027", website: "https://www.taipeicycle.com.tw"}}
+    cost: *free
+    docs_url: https://app.whogoes.co/docs/api
+
+  - id: whogoes.events.status
+    added: '2026-11-01'
+    capability: people.event_attendees.summary
+    platform: people
+    domain: attendees
+    scope: own_account
+    method: GET
+    path: /events/{idOrSlug}/status
+    name: "Get an event's attendee totals and your position"
+    summary: "Live totals for one event plus your position on it."
+    input:
+      pathParams:
+        idOrSlug: {type: string, required: true, note: "event UUID or slug from /events or /events/match", example: "neurips-2026"}
+    test_request: {pathParams: {idOrSlug: neurips-2026}}
+    cost: *free
+    docs_url: https://app.whogoes.co/docs/api
+
+  - id: whogoes.events.filter
+    added: '2026-11-01'
+    capability: people.search.count
+    platform: people
+    domain: attendees
+    scope: own_account
+    method: GET
+    path: /events/{idOrSlug}/filter
+    name: "Count an event's attendees matching filters before buying"
+    summary: "Apply ICP filters and see exactly what you would get before spending anything: live match counts, how many you already own, and the same breakdowns you see on an event page in the app."
+    input:
+      pathParams:
+        idOrSlug: {type: string, required: true, example: "neurips-2026"}
+      queryArrayEncoding: comma
+      queryParams:
+        seniority: {type: "array[string]", required: false, enum: [C-Suite, Owner/Founder, VP, Director, Manager, IC, Other, Unknown], example: ["C-Suite", "VP"]}
+        function: {type: "array[string]", required: false, note: "e.g. Sales/BD, Marketing, Engineering/Technical, IT/Data (full list in docs)", example: ["Sales/BD"]}
+        industry: {type: "array[string]", required: false, note: "company industry buckets as returned in by_industry", example: ["Software & IT Services"]}
+        size: {type: "array[string]", required: false, enum: [1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5000+, Unknown], example: ["51-200"]}
+        country: {type: "array[string]", required: false, note: "full English names as returned in by_country", example: ["United States"]}
+        role: {type: "array[string]", required: false, enum: [organizer, sponsor, exhibitor, attendee, expected_attendee], example: ["attendee"]}
+        speaker: {type: boolean, required: false, example: true}
+        has_email: {type: boolean, required: false, example: true}
+        title_keyword: {type: string, required: false, example: "security"}
+        company_include: {type: string, required: false, example: "bank"}
+        company_exclude: {type: string, required: false, example: "agency"}
+      note: "matched minus owned = how many new contacts an unlock with the same filters delivers. Invalid filter values return 400 listing the valid ones. POST with {\"filters\": {...}} is also accepted."
+    test_request: {pathParams: {idOrSlug: neurips-2026}, queryParams: {seniority: ["C-Suite"]}}
+    cost: *free
+    docs_url: https://app.whogoes.co/docs/api
+
+  - id: whogoes.events.unlock
+    added: '2026-11-01'
+    capability: people.event_attendees.unlock
+    platform: people
+    domain: attendees
+    scope: own_account
+    kind: action
+    method: POST
+    path: /events/{idOrSlug}/unlock
+    name: "Buy an event's attendee contacts"
+    summary: "Spends credits. Unlocks up to count contacts you do not own yet on this event, best first (verified email holders first, then most recent activity)."
+    input:
+      pathParams:
+        idOrSlug: {type: string, required: true, example: "neurips-2026"}
+      bodyType: json
+      body:
+        count: {type: integer, required: true, min: 1, max: 10000, example: 25}
+        filters: {type: object, required: false, note: "same keys as the filter endpoint, arrays as JSON arrays", example: {"seniority": ["C-Suite", "VP"], "has_email": true}}
+        include_emails: {type: boolean, required: false, default: true, note: "filtered unlocks only: bundle the +1 credit email reveal"}
+      note: "Never pays twice: re-sending the same unlock buys only people added since the last run, so a daily scheduled re-run is the sync pattern. When nobody new matches it returns 200 with contacts_unlocked 0 and charges nothing. Send an Idempotency-Key header to make retries safe. Read the purchased rows with the contacts endpoints."
+    test_request: {pathParams: {idOrSlug: neurips-2026}, body: {count: 1}}
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      reserve: {rows: {param: body.count, default: {value: 1, source: docs}, max: 10000}}
+      reported_charge: {path: data.credits_spent, unit: credit}
+      source: observed
+      source_url: https://whogoes.co/#pricing
+      checked: '2026-11-01'
+      confidence: verified
+      note: "1 credit per contact unlocked, verified email included, when unfiltered (or has_email only). With ICP filters: 1 credit per contact + 1 per verified email when include_emails is true (default), so up to 2. Observed 2026-11-01: count 1 unfiltered = 1 credit; count 1 filtered with email = 2; nobody new = 0. The response's credits_spent is the exact charge."
+    docs_url: https://app.whogoes.co/docs/api
+
+  - id: whogoes.events.reveal_emails
+    added: '2026-11-01'
+    capability: people.event_attendees.emails.reveal
+    platform: people
+    domain: attendees
+    scope: own_account
+    kind: action
+    method: POST
+    path: /events/{idOrSlug}/reveal-emails
+    name: "Reveal emails for contacts you own"
+    summary: "Spends credits. Reveals verified emails for contacts you own that do not have their email tier unlocked yet. 1 credit per email actually revealed."
+    untestable: "reveals a named private individual's email (PII) and depends on contacts the caller already owns; self-verified live 2026-11-01 (1 contact revealed, 1 credit) without capturing the response"
+    input:
+      pathParams:
+        idOrSlug: {type: string, required: true, example: "neurips-2026"}
+      bodyType: json
+      body:
+        contact_ids: {type: "array[string]", required: false, note: "contact UUIDs from the contacts endpoints"}
+        filters: {type: object, required: false, note: "reveal for every owned contact matching these filters", example: {"seniority": ["C-Suite"]}}
+      note: "An empty body reveals every eligible email on the event. Unknown body keys return 400."
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: result
+      reported_charge: {path: data.credits_spent, unit: credit}
+      source: observed
+      source_url: https://whogoes.co/#pricing
+      checked: '2026-11-01'
+      confidence: verified
+      note: "1 credit per email revealed; never re-charges an email already unlocked. Observed 2026-11-01: 1 contact = 1 credit."
+    docs_url: https://app.whogoes.co/docs/api
+
+  - id: whogoes.events.contacts
+    added: '2026-11-01'
+    capability: people.event_attendees.list
+    platform: people
+    domain: attendees
+    scope: own_account
+    method: GET
+    path: /events/{idOrSlug}/contacts
+    name: "Read your attendee contacts for an event"
+    summary: "Your unlocked contacts for one event. Free."
+    untestable: "returns named private individuals (PII); self-verified live 2026-11-01 (200, free) without capturing the response"
+    input:
+      pathParams:
+        idOrSlug: {type: string, required: true, example: "neurips-2026"}
+      queryParams:
+        sort: {type: string, required: false, enum: [unlocked_at, full_name, current_title, company_name, post_date, email], example: "post_date"}
+        dir: {type: string, required: false, enum: [asc, desc], example: "desc"}
+        limit: {type: integer, required: false, max: 100, example: 100}
+        offset: {type: integer, required: false, default: 0, example: 0}
+      note: "Also accepts every filter param of the filter endpoint. Each row carries post_url and the full post_content of the LinkedIn post that proves attendance."
+    cost: *free
+    docs_url: https://app.whogoes.co/docs/api
+
+  - id: whogoes.contacts.sync
+    added: '2026-11-01'
+    capability: people.event_attendees.sync
+    platform: people
+    domain: attendees
+    scope: own_account
+    method: GET
+    path: /contacts
+    name: "Sync contacts bought since a watermark"
+    summary: "Everything you own across all events. Free. With since it becomes the incremental sync feed."
+    untestable: "returns named private individuals (PII); self-verified live 2026-11-01 (200, free) without capturing the response"
+    input:
+      queryParams:
+        since: {type: string, required: false, note: "ISO 8601; pass the previous response's watermark exactly as received", example: "2026-11-01T00:00:00Z"}
+        event: {type: string, required: false, note: "event UUID or slug to scope to one event", example: "neurips-2026"}
+        limit: {type: integer, required: false, max: 200, example: 200}
+        offset: {type: integer, required: false, default: 0, example: 0}
+      note: "Page with each response's watermark until an empty page, then store the last watermark for the next run. A page can exceed limit when many contacts share one unlock timestamp."
+    cost: *free
+    docs_url: https://app.whogoes.co/docs/api
+
+  - id: whogoes.account.usage
+    added: '2026-11-01'
+    capability: account.usage
+    platform: account
+    scope: own_account
+    kind: account
+    method: GET
+    path: /credits
+    name: "Get credit balance and daily cap"
+    summary: "Your balance and this key's daily cap state. Free."
+    input:
+      note: "no parameters; the key rides in the Authorization: Bearer header. Also the connection probe: a bad key gets 401 UNAUTHORIZED."
+    test_request: {queryParams: {}}
+    cost: *free
+    docs_url: https://app.whogoes.co/docs/api
