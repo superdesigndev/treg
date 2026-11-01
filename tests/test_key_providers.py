@@ -587,3 +587,21 @@ async def test_financialdatasets_connect_accepts_only_valid_key_outcomes_without
                     if t["name"] == "financialdatasets")
         assert tool["health_check"] is None
         assert tool["bindings"][0]["name"] == "X-API-KEY"
+
+@pytest.mark.parametrize("upstream_status, expected_status", [(200, 200), (401, 422)])
+async def test_justblogged_key_uses_authenticated_blog_discovery(clients, monkeypatch, upstream_status, expected_status):
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://justblogged.com/api/blogs"
+        assert request.headers["authorization"] == "Bearer own-key"
+        return httpx.Response(upstream_status, json=[] if upstream_status == 200 else {
+            "error": "invalid_token", "error_description": "Invalid access token"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "justblogged", "token": "own-key"},
+        )
+    assert response.status_code == expected_status, response.text
+    if expected_status == 422:
+        assert "rejected" in response.text

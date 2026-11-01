@@ -1307,6 +1307,32 @@ AKTA = OAuthProvider(
     probe_path="/v1/company/search/?query=canva.com",
 )
 
+JUSTBLOGGED = OAuthProvider(
+    service="justblogged",
+    display_name="JustBlogged",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="jb_...",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://justblogged.com/dashboard",
+    setup_action_label="Create a JustBlogged API key",
+    setup_steps=(
+        "Sign in to JustBlogged, select your blog, and open Settings → API Keys.",
+        "Create a blog-scoped key and copy it; its secret is shown only once.",
+        "For access to multiple blogs, create a user-scoped key in Account → API Keys instead.",
+    ),
+    setup_note="REST API access is included on Free. Your key only accesses blogs you can use.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Publishing",
+    summary="Create, update and publish blog posts and pages; manage tags and collections.",
+    base_url="https://justblogged.com/api",
+    docs_url="https://justblogged.com/developers/api",
+    probe_path="/blogs",
+)
+
 HUNTER = OAuthProvider(
     service="hunter",
     display_name="Hunter",
@@ -4144,7 +4170,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, JUSTBLOGGED, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
@@ -4172,7 +4198,7 @@ DEFAULT_CAPABILITY = "read"
 
 # Shelf order in the marketplace. Anything carrying a category not named here sorts last, so a
 # provider added without one is visible rather than lost between the shelves.
-CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Enrichment",
+CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Publishing", "Enrichment",
                   "Market data", "Research & public data", "Jobs data", "Community", "Other")
 
 

@@ -1,0 +1,766 @@
+provider: justblogged
+source:
+  docs: https://justblogged.com/developers/api
+  openapi: https://justblogged.com/openapi.yml
+  curated: '2026-10-31'
+pricing_url: https://justblogged.com/pricing
+cache: forbidden
+proposed_capabilities:
+  blog.list: List blogs accessible to your account
+  blog.get: Read settings for your blog
+  blog.posts.list: List and filter posts in your blog
+  blog.post.create: Create a post in your blog
+  blog.post.get: Read a post in your blog
+  blog.post.update: Update, publish or schedule a post in your blog
+  blog.pages.list: List and filter static pages in your blog
+  blog.page.create: Create a static page in your blog
+  blog.page.get: Read a static page in your blog
+  blog.page.update: Update or publish a static page in your blog
+  blog.tags.list: List tags in your blog
+  blog.collections.list: List collections in your blog
+  blog.collection.get: Read a collection in your blog
+  blog.members.list: List members who can author posts in your blog
+endpoints:
+- id: justblogged.blog.list
+  added: '2026-10-31'
+  capability: blog.list
+  platform: blog
+  scope: own_account
+  method: GET
+  path: /blogs
+  name: List your blogs
+  summary: List accessible blogs
+  input: {}
+  test_request:
+    queryParams: {}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
+- id: justblogged.blog.get
+  added: '2026-10-31'
+  capability: blog.get
+  platform: blog
+  scope: own_account
+  method: GET
+  path: /blogs/{blogId}
+  name: Get your blog settings
+  summary: Get blog
+  input:
+    pathParams:
+      blogId:
+        type: string
+        required: true
+        note: Blog ID
+        example: 7RkrCq_ZWQHbzlkE00ZCg
+    note: Use a blog ID returned by GET /blogs; content IDs come from the corresponding list route.
+  test_request:
+    pathParams:
+      blogId: 7RkrCq_ZWQHbzlkE00ZCg
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
+- id: justblogged.blog.posts.list
+  added: '2026-10-31'
+  capability: blog.posts.list
+  platform: blog
+  scope: own_account
+  method: GET
+  path: /blogs/{blogId}/posts
+  name: List your blog posts
+  summary: List posts
+  input:
+    pathParams:
+      blogId:
+        type: string
+        required: true
+        note: Blog ID
+        example: 7RkrCq_ZWQHbzlkE00ZCg
+    queryParams:
+      page:
+        type: integer
+        required: false
+        default: 1
+        min: 1
+        example: 1
+      limit:
+        type: integer
+        required: false
+        default: 30
+        min: 1
+        max: 100
+        example: 1
+      status:
+        type: string
+        required: false
+        enum:
+        - draft
+        - published
+        - scheduled
+        - all
+      collectionId:
+        type: string
+        required: false
+      tagId:
+        type: string
+        required: false
+      userId:
+        type: string
+        required: false
+        note: Filter by author
+      orderBy:
+        type: string
+        required: false
+        enum:
+        - createdAt
+        - updatedAt
+        - title
+        - publishedAt
+        default: createdAt
+      order:
+        type: string
+        required: false
+        enum:
+        - asc
+        - desc
+        default: desc
+    note: Use a blog ID returned by GET /blogs; content IDs come from the corresponding list route.
+  test_request:
+    pathParams:
+      blogId: 7RkrCq_ZWQHbzlkE00ZCg
+    queryParams:
+      page: 1
+      limit: 1
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
+- id: justblogged.blog.post.create
+  added: '2026-10-31'
+  capability: blog.post.create
+  platform: blog
+  scope: own_account
+  kind: action
+  method: POST
+  path: /blogs/{blogId}/posts
+  name: Create a blog post
+  summary: Create post
+  input:
+    pathParams:
+      blogId:
+        type: string
+        required: true
+        note: Blog ID
+        example: 7RkrCq_ZWQHbzlkE00ZCg
+    bodyType: json
+    body:
+      title:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 200
+        example: treg catalog post creation check
+      slug:
+        type: string
+        required: false
+        maxLength: 100
+        note: Auto-generated from title if not provided
+        example: treg-catalog-post-check
+      content:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 1000000
+        example: <p>Unpublished API verification fixture.</p>
+      status:
+        type: string
+        required: false
+        enum:
+        - draft
+        - published
+        default: draft
+        example: draft
+      collection_id:
+        type: string
+        required: false
+        minLength: 1
+        note: Optional collection ID. When omitted, the blog's empty-slug default Posts collection is used.
+          If that default does not exist, collection_id is required.
+        example: 4RzZLQPvo23SH_hT2j39_
+      author_id:
+        type: string
+        required: false
+        minLength: 1
+        note: Optional author user ID. Assigning another blog member requires owner or admin access.
+      image:
+        type: string
+        required: false
+        maxLength: 500
+      published_at:
+        type: string
+        required: false
+        note: Auto-set to now if status is published and not provided
+      tags:
+        type: array
+        required: false
+        default: []
+        maxItems: 10
+      metadata:
+        type: object
+        required: false
+        note: Custom metadata (max 20 fields, description max 200 chars)
+    note: Test request creates an unpublished draft on the dedicated verification blog. Delete that draft before
+      replaying the unchanged request. Use your own IDs for another account.
+  test_request:
+    pathParams:
+      blogId: 7RkrCq_ZWQHbzlkE00ZCg
+    body:
+      title: treg catalog post creation check
+      slug: treg-catalog-post-check
+      content: <p>Unpublished API verification fixture.</p>
+      status: draft
+      collection_id: 4RzZLQPvo23SH_hT2j39_
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
+- id: justblogged.blog.post.get
+  added: '2026-10-31'
+  capability: blog.post.get
+  platform: blog
+  scope: own_account
+  method: GET
+  path: /blogs/{blogId}/posts/{postId}
+  name: Read a blog post
+  summary: Get post
+  input:
+    pathParams:
+      blogId:
+        type: string
+        required: true
+        note: Blog ID
+        example: 7RkrCq_ZWQHbzlkE00ZCg
+      postId:
+        type: string
+        required: true
+        note: Post ID
+        example: xYZZKI-D8vQNTF436ZN5M
+    note: Use a blog ID returned by GET /blogs; content IDs come from the corresponding list route.
+  test_request:
+    pathParams:
+      blogId: 7RkrCq_ZWQHbzlkE00ZCg
+      postId: xYZZKI-D8vQNTF436ZN5M
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
+- id: justblogged.blog.post.update
+  added: '2026-10-31'
+  capability: blog.post.update
+  platform: blog
+  scope: own_account
+  kind: action
+  method: PATCH
+  path: /blogs/{blogId}/posts/{postId}
+  name: Update or publish a blog post
+  summary: Update post
+  input:
+    pathParams:
+      blogId:
+        type: string
+        required: true
+        note: Blog ID
+        example: 7RkrCq_ZWQHbzlkE00ZCg
+      postId:
+        type: string
+        required: true
+        note: Post ID
+        example: xYZZKI-D8vQNTF436ZN5M
+    bodyType: json
+    body:
+      title:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 200
+        example: treg API verification draft
+      slug:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 100
+      content:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 1000000
+      status:
+        type: string
+        required: false
+        enum:
+        - draft
+        - published
+      collection_id:
+        type: string
+        required: false
+      author_id:
+        type: string
+        required: false
+        minLength: 1
+        note: Updated author user ID. Reassignment requires owner or admin access.
+      image:
+        type: string
+        required: false
+        maxLength: 500
+      published_at:
+        type: string
+        required: false
+      tags:
+        type: array
+        required: false
+        maxItems: 10
+      metadata:
+        type: object
+        required: false
+    note: Test requests save drafts only. Use your own blog and content IDs. Set status to published only when
+      publication is intended.
+  test_request:
+    pathParams:
+      blogId: 7RkrCq_ZWQHbzlkE00ZCg
+      postId: xYZZKI-D8vQNTF436ZN5M
+    body:
+      title: treg API verification draft
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
+- id: justblogged.blog.pages.list
+  added: '2026-10-31'
+  capability: blog.pages.list
+  platform: blog
+  scope: own_account
+  method: GET
+  path: /blogs/{blogId}/pages
+  name: List your blog pages
+  summary: List pages
+  input:
+    pathParams:
+      blogId:
+        type: string
+        required: true
+        note: Blog ID
+        example: 7RkrCq_ZWQHbzlkE00ZCg
+    queryParams:
+      page:
+        type: integer
+        required: false
+        default: 1
+        min: 1
+        example: 1
+      limit:
+        type: integer
+        required: false
+        default: 30
+        min: 1
+        max: 100
+        example: 1
+      status:
+        type: string
+        required: false
+        enum:
+        - draft
+        - published
+      orderBy:
+        type: string
+        required: false
+        enum:
+        - createdAt
+        - updatedAt
+        - title
+        default: updatedAt
+      order:
+        type: string
+        required: false
+        enum:
+        - asc
+        - desc
+        default: desc
+    note: Use a blog ID returned by GET /blogs; content IDs come from the corresponding list route.
+  test_request:
+    pathParams:
+      blogId: 7RkrCq_ZWQHbzlkE00ZCg
+    queryParams:
+      page: 1
+      limit: 1
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
+- id: justblogged.blog.page.create
+  added: '2026-10-31'
+  capability: blog.page.create
+  platform: blog
+  scope: own_account
+  kind: action
+  method: POST
+  path: /blogs/{blogId}/pages
+  name: Create a blog page
+  summary: Create page
+  input:
+    pathParams:
+      blogId:
+        type: string
+        required: true
+        note: Blog ID
+        example: 7RkrCq_ZWQHbzlkE00ZCg
+    bodyType: json
+    body:
+      title:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 200
+        example: treg catalog page creation check
+      slug:
+        type: string
+        required: false
+        maxLength: 100
+        note: Auto-generated from title if not provided
+        example: treg-catalog-page-check
+      body:
+        type: string
+        required: true
+        minLength: 1
+        maxLength: 1000000
+        example: <p>Unpublished API verification fixture.</p>
+      status:
+        type: string
+        required: false
+        enum:
+        - draft
+        - published
+        default: draft
+        example: draft
+      image:
+        type: string
+        required: false
+        maxLength: 500
+      metadata:
+        type: object
+        required: false
+        note: Custom metadata (max 20 fields, description max 200 chars)
+    note: Test request creates an unpublished draft on the dedicated verification blog. Delete that draft before
+      replaying the unchanged request. Use your own IDs for another account.
+  test_request:
+    pathParams:
+      blogId: 7RkrCq_ZWQHbzlkE00ZCg
+    body:
+      title: treg catalog page creation check
+      slug: treg-catalog-page-check
+      body: <p>Unpublished API verification fixture.</p>
+      status: draft
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
+- id: justblogged.blog.page.get
+  added: '2026-10-31'
+  capability: blog.page.get
+  platform: blog
+  scope: own_account
+  method: GET
+  path: /blogs/{blogId}/pages/{pageId}
+  name: Read a blog page
+  summary: Get page
+  input:
+    pathParams:
+      blogId:
+        type: string
+        required: true
+        note: Blog ID
+        example: 7RkrCq_ZWQHbzlkE00ZCg
+      pageId:
+        type: string
+        required: true
+        note: Page ID
+        example: 8tm0g_rwl0rfuV5cRaiBd
+    note: Use a blog ID returned by GET /blogs; content IDs come from the corresponding list route.
+  test_request:
+    pathParams:
+      blogId: 7RkrCq_ZWQHbzlkE00ZCg
+      pageId: 8tm0g_rwl0rfuV5cRaiBd
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
+- id: justblogged.blog.page.update
+  added: '2026-10-31'
+  capability: blog.page.update
+  platform: blog
+  scope: own_account
+  kind: action
+  method: PATCH
+  path: /blogs/{blogId}/pages/{pageId}
+  name: Update or publish a blog page
+  summary: Update page
+  input:
+    pathParams:
+      blogId:
+        type: string
+        required: true
+        note: Blog ID
+        example: 7RkrCq_ZWQHbzlkE00ZCg
+      pageId:
+        type: string
+        required: true
+        note: Page ID
+        example: 8tm0g_rwl0rfuV5cRaiBd
+    bodyType: json
+    body:
+      title:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 200
+        example: treg API verification draft
+      slug:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 100
+      body:
+        type: string
+        required: false
+        minLength: 1
+        maxLength: 1000000
+      status:
+        type: string
+        required: false
+        enum:
+        - draft
+        - published
+      image:
+        type: string
+        required: false
+        maxLength: 500
+      metadata:
+        type: object
+        required: false
+    note: Test requests save drafts only. Use your own blog and content IDs. Set status to published only when
+      publication is intended.
+  test_request:
+    pathParams:
+      blogId: 7RkrCq_ZWQHbzlkE00ZCg
+      pageId: 8tm0g_rwl0rfuV5cRaiBd
+    body:
+      title: treg API verification draft
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
+- id: justblogged.blog.tags.list
+  added: '2026-10-31'
+  capability: blog.tags.list
+  platform: blog
+  scope: own_account
+  method: GET
+  path: /blogs/{blogId}/tags
+  name: List your blog tags
+  summary: List tags
+  input:
+    pathParams:
+      blogId:
+        type: string
+        required: true
+        note: Blog ID
+        example: 7RkrCq_ZWQHbzlkE00ZCg
+    queryParams:
+      search:
+        type: string
+        required: false
+        note: Filter tags by name (case-insensitive)
+    note: Use a blog ID returned by GET /blogs; content IDs come from the corresponding list route.
+  test_request:
+    pathParams:
+      blogId: 7RkrCq_ZWQHbzlkE00ZCg
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
+- id: justblogged.blog.collections.list
+  added: '2026-10-31'
+  capability: blog.collections.list
+  platform: blog
+  scope: own_account
+  method: GET
+  path: /blogs/{blogId}/collections
+  name: List your blog collections
+  summary: List collections
+  input:
+    pathParams:
+      blogId:
+        type: string
+        required: true
+        note: Blog ID
+        example: 7RkrCq_ZWQHbzlkE00ZCg
+    note: Use a blog ID returned by GET /blogs; content IDs come from the corresponding list route.
+  test_request:
+    pathParams:
+      blogId: 7RkrCq_ZWQHbzlkE00ZCg
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
+- id: justblogged.blog.collection.get
+  added: '2026-10-31'
+  capability: blog.collection.get
+  platform: blog
+  scope: own_account
+  method: GET
+  path: /blogs/{blogId}/collections/{collectionId}
+  name: Get a blog collection
+  summary: Get collection
+  input:
+    pathParams:
+      blogId:
+        type: string
+        required: true
+        note: Blog ID
+        example: 7RkrCq_ZWQHbzlkE00ZCg
+      collectionId:
+        type: string
+        required: true
+        note: Collection ID
+        example: 4RzZLQPvo23SH_hT2j39_
+    note: Use a blog ID returned by GET /blogs; content IDs come from the corresponding list route.
+  test_request:
+    pathParams:
+      blogId: 7RkrCq_ZWQHbzlkE00ZCg
+      collectionId: 4RzZLQPvo23SH_hT2j39_
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
+- id: justblogged.blog.members.list
+  added: '2026-10-31'
+  capability: blog.members.list
+  platform: blog
+  scope: own_account
+  method: GET
+  path: /blogs/{blogId}/members
+  name: List your blog authors
+  summary: List blog members
+  input:
+    pathParams:
+      blogId:
+        type: string
+        required: true
+        note: Blog ID
+        example: 7RkrCq_ZWQHbzlkE00ZCg
+    note: Use a blog ID returned by GET /blogs; content IDs come from the corresponding list route.
+  test_request:
+    pathParams:
+      blogId: 7RkrCq_ZWQHbzlkE00ZCg
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://justblogged.com/pricing
+    checked: '2026-10-31'
+    confidence: documented
+    note: REST API access is included on Free; no per-call billing.
+  docs_url: https://justblogged.com/developers/api
