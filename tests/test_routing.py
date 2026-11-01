@@ -1888,6 +1888,7 @@ def test_linkedin_url_only_trusts_a_linkedin_host(raw, expected):
     ("linkedin.com/in/x?r=https://g.com/", "https://linkedin.com/in/x?r=https://g.com/"),
     ("https://ตัวอย่าง.ไทย/", "https://ตัวอย่าง.ไทย/"), ("https://stripe.com./", "https://stripe.com./"),
     ("https://[2001:db8::1]/", "https://[2001:db8::1]/"),
+    ("https://example.com/?q=" + "a" * 3000, "https://example.com/?q=" + "a" * 3000),
 ])
 def test_url_identity_is_checked_by_its_declared_type(raw, expected):
     from treg.domain.catalog.routing.contracts import _as_url

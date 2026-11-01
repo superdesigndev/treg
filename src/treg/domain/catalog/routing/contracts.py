@@ -9,11 +9,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pydantic import HttpUrl, TypeAdapter, ValidationError
+from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 
 from . import paths as P
 
-_HTTP_URL = TypeAdapter(HttpUrl)
+_HTTP_URL = TypeAdapter(AnyHttpUrl)
 
 
 @dataclass(frozen=True)

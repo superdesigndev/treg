@@ -2361,7 +2361,7 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   its declared type (`invalid_identity`; today only `url` has a check): a value that is not of
   its type, such as `N/A` in a `url` field, is a 422 `invalid_identity` before any child is
   called, even when another complete variant was sent. A `url` is what the WHATWG parser
-  (pydantic `HttpUrl`) accepts with a dotted host and no userinfo; the value is kept as sent, a
+  (pydantic `AnyHttpUrl`) accepts with a dotted host and no userinfo; the value is kept as sent, a
   scheme-less one with `https://` added. A derived `linkedin_url` is built only from a
   handle-shaped value, never `/in/N/A`. Our 5xx/503/429 or a vendor 5xx/429/402 = error →
   next candidate, at most two extra, only for idempotent contracts. A treg-side
