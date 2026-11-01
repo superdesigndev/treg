@@ -2196,12 +2196,41 @@ async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: A
 
 
 def test_routed_miss_count_includes_a_per_success_child_that_bills_a_miss():
-    """A per-success child whose provider still charges for some misses (Lusha bills the 1-credit
-    search on a matched profile with no number) declares `bills_miss`, and the routed row counts it,
-    so the routed note never says "misses are free" while one of its children bills them."""
-    cat = catalog_store.load()
-    assert cat.by_id["lusha.people.phone.find"]["cost"].get("bills_miss") is True
-    phone = cat.by_id["treg.people.phone.find"]
-    assert "lusha.people.phone.find" in phone["miss_billed_by"]
-    assert "misses are free" not in phone["cost"]["note"]
-    assert phone["cost"].get("varies") is True
+    """A per-success child is free on a miss unless cost.bills_miss is true; the routed row counts
+    those children in miss_billed_by and never claims misses are free while one of them bills."""
+    from treg.domain.catalog.routing import contracts as C, synthetic
+
+    contract = C.Contract(capability="x.find", summary="", identity=(("q",),), identity_types={"q": "str"},
+                          derive={}, filters={}, output={"rows": {"required": True}}, miss="rows == []")
+    ids = ("a.find", "b.find", "c.find")
+    adapters = {eid: C.Adapter(eid, (("q",),), {"q": "body.q"}, {"rows": "rows"}, "rows == []",
+                               route=True, verified=True) for eid in ids}
+    endpoints = [
+        {"id": "a.find", "provider": "a",
+         "cost": {"type": "per_success", "value": 1, "bills_miss": True}},
+        {"id": "b.find", "provider": "b",
+         "cost": {"type": "per_success", "value": 2}},
+        {"id": "c.find", "provider": "c",
+         "cost": {"type": "per_call", "value": 3}},
+    ]
+
+    def cost_view(cost, provider):
+        return {"usd": float(cost["value"])} if cost and cost.get("value") is not None else None
+
+    row = synthetic.routed_endpoint(contract, endpoints, adapters, cost_view)
+    assert row["miss_billed_by"] == ["a.find", "c.find"]
+    assert "b.find" not in row["miss_billed_by"]
+    assert row["cost"].get("varies") is True
+    assert "misses are free" not in row["cost"]["note"]
+    assert row["cost"]["note"].startswith("Not free:")
+
+    free_only = [
+        {"id": "b.find", "provider": "b", "cost": {"type": "per_success", "value": 2}},
+        {"id": "d.find", "provider": "d", "cost": {"type": "per_success", "value": 4}},
+    ]
+    free_adapters = {eid: C.Adapter(eid, (("q",),), {"q": "body.q"}, {"rows": "rows"}, "rows == []",
+                                    route=True, verified=True) for eid in ("b.find", "d.find")}
+    free_row = synthetic.routed_endpoint(contract, free_only, free_adapters, cost_view)
+    assert free_row["miss_billed_by"] == []
+    assert "misses are free" in free_row["cost"]["note"]
+    assert free_row["cost"].get("varies") is not True
