@@ -403,7 +403,7 @@ adapters:
     in: {linkedin_url: queryParams.profile}
     const: {queryParams.email_type: none, queryParams.include_phone: true}
     test_identity: {linkedin_url: "https://www.linkedin.com/in/routing-fixture"}
-    out: {phone: "profile.phone[0]", line_type: "'mobile'"}
+    out: {phone: "profile.phone[0]"}
     miss: "at_least(status_code != 200, coalesce(profile.phone, []) == [])"
   dropleads.people.phone.find:
     accepts: [[linkedin_url]]
@@ -422,7 +422,7 @@ adapters:
   aiark.people.phone.find:
     accepts: [[linkedin_url], [full_name, domain], [first_name, last_name, domain]]
     in: {linkedin_url: body.linkedin, full_name: body.name, domain: body.domain}
-    out: {phone: "get(data.data[0], '[0]')", line_type: "'mobile'"}
+    out: {phone: "get(data.data[0], '[0]')"}
     miss: "get(data.data[0], '[0]') == null"
   tomba.people.phone.find:
     accepts: [[email], [linkedin_url]]
@@ -669,7 +669,7 @@ adapters:
     in:  {email: queryParams.email, linkedin_handle: queryParams.linkedin_handle}
     out: {full_name: data.name.fullName, first_name: data.name.givenName, last_name: data.name.familyName,
           title: data.employment.title, company: data.employment.name, company_domain: data.employment.domain,
-          linkedin_url: data.linkedin.handle, location: "coalesce(data.location, data.geo.country)"}
+          linkedin_url: "linkedin_url(data.linkedin.handle)", location: "coalesce(data.location, data.geo.country)"}
     miss: "data.name.fullName == null"
   # hunter.x.combined-find: no adapter — its captured example truncates data.person.name, so `out`
   # cannot be fixture-verified; hunter.people.enrich covers the same identity.
@@ -3207,7 +3207,7 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.formats: [markdown]}
     out: {pages: ".", count: "len(.)"}
-    miss: "coalesce([0].markdown, '') == ''"
+    miss: "coalesce([0].markdown, [0].html, '') == ''"
   tinyfish.web.fetch:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
