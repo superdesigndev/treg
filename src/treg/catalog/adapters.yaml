@@ -403,7 +403,7 @@ adapters:
     in: {linkedin_url: queryParams.profile}
     const: {queryParams.email_type: none, queryParams.include_phone: true}
     test_identity: {linkedin_url: "https://www.linkedin.com/in/routing-fixture"}
-    out: {phone: "profile.phone[0]", line_type: "'mobile'"}
+    out: {phone: "profile.phone[0]"}
     miss: "at_least(status_code != 200, coalesce(profile.phone, []) == [])"
   dropleads.people.phone.find:
     accepts: [[linkedin_url]]
@@ -422,7 +422,7 @@ adapters:
   aiark.people.phone.find:
     accepts: [[linkedin_url], [full_name, domain], [first_name, last_name, domain]]
     in: {linkedin_url: body.linkedin, full_name: body.name, domain: body.domain}
-    out: {phone: "get(data.data[0], '[0]')", line_type: "'mobile'"}
+    out: {phone: "get(data.data[0], '[0]')"}
     miss: "get(data.data[0], '[0]') == null"
   tomba.people.phone.find:
     accepts: [[email], [linkedin_url]]
