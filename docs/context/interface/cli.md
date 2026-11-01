@@ -382,6 +382,7 @@ Bare **`treg connections`** now lists (the subparser is `required=False` with a 
   `call tikhub.tiktok.video.comments` — all hit `/call/<rest>`. **`--header`** adds an
   extra request header the binding can't know (e.g. Google Ads' per-call `login-customer-id`); an
   **injected credential always wins**, so a `--header` can never overwrite the secret the proxy injects.
+  A `--header 'Content-Type: …'` counts as `--content-type`: it skips the JSON sniff and is sent once.
   The **endpoint-id shape** (dotted, slash-free; an org tool with the same name always wins) walks the
   marketplace credential ladder server-side (`_resolve_marketplace_call` in api.py): ① an org tool for
   the provider (via passthrough resolution, so ACLs apply unchanged), ② an org secret tagged with or
