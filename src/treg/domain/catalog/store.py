@@ -343,6 +343,18 @@ def _read_yaml(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _with_query_params(input_schema: object, shared: dict) -> dict:
+    """`input` with the provider's shared query parameters added under names it does not declare.
+    Accepts the flat `{name: spec}` form and the `{properties: {...}}` form an endpoint may use."""
+    inp = dict(input_schema) if isinstance(input_schema, dict) else {}
+    own = inp.get("queryParams")
+    if isinstance(own, dict) and isinstance(own.get("properties"), dict):
+        inp["queryParams"] = {**own, "properties": {**shared, **own["properties"]}}
+    else:
+        inp["queryParams"] = {**shared, **(own if isinstance(own, dict) else {})}
+    return inp
+
+
 def effective_async_descriptor(default: object, override: object = None) -> object:
     """The descriptor an endpoint actually follows: its own block, else the provider file's default.
 
@@ -438,10 +450,20 @@ def _parse(directory: Path) -> Catalog:
     # Sorted so a rebuild is deterministic; `<service>.extended.yaml` sorts right after
     # `<service>.yaml`, and both land under the same provider (curation splits a provider's
     # core operations from the long tail across two files).
-    for path in sorted(directory.glob("*.yaml")):
-        if path.name in (CAPABILITIES_FILE, FX_FILE, ALIASES_FILE, CONTRACTS_FILE, ADAPTERS_FILE):
-            continue
-        doc = _read_yaml(path)
+    files = [(path, _read_yaml(path)) for path in sorted(directory.glob("*.yaml"))
+             if path.name not in (CAPABILITIES_FILE, FX_FILE, ALIASES_FILE, CONTRACTS_FILE, ADAPTERS_FILE)]
+    # Query parameters a provider takes on every call (AnyAPI's response-budget controls) are
+    # declared once at the file header and merged into each endpoint's `input.queryParams`; the
+    # endpoint's own declaration of a name wins. Resolved before any endpoint is read, because an
+    # extended file sorts first and the core file's block is authoritative.
+    provider_query_params: dict[str, dict] = {}
+    for path, doc in files:
+        block = doc.get("queryParams")
+        provider = doc.get("provider") or path.name.split(".")[0]
+        if isinstance(block, dict) and block and (
+                provider not in provider_query_params or not path.name.endswith(".extended.yaml")):
+            provider_query_params[provider] = block
+    for path, doc in files:
         provider = doc.get("provider") or path.name.split(".")[0]
         # A capability a provider file proposes is not yet in the shared taxonomy, but it is
         # already the join key of its endpoints — carry its description so the API can label it.
@@ -480,6 +502,8 @@ def _parse(directory: Path) -> Catalog:
             # the estimate when it cannot tell a failure from a hit.
             if "expect" not in raw and doc.get("expect") is not None:
                 raw = {**raw, "expect": doc["expect"]}
+            if provider in provider_query_params:
+                raw = {**raw, "input": _with_query_params(raw.get("input"), provider_query_params[provider])}
             effective_async = effective_async_descriptor(doc.get("async"), raw.get("async"))
             if effective_async is not None:
                 raw = {**raw, "async": effective_async}

@@ -1277,6 +1277,13 @@ source instead of settling it. The validator requires `in: query`, `unit: usd` a
 onto every cost, so catalog reads stay unchanged. A row-level `cost.ceiling_param` overrides it.
 The appended pair is outbound only: `params_hash` and the archive key stay the inbound query.
 
+A provider file may declare a header `queryParams` block: optional query parameters every endpoint of
+that provider accepts (AnyAPI's response-budget controls `fields`, `max_items`, `summary`, `jq`).
+The loader merges it into each endpoint's `input.queryParams`; a name the endpoint declares itself
+wins, and the core file's block wins over the extended file's, as with `ceiling_param`. One block
+in the core file therefore covers both tiers, and a generated extended file needs none. The validator
+requires a non-empty mapping of identifiers to field specs, none `required`.
+
 `spooled_response: true` marks a synchronous endpoint whose answer inlines media too large for
 the 8 MiB settlement buffer (Gemini returns images as base64 in its JSON: ~9 MB at 2K, ~23 MB at
 4K; Lyria songs arrive as base64 MP3). Its metered 2xx is read to disk and settled from exactly

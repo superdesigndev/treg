@@ -962,6 +962,22 @@ def check_ceiling_param(rule, where: str, errors: list[str], *, prefix: str) -> 
         fail(errors, where, f"{prefix} must be {{in: query, name: <identifier>, unit: usd}}")
 
 
+def check_provider_query_params(block, where: str, errors: list[str]) -> None:
+    """A file-header `queryParams` block: optional query parameters every endpoint of the provider
+    accepts, merged by the loader into each endpoint's own `input.queryParams`.
+
+    A shared parameter cannot be required: it would silently make every row's request invalid.
+    """
+    if not isinstance(block, dict) or not block:
+        fail(errors, where, "queryParams must be a non-empty mapping of parameter name to spec")
+        return
+    for pname, spec in block.items():
+        if not isinstance(pname, str) or not _CEILING_PARAM_NAME.fullmatch(pname) or not isinstance(spec, dict):
+            fail(errors, where, f"queryParams.{pname} must be an identifier mapped to a field spec")
+        elif spec.get("required"):
+            fail(errors, where, f"queryParams.{pname}: a provider-level query parameter cannot be required")
+
+
 def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
                input_schema: object = None, provider: str | None = None) -> None:
     """The price block's own rules — the ones that make a figure BILLABLE rather than decorative.
@@ -1388,6 +1404,8 @@ def main(argv: list[str]) -> int:
             fail(errors, name, f"source.{need} missing")
         if "ceiling_param" in data:
             check_ceiling_param(data.get("ceiling_param"), name, errors, prefix="ceiling_param")
+        if "queryParams" in data:
+            check_provider_query_params(data.get("queryParams"), name, errors)
         proposed = set(data.get("proposed_capabilities") or {})
         known = capabilities | proposed
 

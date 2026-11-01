@@ -131,7 +131,10 @@ its own revision: its lock permits ordinary reads and writes, although it confli
 maintenance. Such a revision restores the caller's timeouts and handles interruption: invalid builds
 must be rebuilt, and a partially completed removal must be retryable. Revision `0061` removes only
 ordinary indexes with verified unique-constraint replacements; its rollback recreates those indexes
-concurrently and requires enough disk space for them. Revision `0072` builds
+concurrently and requires enough disk space for them. Revision `0091` does the same for single-column
+indexes whose column leads a surviving composite index; on a busy database, drop them out of band
+with `DROP INDEX CONCURRENTLY IF EXISTS` before deploying, so the deploy's migration only records
+the revision. Revision `0072` builds
 `ix_callrecord_call_ref` where a database stamped at the baseline never got it; a build on a large
 table outlasts any fixed statement timeout, so it lifts `statement_timeout` for that one statement
 (the lock timeout stays bounded) and the deploy's own pre-deploy limit bounds it. Deploy such a

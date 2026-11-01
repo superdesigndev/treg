@@ -208,9 +208,11 @@ live call"; 0 makes repeats free. Own-key hits are outside this: never metered, 
 
 `archive_bodies` owns body preparation, object reads, the independent upload queue and completed
 storage observations. `archive.py` retains request keys, snapshots, transactions, TTL learning
-and pruning. `infra.object_store.ObjectStore` exposes only put/get/head (the same store also holds find's card
-vectors as named `find-vectors/...` objects, `NamedObjectStore`; see [find](find.md)); `open_r2` imports
-obstore lazily and bootstrap owns its lifecycle. Tests inject `MemoryObjectStore` through
+and pruning. `infra.object_store.ObjectStore` exposes only put/get/head (the same bucket also holds find's card
+vectors as named `find-vectors/...` objects, `NamedObjectStore`, see [find](find.md), and `treg host`
+bodies as `hosted-media/v1/...` objects, `StreamedObjectStore`, see [media](media.md), through its
+own `build_r2` client sized for 30 MB files); `open_r2` imports obstore lazily and bootstrap owns its
+lifecycle. Tests inject `MemoryObjectStore` through
 `bootstrap.configure_archive_object_store` or `create_app(archive_object_store=...)`.
 
 Every object name is the raw body's SHA-256, with no prefix. The caller supplies its already-computed content hash to PUT, which validates the hash-shaped name and
@@ -368,7 +370,12 @@ targets are already indexed). `archive.resolve_result(key_hash, content_hash)` w
 row → key → newest snapshot with that content hash → `body_of` carrier, and returns the request
 shape (`req_*`, pre-injection) plus the answer; a hash-only version reports `stored: false`.
 `GET /calls/{id}/result` (api.py; `id` is the row id or the `X-Treg-Call-Id`) exposes it to members of the row's org, with a `note` on every
-"nothing on file" branch; `/calls` rows carry `has_result`. The archive stays platform-scoped —
+"nothing on file" branch; `/calls` rows carry `has_result`. A routed parent has no link of its
+own (it wraps a child's answer); its read lists `children`, the child rows (`<ref>:r<n>`, check,
+upgrade) with their status and `has_result`, each readable through the same endpoint. Children
+are audited as they finish, before the parent, so the lookup reads the hour before the parent's
+row: an `(org_id, created_at)` index read, wide enough for any waterfall of upstream timeouts.
+The archive stays platform-scoped —
 what makes the read safe is that the row belongs to the team and names the exact bytes that
 team already received. Failure evidence (`error_*`) is untouched and still admin-only.
 

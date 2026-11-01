@@ -113,7 +113,7 @@ See [feedback](../architecture/feedback.md) for the contract and provenance boun
 answers `{url, token, content_type, size, expires_at}`; `GET /m/{token}` serves it publicly, no
 token, because the vendor's fetcher has none. 30 MB per file, 300 MB per org per 24 h, 7-day TTL,
 `image/*` / `audio/*` / `video/*` only, refused in the sandbox. Refusals: 415 type, 413 size, 429
-quota, 403 sandbox. Not metered. See [media](../architecture/media.md).
+quota, 403 sandbox, 503 when the object store cannot take or serve the bytes. Not metered. See [media](../architecture/media.md).
 
 ## Pictures and the showcase leaderboard
 
@@ -1071,7 +1071,7 @@ if returning the hold itself fails, the money comes back when the hold is reaped
 | `GET /calls?days=&before_id=&limit=` | this team's calls, windowed and pageable. Analytics - **not** an invoice source |
 | `GET /activity?before=&limit=&api_key_id=` | the dashboard's feed: calls, server runs and local runs merged newest first, `{rows, next}`; each row says its `source` (`call`/`run`); pass `next` as `before` for the page after, null on the last |
 | `GET /calls/{call_ref}` | one call by its `X-Treg-Call-Id`, plus the ledger entries for it and its `async_task` view when it was a metered generation |
-| `GET /calls/{id}/result` | `id` is the row id or the `X-Treg-Call-Id`; what one call asked and what came back - the archive's copy; recorded catalog 2xx only (platform or own key), `stored: false` + `note` otherwise |
+| `GET /calls/{id}/result` | `id` is the row id or the `X-Treg-Call-Id`; what one call asked and what came back - the archive's copy; recorded catalog 2xx only (platform or own key), `stored: false` + `note` otherwise; a routed call lists the `children` that hold its answer |
 | `GET /orgs/{id}/usage/by-tag?key=&days=` | per-value spend for one tag key. **Money from the ledger**; admin+ |
 | `GET/PUT/DELETE /orgs/{id}/budgets[/{dim}/{val}]` | per-tag limits and blocking; admin+ |
 | `PATCH /orgs/{id}` | (admin+) rename the team: `name` and/or `slug`; the old slug stays an alias so existing keys keep working |

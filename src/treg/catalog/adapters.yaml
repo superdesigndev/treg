@@ -1122,8 +1122,8 @@ adapters:
           employees: "organizations[0].attributes.employee_count", industry: "organizations[0].attributes.industry"}
     miss: "matched_count == 0"
   crawl4ai.companies.enrich:
-    accepts: [[domain]]
-    in:  {domain: queryParams.domain}
+    accepts: [[domain], [linkedin_url], [linkedin_handle], [name]]
+    in:  {domain: queryParams.domain, linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, name: queryParams.name}
     out: {name: data.name, domain: data.domain, description: data.description, industry: data.industry,
           employees: data.people_count, linkedin_url: "fmt('https://www.linkedin.com/company/{}', data.linkedin)"}
     miss: "data == null"
@@ -2706,11 +2706,12 @@ adapters:
     out: {people: people, count: total_entries}
     miss: "coalesce(people, []) == []"
   crawl4ai.people.search:
-    accepts: [[title, company_domain], [company_domain]]
-    in: {company_domain: body.where.company.domain}
+    accepts: [[title, company_domain], [company_domain], [title], [full_name], [q]]
+    in: {company_domain: body.where.company.domain, title: body.where.person.title, full_name: body.where.person.name, q: body.q}
     in_expr:
-      body.where.person.seniority: "role_seniority(title)"
-      body.where.person.department: "role_department(title)"
+      body.where.person.title: "scalar(title)"
+      body.where.company.country: "upper(country)"
+      body.where.company.city: location
       body.limit: limit
     max: {limit: 100}
     out: {people: data, count: "len(data)"}
@@ -3206,7 +3207,7 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.formats: [markdown]}
     out: {pages: ".", count: "len(.)"}
-    miss: "coalesce([0].markdown, '') == ''"
+    miss: "coalesce([0].markdown, [0].html, '') == ''"
   tinyfish.web.fetch:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}

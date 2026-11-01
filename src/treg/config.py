@@ -629,6 +629,13 @@ class Settings(BaseSettings):
     archive_r2_read_timeout_s: float = Field(default=2.0, gt=0, le=120)
     archive_r2_terminal_attempts: int = Field(default=3, ge=1, le=5)
 
+    # Where `treg host` bodies go (application/media.py): "db" keeps them in the media row; "r2"
+    # writes new uploads to the archive's bucket above (archive_object_store_*), and startup refuses
+    # it while that bucket is not configured. Reads follow each row's own `object_key`, so a switch
+    # either way needs no backfill. The timeout bounds a whole transfer of one file (up to 30 MB).
+    media_body_write: Literal["db", "r2"] = "db"
+    media_r2_timeout_s: float = Field(default=60.0, gt=0, le=600)
+
     # Pictures (team and user avatars, /showcase leaderboard icons and screenshots): two S3-API
     # buckets, separate from the archive's. Uploads land in the private STAGING bucket; publishing
     # copies a file to the PUBLIC bucket, which `media_base_url` serves (a custom domain such as
