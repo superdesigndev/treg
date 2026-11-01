@@ -1,0 +1,106 @@
+# WhoGoes partner API: trade show and conference attendee lists, each contact backed by the public
+# LinkedIn post that ties the person to the event. Find an event, count attendees by role for
+# free, then pull contacts at a flat USD 0.10 each (with or without an email).
+#
+# Built for marketplaces: every contacts call is a separate, stateless purchase (no per-buyer
+# ownership ledger), so one treg platform key can safely serve every team. WhoGoes issues treg's
+# partner key and invoices treg monthly from its usage log; each key carries a daily USD cap.
+#
+# `cache: forbidden`: contact rows are personal data (name, title, work email), and a replayed
+# answer would hand one team's paid contacts to another for free. Counts grow daily as well.
+provider: whogoes
+source:
+  docs: https://app.whogoes.co/api/partner/v1/docs.md
+  openapi: https://app.whogoes.co/api/partner/v1/openapi.json
+  curated: '2026-11-01'
+limits: "60 requests/minute and 3 in flight per key (429 with Retry-After); daily USD spend cap per key (402 DAILY_CAP_REACHED, resets at UTC midnight)"
+pricing_url: https://app.whogoes.co/api/partner/v1/docs.md
+cache: forbidden
+proposed_capabilities:
+  people.events.search: Browse trade shows and conferences that have attendee lists
+  people.event_attendees.list: Get the attendee contacts of a trade show or conference, filtered by role
+
+endpoints:
+  - id: whogoes.events.search
+    added: '2026-11-01'
+    capability: people.events.search
+    platform: people
+    domain: events
+    scope: any_account
+    method: GET
+    path: /events
+    name: "Browse events with attendee lists"
+    summary: "Search events"
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "matches event name or location", example: "neurips"}
+        status: {type: string, required: false, enum: [active, completed], note: "active = upcoming or running, still collecting contacts; completed = finished", example: "active"}
+        region: {type: string, required: false, enum: [US, EU, GCC, APAC, LATAM], note: "sales region; EU includes the UK", example: "US"}
+        country: {type: string, required: false, note: "full English country name", example: "United States"}
+        starts_after: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-12-01"}
+        starts_before: {type: string, required: false, note: "YYYY-MM-DD", example: "2027-03-31"}
+        min_contacts: {type: integer, required: false, min: 0, example: 300}
+        limit: {type: integer, required: false, default: 50, min: 1, max: 200, example: 20}
+        offset: {type: integer, required: false, default: 0, min: 0, example: 0}
+      note: "Same listing and ordering as the WhoGoes Browse page (active first, upcoming first, biggest list first). Unknown query params and request bodies return 400."
+    test_request: {queryParams: {q: neurips, status: active, limit: 1}}
+    cost: &free {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: https://app.whogoes.co/api/partner/v1/docs.md, checked: '2026-11-01', confidence: verified, note: "free; no partner_usage row is written"}
+    docs_url: https://app.whogoes.co/api/partner/v1/docs.md
+
+  - id: whogoes.events.counts
+    added: '2026-11-01'
+    capability: people.search.count
+    platform: people
+    domain: attendees
+    scope: any_account
+    method: GET
+    path: /events/{idOrSlug}/counts
+    name: "Count an event's attendees by role before buying"
+    summary: "Count contacts by role"
+    input:
+      pathParams:
+        idOrSlug: {type: string, required: true, note: "event UUID or slug from /events", example: "neurips-2026"}
+      queryArrayEncoding: comma
+      queryParams:
+        role: {type: "array[string]", required: false, enum: [confirmed_attendee, expected_attendee, organizer, exhibitor, sponsor, speaker], note: "confirmed_attendee = posted or was tagged about attending; expected_attendee = weaker signal such as a repost", example: ["confirmed_attendee"]}
+        added_after: {type: string, required: false, note: "ISO 8601; quote only contacts first added after this time", example: "2026-10-01T00:00:00Z"}
+      note: "Returns totals and with_email per role, plus `matching` {total, with_email, cost_usd, latest_added_at} for the role/added_after asked. Save latest_added_at as the watermark for the next incremental pull."
+    test_request: {pathParams: {idOrSlug: neurips-2026}, queryParams: {role: ["confirmed_attendee"]}}
+    cost: *free
+    docs_url: https://app.whogoes.co/api/partner/v1/docs.md
+
+  - id: whogoes.events.contacts
+    added: '2026-11-01'
+    capability: people.event_attendees.list
+    platform: people
+    domain: attendees
+    scope: any_account
+    method: GET
+    path: /events/{idOrSlug}/contacts
+    name: "Get an event's attendee contacts"
+    summary: "Get contacts for an event"
+    untestable: "returns named private individuals (PII); self-verified live 2026-11-01 (limit 1 = USD 0.10, limit 2 = USD 0.20, nobody new = USD 0) without capturing a response"
+    input:
+      pathParams:
+        idOrSlug: {type: string, required: true, example: "neurips-2026"}
+      queryArrayEncoding: comma
+      queryParams:
+        role: {type: "array[string]", required: false, enum: [confirmed_attendee, expected_attendee, organizer, exhibitor, sponsor, speaker], note: "omit for everyone", example: ["confirmed_attendee"]}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 500, note: "contacts to buy in this call; a call never costs more than limit x 0.10", example: 25}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page; same event and role only; not with added_after"}
+        added_after: {type: string, required: false, note: "ISO 8601, not in the future; only contacts first added after it; not with cursor", example: "2026-10-01T00:00:00Z"}
+      note: "Every call is a new purchase: repeating it buys the same contacts again. Page with next_cursor; for daily fresh data call again with added_after = the latest_added_at saved from /counts. Each contact carries post_url and the full post_content proving attendance. Send an Idempotency-Key header to make retries free (24h replay)."
+    cost:
+      type: per_result
+      value: 0.10
+      currency: USD
+      per: 1
+      unit: record
+      reserve: {rows: {param: queryParams.limit, default: {value: 25, source: docs}, max: 500}}
+      reported_charge: {path: data.amount_usd, unit: usd}
+      source: observed
+      source_url: https://app.whogoes.co/api/partner/v1/docs.md
+      checked: '2026-11-01'
+      confidence: verified
+      note: "USD 0.10 per contact returned, with or without an email; an empty page is free. Observed 2026-11-01: limit 1 = 0.10, limit 2 = 0.20, nobody new = 0 (amount_usd in the response, matched by the partner_usage ledger)."
+    docs_url: https://app.whogoes.co/api/partner/v1/docs.md

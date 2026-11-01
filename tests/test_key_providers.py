@@ -18,6 +18,33 @@ from httpx import AsyncClient
 from treg import oauth_providers as P
 
 
+async def test_whogoes_key_uses_free_events_probe(clients, monkeypatch):
+    def valid(request):
+        assert request.method == "GET"
+        assert request.url.path == "/api/partner/v1/events"
+        assert request.url.params["limit"] == "1"
+        assert request.headers["authorization"] == "Bearer own-key"
+        return httpx.Response(200, json={"data": {
+            "events": [], "total": 0, "limit": 1, "offset": 0, "has_more": False}})
+
+    async with AsyncClient(transport=httpx.MockTransport(valid)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "whogoes", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+    # The wire body WhoGoes returned for a garbage key on 2026-11-01.
+    async with AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(401, json={"error": {
+                "code": "UNAUTHORIZED", "message": "Invalid or revoked API key."}}))) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        rejected = await clients.post(
+            "/connections/token", json={"provider": "whogoes", "token": "bad-key"},
+        )
+    assert rejected.status_code == 422 and "rejected" in rejected.text
+
+
 async def test_anymailfinder_key_uses_free_account_probe(clients, monkeypatch):
     def valid(request):
         assert request.method == "GET"
