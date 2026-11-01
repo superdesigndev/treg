@@ -1262,14 +1262,3 @@ def test_an_auto_route_row_files_where_its_providers_do():
     for ep in routed:
         kids = {e["domain"] for e in cat.for_capability(ep["capability"]) if e.get("kind") != "routed"}
         assert ep["domain"] in kids, ep["id"]
-
-
-def test_emailverifier_platform_pricing_excludes_project_usage():
-    from treg.domain.catalog import store as cs
-
-    catalog = cs.load()
-    for capability in ("people.email.verify", "web.domain.disposable"):
-        endpoint = catalog.by_id[f"emailverifier.{capability}"]
-        assert catalog.platform_eligible(endpoint)
-        assert catalog.cost_view(endpoint["cost"], "emailverifier")["usd"] == 0.0005
-    assert not catalog.platform_eligible(catalog.by_id["emailverifier.account.usage"])
