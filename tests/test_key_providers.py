@@ -587,3 +587,24 @@ async def test_financialdatasets_connect_accepts_only_valid_key_outcomes_without
                     if t["name"] == "financialdatasets")
         assert tool["health_check"] is None
         assert tool["bindings"][0]["name"] == "X-API-KEY"
+
+
+@pytest.mark.parametrize("status", [200, 401])
+async def test_emailverifier_key_uses_free_project_usage_probe(clients, monkeypatch, status):
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://emailverifier.dev/api/v1/usage"
+        assert request.headers["X-API-Key"] == "own-key"
+        body = ({"project": "Test", "credits_used": 0, "credits_remaining": 0, "last_used_at": None}
+                if status == 200 else {"statusCode": 401, "statusMessage": "Invalid API key."})
+        return httpx.Response(status, json=body)
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "emailverifier", "token": "own-key"},
+        )
+    if status == 401:
+        assert response.status_code == 422 and "rejected" in response.text
+    else:
+        assert response.status_code == 200, response.text

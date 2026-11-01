@@ -1,0 +1,104 @@
+provider: emailverifier
+source:
+  docs: https://emailverifier.dev/docs/api
+  openapi: https://emailverifier.dev/api/openapi.json
+  curated: '2026-10-31'
+limits: 60 requests per minute for starter projects; 1,000 per minute for pay-as-you-go projects. Usage reads
+  share the project rate limit. Email verification and domain checks share the project credit balance.
+pricing_url: https://emailverifier.dev/pricing
+proposed_capabilities:
+  web.domain.disposable: Is a domain disposable or a free webmail host
+endpoints:
+- id: emailverifier.people.email.verify
+  added: '2026-10-31'
+  capability: people.email.verify
+  platform: people
+  scope: any_account
+  method: POST
+  path: /api/v1/verify
+  name: Verify one email address
+  summary: Verify one email address
+  input:
+    body:
+      email:
+        type: string
+        required: true
+        example: hello@example.com
+        note: Non-empty string; at most 254 characters.
+    note: Returns delivery status separately from the allow/review/block recommendation. SMTP ambiguity stays unknown;
+      verification does not prove inbox ownership or guarantee delivery.
+  test_request:
+    body:
+      email: hello@example.com
+  cost:
+    type: per_success
+    value: 0.0005
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://emailverifier.dev/pricing
+    checked: '2026-10-31'
+    confidence: verified
+    note: One credit for every completed check, including negative or unknown results. $10 buys 20,000 non-expiring
+      credits; HTTP errors do not consume credits.
+  docs_url: https://emailverifier.dev/docs/api#tag/Verification/operation/verifyEmailAddress
+- id: emailverifier.web.domain.disposable
+  added: '2026-10-31'
+  capability: web.domain.disposable
+  platform: web
+  scope: any_account
+  method: GET
+  path: /api/v1/domains/{domain}
+  name: Classify one email domain
+  summary: Classify one email domain
+  input:
+    pathParams:
+      domain:
+        type: string
+        required: true
+        example: mailinator.com
+    note: Returns domain, classification, risk and mail_routing. Checks disposable/free-provider classification
+      and mail-routing DNS; it does not verify a specific mailbox.
+  test_request:
+    pathParams:
+      domain: mailinator.com
+  cost:
+    type: per_success
+    value: 0.0005
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://emailverifier.dev/pricing
+    checked: '2026-10-31'
+    confidence: verified
+    note: One credit for every completed check, including negative or unknown results. $10 buys 20,000 non-expiring
+      credits; HTTP errors do not consume credits.
+  docs_url: https://emailverifier.dev/docs/api#tag/Domains/operation/classifyEmailDomain
+- id: emailverifier.account.usage
+  added: '2026-10-31'
+  capability: account.usage
+  platform: account
+  scope: own_account
+  method: GET
+  path: /api/v1/usage
+  name: Get API usage and remaining credits
+  summary: Get API usage and remaining credits
+  input:
+    note: No parameters. Returns the project name, credits_used, credits_remaining and last_used_at for the API
+      key. This request consumes no credit.
+  test_request:
+    queryParams: {}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://emailverifier.dev/pricing
+    checked: '2026-10-31'
+    confidence: verified
+  docs_url: https://emailverifier.dev/docs/api#tag/Usage/operation/getApiUsage
+  kind: account

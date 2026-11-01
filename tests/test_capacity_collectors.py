@@ -1129,3 +1129,28 @@ async def test_openrouter_without_a_management_key_is_no_api_and_skips_request(p
         row = await collectors.provider_balance("openrouter", client)
     snap = sweep.snapshot_from("openrouter", row)
     assert snap.error == "no_balance_api" and snap.remaining is None
+
+
+@pytest.mark.parametrize("credits", [0, 8])
+async def test_emailverifier_balance_uses_free_project_usage(credits):
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://emailverifier.dev/api/v1/usage"
+        assert request.headers["X-API-Key"] == "test-key"
+        return httpx.Response(200, json={"credits_remaining": credits})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await collectors._emailverifier(client, "test-key")
+    assert row == {"value": credits, "unit": "credits", "note": "Project credit balance"}
+    account_policy = policy.default_policy("emailverifier", has_key=True)
+    assert account_policy.capacity_type == "credits"
+    assert account_policy.funding_mode == "manual"
+    assert account_policy.rate_limit == {"limit": 60, "window_s": 60, "source": "docs"}
+
+
+@pytest.mark.parametrize("credits", [None, True, -1, "8", 8.5])
+async def test_emailverifier_balance_rejects_invalid_values(credits):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"credits_remaining": credits}))) as client:
+        with pytest.raises(ValueError, match="no valid credit balance"):
+            await collectors._emailverifier(client, "test-key")

@@ -1334,6 +1334,36 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+EMAILVERIFIER = OAuthProvider(
+    service="emailverifier",
+    display_name="emailverifier.dev",
+    auth_kind="key",
+    token_label="Project API key",
+    token_placeholder="your emailverifier.dev project API key",
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://emailverifier.dev/dashboard/api-keys",
+    setup_action_label="Get your emailverifier.dev API key",
+    setup_steps=(
+        "Create an account and verify your email address.",
+        "Create a project and copy its API key when it is shown. Keys are shown only once.",
+        "Select that project in the dashboard to view its usage, credits and API key settings.",
+    ),
+    setup_note=(
+        "The first project receives 1,000 non-expiring starter credits once per account. "
+        "Each $10 pack adds 20,000 non-expiring credits to the selected project. "
+        "Each email verification or domain check uses one credit; checking usage is free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Verify email addresses and check disposable/free-provider classification and mail routing.",
+    base_url="https://emailverifier.dev",
+    docs_url="https://emailverifier.dev/docs/api",
+    probe_path="/api/v1/usage",
+)
+
 MOBIUSENGINE_JOBS = OAuthProvider(
     service="mobiusengine-jobs",
     display_name="MobiusEngine Jobs Data",
@@ -4144,7 +4174,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, EMAILVERIFIER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

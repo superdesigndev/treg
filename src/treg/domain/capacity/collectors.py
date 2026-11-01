@@ -532,6 +532,14 @@ async def _getleadsio(c, key):
             "note": f"Unlimited plan fair-use: {detail}; binding {d.get('binding', '?')}"}
 
 
+async def _emailverifier(c, key):
+    d = await _get(c, "https://emailverifier.dev/api/v1/usage", headers={"X-API-Key": key})
+    balance = d.get("credits_remaining") if isinstance(d, dict) else None
+    if type(balance) is not int or balance < 0:
+        raise ValueError("emailverifier.dev returned no valid credit balance")
+    return {"value": balance, "unit": "credits", "note": "Project credit balance"}
+
+
 async def _hunter(c, key):
     d = await _get(c, "https://api.hunter.io/v2/account", params={"api_key": key})
     req = (d.get("data") or {}).get("requests", {})
@@ -1097,6 +1105,7 @@ BALANCE_ROUTES = {
     "moz": _moz,
     "seranking": _seranking,
     "hunter": _hunter,
+    "emailverifier": _emailverifier,
     "harvestapi": _harvestapi,
     "fetchinio": _fetchinio,
     "sixtyfour": _sixtyfour,
