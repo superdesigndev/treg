@@ -1918,6 +1918,23 @@ OPENROUTER = OAuthProvider(
     probe_path="/key",
 )
 
+TURION = OAuthProvider(
+    service="turion", display_name="Turion", auth_kind="key",
+    token_label="API key", token_placeholder="tk_ followed by 43 characters",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://turion.ai/docs/reference/rest-api/",
+    setup_action_label="Read the Turion API reference",
+    setup_steps=("Most teams need no key: treg serves Turion Jev and Turion Extract on its own key, billed from your treg balance.",
+                 "To use your own Turion account instead, create an account key with `turion keys create` or under Keys in the Turion workspace, and paste the tk_ key here."),
+    setup_note="Billed by input tokens: Jev $0.021 and Extract $0.05 per million; output is free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Turion Jev, a decision model (a label with probabilities, a rubric score or a yes/no), and Turion Extract, which reads typed fields out of a document.",
+    base_url="https://api.turion.ai/v1",
+    docs_url="https://turion.ai/docs/reference/rest-api/",
+    probe_path="/account",  # free: a bad key gets a 401 JSON error here
+)
+
 REPLICATE = OAuthProvider(
     service="replicate",
     display_name="Replicate",
@@ -4148,6 +4165,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
+        TURION,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,

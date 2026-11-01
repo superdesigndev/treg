@@ -1128,6 +1128,7 @@ BALANCE_ROUTES = {
 # obtain. Kept explicit so the report names them instead of silently skipping, and so a future probe
 # has a list of what to re-check.
 NO_BALANCE_API = {
+    "turion": "postpaid account key: Turion invoices monthly from its per-workspace usage meter, so there is no balance to read; GET /v1/usage reports this month's input tokens per model",
     "bravesearch": "no API-key-readable balance or usage endpoint in Brave's Search API; prepaid credits and usage are visible in its dashboard",
     "quickenrich": "no balance endpoint, and no response carries the allowance any more: a free "
                    "Contact Finder miss or hit and a billed employee search all return a meta without "
