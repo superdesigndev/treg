@@ -254,7 +254,25 @@ def render(variant: str) -> str:
     # static plugin copy gets the numbers as of generation, refreshed with every release.
     endpoints, providers = catalog_store.headline_counts(catalog_store.load())
     out = out.replace("{ENDPOINTS}", endpoints).replace("{PROVIDERS}", str(providers))
-    return out.replace("{BASE}", PUBLIC_BASE)
+    out = out.replace("{BASE}", PUBLIC_BASE)
+    # dsh binds Authorization from process.env.TREG_TOKEN (cordis.patch.yml) and install_mcp
+    # never rewrites that row. The shared recovery sentence that names `treg mcp install --oauth`
+    # would leave a dead TREG_TOKEN in place after restart — swap it for the token path here.
+    if variant == "dsh":
+        shared = (
+            "Run `treg mcp install --oauth` (needs no login), restart the agent,\n"
+            "   then authorize in the client (Claude Code `/mcp`, Codex `codex mcp login treg`)."
+        )
+        dsh = (
+            "On DeepSeek Harness the connector reads `TREG_TOKEN` from the launch\n"
+            "   environment (see above) — `treg mcp install --oauth` cannot rewrite it.\n"
+            "   Replace `TREG_TOKEN` with a current team key (https://treg.to → sign in →\n"
+            "   copy token) and restart dsh."
+        )
+        if shared not in out:
+            raise SystemExit("dsh recovery rewrite: shared oauth sentence missing from skill body")
+        out = out.replace(shared, dsh)
+    return out
 
 
 # Accepted and ignored: a plugin never ships the hub section (see the comment in the renderer).
