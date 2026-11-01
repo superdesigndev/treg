@@ -1010,6 +1010,18 @@ def test_anymailfinder_platform_prices_all_shared_key_tools():
     }
 
 
+def test_whogoes_partner_api_is_platform_priced_and_never_cached():
+    from treg.domain.catalog import store as cs
+
+    c = cs.load()
+    rows = [ep for ep in c.endpoints if ep["id"].startswith("whogoes.")]
+    assert {ep["id"] for ep in rows} == {
+        "whogoes.events.search", "whogoes.events.counts", "whogoes.events.contacts"}
+    assert all(c.platform_eligible(ep) for ep in rows)
+    contacts = next(ep for ep in rows if ep["id"] == "whogoes.events.contacts")
+    assert c.cost_view(contacts["cost"], "whogoes")["usd"] == 0.10
+
+
 def test_orbisearch_shared_key_scope_and_verified_credit_prices():
     from treg.domain.catalog import store as cs
 

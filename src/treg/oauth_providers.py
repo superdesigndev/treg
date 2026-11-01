@@ -3506,20 +3506,19 @@ DROPCONTACT = OAuthProvider(
 
 WHOGOES = OAuthProvider(
     service="whogoes", display_name="WhoGoes", auth_kind="key",
-    token_label="API key", token_placeholder="wg_ followed by 64 hex characters",
+    token_label="Partner API key", token_placeholder="wgp_ followed by 64 hex characters",
     token_header="Authorization", token_format="Bearer {secret}",
-    setup_url="https://app.whogoes.co/dashboard/integrations",
-    setup_action_label="Get your WhoGoes API key",
-    setup_steps=("Sign up at app.whogoes.co and buy any credit pack once (free signup credits do not enable the API).",
-                 "Open Dashboard > API & Integrations, create a key and copy it (it is shown once).",
-                 "Recommended: set a daily credit cap on the key so an agent can never overspend."),
-    setup_note="Unlocking contacts and revealing emails spend credits; browsing events, counts, reading owned contacts and the balance check are free.",
+    setup_url="https://app.whogoes.co/api/partner/v1/docs.md",
+    setup_action_label="Read the WhoGoes partner API guide",
+    setup_steps=("Most teams need no key: treg serves WhoGoes on its own partner key, billed from your treg balance.",
+                 "To use your own WhoGoes partner key instead, email hello@whogoes.co and paste the wgp_ key here."),
+    setup_note="Events and counts are free; contacts are USD 0.10 each, with or without an email.",
     auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
     category="Enrichment",
-    summary="Trade show and conference attendee lists with LinkedIn proof: find an event, count matches by role, seniority or industry, and buy contacts with verified emails.",
-    base_url="https://app.whogoes.co/api/v1",
-    docs_url="https://app.whogoes.co/docs/api",
-    probe_path="/credits",  # free: a bad key gets a 401 JSON error here
+    summary="Trade show and conference attendee lists with LinkedIn proof: find an event, count attendees by role for free, then pull contacts with verified emails.",
+    base_url="https://app.whogoes.co/api/partner/v1",
+    docs_url="https://app.whogoes.co/api/partner/v1/docs.md",
+    probe_path="/events?limit=1",  # free: a bad key gets a 401 JSON error here
 )
 
 

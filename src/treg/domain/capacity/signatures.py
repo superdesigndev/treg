@@ -72,6 +72,7 @@ _TABLE: list[Signature] = [
     # PDL meters operations separately: person_identify can run out while enrich still works.
     Signature("pdl", 402, r"hit your account maximum for", "quota", tripwire=True),
     Signature("lusha", 429, r"daily", "quota", resets="next_utc_midnight"),
+    Signature("whogoes", 402, r"DAILY_CAP_REACHED", "quota", resets="next_utc_midnight", tripwire=True),
     Signature("hunter", 429, r"per billing period", "quota"),
     # Hunter answers its per-minute limit with a 403 {"errors": [{"id": "too_many_requests"}]} and `RateLimit-Reset`.
     Signature("hunter", 403, r"too_many_requests", "burst"),

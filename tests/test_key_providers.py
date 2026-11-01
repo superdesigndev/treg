@@ -18,13 +18,14 @@ from httpx import AsyncClient
 from treg import oauth_providers as P
 
 
-async def test_whogoes_key_uses_free_credits_probe(clients, monkeypatch):
+async def test_whogoes_key_uses_free_events_probe(clients, monkeypatch):
     def valid(request):
         assert request.method == "GET"
-        assert request.url.path == "/api/v1/credits"
+        assert request.url.path == "/api/partner/v1/events"
+        assert request.url.params["limit"] == "1"
         assert request.headers["authorization"] == "Bearer own-key"
         return httpx.Response(200, json={"data": {
-            "balance": 100, "daily_cap": None, "spent_today": 0, "remaining_today": None}})
+            "events": [], "total": 0, "limit": 1, "offset": 0, "has_more": False}})
 
     async with AsyncClient(transport=httpx.MockTransport(valid)) as upstream:
         monkeypatch.setattr(app.state, "http", upstream)
