@@ -124,3 +124,19 @@ async def test_comparisons_404_on_a_self_hosted_registry(monkeypatch):
             assert 'href="/compare"' not in (await c.get("/pricing")).text
     finally:
         get_settings.cache_clear()
+
+
+async def test_every_competitor_shows_its_own_logo(clients: AsyncClient):
+    from pathlib import Path
+    web = Path(cp.__file__).parent / "web"
+    for key, c in cp.COMPETITORS.items():
+        logo = c["logo"]
+        assert logo.startswith(("/media/compare/logos/", "/logos/")), key
+        f = web / logo.lstrip("/")
+        assert f.exists(), (key, logo)
+        if f.suffix == ".svg":  # served from our origin, so it must stay a picture, not a document
+            body = f.read_text(encoding="utf-8").lower()
+            assert not re.search(r"<script|\son\w+=|javascript:|foreignobject|href=\"https?:", body), key
+        assert (await clients.get(logo)).status_code == 200, key
+        page = (await clients.get(f"/compare/{cp.page_slug(key)}")).text
+        assert f'src="{logo}"' in page, key

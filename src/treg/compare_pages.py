@@ -4,6 +4,9 @@ One record per product, read from that product's own public pages on the `checke
 pages it was read from in `sources`. The renderer (`routers/compare.py`) holds no copy of its own,
 so a correction made here reaches the page, its markdown twin and its structured data together.
 
+Logos are each company's own published site icon (or the repo's provider logo), used only to name
+the product being compared; they are not treg's marks.
+
 Rules the tests enforce:
   - every page names the date its facts were read and at least one source on the product's site;
   - `treg` facts are true of the hosted treg.to, so the pages exist only on the reference hosts;
@@ -115,6 +118,8 @@ COMPETITORS: dict[str, dict] = {
         "site": "https://www.agentik.cc",
         "group": "per-call",
         "mono": "#2E5BFF",
+        "logo": "/media/compare/logos/agentik.svg",
+        "logo_fills": True,
         "title": "treg vs Agentik: two tool gateways for AI agents",
         "description": "treg and Agentik both give an AI agent paid tools from one prepaid balance. "
                        "An honest look at fees, catalogs, own keys, spend caps and open source.",
@@ -230,6 +235,7 @@ COMPETITORS: dict[str, dict] = {
         "site": "https://firecrawl.dev/alexandria",
         "group": "per-call",
         "mono": "#FF5A1F",
+        "logo": "/logos/firecrawl.svg",
         "title": "treg vs Firecrawl Alexandria: data for AI agents",
         "description": "Firecrawl Alexandria and treg both give AI agents data from many providers. "
                        "Compare coverage, billing, own keys and access, read from public pages.",
@@ -337,6 +343,7 @@ COMPETITORS: dict[str, dict] = {
         "site": "https://aisa.one",
         "group": "per-call",
         "mono": "#7C3AED",
+        "logo": "/media/compare/logos/aisa.svg",
         "title": "treg vs AIsa: paid data APIs for AI agents compared",
         "description": "AIsa and treg both sell data to AI agents per call. Compare schemas, billing, "
                        "x402, own keys and team seats, read from each product's public pages.",
@@ -443,6 +450,7 @@ COMPETITORS: dict[str, dict] = {
         "site": "https://paywithlocus.com",
         "group": "per-call",
         "mono": "#0F9D58",
+        "logo": "/media/compare/logos/locus.svg",
         "title": "treg vs Locus: paid APIs for AI agents compared",
         "description": "Locus and treg both give AI agents paid APIs from a prepaid balance. Compare "
                        "plans, fees, own keys, reselling and spend controls, read from public pages.",
@@ -547,6 +555,8 @@ COMPETITORS: dict[str, dict] = {
         "site": "https://monid.ai",
         "group": "per-call",
         "mono": "#111827",
+        "logo": "/media/compare/logos/monid.svg",
+        "logo_fills": True,
         "title": "treg vs Monid: two tool catalogs for AI agents",
         "description": "Monid and treg both give AI agents a catalog of paid tools from a prepaid "
                        "balance. Compare x402, open source, own keys and controls, from public pages.",
@@ -641,6 +651,8 @@ COMPETITORS: dict[str, dict] = {
         "site": "https://composio.dev",
         "group": "apps",
         "mono": "#1F2937",
+        "logo": "/media/compare/logos/composio.png",
+        "logo_fills": True,
         "title": "treg vs Composio: a Composio alternative for AI agents",
         "description": "Composio connects agents to 1,000+ apps in each user's own accounts. treg gives "
                        "agents paid data per call. An honest comparison of what each one is for.",
@@ -741,6 +753,8 @@ COMPETITORS: dict[str, dict] = {
         "site": "https://zapier.com/mcp",
         "group": "apps",
         "mono": "#FF4F00",
+        "logo": "/media/compare/logos/zapier.png",
+        "logo_fills": True,
         "title": "treg vs Zapier MCP: data tools or app actions for agents",
         "description": "Zapier MCP lets an agent act in 9,000+ apps you connect. treg gives an agent "
                        "paid data per call with no vendor accounts. Which one fits, and when to use both.",
@@ -835,6 +849,8 @@ COMPETITORS: dict[str, dict] = {
         "site": "https://pipedream.com",
         "group": "apps",
         "mono": "#22C55E",
+        "logo": "/media/compare/logos/pipedream.svg",
+        "logo_fills": True,
         "title": "treg vs Pipedream Connect: tools for AI agents compared",
         "description": "Pipedream Connect gives the agents you build 10,000+ tools in your users' own "
                        "accounts. treg gives agents paid data per call. An honest comparison.",
@@ -929,6 +945,8 @@ COMPETITORS: dict[str, dict] = {
         "site": "https://smithery.ai",
         "group": "apps",
         "mono": "#EA580C",
+        "logo": "/media/compare/logos/smithery.svg",
+        "logo_fills": True,
         "title": "treg vs Smithery: an MCP directory and a tool catalog",
         "description": "Smithery is now a free MCP directory; its hosted proxy shut down on 31 October "
                        "2026. What changed, and how treg's tool catalog differs.",
@@ -1023,6 +1041,7 @@ COMPETITORS: dict[str, dict] = {
         "site": "https://www.clay.com",
         "group": "gtm",
         "mono": "#5B4CF0",
+        "logo": "/media/compare/logos/clay.png",
         "title": "treg vs Clay: a Clay alternative for AI agents",
         "description": "Clay is a GTM data platform with tables and waterfalls. treg lets a coding agent "
                        "call data APIs per call, with no plan. An honest look at which one fits.",
@@ -1120,6 +1139,8 @@ COMPETITORS: dict[str, dict] = {
         "site": "https://www.apollo.io",
         "group": "gtm",
         "mono": "#1E3A8A",
+        "logo": "/logos/apollo.svg",
+        "logo_fills": True,
         "title": "treg vs Apollo.io: an Apollo alternative for AI agents",
         "description": "Apollo is a sales platform with its own 240M+ contact database. treg lets an "
                        "agent call Apollo and other data providers per call. Which one fits.",
@@ -1219,6 +1240,8 @@ COMPETITORS: dict[str, dict] = {
         "site": "https://openrouter.ai",
         "group": "models",
         "mono": "#6366F1",
+        "logo": "/logos/openrouter.svg",
+        "logo_fills": True,
         "title": "treg vs OpenRouter: one routes models, one routes tools",
         "description": "OpenRouter gives one API for 600+ language models. treg gives one token for paid "
                        "tools and data. How they differ, and why many agents use both.",

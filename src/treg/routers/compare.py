@@ -39,10 +39,11 @@ def _np(text: str) -> bool:
     return text.startswith(cp.NOT_PUBLISHED) or text in ("Not applicable.",)
 
 
-def _mono(key: str, size_class: str = "") -> str:
+def _mono(key: str) -> str:
     c = cp.COMPETITORS[key]
-    return (f'<span class="mono{size_class}" style="background:{_e(c["mono"])}" aria-hidden="true">'
-            f'{_e(c["name"][0].upper())}</span>')
+    fill = " fill" if c.get("logo_fills") else ""
+    return (f'<span class="mono logo{fill}" aria-hidden="true"><img src="{_e(c["logo"])}" alt="" '
+            f'width="20" height="20" loading="lazy" decoding="async"></span>')
 
 
 def _treg_mono() -> str:

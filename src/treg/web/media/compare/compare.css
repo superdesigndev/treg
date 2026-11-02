@@ -226,3 +226,8 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 .pill { white-space: nowrap; }
 .deep { display: contents; }
 @media (max-width: 600px) { .deep { display: none; } }
+.mono.logo { background: #fff; border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(20,18,12,.06); overflow: hidden; }
+.mono.logo img { width: 72%; height: 72%; object-fit: contain; display: block; }
+.flow .mono.logo { border-color: #3D3D3A; }
+.mono.logo.fill { border: 0; }
+.mono.logo.fill img { width: 100%; height: 100%; object-fit: cover; }
