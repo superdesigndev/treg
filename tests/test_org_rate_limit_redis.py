@@ -133,6 +133,7 @@ async def test_fractional_balance_just_below_one_is_not_rounded_into_a_free_toke
 async def test_concurrency_contention_does_not_spend_a_rate_token(stores):
     first, second, org_id, _ = stores
     rate_key, slot_key = _keys(org_id)
+    await _seed(first, org_id, tokens=3, rps=5e-324, burst=3, future_s=30)
     assert await first.acquire_slot(slot_key, "existing-concurrency-owner", 30_000, 1) == "acquired"
     denied = await _admit(second, org_id, "busy-owner", limit=1)
     assert (denied.outcome, denied.retry_after_s) == ("busy", 1)
