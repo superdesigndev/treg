@@ -164,7 +164,8 @@ first run goes through `autoTeam` too.
 
 When `autoTeam` made the team (`created: true`), the welcome modal (`WelcomeDialog.vue`) opens over
 that view with three steps: pick your agent (`onboarding_agent_picked`), the per-agent setup line with
-the team's key, and the Try it out cards (a first prompt to copy). Skip or Escape fires
+the team's key (`onboarding_setup_copied` on copy, also from Getting started with `from: start`), and
+the Try it out cards (a first prompt to copy). Skip or Escape fires
 `onboarding_finished` with the step and lands on Getting started unless the user is on a platform page.
 Getting started carries the same agent picker, setup line and Try it out cards for anyone who skipped. A use-case landing's CTA (`/app?ref=grokbot`
 from `/grokbot`'s "Setup treg") **preselects that agent**: the `ref` param is stashed in
