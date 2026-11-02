@@ -9,6 +9,10 @@ credential server-side when one is required, and relays the answer verbatim. A c
 explicitly verified as public can instead relay with no injected credential. We never model an
 upstream API.
 
+An agent with no token can also pay for a single catalog call over x402 or MPP (pay per call, off
+unless configured; docs/context/architecture/pay-per-call.md): the call runs on the pay-per-call
+team's balance and the payment is taken only when the call settled a charge.
+
 ## Paired treg.to checkout
 
 For work on the hosted treg.to service, clone the public `treg` repository and private
@@ -56,6 +60,9 @@ Everything else in this file is guidance; these are the contract, and they win o
    binding with `location: "json"` explicitly parses and reserializes the top-level JSON object; it
    is not byte-faithful and must never be used with an upstream that signs or hashes the raw body.
    Never add upstream-specific modeling.
+   A pay-per-call request (no treg credential, docs/context/architecture/pay-per-call.md) also
+   drops the payment and treg's controls before `relay()`: `Authorization: Payment …`,
+   `Payment-Authorization`, `PAYMENT-SIGNATURE`, `Idempotency-Key` and every `X-Treg-*` header.
    One more rewrite, on 4xx/5xx only: every spelling of an injected credential the provider echoes
    back in an error body is masked (`***`) before the caller, an idempotent replay or the evidence
    row sees it. The error body is read whole (gzip/deflate decoded) up to 8 MiB; on a credentialed
@@ -79,7 +86,8 @@ Everything else in this file is guidance; these are the contract, and they win o
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
 5. Balances change only through money's five entries: grant, topup, reserve, settle, release.
-   There is deliberately no refund or adjustment entry; an ops correction is a grant.
+   There is deliberately no refund or adjustment entry; an ops correction is a grant. A taken
+   pay-per-call payment is a `topup` of the pay-per-call team.
 
 **Changing any invariant in this file means editing this file in the same PR.** Routed endpoints
 and overflow once shipped with every other doc updated while this file still said "no router";
@@ -114,7 +122,7 @@ agents then built against a constitution that was wrong.
 | `routers/` | HTTP and MCP translation in, response shape out | business rules, query orchestration, money |
 | `application/` | use-case sequencing, transaction boundaries, compensation, cross-domain composition | empty wrappers around one-domain CRUD |
 | `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money`, `asynctasks`, `feedback`, `hub` (a maker's tool made of tools: the manifest, the reference language, the graph), `showcase` (leaderboard applications, tiers, badges, consent), `images` (picture kinds, sizes and limits) | routers, application, concrete SDKs |
-| `infra/` | DB engine and sessions, crypto, upstream relay and SSRF, ratestore, the shared key-value store, email, Stripe | decisions |
+| `infra/` | DB engine and sessions, crypto, upstream relay and SSRF, ratestore, the shared key-value store, email, Stripe, the x402/MPP payment rail (`infra/payments.py`, the only pympp import) | decisions |
 
 - Domains do not import each other, with three sanctioned edges: `governance -> identity`,
   `tools -> connections`, `capacity -> catalog` (read-only). `identity` and `money` are leaves.

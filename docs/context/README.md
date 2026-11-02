@@ -38,6 +38,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Exact organization and endpoint call allowances](architecture/org-endpoint-quota.md) | shipped | org_endpoint_quota.py, service.py, types.py, route.py, … |
 | [Published organization pause, rate and concurrency admission](architecture/org-flow-control.md) | shipped | org_flow_control.py, structured_logging.py, kv.py, config.py, … |
 | [Process-local organization traffic logs](architecture/org-traffic.md) | shipped | org_traffic.py, structured_logging.py, bootstrap.py, call.py, … |
+| [Pay per call — a catalog call with no treg token, paid over x402 or MPP](architecture/pay-per-call.md) | shipped | pay_per_call.py, payments.py, call.py, config.py, … |
 | [Policy extensions — decision points a private abuse policy can plug into](architecture/policy-extensions.md) | shipped | policy.py, bootstrap.py, signup.py, promotions.py, … |
 | [The proxy — faithful credential-injecting relay + tool resolution](architecture/proxy-model.md) | shipped | relay.py, jsontext.py, ssrf.py, api.py, … |
 | [Replay - recorded exchanges re-run through one checkout's billing, outcome and routing code](architecture/replay.md) | building | __init__.py, __main__.py, records.py, engine.py, … |

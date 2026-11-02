@@ -51,6 +51,7 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/web_arena_calls.py": {API},
     # `/table/`: one short read of a hub tool's manifest, after the call's answer is fully read.
     "application/table.py": {API},
+    "application/pay_per_call.py": {API},
     # Snapshot read on the request path; the collector runs in the `treg-worker` process (see
     # `worker.py` below), where the API pool is the only one in use.
     "application/arena_insights.py": {API},
