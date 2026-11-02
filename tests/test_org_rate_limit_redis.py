@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
-from conftest import pause_loop_once_in_flight
+from conftest import STALL_PROOF_TIMEOUT_S, pause_loop_once_in_flight
 
 from treg.infra import kv
 
@@ -19,24 +19,22 @@ def _keys(org_id):
 
 
 async def _ready(store):
-    # Retry fixture readiness only; admission itself must keep its production timeout/no-retry.
     try:
         async with asyncio.timeout(5):
             while not await store.ping():
                 await asyncio.sleep(0.05)
-            # Open the pool's connections up front so a concurrent burst spends admission's
-            # short timeout on Redis, not on connecting.
-            await asyncio.gather(*(store._client.ping() for _ in range(20)))
     except TimeoutError as exc:
         raise AssertionError("disposable Redis did not become ready within five seconds") from exc
 
 
 @pytest.fixture
-async def stores():
+async def stores(monkeypatch):
     url = os.environ.get("TREG_TEST_KV_URL")
     if not url:
         pytest.skip("requires disposable loopback Redis via TREG_TEST_KV_URL")
     assert urlsplit(url).hostname in {"127.0.0.1", "localhost", "::1"}, "local Redis only"
+    monkeypatch.setattr(kv, "_TIMEOUT_S", STALL_PROOF_TIMEOUT_S)
+    monkeypatch.setattr(kv, "_OPTIONAL_TIMEOUT_S", STALL_PROOF_TIMEOUT_S)
     org_id = uuid4().int % 2147483646 + 1
     other_org = org_id + 1
     clients = []
@@ -85,9 +83,10 @@ async def test_one_shared_burst_across_clients_processes_and_independent_orgs(st
 
     script = """
 import asyncio, json, sys
-from treg.infra.kv import RedisStore
+from treg.infra import kv
 async def main():
-    store = RedisStore(sys.argv[1])
+    kv._TIMEOUT_S = kv._OPTIONAL_TIMEOUT_S = float(sys.argv[3])
+    store = kv.RedisStore(sys.argv[1])
     try:
         result = await store.admit_org(int(sys.argv[2]), 'another-process', 30000, None,
                                       rps=5e-324, burst=3)
@@ -97,7 +96,7 @@ async def main():
 asyncio.run(main())
 """
     process = await asyncio.create_subprocess_exec(
-        sys.executable, "-c", script, os.environ["TREG_TEST_KV_URL"], str(org_id),
+        sys.executable, "-c", script, os.environ["TREG_TEST_KV_URL"], str(org_id), str(STALL_PROOF_TIMEOUT_S),
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(), 10)
