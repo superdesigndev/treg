@@ -182,14 +182,16 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   `X-Treg-Captcha: required` so `treg login --email` falls back to the browser handshake.
   `TREG_FIXED_LOGIN_CODES` accounts skip the check.
 - **Turnstile on social sign-in**, because a provider proves an identity, not a person, and fresh
-  GitHub or Google accounts are cheap. With Turnstile on, `GET /auth/<provider>` serves a page that
-  runs the `social_start` check and posts its token to `POST /auth/<provider>`, so every existing
-  link keeps working. The POST classifies the token under a per-IP window (over it, `missing`
-  without calling Cloudflare), keeps the verdict under the hashed OAuth `state`, then redirects to
-  the provider; the callback takes it once. Nothing is refused here: in `enforce` a new user whose
-  check was not `pass` (or whose login has no kept verdict) signs in with
-  `signup_promo_available=false`; existing users are untouched. Each new social user logs
-  `event=social_signup` with the outcome and, for GitHub, the account age in days.
+  GitHub or Google accounts are cheap. The check runs where credit is decided: after the provider
+  callback, and only for an address no verified user holds yet. The callback parks the proven login
+  (encrypted, `HANDSHAKE_TTL`) under a nonce in the `treg_social_check` cookie and sends the browser
+  to `GET /auth/social/check`, which runs `social_start` and posts its token back. `POST` takes the
+  login once, classifies the token under a per-IP window (over it the token is not sent), and signs
+  in. Nothing is refused: in `enforce` a check that is not `pass` creates the user without credit,
+  or, for an unverified user this proof verifies first (legacy `POST /users`), withdraws its claim
+  (`find_or_create_user`, shared with the email door's outage case). Verified users sign in
+  without the check. Each first social proof logs `event=social_signup` with the outcome and, for
+  GitHub, the account age in days.
 
 ## Membership and team lifecycle
 

@@ -82,8 +82,9 @@ async def find_or_create_user(
     token is user-scoped, so it works before they have any org (org chosen per-request via X-Treg-Org).
     Only trusted email-proof callers pass verified=True; `proven` collects a user this call verified
     for the first time (see `grant_signup_promo_on_proof`). promo_eligible=False creates the user
-    without a signup-credit claim; it never touches an existing user. SSO can refuse to link an
-    existing account that has not proved its email. Caller commits."""
+    without a signup-credit claim and withdraws the claim of an unverified user this call proves
+    for the first time, the moment that claim would pay out; a verified user is never touched. SSO
+    can refuse to link an existing account that has not proved its email. Caller commits."""
     email = _norm_email(email)
     # Machine identities (agents, the published demo token) are minted by an admin and act ONLY by
     # their token. This is the single choke point every identity door shares, so blocking here means
@@ -114,9 +115,11 @@ async def find_or_create_user(
     if verified and user.email_verified_at is None:
         # Conditional, so of two proofs racing for one unverified user only the one that flips the
         # column is the first proof; the other sees no row and is an ordinary sign-in.
+        first_proof = {"email_verified_at": _utcnow_naive()}
+        if not promo_eligible:
+            first_proof["signup_promo_available"] = False
         flipped = await db.execute(
-            update(User).where(User.id == user.id, User.email_verified_at.is_(None))
-            .values(email_verified_at=_utcnow_naive())
+            update(User).where(User.id == user.id, User.email_verified_at.is_(None)).values(**first_proof)
         )
         if flipped.rowcount == 1 and proven is not None:
             proven.add(user.id)
