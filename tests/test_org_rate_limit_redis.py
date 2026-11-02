@@ -136,6 +136,7 @@ async def test_concurrency_contention_does_not_spend_a_rate_token(stores):
     assert await first.acquire_slot(slot_key, "existing-concurrency-owner", 30_000, 1) == "acquired"
     denied = await _admit(second, org_id, "busy-owner", limit=1)
     assert (denied.outcome, denied.retry_after_s) == ("busy", 1)
+    await asyncio.sleep(0.01)
     assert float(await first._client.hget(rate_key, "tokens")) == 3
     assert await first._client.zrange(slot_key, 0, -1) == ["existing-concurrency-owner"]
     assert await first.release_slot(slot_key, "existing-concurrency-owner") == "released"
