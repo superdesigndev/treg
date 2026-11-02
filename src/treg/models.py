@@ -1624,6 +1624,24 @@ class FeedbackHandlingEvent(SQLModel, table=True):
     created_at: NaiveUTC = Field(default_factory=_now)
 
 
+class FeedbackDiagnosis(SQLModel, table=True):
+    """Internal derived reading of one report; only treg-internal writes. Recomputable, not state."""
+
+    __table_args__ = (
+        CheckConstraint("endpoint_source IN ('call', 'message')", name="ck_feedbackdiagnosis_endpoint_source"),
+        CheckConstraint("(endpoint_id IS NULL) = (endpoint_source IS NULL)", name="ck_feedbackdiagnosis_endpoint_pair"),
+    )
+    feedback_id: int = Field(primary_key=True, foreign_key="feedback.id", ondelete="CASCADE")
+    endpoint_id: str | None = Field(default=None)
+    endpoint_source: str | None = Field(default=None)
+    scope: str
+    disposition: str
+    topic: str
+    probabilities: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    classifier: str
+    diagnosed_at: NaiveUTC = Field(default_factory=_now)
+
+
 class CallReview(SQLModel, table=True):
     """One private usefulness rating per catalog call, attributed by the server."""
 
