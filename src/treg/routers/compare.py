@@ -210,7 +210,8 @@ def _page_body(key: str, base: str) -> str:
                 f'<td class="{"np" if _np(them) else ""}" data-who="{_e(short)}">{_e(them)}</td></tr>')
 
     def li_pairs(items: list[tuple[str, str]]) -> str:
-        return "".join(f"<li><b>{_e(a)}</b>{_e(b)}</li>" for a, b in items)
+        return "".join(f'<li><span class="n">{i:02d}</span><p><b>{_e(a)}</b> {_e(b)}</p></li>'
+                       for i, (a, b) in enumerate(items, 1))
 
     faq = "".join(f"<details><summary>{_e(q)}</summary><p>{_e(a)}</p></details>" for q, a in c["faq"])
     sources = "".join(
@@ -260,15 +261,19 @@ def _page_body(key: str, base: str) -> str:
   <p class="tnote">treg's catalog size is read live from the catalog. Prices change; check each product's own pricing page before you decide.</p>
 </div></section>
 
-<section class="sec" id="their-strengths"><div class="wrap">
-  <p class="eyebrow rv">Credit where it is due</p>
-  <h2 class="rv">Where {_e(short)} is the better choice</h2>
-  <ul class="pros them rv">{li_pairs(c["better"])}</ul>
-</div></section>
-
-<section class="sec" id="treg-differs"><div class="wrap">
-  <h2 class="rv">Where treg is different</h2>
-  <ul class="pros us rv">{li_pairs(c["different"])}</ul>
+<section class="sec" id="tradeoff"><div class="wrap">
+  <p class="eyebrow rv">The trade-off</p>
+  <h2 class="rv">What each one does better</h2>
+  <div class="ledger rv">
+    <div class="col them" id="their-strengths">
+      <h3>{_mono(key)}Where {_e(short)} is the better choice</h3>
+      <ol>{li_pairs(c["better"])}</ol>
+    </div>
+    <div class="col us" id="treg-differs">
+      <h3>{_treg_mono()}Where treg is different</h3>
+      <ol>{li_pairs(c["different"])}</ol>
+    </div>
+  </div>
 </div></section>
 
 <section class="sec" id="both"><div class="wrap">

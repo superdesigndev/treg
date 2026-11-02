@@ -131,13 +131,17 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
   .vs-table td::before { content: attr(data-who); display: block; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
 }
 
-/* strengths */
-.pros { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 24px 0 0; padding: 0; list-style: none; }
-.pros li { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; color: var(--body); font-size: 15px; }
-.pros li b { display: block; color: var(--ink); font-family: var(--display); font-weight: 600; font-size: 16px; margin-bottom: 4px; }
-.pros.them li { border-top: 3px solid var(--them, #6366F1); }
-.pros.us li { border-top: 3px solid var(--green); }
-@media (max-width: 760px) { .pros { grid-template-columns: 1fr; } }
+/* the trade-off: two columns, numbered lines, hairline rules */
+.ledger { display: grid; grid-template-columns: 1fr 1fr; gap: 0 64px; margin-top: 28px; }
+.ledger .col h3 { display: flex; align-items: center; gap: 10px; margin: 0; padding: 0 0 14px; font-family: var(--display); font-weight: 600; font-size: 17px; letter-spacing: -.01em; border-bottom: 1.5px solid var(--ink); }
+.ledger ol { list-style: none; margin: 0; padding: 0; }
+.ledger li { display: grid; grid-template-columns: 36px 1fr; gap: 6px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.ledger .n { font-family: var(--mono); font-size: 12px; color: var(--muted); padding-top: 3px; }
+.ledger li p { margin: 0; color: var(--body); font-size: 15.5px; line-height: 1.6; }
+.ledger li b { color: var(--ink); font-weight: 600; }
+.ledger .them .n { color: var(--them, var(--muted)); }
+.ledger .us .n { color: var(--green); }
+@media (max-width: 760px) { .ledger { grid-template-columns: 1fr; gap: 48px; } }
 
 /* using both */
 .both { display: grid; grid-template-columns: 1.1fr 1fr; gap: 34px; align-items: center; background: #1B1B1A; color: #E8E6E1; border-radius: 24px; padding: 34px; }
