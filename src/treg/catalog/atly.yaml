@@ -20,6 +20,8 @@ proposed_capabilities:
 endpoints:
   - id: atly.places.search.intent
     added: '2026-10-27'
+    verified: '2026-11-02'
+    example_response: examples/atly.places.search.intent.json
     capability: places.search.intent
     platform: places
     domain: search
@@ -47,6 +49,8 @@ endpoints:
 
   - id: atly.places.detail
     added: '2026-10-27'
+    verified: '2026-11-02'
+    example_response: examples/atly.places.detail.json
     capability: places.detail
     platform: places
     domain: places
@@ -69,6 +73,8 @@ endpoints:
 
   - id: atly.places.categories
     added: '2026-10-27'
+    verified: '2026-11-02'
+    example_response: examples/atly.places.categories.json
     capability: places.categories
     platform: places
     domain: search
@@ -89,6 +95,8 @@ endpoints:
 
   - id: atly.places.areas
     added: '2026-10-27'
+    verified: '2026-11-02'
+    example_response: examples/atly.places.areas.json
     capability: places.areas
     platform: places
     domain: search
@@ -110,6 +118,8 @@ endpoints:
 
   - id: atly.account.usage
     added: '2026-10-27'
+    verified: '2026-11-02'
+    example_response: examples/atly.account.usage.json
     kind: account
     capability: account.usage
     platform: account
