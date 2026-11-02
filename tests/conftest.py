@@ -174,6 +174,9 @@ def fake_getaddrinfo(monkeypatch):
     return install
 
 
+STALL_PROOF_TIMEOUT_S = 30.0
+
+
 def pause_loop_once_in_flight(stores, calls: int, seconds: float) -> None:
     """Block the event loop, as a GC pause does, once every Redis call is in flight."""
     entered = 0
