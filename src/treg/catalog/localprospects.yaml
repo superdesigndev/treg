@@ -147,7 +147,7 @@ endpoints:
       source_url: https://localprospects.ai/docs#enrich
       checked: '2026-11-02'
       confidence: verified
-      note: "1 lead credit per domain, charged up front and refunded for domains whose site could not be scraped. OBSERVED 2026-11-02: stripe.com hit usage {leads_charged: 1, leads_refunded: 0}; a deliberate miss on a domain that does not exist answered HTTP 200 with usage {leads_charged: 0, leads_refunded: 1} and result.website_status 'dead' (results[0].status still reads 'success', so read usage.leads_refunded or website_status, not status, to tell a miss)"
+      note: "1 lead credit per domain, charged up front and refunded for domains whose site could not be scraped. OBSERVED 2026-11-02: stripe.com hit usage {leads_charged: 1, leads_refunded: 0}; a deliberate miss on a domain that does not exist answered HTTP 200 with usage {leads_charged: 0, leads_refunded: 1}, failed 1, results[0].status 'error' with error 'Could not read this website (dead). The credit was refunded.' and the result kept (website_status 'dead'). A miss is a 200, never a 4xx"
     docs_url: https://localprospects.ai/docs#enrich
 
   - id: localprospects.google.serp.locations
