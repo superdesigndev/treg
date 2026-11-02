@@ -191,6 +191,10 @@ def test_provider_defaults_reach_both_files_and_refuse_a_legacy_row(tmp_path):
     ({"demo.yaml": "provider: demo\nexpect: {json_path: code, equals: 0}\n"
                    "defaults:\n  expect: {path: response.code, op: equals, value: 0}\nendpoints:\n"
                    + ROW.format(name="a")}, "expect is declared both in the header and in defaults"),
+    ({"demo.yaml": "provider: demo\ncache: {mode: public}\nendpoints:\n" + ROW.format(name="a"),
+      "demo.extended.yaml": "provider: demo\ndefaults:\n  cache: {mode: forbidden}\nendpoints:\n"
+                            + ROW.format(name="b")},
+     r"demo.yaml: cache is declared both in the header and in defaults \(demo.extended.yaml\)"),
     ({"demo.yaml": "provider: demo\ndefaults:\n  host: api.example.com\nendpoints:\n" + ROW.format(name="a")},
      "defaults may not hold host"),
     ({"demo.yaml": "provider: demo\ndefaults:\n  bill: null\nendpoints:\n" + ROW.format(name="a")},

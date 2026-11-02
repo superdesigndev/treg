@@ -53,6 +53,11 @@ other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
   tells them apart. Nothing in the call runtime reads the v2 keys yet, so the validator refuses
   any v2 row until the v2 settlement order ships; until then the catalog stays in today's spelling.
 
+The v2 settlement order, the outcome classification and the first v2 rows ship next; until then no
+v2 row may ship. A resolved v2 row still carries pydantic objects (`Price`, `Bill`, predicate
+leaves) where served readers expect plain dicts (`.get` on `expect` and `miss`, `json.dumps` of the
+row), so v2 rows need a plain-dict served representation before the validator's guard is lifted.
+
 v2 paths are one syntax (`response.tasks.0.status_code`, `body.limit`, `query.q`, `*`, `[k=v]`)
 and one predicate (`{path, op, value}`, a list for all, `{any: [...]}`), parsed by
 `schema/paths.py`. A path's location must be one its reader allows: request paths in price tables
@@ -64,7 +69,8 @@ An endpoint file header may carry `defaults:`, any endpoint-level key its provid
 in at most one of the provider's two files. Per top-level key: a row's value wins whole, a row's
 `null` opts it out, an unmentioned key takes the default. `defaults` never holds `host`, `auth`,
 `credential`, `base_url`, `hosts` or `null`, and never repeats a header key of today's spelling
-(`cache`, `expect`, `async`, `ceiling_param`, `response_retention`).
+(`cache`, `expect`, `async`, `ceiling_param`, `response_retention`) in either of the provider's
+files.
 
 ## The shrink-only violation list
 

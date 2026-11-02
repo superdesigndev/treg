@@ -84,14 +84,11 @@ def read_endpoint_file(path: Path, hits: set[tuple[str, str]] | None = None) -> 
     provider, tier = stem(path)
     if raw["provider"] != provider:
         raise CatalogSchemaError(f"{path.name}: provider '{raw['provider']}' != filename stem '{provider}'")
-    defaults = raw.get("defaults")
-    if defaults is not None and (twice := [k for k in HEADER_HOMES if k in defaults and k in raw]):
-        raise CatalogSchemaError(f"{path.name}: {', '.join(twice)} is declared both in the header and "
-                                 "in defaults; a provider-level declaration has one home")
-    return EndpointDoc(path, provider, tier, raw, defaults)
+    return EndpointDoc(path, provider, tier, raw, raw.get("defaults"))
 
 
 def provider_defaults(docs: Iterable[EndpointDoc]) -> dict[str, dict]:
+    docs = list(docs)
     out: dict[str, dict] = {}
     homes: dict[str, str] = {}
     for doc in docs:
@@ -101,6 +98,11 @@ def provider_defaults(docs: Iterable[EndpointDoc]) -> dict[str, dict]:
             raise CatalogSchemaError(f"{doc.path.name}: defaults is also declared in {homes[doc.provider]}; "
                                      "it sits in at most one of a provider's two endpoint files")
         out[doc.provider], homes[doc.provider] = doc.defaults, doc.path.name
+    for doc in docs:
+        if twice := [k for k in HEADER_HOMES if k in doc.raw and k in out.get(doc.provider, {})]:
+            raise CatalogSchemaError(f"{doc.path.name}: {', '.join(twice)} is declared both in the header and "
+                                     f"in defaults ({homes[doc.provider]}); a provider-level declaration has "
+                                     "one home")
     return out
 
 
