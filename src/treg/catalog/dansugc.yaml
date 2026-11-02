@@ -15,6 +15,8 @@ proposed_capabilities:
 endpoints:
   - id: dansugc.ugc.clips.search
     added: '2026-10-27'
+    verified: '2026-11-02'
+    example_response: examples/dansugc.ugc.clips.search.json
     capability: ugc.clips.search
     platform: ugc
     domain: clips
@@ -47,6 +49,8 @@ endpoints:
 
   - id: dansugc.ugc.clips.filters
     added: '2026-10-27'
+    verified: '2026-11-02'
+    example_response: examples/dansugc.ugc.clips.filters.json
     capability: ugc.clips.filters
     platform: ugc
     domain: clips
@@ -63,6 +67,8 @@ endpoints:
 
   - id: dansugc.ugc.clip.detail
     added: '2026-10-27'
+    verified: '2026-11-02'
+    example_response: examples/dansugc.ugc.clip.detail.json
     capability: ugc.clip.detail
     platform: ugc
     domain: clips
@@ -73,9 +79,9 @@ endpoints:
     summary: Get B-Roll Video Details
     input:
       pathParams:
-        videoId: {type: string, required: true, note: "clip UUID from dansugc.ugc.clips.search", example: "c47369b6-4d46-4adf-a500-c7f792cb5667"}
+        videoId: {type: string, required: true, note: "clip UUID from dansugc.ugc.clips.search", example: "7c7059f5-980b-4d73-a601-4d61d001dfed"}
       note: "download_url is present only when the caller already owns the clip."
-    test_request: {pathParams: {videoId: "c47369b6-4d46-4adf-a500-c7f792cb5667"}}
+    test_request: {pathParams: {videoId: "7c7059f5-980b-4d73-a601-4d61d001dfed"}}
     cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: https://dansugc.com/docs, checked: '2026-10-08', confidence: documented}
     docs_url: https://dansugc.com/docs#tag/b-roll/GET/broll/{videoId}
 
@@ -114,6 +120,8 @@ endpoints:
 
   - id: dansugc.ugc.purchases.list
     added: '2026-10-27'
+    verified: '2026-11-02'
+    example_response: examples/dansugc.ugc.purchases.list.json
     capability: ugc.purchases.list
     platform: ugc
     domain: clips
