@@ -152,10 +152,12 @@ undeclared difference. The declarations are the pull request body's fenced `repl
 blocks, so they belong to the change that needs them and never accumulate in the repository;
 editing the body re-runs the job. The report goes to the job summary.
 
-When a pull request changes loader, schema or validator source, the same job also dumps the loaded
-catalog (`scripts/catalog_dump.py`) on the base and on the merge result and fails on any byte
-difference, naming the first differing path (architecture/catalog-schema.md). It needs no body
-declaration, and a pure catalog data pull request skips it. The replay diff still runs and reports
+When a pull request changes loader, schema or validator source (anything under
+`src/treg/domain/catalog/`, `scripts/catalog_validate.py`, `scripts/catalog_dump.py` or the Replay
+workflow), the same job also dumps the loaded catalog (`scripts/catalog_dump.py`: every field of the
+loaded `Catalog` and each row's cost view, sorted keys) on the base and on the merge result and fails
+on any byte difference, naming the first differing path ([catalog-schema](catalog-schema.md)). It
+needs no body declaration, and a pure catalog data pull request skips it. The replay diff still runs and reports
 when the dump check fails.
 
 A base without the engine skips the comparison. The ordinary test suite also replays the whole
