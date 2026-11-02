@@ -21,7 +21,7 @@ from sqlmodel import select
 import yaml
 
 from ..timeutil import utcnow_naive as _utcnow_naive
-from .. import adsconv, agent_pages, client_ip, oauth_providers
+from .. import adsconv, agent_pages, client_ip, compare_pages, oauth_providers
 from ..domain import referrals
 from ..domain.catalog import store as catalog_store
 from ..domain.identity import session as sess
@@ -197,7 +197,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
     # self-hosted registry must not put three 404s in its own footer.
     hub_links = ('<a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a>'
                  '<a href="/gtm-engineering">GTM engineering</a><a href="/showcase">Showcase</a><a href="/rankings">Rankings</a>'
-                 '<a href="/agents">Agents</a><a href="/blog">Blog</a>' if _hosted() else "")
+                 '<a href="/agents">Agents</a><a href="/compare">Compare</a><a href="/blog">Blog</a>' if _hosted() else "")
     return HTMLResponse(f"""<!doctype html>
 <html lang="en">
 <head>
@@ -3528,6 +3528,10 @@ async def sitemap_xml():
         hub = _WEB_DIR / "gtm-engineering.html"
         add("/gtm-engineering", _iso_day(hub.stat().st_mtime) if hub.exists() else "", "0.8")
         add("/showcase", _iso_day((_WEB_DIR / "showcase.html").stat().st_mtime), "0.8")
+        from . import compare  # imports this module; a top-level import would be circular
+        compare_day = _iso_day(Path(compare_pages.__file__).stat().st_mtime)
+        for path in compare.sitemap_paths():
+            add(path, compare_day, "0.7")
     out.append("</urlset>")
     return Response("\n".join(out), media_type="application/xml; charset=utf-8",
                     headers={"Cache-Control": "max-age=3600"})

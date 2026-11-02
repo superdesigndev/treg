@@ -5,6 +5,9 @@ sources:
   - src/treg/api.py
   - src/treg/routers/web.py
   - src/treg/agent_pages.py
+  - src/treg/compare_pages.py
+  - src/treg/routers/compare.py
+  - src/treg/web/media/compare/compare.css
   - src/treg/web/robots.txt
   - src/treg/web/catalog.css
   - src/treg/web/usecase.css
@@ -94,6 +97,7 @@ describes one grant per new verified account, not per team
 | `/jev` | `/jev/xboost.json` serves the document `treg-worker jev xboost` stores (Ephemeral `jev`/`xboost`), else `media/jev/xboost-seed.json` flagged `snapshot: true`. `POST /jev/xboost/judge` is rate-limited per IP and fleet-wide through ratestore, answers 503 until `jev_treg_token` and `ai_gateway_api_key` are set, and its entries survive the daily run. `application/jev_xboost.py` calls `/call/` with the demo team's token, so the receipt is a real bill. Bundled recipe runs have every email address replaced. `tests/test_jev.py`. |
 | `/start` | Paid-traffic landing. Hosted-only, `noindex` (meta and `X-Robots-Tag`), no canonical, not sitemapped. `?job=` picks copy from a fixed table; unknown values (including `constructor`, `__proto__`) get the general page. `sitetrack.js` loads before the page script so `start_viewed` is not dropped; copy events fire only after a fulfilled clipboard write. `tests/test_start_page.py`. |
 | `/gtm-engineering` (+ `.md`) | Hand-written (not `_page()`) because only hand-written pages load `sitetrack.js`. Its original studies publish results, never rows: the test fails if a catalog provider is named in a study block, a headline figure leaves its section, or a study FAQ answer drifts from its JSON-LD; raw data stays out of the repo. The `.md` twin is hand-kept and `tests/test_gtm_engineering_page.py` fails on a missing chapter heading. Hosted-only. |
+| `/compare`, `/compare/treg-vs-<slug>` (+ `.md`) | Comparison pages, hosted-only. All copy is `compare_pages.py`: one record per product, read from its own pages on `CHECKED`, with `sources` on its own site; the renderer (`routers/compare.py`) holds no text. Cells say "Not published" where the product's pages are silent, never "No". Every page says where the other product is the better choice. treg's side uses `{ENDPOINTS}`/`{PROVIDERS}`. `WebPage` + `BreadcrumbList` + `FAQPage` (FAQ verbatim in the body); the `.md` twin is `noindex`. Re-read every source and move `CHECKED` before changing a price or claim. `tests/test_compare_pages.py`. |
 | `/rankings` | Served on every registry (it counts that registry's traffic), sitemapped. Boards come from the row `treg-worker rankings refresh` saves ([catalog](../architecture/catalog.md)). The first board is inlined as JSON plus an `ItemList`; the rest load from `/rankings/data/{board}`. The page hand-copies the dashboard's `SelectMenu` and `SpendBars` because a static page cannot import Vue components: change them together. `tests/test_rankings.py`. |
 | `/showcase` | Tiles written in the HTML with `CollectionPage`/`ItemList`. The X wall is a committed snapshot (`media/showcase/wall.json`); the page never fetches from X. Hosted-only. `tests/test_showcase_page.py`. |
 | `/docs`, `/docs/api` | Server-rendered reference from `app.openapi()`; Swagger UI moved to `/docs/api` and disallowed. ReDoc is off. |
