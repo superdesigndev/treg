@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import json
 
 import pytest
@@ -88,25 +86,14 @@ async def test_voice_create_is_private_and_becomes_an_org_resource(
 async def test_unified_voice_list_uses_byok_and_normalizes_without_holding_db(
     clients: AsyncClient, fishaudio_platform_on, monkeypatch,
 ):
-    background_session = managed_keys.background_session_maker
-    relayed = asyncio.Event()
-
-    @contextlib.asynccontextmanager
-    async def slow_background_session():
-        async with background_session() as db:
-            await db.connection()
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(relayed.wait(), 5)
-            yield db
-
-    monkeypatch.setattr(managed_keys, "background_session_maker", slow_background_session)
     await clients.post("/secrets", json={"name": "fishaudio", "value": "OWN-FISH-KEY"})
     await audit.drain()
+    # SQLite shares this pool with key metadata writes; finish them before sampling it.
+    await managed_keys.drain_last_used()
     checked_out = []
 
     async def relay(*args, **kwargs):
         checked_out.append(_engine.pool.checkedout())
-        relayed.set()
         return _response(200, b'{"items":[{"_id":"account-voice","title":"Account narrator",'
                               b'"state":"created","created_at":"2026-09-22T00:00:00Z"}]}')
 
