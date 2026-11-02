@@ -1485,15 +1485,16 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 archive_key_hash, archive_content_hash = served["key_hash"], served["content_hash"]
                 response = _served_response(served, body)
             else:
-                if platform_tier and (cap := capacity_view.concurrency(mk.provider)) \
-                        and (wait_s := get_settings().fair_share_wait_s) > 0:
+                share_pool, cap = (capacity_view.concurrency_pool(mk.provider, mk.endpoint_id)
+                                   if platform_tier else ("", 0))
+                if cap and (wait_s := get_settings().fair_share_wait_s) > 0:
                     # Fair share (domain/capacity/fair_share.py): every team shares this account's
                     # places; a full provider hands the next free place to the team with the fewest
                     # calls in progress. Held until the answer is read, released on every path below.
                     try:
                         # Each of treg's accounts has its own places (`keyslots.capacity_key`).
                         share_slot = await fair_share.acquire(
-                            keyslots.capacity_key(mk.provider, mk.key_slot), caller.org_id, cap,
+                            keyslots.capacity_key(share_pool, mk.key_slot), caller.org_id, cap,
                             max_wait_s=wait_s)
                     except ShareBusy as busy:
                         raise GatewayFailed("share_busy", status_code=429, detail={

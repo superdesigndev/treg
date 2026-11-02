@@ -135,9 +135,10 @@ def assign(mk) -> None:
     slots = [slot for slot in _labels(mk.provider)
              if not exhausted(mk.provider, mk.endpoint_id, slot, metered=metered)]
     slots = slots or _labels(mk.provider)
+    pool, _ = capacity_view.concurrency_pool(mk.provider, mk.endpoint_id)
     start = next(_rotation.setdefault(mk.provider, itertools.count(random.randrange(1 << 16)))) % len(slots)
     mk.key_slot = min(slots[start:] + slots[:start],
-                      key=lambda slot: (fair_share.queued(capacity_key(mk.provider, slot)),
+                      key=lambda slot: (fair_share.queued(capacity_key(pool, slot)),
                                         _wait_s(mk.provider, mk.endpoint_id, slot)))
     mk.tool.bindings = oauth_providers.platform_bindings(oauth_providers.get(mk.provider), mk.key_slot)
 

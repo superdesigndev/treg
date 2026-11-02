@@ -191,7 +191,9 @@ token bucket.
 ## Protect: fair share of a provider's concurrency
 
 A provider that caps the calls in progress on one account (`_CONCURRENCY`, read through
-`view.concurrency`) is shared by every team on treg's key. `fair_share.py` applies max-min fairness
+`view.concurrency_pool`) is shared by every team on treg's key. An endpoint family with its own
+allowance (`_ENDPOINT_CONCURRENCY`: a name, a limit and its endpoints) has its own places, which
+replace the provider's for those endpoints and do not draw from them. `fair_share.py` applies max-min fairness
 on those places, DB-free, after the DB phase and around the relay (platform tier only):
 
 1. A free place with no one waiting is taken at once.

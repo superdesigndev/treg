@@ -55,7 +55,7 @@ class Org(SQLModel, table=True):
     # open Holds. It exists as a column, not a query, because it is the hot-path spend gate: one
     # conditional UPDATE against this integer is what stops concurrent agent calls racing past zero
     # (see money.reserve). Only `domain/money` may write it.
-    balance_micro: int = Field(default=0)
+    balance_micro: int = Field(default=0, sa_type=BigInteger)
     # "Committed since midnight UTC": everything settled today plus everything still held from
     # today - the number the fail-closed daily cap is checked against on EVERY metered call. Kept
     # here, in the same UPDATE that moves the balance, because the equivalent aggregate over
@@ -77,8 +77,8 @@ class Org(SQLModel, table=True):
     # org explicitly turned it on AND recorded consent — an off-session charge with no mandate is an
     # unauthorized charge under PSD2/SCA, so `autotopup_consented_at` gates the charge, not the UI.
     autotopup_enabled: bool = Field(default=False)
-    autotopup_threshold_micro: int = Field(default=0)   # 0 = "use the configured default"
-    autotopup_amount_micro: int = Field(default=0)      # 0 = "use the configured default"
+    autotopup_threshold_micro: int = Field(default=0, sa_type=BigInteger)   # 0 = "use the configured default"
+    autotopup_amount_micro: int = Field(default=0, sa_type=BigInteger)      # 0 = "use the configured default"
     autotopup_monthly_cap_micro: int = Field(default=0)  # 0 = the default, `billing.TOPUP_MAX_USD`
     # How many automatic charges may run in one hour after a SUCCESSFUL one (0 = the configured
     # default). Part of the mandate the team agreed to, so it is stored next to the amounts.
@@ -111,7 +111,7 @@ class Org(SQLModel, table=True):
     # default. The EFFECTIVE cap is min(this, the platform ceiling): a team may lower it freely, and
     # raising it past the ceiling is refused — which makes that a conversation with us rather than an
     # env-var edit that lifts the blast-radius rail for every team at once.
-    daily_cap_micro: int = Field(default=0)
+    daily_cap_micro: int = Field(default=0, sa_type=BigInteger)
 
     # Google Ads attribution (see adsconv.py).
     # The click that produced this team, captured as a first-party cookie on landing and persisted
@@ -946,8 +946,8 @@ class CreditBlock(SQLModel, table=True):
     id: str = Field(primary_key=True)  # uuid4 hex
     org_id: int = Field(foreign_key="org.id", index=True)
     kind: str = Field(default="promotional", index=True)  # promotional | purchased
-    amount_micro: int  # granted amount, micro-USD (1e-6 USD) — never mutated
-    remaining_micro: int  # what's left to spend from this block
+    amount_micro: int = Field(sa_type=BigInteger)  # granted amount, micro-USD (1e-6 USD) — never mutated
+    remaining_micro: int = Field(sa_type=BigInteger)  # what's left to spend from this block
     currency: str = Field(default="USD")
     expires_at: NaiveUTC | None = Field(default=None)
     # The already-authorized payment this block was funded by. Doubles as the idempotency
@@ -1012,7 +1012,7 @@ class Hold(SQLModel, table=True):
     id: str = Field(primary_key=True)  # == call_id
     org_id: int = Field(foreign_key="org.id", index=True)
     endpoint_id: str = Field(default="")
-    amount_micro: int  # what was withheld from the balance (margin already applied)
+    amount_micro: int = Field(sa_type=BigInteger)  # what was withheld from the balance (margin already applied)
     created_at: NaiveUTC = Field(default_factory=_now, index=True)
 
 
@@ -1180,8 +1180,8 @@ class TagBudget(SQLModel, table=True):
     # NULL = no ceiling on this axis. Caps are SOFT (see application/call/reserve.py
     # `_enforce_tag_budgets`): the figure they
     # test is an aggregate, not a materialized column, so concurrent calls can overshoot slightly.
-    daily_cap_micro: int | None = Field(default=None)
-    monthly_cap_micro: int | None = Field(default=None)
+    daily_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
+    monthly_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
     calls_per_day: int = Field(default=-1)  # -1 = unlimited, mirroring Membership.daily_call_cap
     # "active" | "blocked". Blocking is the soft form of revocation — it needs no token management,
     # and it is checked before the idempotency replay so a blocked user cannot be served a cached

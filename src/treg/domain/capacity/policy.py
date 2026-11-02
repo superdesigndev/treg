@@ -239,9 +239,10 @@ _ENDPOINT_RATE_LIMITS: dict[str, dict] = {
     # Email Verifier publishes no limit; its 429s carry x-ratelimit-limit 20 per minute, far below
     # the documented 1,000/min for other APIs. A provider-wide 20/min would slow every other route.
     "contactout.people.email.verify": {"limit": 20, "window_s": 60, "source": "headers"},
-    # Both finder rows share the vendor's 200-a-minute finder allowance on treg's partner key.
-    "filtrat.people.email.find": {"limit": 100, "window_s": 60, "source": "docs"},
-    "filtrat.people.email.find.resolve_catchall": {"limit": 100, "window_s": 60, "source": "docs"},
+    # Both finder rows share the vendor's 200-a-minute finder allowance on treg's partner key; the
+    # routed email find calls the resolve_catchall row, so it holds most of it.
+    "filtrat.people.email.find": {"limit": 50, "window_s": 60, "source": "docs"},
+    "filtrat.people.email.find.resolve_catchall": {"limit": 150, "window_s": 60, "source": "docs"},
 }
 
 # Calls in progress a provider allows on treg's own key (domain/capacity/fair_share.py shares them
@@ -254,10 +255,17 @@ _CONCURRENCY: dict[str, int] = {
     "litescrape": 100,
     # treg's own conservative setting for the shared account (catalog row `limits`).
     "fishaudio": 5,
-    # Filtrat asks for at most 10 verifications and 8 finder searches in progress on treg's partner
-    # key (a 9th search waits up to 10 s, then 503 SERVER_BUSY). The gate is per provider, so it takes
-    # the lower figure; 8 verifications at the observed 0.6 s median still clear the 600 a minute.
-    "filtrat": 8,
+    # Filtrat allows 10 verifications in progress on treg's partner key (an 11th waits up to 10 s,
+    # then 503 SERVER_BUSY). Its finder searches have their own allowance (_ENDPOINT_CONCURRENCY).
+    "filtrat": 10,
+}
+# An endpoint family whose in-progress allowance differs from its provider's has its own places
+# here, shared by every endpoint listed. They replace the provider's places for those endpoints and
+# do not draw from them.
+_ENDPOINT_CONCURRENCY: dict[str, dict] = {
+    # Filtrat allows 15 finder searches in progress on treg's partner key, across both finder rows.
+    "filtrat.finder": {"limit": 15, "endpoints": (
+        "filtrat.people.email.find", "filtrat.people.email.find.resolve_catchall")},
 }
 
 
