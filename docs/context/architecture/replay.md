@@ -94,6 +94,16 @@ success, failure and billed-failure documents. Requests come from `test_request`
 request fidelity is `reconstructed` and its response carries no headers. Nothing in it is
 customer data, and it is generated, never committed.
 
+## The production corpus
+
+Records from real traffic are extracted by a private operator script, run where production's
+database and archive are reachable, that writes this record shape to a temporary location deleted
+after the replay. It reuses treg's own readers rather than copying them:
+`arena_insights._evidence_pointers` (the exact snapshot each call received, with its media type,
+under the `replay` read path), `archive_bodies.read`, `archive.load_terminal_snapshots` (a task's
+terminal answer and its status), the archive opt-out state, the credential renderings of
+`call.evidence`, and `records.line` for each line it writes.
+
 ## Running it
 
 ```bash
