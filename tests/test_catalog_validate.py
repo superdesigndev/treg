@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from scripts import catalog_validate as validator
 from treg.domain.catalog import store as catalog_store
@@ -1276,3 +1277,35 @@ def test_provider_query_params_shape(block, ok):
     errors: list[str] = []
     validator.check_provider_query_params(block, "test", errors)
     assert (not errors) is ok, errors
+
+
+def test_bills_miss_is_true_and_only_on_a_per_success_price():
+    base = {
+        "type": "per_success", "value": 6, "currency": "credit", "per": 1,
+        "unit": "result", "source": "docs", "source_url": "https://example.com/pricing",
+        "checked": "2026-10-27", "confidence": "documented",
+    }
+    ok: list[str] = []
+    validator.check_cost(base | {"bills_miss": True}, "catalog:test", ok, [])
+    assert ok == []
+    for bad in (base | {"bills_miss": False}, base | {"bills_miss": "yes"},
+                base | {"type": "per_call", "bills_miss": True}):
+        errors: list[str] = []
+        validator.check_cost(bad, "catalog:test", errors, [])
+        assert any("bills_miss" in e for e in errors), bad
+
+
+@pytest.mark.parametrize('row,message', [
+    ('{queryParams: {q: {type: string, required: true, note: "One, two."}}, note: ok}', None),
+    ('{body: {type: object, required: [q], properties: {q: {type: string, items: {type: string}}}}}', None),
+    ('{query: {q: {type: string, required: true}}}', 'input.query is not one of'),
+    ('{body: {data: {type: string, note: Email, or a domain.}}}', "input.body.data: unknown parameter-spec key 'or a domain.'"),
+    ('{body: {properties: {a: {type: object, properties: {b: {tpye: string}}}}}}', "input.body.a.b: unknown parameter-spec key 'tpye'"),
+])
+def test_input_keys_are_the_known_vocabulary(row, message):
+    errors: list[str] = []
+    validator.check_input_keys(yaml.safe_load(row), 'test', errors)
+    if message is None:
+        assert errors == []
+    else:
+        assert any(message in e for e in errors), errors

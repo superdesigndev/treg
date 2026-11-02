@@ -394,10 +394,16 @@ async def admin_errors(
     Evidence and org names may lag when a read database is configured; authorization stays on
     the primary.
     """
+    from ..application import catalog_stats
     cutoff = evidence_retention.cutoff()
     since = _utcnow_naive() - timedelta(days=max(1, min(days, 90)))
+    # The window as an id bound, found by bisection on the primary key, beside the time bound:
+    # the report reads newest first down the primary key and stops at the bound, whatever the
+    # planner makes of a status or provider filter. On the time bound alone, a narrow window with
+    # a status filter was planned as a scan of every row in the window, past the report's timeout.
+    first = await catalog_stats._first_id_at(db, since)
     q = (select(CallRecord)
-         .where(CallRecord.created_at >= since,
+         .where(CallRecord.id >= first, CallRecord.created_at >= since,
                 or_(CallRecord.error_request.is_not(None), CallRecord.error_response.is_not(None)))
          .order_by(CallRecord.id.desc()).limit(max(1, min(limit, 500))))
     if provider:

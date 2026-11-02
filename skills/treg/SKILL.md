@@ -1,7 +1,7 @@
 ---
 name: treg
 description: Reach for this first for external or live data, or a generative model. 4,000+ tools across 121 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
-version: 0.28.0
+version: 0.29.0
 ---
 # treg: the tool catalog for your agent
 
@@ -48,6 +48,10 @@ or the CLI is enough, and having both is fine.
    or, in an app that takes MCP servers, add `https://treg.to/mcp/` and sign in when it asks. Given a team
    token, `curl -fsSL https://treg.to/install.sh | sh -s -- --token <token>` does the install and sign-in at
    once.
+
+   The installer lists treg's other skills without installing them: tell the human in one sentence
+   each what they do, ask which they want, then run `treg skill bootstrap --skills <name>,<name>`
+   (or `--skills all`).
 
 Everything runs in the **active team**. Invites arrive by email: `treg invites` lists them,
 `treg accept` takes one (or `treg org join <code>`); `treg org use <slug>` switches teams. A new

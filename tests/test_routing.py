@@ -848,6 +848,20 @@ async def test_identity_no_provider_accepts_is_422_naming_variants(clients: Asyn
     assert ["domain", "full_name"] in r.json()["detail"]["variants"]
 
 
+async def test_identity_not_of_its_declared_type_is_422_before_any_call(clients: AsyncClient, enrichment_on, monkeypatch):
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"tomba": [(200, {})]}, seen))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "P C", "domain": "stripe.com", "linkedin_url": "N/A"})
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "invalid_identity" and seen == []
+    assert r.json()["detail"]["invalid"] == [{"field": "linkedin_url", "type": "url", "value": "N/A"}]
+
+
+async def test_access_check_plans_a_url_row_from_its_own_example(clients: AsyncClient):
+    """The type check guards what a caller sends; the access view plans from the row's placeholder."""
+    r = await clients.get("/catalog/endpoints/treg.web.extract/access")
+    assert r.status_code == 200, r.text
+
+
 async def test_caller_fault_on_a_child_stops_and_own_key_ranks_first(clients: AsyncClient, enrichment_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
@@ -1952,8 +1966,10 @@ def test_linkedin_url_is_normalised_once_for_every_adapter():
 
 
 @pytest.mark.parametrize(("raw", "expected"), [
-    # a path that merely mentions linkedin.com is a handle-shaped string, never promoted to that host
-    ("evil.example/?linkedin.com/in/x", "https://www.linkedin.com/in/evil.example/?linkedin.com/in/x"),
+    # a path that merely mentions linkedin.com is never promoted to that host
+    ("evil.example/?linkedin.com/in/x", None),
+    # a derived URL is built only from something handle-shaped, never `/in/N/A`
+    ("N/A", None), ("#N/A", None), ("-", None), ("patrickcollison", "https://www.linkedin.com/in/patrickcollison"),
     ("uk.linkedin.com/in/x", "https://uk.linkedin.com/in/x"),
     # the host is lowercased so the handle derives
     ("LinkedIn.com/in/Patrick", "https://linkedin.com/in/Patrick"),
@@ -1961,6 +1977,36 @@ def test_linkedin_url_is_normalised_once_for_every_adapter():
 def test_linkedin_url_only_trusts_a_linkedin_host(raw, expected):
     from treg.domain.catalog.routing import paths as P
     assert P.linkedin_url(raw) == expected
+
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    ("https://www.linkedin.com/in/patrickcollison", "https://www.linkedin.com/in/patrickcollison"),
+    ("https://www.linkedin.com/in/%E5%BC%A0%E4%B8%89-1a2b3c/en", "https://www.linkedin.com/in/%E5%BC%A0%E4%B8%89-1a2b3c/en"),
+    ("WWW.LinkedIn.com/in/Patrick", "https://WWW.LinkedIn.com/in/Patrick"),
+    ("m.linkedin.com/in/x?trk=a", "https://m.linkedin.com/in/x?trk=a"),
+    ("stripe.com", "https://stripe.com"),
+    ("http://bücher.de/x", "http://bücher.de/x"),
+    ("https://example.com/a page", "https://example.com/a page"),
+    ("N/A", None), ("null", None), ("-", None), ("patrickcollison", None),
+    ("ftp://stripe.com/x", None), ("https://", None), ("see https://stripe.com", None), (".com/x", None),
+    ("http://localhost/", None), ("https://…", None),
+    ("john@stripe.com", None), ("mailto:a@b.com", None), ("user:pw@stripe.com/x", None), ("   ", None),
+    ("linkedin.com/in/x?r=https://g.com/", "https://linkedin.com/in/x?r=https://g.com/"),
+    ("https://ตัวอย่าง.ไทย/", "https://ตัวอย่าง.ไทย/"), ("https://stripe.com./", "https://stripe.com./"),
+    ("https://[2001:db8::1]/", "https://[2001:db8::1]/"),
+    ("https://example.com/?q=" + "a" * 3000, "https://example.com/?q=" + "a" * 3000),
+])
+def test_url_identity_is_checked_by_its_declared_type(raw, expected):
+    from treg.domain.catalog.routing.contracts import _as_url
+    assert _as_url(raw) == expected
+
+
+def test_identity_type_check_treats_blank_as_absent_and_echoes_safely():
+    from treg.domain.catalog.routing.contracts import invalid_identity
+    contract = catalog_store.load().contracts["people.email.find"]
+    assert invalid_identity(contract, {"full_name": "P C", "domain": "stripe.com", "linkedin_url": "   "}) == []
+    [bad] = invalid_identity(contract, {"linkedin_url": "\ud83d"})
+    bad["value"].encode("utf-8")
 
 
 def test_arena_and_router_read_the_miss_block_the_same_way():
@@ -2299,3 +2345,44 @@ async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: A
     assert {"endpoint_id": "akta.companies.news", "why": "needs limit <= 3"} in over.dropped
     under = await call_route.build_plan(ep, {"domain": "canva.com", "limit": 3}, _Caller(), options)
     assert any(c.endpoint["id"] == "akta.companies.news" for c in under.candidates)
+
+
+def test_routed_miss_count_includes_a_per_success_child_that_bills_a_miss():
+    """A per-success child is free on a miss unless cost.bills_miss is true; the routed row counts
+    those children in miss_billed_by and never claims misses are free while one of them bills."""
+    from treg.domain.catalog.routing import contracts as C, synthetic
+
+    contract = C.Contract(capability="x.find", summary="", identity=(("q",),), identity_types={"q": "str"},
+                          derive={}, filters={}, output={"rows": {"required": True}}, miss="rows == []")
+    ids = ("a.find", "b.find", "c.find")
+    adapters = {eid: C.Adapter(eid, (("q",),), {"q": "body.q"}, {"rows": "rows"}, "rows == []",
+                               route=True, verified=True) for eid in ids}
+    endpoints = [
+        {"id": "a.find", "provider": "a",
+         "cost": {"type": "per_success", "value": 1, "bills_miss": True}},
+        {"id": "b.find", "provider": "b",
+         "cost": {"type": "per_success", "value": 2}},
+        {"id": "c.find", "provider": "c",
+         "cost": {"type": "per_call", "value": 3}},
+    ]
+
+    def cost_view(cost, provider):
+        return {"usd": float(cost["value"])} if cost and cost.get("value") is not None else None
+
+    row = synthetic.routed_endpoint(contract, endpoints, adapters, cost_view)
+    assert row["miss_billed_by"] == ["a.find", "c.find"]
+    assert "b.find" not in row["miss_billed_by"]
+    assert row["cost"].get("varies") is True
+    assert "misses are free" not in row["cost"]["note"]
+    assert row["cost"]["note"].startswith("Not free:")
+
+    free_only = [
+        {"id": "b.find", "provider": "b", "cost": {"type": "per_success", "value": 2}},
+        {"id": "d.find", "provider": "d", "cost": {"type": "per_success", "value": 4}},
+    ]
+    free_adapters = {eid: C.Adapter(eid, (("q",),), {"q": "body.q"}, {"rows": "rows"}, "rows == []",
+                                    route=True, verified=True) for eid in ("b.find", "d.find")}
+    free_row = synthetic.routed_endpoint(contract, free_only, free_adapters, cost_view)
+    assert free_row["miss_billed_by"] == []
+    assert "misses are free" in free_row["cost"]["note"]
+    assert free_row["cost"].get("varies") is not True
