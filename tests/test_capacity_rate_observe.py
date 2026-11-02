@@ -26,7 +26,7 @@ from treg.timeutil import utcnow_naive
 from test_capacity_smoothing import _publish_rate, _relay_script
 from test_marketplace_call import EP, _balance, platform_on  # noqa: F401
 from test_capacity_overflow import VENDOR_BODY, _holds, _orthogonal, _route, overflow_on  # noqa: F401
-from test_org_endpoint_quota_call import _assert_no_money
+from test_org_endpoint_quota_call import _assert_no_money, _enable
 from test_route_verify import ASK, FIND, _relay as _verify_relay, verifiers_on  # noqa: F401
 
 
@@ -526,3 +526,34 @@ async def test_a_late_healthy_reply_does_not_close_a_newly_opened_breaker(monkey
     late, fault = await asyncio.gather(provider_rate.admit("p", 2, 1.0), fault_after_start())
     assert late.verdict == "admit" and fault is None
     assert await provider_rate.admit("p", 2, 1.0) is None and len(asked) == 2, "still cooling down"
+
+
+async def test_an_overflow_that_does_not_serve_keeps_the_rate_refusal(
+    clients: AsyncClient, observing, overflow_on, emitted, monkeypatch,
+):
+    verdicts, _, _ = observing
+    _enforce(monkeypatch, "tikhub")
+    await _publish_rate("tikhub", 20, 60.0)
+    await _route(price_micro=3_000)
+    verdicts.append("over")
+    monkeypatch.setattr(call_service, "relay", _relay_script([], []))
+    monkeypatch.setattr(overflow_cycle, "_send", _orthogonal(
+        [(402, {"success": False, "error": "insufficient credits"})], []))
+    before = await _balance(clients)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 429 and r.json()["detail"]["error"] == "provider_rate_limited", r.text
+    assert r.headers["retry-after"] == "7"
+    assert await _balance(clients) == before and await _holds() == []
+
+
+async def test_a_route_skipped_for_mixed_reasons_does_not_promise_a_retry(
+    clients: AsyncClient, finders_rated, monkeypatch,
+):
+    await _publish_rate("tomba", 20, 60.0)
+    await _publish_rate("hunter", 20, 60.0)
+    _enable(monkeypatch, {"tomba.people.email.find": 0})
+    finders_rated.add("hunter")
+    monkeypatch.setattr(call_service, "relay", _verify_relay({}, []))
+    r = await clients.post(f"/call/{FIND}", json=ASK, headers={"X-Treg-Route-Prefer": "tomba,hunter"})
+    assert "provider_rate_limited" not in r.text, r.text
+    assert [t["outcome"] for t in r.json()["detail"]["tried"]] == ["skipped", "skipped"]

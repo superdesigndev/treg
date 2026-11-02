@@ -1077,7 +1077,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if winner is None and best is not None:
         winner = best[1]          # nobody cleared min_results — the fullest answer we paid for wins
     if winner is None:
-        if tried and all(t.outcome == "skipped" for t in tried) and rate_waits and not cost_capped:
+        if tried and len(rate_waits) == len(tried):
             wait = min(rate_waits)
             _summarize(parent, tried_count=len(tried))
             _audit_parent(parent, ep, 429, 0, audit_client)

@@ -693,8 +693,10 @@ On an enforced bucket a full window refuses the call before it is sent: the type
 `provider_rate_limited` 429 (`interface/api.md`), `Retry-After` and `retry_after_s` rounded up
 from the oldest member's expiry, not charged (the hold is released), the smoother's token given
 back, and `refused_by=capacity` on its record. Overflow then gets its chance as for a provider's own
-burst 429 (forced trigger `burst`), through the same child cycle as a skip-direct call. A routed job
-records the candidate as `skipped` without spending its error budget. A capacity probe
+burst 429 (forced trigger `burst`), through the same child cycle as a skip-direct call; when it
+does not serve, for whatever reason, the caller still gets the rate refusal. A routed job records
+the candidate as `skipped` without spending its error budget, and answers `provider_rate_limited`
+itself only when every candidate was skipped that way. A capacity probe
 (`probe_lock_id`) and a team's poll of its own submitted job (`free_owned_poll`) are counted but
 never refused. Elsewhere the call is relayed unchanged whatever the verdict. The window runs after
 the smoother's wait. The one `retry-after` re-send asks the window after its sleep; on an enforced

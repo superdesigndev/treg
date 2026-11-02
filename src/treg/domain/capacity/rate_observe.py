@@ -55,8 +55,15 @@ def enabled() -> bool:
     return get_settings().provider_rate_mode == "observe"
 
 
-def enforced_names() -> set[str]:
-    return {n.strip().lower() for n in get_settings().provider_rate_enforce.split(",") if n.strip()}
+_names: tuple[str, frozenset[str]] = ("", frozenset())
+
+
+def enforced_names() -> frozenset[str]:
+    global _names
+    raw = get_settings().provider_rate_enforce
+    if raw != _names[0]:
+        _names = (raw, frozenset(n.strip().lower() for n in raw.split(",") if n.strip()))
+    return _names[1]
 
 
 def _enforced(bucket: str) -> bool:
@@ -95,7 +102,10 @@ def record(seen: Seen | None, status: int | Literal["refused"] | None) -> None:
             answer = status or "none"
         else:
             answer = "2xx" if 200 <= status < 300 else "429" if status == 429 else "other"
-        tally = _tallies.setdefault((seen.bucket, seen.limit, seen.window_s), _Tally(seen.provider))
+        key = (seen.bucket, seen.limit, seen.window_s)
+        tally = _tallies.get(key)
+        if tally is None:
+            tally = _tallies[key] = _Tally(seen.provider)
         tally.counts[f"{seen.verdict}_{answer}"] += 1
     except Exception:  # noqa: BLE001 - an observation is for the operator, never this call's fate
         pass

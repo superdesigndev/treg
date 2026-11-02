@@ -1270,10 +1270,12 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     if mk is not None and mk.metered:
         _set_caller_max_cost(request, mk)
 
-    async def _serve_overflow_instead(*, status: int, note: str, force_trigger: str, refusal) -> UpstreamResponse:
+    async def _serve_overflow_instead(*, status: int, note: str, force_trigger: str, refusal,
+                                      keep_refusal: bool = False) -> UpstreamResponse:
         """No direct answer exists (treg's own account is out, or its rate window is full) and no
         parent hold is open: the child cycle may serve the same endpoint through an aggregator.
-        `refusal()` is the failure raised when it does not."""
+        `refusal()` is the failure raised when it does not; with `keep_refusal` it also replaces
+        the child cycle's own failure."""
         caller_org = _required_caller_org(caller)
         pending = _audit(status, charged_micro=0, refused_by="capacity", error_response=note,
                          defer_analytics=True)
@@ -1291,12 +1293,14 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         except CallFailure:
             _capture(pending)
             request.state.call_cost_micro = 0
+            if keep_refusal:
+                raise refusal() from None
             raise
         if outcome is None or not outcome.served or outcome.response is None:
             _capture(pending)  # a refusal after all
             request.state.call_cost_micro = 0
-            raise (outcome.failure if outcome is not None and outcome.failure is not None
-                   else refusal())
+            raise (outcome.failure if not keep_refusal and outcome is not None
+                   and outcome.failure is not None else refusal())
         response, body, charged = outcome.response, outcome.body, outcome.charged_micro
         _capture(_overflow_event(pending, outcome, charged))
         if idem_key:
@@ -1329,7 +1333,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 mk.provider, capacity_view.exhausted_until(
                     mk.provider, mk.endpoint_id, metered=capacity_marks.spends_balance(mk.cost_type)))
         return await _serve_overflow_instead(
-            status=503, note="treg: own account exhausted — trying overflow",
+            status=503, note="treg: own account exhausted - trying overflow",
             force_trigger="exhausted", refusal=_exhausted)
 
     # Metered — treg's own money is about to be spent (tier 4's platform key, or a registry OAuth
@@ -1513,12 +1517,13 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         try:
                             await _admit_org_endpoint(request, mk.endpoint_id)
                         except BaseException:
-                            rate_observe.release(rate_seen)
+                            if rate_seen is not None:
+                                rate_observe.release(rate_seen)
+                                provider_limiter.refund(*rl)
                             rate_seen = None
                             raise
                     sent = True
 
-                # relay calls this right before sending, after its own pre-send refusals.
                 relay_options = {}
                 if ((mk is not None and _quota_targets(request, mk.endpoint_id))
                         or (platform_tier and rl is not None and rate_observe.enabled())):
@@ -1691,12 +1696,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # The shared exception handler builds the response and adds this zero-cost result.
             request.state.call_cost_micro = 0
         if exc.kind == "provider_rate_limited":
-            # Nothing was sent and the parent hold is released: the same endpoint may still be
-            # served through an aggregator, as a provider's own burst 429 would be.
             rate_refusal = exc
             return await _serve_overflow_instead(
-                status=429, note="treg: rate window full — trying overflow",
-                force_trigger="burst", refusal=lambda: rate_refusal)
+                status=429, note="treg: provider rate window full", force_trigger="burst",
+                refusal=lambda: rate_refusal, keep_refusal=True)
         # No provider body exists on this branch. treg's own detail is the explanation instead, and
         # it is the one worth keeping: this branch carries refresh, timeout, injection and SSRF 502s.
         _renderings = _safe_secret_renderings(tool, secrets)

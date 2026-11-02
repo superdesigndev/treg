@@ -635,7 +635,6 @@ async def _run_command(args) -> int:
             finally:
                 try:
                     emit_snapshot(role="worker", shutdown=True)
-                    # Commands that call providers on treg's keys count them in the rate window.
                     from .domain.capacity import rate_observe
                     from .infra import provider_rate
                     rate_observe.flush()

@@ -66,7 +66,6 @@ async def admit(bucket: str, limit: int, window_s: float) -> Admission | None:
         _down_until = time.monotonic() + COOLDOWN_S
         return None
     if probe:
-        # Only the probe closes the breaker: a reply to a call sent before it opened says nothing.
         _down_until = 0.0
     return Admission(result.outcome, key, token, max(1, math.ceil(result.retry_after_ms / 1000))
                      if result.outcome == "over" else 0)

@@ -114,7 +114,6 @@ _RENEW_SLOT = _SLOT_CLOCK + """
 if not redis.call('ZSCORE', KEYS[1], ARGV[1]) then return 0 end
 """ + _SLOT_EXTEND
 _RELEASE_SLOT = "return redis.call('ZREM', KEYS[1], ARGV[1])"
-# A sliding window: members expire `ttl_ms` after admission; a refusal says when the oldest expires.
 _RATE_WINDOW = _SLOT_CLOCK + """
 if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then
     local first = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
