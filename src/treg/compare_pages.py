@@ -945,8 +945,7 @@ COMPETITORS: dict[str, dict] = {
         "site": "https://smithery.ai",
         "group": "apps",
         "mono": "#EA580C",
-        "logo": "/media/compare/logos/smithery.svg",
-        "logo_fills": True,
+        "logo": "/media/compare/logos/smithery.png",
         "title": "treg vs Smithery: an MCP directory and a tool catalog",
         "description": "Smithery is now a free MCP directory; its hosted proxy shut down on 31 October "
                        "2026. What changed, and how treg's tool catalog differs.",
