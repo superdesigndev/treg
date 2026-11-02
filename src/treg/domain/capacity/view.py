@@ -45,6 +45,10 @@ class LatestStateView:
         """The sweep's state; call `load()` first. Sync and I/O-free on purpose (resolve.py rule)."""
         return self._states.get(state_key(provider))
 
+    def lock(self, key: str) -> Lock | None:
+        """The call path's row stored under exactly `key`, pending or active."""
+        return self._locks.get(key)
+
     def locks(self, provider: str, endpoint_id: str | None = None,
               slot: str | None = None, *, metered: bool = True) -> list[Lock]:
         """The call path's rows for this call, pending or active: the endpoint's and the provider's.

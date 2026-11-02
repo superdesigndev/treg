@@ -266,6 +266,7 @@ no JSON `detail` is never treg's.
 | 429 `share_busy` | no | treg's account for that provider is at its limit and your team already has calls running on it. Send fewer at once, retry after `retry_after_s`, or call the routed tool. |
 | 429 `trial_allowance_reached` | no | A free trial pool on treg's key is used up for today; it resets at 00:00 UTC. Connect the team's own key. |
 | 503 `provider_capacity_unavailable` | no | treg's own account for that provider is out. Take one of the body's `alternatives`, use the team's own key, or retry after `resets_at` or a minute. |
+| 503 `shared_allowance_exhausted` | no | A connection made through treg's app (YouTube, Google Ads) shares one daily allowance with every team, and it is spent. Retry after `resets_at`, or have a team admin reconnect with the team's own OAuth client or developer token. |
 | `X-Treg-Capacity: exhausted` on any status | not when `X-Treg-Cost-Micro` is `0` | treg's own account for that tool refused for want of credit. Not your balance; try another tool. |
 | 502 `route_failed` | `charged_micro` in the body | Every provider of a routed call failed or missed; `tried` lists them. Misses can be billed: read `charged_micro` before running it again. |
 | 409, 410 with an `idempotency_*` error | see below | See "Retrying without paying twice". |

@@ -39,7 +39,7 @@ from ...infra.upstream.relay import identify_as_treg, relay, scope_shared_idempo
 from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
-from . import keyslots
+from . import allowance, keyslots
 from .authorize import authorize_call, enforce_public_demo_limit
 from .evidence import (
     _ERROR_BODY_SLICE,
@@ -1220,6 +1220,16 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     if paused is not None:
         _audit(503, refused_by="paused", answered=False)
         raise provider_paused(paused)
+    allowance_draw = allowance.draw_for(tool, secrets, upstream_url)
+    if allowance_draw is not None:
+        # The capacity view opens its own session when its cache is stale: end this one first.
+        await _await_before_reserve(db.commit(), request, call_ref)
+        try:
+            allowance_draw = await _await_before_reserve(
+                allowance.admit(allowance_draw), request, call_ref)
+        except CallFailure as exc:
+            _audit(exc.status_code, refused_by="capacity", answered=False)
+            raise
     billed_provider = _oauth_billed_provider(secrets)
     if billed_provider is not None:
         # The sandbox never reaches here (it returned above); the public demo could, and one shared
@@ -1424,6 +1434,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     catalog_store.load().by_id.get(mk.endpoint_id), own_credential=own_credential)
             # A probe must reach the vendor: an archived answer proves nothing about capacity.
             if (mk is not None and mk.probe_lock_id is None and archive.serving()
+                    and (allowance_draw is None or allowance_draw.probe_lock_id is None)
                     and not archive_opted_out and not _only_submits(mk)
                     and ((mk.metered and not mk.streamable_free_result) or own_key_cacheable)):
                 lookup_started = time.monotonic()
@@ -1756,6 +1767,13 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         except asyncio.CancelledError:
             await _finish_cancelled_call(request, mk, call_ref, response)
             raise
+        try:
+            await allowance.note_answer(
+                None if served_hit else allowance_draw, response.status,
+                httpx.Headers(response.raw_headers), body)
+        except asyncio.CancelledError:
+            await _finish_cancelled_call(request, mk, call_ref, response)
+            raise
         capacity_signal = None
         if response.status >= 400 or account_out_2xx:
             # Did the provider just say OUR account is out? Mark it for the next caller. After the
@@ -1907,6 +1925,13 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 request.headers.get("content-type", ""),
                 tool, caller_body, _renderings)
             err_response = _error_response_evidence(response.raw_headers, body, _renderings)
+    try:
+        await allowance.note_answer(
+            None if served_hit else allowance_draw, response.status,
+            httpx.Headers(response.raw_headers), body)
+    except asyncio.CancelledError:
+        await _finish_cancelled_call(request, mk, call_ref, response)
+        raise
     free_poll = mk is not None and mk.free_owned_poll
     _audit(response.status, duration_ms=duration_ms,
            charged_micro=0 if free_poll else None,

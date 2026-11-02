@@ -47,6 +47,30 @@ class CatalogTarget:
 
 
 @dataclass(frozen=True)
+class AllowanceScope:
+    """A smaller allowance inside a shared one: the calls it covers (`path_regex`, searched in the
+    upstream path) and the exhaustion answer that names it (`body_regex`)."""
+    name: str
+    path_regex: str
+    body_regex: str
+
+
+@dataclass(frozen=True)
+class SharedAllowance:
+    """A daily allowance the provider meters on treg's app, not on the connected account, so every
+    team's connection spends the same one. `drawn_by` says which calls spend it: "app" for a
+    connection made through treg's own OAuth client, "platform_extra" for one carrying treg's own
+    second credential (`extra_credential_setting`). A connection on the team's own client or second
+    credential draws on its own allowance and is never counted here."""
+    drawn_by: str
+    scopes: tuple[AllowanceScope, ...] = ()
+
+    def __post_init__(self):
+        if self.drawn_by not in ("app", "platform_extra"):
+            raise ValueError(f"unknown drawn_by {self.drawn_by!r}")
+
+
+@dataclass(frozen=True)
 class OAuthProvider:
     """One provider treg holds an app for.
 
@@ -231,6 +255,7 @@ class OAuthProvider:
     billed_read_usd: float = 0.0        # per resource returned, GET routes
     billed_write_usd: float = 0.0       # per request, write routes
     billed_write_link_usd: float = 0.0  # per request when the posted text carries a URL (X: 13x)
+    shared_allowance: SharedAllowance | None = None
 
     @property
     def needs_extra_credential(self) -> bool:
@@ -710,6 +735,9 @@ GOOGLE_ADS = OAuthProvider(
     enrich_body={"query": "SELECT customer.descriptive_name FROM customer LIMIT 1"},
     enrich_label_path="results.0.customer.descriptiveName",
     enrich_header_name="login-customer-id",
+    # Google meters operations per developer token, whoever's account the call acts on.
+    # https://developers.google.com/google-ads/api/docs/best-practices/quotas
+    shared_allowance=SharedAllowance(drawn_by="platform_extra"),
 )
 
 # Every YouTube scope is SENSITIVE — there is no gate-free read the way webmasters.readonly is for
@@ -757,6 +785,12 @@ YOUTUBE = OAuthProvider(
     discover_key="items",
     discover_id_field="id",
     discover_label_field="snippet.title",
+    # The Data API's daily units belong to the Cloud project behind treg's client, and search.list
+    # has its own smaller daily limit inside them.
+    # https://developers.google.com/youtube/v3/getting-started#quota
+    shared_allowance=SharedAllowance(drawn_by="app", scopes=(
+        AllowanceScope("search", r"/youtube/v3/search$", r"defaultSearchListPerDayPerProject"),
+    )),
 )
 
 LINKEDIN = OAuthProvider(

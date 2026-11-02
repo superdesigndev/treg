@@ -201,6 +201,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/billing.py` | architecture/money.md |
 | `src/treg/application/call/__init__.py` | architecture/import-boundaries.md |
 | `src/treg/application/call/access.py` | architecture/import-boundaries.md, architecture/instagram-oauth.md, interface/api.md |
+| `src/treg/application/call/allowance.py` | architecture/shared-allowance.md |
 | `src/treg/application/call/async_bridge.py` | architecture/catalog.md, architecture/money.md, architecture/org-endpoint-quota.md |
 | `src/treg/application/call/authorize.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call/enrichlayer.py` | architecture/catalog.md |
@@ -214,7 +215,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/call/reserve.py` | architecture/import-boundaries.md, architecture/money.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call/resolve.py` | architecture/import-boundaries.md, architecture/instagram-oauth.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call/route.py` | architecture/catalog.md, architecture/import-boundaries.md, architecture/money.md, architecture/org-endpoint-quota.md |
-| `src/treg/application/call/service.py` | architecture/archive.md, architecture/hub.md, architecture/import-boundaries.md, architecture/instagram-oauth.md, architecture/money.md, architecture/org-endpoint-quota.md, architecture/org-traffic.md, architecture/proxy-model.md, interface/api.md |
+| `src/treg/application/call/service.py` | architecture/archive.md, architecture/hub.md, architecture/import-boundaries.md, architecture/instagram-oauth.md, architecture/money.md, architecture/org-endpoint-quota.md, architecture/org-traffic.md, architecture/proxy-model.md, architecture/shared-allowance.md, interface/api.md |
 | `src/treg/application/call/settle.py` | architecture/archive.md, architecture/import-boundaries.md, architecture/money.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call/types.py` | architecture/import-boundaries.md, architecture/org-endpoint-quota.md, architecture/org-traffic.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call_events.py` | architecture/call-events.md |
@@ -435,7 +436,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/cli_view.py` | interface/cli.md |
 | `src/treg/client_identity.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/client_ip.py` | architecture/multi-tenancy.md |
-| `src/treg/config.py` | architecture/archive.md, architecture/auth-secrets.md, architecture/feedback.md, architecture/org-concurrency.md, architecture/org-endpoint-quota.md, architecture/org-flow-control.md, architecture/super-admin.md, architecture/table.md, guides/expanding-a-category.md, interface/web-arena.md, ops/deploy.md |
+| `src/treg/config.py` | architecture/archive.md, architecture/auth-secrets.md, architecture/feedback.md, architecture/org-concurrency.md, architecture/org-endpoint-quota.md, architecture/org-flow-control.md, architecture/shared-allowance.md, architecture/super-admin.md, architecture/table.md, guides/expanding-a-category.md, interface/web-arena.md, ops/deploy.md |
 | `src/treg/convert.py` | interface/cli.md |
 | `src/treg/crypto.py` | architecture/auth-secrets.md |
 | `src/treg/domain/__init__.py` | architecture/import-boundaries.md |
@@ -446,17 +447,17 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/domain/capacity/collectors.py` | ops/capacity.md |
 | `src/treg/domain/capacity/events.py` | ops/capacity.md |
 | `src/treg/domain/capacity/fair_share.py` | ops/capacity.md |
-| `src/treg/domain/capacity/marks.py` | ops/capacity.md |
+| `src/treg/domain/capacity/marks.py` | architecture/shared-allowance.md, ops/capacity.md |
 | `src/treg/domain/capacity/overflow_seed.json` | ops/capacity.md |
 | `src/treg/domain/capacity/overflow_spend.py` | ops/capacity.md |
 | `src/treg/domain/capacity/policy.py` | ops/capacity.md |
 | `src/treg/domain/capacity/rate_observe.py` | ops/capacity.md |
 | `src/treg/domain/capacity/routes.py` | ops/capacity.md |
 | `src/treg/domain/capacity/routes_view.py` | ops/capacity.md |
-| `src/treg/domain/capacity/signatures.py` | ops/capacity.md |
+| `src/treg/domain/capacity/signatures.py` | architecture/shared-allowance.md, ops/capacity.md |
 | `src/treg/domain/capacity/sweep.py` | ops/capacity.md |
 | `src/treg/domain/capacity/verify.py` | ops/capacity.md |
-| `src/treg/domain/capacity/view.py` | ops/capacity.md |
+| `src/treg/domain/capacity/view.py` | architecture/shared-allowance.md, ops/capacity.md |
 | `src/treg/domain/catalog/__init__.py` | architecture/catalog.md |
 | `src/treg/domain/catalog/find_recall.py` | architecture/find.md |
 | `src/treg/domain/catalog/interleave.py` | architecture/search-experiment.md |
@@ -561,7 +562,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/mcp_install.py` | interface/skill.md |
 | `src/treg/models.py` | architecture/data-model.md, architecture/hub.md, architecture/media.md, architecture/money.md, architecture/multi-tenancy.md, architecture/workbench-storage.md, interface/enrich-arena.md, interface/web-arena.md |
 | `src/treg/oauth.py` | architecture/auth-secrets.md |
-| `src/treg/oauth_providers.py` | architecture/auth-secrets.md, guides/expanding-a-category.md |
+| `src/treg/oauth_providers.py` | architecture/auth-secrets.md, architecture/shared-allowance.md, guides/expanding-a-category.md |
 | `src/treg/policy.py` | architecture/money.md, architecture/policy-extensions.md |
 | `src/treg/providers.py` | interface/env-import.md |
 | `src/treg/ratestore.py` | architecture/data-model.md, interface/api.md |
@@ -719,7 +720,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_auth.py` | architecture/multi-tenancy.md |
 | `tests/test_cache_result_admission.py` | architecture/archive.md |
 | `tests/test_call_application_contract.py` | architecture/proxy-model.md |
-| `tests/test_call_architecture.py` | architecture/import-boundaries.md, architecture/money.md, architecture/org-endpoint-quota.md, architecture/proxy-model.md |
+| `tests/test_call_architecture.py` | architecture/import-boundaries.md, architecture/money.md, architecture/org-endpoint-quota.md, architecture/proxy-model.md, architecture/shared-allowance.md |
 | `tests/test_call_cancellation.py` | architecture/proxy-model.md |
 | `tests/test_call_events.py` | architecture/call-events.md |
 | `tests/test_call_response_limits.py` | architecture/proxy-model.md |
@@ -818,6 +819,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_search_experiment.py` | architecture/search-experiment.md |
 | `tests/test_search_queries.py` | architecture/find.md |
 | `tests/test_shadow.py` | architecture/shadow.md |
+| `tests/test_shared_allowance.py` | architecture/shared-allowance.md |
 | `tests/test_showcase_leaderboard.py` | architecture/showcase.md |
 | `tests/test_ssrf_public_addresses.py` | architecture/proxy-model.md |
 | `tests/test_table.py` | architecture/table.md |
@@ -866,6 +868,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/replay.md` | `__init__.py`, `__main__.py`, `records.py`, `engine.py`, `fixtures.py`, `differ.py`, `test_replay.py` |
 | `architecture/search-experiment.md` | `catalog_search.py`, `search_experiment.py`, `interleave.py`, `judge.py`, `0041_searchlog.py`, `0056_searchlog_verdict.py`, `search_experiment_report.sql`, `search_agent_bench.py`, `test_search_experiment.py`, `test_catalog_search.py`, `test_search_agent_bench.py` |
 | `architecture/shadow.md` | `shadow.py`, `shadow.py`, `0086_shadow_pairs.py`, `test_shadow.py` |
+| `architecture/shared-allowance.md` | `allowance.py`, `service.py`, `oauth_providers.py`, `signatures.py`, `marks.py`, `view.py`, `config.py`, `test_shared_allowance.py`, `test_call_architecture.py` |
 | `architecture/showcase.md` | `__init__.py`, `showcase.py`, `showcase.py`, `__init__.py`, `images.py`, `images.py`, `imaging.py`, `media_store.py`, `0076_showcase_and_avatars.py`, `showcase.html`, `test_showcase_leaderboard.py`, `test_images.py` |
 | `architecture/super-admin.md` | `api.py`, `admin.py`, `evidence_retention.py`, `access.py`, `config.py` |
 | `architecture/table.md` | `__init__.py`, `table.py`, `table.py`, `call.py`, `call_surface.py`, `config.py`, `mcp_oauth.py`, `auth.py`, `auth.py`, `test_table.py`, `test_table_oauth.py` |

@@ -12,7 +12,7 @@ import pytest
 from treg import archive, archive_bodies, bootstrap
 from treg.application import billing, asynctasks as task_app
 from treg.application.hub import runner as hub_runner
-from treg.application.call import authorize, overflow, reserve, service, settle
+from treg.application.call import allowance, authorize, overflow, reserve, service, settle
 from treg.domain import money
 from treg.domain.capacity import fair_share, marks as capacity_marks, rate_observe
 from treg.domain.governance import usage as usage_policy
@@ -69,6 +69,9 @@ _DATAPLANE_DERIVED_WRITES = {
         (capacity_marks.clear, "ratestore.kv_pop"),
         (settle._note_capacity_recovery, "capacity_marks.clear_sweep_state"),
         (capacity_marks.clear_sweep_state, "ratestore.kv_put"),
+        # The same breaker over an allowance treg's app holds, struck by a connection's answer.
+        (allowance._strike, "capacity_marks.strike"),
+        (allowance._recover, "capacity_marks.clear"),
     ),
     # Plan §4.3 step 5: the overflow child's settle folds the aggregator's daily spend delta into
     # the SAME transaction; shadow mode records the probe's cost on its own short session.
@@ -170,6 +173,7 @@ _DERIVED_WRITE_FILES = {
         "overflow_spend_ledger.reserve_in_transaction",
         "overflow_spend_ledger.release_reservation_in_transaction",
     },
+    _SRC / "application" / "call" / "allowance.py": {"capacity_marks.strike", "capacity_marks.clear"},
     _SRC / "domain" / "capacity" / "fair_share.py": {"provider_concurrency.try_acquire"},
     _SRC / "infra" / "provider_concurrency.py": {
         "store.acquire_slot", "self.store.renew_slot", "self.store.release_slot",
@@ -218,6 +222,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/reserve.py", "_platform_reserve",
      "billing.maybe_schedule_autotopup"),
     ("application/call/settle.py", "_record_first_call", "adsconv.queue"),
+    ("application/call/allowance.py", "_strike", "capacity_marks.strike"),
+    ("application/call/allowance.py", "_recover", "capacity_marks.clear"),
     ("application/call/settle.py", "_note_capacity_signal", "capacity_marks.strike"),
     ("application/call/settle.py", "_note_capacity_recovery", "capacity_marks.clear"),
     ("application/call/settle.py", "_note_capacity_recovery", "capacity_marks.clear_sweep_state"),

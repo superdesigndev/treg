@@ -593,7 +593,9 @@ The call path reads the view and runs the breaker (`marks.py`); the mechanics an
 `provider_capacity` 503 are documented in `architecture/proxy-model.md` § Platform capacity and
 `interface/api.md`. In one line: locked provider or endpoint → 503 before any hold, with
 alternatives named, one probe a minute excepted; two balance/quota signatures in a row on treg's
-key → lock; the probe's 2xx → open, whether the lock or the sweep's reading refused it. Burst 429s are smoothed (D′). Tiers 1/2 untouched.
+key → lock; the probe's 2xx → open, whether the lock or the sweep's reading refused it. Burst 429s are smoothed (D′). Tiers 1/2 untouched,
+except a connection spending an allowance treg's app holds, which the same breaker locks under its
+own key (`architecture/shared-allowance.md`, with its longer `max_lock` and body-stated waits).
 
 A signature the call could not avoid (the strike itself, a probe through a lock, a free route) is
 relayed as the provider answered, with `X-Treg-Capacity: exhausted` so the caller is told it is

@@ -274,6 +274,10 @@ class Settings(BaseSettings):
     # about every platform call that goes upstream and logs what it would refuse; nothing is refused.
     # It needs TREG_KV_URL; without one every verdict is unknown.
     provider_rate_mode: Literal["off", "observe"] = "off"
+    # A connection's calls that draw on an allowance treg's own app holds with the provider
+    # (`OAuthProvider.shared_allowance`, application/call/allowance.py): once the provider says it
+    # is spent, `enforce` refuses them until it resets and `observe` only logs what it would refuse.
+    shared_allowance_mode: Literal["off", "observe", "enforce"] = "off"
 
     # Flat bounties, not a percentage of top-ups. At 0% platform margin a percentage would be a
     # permanent share of pass-through GMV, and — unlike a flat figure — it rewards farming in

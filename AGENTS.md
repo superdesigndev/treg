@@ -37,6 +37,11 @@ Everything else in this file is guidance; these are the contract, and they win o
    An operator's exact org/endpoint protective call allowance applies to every credential tier;
    it counts admitted logical calls, not money or provider credits.
    This temporary allowance permits calls when Redis state cannot be confirmed; it is not a durable cap.
+   A connection made through treg's own OAuth client, or carrying treg's own second credential,
+   spends an allowance the provider meters on treg's app (`OAuthProvider.shared_allowance`), not
+   the team's key: once the provider says that allowance is spent, such calls are refused until it
+   resets (docs/context/architecture/shared-allowance.md). A connection on the team's own client or
+   credential is never counted.
 2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
    every path: timeout, cancellation and exceptions included.
 3. A request holds zero database connections while upstream or object-storage I/O is in flight.

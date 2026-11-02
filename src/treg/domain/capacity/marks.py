@@ -95,9 +95,11 @@ class Lock:
 
 async def strike(provider: str, *, endpoint_id: str | None, kind: str,
                  resets_at: datetime | None, note: str = "", immediate: bool = False,
-                 now: datetime | None = None, slot: str | None = None) -> Lock | None:
+                 now: datetime | None = None, slot: str | None = None,
+                 max_lock: timedelta = MAX_LOCK) -> Lock | None:
     """One balance/quota signature on treg's own account. Returns the row as written (active or
-    pending), or None when nothing could be written. `immediate` locks on the first strike."""
+    pending), or None when nothing could be written. `immediate` locks on the first strike;
+    `max_lock` bounds a vendor-stated reset."""
     now = now or utcnow_naive()
     key = lock_key(provider, endpoint_id, kind, slot)
     try:
@@ -113,7 +115,7 @@ async def strike(provider: str, *, endpoint_id: str | None, kind: str,
             first_at = now if fresh else prev.first_signal_at
             until = None
             if immediate or strikes >= 2:
-                until = min(resets_at or now + DEFAULT_LOCK, now + MAX_LOCK)
+                until = min(resets_at or now + DEFAULT_LOCK, now + max_lock)
             lock = Lock(key, provider, secrets.token_hex(8), strikes, first_at, until, note[:200],
                         opened_at=now if until is not None else None, opened=until is not None)
             await ratestore.kv_put(db, LOCK_NS, key, lock.to_json(), ttl_s=LOCK_TTL_S)

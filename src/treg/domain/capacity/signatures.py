@@ -24,13 +24,24 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo
 
 from ...timeutil import utcnow_naive
 
 BURST_MAX_RETRY_AFTER_S = 60
 
+_PACIFIC = ZoneInfo("America/Los_Angeles")
+
+
+def _next_pacific_midnight(now: datetime) -> datetime:
+    local = now.replace(tzinfo=timezone.utc).astimezone(_PACIFIC)
+    midnight = datetime.combine(local.date() + timedelta(days=1), datetime.min.time(), _PACIFIC)
+    return midnight.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 _RESETS = {
     "next_utc_midnight": lambda now: (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0),
+    "next_pacific_midnight": _next_pacific_midnight,
 }
 
 
@@ -38,14 +49,17 @@ _RESETS = {
 class Signature:
     """`provider` "*" matches any provider; `body_regex` is searched case-insensitively. First
     match wins. `resets` names when a quota with no wait header serves again; None leaves it to
-    the sweep's account call. `tripwire` marks a plain capacity phrase that arms the `unrecorded`
-    tripwire for every other vendor."""
+    the sweep's account call. `wait_regex` reads the wait in seconds from the body (group 1) when a
+    vendor states it there rather than in a header; a stated wait short enough to be a burst is
+    one. `tripwire` marks a plain capacity phrase that arms the `unrecorded` tripwire for every
+    other vendor."""
     provider: str
     status: int
     body_regex: str
     kind: str
     resets: str | None = None
     tripwire: bool = False
+    wait_regex: str | None = None
 
     def __post_init__(self):
         if self.resets is not None and self.resets not in _RESETS:
@@ -128,6 +142,16 @@ _TABLE: list[Signature] = [
     Signature("fishaudio", 429, r"concurrency limit", "burst"),
     # Icypeas: its per-minute limit is a 429 "exceeded the max number of requests per minute", no Retry-After.
     Signature("icypeas", 429, r"max number of requests per minute", "burst"),
+    # Google Ads: the developer token's daily operations are spent, with the wait in the body's
+    # `quotaErrorDetails.retryDelay`. Other rate scopes (one customer account) are not ours to mark.
+    Signature("google-ads", 429, r'"rateScope"\s*:\s*"DEVELOPER"', "quota",
+              wait_regex=r'"retryDelay"\s*:\s*"(\d+)s"'),
+    # YouTube Data API: the project's daily units, and search.list's own daily limit inside them.
+    # Both reset at midnight Pacific time. https://developers.google.com/youtube/v3/getting-started#quota
+    Signature("youtube", 403, r'"reason"\s*:\s*"quotaExceeded"', "quota",
+              resets="next_pacific_midnight"),
+    Signature("youtube", 429, r"defaultSearchListPerDayPerProject", "quota",
+              resets="next_pacific_midnight"),
     Signature("*", 402, r"", "balance"),
 ]
 
@@ -250,6 +274,10 @@ def classify(provider: str, status: int, headers=None, body: bytes | str = b"",
             continue
         if sig.body_regex and not re.search(sig.body_regex, text, re.IGNORECASE):
             continue
+        if sig.kind == "quota" and (wait := _body_wait(sig, text)) is not None:
+            if wait <= BURST_MAX_RETRY_AFTER_S:
+                return Signal("burst", None, wait, detail=text[:120])
+            return Signal("quota", now + timedelta(seconds=wait), None, detail=text[:120])
         return Signal(sig.kind, _quota_reset(sig, headers, now),
                       _retry_after(headers, now) if sig.kind == "burst" else None, detail=text[:120])
     if status == 429:
@@ -265,6 +293,13 @@ def classify(provider: str, status: int, headers=None, body: bytes | str = b"",
     if status == 429:
         return Signal("unknown", None, None, detail=text[:120])
     return None
+
+
+def _body_wait(sig: Signature, text: str) -> int | None:
+    if sig.wait_regex is None or (m := re.search(sig.wait_regex, text)) is None:
+        return None
+    wait = int(m.group(1))
+    return wait if wait <= _MAX_WAIT_S else None
 
 
 def _quota_reset(sig: Signature, headers, now: datetime) -> datetime | None:
