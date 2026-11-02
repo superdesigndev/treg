@@ -1,5 +1,5 @@
 {
-  "email": "m.buriak@relevant.software",
+  "email": "jane.doe@example.com",
   "status": "verified",
   "confidence": 98,
   "syntax_valid": true,
@@ -11,11 +11,11 @@
     "real_provider": "Google Workspace",
     "catch_all": false,
     "deliverability_index": "very_low",
-    "spf": "v=spf1 a mx include:_spf.google.com  include:sendgrid.net include:zcsend.net include:mxsspf.sendpulse.com ~all",
-    "dmarc": "v=DMARC1; p=reject; fo=1; sp=quarantine",
+    "spf": "v=spf1 include:_spf.example.com ~all",
+    "dmarc": "v=DMARC1; p=reject",
     "email_patterns": null,
     "example_emails": [
-      "m.buriak@relevant.software"
+      "jane.doe@example.com"
     ],
     "email_patterns_source": "internal"
   },

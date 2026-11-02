@@ -1,7 +1,7 @@
 {
   "status": "not_found",
   "confidence": 0,
-  "domain": "relevant.com",
+  "domain": "example.com",
   "domain_intelligence": {
     "mx_provider": "Google Workspace",
     "catch_all": false,

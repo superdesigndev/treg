@@ -1,5 +1,5 @@
 {
-  "email": "mykhailo.buriak@reckitt.com",
+  "email": "jane.doe@example.com",
   "status": "verified",
   "confidence": 98,
   "syntax_valid": true,
@@ -11,11 +11,11 @@
     "real_provider": "Unknown",
     "catch_all": true,
     "deliverability_index": "moderate",
-    "spf": "v=spf1 include:%{ir}.%{v}.%{d}.spf.has.pphosted.com ~all",
-    "dmarc": "v=DMARC1; p=none; fo=1",
+    "spf": "v=spf1 include:_spf.example.com ~all",
+    "dmarc": "v=DMARC1; p=reject",
     "email_patterns": null,
     "example_emails": [
-      "mykhailo.buriak@reckitt.com"
+      "jane.doe@example.com"
     ],
     "email_patterns_source": "internal"
   },

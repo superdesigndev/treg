@@ -1,9 +1,9 @@
 {
-  "found_email": "michael.buriak@tallium.com",
+  "found_email": "jane.doe@example.com",
   "status": "found",
   "confidence": 98,
   "pattern_used": "first.last",
-  "domain": "tallium.com",
+  "domain": "example.com",
   "domain_intelligence": {
     "mx_provider": "Google Workspace",
     "catch_all": true,

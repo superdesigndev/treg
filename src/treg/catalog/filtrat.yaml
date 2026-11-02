@@ -28,10 +28,10 @@ endpoints:
     input:
       bodyType: json
       body:
-        email: {type: string, required: true, note: "the email address to check", example: "m.buriak@relevant.software"}
+        email: {type: string, required: true, note: "the email address to check", example: "user@example.com"}
         resolve_catchall: {type: boolean, required: false, enum: [false], example: false, note: "Fixed to false on this tool; filtrat.people.email.verify.resolve_catchall resolves catch-alls."}
       note: "Returns status verified, invalid, catchall, risky or unknown. Verified and invalid cost one credit; catchall, risky and unknown are free. Idempotency-Key is honoured: a retry gets the first answer and is not charged twice."
-    test_request: {body: {email: "m.buriak@relevant.software"}}
+    test_request: {body: {email: "user@example.com"}}
     cost:
       type: per_success
       value: 1
@@ -46,7 +46,7 @@ endpoints:
       checked: '2026-10-29'
       confidence: verified
       note: "credits_used settles the call. A verified and an invalid address each reduced the balance by exactly one credit; catchall, risky and unknown answers report 0."
-    verified: '2026-10-29'
+    verified: '2026-11-02'
     example_response: examples/filtrat.people.email.verify.json
     docs_url: https://filtrat.io/v1/docs
 
@@ -66,10 +66,10 @@ endpoints:
     input:
       bodyType: json
       body:
-        email: {type: string, required: true, note: "the email address to check", example: "mykhailo.buriak@reckitt.com"}
+        email: {type: string, required: true, note: "the email address to check", example: "user@example.com"}
         resolve_catchall: {type: boolean, required: false, enum: [true], example: true, note: "Fixed to true on this tool."}
       note: "On a catch-all domain the address is resolved to verified or invalid (catchall_resolved: true) for five credits in all; an address on an ordinary domain costs one credit as in plain verification, and a catch-all that couldn't be resolved within the time limit stays catchall and is free. Slower than plain verification (seconds to about two minutes)."
-    test_request: {body: {email: "mykhailo.buriak@reckitt.com", resolve_catchall: true}}
+    test_request: {body: {email: "user@example.com", resolve_catchall: true}}
     cost:
       type: per_success
       value: 5
@@ -84,7 +84,7 @@ endpoints:
       checked: '2026-10-29'
       confidence: verified
       note: "credits_used settles the call. A catch-all address resolved to verified reduced the balance by exactly five credits (catchall_resolved: true)."
-    verified: '2026-10-29'
+    verified: '2026-11-02'
     example_response: examples/filtrat.people.email.verify.resolve_catchall.json
     docs_url: https://filtrat.io/v1/docs
 
@@ -104,14 +104,14 @@ endpoints:
     input:
       bodyType: json
       body:
-        first_name: {type: string, required: false, example: Michael}
-        last_name: {type: string, required: false, example: Buriak}
+        first_name: {type: string, required: false, example: Jane}
+        last_name: {type: string, required: false, example: Doe}
         full_name: {type: string, required: false, note: "Instead of first_name and last_name"}
-        domain: {type: string, required: true, example: tallium.com, note: "Company domain or website URL"}
+        domain: {type: string, required: true, example: example.com, note: "Company domain or website URL"}
         company_name: {type: string, required: false, note: "Corrects a domain that doesn't receive mail"}
         resolve_catchall: {type: boolean, required: false, enum: [false], example: false, note: "Fixed to false on this tool; on a catch-all domain the most likely address comes back with catchall_unverified: true."}
       note: "status found (20 credits) or not_found (free). A miss answers 200 with found_email null. Idempotency-Key is honoured."
-    test_request: {body: {first_name: Michael, last_name: Buriak, domain: tallium.com}}
+    test_request: {body: {first_name: Jane, last_name: Doe, domain: example.com}}
     cost:
       type: per_success
       value: 20
@@ -126,7 +126,7 @@ endpoints:
       checked: '2026-10-29'
       confidence: verified
       note: "credits_used settles the call. A found address reduced the balance by exactly twenty credits; a deliberate miss (a person who doesn't exist) answered not_found in 3.7 s and reduced it by nothing."
-    verified: '2026-10-29'
+    verified: '2026-11-02'
     example_response: examples/filtrat.people.email.find.json
     docs_url: https://filtrat.io/v1/docs
 
@@ -146,14 +146,14 @@ endpoints:
     input:
       bodyType: json
       body:
-        first_name: {type: string, required: false, example: Mykhailo}
-        last_name: {type: string, required: false, example: Buriak}
+        first_name: {type: string, required: false, example: Jane}
+        last_name: {type: string, required: false, example: Doe}
         full_name: {type: string, required: false, note: "Instead of first_name and last_name"}
-        domain: {type: string, required: true, example: epam.com, note: "Company domain or website URL"}
+        domain: {type: string, required: true, example: example.com, note: "Company domain or website URL"}
         company_name: {type: string, required: false, note: "Corrects a domain that doesn't receive mail"}
         resolve_catchall: {type: boolean, required: false, enum: [true], example: true, note: "Fixed to true on this tool."}
       note: "status found or not_found (free). Found costs 25 credits when the address needed catch-all resolution and 20 when it didn't; credits_used says which."
-    test_request: {body: {first_name: Mykhailo, last_name: Buriak, domain: epam.com, resolve_catchall: true}}
+    test_request: {body: {first_name: Jane, last_name: Doe, domain: example.com, resolve_catchall: true}}
     cost:
       type: per_success
       value: 25
@@ -168,6 +168,6 @@ endpoints:
       checked: '2026-10-29'
       confidence: verified
       note: "credits_used settles the call. A find that needed catch-all resolution reduced the balance by 25 credits; the same person found again without needing it reduced it by 20. Misses are free."
-    verified: '2026-10-29'
+    verified: '2026-11-02'
     example_response: examples/filtrat.people.email.find.resolve_catchall.json
     docs_url: https://filtrat.io/v1/docs
