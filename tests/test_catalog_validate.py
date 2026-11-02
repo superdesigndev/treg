@@ -1296,13 +1296,18 @@ def test_bills_miss_is_true_and_only_on_a_per_success_price():
         assert any("bills_miss" in e for e in errors), bad
 
 
-def test_no_v2_row_ships_until_the_call_runtime_bills_and_judges_it(tmp_path, monkeypatch, capsys):
+def test_a_v2_row_ships_priced_on_core_with_its_miss_on_the_row(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(validator, "CATALOG", tmp_path)
     _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", "      reserve: {entities: {}}\n")
+    legacy = (tmp_path / "tikhub.yaml").read_text()
+    (tmp_path / "tikhub.yaml").write_text(legacy[:legacy.index("    cost:\n")] + "    price: {value: '0'}\n")
     assert validator.main(["tikhub"]) == 0
 
-    legacy = (tmp_path / "tikhub.yaml").read_text()
-    v2 = legacy[:legacy.index("    cost:\n")] + "    price: {value: '0'}\n"
-    (tmp_path / "tikhub.yaml").write_text(v2)
+    (tmp_path / "tikhub.yaml").write_text(legacy[:legacy.index("    cost:\n")] + "    bill: {miss: charged}\n"
+                                          "    ceiling_param: {in: query, name: max_usd, unit: usd}\n")
+    (tmp_path / "adapters.yaml").write_text(
+        "adapters:\n  tikhub.google.keywords.ideas: {accepts: [[q]], out: {a: b}, miss: 'a == []'}\n")
     assert validator.main(["tikhub"]) == 1
-    assert "the v2 spelling is loaded but not yet billed or judged" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "a core row needs a price" in out and "remove the adapter's miss" in out
+    assert "ceiling_param is read from the file header" in out

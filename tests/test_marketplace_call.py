@@ -2562,7 +2562,7 @@ def test_influencersclub_discovery_settles_creators_returned():
     for endpoint_id in ("influencersclub.creators.search", "influencersclub.creators.similar"):
         mk = SimpleNamespace(cost_type="per_result", unit_micro=30_000, billed_oauth=False,
                              endpoint_id=endpoint_id, provider="influencersclub",
-                             estimate_micro=300_000)
+                             estimate_micro=300_000, cost_terms=None)
 
         def page(rows: int) -> bytes:
             return json.dumps({"total": 634, "limit": 10, "credits_cost": rows * 0.01,
@@ -3089,7 +3089,8 @@ def test_contactout_contact_reveals_require_recognizable_hit_evidence(body):
     from types import SimpleNamespace
     from treg.application.call.settle import _observed_cost_micro
     mk = SimpleNamespace(provider="contactout", endpoint_id="contactout.people.contact.work",
-                         cost_type="per_success", unit_micro=0, billed_oauth=False, request_data={})
+                         cost_type="per_success", unit_micro=0, billed_oauth=False, request_data={},
+                         cost_terms=None)
     assert _observed_cost_micro(mk, body) == 0
 
 

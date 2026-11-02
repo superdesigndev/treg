@@ -6,6 +6,9 @@ import math
 import re
 from typing import Literal
 
+from . import outcome
+from .schema.v2 import is_v2
+
 
 STRICT_ENDPOINTS = frozenset({
     "leadsforge.people.email.find",
@@ -44,9 +47,13 @@ def _email(value) -> bool:
 
 
 def has_result_rules(endpoint_id: str) -> bool:
-    """Only verified, configured hit/miss adapters opt into result-aware cache behavior."""
+    """Only verified, configured hit/miss adapters opt into result-aware cache behavior; a v2 row
+    opts in by declaring what a 2xx miss looks like."""
     from .store import load
 
+    endpoint = load().by_id.get(endpoint_id)
+    if endpoint is not None and is_v2(endpoint):
+        return outcome.declares_miss(endpoint)
     adapter = load().adapters.get(endpoint_id)
     return adapter is not None and adapter.verified and bool(adapter.miss.strip())
 
@@ -95,7 +102,10 @@ def _dotted(document: object, dotted: str) -> object:
 def _expect_failure(endpoint_id: str, doc: object) -> str | None:
     from .store import load
 
-    rule = (load().by_id.get(endpoint_id) or {}).get("expect")
+    endpoint = load().by_id.get(endpoint_id) or {}
+    if is_v2(endpoint):
+        return outcome.expect_failure(endpoint, doc)
+    rule = endpoint.get("expect")
     if not isinstance(rule, dict) or not rule.get("json_path"):
         return None
     path = str(rule["json_path"])
@@ -135,6 +145,18 @@ def _declared_miss(endpoint_id: str, status: int, body: bytes) -> bool:
         return False
 
 
+def _judged(endpoint: dict, status: int, doc: object) -> Result:
+    """A v2 row's 2xx answer through its one outcome declaration, in the result vocabulary."""
+    judged = outcome.judge(endpoint, status, doc)
+    if judged.cause == "expect":
+        return Result("error", "expect_failed")
+    if judged.cause == "error":
+        return Result("error", "provider_error", empty=outcome.miss_holds(endpoint, doc))
+    if not isinstance(doc, (dict, list)):
+        return Result("unknown", "invalid_shape")
+    return Result("empty", "adapter_miss") if judged.state == "miss" else Result("found", "adapter_hit")
+
+
 def classify(endpoint_id: str, status: int, body: bytes) -> Result:
     if not 200 <= status < 300:
         # A declared miss is an answer ("nobody has it"), not a failure: without this every miss
@@ -148,6 +170,11 @@ def classify(endpoint_id: str, status: int, body: bytes) -> Result:
         doc = json.loads(body)
     except (ValueError, RecursionError):
         return Result("unknown", "invalid_json")
+    from .store import load
+
+    endpoint = load().by_id.get(endpoint_id) or {}
+    if is_v2(endpoint):
+        return _judged(endpoint, status, doc)
     if _expect_failure(endpoint_id, doc) is not None:
         # The provider's own success rule failed: whatever the adapter reads off the remains, this
         # is not an answer to the question, found or empty. Neither cached nor counted.

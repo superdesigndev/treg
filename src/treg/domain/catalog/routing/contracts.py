@@ -11,6 +11,8 @@ from typing import Any
 
 from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 
+from .. import outcome
+from ..schema.v2 import is_v2
 from . import paths as P
 
 _HTTP_URL = TypeAdapter(AnyHttpUrl)
@@ -174,8 +176,15 @@ class Adapter:
     def from_upstream(self, provider_body: Any) -> dict[str, Any]:
         return {k: P.evaluate(expr, provider_body) for k, expr in self.out_map.items()}
 
-    def is_miss(self, provider_body: Any) -> bool:
-        return bool(P.evaluate(self.miss, provider_body))
+    def is_miss(self, provider_body: Any, endpoint: dict | None = None) -> bool:
+        """The adapter's `miss` expression, or, for a v2 row (whose adapter only maps fields), the
+        row's own 2xx miss rule."""
+        if self.miss:
+            return bool(P.evaluate(self.miss, provider_body))
+        if endpoint is None:
+            from ..store import load
+            endpoint = load().by_id.get(self.endpoint_id) or {}
+        return outcome.miss_holds(endpoint, provider_body)
 
     @property
     def records_verdict(self) -> bool:
@@ -360,8 +369,11 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
 def miss_status(endpoint: dict) -> int | None:
     """The ERROR status this endpoint's YAML declares as "no result" (`miss: {status, means}`),
     or None. Only a 4xx counts: a `status: 200` block documents a 2xx the adapter's own `miss`
-    predicate decides, and honouring it here would call every success a miss."""
+    predicate decides, and honouring it here would call every success a miss. A v2 row lists its
+    statuses; this is the first."""
     m = endpoint.get("miss")
+    if is_v2(endpoint):
+        return m["status"][0] if isinstance(m, dict) and m.get("status") else None
     if isinstance(m, dict) and m.get("status") is not None:
         try:
             status = int(m["status"])
@@ -380,6 +392,8 @@ def declared_miss(endpoint: dict, status: int, body: Any) -> bool:
     status carries both a miss and a fault (prospeo 400: NO_MATCH vs INVALID_DATAPOINTS). `body`
     is the raw bytes or the parsed document; only a JSON object can satisfy a predicate, and a
     predicate that raises reads as "not a miss"."""
+    if is_v2(endpoint):
+        return outcome.status_miss(endpoint, status, _document(body))
     if status != miss_status(endpoint):
         return False
     return _body_matches((endpoint.get("miss") or {}).get("when"), body)
@@ -391,6 +405,8 @@ def declared_not_found(endpoint: dict, status: int, body: Any) -> bool:
     provider can only find the same nothing, or answer an empty page that looks like a success.
     `status` is one status or a list (a 2xx is allowed: some providers answer 200 and name the
     target's 404 in the body); `when` narrows it with a body predicate, as for `miss:`."""
+    if is_v2(endpoint):
+        return outcome.not_found(endpoint, status, _document(body))
     nf = endpoint.get("not_found")
     if not isinstance(nf, dict) or nf.get("status") is None:
         return False
@@ -401,6 +417,15 @@ def declared_not_found(endpoint: dict, status: int, body: Any) -> bool:
     except (TypeError, ValueError):
         return False
     return _body_matches(nf.get("when"), body)
+
+
+def _document(body: Any) -> Any:
+    if isinstance(body, (bytes, bytearray, str)):
+        try:
+            return json.loads(body)
+        except ValueError:
+            return None
+    return body
 
 
 def _body_matches(when: Any, body: Any) -> bool:
@@ -487,7 +512,7 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
     """Fixture round-trip: `in` must reproduce the endpoint's own `test_request` from the contract's
     view of it, and `out` must fill every required core field from the example response (or the
     example must be a recognised miss). Anything else = not a candidate."""
-    if not adapter.accepts or not adapter.out_map or not adapter.miss:
+    if not adapter.accepts or not adapter.out_map or not (adapter.miss or outcome.declares_miss(endpoint)):
         return False, "adapter incomplete"
     tr = endpoint.get("test_request") or {}
     # Reconstruct the identity from the test request through the adapter's own `in` map.
@@ -528,7 +553,7 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
             return False, f"in: body.{k} → {b.get(k)!r}, test_request has {v!r}"
     if example is None:
         return False, "no example_response to verify `out` against"
-    if adapter.is_miss(example):
+    if adapter.is_miss(example, endpoint):
         return True, "example is a miss; out unverified on a hit"
     core = adapter.from_upstream(example)
     missing = [k for k in contract.required_output if core.get(k) in (None, "")]

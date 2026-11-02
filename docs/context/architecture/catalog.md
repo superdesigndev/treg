@@ -276,7 +276,10 @@ dot (`user.fields`) stay as written.
 A `cost` block stays in the unit the PROVIDER bills in, because that number stays correct when a
 rate moves. `Catalog.cost_view` adds `usd` at serve time from `fx.yaml`, so a rate refresh re-prices
 the catalog without touching provider files. Clients lead with `usd` and fall back to the native
-amount when it is null.
+amount when it is null. A row in the v2 spelling writes `price`, `provenance`, `reserve`, `settle`
+and `bill` instead and serves a `cost` derived from them ([catalog-schema](catalog-schema.md)), so
+what follows about reading `cost` holds for it; how it bills is
+[money](money.md#rows-in-the-v2-spelling).
 
 ```yaml
 cost:
@@ -958,8 +961,8 @@ returned and never documented as stable. An output field may say where it lands 
 ### Adapters (`adapters.yaml`)
 
 One per endpoint: `accepts` (identity variants), `in` (contract field to `queryParams.x` /
-`body.x`), `in_expr`, `const`, `filters` (always sent), `out` (core field to expression), `miss`,
-`test_identity`, and `route: false` for a judge-only adapter (results, stats, cache admission;
+`body.x`), `in_expr`, `const`, `filters` (always sent), `out` (core field to expression), `miss`
+(none on a v2 row's adapter: the row's own `miss` rule judges), `test_identity`, and `route: false` for a judge-only adapter (results, stats, cache admission;
 never routing or arena). `verdicts` maps provider words (lower case, spaces and hyphens to `_`) to
 the contract's; `verdict` is an expression for a provider that reports the word elsewhere. An
 unmapped word is stored NULL and logged; `tests/test_call_verdict.py` holds every verifier's example
