@@ -57,6 +57,9 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     # Fair share: the provider on treg's key is fully used and this team already holds calls on it
     # (domain/capacity/fair_share.py). Not charged; a routed job moves to its next provider.
     "share_busy": "caller",
+    # treg's account for the provider is at its declared rate (domain/capacity/rate_observe.py):
+    # refused before it was sent, not charged; a routed job moves to its next provider.
+    "provider_rate_limited": "treg",
     # Routed endpoints (treg.<capability>): the caller's identity fits no provider, or the
     # ceiling they set is below the cheapest candidate, or every candidate failed.
     "route_no_candidate": "caller",

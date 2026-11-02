@@ -5,6 +5,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 
+from treg import archive_bodies
 from treg.application import arena_insights as service
 from treg.domain import arena_insights as rules
 from treg.domain.catalog import store
@@ -43,6 +44,24 @@ async def test_naive_datetime_insert_does_not_raise_value_error(clients):
     """
     backlog = await service.collect_batch(session_maker)
     assert backlog is False  # no records, but INSERT succeeded
+
+
+async def test_evidence_pointers_name_their_reader_and_carry_the_media_type(clients, monkeypatch):
+    call_id = await record("media", response={"data": {"email": "found@example.test"}})
+    async with session_maker() as db:
+        snapshot = (await db.execute(select(ArchiveSnapshot))).scalars().one()
+        snapshot.media_type = "application/json"
+        db.add(snapshot)
+        await db.commit()
+        row = await db.get(CallRecord, call_id)
+    readers = []
+    options = archive_bodies.read_options
+    monkeypatch.setattr(archive_bodies, "read_options", lambda path: readers.append(path) or options(path))
+    async with session_maker() as db:
+        keymap, pointers, media = await service._evidence_pointers(db, [row], path="replay")
+    pair = (keymap[row.archive_key_hash].id, row.archive_content_hash)
+    assert set(pointers) == {pair} and media == {pair: "application/json"}
+    assert readers == ["replay"]
 
 
 async def test_database_stats_reclassify_deduplicate_and_exclude_errors(clients):

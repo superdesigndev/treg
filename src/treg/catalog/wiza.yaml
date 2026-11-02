@@ -140,11 +140,11 @@ endpoints:
     name: Find accepted locations
     summary: Find location names and boundary types accepted by Wiza search filters.
     input:
-      query:
+      queryParams:
         query: {type: string, required: true, minLength: 3, example: tor}
       note: The prefix must contain at least three characters.
     test_request:
-      query: {query: tor}
+      queryParams: {query: tor}
     cost: &free_lookup
       type: free
       value: 0
@@ -172,11 +172,11 @@ endpoints:
     name: Find accepted technologies
     summary: Find technology names and slugs accepted by Wiza search filters.
     input:
-      query:
+      queryParams:
         query: {type: string, required: true, minLength: 3, example: aws}
       note: The prefix must contain at least three non-blank characters.
     test_request:
-      query: {query: aws}
+      queryParams: {query: aws}
     cost:
       <<: *free_lookup
       source_url: https://docs.wiza.co/api-reference/prospects/search-technologies
@@ -461,7 +461,7 @@ endpoints:
     input:
       pathParams:
         id: {type: integer, required: true, min: 1}
-      query:
+      queryParams:
         segment: {type: string, required: true, enum: [people, valid, risky], example: people}
       note: JSON is returned. Wiza also supports a CSV path variant, which is not a separate catalog tool.
     cost:

@@ -213,9 +213,38 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
     return tuple(out)
 
 
+CONTRACT_KEYS = frozenset({
+    "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
+    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "prefer", "check", "confirm",
+    "empty_is_failure", "one_subject", "complete", "verdict"})
+ADAPTER_KEYS = frozenset({
+    "accepts", "in", "in_expr", "body_array", "test_identity", "cost_units", "max",
+    "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts"})
+
+
+def _known_keys(what: str, raw: object, known: frozenset[str]) -> dict:
+    if not isinstance(raw, dict):
+        raise ValueError(f"{what}: a mapping")
+    if unknown := sorted(set(raw) - known):
+        raise ValueError(f"{what}: unknown key {', '.join(unknown)}")
+    return raw
+
+
+def _expressions(what: str, *exprs: object) -> None:
+    for expr in exprs:
+        try:
+            P.parse(expr)
+        except ValueError as exc:
+            raise ValueError(f"{what}: {exc}") from None
+
+
 def parse_contracts(doc: dict) -> dict[str, Contract]:
     out = {}
     for cap, c in (doc.get("contracts") or {}).items():
+        _known_keys(f"contract {cap}", c, CONTRACT_KEYS)
+        _expressions(f"contract {cap}", *(c.get("derive") or {}).values(),
+                     *([c["miss"]] if c.get("miss") else []),
+                     *([c["check"]["when"]] if isinstance(c.get("check"), dict) and c["check"].get("when") else []))
         types = {}
         for v in c.get("identity") or []:
             if isinstance(v, dict):
@@ -304,6 +333,9 @@ def _parse_verdict(cap: str, raw) -> dict:
 def parse_adapters(doc: dict) -> dict[str, Adapter]:
     out = {}
     for eid, a in (doc.get("adapters") or {}).items():
+        _known_keys(f"adapter {eid}", a, ADAPTER_KEYS)
+        _expressions(f"adapter {eid}", *(a.get("in_expr") or {}).values(), *(a.get("out") or {}).values(),
+                     *(a[k] for k in ("miss", "verdict") if a.get(k)))
         out[eid] = Adapter(
             endpoint_id=eid, accepts=_variants(a.get("accepts")), in_map=dict(a.get("in") or {}),
             in_expr=dict(a.get("in_expr") or {}), body_array=bool(a.get("body_array")),

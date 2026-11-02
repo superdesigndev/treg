@@ -125,11 +125,15 @@ async def find_or_create_user(
 
 def track_signup(
     user: User, created: set[int], method: str, entry_surface: str, *, captcha: str = "",
+    client: str = "browser",
 ) -> None:
     """Call only after commit. Existing users (including a concurrent signup's loser) emit nothing.
-    `captcha` is the Turnstile outcome of the code request, when the deployment checks one."""
+    `captcha` is the Turnstile outcome of the code request, when the deployment checks one.
+    `client` is `cli` (the terminal's email door), `cli_browser` (a browser sign-in that completes a
+    `treg login`) or `browser`."""
     if user.id in created:
-        properties = {"signup_method": method, "entry_surface": analytics.funnel_surface(entry_surface)}
+        properties = {"signup_method": method, "entry_surface": analytics.funnel_surface(entry_surface),
+                      "client": client}
         if captcha:
             properties["captcha"] = captcha
         analytics.capture(user.email, "signup_completed", properties)

@@ -1,4 +1,4 @@
-"""hubtool.data — the maker's uploaded CSV (docs/HUB-DECISIONS.md round 1 q6)
+"""hubtool.data — the maker's uploaded CSV
 
 Revision ID: 0045
 Revises: 0044

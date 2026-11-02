@@ -449,6 +449,47 @@ def evaluate(expr: str, doc: Any) -> Any:
     return get_path(doc, e)
 
 
+_PATH_STEP = re.compile(r"[A-Za-z_][\w-]*(?:\[\d+\])?|\[\d+\]")
+
+
+def parse(expr: str) -> None:
+    """Raise ValueError unless `evaluate` reads `expr` as written: every call names a known
+    transform, every path is dotted steps, and the parentheses balance."""
+    e = expr.strip() if isinstance(expr, str) else ""
+    if not e:
+        raise ValueError(f"empty expression {expr!r}")
+    m = _CMP.match(e)
+    if m and not _CALL.match(e):
+        left, _, right = m.groups()
+        parse(left)
+        if _literal(right) is _MISSING:
+            parse(right)
+        return
+    m = _DIV.match(e)
+    if m and not _CALL.match(e):
+        parse(m.group(1))
+        return
+    m = _CALL.match(e)
+    if m:
+        name, args = m.group(1), m.group(2)
+        if name != "coalesce" and name not in TRANSFORMS:
+            raise ValueError(f"unknown transform {name!r} in {expr!r}")
+        depth = 0
+        for ch in args:
+            depth += {"(": 1, ")": -1}.get(ch, 0)
+            if depth < 0:
+                break
+        if depth:
+            raise ValueError(f"unbalanced parentheses in {expr!r}")
+        for arg in _split_args(args):
+            parse(arg)
+        return
+    if _literal(e) is not _MISSING and (not re.match(r"^[A-Za-z_]", e) or e in ("null", "true", "false")):
+        return
+    if e != "." and not all(_PATH_STEP.fullmatch(step) for step in e.split(".")):
+        raise ValueError(f"not a path, literal or call: {expr!r}")
+
+
 def _split_args(s: str) -> list[str]:
     out, depth, cur = [], 0, ""
     for ch in s:

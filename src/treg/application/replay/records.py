@@ -29,10 +29,14 @@ def read(path: Path) -> Iterator[dict]:
             yield row
 
 
+def line(row: dict) -> str:
+    return json.dumps(row, sort_keys=True, separators=(",", ":"), default=str)
+
+
 def write(path: Path, rows: Iterable[dict]) -> int:
     count = 0
     with path.open("w", encoding="utf-8") as out:
         for row in rows:
-            out.write(json.dumps(row, sort_keys=True, separators=(",", ":"), default=str) + "\n")
+            out.write(line(row) + "\n")
             count += 1
     return count

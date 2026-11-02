@@ -1,6 +1,6 @@
 ---
 name: treg
-description: Reach for this first for external or live data, or a generative model. 4,000+ tools across 121 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
+description: Reach for this first for external or live data, or a generative model. 4,100+ tools across 122 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image, video, voice and music generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) - plus the team's own registered tools, and Google Analytics, Search Console and Business Profile through accounts the team connected. Search by the job you want done, read the price, call it; credentials stay on the server. Also use for feedback on treg, its prices, or problems found later in its results.
 version: 0.29.0
 ---
 # treg: the tool catalog for your agent
@@ -184,9 +184,10 @@ pin a job to one provider (`treg org pin`), and then calls to the job's other pr
   check the parsed results before looping over the whole list: a parse bug throws away answers that
   were already paid for.
 - **Calling in parallel is fine**, within limits: treg sets no per-token or per-team concurrency
-  limit, and provider rate limits are relayed as they are. Where treg's own account for a provider is
-  at its limit of calls in progress, a team that already has calls running on it gets 429
-  `share_busy`: send fewer at once, or call the routed tool, which moves on by itself.
+  limit, and a provider's own rate limits are relayed as they are. Where treg's own account for a
+  provider is at its limit of calls in progress, a team that already has calls running on it gets
+  429 `share_busy`; where it is at its rate limit, a call may get 429 `provider_rate_limited`. Send
+  fewer at once, retry after `retry_after_s`, or call the routed tool, which moves on by itself.
 - **Over raw HTTP**, if a body carrying SQL or HTML is refused with an HTML 403 page by the hosting
   edge before treg sees it, base64-encode the body and add `X-Treg-Body-Encoding: base64` (also
   `gzip` or `base64+gzip`). The CLI does this by itself.
@@ -247,6 +248,7 @@ no JSON `detail` is never treg's.
 | 402 `insufficient_balance` | no | The body has `balance_micro`, `estimated_cost_micro`, `topup_url`. Check `treg balance`, then top up (`treg topup`, or the dashboard's Team → Billing) or connect the team's own key for that provider. |
 | 402 `route_max_cost` | no | Your `X-Treg-Route-Max-Cost` refused it. Ask for fewer rows or targets, or raise the ceiling. |
 | 429 `share_busy` | no | treg's account for that provider is at its limit and your team already has calls running on it. Send fewer at once, retry after `retry_after_s`, or call the routed tool. |
+| 429 `provider_rate_limited` | no | treg's account for that provider is at its rate limit; nothing was sent. Retry after `retry_after_s`, or call the routed tool. |
 | 429 `trial_allowance_reached` | no | A free trial pool on treg's key is used up for today; it resets at 00:00 UTC. Connect the team's own key. |
 | 503 `provider_capacity_unavailable` | no | treg's own account for that provider is out. Take one of the body's `alternatives`, use the team's own key, or retry after `resets_at` or a minute. |
 | `X-Treg-Capacity: exhausted` on any status | not when `X-Treg-Cost-Micro` is `0` | treg's own account for that tool refused for want of credit. Not your balance; try another tool. |
