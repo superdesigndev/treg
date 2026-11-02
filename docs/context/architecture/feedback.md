@@ -18,6 +18,8 @@ sources:
   - src/treg/alembic/versions/0026_callreview.py
   - src/treg/alembic/versions/0030_feedback_handling.py
   - tests/test_feedback_handling_schema.py
+  - src/treg/alembic/versions/0093_feedback_diagnosis.py
+  - tests/test_feedback_diagnosis_schema.py
   - src/treg/web/feedback.md
   - tests/test_feedback.py
   - tests/test_reviews.py
@@ -100,6 +102,23 @@ This repository owns only the models and migration; public intake, receipt respo
 the call runtime do not expose or use these tables. Deploy the migration before the internal
 service's grants and release. Rolling back that service can retain the new tables; downgrading
 0030 deletes all handling history.
+
+## Internal diagnosis storage
+
+`FeedbackDiagnosis` (revision 0093) is one row per report holding a derived reading, not handling
+state: which endpoint the report concerns, where in treg the problem lives (`scope`), what kind of
+report it is (`disposition`), what it is about (`topic`), the classifier's probabilities and the
+`classifier` version that produced them. Nothing in it decides a report's status; the internal
+service reads it to order and group work, and may recompute or overwrite any row, for example
+when the classifier version changes.
+
+`endpoint_id` here is derived, separately from the submitted `Feedback.endpoint_id` claim, and
+`endpoint_source` says how: `call` (the endpoint a verified call reached, a routed call's serving
+child) or `message` (a catalog id the report names). The two are null together. The label columns
+are unconstrained strings so a new classifier version does not need a migration; the internal
+service validates them. The row cascades from `feedback.id`. As with handling, the private
+`treg-internal` admin is the only runtime writer, this repository owns only the model and
+migration, and the migration ships before the internal service's grants and release.
 
 ## Call review storage
 

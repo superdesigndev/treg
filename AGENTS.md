@@ -136,8 +136,8 @@ agents then built against a constitution that was wrong.
   the auto-top-up fields; the call runtime may persist an OAuth token refresh into `secret`; audit
   writes `callrecord`, domains only read it (`application/evidence_retention.py` also updates it,
   blanking the two evidence columns past retention).
-- **Feedback handling.** This repo owns `FeedbackHandling` and `FeedbackHandlingEvent` models and
-  migrations; the private admin service is their only runtime writer. Original reports remain
+- **Feedback handling.** This repo owns `FeedbackHandling`, `FeedbackHandlingEvent` and
+  `FeedbackDiagnosis` models and migrations; the private admin service is their only runtime writer. Original reports remain
   owned by the feedback domain. See `docs/context/architecture/feedback.md`.
 - **Showcase leaderboard and pictures.** `application/showcase.py` is the only writer of
   `ShowcaseApp`, `ShowcaseAppEvent`, `ShowcaseAppKey`, `ShowcaseWeek`, `ShowcaseCursor` and `ShowcaseVote` (team

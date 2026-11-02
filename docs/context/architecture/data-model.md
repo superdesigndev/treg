@@ -230,6 +230,9 @@ An application rollback leaves the table in place; a schema downgrade deletes it
 - **`FeedbackHandling` / `FeedbackHandlingEvent`** - internal current processing state and
   versioned history (revision 0030), owned by this schema and written only by the private admin
   service. Both cascade from the original report. See [feedback](feedback.md).
+- **`FeedbackDiagnosis`** - internal derived reading of a report: the endpoint it concerns and its
+  classification (revision 0093), written only by the private admin service and recomputable at
+  any time. Cascades from the original report. See [feedback](feedback.md).
 
 `src/treg/models.py` is authoritative for columns, indexes and defaults. This section records
 ownership and behavior that a field declaration alone does not explain.
