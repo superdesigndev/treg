@@ -335,6 +335,10 @@ file saved with a byte-order mark (PowerShell's `>` writes UTF-16) is sent as UT
 on stderr; any other file is sent byte for byte. Pass `--content-type` to send a body exactly as
 written.
 
+A failed call exits 1, or **255** when every later call would be refused the same way (an empty
+balance, a spending limit reached), so `xargs` stops the batch; `--json` then adds `"stop": true`
+under `_treg`.
+
 **Agent-native (raw HTTP) form** — build the real upstream URL and prefix it; no CLI needed:
 
 ```

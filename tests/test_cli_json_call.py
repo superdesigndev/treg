@@ -75,3 +75,24 @@ def test_json_and_org_flags_last_one_invocation(monkeypatch, capsys):
     _serve(monkeypatch, _charged(json={"items": []}))
     cli.main(["call", "treg.people.search"])
     assert json.loads(capsys.readouterr().out) == {"items": []}
+
+
+
+def _refused(kind, **headers):
+    return httpx.Response(402, headers={"X-Treg-Error": "1", **headers}, json={"detail": {"error": kind}})
+
+
+@pytest.mark.parametrize("response, code", [
+    (_refused("insufficient_balance"), 255),
+    (_refused("route_max_cost"), 1),  # refuses this call only
+    (_refused("insufficient_balance", **{"X-Treg-Idempotent-Replay": "1"}), 1),  # a stored answer
+    (httpx.Response(402, json={"detail": {"error": "insufficient_balance"}}), 1),  # the provider's
+])
+def test_only_a_refusal_every_later_call_meets_exits_255(monkeypatch, capsys, response, code):
+    _serve(monkeypatch, response)
+    for argv in (["call", "treg.people.search"], ["--json", "call", "treg.people.search"]):
+        with pytest.raises(SystemExit) as exc:
+            cli.main(argv)
+        assert exc.value.code == code
+    envelope = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert envelope["_treg"].get("stop") is (True if code == 255 else None)

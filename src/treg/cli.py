@@ -49,7 +49,8 @@ import httpx
 from . import agents as _agents
 from . import cli_analytics, cli_session, cli_view
 from . import jsontext
-from .capacity_notice import CAPACITY_HEADER, EXHAUSTED, account_out_notice, is_balance_refusal
+from .capacity_notice import (CAPACITY_HEADER, EXHAUSTED, STOP_REFUSALS, account_out_notice,
+                              is_balance_refusal, stop_refusal)
 from .feedback_contract import FEEDBACK_CATEGORIES, FEEDBACK_DESCRIPTION, REVIEW_USEFULNESS, REVIEW_DESCRIPTION
 # One source of truth for the proxy's default port (help text below). Importing the module is cheap —
 # it pulls only stdlib plus httpx, which the CLI already has; `cryptography` stays lazy inside it.
@@ -2680,6 +2681,8 @@ def _call_envelope(response: httpx.Response, content_type: str) -> dict:
         meta["hint"] = kind
     if routed := headers.get("X-Treg-Routed-Tool"):
         meta["routed_tool"] = routed
+    if kind := _stop_kind(response):
+        meta |= {"error": kind, "stop": True}
     return {"result": result, "_treg": meta}
 
 
@@ -2703,6 +2706,34 @@ def _large_answer_hint(response: httpx.Response) -> None:
         pass
 
 
+# POSIX xargs stops reading input when a command exits 255, so `xargs -P8 treg call ...` ends a
+# batch on its own once every remaining call would be refused the same way.
+STOP_EXIT = 255
+
+
+def _stop_kind(response: httpx.Response) -> str | None:
+    if response.status_code < 400:
+        return None
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    return stop_refusal(getattr(response, "headers", {}) or {}, body)
+
+
+def _failure_exit(response: httpx.Response) -> int:
+    """1 for a failed call, STOP_EXIT when treg refused it in a way every later call meets too.
+    Outside --json it also says so on stderr, after the failure lines."""
+    kind = _stop_kind(response)
+    if kind is None:
+        return 1
+    _note(error=kind)
+    if not _JSON_OVERRIDE:
+        print(f"treg: every call will be refused the same way {STOP_REFUSALS[kind]}; stop the "
+              f"batch instead of moving on to the next item (exit {STOP_EXIT})", file=sys.stderr)
+    return STOP_EXIT
+
+
 def _show_call_response(response: httpx.Response) -> None:
     content_type = getattr(response, "headers", {}).get("content-type", "").partition(";")[0].strip().lower()
     if response.status_code < 400:
@@ -2711,7 +2742,7 @@ def _show_call_response(response: httpx.Response) -> None:
         print(jsontext.dumps(_call_envelope(response, content_type), separators=(",", ":")))
         sys.stdout.flush()
         if response.status_code >= 400:
-            raise SystemExit(1)
+            raise SystemExit(_failure_exit(response))
         return
     if content_type and content_type != "application/json" and not content_type.endswith("+json") \
             and not content_type.startswith("text/"):
@@ -2719,11 +2750,16 @@ def _show_call_response(response: httpx.Response) -> None:
         sys.stdout.buffer.flush()
         if response.status_code >= 400:
             _show_failure_diagnostics(response)
-            raise SystemExit(1)
+            raise SystemExit(_failure_exit(response))
         _show_charge_line(response)
         _show_hint_line(response)
         return
-    _show(response)
+    try:
+        _show(response)
+    except SystemExit as exc:
+        if exc.code == 1:
+            raise SystemExit(_failure_exit(response)) from None
+        raise
 
 
 _TEXT_BOMS = ((codecs.BOM_UTF8, "utf-8-sig"), (codecs.BOM_UTF16_LE, "utf-16"),
@@ -2855,7 +2891,7 @@ def cmd_call(args, cfg) -> None:
             _show_call_response(submission)
             return
         if submission.status_code >= 400:
-            _show(submission)
+            _show_call_response(submission)
             return
         try:
             descriptor = json.loads(submission.headers["X-Treg-Async"])

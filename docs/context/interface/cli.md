@@ -62,8 +62,13 @@ is self-teaching. This fragment holds only what the code and help cannot say.
 - **`--json`** prints the server's JSON as received. On `call` (not `--await`) it prints one envelope,
   `{"result": <body>, "_treg": {...}}` (`_call_envelope`), and suppresses the charge, hint and
   diagnostic stderr lines: a script that merged the streams once discarded every result it had paid
-  for. Exit status is unchanged (1 on HTTP >= 400). `--json` and `--org` are stripped in `main` and
-  last for one `main()` call.
+  for. `--json` and `--org` are stripped in `main` and last for one `main()` call.
+- **`call` exits 255**, not 1, on a treg refusal every later call meets too
+  (`capacity_notice.STOP_REFUSALS`, never a replay): POSIX `xargs` stops on 255, so an agent's batch
+  ends instead of turning the rest of its list into refusals.
+- **Option hints.** An unknown `treg call` option agents commonly guess (`--path`, `--body`, `-o`)
+  gets a stderr line naming the real one (`_CALL_OPTION_HINTS`); the params table labels path
+  parameters `query`, as the CLI sends them.
 - **stdout is the exact body.** Everything treg adds goes to stderr: on HTTP >= 400 one diagnostic
   line (`_show_failure_diagnostics`) with the status, whose answer it is (`X-Treg-Error: 1` = treg
   refused, absent = relayed provider answer), the call id and any charge. treg's saturation 503

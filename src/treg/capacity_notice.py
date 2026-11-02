@@ -17,6 +17,27 @@ def is_balance_refusal(headers, body) -> bool:
             and isinstance(detail, dict) and detail.get("error") == "insufficient_balance")
 
 
+# treg's own refusals that every later call from this caller meets too, with what lifts each one.
+STOP_REFUSALS = {
+    "insufficient_balance": "until the team's balance is topped up (`treg topup`)",
+    "platform_daily_cap_reached": "until the team's daily limit resets at 00:00 UTC",
+    "tag_spend_cap_reached": "until this tag's spend limit resets or an admin raises it",
+    "tag_call_cap_reached": "until this tag's daily call limit resets or an admin raises it",
+    "tag_blocked": "until an admin unblocks this tag",
+}
+
+
+def stop_refusal(headers, body) -> str | None:
+    """The kind of a treg refusal that every later call meets too (`STOP_REFUSALS`), else None.
+    A replay marks every stored error `X-Treg-Error`, so it never counts."""
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if not headers.get("X-Treg-Error") or headers.get("X-Treg-Idempotent-Replay") \
+            or not isinstance(detail, dict):
+        return None
+    kind = detail.get("error")
+    return kind if kind in STOP_REFUSALS else None
+
+
 def account_out_notice(headers) -> str | None:
     """The one-line notice for a `/call/` answer's headers, or None when treg's account is not out.
     "Not charged" is said only when the call's cost header says 0."""
