@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from contextlib import nullcontext
 from contextvars import ContextVar
 from types import SimpleNamespace
@@ -95,6 +96,11 @@ async def _close(sessions, org_id: int, call_id: str, *, admission=None) -> int:
             return result
 
 
+async def _after_loop_pause(coroutine):
+    time.sleep(0.3)
+    return await coroutine
+
+
 async def _hot_org_isolation(engine, *, admission=None, isolates: bool | None = None) -> dict:
     isolates = bool(admission) if isolates is None else isolates
     hot, calls = await _funded_holds("admission-hot", 6)
@@ -133,7 +139,8 @@ async def _hot_org_isolation(engine, *, admission=None, isolates: bool | None = 
                             await asyncio.sleep(0.005)
                 blocked_occupancy = pooled.pool.checkedout()
                 assert blocked_occupancy == expected
-                other_task = asyncio.create_task(_close(sessions, other, other_call, admission=admission))
+                other_task = asyncio.create_task(
+                    _after_loop_pause(_close(sessions, other, other_call, admission=admission)))
                 tasks.append(other_task)
                 completed, _ = await asyncio.wait({other_task}, timeout=0.25)
                 if isolates:
