@@ -12,6 +12,7 @@ from sqlmodel import select
 from tests.test_adsconv import ads_disabled, ads_enabled  # noqa: F401
 from treg.infra.db import session_maker
 from treg.models import Org
+from conftest import verified_signup
 
 LOGIN_ID = "a" * 24
 COOKIE = "gclid%7CCLICK_LINK%7Cstart"  # as adtrack.js writes it: encodeURIComponent(kind|id|landing)
@@ -41,7 +42,7 @@ async def test_short_link_carries_the_click_into_a_cookieless_login(clients: Asy
     assert "HttpOnly" not in set_cookie  # adtrack.js must still be able to read and carry it
 
     # The restored cookie reaches the signup door exactly like a first-party capture would.
-    r = await clients.post("/users", json={"email": "link-user@example.com"})
+    r = await verified_signup(clients, json={"email": "link-user@example.com"})
     assert r.status_code == 200, r.text
     async with session_maker() as db:
         org = (await db.execute(select(Org).where(Org.name == "link-user@example.com"))).scalar_one()

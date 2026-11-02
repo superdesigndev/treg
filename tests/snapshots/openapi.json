@@ -1813,30 +1813,6 @@
         "title": "UpdateDecisionIn",
         "type": "object"
       },
-      "UserIn": {
-        "properties": {
-          "email": {
-            "title": "Email",
-            "type": "string"
-          },
-          "webhook_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Webhook Url"
-          }
-        },
-        "required": [
-          "email"
-        ],
-        "title": "UserIn",
-        "type": "object"
-      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -15696,46 +15672,6 @@
           }
         },
         "summary": "My Usage"
-      }
-    },
-    "/users": {
-      "post": {
-        "operationId": "register_user_users_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UserIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Register User Users Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Register User"
       }
     }
   }

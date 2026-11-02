@@ -17,6 +17,7 @@ from treg.config import get_settings
 from treg.domain.catalog import interleave
 from treg.domain.catalog import store as catalog_store
 from treg.infra import judge as judge_infra
+from conftest import verified_signup
 
 
 # ---- domain: recall, merge, credit ----------------------------------------------------------------
@@ -337,7 +338,7 @@ async def _search_rows_and_log(clients, query, token):
 
 
 async def test_mcp_off_writes_no_searchlog(clients):
-    token = (await clients.post("/users", json={"email": "off@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "off@superdesign.dev"})).json()["token"]
     out, rows = await _search_rows_and_log(clients, "backlinks", token)
     assert out["results"] and rows == []
 
@@ -345,7 +346,7 @@ async def test_mcp_off_writes_no_searchlog(clients):
 async def test_mcp_shadow_serves_the_baseline_and_records_both_pages(clients, monkeypatch):
     _on(monkeypatch, mode="shadow")
     monkeypatch.setattr(judge_infra, "judge", _fake_judge({"tiingo.daily.prices": 0.9}))
-    token = (await clients.post("/users", json={"email": "shadow@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "shadow@superdesign.dev"})).json()["token"]
     q = "apple stock closing prices for last year"
     out, rows = await _search_rows_and_log(clients, q, token)
     assert out["count"] == 0 and "hint" in out                     # the caller still sees the lexical miss
@@ -366,7 +367,7 @@ async def test_mcp_shadow_serves_the_baseline_and_records_both_pages(clients, mo
 async def test_mcp_interleave_serves_the_merge_and_owns_each_row(clients, monkeypatch):
     _on(monkeypatch, mode="interleave", search_experiment_holdout_percent=0)
     monkeypatch.setattr(judge_infra, "judge", _fake_judge({"tiingo.daily.prices": 0.9}))
-    token = (await clients.post("/users", json={"email": "merge@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "merge@superdesign.dev"})).json()["token"]
     out, rows = await _search_rows_and_log(clients, "apple stock closing prices for last year", token)
     ids = [r["endpoint_id"] for r in out["results"]]
     assert ids and ids[0] == "treg.stocks.eod.history" and "tiingo.daily.prices" in ids   # grouped: parent first
@@ -382,7 +383,7 @@ async def test_mcp_an_abstaining_judge_leaves_search_as_it_was(clients, monkeypa
     async def down(query, cands, **kw):
         return judge_infra.Judgement(probs=None, ms=1500, error="timeout")
     monkeypatch.setattr(judge_infra, "judge", down)
-    token = (await clients.post("/users", json={"email": "down@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "down@superdesign.dev"})).json()["token"]
     out, rows = await _search_rows_and_log(clients, "backlinks", token)
     assert out["results"]                                           # a page, not an error
     (row,) = rows

@@ -921,8 +921,8 @@ class Settings(BaseSettings):
     # The WHOLE email-domain blocklist (TREG_BLOCKED_EMAIL_DOMAINS), comma-separated:
     # "example-one.io,example-two.net". There is no list in the code; empty (the default) blocks
     # nothing. A listed domain blocks itself AND every subdomain, case-insensitively, at every
-    # sign-up and sign-in door and at the two doors that create a promo-funded team (POST /users,
-    # POST /orgs). Configuration rather than code because bulk registration moves to a new domain in
+    # sign-up and sign-in door and at the door that creates a promo-funded team (POST /orgs).
+    # Configuration rather than code because bulk registration moves to a new domain in
     # minutes, and a defence that needs a deploy to keep up is always behind. Existing accounts on a
     # listed domain are suspended out of band, so listing one strands nobody legitimate. A blocklist,
     # deliberately: no allowlist, no table, no admin UI.

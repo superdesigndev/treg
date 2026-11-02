@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from .. import adsconv, analytics, crypto, health, policy, ratestore, sandbox as demo_sandbox
+from .. import adsconv, analytics, crypto, policy, ratestore, sandbox as demo_sandbox
 from ..config import get_settings
 from ..domain import money as ledger
 from ..domain import referrals
@@ -145,9 +145,9 @@ def track_signup(
 async def grant_signup_promo_on_proof(user_id: int) -> None:
     """Fund the team a user made before proving their inbox. Call after the proving commit.
 
-    The legacy `POST /users` door makes a team for an unverified user, and team creation is the
-    only other claim point, so without this the first proof would leave that team at zero until the
-    user made a second one. Runs only on the sign-in that first verifies the user, so a deferred
+    An unverified user (an invitation-code member, or a legacy registration) can own a team, and
+    team creation is the only other claim point, so without this the first proof would leave that
+    team at zero until the user made a second one. Runs only on the sign-in that first verifies the user, so a deferred
     claim is not re-asked on every sign-in. With no team yet, the claim waits for their first team.
     """
     async with session_maker() as db:
@@ -346,7 +346,7 @@ def _utm_attribution_from(raw_cookie: str) -> dict[str, str]:
 def _stamp_utm(org: Org, raw_cookie: str) -> None:
     """Persist the first-touch source on a brand-new team. Independent of the Google-Ads `treg_ad`
     path: a sponsor link or a newsletter has no click id, and this is what lets us count its
-    signups. Called from both signup doors, like `_ad_attribution_from`."""
+    signups. Called at team creation, like `_ad_attribution_from`."""
     for key, value in _utm_attribution_from(raw_cookie).items():
         setattr(org, key, value)
 
@@ -381,61 +381,6 @@ async def _redeem_referral(
         logging.getLogger("treg").warning("referral attribution failed for org %s: %s", org_id, exc)
 
 
-async def register_user(
-    *, email: str, webhook_url: str | None, ad_cookie: str, utm_cookie: str, referral_cookie: str,
-) -> dict:
-    async with session_maker() as db:
-        email = _norm_email(email)
-        # Open registration predates find_or_create_user, so it needs the same machine-domain block;
-        # otherwise a caller could squat an agent address before an admin mints that agent.
-        if _is_machine_email(email):
-            raise SignupError("machine_identity")
-        if blocked_email(email, "register"):  # unverified registration still checks the domain
-            raise SignupError("blocked_domain")
-        if webhook_url and not health.safe_webhook_url(webhook_url):  # SSRF guard on the alert URL
-            raise SignupError("unsafe_webhook")
-        if (await db.execute(select(User).where(User.email == email))).scalar_one_or_none():
-            raise SignupError("email_exists")
-        user = User(email=email)
-        db.add(user)
-        await db.flush()
-        # The default team is named after the email; one that reads as reserved gets a plain slug.
-        base = _slugify(email) if not reserved_reason(email, reserved_team_names()) else f"team-{user.id}"
-        org, token = await _make_org_membership(
-            db, user, name=email, slug_base=base, role="owner", webhook_url=webhook_url,
-        )
-        click_field, gclid, landing = _ad_attribution_from(
-            await _ad_cookie_for(db, user.email, ad_cookie))
-        if gclid:
-            org.ad_gclid = gclid
-            org.ad_click_id_type = click_field
-            org.ad_landing = landing or None
-            # asyncpg rejects aware datetimes for this TIMESTAMP WITHOUT TIME ZONE column.
-            org.ad_click_at = _utcnow_naive()
-            db.add(org)
-            await _forget_ad_click(db, user.email)
-        _stamp_utm(org, utm_cookie)
-        db.add(org)
-        try:
-            await db.commit()
-        except IntegrityError as exc:
-            raise SignupError("email_exists") from exc
-        # Read the response now: a failed promo grant below rolls the session back, which expires
-        # every tracked object, and a lazy reload after that is implicit async I/O (MissingGreenlet).
-        response = {
-            "id": user.id,
-            "email": user.email,
-            "org": org.slug,
-            "org_id": org.id,
-            "role": "owner",
-            "token": token,
-        }
-        await _grant_signup_promo(db, org, user_id=user.id)
-        # Both org-creating doors redeem because both end with a person owning a fresh team.
-        await _redeem_referral(db, referral_cookie, user, org)
-        return response
-
-
 async def create_org(
     *, user: User, name: str, ad_cookie: str, utm_cookie: str, referral_cookie: str,
 ) -> dict:
@@ -449,7 +394,6 @@ async def create_org(
             raise SignupError("reserved_name")
         click_field, gclid, landing = _ad_attribution_from(
             await _ad_cookie_for(db, user.email, ad_cookie))
-        # A browser sign-in reaches this door instead of /users, so both doors must read attribution.
         for _ in range(3):  # a concurrent create can claim the slug before commit; retry a fresh lookup
             org, token = await _make_org_membership(
                 db, user, name=name, slug_base=_slugify(name), role="owner",
@@ -471,7 +415,8 @@ async def create_org(
                 await db.rollback()
         else:
             raise SignupError("slug_conflict")
-        # Read the response now, before the grant can roll back and expire it (see register_user).
+        # Read the response now: a failed promo grant below rolls the session back, which expires
+        # every tracked object, and a lazy reload after that is implicit async I/O (MissingGreenlet).
         response = {
             "org": org.slug,
             "org_id": org.id,

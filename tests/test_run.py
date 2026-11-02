@@ -9,6 +9,7 @@ from sqlmodel import select
 from treg import audit, runner
 from treg.infra.db import session_maker
 from treg.models import RunRecord, Tool
+from conftest import verified_signup
 
 
 async def _register_runnable(c: AsyncClient, *, name="sh-skill", value="s3cr3t-value", bin="sh"):
@@ -208,7 +209,7 @@ async def test_cli_profile_never_advertises_server_execution(clients: AsyncClien
 
 async def test_historical_server_runs_are_org_isolated(clients: AsyncClient):
     await _historical_run(clients)
-    r = await clients.post("/users", json={"email": "other@superdesign.dev"})
+    r = await verified_signup(clients, json={"email": "other@superdesign.dev"})
     tok2 = r.json()["token"]
     r = await clients.get("/runs", headers={"X-Treg-Token": tok2})
     assert r.status_code == 200

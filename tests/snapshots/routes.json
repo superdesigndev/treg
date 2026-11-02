@@ -1506,14 +1506,6 @@
     "methods": [
       "POST"
     ],
-    "name": "register_user",
-    "path": "/users"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "POST"
-    ],
     "name": "create_org",
     "path": "/orgs"
   },

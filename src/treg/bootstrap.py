@@ -267,7 +267,6 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/tutorial', ('GET',), 'tutorial_page'),
     ('/auth/cli-token', ('GET',), 'auth_cli_token'),
     ('/auth/revoke-tokens', ('POST',), 'auth_revoke_tokens'),
-    ('/users', ('POST',), 'register_user'),
     ('/orgs', ('POST',), 'create_org'),
     ('/oauth/grants', ('GET',), 'oauth_grants'),
     ('/oauth/grants/{family_id}/team', ('POST',), 'oauth_grant_set_team'),

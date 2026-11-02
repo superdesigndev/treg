@@ -529,18 +529,13 @@ async def test_a_verified_user_signs_in_without_the_check(login, social_widget):
 
 
 @pytest.mark.parametrize("token,funded", [("real-token", True), ("", False)])
-async def test_a_legacy_registration_gets_credit_only_through_a_passed_check(login, social_widget, token, funded):
+async def test_an_unproven_user_gets_credit_only_through_a_passed_check(login, social_widget, token, funded):
     provider, client = login
-    registered = await client.post("/users", json={"email": _EMAILS[provider]})
-    assert registered.status_code == 200, registered.text
-    callback = await _through_provider(client, provider)
-    assert callback.headers["location"] == "/auth/social/check"
-    await client.post("/auth/social/check", data={"captcha_token": token})
-    team = await client.post("/orgs", json={"name": "second-team"})
     async with session_maker() as s:
-        balances = [(await s.get(Org, oid)).balance_micro
-                    for oid in (registered.json()["org_id"], team.json()["org_id"])]
-    assert sum(balances) == (get_settings().promo_grant_micro if funded else 0)
+        s.add(User(email=_EMAILS[provider]))  # as the invite-code door leaves one
+        await s.commit()
+    balance, _ = await _social_sign_up(client, provider, token)
+    assert balance == (get_settings().promo_grant_micro if funded else 0)
 
 
 async def test_the_social_check_carries_a_cli_handshake(login, social_widget):

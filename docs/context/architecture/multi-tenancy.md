@@ -149,10 +149,9 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
 
 - `application.signup.find_or_create_user` is the shared registration choke point for every identity
   door; it creates the user only, so a new user has zero teams and must create one. `create_org`
-  therefore uses `require_identity`, not `require_member`. `register_user` (`POST /users`, legacy,
-  used by tests) still creates user, team and owner membership, and like `create_org` stamps ad
-  attribution ([ads-conversions](ads-conversions.md)). `accept_invite` joins a new invitee to the
-  invited team only.
+  therefore uses `require_identity`, not `require_member`. `create_org` stamps ad attribution
+  ([ads-conversions](ads-conversions.md)). `accept_invite` joins a new invitee to the invited team
+  only.
 - `find_or_create_user` reports ids it actually inserted, so `signup_completed` fires only for new
   accounts and only after the door's commit.
 - **Email-domain blocklist.** `TREG_BLOCKED_EMAIL_DOMAINS` is the only list (unset blocks nothing) so a
@@ -161,8 +160,7 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   `<random>.<listed>` bypasses it; drop dotless entries so a typed `com` cannot refuse the world;
   refuse at sign-in as well as sign-up. `signup.blocked_email(email, door)` decides, logs
   `event=signup_blocked_domain` (the only detection, since the refusal reveals nothing) and fails open
-  on a classifier error. Doors: `start_email_login`, `find_or_create_user`, `register_user`,
-  `create_org`, and `POST /invites/accept` (which builds a `User` directly). Every refusal is the same
+  on a classifier error. Doors: `start_email_login`, `find_or_create_user`, `create_org`, and `POST /invites/accept` (which builds a `User` directly). Every refusal is the same
   403 as a machine identity, so the caller learns nothing about the list. Live sessions keep working
   until suspension.
 - **Client address.** Every per-IP limit keys on `client_ip.of(request)`: `TREG_CLIENT_IP_HEADER`
@@ -188,7 +186,7 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   to `GET /auth/social/check`, which runs `social_start` and posts its token back. `POST` takes the
   login once, classifies the token under a per-IP window (over it the token is not sent), and signs
   in. Nothing is refused: in `enforce` a check that is not `pass` creates the user without credit,
-  or, for an unverified user this proof verifies first (legacy `POST /users`), withdraws its claim
+  or, for an unverified user this proof verifies first (an invitation-code member), withdraws its claim
   (`find_or_create_user`, shared with the email door's outage case). Verified users sign in
   without the check. Each first social proof logs `event=social_signup` with the outcome and, for
   GitHub, the account age in days.
@@ -220,8 +218,7 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   is reserved.
 - **Reserved names:** `teams.reserved_reason` refuses a name or slug that reads as treg, "official",
   or a catalog provider or platform (a hub tool id is `<team slug>.<name>`), matching how text reads
-  (NFKC, lookalike letters, leetspeak, separators stripped). Checked at `create_org`, `register_user`
-  and `rename_org`; a superadmin may bypass.
+  (NFKC, lookalike letters, leetspeak, separators stripped). Checked at `create_org` and `rename_org`; a superadmin may bypass.
 - **Uniqueness races** on membership or slug return 409, never 500.
 
 ## Enterprise SSO
