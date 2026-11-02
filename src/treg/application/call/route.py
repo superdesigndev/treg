@@ -1282,7 +1282,8 @@ async def _run_check(parent: CallContext, check, output: dict, remaining: int | 
             return {**_unchecked("checker_failed"), "cost_micro": cost}, cost
         word = (catalog_results.verdict(served, 200, json.dumps(doc.get("raw")).encode())
                 if served and meta.get("outcome") != "miss" else None)
-        return {"verdict": word or "unknown", "checked": True, "served_by": served, "cost_micro": cost}, cost
+        return {"verdict": word or "unknown", "checked": True, "served_by": served, "cost_micro": cost,
+                **_check_output(doc.get("output"))}, cost
     cost = int(_header(response, "X-Treg-Cost-Micro") or 0)
     adapter = cat.adapters[ep["id"]]
     try:
@@ -1292,7 +1293,15 @@ async def _run_check(parent: CallContext, check, output: dict, remaining: int | 
     if not 200 <= response.status < 300 or missed:
         return {**_unchecked("checker_failed"), "cost_micro": cost}, cost
     word = catalog_results.verdict(ep["id"], response.status, raw)
-    return {"verdict": word or "unknown", "checked": True, "served_by": ep["id"], "cost_micro": cost}, cost
+    return {"verdict": word or "unknown", "checked": True, "served_by": ep["id"], "cost_micro": cost,
+            **_check_output(adapter.from_upstream(doc))}, cost
+
+
+def _check_output(output) -> dict:
+    """The check's own normalized answer, beside its verdict. The verdict is one word; the fields
+    it was read from (a verifier's `accept_all` flag next to `valid`) are what the caller paid the
+    check for, so they travel with it instead of staying in a raw body the find never returns."""
+    return {"output": output} if isinstance(output, dict) and output else {}
 
 
 def _name_key(name) -> str | None:

@@ -218,11 +218,11 @@ async def test_the_preview_shows_the_columns_for_free_and_leaves_no_trace(client
     before, _ = await _money(clients)
     flat = (await clients.get("/table-columns/treg.people.email.verify")).json()
     coverage = flat.pop("coverage")
-    assert flat == {"shape": "flat", "columns": ["valid", "status", "score", "served_by"], "column_source": "contract"}
+    assert flat == {"shape": "flat", "columns": ["valid", "status", "score", "accept_all", "served_by"], "column_source": "contract"}
     from treg.domain.catalog import store as catalog_store
     cat = catalog_store.load()
     kids = [k for k in cat.by_id["treg.people.email.verify"]["routed_children"] if k in cat.adapters]
-    assert set(coverage) == {"valid", "status", "score"}
+    assert set(coverage) == {"valid", "status", "score", "accept_all"}
     assert coverage["valid"] == {"filled_by": len(kids), "providers": len(kids)}       # every provider
     assert coverage["score"]["filled_by"] == sum(1 for k in kids if "score" in cat.adapters[k].out_map)
     assert 0 < coverage["score"]["filled_by"] < len(kids)                              # only some

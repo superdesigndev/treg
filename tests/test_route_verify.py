@@ -131,6 +131,24 @@ async def test_a_checked_hit_drops_the_advice(
     assert "X-Treg-Route-Verify" in r.json()["_treg"]["advice"], "the advice names the header"
 
 
+@pytest.mark.parametrize("accept_all", [True, False])
+async def test_the_checks_accept_all_flag_travels_with_its_verdict(
+    clients: AsyncClient, verifiers_on, monkeypatch, accept_all,
+):
+    """BounceBan's `deliverable` on an accept-all domain is its own catch-all check, so the verdict
+    stays `valid`; the flag it set next to that word reaches the caller without a second paid check."""
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [TOMBA_HIT], "bounceban": [_bb("deliverable", is_accept_all=accept_all)]}, []))
+    r = await clients.post(f"/call/{FIND}", json=ASK, headers=ON)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    v = d["_treg"]["verification"]
+    assert v["verdict"] == "valid" and v["output"]["accept_all"] is accept_all
+    assert v["output"]["status"] == "deliverable" and v["output"]["valid"] is True
+    assert d["output"]["email"] == "patrick@stripe.com", "the find's answer is not altered"
+    assert "accept_all" not in d["output"]
+
+
 @pytest.mark.parametrize(("finder_status", "result", "flags", "disagrees"), [
     ("valid", "deliverable", {}, False),
     ("valid", "risky", {"is_accept_all": True}, True),
