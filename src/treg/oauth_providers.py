@@ -1334,6 +1334,32 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+PANDY_TICKETS = OAuthProvider(
+    service="pandy-tickets",
+    display_name="Pandy Tickets",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="pt_live_...",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://tickets.pandy.cloud/settings#claves-api",
+    setup_action_label="Create your Pandy Tickets API key",
+    setup_steps=(
+        "Sign in to Pandy Tickets as an Owner or Admin and open Mi cuenta, then Llaves de API.",
+        "Create a key for your organization. Leave \"Permitir cambios\" off: treg reads only.",
+        "Copy the key (it starts with pt_live_). It is shown once.",
+    ),
+    setup_note="The API is free. A key reads one organization's events, sales, orders and attendees, including buyer and attendee contact details.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Other",
+    summary="Read your own Pandy Tickets events, sales stats, orders, attendees and seat maps.",
+    base_url="https://tickets.pandy.cloud/api/v1/organizer",
+    docs_url="https://tickets.pandy.cloud/developers",
+    probe_path="/organization",  # free; a bad key gets 401 {"error":{"code":"invalid_key",...}}
+)
+
 MOBIUSENGINE_JOBS = OAuthProvider(
     service="mobiusengine-jobs",
     display_name="MobiusEngine Jobs Data",
@@ -4185,7 +4211,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, PANDY_TICKETS, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

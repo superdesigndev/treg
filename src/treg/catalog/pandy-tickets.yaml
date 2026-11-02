@@ -1,0 +1,290 @@
+# Pandy Tickets organizer REST API, reached with an organization's OWN API key (pt_live_...).
+# Every endpoint is scope own_account: a key resolves to exactly one organization and cannot
+# read anyone else's data. Written from the OpenAPI spec (https://tickets.pandy.cloud/api/v1/openapi.json)
+# and the developer page (https://tickets.pandy.cloud/developers); every test_request was run live by
+# the vendor on 2026-11-02, and the ledger and the bad-key probe are in the PR description.
+#
+# The API is free; Pandy Tickets bills per ticket on the platform, not per API call (pricing_url).
+#
+# Only reads are catalogued. The write routes (POST/PATCH/PUT/DELETE) need a key made with
+# "Permitir cambios", an Idempotency-Key header, and many answer 202 needs_approval (a person
+# clicks a link) or create real events, orders and passes; no write has a test_request that is
+# safe to replay. Writes are excluded on purpose, see the PR's full-surface map.
+#
+# Reads return buyer and attendee contact details in full. Example responses must be scrubbed.
+#
+# ID dependencies: event_id and order_id are the caller's own ids. Take event_id from
+# pandy-tickets.ticketing.events.list and order_id (a reference UUID) from the orders list;
+# the example values below are placeholders and a foreign or missing id answers 404 not_found.
+#
+# Errors: 401 invalid_key (bad key), 403 key_frozen / api_blocked, 429 rate_limited with
+# Retry-After. Limits per key: 120/min and 5,000/day (30/min and 1,000/day while slowed).
+provider: pandy-tickets
+source:
+  docs: https://tickets.pandy.cloud/developers
+  openapi: https://tickets.pandy.cloud/api/v1/openapi.json
+  curated: 2026-11-02
+limits: "per key 120 requests/minute and 5,000/day; per organization 300/minute; 429 with Retry-After beyond that. A slowed or partly frozen key gets 30/minute and 1,000/day"
+pricing_url: https://tickets.pandy.cloud/pricing  # API calls are free; the platform charges per ticket sold, see the page.
+proposed_capabilities:
+  ticketing.events.list: "List your events, newest first"
+  ticketing.event.detail: "Get one of your events with ticket types, prices, coupons and review status"
+  ticketing.stats.overview: "Sales and attendance totals across all your events"
+  ticketing.event.stats: "Sales, attendance and money for one of your events"
+  ticketing.orders.list: "List the orders of one of your events"
+  ticketing.order.detail: "Get one order with payment, tickets, attendees and refunds"
+  ticketing.attendees.list: "List the guest list of one of your events with check-in and pass email status"
+  ticketing.seat_maps.list: "List your approved seat maps with their categories"
+endpoints:
+  - id: pandy-tickets.account.identity
+    added: '2026-11-02'
+    capability: account.identity
+    platform: account
+    scope: own_account
+    kind: utility
+    method: GET
+    path: /organization
+    name: "Check which Pandy Tickets organization a key belongs to"
+    summary: "The connected organization: its name, whether card payments are connected, free registrations used this month, credit balance and trust level"
+    input:
+      note: "takes no parameters. This is the registry's free probe: a bad key answers 401 invalid_key"
+    test_request: {}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://tickets.pandy.cloud/pricing
+      checked: '2026-11-02'
+      confidence: documented
+      note: "API calls are not billed; the pricing page lists only per-ticket platform fees."
+    docs_url: https://tickets.pandy.cloud/developers
+
+  - id: pandy-tickets.ticketing.events.list
+    added: '2026-11-02'
+    capability: ticketing.events.list
+    platform: ticketing
+    scope: own_account
+    method: GET
+    path: /events
+    name: "List your Pandy Tickets events"
+    summary: "The connected organization's events, newest first, 50 per page"
+    input:
+      queryParams:
+        status: {type: string, required: false, enum: [draft, in_review, published, archived], note: "leave out for every event except archived ones", example: "published"}
+        q: {type: string, required: false, note: "text in the title or venue"}
+        page: {type: integer, required: false, note: "starting at 1; 50 per page", example: 1}
+    test_request:
+      queryParams: {page: 1}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://tickets.pandy.cloud/pricing
+      checked: '2026-11-02'
+      confidence: documented
+    docs_url: https://tickets.pandy.cloud/developers
+
+  - id: pandy-tickets.ticketing.event.detail
+    added: '2026-11-02'
+    capability: ticketing.event.detail
+    platform: ticketing
+    scope: own_account
+    method: GET
+    path: /events/{event_id}
+    name: "Get one of your Pandy Tickets events"
+    summary: "One event with its ticket types, price phases, coupons and promos, registration questions, extras and review status"
+    input:
+      pathParams:
+        event_id: {type: integer, required: true, note: "the id from the events list; another organization's id is 404 not_found", example: 1}
+    test_request:
+      pathParams: {event_id: 1}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://tickets.pandy.cloud/pricing
+      checked: '2026-11-02'
+      confidence: documented
+      note: "test_request uses a placeholder id; it needs an event id harvested from the events list."
+    docs_url: https://tickets.pandy.cloud/developers
+
+  - id: pandy-tickets.ticketing.stats.overview
+    added: '2026-11-02'
+    capability: ticketing.stats.overview
+    platform: ticketing
+    scope: own_account
+    method: GET
+    path: /stats
+    name: "Sales and attendance across all your events"
+    summary: "Sales and attendance numbers for the whole organization plus one line per event, the same ones as the dashboard"
+    input:
+      queryParams:
+        days: {type: integer, required: false, note: "1-365, default 30; the window of sales_per_day", example: 7}
+        mode: {type: string, required: false, enum: [live, test], note: "live (default) is real sales, test is practice orders", example: "live"}
+    test_request:
+      queryParams: {days: 1, mode: "live"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://tickets.pandy.cloud/pricing
+      checked: '2026-11-02'
+      confidence: documented
+    docs_url: https://tickets.pandy.cloud/developers
+
+  - id: pandy-tickets.ticketing.event.stats
+    added: '2026-11-02'
+    capability: ticketing.event.stats
+    platform: ticketing
+    scope: own_account
+    method: GET
+    path: /events/{event_id}/stats
+    name: "Sales and attendance for one of your events"
+    summary: "Capacity, sold, free spots, each ticket type, money by payment channel, check-ins, attendance rate and sales per day for one event"
+    input:
+      pathParams:
+        event_id: {type: integer, required: true, note: "the id from the events list", example: 1}
+      queryParams:
+        days: {type: integer, required: false, note: "1-365, default 30", example: 7}
+        mode: {type: string, required: false, enum: [live, test], note: "live (default) is real sales, test is practice orders", example: "live"}
+    test_request:
+      pathParams: {event_id: 1}
+      queryParams: {days: 1}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://tickets.pandy.cloud/pricing
+      checked: '2026-11-02'
+      confidence: documented
+      note: "test_request uses a placeholder id; it needs an event id harvested from the events list."
+    docs_url: https://tickets.pandy.cloud/developers
+
+  - id: pandy-tickets.ticketing.orders.list
+    added: '2026-11-02'
+    capability: ticketing.orders.list
+    platform: ticketing
+    scope: own_account
+    method: GET
+    path: /events/{event_id}/orders
+    name: "List the orders of one of your events"
+    summary: "The orders of one event with reference, state, source, payment method, buyer name and email, total and times, 50 per page"
+    input:
+      pathParams:
+        event_id: {type: integer, required: true, note: "the id from the events list", example: 1}
+      queryParams:
+        status: {type: string, required: false, enum: [review, attention, paid, pending, closed], note: "the dashboard filter; leave out for all", example: "paid"}
+        source: {type: string, required: false, enum: [card, transfer_receipt, free_registration, host_sale, host_courtesy]}
+        q: {type: string, required: false, note: "partial, accent-insensitive match on reference, buyer, attendee names and emails, payment reference and card"}
+        mode: {type: string, required: false, enum: [live, test], note: "live (default) is real sales, test is practice orders"}
+        page: {type: integer, required: false, note: "starting at 1; 50 per page", example: 1}
+      note: "returns buyer names and emails in full. A key that reads as many rows in a day as the organization has active attendees makes Pandy Tickets alert the hosts"
+    test_request:
+      pathParams: {event_id: 1}
+      queryParams: {page: 1}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://tickets.pandy.cloud/pricing
+      checked: '2026-11-02'
+      confidence: documented
+      note: "test_request uses a placeholder id; it needs an event id harvested from the events list."
+    docs_url: https://tickets.pandy.cloud/developers
+
+  - id: pandy-tickets.ticketing.order.detail
+    added: '2026-11-02'
+    capability: ticketing.order.detail
+    platform: ticketing
+    scope: own_account
+    method: GET
+    path: /orders/{order_id}
+    name: "Get one Pandy Tickets order"
+    summary: "One order by its reference: amounts, payment, ticket lines, every attendee, registration answers, refunds and the history of host actions"
+    input:
+      pathParams:
+        order_id: {type: string, required: true, note: "the order reference (a UUID) from the orders list", example: "00000000-0000-0000-0000-000000000000"}
+    test_request:
+      pathParams: {order_id: "00000000-0000-0000-0000-000000000000"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://tickets.pandy.cloud/pricing
+      checked: '2026-11-02'
+      confidence: documented
+      note: "test_request uses a placeholder reference and proves only the route; harvest a real reference from the orders list."
+    docs_url: https://tickets.pandy.cloud/developers
+
+  - id: pandy-tickets.ticketing.attendees.list
+    added: '2026-11-02'
+    capability: ticketing.attendees.list
+    platform: ticketing
+    scope: own_account
+    method: GET
+    path: /events/{event_id}/attendees
+    name: "List the guest list of one of your events"
+    summary: "The people on one event's guest list with name, email, company, registration answers, ticket type, check-in and pass-email status, 50 per page"
+    input:
+      pathParams:
+        event_id: {type: integer, required: true, note: "the id from the events list", example: 1}
+      queryParams:
+        ticket_type_id: {type: integer, required: false, note: "only people whose ticket is of this type; ids are in the event detail"}
+        checked_in: {type: string, required: false, enum: [pending, inside], note: "pending: not in yet. inside: already checked in", example: "inside"}
+        ticket_email: {type: string, required: false, enum: [sent, pending, bounced, without_email]}
+        q: {type: string, required: false, note: "part of the name, email, company or seat label"}
+        page: {type: integer, required: false, note: "starting at 1; 50 per page", example: 1}
+      note: "returns attendee contact details in full"
+    test_request:
+      pathParams: {event_id: 1}
+      queryParams: {page: 1}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://tickets.pandy.cloud/pricing
+      checked: '2026-11-02'
+      confidence: documented
+      note: "test_request uses a placeholder id; it needs an event id harvested from the events list."
+    docs_url: https://tickets.pandy.cloud/developers
+
+  - id: pandy-tickets.ticketing.seat_maps.list
+    added: '2026-11-02'
+    capability: ticketing.seat_maps.list
+    platform: ticketing
+    scope: own_account
+    method: GET
+    path: /seat-maps
+    name: "List your approved seat maps"
+    summary: "The seat maps with an approved revision, sorted by title, with revision id and categories (id, label, seats, area places)"
+    input:
+      queryParams:
+        page: {type: integer, required: false, note: "starting at 1", example: 1}
+    test_request:
+      queryParams: {page: 1}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://tickets.pandy.cloud/pricing
+      checked: '2026-11-02'
+      confidence: documented
+    docs_url: https://tickets.pandy.cloud/developers
