@@ -28,7 +28,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        email: {type: string, required: true, format: email, example: "m.buriak@relevant.software"}
+        email: {type: string, required: true, note: "the email address to check", example: "m.buriak@relevant.software"}
         resolve_catchall: {type: boolean, required: false, enum: [false], example: false, note: "Fixed to false on this tool; filtrat.people.email.verify.resolve_catchall resolves catch-alls."}
       note: "Returns status verified, invalid, catchall, risky or unknown. Verified and invalid cost one credit; catchall, risky and unknown are free. Idempotency-Key is honoured: a retry gets the first answer and is not charged twice."
     test_request: {body: {email: "m.buriak@relevant.software"}}
@@ -66,7 +66,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        email: {type: string, required: true, format: email, example: "mykhailo.buriak@reckitt.com"}
+        email: {type: string, required: true, note: "the email address to check", example: "mykhailo.buriak@reckitt.com"}
         resolve_catchall: {type: boolean, required: false, enum: [true], example: true, note: "Fixed to true on this tool."}
       note: "On a catch-all domain the address is resolved to verified or invalid (catchall_resolved: true) for five credits in all; an address on an ordinary domain costs one credit as in plain verification, and a catch-all that couldn't be resolved within the time limit stays catchall and is free. Slower than plain verification (seconds to about two minutes)."
     test_request: {body: {email: "mykhailo.buriak@reckitt.com", resolve_catchall: true}}
