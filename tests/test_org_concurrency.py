@@ -100,6 +100,7 @@ def gate(monkeypatch):
     monkeypatch.setattr(flow, "_reader", flow.Reader())
     store = Slots()
     monkeypatch.setattr(flow, "_clock", lambda: store.clock)
+    monkeypatch.setattr(guard, "time", SimpleNamespace(monotonic=lambda: store.clock))
     monkeypatch.setattr(kv, "store", lambda: store)
     return settings, store
 
@@ -320,7 +321,7 @@ async def test_unconfirmed_acquisition_allows_after_cleaning_ambiguous_token(gat
     async def ambiguous(*args):
         await original(*args)
         if reply == "late":
-            await asyncio.sleep(0.15)
+            store.clock += 0.15
             return "acquired"
         return "unavailable"
 
