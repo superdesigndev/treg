@@ -583,6 +583,21 @@ def _enforce_request_quantity(ep: dict, cost: dict, body: bytes, query) -> None:
         )
 
 
+def _reserved_rows(cost: dict, body: bytes, query) -> int:
+    """Rows a `cost.reserve.rows` price holds: the caller's value, else the declared default, at
+    most the declared max, rounded up to whole `per` blocks."""
+    rule = cost["reserve"]["rows"]
+    top = int(rule["max"])
+    values = _request_value(rule["param"], body, None, query if hasattr(query, "multi_items") else None)
+    raw = str(values[0]).strip() if len(values) == 1 else ""
+    if raw.isdigit():
+        n = top if len(raw) > len(str(top)) else max(1, min(int(raw), top))
+    else:
+        n = int(rule["default"]["value"])
+    per = int(cost.get("per") or 1)
+    return -(-n // per) * per
+
+
 def _platform_estimate_micro(cost: dict, query, body: bytes = b"") -> int:
     """What one call is expected to cost the platform, in RAW micro-USD (no margin — ledger.reserve
     applies that). Rounds UP: a fraction of a micro-dollar is not representable and must not round to
@@ -598,6 +613,9 @@ def _platform_estimate_micro(cost: dict, query, body: bytes = b"") -> int:
         n = _body_text_characters(body)
     elif cost.get("unit") == "utf8_byte":
         n = _body_text_utf8_bytes(body)
+    elif isinstance(cost.get("reserve"), dict):
+        n = (_reserved_rows(cost, body, query) if "rows" in cost["reserve"]
+             else _entity_count(query, body))
     elif cost.get("type") in ("per_result", "quota_rows") and cost.get("unit") in _ENTITY_UNITS:
         # Priced per INPUT entity, not per returned row: the page-size default below has no
         # meaning here. The request names how many entities it asks about.
@@ -1337,12 +1355,13 @@ def _document_value(document: object, dotted: str) -> object:
 def _enforce_catalog_query(ep: dict, query: QueryValues, has_body: bool) -> None:
     """Opt-in catalog contract on every credential tier; raw own-tool relays are unaffected.
 
-    A strict GET tool accepts only its declared query fields, once each. No request is rewritten,
+    A strict GET tool accepts only its declared query and path fields, once each. No request is rewritten,
     and invalid values are never echoed (they may be accidentally supplied session credentials).
     """
     if not ep.get("strict_query"):
         return
-    fields = (ep.get("input") or {}).get("queryParams") or {}
+    inputs = ep.get("input") or {}
+    fields = (inputs.get("queryParams") or {}) | (inputs.get("pathParams") or {})
     values: dict[str, str] = {}
     invalid = has_body
     for name, value in query.multi_items():
@@ -1453,6 +1472,22 @@ def _enforce_catalog_body(ep: dict, body: bytes) -> None:
                     "message": f"{ep['id']} requires {expected} item in body.{name}",
                 },
             )
+        if ep.get("body_allowlist") and isinstance(value, list):
+            required_all = spec.get("item_required_all") or []
+            required_any = spec.get("item_required_any") or []
+            for index, item in enumerate(value):
+                if not (required_all or required_any):
+                    break
+                present = ({field for field, field_value in item.items()
+                            if field_value not in (None, "", [])} if isinstance(item, dict) else set())
+                if not set(required_all) <= present or (required_any and not set(required_any) & present):
+                    raise ResolutionFailed(
+                        "catalog_parameter_invalid", status_code=400, detail={
+                            "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                            "parameter": f"body.{name}.{index}",
+                            "message": f"{ep['id']} requires the declared contact fields in body.{name}.{index}",
+                        },
+                    )
 
 
 def _request_headers(headers) -> dict[str, str]:
@@ -1614,6 +1649,33 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
     has a singleton enum is the row identity, not caller choice: accepting another value lets a cheap
     row reserve for an expensive model. Full schema validation remains out of the faithful BYOK path.
     """
+    if ep.get("provider") == "theirstack":
+        endpoint_id = ep["id"]
+        if endpoint_id in {"theirstack.jobs.search", "theirstack.companies.search"}:
+            document = _request_body_document(ep, body, headers)
+            limit = document.get("limit")
+            if type(limit) is not int or not 1 <= limit <= _PLATFORM_PAGE_MAX \
+                    or document.get("blur_company_data") is True:
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": endpoint_id,
+                        "parameter": "body.limit",
+                        "message": "TheirStack shared-key search requires an explicit limit from 1 to 100 and ordinary, unblurred results.",
+                    },
+                )
+        elif endpoint_id in {"theirstack.companies.technologies", "theirstack.companies.buying_intents"}:
+            document = _request_body_document(ep, body, headers)
+            identifiers = ("company_name", "company_domain", "company_linkedin_url")
+            if (sum(bool(document.get(name)) for name in identifiers) != 1
+                    or document.get("company_name_or") or document.get("company_id")):
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": endpoint_id,
+                        "parameter": "body",
+                        "message": "TheirStack shared-key lookup requires exactly one singular company identifier.",
+                    },
+                )
+
     if ep.get("provider") == "oceanio":
         endpoint_id = ep["id"]
         if endpoint_id in {
@@ -2130,6 +2192,84 @@ def _preflight_authorization(ep: dict, secret: Secret, method: str, authorizatio
         )
 
 
+@dataclass(frozen=True)
+class Pricing:
+    """What a catalog call reserves and how its hold will settle, in RAW micro-USD."""
+
+    estimate_micro: int
+    unit_micro: int
+    reported_charge_unit_micro: int
+    settlement_basis: dict
+    request_data: dict
+
+
+def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) -> Pricing:
+    """Price one catalog call from the caller's query (path params included, named by `consumed`)
+    and body, with the catalog of this checkout. Pure: no session, no network."""
+    cat = catalog_store.load()
+    service = ep["provider"]
+    raw_cost = ep.get("cost") or {}
+    cv = cat.cost_view(raw_cost, service) if raw_cost else None
+    info_est, info_unit = _marketplace_pricing(service, ep["id"], cv, query, body)
+    request_data = settlement_basis.request_evidence(
+        query.multi_items(), body, path_names=consumed)
+    unit_view = cat.cost_view({**raw_cost, "value": 1, "per": 1}, service) if raw_cost else None
+    unit_micro = _usd_to_micro(unit_view.get("usd")) if unit_view else 0
+    usage_unit_micro = None
+    usage_unit = str((raw_cost.get("usage") or {}).get("unit") or "")
+    if usage_unit == "credit":
+        # One provider credit in micro-USD, from fx.yaml; the validator guarantees the entry.
+        usage_unit_micro = _usd_to_micro(cat.credit_rates.get(service))
+    elif usage_unit and usage_unit != "usd":
+        # Freeze a provider-native meter just like a credit rate so a later rate-card edit cannot
+        # re-price a task already in flight.
+        usage_unit_micro = _usd_to_micro(cat.unit_rates.get(service, {}).get(usage_unit))
+    reported_charge_unit_micro = 0
+    if raw_cost.get("currency") == "credit" or \
+            (raw_cost.get("reported_charge") or {}).get("unit") == "credit":
+        # Freeze one provider credit's replacement cost so a later fx edit cannot re-price a call
+        # already in flight. USD reported charges use their fixed micro-USD conversion directly.
+        # Body-reported credit counts (datagma, sumble, scrubby) settle against this, never against
+        # `unit_micro`, which is a whole call on a per_success row.
+        reported_charge_unit_micro = _usd_to_micro(cat.credit_rates.get(service))
+    basis = settlement_basis.derive_basis(
+        raw_cost, request=request_data, input_schema=ep.get("input") or {},
+        unit_micro=unit_micro, terminal=bool(ep.get("async")),
+        response_estimate_micro=info_est, usage_unit_micro=usage_unit_micro,
+    )
+    # A table computes the request-specific hold even when the response's generic reported charge
+    # will decide settlement. Do not leave `estimate_micro` at the table's fallback ceiling.
+    if service != "tavily" and (raw_cost.get("table")
+                                or basis.get("amount", {}).get("kind") == "usage"):
+        info_est = int(basis["reserve_micro"])
+    if service == "tavily" and ep["id"] in _TAVILY_ENDPOINTS:
+        # Tavily's synchronous formulas are provider-specific response evidence. Search reports
+        # this request's credits; Extract/Map/Crawl settle from this request's returned successes.
+        # In every case the provider-specific request calculation above is the safe fallback hold.
+        basis = {
+            "when": "response", "amount": {"kind": "observed"},
+            "fallback_micro": info_est, "reserve_micro": info_est,
+        }
+    if service == "octen" and ep["id"] in _OCTEN_ENDPOINTS:
+        basis = {
+            "when": "response", "amount": {"kind": "observed"},
+            "fallback_micro": info_est, "reserve_micro": info_est,
+            "octen_rates_micro": _octen_rates_or_fail(ep["id"], cv),
+        }
+    if service == "enrichlayer" and raw_cost.get("enrichlayer"):
+        basis = {
+            "when": "response", "amount": {"kind": "observed"},
+            "fallback_micro": info_est, "reserve_micro": info_est,
+            "enrichlayer_rule": raw_cost["enrichlayer"],
+            "enrichlayer_unit_micro": info_unit,
+        }
+    return Pricing(
+        estimate_micro=info_est, unit_micro=info_unit,
+        reported_charge_unit_micro=reported_charge_unit_micro,
+        settlement_basis=basis, request_data=request_data,
+    )
+
+
 async def _resolve_marketplace_call(
     ep: dict, *, method: str, query: QueryValues, has_body: bool,
     read_body: Callable[[], Awaitable[bytes]], caller: Caller, db: AsyncSession,
@@ -2218,73 +2358,19 @@ async def _resolve_marketplace_call(
     # The catalog's estimate travels on EVERY tier - informational on tiers 1/2 (the provider bills
     # the org's own account; Activity shows "estimated") and the reserve amount on tier 4 only
     # (`metered` gates the ledger, so this never charges a balance for an own-key call).
-    cat = catalog_store.load()
-    raw_cost = ep.get("cost") or {}
-    cv = cat.cost_view(raw_cost, service) if raw_cost else None
-    info_est, info_unit = _marketplace_pricing(service, ep["id"], cv, query, body)
-    request_data = settlement_basis.request_evidence(
-        query.multi_items(), body, path_names=consumed)
-    unit_view = cat.cost_view({**raw_cost, "value": 1, "per": 1}, service) if raw_cost else None
-    unit_micro = _usd_to_micro(unit_view.get("usd")) if unit_view else 0
-    usage_unit_micro = None
-    usage_unit = str((raw_cost.get("usage") or {}).get("unit") or "")
-    if usage_unit == "credit":
-        # One provider credit in micro-USD, from fx.yaml; the validator guarantees the entry.
-        usage_unit_micro = _usd_to_micro(cat.credit_rates.get(service))
-    elif usage_unit and usage_unit != "usd":
-        # Freeze a provider-native meter just like a credit rate so a later rate-card edit cannot
-        # re-price a task already in flight.
-        usage_unit_micro = _usd_to_micro(cat.unit_rates.get(service, {}).get(usage_unit))
-    reported_charge_unit_micro = 0
-    if raw_cost.get("currency") == "credit" or \
-            (raw_cost.get("reported_charge") or {}).get("unit") == "credit":
-        # Freeze one provider credit's replacement cost so a later fx edit cannot re-price a call
-        # already in flight. USD reported charges use their fixed micro-USD conversion directly.
-        # Body-reported credit counts (datagma, sumble, scrubby) settle against this, never against
-        # `unit_micro`, which is a whole call on a per_success row.
-        reported_charge_unit_micro = _usd_to_micro(cat.credit_rates.get(service))
-    basis = settlement_basis.derive_basis(
-        raw_cost, request=request_data, input_schema=ep.get("input") or {},
-        unit_micro=unit_micro, terminal=bool(ep.get("async")),
-        response_estimate_micro=info_est, usage_unit_micro=usage_unit_micro,
-    )
-    # A table computes the request-specific hold even when the response's generic reported charge
-    # will decide settlement. Do not leave `estimate_micro` at the table's fallback ceiling.
-    if service != "tavily" and (raw_cost.get("table")
-                                or basis.get("amount", {}).get("kind") == "usage"):
-        info_est = int(basis["reserve_micro"])
-    if service == "tavily" and ep["id"] in _TAVILY_ENDPOINTS:
-        # Tavily's synchronous formulas are provider-specific response evidence. Search reports
-        # this request's credits; Extract/Map/Crawl settle from this request's returned successes.
-        # In every case the provider-specific request calculation above is the safe fallback hold.
-        basis = {
-            "when": "response", "amount": {"kind": "observed"},
-            "fallback_micro": info_est, "reserve_micro": info_est,
-        }
-    if service == "octen" and ep["id"] in _OCTEN_ENDPOINTS:
-        basis = {
-            "when": "response", "amount": {"kind": "observed"},
-            "fallback_micro": info_est, "reserve_micro": info_est,
-            "octen_rates_micro": _octen_rates_or_fail(ep["id"], cv),
-        }
-    if service == "enrichlayer" and raw_cost.get("enrichlayer"):
-        basis = {
-            "when": "response", "amount": {"kind": "observed"},
-            "fallback_micro": info_est, "reserve_micro": info_est,
-            "enrichlayer_rule": raw_cost["enrichlayer"],
-            "enrichlayer_unit_micro": info_unit,
-        }
+    pricing = price_call(ep, query, body, consumed)
     common = dict(
         upstream=upstream, consumed=consumed, endpoint_id=ep["id"], provider=service,
         params_hash=phash, cost_type=str((ep.get("cost") or {}).get("type") or ""),
-        estimate_micro=info_est,
+        estimate_micro=pricing.estimate_micro,
         # The per-ROW price, carried on every tier (settle only reads it on metered calls):
         # a `per_result` settle that can't count rows can only ever bill the estimate.
-        unit_micro=info_unit, reported_charge_unit_micro=reported_charge_unit_micro,
-        settlement_basis=basis, request_data=request_data,
+        unit_micro=pricing.unit_micro,
+        reported_charge_unit_micro=pricing.reported_charge_unit_micro,
+        settlement_basis=pricing.settlement_basis, request_data=pricing.request_data,
         async_descriptor=ep.get("async"), resource_ownership=ep.get("resource_ownership"),
         managed_resource=ep.get("managed_resource"),
-        spooled_evidence=_spool_evidence_paths(ep, raw_cost),
+        spooled_evidence=_spool_evidence_paths(ep, ep.get("cost") or {}),
     )
     if chosen_tool is not None:
         return MarketplaceCall(tool=chosen_tool, tier="tool", **common)
@@ -2411,8 +2497,7 @@ async def _resolve_marketplace_call(
                                public_resource_ids=public_resource_ids,
                                probe_lock_id=probe_lock_id,
                                key_slot=key_slot, **{
-            **common, "cost_type": str(cost.get("type") or "per_call"),
-            "estimate_micro": info_est, "unit_micro": info_unit})
+            **common, "cost_type": str(cost.get("type") or "per_call")})
     raise _marketplace_no_credential(service, ep["id"], provider, ep)
 
 

@@ -8276,7 +8276,7 @@ endpoints:
   platform: google
   method: GET
   path: /merchant/google/sellers/ad_url/{shop_ad_aclk}
-  cost: {type: per_call, value: 1e-06, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', confidence: verified, note: 'read from our own account rate card'}
+  cost: {type: per_call, value: 0.000001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', confidence: verified, note: 'read from our own account rate card'}
   name: "Resolve a Google Shopping ad to its full URL"
   summary: Google Shopping Sellers Ad URL is designed to provide you with a full URL of the advertisement containing all additional parameters set by the seller.
   docs_url: https://docs.dataforseo.com/v3/merchant/google/sellers/ad_url/

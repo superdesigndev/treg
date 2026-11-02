@@ -225,11 +225,20 @@ def _quote_skip(ep: dict, cat) -> str | None:
     return None
 
 
-def _plan_row(c) -> dict:
+def _route_max_cost(contract) -> float:
+    """The ceiling a routed call gets without `X-Treg-Route-Max-Cost`, as `route.py` applies it."""
+    from ..application.call.route import DEFAULT_MAX_COST_MICRO
+    return (contract.default_max_cost_usd if contract and contract.default_max_cost_usd
+            else DEFAULT_MAX_COST_MICRO / 1_000_000)
+
+
+def _plan_row(c, cat) -> dict:
     """One quote line, token-frugal: what an agent needs to pick or set a ceiling. Measured rates
-    ride only when they exist; the unmeasured case says nothing rather than four nulls."""
+    ride only when they exist; the unmeasured case says nothing rather than four nulls. `cost` says
+    per what the child bills, so a per-success one reads as billing no miss."""
     row = {"endpoint_id": c.endpoint["id"], "accepts": [list(v) for v in c.adapter.accepts],
-           "usd": (c.price_micro / 1_000_000) if c.price_micro is not None else None}
+           "usd": (c.price_micro / 1_000_000) if c.price_micro is not None else None,
+           "cost": catalog_store.quote_cost(catalog_store.cost_row(c.endpoint, cat))}
     if c.hit_rate is not None:
         row["hit_rate"] = c.hit_rate
         row["usd_per_hit"] = c.expected_cost_per_hit / 1_000_000
@@ -680,21 +689,33 @@ async def catalog_endpoint(
                          "miss": contract.miss, "derive": contract.derive} if contract else None,
             # A child the router would not call on treg's key (`route.py` drops it the same way)
             # stays in the plan for its `accepts`, ranked after the rest and saying why.
-            "plan": [_plan_row(c) for c in rank([c for c in cands if not _quote_skip(c.endpoint, cat)])]
-                    + [_plan_row(c) | {"skipped": _quote_skip(c.endpoint, cat)}
+            "plan": [_plan_row(c, cat) for c in rank([c for c in cands if not _quote_skip(c.endpoint, cat)])]
+                    + [_plan_row(c, cat) | {"skipped": _quote_skip(c.endpoint, cat)}
                        for c in rank([c for c in cands if _quote_skip(c.endpoint, cat)])],
             # The same job from providers whose adapter is not (yet) verified: not chosen by the
             # router, still callable by id — the search page groups them under this row, so the
             # page it points at must name them too.
-            "also": [{"endpoint_id": s["id"], "usd": ((s.get("cost") or {}).get("usd"))}
+            "also": [{"endpoint_id": s["id"], "usd": ((s.get("cost") or {}).get("usd")), "cost": catalog_store.quote_cost(s.get("cost"))}
                      for s in siblings if s["id"] not in set(ep.get("routed_children") or [])],
+            "max_cost_usd": _route_max_cost(contract),
             "headers": {"X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
-                        "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
-                        "X-Treg-Route-Prefer": "provider[,…]", "X-Treg-Route-Exclude": "provider[,…]",
+                        "X-Treg-Route-Max-Cost": f"USD ceiling for the whole call (default {_route_max_cost(contract):.2f})",
+                        "X-Treg-Route-Prefer": "provider[,…], the name before an id's first dot (quickenrich), not an endpoint id",
+                        "X-Treg-Route-Exclude": "provider[,…], the name before an id's first dot (quickenrich), not an endpoint id",
                         "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default — the answer names what was ignored in X-Treg-Ignored-Filters",
                         **({"X-Treg-Route-Verify": f"true = check a hit with {contract.check.endpoint} in the same call, at its own price, "
                                                    "inside X-Treg-Route-Max-Cost; the answer is _treg.verification "
-                                                   "{verdict, checked, served_by, cost_micro}"} if contract and contract.check else {})},
+                                                   "{verdict, checked, served_by, cost_micro}; when the check is still "
+                                                   "running also pending, call_id and async (task_id + poll) — "
+                                                   "cost_micro is then a hold settled later (GET /calls/{{call_id}})"}
+                           if contract and contract.check else {}),
+                        **({"X-Treg-Route-Confirm": f"true = a hit counts only once a second provider returns the same {contract.confirm}; "
+                                                    "each attempt at its own price, inside X-Treg-Route-Max-Cost; the answer is "
+                                                    "_treg.confirmation {field, confirmed, confirmed_by}"} if contract and contract.confirm else {}),
+                        **({"X-Treg-Route-Decisive": "true = an answer counts only when its verdict decides ("
+                                                     + ", ".join(contract.verdict_decisive) + "); otherwise up to two more providers, "
+                                                     "best measured quality first, each at its own price; the answer is "
+                                                     "_treg.decision {decided, decided_by, ordered_by}"} if contract and contract.verdict_decisive else {})},
         }
     return {
         "endpoint": view | ({"routed_children": ep.get("routed_children")} if ep.get("kind") == "routed" else {}),

@@ -208,9 +208,11 @@ live call"; 0 makes repeats free. Own-key hits are outside this: never metered, 
 
 `archive_bodies` owns body preparation, object reads, the independent upload queue and completed
 storage observations. `archive.py` retains request keys, snapshots, transactions, TTL learning
-and pruning. `infra.object_store.ObjectStore` exposes only put/get/head (the same store also holds find's card
-vectors as named `find-vectors/...` objects, `NamedObjectStore`; see [find](find.md)); `open_r2` imports
-obstore lazily and bootstrap owns its lifecycle. Tests inject `MemoryObjectStore` through
+and pruning. `infra.object_store.ObjectStore` exposes only put/get/head (the same bucket also holds find's card
+vectors as named `find-vectors/...` objects, `NamedObjectStore`, see [find](find.md), and `treg host`
+bodies as `hosted-media/v1/...` objects, `StreamedObjectStore`, see [media](media.md), through its
+own `build_r2` client sized for 30 MB files); `open_r2` imports obstore lazily and bootstrap owns its
+lifecycle. Tests inject `MemoryObjectStore` through
 `bootstrap.configure_archive_object_store` or `create_app(archive_object_store=...)`.
 
 Every object name is the raw body's SHA-256, with no prefix. The caller supplies its already-computed content hash to PUT, which validates the hash-shaped name and
@@ -279,9 +281,10 @@ and observed-version guards, then classifies the resolved body after closing the
 results retain the decisive snapshot; empty results invalidate serving without deleting history.
 Pruning protects the decisive snapshot and DB carriers of surviving versions. Eligible `both`
 rows lose DB bytes and become `r2`; their objects remain untouched. `db` does not contact R2,
-including for R2-only rows. Admin and Arena follow the result read switch; comparison and lazy
-initialization follow lookup. Admin fallback uses the admin pool; observation/initialization use
-the background pool; Arena uses its worker session factory. Read switches should be enabled
+including for R2-only rows. Admin, Arena and replay corpus reads (`replay`) follow the result read
+switch; comparison and lazy initialization follow lookup. Admin fallback uses the admin pool;
+observation/initialization use the background pool; Arena uses its worker session factory, and a
+caller of `load_terminal_snapshots` may pass its own. Read switches should be enabled
 before any future R2-only write rollout. No serving allowlist, cohort or production setting is
 changed here.
 
@@ -368,7 +371,12 @@ targets are already indexed). `archive.resolve_result(key_hash, content_hash)` w
 row → key → newest snapshot with that content hash → `body_of` carrier, and returns the request
 shape (`req_*`, pre-injection) plus the answer; a hash-only version reports `stored: false`.
 `GET /calls/{id}/result` (api.py; `id` is the row id or the `X-Treg-Call-Id`) exposes it to members of the row's org, with a `note` on every
-"nothing on file" branch; `/calls` rows carry `has_result`. The archive stays platform-scoped —
+"nothing on file" branch; `/calls` rows carry `has_result`. A routed parent has no link of its
+own (it wraps a child's answer); its read lists `children`, the child rows (`<ref>:r<n>`, check,
+upgrade) with their status and `has_result`, each readable through the same endpoint. Children
+are audited as they finish, before the parent, so the lookup reads the hour before the parent's
+row: an `(org_id, created_at)` index read, wide enough for any waterfall of upstream timeouts.
+The archive stays platform-scoped —
 what makes the read safe is that the row belongs to the team and names the exact bytes that
 team already received. Failure evidence (`error_*`) is untouched and still admin-only.
 
@@ -730,14 +738,27 @@ additive fields for the panel: per-endpoint `hits` and `kept_bytes`, and totals 
 ## The running totals (2026-09-03)
 
 The panel's report reads `ArchiveEndpointStat` — one row per endpoint (keys, stable, changed,
-snapshots, bodies_kept, kept_bytes, newest_fetch), maintained by the recorder in the SAME
-transaction as each snapshot, using atomic column arithmetic only (the credit-block drift is why
+snapshots, bodies_kept, kept_bytes, newest_fetch), maintained by the recorder with atomic column
+arithmetic only (the credit-block drift is why
 read-modify-write is banned near counters). The old per-load aggregates cost 9.9s + 8.0s + 14.8s
 at 434k keys on prod; the rollup read is milliseconds at any scale. Migration 0013 backfills the
 table once from the live archive and adds a partial index over refresh-origin snapshots for the
 "refreshes today" count; a 30s in-process report cache remains as the belt against poll stacking
-(cleared per test beside the drains). A dropped recording drops its counter bumps with it — the
-rollup rides the recording's own commit, so the two cannot drift.
+(cleared per test beside the drains).
+
+The row is shared by every team, so a per-recording UPDATE queued busy endpoints on it and left a
+dead tuple per call. A recording therefore adds its counts to an in-process delta after its own
+commit (`_count_stats`, so a dropped or retried recording counts nothing), and `flush_stats` lands
+the deltas a few seconds later as one statement per endpoint, in endpoint order so two processes
+cannot deadlock. The flush takes the archive's write semaphore, so it stays inside the archive's
+background-pool budget. `drain()` waits for an interrupted flush to put its deltas back, then
+flushes them; a failed flush keeps its deltas for the next. A process that dies between flushes
+loses that window's counts: the totals are a staff report, nothing serves or bills from them.
+The pruner and team deletion still subtract directly. Column arithmetic commutes only while the
+row exists, so the first recording of an endpoint creates the row, zeroed, inside its own
+transaction (`_ensure_stat_row`); a process skips that check for an endpoint only after one of its
+recordings committed with the row, never on an uncommitted or rolled-back one. An erase before
+the first flush then subtracts from that row instead of matching nothing.
 
 ## Body compression (2026-09-03)
 

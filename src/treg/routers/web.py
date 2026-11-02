@@ -18,13 +18,15 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTe
                                RedirectResponse, Response)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
+import yaml
 
 from ..timeutil import utcnow_naive as _utcnow_naive
-from .. import adsconv, agent_pages, oauth_providers
+from .. import adsconv, agent_pages, client_ip, oauth_providers
 from ..domain import referrals
 from ..domain.catalog import store as catalog_store
 from ..domain.identity import session as sess
 from ..config import PUBLIC_HOST_ALIASES, get_settings
+from ..application import signup as signup_use_cases
 from ..infra.db import get_session
 from ..models import User
 from ..domain.catalog import stats as endpoint_stats
@@ -32,7 +34,7 @@ from .catalog import (_endpoint_observation_reader, _observed_or_empty, _platfor
                       _provider_display, catalog_platform,
                       _platforms_payload)
 from ..domain.identity.access import _user_from_session
-from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _take_oauth_return
+from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _same_origin, _take_oauth_return
 from .signup_cookies import _remember_referral
 
 
@@ -3438,6 +3440,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/ugc", "ugc.html", "0.8"),
     ("/aeo", "aeo.html", "0.8"),
     ("/rankings", "rankings.html", "0.8"),
+    ("/rea-growth", "rea-growth.html", "0.8"),
     ("/jev", "jev.html", "0.8"),
     ("/terms", "terms.html", "0.2"),
     ("/privacy", "privacy.html", "0.2"),
@@ -3540,16 +3543,51 @@ async def indexnow_key():
                     headers={"Cache-Control": "public, max-age=86400"})
 
 
-@app.get("/install.sh", include_in_schema=False)
-async def install_sh():
-    """`curl -fsSL {BASE}/install.sh | sh` — installs the treg CLI and points it at this server.
-    The serving domain is templated in so it targets whichever host is live (dev box or the real
-    domain after deploy)."""
+def _install_script(ad_link: str = "") -> PlainTextResponse:
+    """The install script with the serving domain templated in, so it targets whichever host is
+    live (dev box or the real domain after deploy), and the short-link code when fetched as
+    `/i/<code>` (empty on the plain URL)."""
     f = _WEB_DIR / "install.sh"
     if not f.exists():
         raise HTTPException(status_code=404, detail="install.sh not bundled")
     base = get_settings().public_url.rstrip("/")
-    return PlainTextResponse(f.read_text(encoding="utf-8").replace("{BASE}", base), media_type="text/x-shellscript; charset=utf-8")
+    text = f.read_text(encoding="utf-8").replace("{BASE}", base).replace("{AD_LINK}", ad_link)
+    return PlainTextResponse(text, media_type="text/x-shellscript; charset=utf-8")
+
+
+@app.get("/install.sh", include_in_schema=False)
+async def install_sh():
+    """`curl -fsSL {BASE}/install.sh | sh` — installs the treg CLI and points it at this server."""
+    return _install_script()
+
+
+@app.get("/i/{code}", include_in_schema=False)
+async def install_sh_linked(code: str):
+    """`curl -fsSL {BASE}/i/<code> | sh` — the install script the ad landing page hands out, with the
+    code the script leaves for `treg login` (see `signup.mint_ad_link`). Any well-formed code is
+    served: an unknown one installs exactly like `/install.sh`, and the sign-in simply restores
+    nothing, so a stale link never breaks an install."""
+    if not signup_use_cases.AD_LINK_RE.fullmatch(code):
+        raise HTTPException(status_code=404)
+    return _install_script(code)
+
+
+@app.post("/i", include_in_schema=False)
+async def ad_link_mint(request: Request) -> dict:
+    """The landing page asks for a code when the visitor's browser holds an ad click (`treg_ad`).
+    `{"code": null}` when there is no click or capture is off, so the page keeps the plain command."""
+    if not _same_origin(request):
+        raise HTTPException(status_code=403, detail="cross-origin mint rejected")
+    raw = request.cookies.get("treg_ad") or ""
+    if not raw or not adsconv.enabled():
+        return {"code": None}
+    try:
+        code = await signup_use_cases.mint_ad_link(raw, address=client_ip.of(request))
+    except signup_use_cases.SignupError as exc:
+        if exc.kind != "too_many_links":
+            raise
+        raise HTTPException(status_code=429, detail="too many install links; try again in a few minutes") from exc
+    return {"code": code}
 
 
 @app.get("/selfhost.sh", include_in_schema=False)
@@ -3716,6 +3754,14 @@ async def jev_memory_skill_md():
     lasting preferences are remembered. Opt-in: kept out of the well-known index, so
     `treg skill bootstrap` (install.sh) never installs it unasked."""
     return _serve_md("skills/jev-memory/SKILL.md")
+
+
+@app.get("/skills/rea-growth/SKILL.md", include_in_schema=False)
+async def rea_growth_skill_md():
+    """The rea-growth skill: the /rea-growth flow (a company's growth moves, its content per channel,
+    the plays to copy) as a file an agent can follow. Opt-in like jev-memory: kept out of the
+    well-known index, so `treg skill bootstrap` (install.sh) never installs it unasked."""
+    return _serve_md("skills/rea-growth/SKILL.md")
 
 
 @app.get("/feedback.md", include_in_schema=False)
@@ -3934,6 +3980,25 @@ async def aeo_page(request: Request):
     return _static_page("aeo.html", request)
 
 
+@app.get("/rea-growth", include_in_schema=False)
+async def rea_growth_page(request: Request):
+    """REA for growth: reverse engineer how a company grows. The agent walks the target's path
+    from first touch to sharing through treg (traffic, search, ads, posts, pages, links, job
+    openings) and returns plays marked seen or inferred, each with the ask that runs it. Served
+    like /aeo: canonical, in the sitemap, no-cache, relative asset paths."""
+    return _static_page("rea-growth.html", request)
+
+
+@app.get("/rea-growth.md", include_in_schema=False)
+async def rea_growth_md():
+    """The full Lovable report behind /rea-growth as Markdown: what the page's "Copy the playbook"
+    button copies, and what agents read instead of the rendered page. `noindex`: the HTML page is
+    the indexed copy."""
+    resp = _serve_md("rea-growth.md")
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
 @app.get("/showcase", include_in_schema=False)
 async def showcase_page(request: Request):
     """The gallery of products built on treg: each app, its maker and the maker's launch post,
@@ -4097,6 +4162,8 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
 # chronological (newest first), not alphabetical.
 _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
     # (slug, title, date, one-line blurb)
+    ("/rea-growth", "REA for Growth", "2026-10-29",
+     "Name a company; your agent takes its distribution apart and hands you plays to copy."),
     ("/aeo", "How to Get AI to Recommend Your Product", "2026-10-17",
      "Four steps and one prompt: what customers ask, who AI recommends, the sites it cites, getting on them."),
     ("/recruit", "OpenSource LinkedIn Recruiter", "2026-10-17",
@@ -4440,8 +4507,8 @@ public_docs_router = APIRouter()
 app = public_docs_router
 
 
-def _skill_frontmatter(name: str = "skill.md") -> dict[str, str]:
-    """The bundled skill's frontmatter, read at request time rather than duplicated in code — the
+def _skill_frontmatter(name: str = "skill.md") -> dict:
+    """The bundled skill's frontmatter, read at request time rather than duplicated in code. The
     description is what drives discovery in every registry, and a second copy of it would drift."""
     f = _WEB_DIR / name
     if not f.exists():
@@ -4449,11 +4516,8 @@ def _skill_frontmatter(name: str = "skill.md") -> dict[str, str]:
     text = _fill_headline(f.read_text(encoding="utf-8"))
     if not text.startswith("---"):
         raise HTTPException(status_code=404, detail=f"{name} has no frontmatter")
-    out: dict[str, str] = {}
-    for line in text.split("---", 2)[1].strip().splitlines():
-        key, _, value = line.partition(":")
-        out[key.strip()] = value.strip()
-    return out
+    fm = yaml.safe_load(text.split("---", 2)[1])
+    return fm if isinstance(fm, dict) else {}
 
 
 @app.get("/.well-known/skills/index.json", include_in_schema=False)
@@ -4464,18 +4528,16 @@ async def well_known_skills_index():
     treg from treg.to directly, with no directory, no review queue and no third party in the middle
     — the same skill the plugins ship and `install.sh` drops, reached by whoever asks the domain.
     """
-    fm = _skill_frontmatter()
-    ugc = _skill_frontmatter("skills/make-ugc/SKILL.md")
-    sig = _skill_frontmatter("skills/lead-signals/SKILL.md")
-    web = _skill_frontmatter("skills/web-access/SKILL.md")
-    rec = _skill_frontmatter("skills/recruit/SKILL.md")
-    return JSONResponse({"skills": [
-        {"name": fm.get("name", "treg"), "description": fm.get("description", ""), "files": ["SKILL.md"]},
-        {"name": ugc.get("name", "make-ugc"), "description": ugc.get("description", ""), "files": ["SKILL.md"]},
-        {"name": sig.get("name", "lead-signals"), "description": sig.get("description", ""), "files": ["SKILL.md"]},
-        {"name": web.get("name", "web-access"), "description": web.get("description", ""), "files": ["SKILL.md"]},
-        {"name": rec.get("name", "recruit"), "description": rec.get("description", ""), "files": ["SKILL.md"]},
-    ]})
+    entries = []
+    for name, path in (("treg", "skill.md"), ("make-ugc", "skills/make-ugc/SKILL.md"),
+                       ("lead-signals", "skills/lead-signals/SKILL.md"),
+                       ("web-access", "skills/web-access/SKILL.md"), ("recruit", "skills/recruit/SKILL.md")):
+        fm = _skill_frontmatter(path)
+        entry = {"name": fm.get("name", name), "description": fm.get("description", ""), "files": ["SKILL.md"]}
+        if summary := (fm.get("metadata") or {}).get("summary"):
+            entry["summary"] = summary
+        entries.append(entry)
+    return JSONResponse({"skills": entries})
 
 
 @app.get("/.well-known/skills/treg/SKILL.md", include_in_schema=False)

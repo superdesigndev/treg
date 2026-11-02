@@ -1,0 +1,153 @@
+provider: orbisearch
+source:
+  docs: https://orbisearch.com/docs
+  openapi: https://orbisearch.com/docs/openapi.json
+  curated: '2026-10-28'
+pricing_url: https://orbisearch.com/pricing
+limits: "The single-call API shares a 20 requests/second per-account limit. Verification and finder accept an upstream timeout up to 97 seconds. Bulk job lifecycles are deferred."
+proposed_capabilities:
+  people.email.content.spam_check: Score email copy for spam triggers
+endpoints:
+  - id: orbisearch.people.email.verify
+    capability: people.email.verify
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: GET
+    path: /v1/verify
+    name: Verify an email address
+    summary: Check deliverability, catch-all status, and mailbox risk signals.
+    input:
+      queryParams:
+        email: {type: string, required: true, example: "support@orbisearch.com"}
+        timeout: {type: integer, required: false, min: 3, max: 97, default: 97, note: "Upstream verification timeout in seconds."}
+      note: "A 200 response can be safe, risky, invalid or unknown; all returned verdicts cost 0.2 credits."
+    test_request: {queryParams: {email: "support@orbisearch.com", timeout: 20}}
+    cost:
+      type: per_call
+      value: 0.2
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://orbisearch.com/docs/api-reference/verify-email
+      checked: '2026-10-28'
+      confidence: verified
+      note: "Live balance deltas were 0.2 credits for safe and invalid verdicts. The response has no charge field."
+    docs_url: https://orbisearch.com/docs/api-reference/verify-email
+    verified: '2026-10-28'
+    added: '2026-10-28'
+    example_response: examples/orbisearch.people.email.verify.json
+
+  - id: orbisearch.people.email.find
+    capability: people.email.find
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /v1/email-lookup
+    body_allowlist: true
+    cache: forbidden
+    name: Find a verified work email
+    summary: Find a work email from a LinkedIn profile or a person's name and company domain.
+    input:
+      bodyType: json
+      body:
+        first_name: {type: string, required: false, maxLength: 255}
+        last_name: {type: string, required: false, maxLength: 255}
+        domain: {type: string, required: false, maxLength: 255}
+        linkedin_url: {type: string, required: false, maxLength: 2048}
+        timeout: {type: integer, required: false, min: 30, max: 97, default: 97}
+      note: "Send a LinkedIn person URL, or at least one name part with a company domain. A 200 response with status unknown and email null is a charged miss, including timeout."
+    test_request: {body: {first_name: Satya, last_name: Nadella, domain: microsoft.com, timeout: 30}}
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://orbisearch.com/docs/api-reference/email-lookup
+      checked: '2026-10-28'
+      confidence: verified
+      note: "Live responses reported credits_consumed 1 and the balance fell one credit on hits and a no_address_found miss."
+    docs_url: https://orbisearch.com/docs/api-reference/email-lookup
+    verified: '2026-10-28'
+    added: '2026-10-28'
+    example_response: examples/orbisearch.people.email.find.json
+
+  - id: orbisearch.companies.enrich
+    capability: companies.enrich
+    platform: companies
+    domain: enrichment
+    scope: any_account
+    method: GET
+    path: /v1/company-enrichment
+    strict_query: true
+    name: Enrich a company
+    summary: Get firmographics for a company domain or LinkedIn company page.
+    input:
+      queryParams:
+        domain: {type: string, required: false, example: microsoft.com}
+        linkedin_url: {type: string, required: false, example: "https://www.linkedin.com/company/microsoft/"}
+      note: "Send exactly one of domain or linkedin_url. Both found and not_found 200 responses cost one credit."
+    test_request: {queryParams: {domain: microsoft.com}}
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://orbisearch.com/docs/api-reference/company-enrichment
+      checked: '2026-10-28'
+      confidence: verified
+      note: "Live responses reported credits_consumed 1 and the balance fell one credit on found and not_found results."
+    docs_url: https://orbisearch.com/docs/api-reference/company-enrichment
+    verified: '2026-10-28'
+    added: '2026-10-28'
+    example_response: examples/orbisearch.companies.enrich.json
+
+  - id: orbisearch.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/credits
+    cache: forbidden
+    name: Check credit balance
+    summary: Read the balance of the connected OrbiSearch account.
+    input:
+      note: "No parameters. Returns credits and a provider account identifier."
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: "https://orbisearch.com/docs/api-reference/credits", checked: '2026-10-28', confidence: verified, note: "Repeated live reads left the credit balance unchanged."}
+    docs_url: https://orbisearch.com/docs/api-reference/credits
+    verified: '2026-10-28'
+    added: '2026-10-28'
+    example_response: examples/orbisearch.account.usage.json
+
+  - id: orbisearch.people.email.content.spam_check
+    capability: people.email.content.spam_check
+    platform: people
+    domain: contacts
+    scope: any_account
+    platform_blocked: "The free daily quota is shared with the vendor dashboard and has no observed remaining-quota meter."
+    method: POST
+    path: /v1/content-spam-check
+    body_allowlist: true
+    cache: forbidden
+    name: Check email copy for spam triggers
+    summary: Score email subject and content with SpamAssassin rules.
+    input:
+      bodyType: json
+      body:
+        content: {type: string, required: true, example: "Hello, this is a short meeting follow-up."}
+        subject: {type: string, required: false, example: "Meeting follow-up"}
+      note: "Free with an account-wide daily cap. This checks message copy, not address deliverability."
+    test_request: {body: {content: "Hello, this is a short test message about a scheduled meeting.", subject: "Meeting follow-up"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: "https://orbisearch.com/docs/api-reference/content-spam-check", checked: '2026-10-28', confidence: verified, note: "One live 200 response left the credit balance unchanged; daily cap behavior was not tested."}
+    docs_url: https://orbisearch.com/docs/api-reference/content-spam-check
+    verified: '2026-10-28'
+    added: '2026-10-28'
+    example_response: examples/orbisearch.people.email.content.spam_check.json

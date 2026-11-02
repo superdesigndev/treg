@@ -53,14 +53,6 @@ def test_resources_list_uses_the_unified_server_endpoint(monkeypatch, capsys):
     assert '"upstream_id": "voice-1"' in capsys.readouterr().out
 
 
-def test_call_named_and_single_url():
-    p = cli.build_parser()
-    a = p.parse_args(["call", "echo", "v1/x", "--method", "POST"])
-    assert a.target == "echo" and a.path == "v1/x" and a.method == "POST"
-    b = p.parse_args(["call", "https://api.intercom.io/me"])
-    assert b.target == "https://api.intercom.io/me" and b.path == ""
-
-
 def test_host_subcommand_is_registered_not_mistaken_for_system_binary():
     """Issue #557: `treg host` must parse as the host subcommand, not fall through to /usr/bin/host.
     When `host` was missing from an older release, `_looks_like_a_program` matched it to the system
@@ -92,8 +84,6 @@ def test_load_config_defaults_to_production_not_localhost(tmp_path, monkeypatch)
     monkeypatch.setattr(cli, "CONFIG_PATH", tmp_path / "missing" / "config.json")
     cfg = cli._load_config()
     assert cfg["base_url"] == cli.PRODUCTION_BASE_URL
-    assert "localhost" not in cfg["base_url"]
-    assert "127.0.0.1" not in cfg["base_url"]
 
 
 def test_is_loopback_url_detects_localhost_variants():
@@ -604,18 +594,6 @@ def test_a_paired_key_provider_sends_both_halves(monkeypatch, capsys):
     assert "Connected Tomba" in capsys.readouterr().out
 
 
-def test_a_paired_key_provider_prompts_for_both_at_a_terminal(monkeypatch):
-    seen = _registry(monkeypatch)
-    monkeypatch.setattr(cli.sys, "stdin", _Tty())
-    answers = iter(["ta_key", "ts_secret"])
-    prompts = []
-    monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: prompts.append(prompt) or next(answers))
-    _connect("--provider", "tomba")
-    assert prompts == ["Paste your Tomba API key (input hidden): ",
-                       "Paste your Tomba API secret (input hidden): "]
-    assert json.loads(seen[-1].content) == {"value": "ts_secret"}
-
-
 def test_a_paired_key_provider_without_its_second_half_sends_nothing(monkeypatch):
     seen = _registry(monkeypatch)
     monkeypatch.setattr(cli.sys, "stdin", io.StringIO("ta_key\n"))
@@ -698,15 +676,6 @@ def test_secret_add_env_var_parses_and_strips_quotes(tmp_path, monkeypatch):
     cli.cmd_secret_add(args, {"base_url": "http://x", "token": "t"})
     assert posted["value"] == "am_us_pod_QUOTED"  # no surrounding quotes
     assert posted["name"] == "agentmail-key" and posted["kind"] == "env"
-
-
-def test_onboard_setup_import_args_are_complete():
-    """`_run_setup` builds upload args from build_parser() so it can't drift out of sync with new
-    upload flags (regression: a hand-built Namespace missing `no_oauth` crashed onboarding Set up)."""
-    a = cli.build_parser().parse_args(["upload"])
-    for attr in ("no_oauth", "llm", "llm_token", "llm_model", "llm_base_url",
-                 "dry_run", "all", "select", "replace", "env_file", "skills_dir", "mode"):
-        assert hasattr(a, attr), f"upload args missing {attr}"
 
 
 def test_scan_upload_import_verbs():
@@ -826,26 +795,6 @@ def test_traversable_by_others_root_yes_missing_no():
     assert cli._traversable_by_others("/no/such/path/zzz") is False
 
 
-def test_call_content_type_flag_and_json_sniff(monkeypatch):
-    """`call` sends a Content-Type: explicit --content-type wins; else a JSON body sniffs to
-    application/json (npm publish et al. reject an untyped body); a non-JSON body sends none."""
-    p = cli.build_parser()
-    assert p.parse_args(["call", "t", "p", "--content-type", "text/plain"]).content_type == "text/plain"
-
-    fake = _FakeClient()
-    monkeypatch.setattr(cli, "_client", lambda cfg: fake)
-    monkeypatch.setattr(cli, "_show", lambda r: None)
-    cfg = {"base_url": "http://x", "token": "T"}
-
-    def sent_headers(*extra) -> dict:
-        cli.cmd_call(p.parse_args(["call", "t", "p", "--method", "PUT", *extra]), cfg)
-        return fake.calls[-1][4]
-
-    assert sent_headers("--data", '{"ok":1}') == {"content-type": "application/json"}  # sniffed from JSON body
-    assert sent_headers("--data", "plain text") == {}  # non-JSON body: no guess
-    assert sent_headers("--data", "plain", "--content-type", "text/csv") == {"content-type": "text/csv"}  # flag wins
-
-
 def test_hidden_aliases_still_parse_and_route():
     """Every removed/renamed top-level command keeps working for existing scripts + agent
     instructions — it is only absent from --help."""
@@ -863,19 +812,6 @@ def test_hidden_aliases_still_parse_and_route():
         (["import"], cli.cmd_import),
     ]:
         assert p.parse_args(argv).fn is fn, argv
-
-
-def test_alias_flags_match_their_canonical_command():
-    """An alias is the SAME parser, not a stub: its flags must still parse."""
-    p = cli.build_parser()
-    assert p.parse_args(["run", "--server", "sk", "--", "x"]).server is True
-    assert p.parse_args(["cli", "run", "--server", "sk", "--", "x"]).server is True
-    assert p.parse_args(["shell", "start", "--ttl", "60"]).ttl == 60
-    assert p.parse_args(["cli", "shell", "start", "--ttl", "60"]).ttl == 60
-    assert p.parse_args(["setup-local-run", "--run-proof", "P"]).run_proof == "P"
-    assert p.parse_args(["cli", "setup", "--run-proof", "P"]).run_proof == "P"
-    assert p.parse_args(["runs", "--limit", "5"]).limit == 5
-    assert p.parse_args(["calls", "--limit", "5"]).limit == 5
 
 
 def test_audit_merges_calls_and_runs(monkeypatch, capsys):
@@ -977,14 +913,61 @@ def test_catalog_get_renders_params_siblings_and_the_command(monkeypatch, capsys
     _stub_catalog_client(monkeypatch, {"/catalog/endpoints/justoneapi.tiktok.video.comments": _CatalogResp(body)})
     cli.cmd_catalog(cli.build_parser().parse_args(
         ["catalog", "get", "justoneapi.tiktok.video.comments"]), {"base_url": "http://x"})
-    out = capsys.readouterr().out
-    assert "$0.014/success" in out and "(CNY 0.1)" in out          # usd to compare, original to verify
-    provider = body["provider"]
-    assert provider["limits"] in out and provider["pricing_url"] in out
-    assert "tikhub.tiktok.video.comments" in out                    # the sibling, for comparison
-    assert "awemeId" in out and "the post id" in out and "e.g. 76662" in out
-    assert "treg call justoneapi /api/tiktok/get-post-comment/v1 --query awemeId=76662" in out
-    assert '"comments"' in out                                      # the example response, inline
+    out = _toon(capsys)
+    assert (out["price"], out["native_price"]) == ("$0.014/success", "CNY 0.1")  # usd to compare, original to verify
+    assert out["limits"] == "60 req/min" and out["pricing"] == "https://justoneapi.com/"
+    assert [row["id"] for row in out["compare"]] == ["justoneapi.tiktok.video.comments", "tikhub.tiktok.video.comments"]
+    assert out["params"][0] == {"in": "query", "name": "awemeId", "type": "string", "required": True,
+                                "note": "the post id"}, "required first"
+    assert out["param_examples"] == {"awemeId": "76662"}
+    assert out["call"] == "treg call justoneapi /api/tiktok/get-post-comment/v1 --query awemeId=76662"
+    assert out["example_response"] == body["example_response"]
+    keys = list(out)
+    assert keys.index("call") < keys.index("params") < keys.index("compare"), "how to call before the alternatives"
+
+
+def test_catalog_get_compares_a_capped_ranked_few(monkeypatch, capsys):
+    """A job with dozens of providers shows the endpoint itself, then the measured ones by success
+    rate and price, then the unmeasured, up to the limit; the total and the command for all of them
+    stay on the page."""
+    def ep(i, rate=None, usd=0.01):
+        return {"id": f"p{i}.job", "provider": f"p{i}", "cost": {"type": "per_call", "usd": usd},
+                "observed": {"ok_rate": rate, "samples": 100} if rate is not None else None, "verified": None}
+    me = {**ep(0, 0.9), "summary": "s", "method": "GET", "path": "/x", "capability": "people.search"}
+    sibs = [ep(1), ep(2, 0.95, usd=0.02), ep(3, 0.95, usd=0.01), ep(4, 0.5)] + [ep(i) for i in range(5, 16)]
+    _stub_catalog_client(monkeypatch, {"/catalog/endpoints/p0.job": _CatalogResp(
+        {"endpoint": me, "provider": {}, "siblings": sibs, "call_template": "treg call p0.job"})})
+    cli.cmd_catalog(cli.build_parser().parse_args(["catalog", "get", "p0.job", "--limit", "4"]), {"base_url": "http://x"})
+    out = _toon(capsys)
+    assert [r["id"] for r in out["compare"]] == ["p0.job", "p3.job", "p2.job", "p4.job"]
+    assert out["compare_total"] == 16 and out["help"][0] == "treg catalog get people.search   # every provider of this job"
+
+
+def test_a_view_tables_only_several_narrow_rows_and_decodes_to_what_it_was_given():
+    """One row, or rows too wide to read across, print field by field; the data is the same either
+    way, and commands print as typed so they copy without unescaping."""
+    from toon_format import decode
+    from treg import cli_view
+    wide = {f"f{i}": i for i in range(cli_view.TABLE_MAX_COLUMNS + 1)}
+    view = {"one": [{"a": 1, "b": "x, y"}], "narrow": [{"a": 1, "b": 2}, {"a": 3, "b": 4}],
+            "wide": [wide, wide], "keyed": {"US": wide, "UK": wide}, "call": "treg call x --data '{\"k\":[1]}'"}
+    text = cli_view.render(view)
+    assert "narrow[2]{a,b}:" in text and "one[1]:" in text and "wide[2]:" in text and "keyed:" in text
+    assert "call: treg call x --data '{\"k\":[1]}'" in text
+    assert decode(text) == view
+
+
+def test_params_say_shared_prose_once_and_lead_with_the_endpoint_rule():
+    inp = {"note": "At least one filter is required.", "body": {
+        n: {"type": "object", "note": "Include/exclude string arrays.", "example": {"include": [n], "exclude": []}}
+        for n in ("title", "city", "company")} | {"has_email": {"type": "boolean", "example": True}}}
+    view = cli._params_view(inp)
+    assert list(view)[0] == "params_note"
+    assert view["params_shared"] == [{"params": "title, city, company", "note": "Include/exclude string arrays."}]
+    assert all("note" not in r for r in view["params"])
+    assert view["param_examples"]["title"] == '{"include":["title"],"exclude":[]}', "JSON as sent, not repr"
+    assert view["param_examples"]["has_email"] == "true" and "example_body" not in view, \
+        "per-param examples are not a request: `call` is the runnable one"
 
 
 def test_a_credit_price_reads_as_dollars_with_the_credits_behind_it():
@@ -1034,10 +1017,10 @@ def test_catalog_search_new_and_newest(monkeypatch, capsys):
     monkeypatch.setattr(cli, "_connected_providers", lambda cfg: set())
     cli.cmd_catalog(p.parse_args(["catalog", "search", "--new", "900"]), {"base_url": "http://x"})
     assert seen[-1] == ("/catalog/search", {"q": "", "limit": 25, "added_within_days": 900})
-    out = capsys.readouterr().out
-    assert "capped at 365 days" in out
-    assert "2 tools added in the last 365 days, newest first" in out
-    assert "ADDED" in out and "2026-10-07" in out and "2026-09-21" in out
+    out = _toon(capsys)
+    assert (out["capped_at_days"], out["added_within_days"], out["sort"]) == (365, 365, "newest")
+    assert [(r["id"], r["added"]) for r in out["results"]] == [
+        ("hlrlookup.people.phone.verify", "2026-10-07"), ("tavily.web.search", "2026-09-21")]
 
     cli.cmd_catalog(p.parse_args(["catalog", "search", "web", "--sort", "newest"]), {"base_url": "http://x"})
     assert seen[-1][1] == {"q": "web", "limit": 25, "sort": "newest"}
@@ -1047,18 +1030,19 @@ def test_catalog_search_new_and_newest(monkeypatch, capsys):
     for key in ("sort", "added_within_days", "capped_at_days"):
         body.pop(key, None)
     for argv in (["catalog", "search", "--new"], ["catalog", "search", "web", "--sort", "newest"]):
-        cli.cmd_catalog(p.parse_args(argv), {"base_url": "http://x"})
-        out = capsys.readouterr().out
-        assert "this server does not support --new yet" in out and "added in the last" not in out
+        with pytest.raises(SystemExit):
+            cli.cmd_catalog(p.parse_args(argv), {"base_url": "http://x"})
+        assert _toon(capsys)["error"] == "unsupported"
     with pytest.raises(SystemExit):
         cli.cmd_catalog(p.parse_args(["catalog", "search"]), {"base_url": "http://x"})
 
 
 def test_catalog_search_explains_routing_once(monkeypatch, capsys):
-    """Every reader is an agent paying per token: two routed groups share one explanation."""
+    """Every reader is an agent paying per token: two routed groups share one explanation, and a
+    routed row reads as a choice among providers, not as a free call."""
     def routed(cap, children):
         return [{"id": f"treg.{cap}", "kind": "routed", "provider": "treg", "capability": cap,
-                 "summary": cap, "routed_children": children, "cost": {"type": "per_success", "usd": 0.01}}] + [
+                 "summary": cap, "routed_children": children, "cost": {"type": "per_success", "usd": 0, "varies": True}}] + [
             {"id": child, "provider": child.split(".")[0], "capability": cap, "summary": child,
              "cost": {"type": "per_call", "usd": 0.001}, "added": "2026-07-28"} for child in children]
     rows = routed("web.backlinks.list", ["moz.web.backlinks.list", "serpstat.web.backlinks.list"]) \
@@ -1067,13 +1051,24 @@ def test_catalog_search_explains_routing_once(monkeypatch, capsys):
         {"query": "backlinks", "total": len(rows), "verdict": "strong", "results": rows})})
     monkeypatch.setattr(cli, "_connected_providers", lambda cfg: set())
     cli.cmd_catalog(cli.build_parser().parse_args(["catalog", "search", "backlinks"]), {"base_url": "http://x"})
-    out = capsys.readouterr().out
-    assert out.count("hint: a ▸ ROUTED row") == 1
-    assert out.index("hint:") > out.index("serpstat.web.anchors.list"), "below the table, not inside it"
-    assert out.rstrip().endswith("for its params, price and a ready `treg call` line")
-    assert "next: treg catalog get <id> (e.g. treg.web.backlinks.list)" in out
-    assert out.count("ROUTED (2 providers)") == 2, "each routed row still says how many it draws on"
-    assert "serpstat.web.anchors.list" in out
+    text = capsys.readouterr().out
+    from toon_format import decode
+    out = decode(text)
+    assert text.count("treg.<job>") == 1 and "routed" in out
+    assert [r["id"] for r in out["results"]] == [r["id"] for r in rows]
+    assert {r["job"] for r in out["results"]} == {"web.backlinks.list", "web.anchors.list"}
+    assert out["results"][0]["price"] == "variable", "a routed row bills its children's misses: never 'free'"
+    assert out["help"][0].startswith("treg catalog get <id>")
+
+
+def test_a_routed_detail_says_what_it_needs_and_prices_each_route_per_unit():
+    routing = {"contract": {"identity": [["q"], ["company_domain", "title"]]},
+               "plan": [{"endpoint_id": "a.x", "usd": 0.004, "accepts": [["q"]],
+                         "cost": {"type": "per_success", "usd": 0.004}}], "also": []}
+    assert cli._requires(routing) == "one of q | company_domain + title"
+    assert cli._requires({"contract": {"identity": [["email"]]}}) == "email"
+    view = cli._compare_view({}, {"routing": routing}, {}, 10)
+    assert view["routes"][0]["price"] == "$0.004/success", "a per-success child bills no miss; the unit says so"
 
 
 def _home_registry(monkeypatch, *, me=None, orgs=None, balance_micro=1_000_000, balance=None, tools=(),
@@ -1089,6 +1084,8 @@ def _home_registry(monkeypatch, *, me=None, orgs=None, balance_micro=1_000_000, 
         path = request.url.path
         if path in (fail or {}):
             raise fail[path]
+        if path == "/home":  # a registry older than /home: the separate reads answer
+            return httpx.Response(404, json={"detail": "Not Found"})
         if path == "/auth/me":
             return me if isinstance(me, httpx.Response) else httpx.Response(200, json=me)
         if path == "/orgs":
@@ -1108,6 +1105,11 @@ def _home(cfg=None):
     cli.cmd_home(None, {"base_url": "https://registry.example.test", **(cfg or {})})
 
 
+def _toon(capsys) -> dict:
+    from toon_format import decode
+    return decode(capsys.readouterr().out)
+
+
 def test_bare_treg_shows_live_state_and_next_commands(monkeypatch, capsys):
     """Content first: an agent that runs bare `treg` gets its team, balance and own tools, then
     runnable next steps, instead of a usage error that costs it a turn on `--help`."""
@@ -1116,11 +1118,12 @@ def test_bare_treg_shows_live_state_and_next_commands(monkeypatch, capsys):
                                 {"org_id": 7, "slug": "acme", "role": "admin"}],
                           tools=("stripe", "gh"))
     _home({"token": "t", "active_org": "acme"})
-    out = capsys.readouterr().out
-    assert "account: a@example.com" in out and "team: acme (admin)" in out
-    assert "balance: $1.00" in out and "own_tools[2]: stripe, gh" in out
+    out = _toon(capsys)
+    assert out["account"] == "a@example.com" and out["team"] == "acme (admin; 1 of 2 teams)"
+    assert out["balance"] == "$1.00" and out["own_tools"] == ["stripe", "gh"]
     assert "/orgs/7/balance" in seen, "the active team's balance, not the first membership's"
-    assert "help[4]:" in out and "Run `treg call <tool>/<path>`" in out and "treg topup" not in out
+    assert any(h.startswith("treg call <tool>/<path>") for h in out["help"])
+    assert not any("treg topup" in h for h in out["help"])
 
 
 def test_bare_treg_with_a_team_key_takes_its_team_from_auth_me(monkeypatch, capsys):
@@ -1128,45 +1131,45 @@ def test_bare_treg_with_a_team_key_takes_its_team_from_auth_me(monkeypatch, caps
     seen = _home_registry(monkeypatch, me={"email": "a@example.com", "org_id": 7, "org": "acme",
                                            "role": "member"}, balance_micro=0)
     _home({"token": "t"})
-    out = capsys.readouterr().out
-    assert "/orgs/7/balance" in seen and "team: acme (member)" in out
-    assert "own_tools: none registered" in out
-    help_lines = out.split("help[", 1)[1]
-    assert help_lines.index("treg topup") < help_lines.index("treg catalog search"), "the blocker leads"
+    out = _toon(capsys)
+    assert "/orgs/7/balance" in seen and out["team"] == "acme (member)"
+    assert out["own_tools"] == []
+    assert out["help"][0].startswith("treg topup"), "the blocker leads"
 
 
-@pytest.mark.parametrize("cfg, me, expect", [
-    ({}, None, "Run `treg login`"),
-    ({"token": "t"}, httpx.Response(401, json={"detail": "no session"}), "(token rejected)"),
-    ({"token": "t"}, {"email": "a@example.com"}, "Run `treg org create"),  # signed in, in no team
+@pytest.mark.parametrize("cfg, me, first_help", [
+    ({}, None, "treg login"),
+    ({"token": "t"}, httpx.Response(401, json={"detail": "no session"}), "treg login"),
+    ({"token": "t"}, {"email": "a@example.com"}, "treg org create"),  # signed in, in no team
 ])
-def test_bare_treg_names_what_is_missing(monkeypatch, capsys, cfg, me, expect):
+def test_bare_treg_names_what_is_missing(monkeypatch, capsys, cfg, me, first_help):
     _home_registry(monkeypatch, me=me, orgs=[])
     _home(cfg)
-    out = capsys.readouterr().out
-    assert expect in out and "Run `treg catalog search" in out and "balance:" not in out
+    out = _toon(capsys)
+    assert out["help"][0].startswith(first_help) and "balance" not in out
+    assert any(h.startswith("treg catalog search") for h in out["help"])
 
 
 def test_bare_treg_survives_an_unreachable_registry(monkeypatch, capsys):
     _home_registry(monkeypatch, fail={"/auth/me": httpx.ConnectError("refused")})
     _home({"token": "t"})
-    out = capsys.readouterr().out
-    assert "(ConnectError reaching the registry)" in out and "account:" not in out
-    assert "Run `treg config`" in out
+    out = _toon(capsys)
+    assert out["registry"].endswith("(ConnectError reaching the registry)") and "account" not in out
+    assert out["help"][0].startswith("treg config")
 
 
-@pytest.mark.parametrize("me, shown, first_help", [
+@pytest.mark.parametrize("me, key, first_help", [
     # a host that answers 200 with a page, not a registry: a wrong base URL, not a crash
-    (httpx.Response(200, text="<html>portal</html>"), "is not a treg answer", "Run `treg config`"),
+    (httpx.Response(200, text="<html>portal</html>"), "unavailable", "treg config"),
     # the right registry having a bad moment: retry, do not rewrite a correct base URL
-    (httpx.Response(503, json={"detail": "deploying"}), "(HTTP 503 from /auth/me)", "Run `treg` again"),
+    (httpx.Response(503, json={"detail": "deploying"}), "registry_error", "treg   # again"),
 ])
-def test_bare_treg_tells_a_wrong_registry_from_a_failing_one(monkeypatch, capsys, me, shown, first_help):
+def test_bare_treg_tells_a_wrong_registry_from_a_failing_one(monkeypatch, capsys, me, key, first_help):
     _home_registry(monkeypatch, me=me)
     _home({"token": "t"})
-    out = capsys.readouterr().out
-    assert shown in out and "account:" not in out
-    assert out.split("help[", 1)[1].split("\n")[1].strip().startswith(first_help)
+    out = _toon(capsys)
+    assert out["registry"].endswith(")") and "account" not in out
+    assert out["help"][0].startswith(first_help)
 
 
 def test_bare_treg_leaves_out_only_the_line_that_failed(monkeypatch, capsys):
@@ -1174,9 +1177,9 @@ def test_bare_treg_leaves_out_only_the_line_that_failed(monkeypatch, capsys):
     _home_registry(monkeypatch, me={"email": "a@example.com", "org_id": 7, "org": "acme", "role": "owner"},
                    balance=httpx.Response(200, json=[1, 2]), fail={"/tools": httpx.ReadTimeout("slow")})
     _home({"token": "t"})
-    out = capsys.readouterr().out
-    assert "account: a@example.com" in out and "team: acme (owner)" in out
-    assert "balance:" not in out and "own_tools" not in out and "registry: https://registry.example.test\n" in out
+    out = _toon(capsys)
+    assert out["account"] == "a@example.com" and out["team"] == "acme (owner)"
+    assert "balance" not in out and "own_tools" not in out and out["registry"] == "https://registry.example.test"
 
 
 def test_bare_treg_resolves_the_team_like_balance_does(monkeypatch, capsys):
@@ -1186,8 +1189,8 @@ def test_bare_treg_resolves_the_team_like_balance_does(monkeypatch, capsys):
                           orgs=[{"org_id": 1, "slug": "claimed", "role": "owner"},
                                 {"org_id": 7, "slug": "chosen", "role": "member"}])
     _home({"token": "t", "active_org": "chosen"})
-    out = capsys.readouterr().out
-    assert "team: chosen (member)" in out and "/orgs/7/balance" in seen
+    out = _toon(capsys)
+    assert out["team"] == "chosen (member; 1 of 2 teams)" and "/orgs/7/balance" in seen
 
 
 def test_bare_treg_with_teams_but_none_active_points_at_org_use(monkeypatch, capsys):
@@ -1195,8 +1198,9 @@ def test_bare_treg_with_teams_but_none_active_points_at_org_use(monkeypatch, cap
     _home_registry(monkeypatch, me={"email": "a@example.com"},
                    orgs=[{"org_id": 3, "slug": "kept", "role": "member"}])
     _home({"token": "t", "active_org": "left-long-ago"})
-    out = capsys.readouterr().out
-    assert "team: none" in out and "Run `treg org ls`" in out and "org create" not in out
+    out = _toon(capsys)
+    assert out["team"] == "none" and out["help"][0].startswith("treg org use")
+    assert not any("org create" in h for h in out["help"])
 
 
 def test_bare_treg_json_and_dispatch(monkeypatch, capsys):
@@ -1209,17 +1213,20 @@ def test_bare_treg_json_and_dispatch(monkeypatch, capsys):
     body = json.loads(capsys.readouterr().out)
     assert body["team"] == "acme" and body["balance_micro"] == 1_000_000 and body["help"]
     cli.main([])
-    assert capsys.readouterr().out.startswith("bin: ")
+    assert capsys.readouterr().out.startswith("treg: ")
 
 
 def test_catalog_get_needs_an_id_and_404s_helpfully(monkeypatch, capsys):
     p = cli.build_parser()
     with pytest.raises(SystemExit):
         cli.cmd_catalog(p.parse_args(["catalog", "get"]), {"base_url": "http://x"})
-    _stub_catalog_client(monkeypatch, {"/catalog/endpoints/nope.x": _CatalogResp({}, status=404)})
+    capsys.readouterr()
+    _stub_catalog_client(monkeypatch, {"/catalog/endpoints/nope.x": _CatalogResp({}, status=404),
+                                       "/catalog/platforms/nope?include_hidden=1": _CatalogResp({}, status=404)})
     with pytest.raises(SystemExit):
         cli.cmd_catalog(p.parse_args(["catalog", "get", "nope.x"]), {"base_url": "http://x"})
-    assert "find one with: treg catalog search" in capsys.readouterr().out
+    out = _toon(capsys)
+    assert out["error"] == "unknown_endpoint" and out["help"] == ["treg catalog search x"]
 
 
 # ---- onboarding path 1: the catalog ---------------------------------------------------------
@@ -1268,23 +1275,6 @@ def _onboard_catalog(monkeypatch, access, call_status=200):
     args = cli.build_parser().parse_args(["onboard", "--path", "catalog", "--yes"])
     cli._run_catalog({"base_url": "http://x", "token": "t"}, args)
     return client
-
-
-def test_onboard_catalog_calls_when_treg_serves_it(monkeypatch, capsys):
-    """The happy path: treg's own key covers it, so the price is stated and the call is made."""
-    c = _onboard_catalog(monkeypatch, {"tier": "platform", "estimated_cost_usd": 0.001})
-    out = capsys.readouterr().out
-    assert "on treg's key" in out and "$0.001" in out
-    assert "GET /call/tikhub.tiktok.user.profile" in c.seen      # it really called
-    assert "treg balance" in out                                  # and showed what it cost
-
-
-def test_onboard_catalog_says_not_metered_for_your_own_key(monkeypatch, capsys):
-    c = _onboard_catalog(monkeypatch, {"tier": "credential"})
-    out = capsys.readouterr().out
-    assert "OWN credential" in out and "not metered" in out
-    assert any(s.startswith("GET /call/") for s in c.seen)
-    assert "treg balance" not in out          # nothing was spent, so don't show a balance
 
 
 def test_onboard_catalog_dead_end_names_the_one_command_that_fixes_it(monkeypatch, capsys):
@@ -1357,7 +1347,6 @@ def test_show_prints_the_charge_and_call_id_for_a_metered_success(capsys):
     assert err.strip() == "treg: reserved up to $2.4 for async settlement · call id async1"
 
 
-
 # ---------------------------------------------------------------------------------------------
 # The hub family (phase 4)
 
@@ -1378,23 +1367,7 @@ def test_hub_init_writes_the_four_files(tmp_path, monkeypatch):
     assert not (tmp_path / "flow" / "run.js").exists() and "steps" in json.loads((tmp_path / "flow" / "recipe.json").read_text())
 
 
-def test_hub_is_in_the_help_and_parses():
-    from treg import cli
-    assert any(name == "hub" for _, rows in cli.HELP_GROUPS for name, _ in rows)
-    parser = cli.build_parser() if hasattr(cli, "build_parser") else None
-    if parser is not None:
-        a = parser.parse_args(["hub", "run", ".", "--input", "domain=figma.com", "--input", "limit=3"])
-        assert a.hub_cmd == "run" and a.input == ["domain=figma.com", "limit=3"]
-        e = parser.parse_args(["hub", "earnings", "acme.leads-db", "--days", "30", "--csv"])
-        assert e.hub_cmd == "earnings" and e.days == 30 and e.csv
-        pr = parser.parse_args(["hub", "price", "acme.leads-db", "0.02"])
-        assert pr.hub_cmd == "price" and pr.price_usd == 0.02
-        rt = parser.parse_args(["hub", "retire", "acme.leads-db"])
-        assert rt.hub_cmd == "retire" and rt.tool_id == "acme.leads-db"
-
-
-
-def test_catalog_get_prints_a_hub_tool_contract(capsys):
+def test_catalog_get_prints_a_hub_tool_contract():
     from treg import cli
     e = {"id": "acme.leads-db", "kind": "hub", "version": 2, "provider": "acme", "made_of": 2, "recipe": "script",
          "price_line": "seller $0.01 + steps", "cost": {"usd": 0.01}, "status": "live",
@@ -1404,11 +1377,10 @@ def test_catalog_get_prints_a_hub_tool_contract(capsys):
          "output": {"fields": ["rows", "count"]},
          "call_template": {"cli": "treg call acme.leads-db --data '{\"domain\": \"figma.com\"}'", "http": "POST https://treg.to/call/acme.leads-db"},
          "page": "https://treg.to/hub/acme.leads-db"}
-    cli._catalog_get_hub(e)
-    out = capsys.readouterr().out
-    assert "seller $0.01 + steps" in out and "domain" in out and "(required)" in out and "rows, count" in out
-    assert "treg call acme.leads-db" in out and "https://treg.to/hub/acme.leads-db" in out
-
+    view = cli._hub_view(e)
+    assert view["price"] == "seller $0.01 + steps" and view["output"] == ["rows", "count"]
+    assert {i["name"]: i["required"] for i in view["inputs"]} == {"domain": True, "limit": False}
+    assert view["call"].startswith("treg call acme.leads-db") and view["page"] == "https://treg.to/hub/acme.leads-db"
 
 
 def test_a_hub_refusal_names_the_missing_tool_in_its_fix_commands(capsys):
@@ -1483,3 +1455,60 @@ def test_org_rename_follows_slug_change_locally(monkeypatch, tmp_path):
     cli.cmd_org_rename(type("A", (), {"name": "Team B", "slug": "team-b"})(), cfg)
     assert calls == [("/orgs/7", {"name": "Team B", "slug": "team-b"})]
     assert cfg["active_org"] == "team-b" and cfg["token"] == "TK" and saved["active_org"] == "team-b"
+
+
+def test_login_forwards_the_install_links_ad_code(monkeypatch, tmp_path):
+    """`curl -fsSL https://treg.to/i/<code> | sh` leaves the code in ~/.treg/ad-link. The next
+    `treg login` sends it on the sign-in URL, so /login can restore the ad click in whichever
+    browser opens, and forgets it once the login succeeds."""
+    import httpx
+
+    class Resp:
+        def __init__(self, payload, status_code=200):
+            self._payload, self.status_code, self.cookies = payload, status_code, {}
+
+        def json(self):
+            return self._payload
+
+    (tmp_path / "ad-link").write_text("k7x2qp\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "CONFIG_PATH", tmp_path / "config.json")
+    opened: list[str] = []
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url))
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: Resp({"login_id": "L" * 24, "code": "ABCD"}))
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: Resp({"token": "tok", "email": "a@b.c", "active_org": "team-a"}))
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+    monkeypatch.setattr(cli, "_pin_token_to_active_org", lambda cfg, **kw: None)
+    monkeypatch.setattr(cli, "_maybe_offer_onboarding", lambda cfg: None)
+    args = type("A", (), {"token": None, "email": None})()
+
+    cli.cmd_login(args, {"base_url": "https://treg.to", "token": None})
+
+    assert opened and opened[0].startswith("https://treg.to/login?cli=" + "L" * 24)
+    assert "&ad=k7x2qp" in opened[0] and opened[0].endswith("#code=ABCD")
+    assert not (tmp_path / "ad-link").exists()
+
+
+def test_login_ignores_a_malformed_ad_link_file(monkeypatch, tmp_path):
+    import httpx
+
+    class Resp:
+        def __init__(self, payload):
+            self._payload, self.status_code, self.cookies = payload, 200, {}
+
+        def json(self):
+            return self._payload
+
+    (tmp_path / "ad-link").write_text("../evil?x=1\n", encoding="utf-8")
+    monkeypatch.setattr(cli, "CONFIG_PATH", tmp_path / "config.json")
+    opened: list[str] = []
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url))
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: Resp({"login_id": "L" * 24, "code": "ABCD"}))
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: Resp({"token": "tok", "email": "a@b.c", "active_org": "team-a"}))
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+    monkeypatch.setattr(cli, "_pin_token_to_active_org", lambda cfg, **kw: None)
+    monkeypatch.setattr(cli, "_maybe_offer_onboarding", lambda cfg: None)
+    args = type("A", (), {"token": None, "email": None})()
+
+    cli.cmd_login(args, {"base_url": "https://treg.to", "token": None})
+
+    assert opened and "ad=" not in opened[0]

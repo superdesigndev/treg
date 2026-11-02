@@ -4,7 +4,6 @@ status: closed
 sources:
   - src/treg/sandbox.py
   - src/treg/sandbox_identity.py
-  - src/treg/application/onboard/pubfeed.py
   - src/treg/application/onboard/sandbox.py
   - src/treg/application/onboard/__init__.py
   - src/treg/domain/governance/sandbox.py
@@ -42,7 +41,7 @@ related:
 > removal change deletes it.
 
 The sections below document backend behavior that is still in the tree but unreachable: no mint path
-and no accepted visitor token. Provisioning, export, samples, and garbage collection remain in
+and no accepted visitor token. Provisioning, export, and garbage collection remain in
 `application/onboard/sandbox.py`; the call-side sandbox engine remains in `sandbox.py`; and the routes
 remain in `routers/onboard.py`. Their removal is intentionally deferred to the backend follow-up.
 
@@ -99,29 +98,6 @@ fully editable). `is_live_tool` lives in `sandbox.py`; `visitor_name` and its wo
 Both routes remain pending backend removal, but the Dashboard components no longer calls either one or holds a
 sandbox token.
 
-## The public payments feed (`application/onboard/pubfeed.py`)
-The feed is the landing page's **live payments ticker**: a stranger's live-wire charge appears on the
-page within seconds, no refresh, as skeptic-proof that the proxy really injected a real key. The path:
-visitor `curl` → live wire relays a Stripe test charge → Stripe fires `charge.succeeded` at
-`POST /stripe/webhook` (`stripe_webhook`) → `pubfeed.push_charge(...)` → `GET /landing/stripe-feed`
-(`landing_stripe_feed`) streams it over Server-Sent Events via `pubfeed.stream()`. The webhook verifies the
-`Stripe-Signature` with `pubfeed.verify_signature` (constant-time HMAC-SHA256 over `{t}.{body}`, timestamps
-older than `SIG_TOLERANCE_S` rejected as replays, any of several `v1` signatures accepted during rotation);
-it returns **404 when `TREG_DEMO_STRIPE_WEBHOOK_SECRET` (`settings.demo_stripe_webhook_secret`) is unset**, so
-a deploy without the secret exposes no unauthenticated POST surface. Design points:
-- **In-memory + tiny.** A `deque(maxlen=FEED_MAX)` ring buffer plus a set of per-subscriber `asyncio.Queue`s;
-  it is a marketing surface, not a system of record. A dropped event on restart costs nothing (Stripe retries),
-  and each instance of a multi-instance deploy streams only the deliveries its own webhook received.
-- **No visitor-controlled text can reach the page.** `push_charge` copies **only server-chosen fields**
-  (amount/currency/created, a 6-char `id_suffix`, and a `receipt_url` only if it starts with
-  `https://pay.stripe.com/`) — never `description`. The display **name** (`_display_name`) is accepted only when
-  it passes `_is_wordlist_name` (adjective-animal-nnn, both words from the exact `ADJECTIVES`/`ANIMALS` lists,
-  number ≤ 999); anything else falls back to `_derived_name`, a deterministic wordlist name hashed from the
-  charge id. This is the "graffiti lesson": hand-typed strings can never deface the shared feed.
-- **`stream()`** replays the ring buffer to a fresh subscriber, then live events, with a `: ping` keepalive every
-  `KEEPALIVE_S`; a subscriber that lags past `_MAX_SUBSCRIBER_LAG` is dropped rather than buffered forever. The
-  SSE response sets `X-Accel-Buffering: no` so a reverse proxy does not buffer it. `reset()` is a test hook.
-
 Bounds: `MAX_TOOLS`/`MAX_SECRETS` (3) are enforced by `domain/governance/sandbox.py` on
 `POST /tools|/secrets`; `SANDBOX_TTL_MIN` (60) + `gc(db)` reaps expired visitors (their org + all
 org-scoped rows), run opportunistically on each mint. It deletes only orgs `is_sandbox` matches: a
@@ -140,20 +116,6 @@ the `MAX_TOOLS`/`MAX_SECRETS` cap.
 `export_skill(db, org)` → `GET /demo/sandbox/skill` turns whatever the visitor built into a shareable
 skill manifest (treg.json + SKILL.md, secret values redacted to placeholders).
 
-## Hosted sample skills + the "Run in Claude Code" flow
-`SAMPLE_SKILLS` (`posthog-insights`, `stripe-billing`) each mirror a seeded tool so an installed skill's
-proxied calls resolve against the visitor's sandbox. `skill_files(name, base, token)` builds the three
-files a skill folder is — `SKILL.md` (agent recipe: call the treg proxy, key injected server-side),
-`treg.json` (wiring: base_url + which secret by name), `.secret` (empty; value stays in the vault).
-- `GET /skills/samples` (`skill_samples`) — public JSON of each sample + its files (for the landing).
-- `GET /skills/{name}/install.sh?token=` (`skill_install`) — `install_script(name, base, token)` emits a
-  POSIX `sh` that `mkdir -p ./.claude/skills/<name>` and writes the files (token baked in via quoted
-  heredocs), so `curl … | sh` from a project dir installs the skill for Claude Code to load. Its recipe
-  calls `{BASE}/call/…` with the caller's treg token — the API key never lands on the machine. The
-  `token` query param is **charset-restricted** (`re.fullmatch(r"[A-Za-z0-9_\-]{1,200}")`, else 422)
-  because it is interpolated into that shell script — a crafted value can't inject a newline + extra
-  commands into the generated `curl … | sh`.
-
 ## CLI installer
 `GET /install.sh` (`install_sh`) serves `src/treg/web/install.sh`, `{BASE}`-templated like `llms.txt`
 (so it targets whatever host is live — a dev box or the real domain). The script now installs from
@@ -168,9 +130,13 @@ first and, outside it, prints which Python pip3 belongs to plus the uv one-liner
 pip fail with its "Ignored the following versions" wall (a real user hit exactly that). It also
 installs the official
 **tools-registry skill** into every detected agent via `treg skill bootstrap` (Claude Code, Cursor, Codex,
-Gemini, Copilot, OpenCode, Windsurf …), together with every other skill in
-`/.well-known/skills/index.json` (the workflow skills such as `make-ugc` and `lead-signals`; best-effort,
-and an index name must be a plain slug before it becomes a folder), falling back on older CLIs to a Claude-only drop that curls
+Gemini, Copilot, OpenCode, Windsurf …). The other skills in `/.well-known/skills/index.json` (the
+workflow skills such as `make-ugc` and `lead-signals`) are opt-in: `install.sh --skills <names|all>`
+passes the choice through, a copy treg itself wrote is refreshed where it is (never a same-named skill
+it did not write; see [skill.md](skill.md)), and the rest are listed with that command so the agent
+running the installer asks its human; it never prompts (best-effort, and an index name must be a
+plain slug before it becomes a folder). A CLI that rejects `--skills` is rerun without it. It falls
+back on CLIs without `skill bootstrap` to a Claude-only drop that curls
 `{BASE}/skill.md` into `~/.claude/skills/treg`. Because the package is public on PyPI,
 `curl … /install.sh | sh` now works for anyone with no repo/git access needed. The **Getting started**
 dashboard view (`view==='start'`) surfaces this install command + `treg login`/`onboard`/`add`/`call` and

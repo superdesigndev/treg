@@ -33,12 +33,11 @@ uv run python scripts/build_plugin.py --check    # fail if any is stale (also a 
 python3 scripts/minimax_plugin.py --check  # MiniMax package rules (also a test)
 ```
 
-### Why the bootstrap differs from Claude Code's
+### No bootstrap
 
-The Claude/Cursor bootstrap is three steps: install CLI → `treg login` → `treg mcp install`. The
-MiniMax one has **two** and says explicitly not to run step 3. `treg mcp install` writes configs for
-Claude Code, Cursor and opencode; there is no MiniMax target, so on MiniMax Code it is a silent
-no-op an agent would walk straight past. Everything in the skill works through the CLI.
+The skill is the served page unchanged. Its first section already covers an agent with neither
+treg's MCP tools nor the CLI, and nothing in it sends the agent to `treg mcp install`, which has no
+MiniMax target.
 
 ### What their validator enforces (and ours pre-checks)
 

@@ -97,8 +97,8 @@ treg catalog search "backlinks for a domain"
 
   ENDPOINT                              PLATFORM   PROVIDER     COST
   dataforseo.web.backlinks.summary      web        DataForSEO   $0.024/call
-  moz.links.summary                     web        Moz          $0.0025/call
-  majestic.backlinks.list               web        Majestic     $0.010/call
+  moz.web.backlinks.summary             web        Moz          $0.013334/call (2 quota rows)
+  majestic.web.backlinks.list           web        Majestic     $0.02/call (5000 analysis units)
 ```
 
 > Several providers usually serve one capability at different prices. treg shows them side by side

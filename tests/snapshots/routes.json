@@ -735,6 +735,23 @@
       "GET",
       "HEAD"
     ],
+    "name": "install_sh_linked",
+    "path": "/i/{code}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "ad_link_mint",
+    "path": "/i"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "selfhost_sh",
     "path": "/selfhost.sh"
   },
@@ -854,6 +871,15 @@
     ],
     "name": "jev_memory_skill_md",
     "path": "/skills/jev-memory/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_growth_skill_md",
+    "path": "/skills/rea-growth/SKILL.md"
   },
   {
     "kind": "APIRoute",
@@ -1034,6 +1060,24 @@
     ],
     "name": "aeo_page",
     "path": "/aeo"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_growth_page",
+    "path": "/rea-growth"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_growth_md",
+    "path": "/rea-growth.md"
   },
   {
     "kind": "APIRoute",
@@ -1485,6 +1529,15 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "home",
+    "path": "/home"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "create_invite",
@@ -1559,46 +1612,11 @@
   {
     "kind": "APIRoute",
     "methods": [
-      "POST"
-    ],
-    "name": "stripe_webhook",
-    "path": "/stripe/webhook"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "landing_stripe_feed",
-    "path": "/landing/stripe-feed"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
       "GET",
       "HEAD"
     ],
     "name": "demo_sandbox_skill",
     "path": "/demo/sandbox/skill"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "skill_samples",
-    "path": "/skills/samples"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "skill_install",
-    "path": "/skills/{name}/install.sh"
   },
   {
     "kind": "APIRoute",

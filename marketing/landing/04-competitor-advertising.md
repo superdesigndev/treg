@@ -34,7 +34,7 @@ Using treg, show me every ad Notion is running on Meta right now. Group them by
 offer, hook and format. Then check what they are bidding on in Google Ads.
 ```
 
-**Meta ad library from $0.00188/call**, **Google Ads Transparency from $0.002/call**. No subscription.
+**Meta ad library from $0.00188/call**, **Google Ads Transparency from $0.0006/call**. No subscription.
 
 **[ Start Free ]**   **[ Paste llms.txt ]**
 
@@ -80,10 +80,10 @@ not close to each other:
 | | ScrapeCreators | $0.00188 | not yet measured |: |
 | | SerpApi | $0.015 | not yet measured |: |
 | **TikTok** ad library | ScrapeCreators | $0.00188 | 100% (16 calls) | 3.5 s |
-| | Apify | $0.003 | not yet measured |: |
+| | Apify | $0.003 / ad returned | not yet measured |: |
 | | tikhub | $0.001 | 7 calls, none recorded successful |: |
 | **LinkedIn** ads | ScrapeCreators | $0.00188 | not yet measured |: |
-| | tikhub | $0.004 | not yet measured |: |
+| | HarvestAPI | $0.0016 | not yet measured |: |
 
 The blank cells are honest: those endpoints are catalogued and priced but have not been called often
 enough for treg.to to have measured them. The catalog shows you that rather than a rounded number with no

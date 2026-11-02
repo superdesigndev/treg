@@ -224,10 +224,7 @@ app = APIRouter()
 async def billing_stripe_webhook(request: Request) -> dict:
     """Stripe → treg: the ONLY door through which a payment becomes balance.
 
-    A DIFFERENT endpoint from the landing demo's `/stripe/webhook`, with a different signing secret:
-    they are different Stripe accounts' events with different consequences, and sharing a path would
-    mean one secret could authorize the other's effects. 404 when unconfigured, so a deploy without the
-    secret exposes no unauthenticated POST surface.
+    404 when unconfigured, so a deploy without the secret exposes no unauthenticated POST surface.
     """
     try:
         result = await billing.process_webhook(

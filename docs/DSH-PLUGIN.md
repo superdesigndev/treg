@@ -28,10 +28,11 @@ dsh/skills/treg/SKILL.md      GENERATED — never edit by hand
 
 ## The MCP row is disabled until there is a token
 
-The Claude Code plugin declares no connector at all, because anything declared in a manifest is
-registered at install time, before any human has signed in: five always-on tools that 401 on every
-call ([CLAUDE-PLUGIN.md](CLAUDE-PLUGIN.md)). dsh can express the better version of that trade,
-because a row carries a `disabled` expression evaluated at boot:
+The Claude Code and Cursor plugins declare treg's MCP server URL-only and let the host run OAuth,
+so it waits for sign-in. `@deepseek-ai/dsh-mcp-client` builds its Streamable HTTP transport with
+`requestInit.headers` and no `authProvider`, so it runs no OAuth even though its MCP SDK can
+(checked through `0.2.1-rc.4` and master; `latest` on npm still points at `0.0.1-rc.1`). So a row
+registered before there is a token would be five always-on tools that 401 on every call. A dsh row carries a `disabled` expression evaluated at boot:
 
 ```yaml
 - id: treg-mcp

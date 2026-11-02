@@ -1,0 +1,304 @@
+provider: mobiusengine-jobs
+source:
+  docs: https://jobs.arihaan.ai/docs
+  openapi: https://jobs-api.arihaan.ai/v1/openapi.json
+  curated: 2026-10-27
+# Prepaid pay-per-job balance, billed by what comes back: a job without its description, a job with it (separate routes,
+# so each endpoint has one price), a count. Every response carries X-Cost-USD and X-Balance-USD; the public rate card is
+# GET /v1/rates. Company lookups, counts grouped by company and description searches answer 403 on these keys.
+# Probe: GET /v1/balance is free; a bad or missing key answers 401.
+limits: "100 jobs per call; 30 requests at once; a search stops at 20 s; HTTP 402 when the prepaid balance is empty"
+pricing_url: https://jobs.arihaan.ai/pay-per-job
+endpoints:
+  - id: mobiusengine-jobs.jobs.search
+    verified: '2026-10-27'
+    added: '2026-10-28'
+    example_response: examples/mobiusengine-jobs.jobs.search.json
+    domain: jobs
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/jobs
+    name: "Search job postings (listing fields)"
+    summary: "Search open job postings by title, company, place and more, newest first. Each job has its title, company, locations, dates, seniority, pay when published, skills and apply link, without the description text."
+    input:
+      queryParams:
+        title: {type: "array[string]", required: false, note: "job title keywords (repeat the parameter); up to 10, a job matches if its title has any as consecutive words", example: "data engineer"}
+        company: {type: "array[string]", required: false, note: "company name or board key contains any of these (repeat the parameter)", example: "stripe"}
+        countries: {type: "array[string]", required: false, note: "ISO-2 codes (repeat the parameter)", example: "US"}
+        locations: {type: "array[string]", required: false, note: "a place; every comma part must match", example: "Austin, Texas"}
+        sources: {type: "array[string]", required: false, note: "the job system the posting came from: workday, greenhouse, lever, ashby, smartrecruiters and others", example: "greenhouse"}
+        work_mode: {type: "array[string]", required: false, note: "On-site, Hybrid, Remote OK or Remote Solely", example: "Remote Solely"}
+        posted_within_days: {type: integer, required: false, note: "1 to 365", example: 7}
+        has_salary: {type: boolean, required: false, note: "only jobs with published pay"}
+        limit: {type: integer, required: false, default: 20, min: 1, max: 100, note: "jobs per page and the price dial: every job returned is charged", example: 1}
+        cursor: {type: string, required: false, note: "next_cursor from the previous page; null means the last page. Stable at any depth."}
+    test_request: {queryParams: {title: "software engineer", countries: "US", limit: 1}}
+    cost:
+      type: per_result
+      value: 0.016
+      currency: USD
+      per: 1000
+      unit: record
+      source: rate_card_api
+      source_url: https://jobs-api.arihaan.ai/v1/rates
+      checked: '2026-10-27'
+      confidence: documented
+      note: "$0.000016 per job returned, no description. An empty page, a 4xx and the free routes cost nothing. The charge is in the X-Cost-USD response header."
+    docs_url: https://jobs.arihaan.ai/docs
+
+  - id: mobiusengine-jobs.jobs.search.post
+    verified: '2026-10-27'
+    added: '2026-10-28'
+    example_response: examples/mobiusengine-jobs.jobs.search.post.json
+    domain: jobs
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/search
+    name: "Search job postings with a JSON body (listing fields)"
+    summary: "The same search as GET /v1/jobs, with the filters in a JSON body. Without the description text."
+    input:
+      bodyType: json
+      body:
+        title: {type: "array[string]", required: false, note: "title keywords; up to 10", example: ["data engineer"]}
+        company: {type: "array[string]", required: false, example: ["stripe"]}
+        countries: {type: "array[string]", required: false, example: ["US"]}
+        locations: {type: "array[string]", required: false, example: ["Austin, Texas"]}
+        sources: {type: "array[string]", required: false, example: ["greenhouse"]}
+        work_mode: {type: "array[string]", required: false, example: ["Remote Solely"]}
+        posted_within_days: {type: integer, required: false, example: 7}
+        limit: {type: integer, required: false, default: 20, min: 1, max: 100, example: 1}
+        cursor: {type: string, required: false}
+    test_request: {body: {title: ["software engineer"], countries: ["US"], limit: 1}}
+    cost:
+      type: per_result
+      value: 0.016
+      currency: USD
+      per: 1000
+      unit: record
+      source: rate_card_api
+      source_url: https://jobs-api.arihaan.ai/v1/rates
+      checked: '2026-10-27'
+      confidence: documented
+      note: "$0.000016 per job returned, no description. Do not send include_description on this route: it would be charged at the with-description price."
+    docs_url: https://jobs.arihaan.ai/docs
+
+  - id: mobiusengine-jobs.jobs.search.full
+    verified: '2026-10-27'
+    added: '2026-10-28'
+    example_response: examples/mobiusengine-jobs.jobs.search.full.json
+    domain: jobs
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/jobs/full
+    name: "Search job postings, each with its full description"
+    summary: "The same search as GET /v1/jobs, with every job's full description text and enriched requirement and responsibility summaries."
+    input:
+      queryParams:
+        title: {type: "array[string]", required: false, note: "job title keywords (repeat the parameter); up to 10", example: "data engineer"}
+        company: {type: "array[string]", required: false, example: "stripe"}
+        countries: {type: "array[string]", required: false, example: "US"}
+        locations: {type: "array[string]", required: false, example: "Austin, Texas"}
+        sources: {type: "array[string]", required: false, example: "greenhouse"}
+        posted_within_days: {type: integer, required: false, example: 7}
+        limit: {type: integer, required: false, default: 20, min: 1, max: 100, note: "every job returned is charged the with-description price", example: 1}
+        cursor: {type: string, required: false}
+    test_request: {queryParams: {title: "software engineer", countries: "US", limit: 1}}
+    cost:
+      type: per_result
+      value: 0.45
+      currency: USD
+      per: 1000
+      unit: record
+      source: rate_card_api
+      source_url: https://jobs-api.arihaan.ai/v1/rates
+      checked: '2026-10-27'
+      confidence: documented
+      note: "$0.00045 per job returned with its description text. An empty page and a 4xx cost nothing."
+    docs_url: https://jobs.arihaan.ai/docs
+
+  - id: mobiusengine-jobs.jobs.search.full.post
+    verified: '2026-10-27'
+    added: '2026-10-28'
+    example_response: examples/mobiusengine-jobs.jobs.search.full.post.json
+    domain: jobs
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/search/full
+    name: "Search jobs with a JSON body, full descriptions"
+    summary: "The same search as POST /v1/jobs/search, with every job's full description text."
+    input:
+      bodyType: json
+      body:
+        title: {type: "array[string]", required: false, example: ["data engineer"]}
+        company: {type: "array[string]", required: false, example: ["stripe"]}
+        countries: {type: "array[string]", required: false, example: ["US"]}
+        locations: {type: "array[string]", required: false, example: ["Austin, Texas"]}
+        sources: {type: "array[string]", required: false, example: ["greenhouse"]}
+        posted_within_days: {type: integer, required: false, example: 7}
+        limit: {type: integer, required: false, default: 20, min: 1, max: 100, example: 1}
+        cursor: {type: string, required: false}
+    test_request: {body: {title: ["software engineer"], countries: ["US"], limit: 1}}
+    cost:
+      type: per_result
+      value: 0.45
+      currency: USD
+      per: 1000
+      unit: record
+      source: rate_card_api
+      source_url: https://jobs-api.arihaan.ai/v1/rates
+      checked: '2026-10-27'
+      confidence: documented
+      note: "$0.00045 per job returned with its description text."
+    docs_url: https://jobs.arihaan.ai/docs
+
+  - id: mobiusengine-jobs.jobs.get
+    added: '2026-10-28'
+    domain: jobs
+    capability: companies.jobs.detail
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/jobs/{job_id}
+    name: "Get one job posting in full"
+    summary: "One job with its full description, requirements and responsibilities, by the id a search returned."
+    input:
+      pathParams:
+        job_id:
+          type: string
+          required: true
+          note: "the `id` of a job from a search, shaped vendor:board:id"
+          example: "greenhouse:stripe:1234567"
+    untestable: "needs the id of a posting that is open today; ids come from a search and postings close daily, so no fixed example stays valid"
+    cost:
+      type: per_result
+      value: 0.45
+      currency: USD
+      per: 1000
+      unit: record
+      source: rate_card_api
+      source_url: https://jobs-api.arihaan.ai/v1/rates
+      checked: '2026-10-27'
+      confidence: documented
+      note: "$0.00045 for the job with its description. An unknown id is a 404 and costs nothing."
+    docs_url: https://jobs.arihaan.ai/docs
+
+  - id: mobiusengine-jobs.jobs.batch
+    added: '2026-10-28'
+    domain: jobs
+    capability: companies.jobs.detail
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/batch
+    name: "Get up to 100 job postings in full"
+    summary: "The full postings, in the order given, for up to 100 ids from a search. Ids that are gone come back under `missing` and are not charged."
+    input:
+      bodyType: json
+      body:
+        ids: {type: "array[string]", required: true, note: "1 to 100 job ids from a search", example: ["greenhouse:stripe:1234567"]}
+    untestable: "needs ids of postings that are open today; ids come from a search and postings close daily"
+    cost:
+      type: per_result
+      value: 0.45
+      currency: USD
+      per: 1000
+      unit: record
+      source: rate_card_api
+      source_url: https://jobs-api.arihaan.ai/v1/rates
+      checked: '2026-10-27'
+      confidence: documented
+      note: "$0.00045 per job returned with its description; missing ids are free."
+    docs_url: https://jobs.arihaan.ai/docs
+
+  - id: mobiusengine-jobs.jobs.count
+    verified: '2026-10-27'
+    added: '2026-10-28'
+    example_response: examples/mobiusengine-jobs.jobs.count.json
+    domain: jobs
+    capability: companies.jobs.search.count
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/jobs/count
+    name: "Count job postings that match a search"
+    summary: "How many open job postings match these filters, exactly, over the whole catalog. Use it before a large pull to size it."
+    input:
+      queryParams:
+        title: {type: "array[string]", required: false, example: "data engineer"}
+        company: {type: "array[string]", required: false, example: "stripe"}
+        countries: {type: "array[string]", required: false, example: "US"}
+        locations: {type: "array[string]", required: false, example: "Austin, Texas"}
+        sources: {type: "array[string]", required: false, example: "greenhouse"}
+        work_mode: {type: "array[string]", required: false, example: "Remote Solely"}
+        posted_within_days: {type: integer, required: false, example: 7}
+        has_salary: {type: boolean, required: false}
+    test_request: {queryParams: {title: "software engineer", countries: "US"}}
+    cost:
+      type: per_call
+      value: 0.0036
+      currency: USD
+      source: rate_card_api
+      source_url: https://jobs-api.arihaan.ai/v1/rates
+      checked: '2026-10-27'
+      confidence: documented
+      note: "$0.0036 a call however many jobs match. Counts do not take limit, cursor or include_description."
+    docs_url: https://jobs.arihaan.ai/docs
+
+  - id: mobiusengine-jobs.jobs.count.post
+    verified: '2026-10-27'
+    added: '2026-10-28'
+    example_response: examples/mobiusengine-jobs.jobs.count.post.json
+    domain: jobs
+    capability: companies.jobs.search.count
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/jobs/count
+    name: "Count job postings that match a search, with a JSON body"
+    summary: "The same count as GET /v1/jobs/count, with the filters in a JSON body."
+    input:
+      bodyType: json
+      body:
+        title: {type: "array[string]", required: false, example: ["data engineer"]}
+        company: {type: "array[string]", required: false, example: ["stripe"]}
+        countries: {type: "array[string]", required: false, example: ["US"]}
+        locations: {type: "array[string]", required: false, example: ["Austin, Texas"]}
+        sources: {type: "array[string]", required: false, example: ["greenhouse"]}
+        posted_within_days: {type: integer, required: false, example: 7}
+    test_request: {body: {title: ["software engineer"], countries: ["US"]}}
+    cost:
+      type: per_call
+      value: 0.0036
+      currency: USD
+      source: rate_card_api
+      source_url: https://jobs-api.arihaan.ai/v1/rates
+      checked: '2026-10-27'
+      confidence: documented
+      note: "$0.0036 a call. Do not send group_by=company: it is refused (HTTP 403) on these keys."
+    docs_url: https://jobs.arihaan.ai/docs
+
+  - id: mobiusengine-jobs.account.balance
+    verified: '2026-10-27'
+    added: '2026-10-28'
+    example_response: examples/mobiusengine-jobs.account.balance.json
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/balance
+    name: "Get your prepaid balance"
+    summary: "Your pay-per-job balance in dollars, and whether it is empty (free). This is the registry's health probe."
+    input:
+      note: "no parameters; the key rides in the x-api-key header"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free; a bad or missing key gets HTTP 401"}
+    docs_url: https://jobs.arihaan.ai/docs

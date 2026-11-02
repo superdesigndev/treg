@@ -57,6 +57,11 @@ def _project_allowed(caller: Caller, tool: Tool) -> bool:
     return access is None or tool.project_id is None or tool.project_id in access
 
 
+def usable_tools(caller: Caller, tools) -> list[Tool]:
+    """The team's tools this caller may use: what `/tools` lists and bare `treg` names."""
+    return [t for t in tools if _tool_usable(caller, t)]
+
+
 def _tool_usable(caller: Caller, tool: Tool) -> bool:
     """The two ACL axes compose as AND: the project scope AND the per-tool list must both allow it.
     `project_access=[X]` with `tool_access=NULL` therefore means "every tool in project X, including

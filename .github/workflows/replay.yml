@@ -1,0 +1,62 @@
+name: Replay
+
+# Replays the fixture corpus through the pull request's base and its merge result, and fails on a
+# difference the pull request body does not declare (docs/context/architecture/replay.md).
+# `edited` re-runs it when the body's declarations change.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+concurrency:
+  group: replay-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # the merge commit's first parent is the base it was computed against
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+      - name: Replay the base and the candidate
+        id: replay
+        run: |
+          OUT="$RUNNER_TEMP/replay"
+          BASE="$RUNNER_TEMP/base"
+          mkdir -p "$OUT"
+          git worktree add --detach "$BASE" HEAD^1
+          if [ ! -f "$BASE/src/treg/application/replay/__main__.py" ]; then
+            echo "The base has no replay engine yet, so there is nothing to compare." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "compare=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The corpus comes from the base, so both checkouts replay the same records.
+          (cd "$BASE" && uv sync --locked \
+            && uv run --locked python -m treg.application.replay fixtures "$OUT/corpus.jsonl" \
+            && uv run --locked python -m treg.application.replay run "$OUT/corpus.jsonl" \
+                 "$OUT/baseline.jsonl" --fingerprints "$OUT/baseline.json")
+          uv sync --locked
+          uv run --locked python -m treg.application.replay run "$OUT/corpus.jsonl" \
+            "$OUT/candidate.jsonl" --fingerprints "$OUT/candidate.json"
+          echo "compare=true" >> "$GITHUB_OUTPUT"
+      - name: Fail on an undeclared difference
+        if: steps.replay.outputs.compare == 'true'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          OUT="$RUNNER_TEMP/replay"
+          printf '%s\n' "$PR_BODY" > "$OUT/pr-body.md"
+          status=0
+          uv run --locked python -m treg.application.replay diff \
+            "$OUT/baseline.jsonl" "$OUT/candidate.jsonl" \
+            --base-fingerprints "$OUT/baseline.json" --candidate-fingerprints "$OUT/candidate.json" \
+            --declared-in "$OUT/pr-body.md" --report "$OUT/report.md" || status=$?
+          head -c 900000 "$OUT/report.md" >> "$GITHUB_STEP_SUMMARY"  # the summary holds 1 MiB
+          exit "$status"

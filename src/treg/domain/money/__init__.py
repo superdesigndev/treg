@@ -47,7 +47,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 
-from sqlalchemy import case, delete, func, update
+from sqlalchemy import case, delete, func, literal_column, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -787,9 +787,12 @@ async def spend_since(db: AsyncSession, org_id: int, since: datetime) -> dict:
     """What this org has actually SPENT on platform keys since `since`: total micro-USD and how many
     calls it took. One aggregate over the settle entries — the ledger, not the audit table, is the
     authority on money (audit rows are allowed to be lost; ledger rows are not)."""
+    # Postgres uses the partial settle index only when the predicate is a constant in the
+    # statement; a bound `kind` would let a cached generic plan fall back to the heap walk.
     row = (await db.execute(
         select(func.coalesce(func.sum(LedgerEntry.amount_micro), 0), func.count()).where(
-            LedgerEntry.org_id == org_id, LedgerEntry.kind == "settle", LedgerEntry.created_at >= since)
+            LedgerEntry.org_id == org_id, LedgerEntry.kind == literal_column("'settle'"),
+            LedgerEntry.created_at >= since)
     )).first()
     total, calls = (row[0] or 0, row[1] or 0) if row else (0, 0)
     return {"spend_micro": int(-total), "spend_usd": usd(int(-total)), "billed_calls": int(calls)}

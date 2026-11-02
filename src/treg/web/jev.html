@@ -1327,7 +1327,7 @@ here.
    heads, directors, VPs, founders are decision makers);
    role: choice gtm_ops / engineer / founder_exec / agency_freelancer / vendor / other.
 7. For everyone with fit ≥ 1.5: `treg call treg.people.email.find --data '{"full_name": "...",
-   "company_name": "..."}'`. Routed; misses are free; cap with X-Treg-Max-Cost-Usd.
+   "company_name": "..."}'`. Routed; misses are free; cap with X-Treg-Route-Max-Cost.
 
 <b>Page</b>
 8. Funnel (posts → on topic → people → decision makers → emails), the posts as LinkedIn-style
@@ -1373,7 +1373,7 @@ my go-ahead, and build for MY answers rather than the examples written here.
 <b>Per signup (email + usage: calls, refused calls, spend, onboarded, referrer, similar signups)</b>
 3. `treg call millionverifier.people.email.verify --query email=&lt;email&gt;` → result (ok / catch_all /
    invalid / disposable / unknown), free (webmail), role (info@, support@). Disposable or invalid: stop.
-4. `treg call treg.people.enrich --data '{"email": "&lt;email&gt;"}' --header 'X-Treg-Max-Cost-Usd: 0.03'`
+4. `treg call treg.people.enrich --data '{"email": "&lt;email&gt;"}' --header 'X-Treg-Route-Max-Cost: 0.03'`
    → name, title, company, linkedin. Routed across providers cheapest-first, billed only on a hit.
    Discard a company whose domain does not match a corporate email; note it for jev.
 5. For a corporate domain (or the company found in 4): `treg call thecompaniesapi.companies.enrich
@@ -1529,7 +1529,7 @@ wait for my go-ahead, and build for MY answers rather than the examples written 
 3. treg fetches; jev decides. Put the raw facts jev needs into one JSON state per item and ask all
    the questions in one call. Keep states under ~30k tokens.
 4. Prefer routed endpoints (`treg.people.enrich`, `treg.people.email.find`, `treg.x.search.posts`):
-   they try providers cheapest-first and bill only on a hit. Cap spend with X-Treg-Max-Cost-Usd.
+   they try providers cheapest-first and bill only on a hit. Cap spend with X-Treg-Route-Max-Cost.
 5. Log every item with its jev probabilities and the treg charge, and build a small page to browse
    the run with the bill at the top.
 
@@ -2108,7 +2108,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !drawer.hi
     $('xb-irr').onclick = () => { irrOpen = !irrOpen; $('xb-board').classList.toggle('irr-open', irrOpen); counts(subset); };
     $('xb-board').classList.toggle('irr-open', irrOpen);
     const c = RUN.calls || {}, judged = subset ? seen.length : (RUN.posts || []).length;
-    $('xb-steps').innerHTML = [[`search × ${c.search||0}`, 'treg', '', `${RUN.posts_found ?? judged} posts under 24h`, '~$0.001 each'], [`profiles × ${c.profile||0}`, 'treg', '', 'followers, bio, verified', 'free on a routed hit'], [`reply samples × ${c.replies||0}`, 'treg', '', 'first 20 replies per post', '~$0.0006 each'], [`judge × ${judged}`, 'jev', 'jev', '5 questions per post', '~$0.0001 each']]
+    $('xb-steps').innerHTML = [[`search × ${c.search||0}`, 'treg', '', `${RUN.posts_found ?? judged} posts under 24h`, '~$0.001 each'], [`profiles × ${c.profile||0}`, 'treg', '', 'followers, bio, verified', '~$0.0002 each'], [`reply samples × ${c.replies||0}`, 'treg', '', 'first 20 replies per post', '~$0.0006 each'], [`judge × ${judged}`, 'jev', 'jev', '5 questions per post', '~$0.0001 each']]
       .map(([a, w, cls, d, pr]) => stepRow(a, w, cls, d, pr)).join('');
     const cost = RUN.costs || {};
     $('xb-spend').innerHTML = `<div class="jev"><small>jev · list price</small>${fmt$(subset ? seen.reduce((a,p)=>a+(p.jev_cost||0),0) : (cost.jev||0))}</div><div><small>treg spend</small>${fmt$(cost.treg||0)}</div>`;

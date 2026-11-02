@@ -7,7 +7,7 @@ becomes N× weaker and an OTP written on one worker is invisible to another. Mov
 persists and is shared.
 
 Two shapes live here:
-  * **key/value with TTL** (`kv_put`/`kv_get`/`kv_pop`) — the OTP code + its attempt counter.
+  * **key/value with TTL** (`kv_put`/`kv_get`/`kv_pop`/`kv_take`) — the OTP code + its attempt counter.
   * **sliding-window rate limit** (`rate_check`) — the OTP-start + sandbox throttles; each key's row
     holds a list of recent hit timestamps (wall-clock epoch seconds, so they're comparable across
     processes — the old code used `time.monotonic()`, which is per-process and can't be shared).
@@ -90,6 +90,18 @@ async def kv_pop(db: AsyncSession, ns: str, k: str) -> dict | None:
     v, exp = row.v, row.expires_at
     await db.delete(row)
     return v if exp >= _utcnow_naive() else None
+
+
+async def kv_take(db: AsyncSession, ns: str, k: str) -> dict | None:
+    """Delete (ns, k) in one statement and return its value if it was still live. Of concurrent
+    callers exactly one gets the value, so it suits a single-use code."""
+    row = (await db.execute(
+        delete(Ephemeral).where(Ephemeral.ns == ns, Ephemeral.k == k)
+        .returning(Ephemeral.v, Ephemeral.expires_at)
+    )).first()
+    if row is None or row.expires_at < _utcnow_naive():
+        return None
+    return row.v
 
 
 async def rate_check(

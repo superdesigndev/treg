@@ -688,9 +688,9 @@ AGENTS["claude-code"] = {
         "keys at the provider's rate with $0.000 markup, and your own keys are never metered."),
     "install_steps": [
         "In Claude Code, send this in the chat: <code>set up treg &mdash; https://treg.to/llms.txt</code>",
-        "It reads that page and registers treg.to as an MCP server for you. Prefer to do it "
-        "yourself? <code>curl -fsSL https://treg.to/install.sh | sh</code> then "
-        "<code>treg login</code> and <code>treg mcp install</code>.",
+        "It reads that page, installs the treg CLI and its skill, and opens the browser for you to "
+        "sign in. Prefer to do it yourself? <code>curl -fsSL https://treg.to/install.sh | sh</code> "
+        "then <code>treg login</code>.",
         "Your first team starts with $1.00 of free calls. No card, no subscription, no seats.",
         "Ask for what you want done, or run <code>treg catalog get &lt;endpoint-id&gt;</code> for "
         "the price and parameters, then <code>treg call &lt;endpoint-id&gt;</code>.",

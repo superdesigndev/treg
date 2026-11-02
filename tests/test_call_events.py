@@ -232,6 +232,7 @@ def test_one_spelling_per_subject():
     assert (ev.normalize("linkedin_url", "https://www.linkedin.com/in/APerson/")
             == ev.normalize("linkedin_handle", "aperson") == "aperson")
     assert ev.normalize("full_name", "  A   Person ") == "a person"
+    assert ev.normalize("phone", "+44 7700 900123") == ev.normalize("phone", "0044 7700-900123") == "447700900123"
     assert ev.domain_class("gmail.com") == "webmail"
     assert ev.domain_class("cs.mit.edu") == "edu" and ev.domain_class("ox.ac.uk") == "edu"
     assert ev.domain_class("nasa.gov") == "gov" and ev.domain_class("sample.example") == "company"
@@ -345,6 +346,24 @@ def test_company_segments_land_as_values_and_the_domain_joins_the_find():
     # a person's place as written; the person's name and title never leave
     assert person["answer_values"] == {"location": "Berlin, Germany"}
     assert person["answer_keys"] == {"company_domain": find["input_keys"]["domain"]}
+
+
+def test_a_found_phone_joins_its_live_check_in_one_spelling():
+    cat = catalog_store.load()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        found = ev.answer_columns(cat.contracts["people.phone.find"],
+                                  {"phone": "+1 (617) 555-0142", "line_type": "mobile", "country_code": "US"})
+        other = ev.answer_columns(cat.contracts["people.phone.find"], {"phone": "0016175550142"})
+        national = ev.answer_columns(cat.contracts["people.phone.find"], {"phone": "(617) 555-0142"})
+        live, _ = ev.input_columns(cat.contracts["people.phone.live"], {"phone": "+16175550142"})
+    get_settings.cache_clear()
+    assert found["answer_keys"]["phone"] == other["answer_keys"]["phone"] == live["input_keys"]["phone"]
+    assert found["answer_values"] == {"line_type": "mobile", "country_code": "US"}
+    # without a country code the digits could be another country's number, so no key
+    assert national["answer_keys"] is None
+    assert ev.normalize("phone", "6175550142") is None
 
 
 def test_a_long_value_is_capped():

@@ -205,6 +205,7 @@ BACKGROUND_SITES = {
     "archive.py:_touch_write": "archive._store/_touch",
     "archive.py:_ignored_matches": "archive._store/_touch",
     "archive.py:_read_change_body": "archive._store/_touch",
+    "archive.py:flush_stats": "archive._store/_touch",
     "archive_bodies.py:_db_fallback": "archive._store/_touch",
     "archive.py:prune_once": "archive.prune_worker",
     "archive.py:refresh_once": "archive.refresh_worker",

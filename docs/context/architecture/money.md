@@ -494,7 +494,7 @@ Pending `AsyncTaskRecord` holds are excluded from this short request reaper. The
 ## Deferred asynchronous settlement
 
 `domain/money/settlement.py` is the single data-derived calculation seam. Reserve time freezes a basis
-with `when: response|terminal` and `amount.kind: table|usage|observed`; `settle(basis, evidence)` returns
+with `when: response|terminal` and `amount.kind: table|usage|observed|terminal_presence`; `settle(basis, evidence)` returns
 raw integer micro-USD and never writes the ledger. `table_amount_micro` bounds a `times` multiplier by
 the field's declared `min`/`max` (finite and always positive, whatever minimum is declared): an out-of-range value
 matches no row and prices at the fallback, so a caller can neither reserve zero nor bill past the
@@ -506,7 +506,13 @@ finished answer is charged for each one, a finished answer with no result includ
 that bills on submission has the reported charge frozen into the basis
 (`submission_charge_micro`), and an `observed` settle uses it when the terminal answer reports
 none, `billed_failure` included: the task bills what the provider charged, not the estimate. Async
-`per_success` rows without a table keep settling on the submission response.
+`per_success` rows without a table keep settling on the submission response unless they declare
+`settle: terminal_presence`. That bounded mode freezes a field path in either a one-item result
+row or a root result object, holds one result's price, and settles zero when that field is absent
+or empty. An
+optional `presence.request_field` marks a supplied billable input at submission, so it settles the
+hold even when the terminal result omits that field. A missing
+or malformed terminal result settles the reserve; a confirmed terminal failure releases the hold.
 
 A submission whose own status is already a success word, on a descriptor with
 `terminal_on_submission`, is not deferred: it settles on the response through the ordinary path.
@@ -534,7 +540,9 @@ billable work without manufacturing a successful result.
 
 Routed tools and Enrich Arena may wait for an async child through the shared async bridge. Every
 poll still uses the ordinary call path, so BYOK remains unmetered and platform polls enforce task
-ownership. Foreground polling and the worker may observe the same terminal response, but the task
+ownership. Server-created polls continue the admitted submission without another quota check or
+increment; direct caller-initiated polls remain separate calls. Quota or other poll failures after
+a task ID exists preserve that handle and the pending reservation. Foreground polling and the worker may observe the same terminal response, but the task
 row lock lets only one close the original hold. A foreground timeout or inconclusive poll response
 returns a pending result with the reservation still open; the worker later settles or releases it.
 Terminal UI and routed results read the task's settled amount, while pending results expose only the
@@ -629,10 +637,7 @@ it. The one exception is the off-session auto-top-up charge, where the server it
 PaymentIntent's confirmed status - nothing attacker-supplied is involved - so it credits immediately
 and the webhook redelivery lands as a no-op.
 
-The webhook lives at `POST /billing/stripe/webhook`, **deliberately separate from the landing demo's
-`/stripe/webhook`** and signed by a different secret: they are different Stripe accounts' events with
-different consequences, and sharing a path would let one secret authorize the other's effects. It
-**404s when unconfigured**, so a deploy without the secret exposes no unauthenticated POST surface.
+The webhook lives at `POST /billing/stripe/webhook`. It **404s when unconfigured**, so a deploy without the secret exposes no unauthenticated POST surface.
 `verify_event` uses the SDK's `verify_header` (timestamp tolerance = replay protection, and it handles
 the several-signatures case during rotation) rather than `construct_event`, so a genuine event of a
 type this SDK version predates is accepted and then ignored, not rejected as forged. A handler failure
@@ -930,7 +935,10 @@ on it (at least one team), and a run that dies holds the lease only until it exp
 The metered path is `_platform_offer` → spend caps → `ledger.reserve_in_transaction` →
 application commit → relay → settle or release. Settlement uses the frozen basis and provider
 evidence through `_observed_cost_micro`; it falls back to the estimate when evidence is unavailable.
-Provider-specific calculation stays outside the faithful relay.
+Provider-specific calculation stays outside the faithful relay. Two pure functions hold the
+arithmetic: `resolve.price_call` (estimate, units, frozen basis) and `settle.decide_settle` (charge
+or release, and how much, before any ledger write); the replay engine calls the same two
+(architecture/replay.md).
 
 | Evidence | Settlement behavior |
 |---|---|
@@ -995,6 +1003,11 @@ export really does cost 5,000 keywords. Before this the 20-row default billed a 
 2026-08-12, refunded by hand — and the same number was the catalog's `~$/call` display, so the caller
 saw the wrong price before the call too. On these providers nothing reports a cost after the fact,
 so the reserve IS the charge: a wrong entity count is a wrong bill, not a hold the settle trues up.
+That inference reads the unit name, and a unit name cannot tell "per keyword asked" from "per
+keyword returned": a row billed per returned row in an entity unit held one entity and settled at
+most that. A row that declares `cost.reserve` (architecture/catalog.md) skips the inference and both
+page bounds; its counted settle (`cost.settle.count`) is capped at the hold like every row count, so the
+caller's ceiling and the balance check at reserve still bound the charge.
 
 Fiber natural-language search (`fiber-ai.people.search.natural_language`) adds a fee the page size
 does not name. `_marketplace_pricing` adds two credits, converted with `_usd_to_micro` at the
@@ -1115,15 +1128,17 @@ still pay the provider twice.
   Neither a global nor an org-wide key safely separates independent callers.
 - A short application transaction claims a pending row before relay. The unique constraint
   arbitrates concurrent claims; the loser gets 409. Reusing a label with another fingerprint is 422.
-- Metered successes retain status, body, charge and call id for 24 hours. Uncharged failures
-  (every routed failure since routed children defer their holds to the parent, catalog.md), BYOK
+- Metered successes retain status, body, charge and call id for 24 hours. A catalog endpoint with
+  `response_retention: forbidden` instead keeps a body-free 410 receipt with the call id and charge,
+  including for BYOK, so the same key cannot repeat the provider call. Uncharged failures (every
+  routed failure since routed children defer their holds to the parent, catalog.md), other BYOK
   calls and owned free polls release the label immediately, so a retry tries again.
 - Replays return `X-Treg-Idempotent-Replay: true`, `X-Treg-Cost-Micro: 0` (nothing new was charged,
   so a client summing the header stays right) and the first call's figure in
   `X-Treg-Original-Cost-Micro`; MCP returns `replayed: true`. An async submission replay echoes its
   original reservation there.
 - Refusal and cancellation cleanup return an acquired label. Expired entries are swept lazily,
-  scoped to the caller, at claim time.
+  scoped to the caller, at claim time, skipping rows a concurrent request has locked.
 
 A reserve admission 429 never reaches `_store_idempotent`; the HTTP exception handler's
 `_stamp_call_exit` releases its pending claim, including calls from either MCP surface. The same

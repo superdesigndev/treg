@@ -616,7 +616,7 @@ endpoints:
       bodyType: json
       body:
         dsl: {type: object, required: true, note: "{filters,limit,offset,sort?}; filter objects use column paths and {operation,value,quantifier?}", example: {filters: [{country: {operation: "eq", value: "United States"}}, {headline: {operation: "fts", value: "software engineer"}}], limit: 1, offset: 0}}
-      note: "Effective page size is at most 100 items. A `dsl.limit` above 100 is accepted but silently capped, and the response does not echo the effective page size. Page with `offset` stepped by `len(items)` (or at most 100), not by a requested limit above 100. Offset is at most 10,000."
+      note: "`fts` matches ANY word, unranked: AND words with one filter each; `textcontains` matches a phrase. `dsl.limit` is silently capped at 100; step `offset` (max 10,000) by `len(items)`."
     test_request:
       body:
         dsl: {filters: [{headline: {operation: "fts", value: "software engineer"}}], limit: 10, offset: 0, sort: []}

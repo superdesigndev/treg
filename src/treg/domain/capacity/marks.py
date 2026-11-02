@@ -33,7 +33,7 @@ from ... import ratestore
 from ...infra.db import session_maker
 from ...timeutil import utcnow_naive
 from .policy import LatestState
-from .sweep import STATE_NS, STATE_TTL_S
+from .sweep import STATE_NS, STATE_TTL_S, state_key
 
 LOCK_NS = "capacity:lock"
 LOCK_TTL_S = 24 * 3600
@@ -174,7 +174,7 @@ async def clear_sweep_state(provider: str, *, probe_id: str) -> bool:
     balance again. A reading published after the probe was admitted is left alone."""
     try:
         async with session_maker() as db:
-            raw = await ratestore.kv_get(db, STATE_NS, provider)
+            raw = await ratestore.kv_get(db, STATE_NS, state_key(provider))
             if raw is None:
                 return False
             state = LatestState.from_json(raw)
@@ -184,7 +184,8 @@ async def clear_sweep_state(provider: str, *, probe_id: str) -> bool:
             state.exhausted_until = None
             state.health = "unknown"
             state.note = f"a probe's 2xx lifted this exhausted reading; {state.note}"[:200]
-            await ratestore.kv_put(db, STATE_NS, provider, state.to_json(), ttl_s=STATE_TTL_S)
+            await ratestore.kv_put(db, STATE_NS, state_key(provider), state.to_json(),
+                                    ttl_s=STATE_TTL_S)
             await db.commit()
     except Exception:
         log.warning("capacity state %s not cleared", provider, exc_info=True)

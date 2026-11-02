@@ -31,6 +31,7 @@ sources:
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
   - src/treg/alembic/versions/0054_callrecord_org_id_id.py
   - src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py
+  - src/treg/alembic/versions/0091_remove_prefix_covered_indexes.py
   - src/treg/alembic/versions/0034_managed_api_keys.py
   - src/treg/alembic/versions/0035_default_key_generation.py
   - src/treg/alembic/versions/0036_activity_key_indexes.py
@@ -66,6 +67,8 @@ sources:
   - src/treg/alembic/versions/0085_enterprise_sso_blocks.py
   - src/treg/alembic/versions/0087_rankings_snapshot.py
   - src/treg/alembic/versions/0088_call_usage_rollup.py
+  - src/treg/alembic/versions/0089_ledgerentry_settle_spend_index.py
+  - src/treg/alembic/versions/0090_ledgerentry_topup_index.py
   - src/treg/application/call_usage_rollup.py
   - src/treg/application/call_usage.py
   - tests/test_call_usage_rollup.py
@@ -219,9 +222,11 @@ An application rollback leaves the table in place; a schema downgrade deletes it
   against that team's call records or ledger. Revision `0025`; `domain.feedback` owns inserts;
   `application.feedback` commits. Team deletion removes these rows. See [feedback](feedback.md).
 - **`Media`** - a reference file a member hosted for a vendor to fetch (`treg host`): opaque
-  token, org, media type, size, the bytes, created and expiry. Revision `0037`;
-  `application.media` is the only writer and sweeps expired rows on each upload. Team deletion
-  removes these rows. See [media](media.md).
+  token, org, media type, size, the bytes (`body`) or the object-store key that holds them
+  (`object_key`), created and expiry. Revisions `0037`, `0092`; `application.media` is the only
+  writer and sweeps a batch of expired rows on each upload (their objects go by a background
+  deleter and the bucket lifecycle rule). Team deletion removes these
+  rows; their objects then name nothing and leave by the bucket's lifecycle rule. See [media](media.md).
 - **`FeedbackHandling` / `FeedbackHandlingEvent`** - internal current processing state and
   versioned history (revision 0030), owned by this schema and written only by the private admin
   service. Both cascade from the original report. See [feedback](feedback.md).
@@ -385,7 +390,17 @@ uses this metadata, never the encrypted token's shape.
   `(org_id, id)`, and local runs, a sliver of a team's rows, read a partial
   `(org_id, created_at, id) WHERE kind = 'local_run'` (revision 0054); without them the first
   walked the primary key testing `org_id` and the second read the team's whole history. The
-  Activity feed's calls page by time on `(org_id, created_at)`.
+  Activity feed's calls page by time on `(org_id, created_at)`. A team's spend over a window
+  (`money.spend_since`, the Usage page and `/usage/by-tag` totals) reads a partial
+  `(org_id, created_at) INCLUDE (amount_micro) WHERE kind = 'settle'` on the ledger (revision 0089):
+  over `(org_id, created_at)` alone every row in the window cost a heap fetch, one random read per
+  row on a cold cache. The query states `'settle'` as a constant, since Postgres matches a partial
+  index only against one. A ledger too large to index within the revision's statement timeout gets
+  the same index built `CONCURRENTLY` out of band first; the revision then skips a valid one.
+  A team's top-ups (the auto top-up cap's month, the next default amount, the payments page's
+  auto flags, the invoice recovery boundary) read a partial `(org_id, created_at) WHERE kind =
+  'topup'` (revision 0090), with `'topup'` likewise a constant; before it Postgres intersected the
+  `org_id` and `kind` bitmaps and read every row of the team to find a handful.
 
   **Spend per API key is the ledger's, folded the same way.** Revision 0070 adds `ApiKeySpendDay`
   (team + API key + tool + UTC day -> `spent_micro`, `charges`; primary key
@@ -414,8 +429,9 @@ uses this metadata, never the encrypted token's shape.
   found over `(org_id, id)` and is a few minutes of calls while the cron runs. With no cursor row
   (the worker never ran, e.g. a small self-hosted registry) the reports still aggregate
   `callrecord` live; with a cursor that has not caught up they say usage is being prepared, and a
-  window older than `history_from` starts there and says so. `RunRecord` is still read live: it no
-  longer grows. Team deletion clears a team's rows.
+  window older than `history_from` starts there and says so. The members and agents lists' `used_today`
+  reads today's rows the same way once the rollup has caught up, and `callrecord` live before that;
+  it never waits. `RunRecord` is still read live: it no longer grows. Team deletion clears a team's rows.
 
   **`ix_callrecord_call_ref`, and why a database could lack it.** The model and revision 0001
   declare it, so every database Alembic created has it. A database that predates Alembic got
@@ -495,7 +511,10 @@ uses this metadata, never the encrypted token's shape.
   `_store_idempotent` keeps a terminal 410 `idempotency_response_too_large` (`call_id`, charge,
   `size_bytes`) instead. The caller already received the full answer; a retry never runs again.
   The per-call expired-label sweep reads `(membership_id, expires_at)` (Alembic `0053`), so its
-  cost is the expired rows, not every label the caller holds.
+  cost is the expired rows, not every label the caller holds. It deletes at most
+  `IDEMPOTENCY_SWEEP_BATCH` rows it can lock (`FOR UPDATE SKIP LOCKED`), so a member's concurrent
+  batch never queues on one another's expired rows; a skipped row goes with a later call. The label
+  being reused is freed by the replay lookup's own delete, not by the sweep.
 - **`ToolRequest`** - a "the catalog doesn't have X" report (`POST /tool-requests`, open + per-IP
   rate-limited): `capability` (the headline, ≤200 chars), `query` (the search that came up empty -
   auto-filled by agents, the dedup/priority signal), `note`, `contact`, `source` (`web` | `cli` |
@@ -671,6 +690,16 @@ PostgreSQL drops each index concurrently in an autocommit block, with bounded ti
 afterward. A partial attempt can be retried. Downgrade rebuilds the ordinary indexes concurrently,
 repairing invalid build debris, and needs space for those indexes. No rows or foreign keys change.
 
+Revision `0091` applies the same discipline to single-column indexes that only repeat the leading
+column of a surviving composite index or unique constraint on the same table: `LedgerEntry.org_id`
+(served by `(org_id, created_at)`), `CallRecord.org_id` (`(org_id, created_at)`, `(org_id, id)`),
+`TagSpend.org_id` (`(org_id, dim, val, created_at)`), `ArchiveSnapshot.key_id`
+(`uq_archive_snapshot_version`) and `ArchiveKeyOrg.org_id` (`uq_archive_key_org`). Model metadata no
+longer declares them; the foreign keys stay. Its preflight requires each survivor to be a valid,
+unconditional btree whose first key column is the dropped one. Every drop is `IF EXISTS`, so a
+database whose indexes were dropped out of band with `DROP INDEX CONCURRENTLY IF EXISTS` before the
+deploy only records the revision.
+
 ## Audit writer (`audit.py`)
 
 `record_call` and `record_run` schedule best-effort writes through `background_session_maker`.
@@ -712,6 +741,11 @@ gated on `fresh`). Drained in the lifespan `finally` **last** - after `audit.dra
 strands those events behind a cancelled flusher. The engine adds Postgres pool
 hygiene (`pool_pre_ping`/`pool_recycle`/sizing) for non-SQLite URLs, and `verify_db` refuses to start with
 no `TREG_SECRET_KEY` on a real DB (an ephemeral key would lose every stored secret on restart).
+
+`capture_quota_fail_open` uses the same flusher and shutdown drain for a bounded per-process
+60-second summary, rather than queuing one event per call. Its counts and capped target examples
+describe unconfirmed admissions, not a durable restriction audit; see
+[org-endpoint quotas](org-endpoint-quota.md#store-contract) for the event contract.
 
 `infra.money_timing.observe_money` measures the ordinary call's `reserve`, `close` and `deferred`
 application scopes with local monotonic timers. These cover optional money admission,

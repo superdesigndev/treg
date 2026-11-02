@@ -282,9 +282,9 @@ endpoints:
     example_response: examples/exa.web.contents.get.json
     cost:
       type: per_result
-      value: 1
+      value: 0.001
       currency: USD
-      per: 1000
+      per: 1
       unit: page
       source: observed
       source_url: https://exa.ai/pricing

@@ -1,0 +1,23 @@
+{
+  "result": "found",
+  "input": "microsoft.com",
+  "linkedin_url": "https://www.linkedin.com/company/microsoft",
+  "name": "Microsoft",
+  "website": "https://news.microsoft.com/",
+  "domain": "microsoft.com",
+  "industry": "Software Development",
+  "company_size": {
+    "label": "10,001+ employees",
+    "min": 10001,
+    "max": null
+  },
+  "employee_count": 231135,
+  "founded_year": null,
+  "headquarters": {
+    "text": "Redmond, Washington",
+    "city": "Redmond",
+    "region": "Washington",
+    "country": "US"
+  },
+  "credits_consumed": 1.0
+}

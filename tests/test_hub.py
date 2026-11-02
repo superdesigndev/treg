@@ -1044,7 +1044,8 @@ async def test_only_an_approved_tool_is_in_search(clients: AsyncClient, hub_on, 
     row = [r for r in body["results"] if r["id"] == tool_id][0]
     assert row["kind"] == "hub" and row["provider"] and row["price_line"].startswith("seller ")
     assert row["cost"]["usd"] == 0.011 and row["price_range"] == "$0.011/run (from the maker's own tests)" and "score" in row and "script" not in row and "uses" not in row
-    assert body["hints"][0] == f"treg catalog get {tool_id}   # params, cost and an example response" or tool_id in json.dumps(body["hints"])
+    exact = (await clients.get("/catalog/search", params={"q": tool_id})).json()
+    assert exact["hints"][0] == f"treg catalog get {tool_id}   # params, cost and an example response"
     assert (await clients.delete(f"/hub/tools/{tool_id}")).status_code == 200      # retired never appears
     assert tool_id not in await _search_ids(clients)
 

@@ -368,6 +368,32 @@ async def test_inline_success_waits_for_usage_and_then_closes_original_hold(
         assert await db.get(Hold, call_id) is None
 
 
+@pytest.mark.parametrize("emails,charged_micro", [([], 0), ([{"email": "a@example.com"}], 80_000)])
+@pytest.mark.parametrize("root_field", [False, True])
+async def test_terminal_presence_closes_async_hold_at_the_result(
+    clients: AsyncClient, monkeypatch, replicate_platform, emails, charged_micro, root_field,
+):
+    submitted = await _submit(clients, monkeypatch, {"id": "presence-result"})
+    call_id = submitted.headers["X-Treg-Call-Id"]
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        row.settlement_basis = settlement.derive_basis(
+            {"type": "per_success", "settle": "terminal_presence",
+             "presence": {"field": "email"} if root_field else {"row": "data.0", "field": "email"}},
+            request={}, input_schema={}, unit_micro=1_000_000,
+            terminal=True, response_estimate_micro=80_000)
+        await db.commit()
+    async def live(*args, **kwargs):
+        return _response(200, {"status": "succeeded", "output": ["https://example.invalid/result.png"],
+                               "data": [{"email": emails}], **({"email": emails} if root_field else {})})
+    monkeypatch.setattr(call_service, "relay", live)
+    assert (await clients.get("/call/replicate.predictions.get?id=presence-result")).status_code == 200
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        assert row.status == "settled" and row.settled_micro == charged_micro
+        assert await db.get(Hold, call_id) is None
+
+
 async def test_inline_settlement_failure_preserves_response_and_cron_recovers(
     clients: AsyncClient, monkeypatch, replicate_platform,
 ):
@@ -1194,6 +1220,34 @@ def test_basis_derivation_and_settlement_table_vs_usage():
     assert table["amount"]["kind"] == "table"
     assert settlement.settle(table, {"terminal": {}}) == 10_000
 
+    presence = settlement.derive_basis(
+        {"type": "per_success", "settle": "terminal_presence",
+         "presence": {"row": "data.0", "field": "email"}},
+        request={}, input_schema={}, unit_micro=1_000_000,
+        terminal=True, response_estimate_micro=80_000)
+    assert presence["when"] == "terminal"
+    assert presence["reserve_micro"] == 80_000
+    assert settlement.settle(presence, {"terminal": {"data": [{"email": [{"email": "a@example.com"}]}]}}) == 80_000
+    assert settlement.settle(presence, {"terminal": {"data": [{"email": []}]}}) == 0
+    assert settlement.settle(presence, {"terminal": {"data": [{"company": "Example"}]}}) == 0
+    assert settlement.settle(presence, {"terminal": {"data": []}}) == 80_000
+
+    root_presence = settlement.derive_basis(
+        {"type": "per_success", "settle": "terminal_presence",
+         "presence": {"field": "number"}},
+        request={}, input_schema={}, unit_micro=1_000_000,
+        terminal=True, response_estimate_micro=680_000)
+    assert settlement.settle(root_presence, {"terminal": {"qualification": "found",
+                                                        "number": "+15555550123"}}) == 680_000
+    assert settlement.settle(root_presence, {"terminal": {"qualification": "not_found"}}) == 0
+
+    supplied = settlement.derive_basis(
+        {"type": "per_success", "settle": "terminal_presence",
+         "presence": {"row": "data.0", "field": "email", "request_field": "data.0.email"}},
+        request={"body": {"data": [{"email": "invalid@example.com"}]}}, input_schema={},
+        unit_micro=1_000_000, terminal=True, response_estimate_micro=80_000)
+    assert settlement.settle(supplied, {"terminal": {"data": [{"email": []}]}}) == 80_000
+
     usage_cost = {"settle": "usage", "usage": {"path": "usage.cost", "unit": "usd"},
                   "fallback": {"value": 1.0}}
     usage = settlement.derive_basis(
@@ -1732,3 +1786,54 @@ def test_a_terminal_on_submission_row_archives_only_finished_answers():
     assert not call_service._only_submits(instant)
     assert call_service._unfinished_submission(instant, b'{"status": "queued"}')
     assert not call_service._unfinished_submission(instant, b'{"status": "done"}')
+
+
+def _upstream_header(relayed: list, name: bytes) -> list[str]:
+    return [v.decode() for req in relayed for k, v in req.raw_headers if k.lower() == name]
+
+
+async def test_shared_key_calls_carry_an_opaque_per_team_client_code(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    """A provider that names a `client_header` gets treg's code for the team on treg's key: stable per
+    team, different per team and per provider, never the team's id, and replacing any caller value.
+    A team's own key, and an unset secret, add nothing."""
+    from dataclasses import replace
+
+    from treg.domain.catalog import store as catalog_store
+    from treg.infra.upstream.relay import shared_client_code
+
+    cat = catalog_store.load()
+    monkeypatch.setattr(catalog_store, "load",
+                        lambda: replace(cat, client_headers={**cat.client_headers, "replicate": "x-client-id"}))
+    relayed = []
+
+    async def fake_relay(request, *args, **kwargs):
+        relayed.append(request)
+        return _response(201, {"id": f"prediction-{len(relayed)}", "status": "starting"})
+
+    monkeypatch.setattr(call_service, "relay", fake_relay)
+    body = {"input": {"prompt": "a"}}
+    forged = {"X-Client-Id": "someone-else"}
+
+    assert (await clients.post(f"/call/{EP}", json=body, headers=forged)).status_code == 201
+    assert _upstream_header(relayed, b"x-client-id") == ["someone-else"], "no secret set: header untouched"
+
+    monkeypatch.setenv("TREG_CLIENT_ID_SECRET", "test-secret")
+    get_settings.cache_clear()
+    assert (await clients.post(f"/call/{EP}", json=body, headers=forged)).status_code == 201
+    assert (await clients.post(f"/call/{EP}", json=body)).status_code == 201
+    other = await verified_signup(clients, json={"email": "client-code-stranger@example.com"})
+    assert (await clients.post(f"/call/{EP}", json=body,
+                               headers={"X-Treg-Token": other.json()["token"]})).status_code == 201
+    first, again, stranger = _upstream_header(relayed, b"x-client-id")[1:]
+    assert first == again, "one team keeps one code"
+    assert first != stranger, "two teams share a code"
+    assert first.startswith("t_") and len(first) == 26 and first[2:].isalnum()
+    assert first == shared_client_code("test-secret", "replicate", 1)
+    assert first != shared_client_code("test-secret", "crawl4ai", 1), "the code differs per provider"
+    assert "1" != first and "someone-else" not in _upstream_header(relayed, b"x-client-id")[1:]
+
+    await clients.post("/secrets", json={"name": "replicate", "value": "own-token"})
+    assert (await clients.post(f"/call/{EP}", json=body)).status_code == 201
+    assert _upstream_header(relayed[-1:], b"x-client-id") == [], "a team's own key carries no code"

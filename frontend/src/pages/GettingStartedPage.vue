@@ -2,11 +2,11 @@
 import { useDashboard } from '../state/context'
 import AgentCover from '../components/AgentCover.vue'
 import { exampleBanners, exampleIcons } from './getting-started-art'
-import { claudeConnectorLink } from '../agent-setup/data'
+import { claudeConnectorLink, installsInHost } from '../agent-setup/data'
 export default {
   components: { AgentCover },
   setup: useDashboard,
-  computed: { exampleBanners: () => exampleBanners, exampleIcons: () => exampleIcons, connectorLink: () => claudeConnectorLink(location.origin) },
+  computed: { exampleBanners: () => exampleBanners, exampleIcons: () => exampleIcons, connectorLink: () => claudeConnectorLink(location.origin), agentInHost() { return installsInHost(this.welcomeAgent) } },
   mounted(){
     this.loadPlatforms()  // the catalog size in the copy
   },
@@ -40,16 +40,16 @@ export default {
               </div>
               <div class="start-bd rd-setup-body">
                 <p class="rd-agent-context">Setting up treg for <b>{{welcomeAgent.name}}</b></p>
-                <section v-if="welcomeAgent.connector" class="rd-setup-panel">
-                  <p class="rd-panel-label">Add treg as a connector</p>
-                  <p class="rd-token-help">Open {{welcomeAgent.name}} and add treg. You sign in there, so you need no setup line and no key.</p>
-                  <a class="btn" :href="connectorLink" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;margin:0 0 12px 16px;text-decoration:none" @click="track('onboarding_connector_add_clicked',{agent:welcome.agent,from:'start'})"><img :src="agentIcon(welcomeAgent.icon)" alt="" style="width:16px;height:16px">Add connector in {{welcomeAgent.name}} ↗</a>
+                <section v-if="agentInHost" class="rd-setup-panel">
+                  <p class="rd-panel-label">{{welcomeAgent.connector ? 'Add treg as a connector' : 'Install the treg plugin'}}</p>
+                  <p class="rd-token-help">Open {{welcomeAgent.name}} and add treg, then sign in when it asks.{{welcomeAgent.setupFallback ? '' : ' You need no setup line and no key.'}}</p>
+                  <a v-if="welcomeAgent.connector" class="btn" :href="connectorLink" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;margin:0 0 12px 16px;text-decoration:none" @click="track('onboarding_connector_add_clicked',{agent:welcome.agent,from:'start'})"><img :src="agentIcon(welcomeAgent.icon)" alt="" style="width:16px;height:16px">Add connector in {{welcomeAgent.name}} ↗</a>
+                  <a v-else class="btn" :href="welcomeAgent.plugin" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;margin:0 0 12px 16px;text-decoration:none" @click="track('onboarding_plugin_install_clicked',{agent:welcome.agent,from:'start'})"><img :src="agentIcon(welcomeAgent.icon)" alt="" style="width:16px;height:16px">Install plugin in {{welcomeAgent.name}} ↗</a>
                 </section>
-                <template v-else>
-                <template v-if="welcomeAgent.plugin"><p>First, install the treg plugin:</p><a class="btn" :href="welcomeAgent.plugin" target="_blank" rel="noopener" @click="track('onboarding_plugin_install_clicked',{agent:welcome.agent,from:'start'})">Install plugin in {{welcomeAgent.name}} ↗</a></template>
+                <template v-if="!agentInHost || welcomeAgent.setupFallback">
                 <section class="rd-setup-panel">
-                  <p class="rd-panel-label">{{welcomeAgent.plugin ? "Then, in your Bot's chat, send:" : "In your agent's chat, send:"}}</p>
-                  <div class="lc-codewrap"><button class="lc-cp" @click="copyStart(welcomeSetupCmd,'gsc')">{{startCopied==='gsc'?'Copied':'Copy'}}</button><pre>{{welcomeSetupCmd}}</pre></div>
+                  <p class="rd-panel-label">{{welcomeAgent.setupFallback || "In your agent's chat, send:"}}</p>
+                  <div class="lc-codewrap"><button class="lc-cp" @click="copyStart(welcomeSetupCopy,'gsc')">{{startCopied==='gsc'?'Copied':'Copy'}}</button><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{welcomeSetupShown}}</pre></div>
                 </section>
                 <section v-if="myToken" class="rd-setup-panel">
                   <p class="rd-panel-label">Your API key</p>

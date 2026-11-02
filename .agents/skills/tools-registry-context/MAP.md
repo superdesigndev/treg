@@ -10,8 +10,8 @@ Regenerate via `scripts/build-map.py`.
 
 | Source file | Documented in |
 |---|---|
+| `.agents/plugins/marketplace.json` | interface/skill.md |
 | `.claude-plugin/marketplace.json` | interface/skill.md |
-| `.claude-plugin/plugin.json` | interface/skill.md |
 | `.github/workflows/catalog-added.yml` | architecture/catalog.md |
 | `.github/workflows/catalog-drift.yml` | architecture/catalog.md |
 | `.github/workflows/ci.yml` | architecture/import-boundaries.md |
@@ -77,6 +77,7 @@ Regenerate via `scripts/build-map.py`.
 | `package.json` | interface/skill.md |
 | `plugin/.codex-plugin/plugin.json` | interface/skill.md |
 | `plugins/minimax/.minimax-plugin/plugin.json` | interface/skill.md |
+| `plugins/treg/.claude-plugin/plugin.json` | interface/skill.md |
 | `plugins/treg/.cursor-plugin/plugin.json` | interface/skill.md |
 | `pyproject.toml` | architecture/import-boundaries.md, ops/deploy.md |
 | `scripts/backfill_call_archive_links.py` | architecture/archive.md |
@@ -184,11 +185,15 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/alembic/versions/0086_shadow_pairs.py` | architecture/shadow.md |
 | `src/treg/alembic/versions/0087_rankings_snapshot.py` | architecture/data-model.md |
 | `src/treg/alembic/versions/0088_call_usage_rollup.py` | architecture/data-model.md |
-| `src/treg/analytics.py` | architecture/data-model.md |
+| `src/treg/alembic/versions/0089_ledgerentry_settle_spend_index.py` | architecture/data-model.md |
+| `src/treg/alembic/versions/0090_ledgerentry_topup_index.py` | architecture/data-model.md |
+| `src/treg/alembic/versions/0091_remove_prefix_covered_indexes.py` | architecture/data-model.md |
+| `src/treg/alembic/versions/0092_media_object_key.py` | architecture/media.md |
+| `src/treg/analytics.py` | architecture/data-model.md, architecture/org-endpoint-quota.md |
 | `src/treg/api.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/super-admin.md, interface/api.md, interface/landing-sandbox.md, interface/seo.md |
 | `src/treg/application/__init__.py` | architecture/import-boundaries.md |
 | `src/treg/application/archive_erasure.py` | architecture/archive.md |
-| `src/treg/application/arena.py` | interface/enrich-arena.md |
+| `src/treg/application/arena.py` | architecture/org-endpoint-quota.md, interface/enrich-arena.md |
 | `src/treg/application/arena_insights.py` | interface/enrich-arena.md |
 | `src/treg/application/arena_verification_insights.py` | interface/enrich-arena.md |
 | `src/treg/application/asynctasks.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md |
@@ -196,7 +201,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/billing.py` | architecture/money.md |
 | `src/treg/application/call/__init__.py` | architecture/import-boundaries.md |
 | `src/treg/application/call/access.py` | architecture/import-boundaries.md, architecture/instagram-oauth.md, interface/api.md |
-| `src/treg/application/call/async_bridge.py` | architecture/catalog.md, architecture/money.md |
+| `src/treg/application/call/async_bridge.py` | architecture/catalog.md, architecture/money.md, architecture/org-endpoint-quota.md |
 | `src/treg/application/call/authorize.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call/enrichlayer.py` | architecture/catalog.md |
 | `src/treg/application/call/evidence.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
@@ -205,13 +210,13 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/call/invite.py` | architecture/feedback.md |
 | `src/treg/application/call/keyslots.py` | architecture/proxy-model.md |
 | `src/treg/application/call/octen.py` | architecture/catalog.md, architecture/money.md |
-| `src/treg/application/call/overflow.py` | architecture/import-boundaries.md, ops/capacity.md |
+| `src/treg/application/call/overflow.py` | architecture/import-boundaries.md, architecture/org-endpoint-quota.md, ops/capacity.md |
 | `src/treg/application/call/reserve.py` | architecture/import-boundaries.md, architecture/money.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call/resolve.py` | architecture/import-boundaries.md, architecture/instagram-oauth.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, interface/api.md |
-| `src/treg/application/call/route.py` | architecture/catalog.md, architecture/import-boundaries.md, architecture/money.md |
-| `src/treg/application/call/service.py` | architecture/archive.md, architecture/hub.md, architecture/import-boundaries.md, architecture/instagram-oauth.md, architecture/money.md, architecture/org-traffic.md, architecture/proxy-model.md, interface/api.md |
+| `src/treg/application/call/route.py` | architecture/catalog.md, architecture/import-boundaries.md, architecture/money.md, architecture/org-endpoint-quota.md |
+| `src/treg/application/call/service.py` | architecture/archive.md, architecture/hub.md, architecture/import-boundaries.md, architecture/instagram-oauth.md, architecture/money.md, architecture/org-endpoint-quota.md, architecture/org-traffic.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call/settle.py` | architecture/archive.md, architecture/import-boundaries.md, architecture/money.md, architecture/proxy-model.md, interface/api.md |
-| `src/treg/application/call/types.py` | architecture/import-boundaries.md, architecture/org-traffic.md, architecture/proxy-model.md, interface/api.md |
+| `src/treg/application/call/types.py` | architecture/import-boundaries.md, architecture/org-endpoint-quota.md, architecture/org-traffic.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call_events.py` | architecture/call-events.md |
 | `src/treg/application/call_usage.py` | architecture/data-model.md |
 | `src/treg/application/call_usage_rollup.py` | architecture/data-model.md |
@@ -224,6 +229,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/evidence_retention.py` | architecture/data-model.md, architecture/super-admin.md |
 | `src/treg/application/feedback.py` | architecture/feedback.md |
 | `src/treg/application/find_index.py` | architecture/find.md |
+| `src/treg/application/home.py` | interface/cli.md |
 | `src/treg/application/house_calls.py` | interface/seo.md |
 | `src/treg/application/hub/__init__.py` | architecture/hub.md |
 | `src/treg/application/hub/health.py` | architecture/hub.md |
@@ -238,11 +244,16 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/onboard/__init__.py` | interface/api.md, interface/landing-sandbox.md, interface/onboarding.md |
 | `src/treg/application/onboard/demo.py` | interface/onboarding.md |
 | `src/treg/application/onboard/first_run.py` | interface/onboarding.md |
-| `src/treg/application/onboard/pubfeed.py` | interface/landing-sandbox.md |
 | `src/treg/application/onboard/sandbox.py` | interface/landing-sandbox.md |
 | `src/treg/application/provider_resources.py` | architecture/catalog.md, architecture/multi-tenancy.md, interface/api.md |
 | `src/treg/application/rankings.py` | architecture/catalog.md |
 | `src/treg/application/referrals.py` | architecture/money.md, interface/api.md |
+| `src/treg/application/replay/__init__.py` | architecture/replay.md |
+| `src/treg/application/replay/__main__.py` | architecture/replay.md |
+| `src/treg/application/replay/differ.py` | architecture/replay.md |
+| `src/treg/application/replay/engine.py` | architecture/replay.md |
+| `src/treg/application/replay/fixtures.py` | architecture/replay.md |
+| `src/treg/application/replay/records.py` | architecture/replay.md |
 | `src/treg/application/search_experiment.py` | architecture/search-experiment.md |
 | `src/treg/application/shadow.py` | architecture/shadow.md |
 | `src/treg/application/showcase.py` | architecture/showcase.md |
@@ -255,7 +266,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/archive.py` | architecture/archive.md |
 | `src/treg/archive_bodies.py` | architecture/archive.md |
 | `src/treg/audit.py` | architecture/data-model.md, ops/deploy.md |
-| `src/treg/bootstrap.py` | architecture/archive.md, architecture/composition.md, architecture/find.md, architecture/org-traffic.md, architecture/policy-extensions.md, interface/enrich-arena.md, interface/web-arena.md |
+| `src/treg/bootstrap.py` | architecture/archive.md, architecture/composition.md, architecture/find.md, architecture/org-endpoint-quota.md, architecture/org-traffic.md, architecture/policy-extensions.md, interface/enrich-arena.md, interface/web-arena.md |
 | `src/treg/bootstrap_handlers.py` | architecture/composition.md, architecture/data-model.md, interface/api.md |
 | `src/treg/bootstrap_http.py` | architecture/composition.md, interface/api.md |
 | `src/treg/call_events.py` | architecture/call-events.md |
@@ -270,6 +281,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/catalog/anyapi.yaml` | architecture/catalog.md |
 | `src/treg/catalog/apify.yaml` | architecture/catalog.md |
 | `src/treg/catalog/aviato.yaml` | architecture/catalog.md |
+| `src/treg/catalog/bravesearch.yaml` | architecture/catalog.md |
 | `src/treg/catalog/brightdata.yaml` | architecture/catalog.md |
 | `src/treg/catalog/capabilities.yaml` | architecture/catalog.md |
 | `src/treg/catalog/cloro.yaml` | architecture/catalog.md |
@@ -289,6 +301,14 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/catalog/examples/adyntel.meta-ads.library.advertiser.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/adyntel.meta-ads.library.search.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/adyntel.tiktok-ads.library.search.company.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/bravesearch.places.description.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/bravesearch.places.detail.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/bravesearch.places.search.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/bravesearch.web.search.context.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/bravesearch.web.search.images.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/bravesearch.web.search.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/bravesearch.web.search.news.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/bravesearch.web.search.videos.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/enrichlayer.companies.search.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/enrichlayer.company.employees.count.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/enrichlayer.company.employees.list.json` | architecture/catalog.md |
@@ -337,6 +357,19 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/catalog/examples/spidercloud.web.screenshot.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/spidercloud.web.search.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/spidercloud.web.unblock.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/theirstack.account.balance.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/theirstack.account.credits_consumption.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/theirstack.catalog.company_countries.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/theirstack.catalog.industries.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/theirstack.catalog.job_countries.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/theirstack.catalog.keyword_categories.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/theirstack.catalog.keyword_subcategories.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/theirstack.catalog.keywords.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/theirstack.catalog.locations.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/theirstack.companies.buying_intents.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/theirstack.companies.search.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/theirstack.companies.technologies.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/theirstack.jobs.search.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/tinyfish.web.agent.run.cancel.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/tinyfish.web.agent.run.get.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/tinyfish.web.agent.run.json` | architecture/catalog.md |
@@ -388,6 +421,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/catalog/serpapi.yaml` | architecture/catalog.md |
 | `src/treg/catalog/spidercloud.yaml` | architecture/catalog.md |
 | `src/treg/catalog/tavily.yaml` | architecture/catalog.md, architecture/money.md |
+| `src/treg/catalog/theirstack.yaml` | architecture/catalog.md |
 | `src/treg/catalog/tikhub.extended.yaml` | architecture/catalog.md |
 | `src/treg/catalog/tinyfish.yaml` | architecture/catalog.md, architecture/money.md |
 | `src/treg/catalog/tomba.yaml` | architecture/catalog.md, architecture/money.md |
@@ -397,9 +431,11 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/catalog/you.yaml` | architecture/catalog.md |
 | `src/treg/cli.py` | architecture/hub.md, architecture/instagram-oauth.md, interface/cli.md, interface/onboarding.md, interface/shell.md |
 | `src/treg/cli_analytics.py` | interface/cli.md |
+| `src/treg/cli_session.py` | interface/cli.md |
+| `src/treg/cli_view.py` | interface/cli.md |
 | `src/treg/client_identity.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/client_ip.py` | architecture/multi-tenancy.md |
-| `src/treg/config.py` | architecture/archive.md, architecture/auth-secrets.md, architecture/feedback.md, architecture/org-concurrency.md, architecture/org-flow-control.md, architecture/super-admin.md, architecture/table.md, guides/expanding-a-category.md, interface/web-arena.md, ops/deploy.md |
+| `src/treg/config.py` | architecture/archive.md, architecture/auth-secrets.md, architecture/feedback.md, architecture/org-concurrency.md, architecture/org-endpoint-quota.md, architecture/org-flow-control.md, architecture/super-admin.md, architecture/table.md, guides/expanding-a-category.md, interface/web-arena.md, ops/deploy.md |
 | `src/treg/convert.py` | interface/cli.md |
 | `src/treg/crypto.py` | architecture/auth-secrets.md |
 | `src/treg/domain/__init__.py` | architecture/import-boundaries.md |
@@ -414,6 +450,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/domain/capacity/overflow_seed.json` | ops/capacity.md |
 | `src/treg/domain/capacity/overflow_spend.py` | ops/capacity.md |
 | `src/treg/domain/capacity/policy.py` | ops/capacity.md |
+| `src/treg/domain/capacity/rate_observe.py` | ops/capacity.md |
 | `src/treg/domain/capacity/routes.py` | ops/capacity.md |
 | `src/treg/domain/capacity/routes_view.py` | ops/capacity.md |
 | `src/treg/domain/capacity/signatures.py` | ops/capacity.md |
@@ -495,11 +532,13 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/infra/money_trace_runner.py` | architecture/composition.md, architecture/data-model.md |
 | `src/treg/infra/oauth_exchange.py` | architecture/auth-secrets.md, architecture/instagram-oauth.md, guides/expanding-a-category.md |
 | `src/treg/infra/oauth_refresh.py` | architecture/auth-secrets.md |
-| `src/treg/infra/object_store.py` | architecture/archive.md |
+| `src/treg/infra/object_store.py` | architecture/archive.md, architecture/media.md |
 | `src/treg/infra/org_concurrency.py` | architecture/org-concurrency.md |
+| `src/treg/infra/org_endpoint_quota.py` | architecture/org-endpoint-quota.md |
 | `src/treg/infra/org_flow_control.py` | architecture/org-flow-control.md |
 | `src/treg/infra/org_traffic.py` | architecture/org-traffic.md |
 | `src/treg/infra/provider_concurrency.py` | ops/capacity.md |
+| `src/treg/infra/provider_rate.py` | ops/capacity.md |
 | `src/treg/infra/stripe.py` | architecture/money.md |
 | `src/treg/infra/structured_logging.py` | architecture/org-flow-control.md, architecture/org-traffic.md |
 | `src/treg/infra/turnstile.py` | architecture/multi-tenancy.md |
@@ -510,7 +549,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/infra/upstream/aggregators/orthogonal.py` | ops/capacity.md |
 | `src/treg/infra/upstream/injectors.py` | architecture/auth-secrets.md, architecture/import-boundaries.md |
 | `src/treg/infra/upstream/limiter.py` | architecture/import-boundaries.md, ops/capacity.md |
-| `src/treg/infra/upstream/relay.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
+| `src/treg/infra/upstream/relay.py` | architecture/import-boundaries.md, architecture/org-endpoint-quota.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/infra/upstream/ssrf.py` | architecture/auth-secrets.md, architecture/proxy-model.md |
 | `src/treg/infra/workbench_store.py` | architecture/workbench-storage.md |
 | `src/treg/infra/workos.py` | architecture/multi-tenancy.md |
@@ -587,6 +626,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/logos/adyntel.svg` | architecture/catalog.md |
 | `src/treg/web/logos/apollo.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/branddev.svg` | interface/enrich-arena.md |
+| `src/treg/web/logos/bravesearch.svg` | architecture/catalog.md |
 | `src/treg/web/logos/companyenrich.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/enrichlayer.svg` | architecture/catalog.md |
 | `src/treg/web/logos/fetchinio.svg` | architecture/catalog.md |
@@ -601,6 +641,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/logos/pdl.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/predictleads.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/thecompaniesapi.svg` | interface/enrich-arena.md |
+| `src/treg/web/logos/theirstack.svg` | architecture/catalog.md |
 | `src/treg/web/logos/tomba.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/you.svg` | architecture/catalog.md |
 | `src/treg/web/media/astra/page.css` | interface/seo.md |
@@ -627,6 +668,8 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/media/signin-sso.js` | interface/seo.md |
 | `src/treg/web/people-search.html` | interface/seo.md |
 | `src/treg/web/rankings.html` | interface/seo.md |
+| `src/treg/web/rea-growth.html` | interface/seo.md |
+| `src/treg/web/rea-growth.md` | interface/seo.md |
 | `src/treg/web/recruit.html` | interface/seo.md |
 | `src/treg/web/robots.txt` | interface/seo.md |
 | `src/treg/web/selfhost.sh` | ops/deploy.md |
@@ -636,6 +679,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/skills/jev-memory/SKILL.md` | interface/skill.md |
 | `src/treg/web/skills/lead-signals/SKILL.md` | interface/skill.md |
 | `src/treg/web/skills/make-ugc/SKILL.md` | interface/skill.md |
+| `src/treg/web/skills/rea-growth/SKILL.md` | interface/skill.md |
 | `src/treg/web/skills/recruit/SKILL.md` | interface/skill.md |
 | `src/treg/web/skills/web-access/SKILL.md` | interface/skill.md |
 | `src/treg/web/start.html` | interface/seo.md |
@@ -675,7 +719,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_auth.py` | architecture/multi-tenancy.md |
 | `tests/test_cache_result_admission.py` | architecture/archive.md |
 | `tests/test_call_application_contract.py` | architecture/proxy-model.md |
-| `tests/test_call_architecture.py` | architecture/import-boundaries.md, architecture/money.md, architecture/proxy-model.md |
+| `tests/test_call_architecture.py` | architecture/import-boundaries.md, architecture/money.md, architecture/org-endpoint-quota.md, architecture/proxy-model.md |
 | `tests/test_call_cancellation.py` | architecture/proxy-model.md |
 | `tests/test_call_events.py` | architecture/call-events.md |
 | `tests/test_call_response_limits.py` | architecture/proxy-model.md |
@@ -689,6 +733,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_capacity_overflow_routes.py` | ops/capacity.md |
 | `tests/test_capacity_overflow_spend.py` | ops/capacity.md |
 | `tests/test_capacity_protect.py` | ops/capacity.md |
+| `tests/test_capacity_rate_observe.py` | ops/capacity.md |
 | `tests/test_capacity_smoothing.py` | ops/capacity.md |
 | `tests/test_catalog_api.py` | architecture/catalog.md |
 | `tests/test_catalog_find.py` | architecture/find.md |
@@ -737,6 +782,17 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_oauth_refresh.py` | architecture/auth-secrets.md |
 | `tests/test_org_concurrency.py` | architecture/org-concurrency.md, architecture/org-traffic.md |
 | `tests/test_org_concurrency_redis.py` | architecture/org-concurrency.md |
+| `tests/test_org_endpoint_quota_async.py` | architecture/org-endpoint-quota.md |
+| `tests/test_org_endpoint_quota_best_effort.py` | architecture/org-endpoint-quota.md |
+| `tests/test_org_endpoint_quota_breaker.py` | architecture/org-endpoint-quota.md |
+| `tests/test_org_endpoint_quota_call.py` | architecture/org-endpoint-quota.md |
+| `tests/test_org_endpoint_quota_hub.py` | architecture/org-endpoint-quota.md |
+| `tests/test_org_endpoint_quota_local_rejections.py` | architecture/org-endpoint-quota.md |
+| `tests/test_org_endpoint_quota_rate_observe.py` | architecture/org-endpoint-quota.md |
+| `tests/test_org_endpoint_quota_redis.py` | architecture/org-endpoint-quota.md |
+| `tests/test_org_endpoint_quota_rollup.py` | architecture/org-endpoint-quota.md |
+| `tests/test_org_endpoint_quota_route.py` | architecture/org-endpoint-quota.md |
+| `tests/test_org_endpoint_quota_telemetry.py` | architecture/org-endpoint-quota.md |
 | `tests/test_org_flow_control.py` | architecture/org-flow-control.md |
 | `tests/test_org_flow_control_reader.py` | architecture/org-flow-control.md |
 | `tests/test_org_flow_control_redis.py` | architecture/org-flow-control.md |
@@ -752,7 +808,9 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_rankings.py` | architecture/catalog.md |
 | `tests/test_redundant_index_migration.py` | architecture/data-model.md |
 | `tests/test_relay_content_length.py` | architecture/proxy-model.md |
+| `tests/test_relay_quota_admission.py` | architecture/org-endpoint-quota.md |
 | `tests/test_released_cli_compat.py` | interface/cli.md |
+| `tests/test_replay.py` | architecture/replay.md |
 | `tests/test_reviews.py` | architecture/feedback.md |
 | `tests/test_route_cost_ceiling.py` | architecture/catalog.md |
 | `tests/test_routing.py` | architecture/catalog.md |
@@ -785,9 +843,9 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/archive.md` | `archive.py`, `hunter.yaml`, `results.py`, `0031_archive_result_admission.py`, `test_cache_result_admission.py`, `test_archive_batch.py`, `test_archive_batch_postgres.py`, `archive_bodies.py`, `config.py`, `object_store.py`, `0032_archive_body_storage.py`, `test_archive_r2.py`, `fake_object_store.py`, `smoke_archive_r2.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0011_callrecord_archive_link.py`, `service.py`, `settle.py`, `0039_archive_own_key_and_repeat_pricing.py`, `backfill_call_archive_links.py`, `api.py`, `bootstrap.py`, `admin.py`, `asynctasks.py`, `archive_erasure.py`, `0067_org_archive_opt_out.py`, `test_archive_opt_out.py` |
 | `architecture/auth-secrets.md` | `injectors.py`, `ssrf.py`, `crypto.py`, `oauth.py`, `__init__.py`, `authorization.py`, `oauth_flow.py`, `refresh.py`, `oauth_exchange.py`, `oauth_refresh.py`, `oauth_providers.py`, `session.js`, `keys.js`, `TeamPage.vue`, `health.py`, `connect.py`, `0051_context_dev_tool_host.py`, `connections.py`, `resources.py`, `__init__.py`, `bindings.py`, `bundles.py`, `api_keys.py`, `access.py`, `api_keys.py`, `test_api_keys.py`, `test_oauth_refresh.py`, `test_financialdatasets.py`, `test_key_providers.py`, `config.py` |
 | `architecture/call-events.md` | `call_events.py`, `call_events.py`, `contracts.yaml`, `test_call_events.py` |
-| `architecture/catalog.md` | `rankings.py`, `rankings.py`, `test_rankings.py`, `catalog_added.py`, `catalog_backfill_added.py`, `catalog-added.yml`, `fetchinio.yaml`, `fetchinio.svg`, `fetchinio.linkedin.user.profile.json`, `fetchinio.linkedin.company.profile.json`, `fetchinio.linkedin.user.posts.json`, `fetchinio.linkedin.user.reactions.json`, `fetchinio.linkedin.post.comments.json`, `fetchinio.linkedin.post.reactions.json`, `fetchinio.linkedin.post.engagement.json`, `fishaudio.yaml`, `fishaudio.tts.s2-1-pro.json`, `fishaudio.voices.create.json`, `fishaudio.voices.discover.json`, `provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `tavily.yaml`, `octen.py`, `enrichlayer.py`, `enrichlayer.yaml`, `enrichlayer.companies.search.json`, `enrichlayer.company.employees.count.json`, `enrichlayer.company.employees.list.json`, `enrichlayer.company.employees.search.json`, `enrichlayer.company.lookup-id.json`, `enrichlayer.company.lookup.json`, `enrichlayer.company.profile-picture.json`, `enrichlayer.company.profile.json`, `enrichlayer.company.role.lookup.json`, `enrichlayer.contacts.personal-email.json`, `enrichlayer.contacts.personal-phone.json`, `enrichlayer.contacts.reverse-phone.json`, `enrichlayer.email.disposable-check.json`, `enrichlayer.jobs.profile.json`, `enrichlayer.jobs.search.json`, `enrichlayer.people.search.json`, `enrichlayer.person.lookup.json`, `enrichlayer.person.profile-picture.json`, `enrichlayer.person.profile.json`, `enrichlayer.person.reverse-email.json`, `enrichlayer.person.work-email.json`, `enrichlayer.school.profile.json`, `enrichlayer.svg`, `linkup.yaml`, `you.yaml`, `you.web.search.json`, `you.web.contents.json`, `you.svg`, `linkup.svg`, `linkup.web.search.json`, `linkup.web.fetch.json`, `linkup.web.fetch.structured.json`, `linkup.web.answer.json`, `linkup.web.answer.status.json`, `parallel.yaml`, `pdl.yaml`, `pdl.extended.yaml`, `parallel.svg`, `parallel.web.search.json`, `parallel.web.search.advanced.json`, `parallel.web.extract.json`, `parallel.people.search.json`, `parallel.companies.search.json`, `keenable.yaml`, `olostep.yaml`, `spidercloud.yaml`, `spidercloud.web.scrape.json`, `spidercloud.web.crawl.json`, `spidercloud.web.search.json`, `spidercloud.web.links.json`, `spidercloud.web.unblock.json`, `spidercloud.web.screenshot.json`, `tinyfish.yaml`, `tinyfish.web.search.json`, `tinyfish.web.search.news.json`, `tinyfish.web.search.publications.json`, `tinyfish.web.fetch.json`, `tinyfish.web.agent.run.json`, `tinyfish.web.agent.run.get.json`, `tinyfish.web.agent.run.cancel.json`, `test_tinyfish.py`, `exa.yaml`, `anyapi.yaml`, `anyapi.extended.yaml`, `adyntel.yaml`, `adyntel.meta-ads.library.advertiser.json`, `adyntel.meta-ads.library.search.json`, `adyntel.linkedin.search.ads.company.json`, `adyntel.linkedin.search.ads.keyword.json`, `adyntel.google.ads.transparency.json`, `adyntel.tiktok-ads.library.search.company.json`, `adyntel.google.domain.keywords.overview.json`, `adyntel.svg`, `trestleiq.yaml`, `financialdatasets.yaml`, `test_financialdatasets.py`, `quickenrich.yaml`, `influencersclub.yaml`, `quickenrich.extended.yaml`, `trykitt.yaml`, `contracts.yaml`, `millionverifier.yaml`, `adapters.yaml`, `capabilities.yaml`, `prospeo.yaml`, `test_route_cost_ceiling.py`, `tomba.yaml`, `__init__.py`, `contracts.py`, `paths.py`, `plan.py`, `synthetic.py`, `async_bridge.py`, `route.py`, `wiza.yaml`, `wiza.people.email.find.json`, `wiza.people.email.find.terminal.json`, `wiza.people.phone.find.json`, `wiza.people.phone.find.terminal.json`, `test_routing.py`, `test_wiza.py`, `catalog-drift.yml`, `catalog_drift.py`, `catalog_ingest.py`, `catalog_ingest_crawl4ai_recipes.py`, `catalog_validate.py`, `aliases.yaml`, `fx.yaml`, `cloro.yaml`, `aviato.yaml`, `crustdata.yaml`, `google-search-console.yaml`, `google-search-console.extended.yaml`, `google-tag-manager.yaml`, `google-tag-manager.extended.yaml`, `instagram.yaml`, `instagram.extended.yaml`, `justoneapi.extended.yaml`, `minimax.yaml`, `apify.yaml`, `brightdata.yaml`, `companyenrich.yaml`, `oceanio.yaml`, `akta.extended.yaml`, `dataforseo.yaml`, `dataforseo.extended.yaml`, `scrapecreators.yaml`, `scrapecreators.extended.yaml`, `serpapi.yaml`, `serpapi.extended.yaml`, `diffbot.yaml`, `diffbot.extended.yaml`, `tikhub.extended.yaml`, `lusha.extended.yaml`, `openrouter.yaml`, `openrouter.extended.yaml`, `replicate.yaml`, `replicate.extended.yaml`, `reapi.yaml`, `piapi.yaml`, `__init__.py`, `store.py`, `hunter.yaml`, `mcp.py`, `settlement.py`, `stats.py`, `catalog_observations.py`, `catalog_stat_dirty.py`, `catalog_stats.py`, `0038_endpoint_day_stats.py`, `0066_endpointdaystat_verdicts.py`, `catalog.py`, `test_aigc_pr_b.py`, `test_catalog_api.py`, `test_catalog_validate.py`, `test_call_verdict.py` |
+| `architecture/catalog.md` | `rankings.py`, `rankings.py`, `test_rankings.py`, `catalog_added.py`, `catalog_backfill_added.py`, `catalog-added.yml`, `fetchinio.yaml`, `theirstack.yaml`, `theirstack.svg`, `theirstack.jobs.search.json`, `theirstack.companies.search.json`, `theirstack.companies.technologies.json`, `theirstack.companies.buying_intents.json`, `theirstack.catalog.keywords.json`, `theirstack.catalog.keyword_categories.json`, `theirstack.catalog.keyword_subcategories.json`, `theirstack.catalog.industries.json`, `theirstack.catalog.locations.json`, `theirstack.catalog.job_countries.json`, `theirstack.catalog.company_countries.json`, `theirstack.account.balance.json`, `theirstack.account.credits_consumption.json`, `fetchinio.svg`, `fetchinio.linkedin.user.profile.json`, `fetchinio.linkedin.company.profile.json`, `fetchinio.linkedin.user.posts.json`, `fetchinio.linkedin.user.reactions.json`, `fetchinio.linkedin.post.comments.json`, `fetchinio.linkedin.post.reactions.json`, `fetchinio.linkedin.post.engagement.json`, `fishaudio.yaml`, `fishaudio.tts.s2-1-pro.json`, `fishaudio.voices.create.json`, `fishaudio.voices.discover.json`, `provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `tavily.yaml`, `octen.py`, `enrichlayer.py`, `enrichlayer.yaml`, `enrichlayer.companies.search.json`, `enrichlayer.company.employees.count.json`, `enrichlayer.company.employees.list.json`, `enrichlayer.company.employees.search.json`, `enrichlayer.company.lookup-id.json`, `enrichlayer.company.lookup.json`, `enrichlayer.company.profile-picture.json`, `enrichlayer.company.profile.json`, `enrichlayer.company.role.lookup.json`, `enrichlayer.contacts.personal-email.json`, `enrichlayer.contacts.personal-phone.json`, `enrichlayer.contacts.reverse-phone.json`, `enrichlayer.email.disposable-check.json`, `enrichlayer.jobs.profile.json`, `enrichlayer.jobs.search.json`, `enrichlayer.people.search.json`, `enrichlayer.person.lookup.json`, `enrichlayer.person.profile-picture.json`, `enrichlayer.person.profile.json`, `enrichlayer.person.reverse-email.json`, `enrichlayer.person.work-email.json`, `enrichlayer.school.profile.json`, `enrichlayer.svg`, `linkup.yaml`, `you.yaml`, `you.web.search.json`, `you.web.contents.json`, `you.svg`, `linkup.svg`, `linkup.web.search.json`, `linkup.web.fetch.json`, `linkup.web.fetch.structured.json`, `linkup.web.answer.json`, `linkup.web.answer.status.json`, `parallel.yaml`, `pdl.yaml`, `pdl.extended.yaml`, `parallel.svg`, `parallel.web.search.json`, `parallel.web.search.advanced.json`, `parallel.web.extract.json`, `parallel.people.search.json`, `parallel.companies.search.json`, `keenable.yaml`, `olostep.yaml`, `spidercloud.yaml`, `spidercloud.web.scrape.json`, `spidercloud.web.crawl.json`, `spidercloud.web.search.json`, `spidercloud.web.links.json`, `spidercloud.web.unblock.json`, `spidercloud.web.screenshot.json`, `tinyfish.yaml`, `tinyfish.web.search.json`, `tinyfish.web.search.news.json`, `tinyfish.web.search.publications.json`, `tinyfish.web.fetch.json`, `tinyfish.web.agent.run.json`, `tinyfish.web.agent.run.get.json`, `tinyfish.web.agent.run.cancel.json`, `test_tinyfish.py`, `exa.yaml`, `anyapi.yaml`, `anyapi.extended.yaml`, `adyntel.yaml`, `adyntel.meta-ads.library.advertiser.json`, `adyntel.meta-ads.library.search.json`, `adyntel.linkedin.search.ads.company.json`, `adyntel.linkedin.search.ads.keyword.json`, `adyntel.google.ads.transparency.json`, `adyntel.tiktok-ads.library.search.company.json`, `adyntel.google.domain.keywords.overview.json`, `adyntel.svg`, `trestleiq.yaml`, `financialdatasets.yaml`, `test_financialdatasets.py`, `quickenrich.yaml`, `influencersclub.yaml`, `quickenrich.extended.yaml`, `trykitt.yaml`, `contracts.yaml`, `millionverifier.yaml`, `adapters.yaml`, `bravesearch.yaml`, `bravesearch.svg`, `bravesearch.web.search.json`, `bravesearch.web.search.news.json`, `bravesearch.web.search.context.json`, `bravesearch.web.search.images.json`, `bravesearch.web.search.videos.json`, `bravesearch.places.search.json`, `bravesearch.places.detail.json`, `bravesearch.places.description.json`, `capabilities.yaml`, `prospeo.yaml`, `test_route_cost_ceiling.py`, `tomba.yaml`, `__init__.py`, `contracts.py`, `paths.py`, `plan.py`, `synthetic.py`, `async_bridge.py`, `route.py`, `wiza.yaml`, `wiza.people.email.find.json`, `wiza.people.email.find.terminal.json`, `wiza.people.phone.find.json`, `wiza.people.phone.find.terminal.json`, `test_routing.py`, `test_wiza.py`, `catalog-drift.yml`, `catalog_drift.py`, `catalog_ingest.py`, `catalog_ingest_crawl4ai_recipes.py`, `catalog_validate.py`, `aliases.yaml`, `fx.yaml`, `cloro.yaml`, `aviato.yaml`, `crustdata.yaml`, `google-search-console.yaml`, `google-search-console.extended.yaml`, `google-tag-manager.yaml`, `google-tag-manager.extended.yaml`, `instagram.yaml`, `instagram.extended.yaml`, `justoneapi.extended.yaml`, `minimax.yaml`, `apify.yaml`, `brightdata.yaml`, `companyenrich.yaml`, `oceanio.yaml`, `akta.extended.yaml`, `dataforseo.yaml`, `dataforseo.extended.yaml`, `scrapecreators.yaml`, `scrapecreators.extended.yaml`, `serpapi.yaml`, `serpapi.extended.yaml`, `diffbot.yaml`, `diffbot.extended.yaml`, `tikhub.extended.yaml`, `lusha.extended.yaml`, `openrouter.yaml`, `openrouter.extended.yaml`, `replicate.yaml`, `replicate.extended.yaml`, `reapi.yaml`, `piapi.yaml`, `__init__.py`, `store.py`, `hunter.yaml`, `mcp.py`, `settlement.py`, `stats.py`, `catalog_observations.py`, `catalog_stat_dirty.py`, `catalog_stats.py`, `0038_endpoint_day_stats.py`, `0066_endpointdaystat_verdicts.py`, `catalog.py`, `test_aigc_pr_b.py`, `test_catalog_api.py`, `test_catalog_validate.py`, `test_call_verdict.py` |
 | `architecture/composition.md` | `bootstrap.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `worker.py`, `money_trace_runner.py`, `money_admission_reporting.py`, `call_surface.py`, `connect.py`, `mcp_oauth.py`, `session.py`, `admin.py`, `auth.py`, `billing.py`, `call.py`, `connections.py`, `onboard.py`, `orgs.py`, `resources.py`, `referrals.py`, `web.py`, `dump_surface.py`, `test_app_roles.py` |
-| `architecture/data-model.md` | `0042_pinned_read_scope.py`, `alembic.ini`, `env.py`, `0001_baseline_current_schema.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0005_capacity_policy_snapshot.py`, `0006_overflow_route.py`, `0007_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `0009_callrecord_hit.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `0020_callrecord_created_at_indexes.py`, `0021_ledgerentry_org_created_at_index.py`, `0022_org_spent_today_counter.py`, `0023_callrecord_org_user_created_at_index.py`, `0024_membership_calls_today_counter.py`, `0027_enrich_arena.py`, `0028_arena_insights.py`, `0029_arena_verification_snapshot.py`, `0011_callrecord_archive_link.py`, `0015_idempotentcall_membership_cascade.py`, `0053_idempotentcall_membership_expires_index.py`, `0054_callrecord_org_id_id.py`, `0061_remove_redundant_unique_indexes.py`, `0034_managed_api_keys.py`, `0035_default_key_generation.py`, `0036_activity_key_indexes.py`, `0038_endpoint_day_stats.py`, `0074_endpoint_stat_dirty.py`, `catalog_stat_dirty.py`, `maintenance.py`, `sitetrack.js`, `models.py`, `0052_async_task_hit.py`, `0031_archive_result_admission.py`, `0032_archive_body_storage.py`, `0039_archive_own_key_and_repeat_pricing.py`, `0043_provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `0033_signup_promo_eligibility.py`, `0071_signup_promo_claim.py`, `0041_searchlog.py`, `0055_find_v2_log.py`, `0056_searchlog_verdict.py`, `0065_call_verdict.py`, `0066_endpointdaystat_verdicts.py`, `0070_api_key_spend_rollup.py`, `0072_callrecord_call_ref_index.py`, `0073_org_flow_control_version.py`, `test_org_flow_control_schema.py`, `0075_ad_click_stash.py`, `0079_enterprise_sso.py`, `0082_oauth_sso_provenance.py`, `0083_enterprise_sso_safety.py`, `0084_enterprise_workos_cleanup.py`, `0085_enterprise_sso_blocks.py`, `0087_rankings_snapshot.py`, `0088_call_usage_rollup.py`, `call_usage_rollup.py`, `call_usage.py`, `test_call_usage_rollup.py`, `timeutil.py`, `db.py`, `money_timing.py`, `money_admission.py`, `kv.py`, `money_admission_reporting.py`, `money_trace.py`, `money_trace_runner.py`, `referrals.py`, `audit.py`, `evidence_retention.py`, `analytics.py`, `bootstrap_handlers.py`, `ratestore.py`, `auth.py`, `test_postgres_reset.py`, `test_alembic_expand_safety.py`, `test_redundant_index_migration.py`, `test_api_keys.py`, `test_money_timing.py`, `test_money_admission_reporting.py`, `test_kv_lease_diagnostics.py`, `test_money_trace.py`, `test_money_trace_postgres.py`, `test_money_trace_runner.py` |
+| `architecture/data-model.md` | `0042_pinned_read_scope.py`, `alembic.ini`, `env.py`, `0001_baseline_current_schema.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0005_capacity_policy_snapshot.py`, `0006_overflow_route.py`, `0007_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `0009_callrecord_hit.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `0020_callrecord_created_at_indexes.py`, `0021_ledgerentry_org_created_at_index.py`, `0022_org_spent_today_counter.py`, `0023_callrecord_org_user_created_at_index.py`, `0024_membership_calls_today_counter.py`, `0027_enrich_arena.py`, `0028_arena_insights.py`, `0029_arena_verification_snapshot.py`, `0011_callrecord_archive_link.py`, `0015_idempotentcall_membership_cascade.py`, `0053_idempotentcall_membership_expires_index.py`, `0054_callrecord_org_id_id.py`, `0061_remove_redundant_unique_indexes.py`, `0091_remove_prefix_covered_indexes.py`, `0034_managed_api_keys.py`, `0035_default_key_generation.py`, `0036_activity_key_indexes.py`, `0038_endpoint_day_stats.py`, `0074_endpoint_stat_dirty.py`, `catalog_stat_dirty.py`, `maintenance.py`, `sitetrack.js`, `models.py`, `0052_async_task_hit.py`, `0031_archive_result_admission.py`, `0032_archive_body_storage.py`, `0039_archive_own_key_and_repeat_pricing.py`, `0043_provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `0033_signup_promo_eligibility.py`, `0071_signup_promo_claim.py`, `0041_searchlog.py`, `0055_find_v2_log.py`, `0056_searchlog_verdict.py`, `0065_call_verdict.py`, `0066_endpointdaystat_verdicts.py`, `0070_api_key_spend_rollup.py`, `0072_callrecord_call_ref_index.py`, `0073_org_flow_control_version.py`, `test_org_flow_control_schema.py`, `0075_ad_click_stash.py`, `0079_enterprise_sso.py`, `0082_oauth_sso_provenance.py`, `0083_enterprise_sso_safety.py`, `0084_enterprise_workos_cleanup.py`, `0085_enterprise_sso_blocks.py`, `0087_rankings_snapshot.py`, `0088_call_usage_rollup.py`, `0089_ledgerentry_settle_spend_index.py`, `0090_ledgerentry_topup_index.py`, `call_usage_rollup.py`, `call_usage.py`, `test_call_usage_rollup.py`, `timeutil.py`, `db.py`, `money_timing.py`, `money_admission.py`, `kv.py`, `money_admission_reporting.py`, `money_trace.py`, `money_trace_runner.py`, `referrals.py`, `audit.py`, `evidence_retention.py`, `analytics.py`, `bootstrap_handlers.py`, `ratestore.py`, `auth.py`, `test_postgres_reset.py`, `test_alembic_expand_safety.py`, `test_redundant_index_migration.py`, `test_api_keys.py`, `test_money_timing.py`, `test_money_admission_reporting.py`, `test_kv_lease_diagnostics.py`, `test_money_trace.py`, `test_money_trace_postgres.py`, `test_money_trace_runner.py` |
 | `architecture/feedback.md` | `feedback_contract.py`, `__init__.py`, `reports.py`, `reviews.py`, `verdicts.py`, `hints.py`, `config.py`, `call.py`, `invite.py`, `kv.py`, `feedback.py`, `feedback.py`, `0025_feedback.py`, `0026_callreview.py`, `0030_feedback_handling.py`, `test_feedback_handling_schema.py`, `feedback.md`, `test_feedback.py`, `test_reviews.py`, `test_endpoint_verdicts.py`, `test_hints.py`, `test_kv.py` |
 | `architecture/find.md` | `catalog_find.py`, `find_recall.py`, `find_index.py`, `embed.py`, `bootstrap.py`, `test_find_index.py`, `test_embed.py`, `0055_find_v2_log.py`, `0056_searchlog_verdict.py`, `find_bench.py`, `find_bench.yaml`, `test_find_bench.py`, `test_find_recall.py`, `test_catalog_find.py`, `test_search_queries.py`, `search_queries.yaml`, `find.js`, `FindAnswer.vue`, `SearchPage.vue`, `CatalogSearch.vue`, `catalog-find.spec.ts` |
 | `architecture/hub.md` | `__init__.py`, `manifest.py`, `refs.py`, `graph.py`, `__init__.py`, `runner.py`, `sandbox.py`, `limits.py`, `health.py`, `hub_sandbox.py`, `hub.py`, `catalog.py`, `web.py`, `hub_gate.py`, `service.py`, `__init__.py`, `mcp.py`, `hub.js`, `HubPage.vue`, `HubRunPage.vue`, `cli.py`, `worker.py`, `models.py`, `index.html`, `skill.md`, `llms.txt`, `0044_hub_tools.py`, `0045_hub_runs.py`, `0046_hubtool_check_result.py`, `0047_hubrun_output.py`, `0048_hubtool_data.py`, `0049_hubtool_listed_public_log.py`, `0050_hub_listing.py`, `run.js`, `run.js`, `run.js`, `test_hub.py`, `test_hub_sandbox.py`, `test_hub_run.py` |
@@ -796,14 +854,16 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/local-proxy.md` | `localproxy.py`, `server.js` |
 | `architecture/local-run.md` | `localrun.py`, `egress.py`, `fsjail.py` |
 | `architecture/mcp-oauth.md` | `auth.py`, `mcp.py`, `health.py`, `mcp_oauth.py`, `session.py`, `access.py`, `api_keys.py`, `0082_oauth_sso_provenance.py`, `api_keys.py`, `auth.py`, `claude-connector.html`, `connect-demo.html`, `test_mcp.py`, `test_mcp_oauth.py`, `test_mcp_directory.py`, `test_marketplace_call.py` |
-| `architecture/media.md` | `media.py`, `media.py`, `models.py`, `0037_media_hosting.py`, `test_media.py` |
+| `architecture/media.md` | `media.py`, `media.py`, `models.py`, `object_store.py`, `0037_media_hosting.py`, `0092_media_object_key.py`, `test_media.py` |
 | `architecture/money.md` | `policy.py`, `tavily.yaml`, `tinyfish.yaml`, `test_tinyfish.py`, `__init__.py`, `settlement.py`, `__init__.py`, `models.py`, `billing.py`, `billing.py`, `billing.js`, `data.js`, `TeamPage.vue`, `enterprise_billing.py`, `enterprise_sso.py`, `idempotency.py`, `intake.py`, `resolve.py`, `octen.py`, `service.py`, `async_bridge.py`, `route.py`, `reserve.py`, `settle.py`, `tomba.yaml`, `asynctasks.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `referrals.py`, `budgets.py`, `__init__.py`, `money_admission.py`, `money_session.py`, `runner.py`, `stripe.py`, `reconcile.py`, `key_spend_rollup.py`, `0070_api_key_spend_rollup.py`, `test_key_spend_rollup.py`, `referrals.py`, `api.py`, `signup.py`, `promotions.py`, `0033_signup_promo_eligibility.py`, `0071_signup_promo_claim.py`, `admin.py`, `billing.py`, `call.py`, `orgs.py`, `referrals.py`, `test_call_architecture.py`, `test_money_lock_order.py`, `test_money_admission.py`, `test_money_admission_application.py`, `test_money_admission_postgres.py`, `test_archive_batch_postgres.py`, `bench_money_admission.py`, `test_marketplace_call.py`, `test_anyapi_cost_ceiling.py`, `test_asynctasks.py` |
 | `architecture/multi-tenancy.md` | `access.py`, `0042_pinned_read_scope.py`, `test_pinned_read_scope.py`, `models.py`, `api.py`, `caller_metadata.py`, `auth.py`, `asynctasks.py`, `resolve.py`, `provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `0043_provider_resources.py`, `signup.py`, `access.py`, `budgets.py`, `publicdemo.py`, `teams.py`, `usage.py`, `access.py`, `api_keys.py`, `session.py`, `enterprise_sso.py`, `0079_enterprise_sso.py`, `0080_enterprise_sso_audit.py`, `0081_sso_manual_block.py`, `0082_oauth_sso_provenance.py`, `0083_enterprise_sso_safety.py`, `0084_enterprise_workos_cleanup.py`, `0085_enterprise_sso_blocks.py`, `worker.py`, `enterprise_sso.py`, `workos.py`, `test_enterprise_sso.py`, `promotions.py`, `test_team_limit.py`, `test_auth.py`, `test_token_revocation.py`, `auth.py`, `turnstile.py`, `client_ip.py`, `test_client_ip.py`, `captcha.js`, `test_turnstile.py`, `captcha.test.ts`, `orgs.py`, `resources.py`, `bundles.py`, `db.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `test_asynctasks.py` |
 | `architecture/org-concurrency.md` | `org_concurrency.py`, `kv.py`, `config.py`, `call.py`, `mcp.py`, `test_org_concurrency.py`, `test_org_concurrency_redis.py` |
+| `architecture/org-endpoint-quota.md` | `org_endpoint_quota.py`, `service.py`, `types.py`, `route.py`, `async_bridge.py`, `overflow.py`, `arena.py`, `relay.py`, `bootstrap.py`, `config.py`, `analytics.py`, `test_org_endpoint_quota_redis.py`, `test_org_endpoint_quota_call.py`, `test_org_endpoint_quota_hub.py`, `test_org_endpoint_quota_async.py`, `test_org_endpoint_quota_best_effort.py`, `test_org_endpoint_quota_breaker.py`, `test_org_endpoint_quota_telemetry.py`, `test_org_endpoint_quota_rollup.py`, `test_org_endpoint_quota_rate_observe.py`, `test_org_endpoint_quota_local_rejections.py`, `test_org_endpoint_quota_route.py`, `test_relay_quota_admission.py`, `test_call_architecture.py` |
 | `architecture/org-flow-control.md` | `org_flow_control.py`, `structured_logging.py`, `kv.py`, `config.py`, `call.py`, `test_org_flow_control.py`, `test_org_flow_control_reader.py`, `test_org_flow_control_redis.py`, `test_org_rate_limit_redis.py`, `generate.ts` |
 | `architecture/org-traffic.md` | `org_traffic.py`, `structured_logging.py`, `bootstrap.py`, `call.py`, `table.py`, `mcp.py`, `types.py`, `service.py`, `test_org_traffic.py`, `test_org_concurrency.py` |
 | `architecture/policy-extensions.md` | `policy.py`, `bootstrap.py`, `signup.py`, `promotions.py`, `test_policy.py` |
 | `architecture/proxy-model.md` | `relay.py`, `jsontext.py`, `ssrf.py`, `api.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `asynctasks.py`, `keyslots.py`, `0069_platform_key_slot.py`, `test_platform_accounts.py`, `client_identity.py`, `call_surface.py`, `sandbox_identity.py`, `access.py`, `publicdemo.py`, `usage.py`, `call.py`, `limits.py`, `test_ssrf_public_addresses.py`, `test_call_application_contract.py`, `test_call_cancellation.py`, `test_call_response_limits.py`, `test_error_capture.py`, `test_marketplace_call.py`, `test_oauth_billed.py`, `test_passthrough.py`, `test_tag_billing.py`, `test_tag_billing_adversarial.py`, `test_call_architecture.py`, `test_asynctasks.py`, `test_relay_content_length.py` |
+| `architecture/replay.md` | `__init__.py`, `__main__.py`, `records.py`, `engine.py`, `fixtures.py`, `differ.py`, `test_replay.py` |
 | `architecture/search-experiment.md` | `catalog_search.py`, `search_experiment.py`, `interleave.py`, `judge.py`, `0041_searchlog.py`, `0056_searchlog_verdict.py`, `search_experiment_report.sql`, `search_agent_bench.py`, `test_search_experiment.py`, `test_catalog_search.py`, `test_search_agent_bench.py` |
 | `architecture/shadow.md` | `shadow.py`, `shadow.py`, `0086_shadow_pairs.py`, `test_shadow.py` |
 | `architecture/showcase.md` | `__init__.py`, `showcase.py`, `showcase.py`, `__init__.py`, `images.py`, `images.py`, `imaging.py`, `media_store.py`, `0076_showcase_and_avatars.py`, `showcase.html`, `test_showcase_leaderboard.py`, `test_images.py` |
@@ -814,18 +874,18 @@ Regenerate via `scripts/build-map.py`.
 | `guides/expanding-a-category.md` | `oauth_providers.py`, `authorization.py`, `oauth_flow.py`, `oauth_exchange.py`, `connect.py`, `connections.py`, `config.py` |
 | `interface/api.md` | `key_spend.py`, `media.py`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py`, `test_cli_pairing.py` |
 | `interface/catalog-review-proposal.md` | _(no source files — narrative/reference)_ |
-| `interface/cli.md` | `cli.py`, `test_released_cli_compat.py`, `test_cli_key_compatibility.py`, `auth_helpers.py`, `cli_analytics.py`, `convert.py`, `agents.py`, `api_keys.py`, `test_api_keys.py` |
+| `interface/cli.md` | `cli.py`, `cli_view.py`, `home.py`, `test_released_cli_compat.py`, `test_cli_key_compatibility.py`, `auth_helpers.py`, `cli_analytics.py`, `cli_session.py`, `convert.py`, `agents.py`, `api_keys.py`, `test_api_keys.py` |
 | `interface/dashboard.md` | `App.vue`, `TeamShowcase.vue`, `TeamAvatar.vue`, `UserAvatarDialog.vue`, `Avatar.vue`, `images.ts`, `views.ts`, `controller.js`, `agents.js`, `agentsComputed.js`, `credentialIssues.js`, `data.js`, `keys.js`, `session.js`, `team.js`, `TeamPage.vue`, `agents.test.ts`, `agents.spec.ts`, `catalog.js`, `base.css`, `layout.spec.ts`, `dashboard.css`, `web.py`, `tutorial.js`, `tour.js`, `TryEndpointDialog.vue`, `tryTool.js`, `TikTokPostForm.vue`, `tiktokPost.ts` |
 | `interface/enrich-arena.md` | `arena.py`, `arena.py`, `arena.py`, `models.py`, `0027_enrich_arena.py`, `teams.py`, `auth.py`, `bootstrap.py`, `enrich-arena.html`, `arena.js`, `bench.js`, `arena.css`, `index.ts`, `arena_verification_insights.py`, `0029_arena_verification_snapshot.py`, `import_arena_verification.py`, `test_arena_verification_insights.py`, `arena_insights.py`, `arena_insights.py`, `0028_arena_insights.py`, `test_arena_insights.py`, `apollo.svg`, `branddev.svg`, `companyenrich.svg`, `findymail.svg`, `hunter.svg`, `icypeas.svg`, `leadmagic.svg`, `leadsforge.svg`, `lusha.svg`, `pdl.svg`, `predictleads.svg`, `thecompaniesapi.svg`, `tomba.svg`, `sitetrack.js`, `test_enrich_arena.py` |
 | `interface/env-import.md` | `providers.py`, `skills.py` |
-| `interface/landing-sandbox.md` | `sandbox.py`, `sandbox_identity.py`, `pubfeed.py`, `sandbox.py`, `__init__.py`, `sandbox.py`, `api.py`, `onboard.py`, `web.py`, `access.py`, `boot.js`, `SignedOutPage.vue`, `install.sh` |
+| `interface/landing-sandbox.md` | `sandbox.py`, `sandbox_identity.py`, `sandbox.py`, `__init__.py`, `sandbox.py`, `api.py`, `onboard.py`, `web.py`, `access.py`, `boot.js`, `SignedOutPage.vue`, `install.sh` |
 | `interface/onboarding.md` | `auth.py`, `__init__.py`, `demo.py`, `first_run.py`, `sitetrack.js`, `cli.py`, `auth.py`, `onboard.py`, `onboarding.js`, `GettingStartedPage.vue` |
-| `interface/seo.md` | `api.py`, `web.py`, `agent_pages.py`, `robots.txt`, `catalog.css`, `usecase.css`, `index.html`, `App.vue`, `PublicNavigation.vue`, `boot.js`, `landing.html`, `product-theme.css`, `refinement.css`, `gateway.css`, `hero-opening.js`, `refinement.js`, `catalog-drum.js`, `gateway.js`, `gateway-loader.js`, `gateway-3d.js`, `gateway-model.js`, `gateway-intro.js`, `hero-particles.js`, `command-beam.js`, `SOURCES.md`, `landing.spec.ts`, `terms.html`, `usecase-seo.html`, `usecase-company.html`, `usecase-enrichment.html`, `usecase-social.html`, `usecase-ads.html`, `people-search.html`, `leads-signals.html`, `recruit.html`, `web-access.html`, `gtm-engineering.html`, `grokbot.html`, `fable-gtm.html`, `ugc.html`, `aeo.html`, `start.html`, `jev.html`, `showcase.html`, `rankings.html`, `rankings.py`, `wall.json`, `jev_xboost.py`, `house_calls.py`, `xboost-seed.json`, `triage.json`, `signals.json`, `astra.html`, `page.css`, `page.js`, `signin-sso.js`, `SignInDialog.vue`, `llms.txt`, `indexnow_submit.py`, `support.html`, `og-card.html` |
+| `interface/seo.md` | `api.py`, `web.py`, `agent_pages.py`, `robots.txt`, `catalog.css`, `usecase.css`, `index.html`, `App.vue`, `PublicNavigation.vue`, `boot.js`, `landing.html`, `product-theme.css`, `refinement.css`, `gateway.css`, `hero-opening.js`, `refinement.js`, `catalog-drum.js`, `gateway.js`, `gateway-loader.js`, `gateway-3d.js`, `gateway-model.js`, `gateway-intro.js`, `hero-particles.js`, `command-beam.js`, `SOURCES.md`, `landing.spec.ts`, `terms.html`, `usecase-seo.html`, `usecase-company.html`, `usecase-enrichment.html`, `usecase-social.html`, `usecase-ads.html`, `people-search.html`, `leads-signals.html`, `recruit.html`, `web-access.html`, `gtm-engineering.html`, `grokbot.html`, `fable-gtm.html`, `ugc.html`, `aeo.html`, `rea-growth.html`, `rea-growth.md`, `start.html`, `jev.html`, `showcase.html`, `rankings.html`, `rankings.py`, `wall.json`, `jev_xboost.py`, `house_calls.py`, `xboost-seed.json`, `triage.json`, `signals.json`, `astra.html`, `page.css`, `page.js`, `signin-sso.js`, `SignInDialog.vue`, `llms.txt`, `indexnow_submit.py`, `support.html`, `og-card.html` |
 | `interface/shell.md` | `shell.py`, `cli.py` |
 | `interface/skill-openai-test-cases.md` | _(no source files — narrative/reference)_ |
 | `interface/skill-openai-tool-justifications.md` | _(no source files — narrative/reference)_ |
-| `interface/skill.md` | `skill.md`, `integrate.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `jev-memory.mjs`, `web.py`, `mcp_install.py`, `build_plugin.py`, `plugin.json`, `marketplace.json`, `plugin.json`, `plugin.json`, `package.json`, `cordis.patch.yml`, `index.js`, `plugin.json`, `minimax_plugin.py` |
+| `interface/skill.md` | `skill.md`, `integrate.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `jev-memory.mjs`, `web.py`, `mcp_install.py`, `build_plugin.py`, `marketplace.json`, `plugin.json`, `marketplace.json`, `plugin.json`, `plugin.json`, `package.json`, `cordis.patch.yml`, `index.js`, `plugin.json`, `minimax_plugin.py` |
 | `interface/web-arena.md` | `web_arena.py`, `web_arena_scores.py`, `web_arena.py`, `web_arena_quality.py`, `web_arena_publications.py`, `web_arena_calls.py`, `web_arena.py`, `enterprise_sso.py`, `models.py`, `0057_web_arena.py`, `0058_web_arena_call_stats.py`, `0059_web_arena_seed_start.py`, `0060_web_arena_seed_progress.py`, `config.py`, `bootstrap.py`, `worker.py`, `web-arena.html`, `arena.js`, `arena.css`, `test_web_arena.py`, `test_web_arena_calls.py` |
-| `ops/capacity.md` | `__init__.py`, `capacity_notice.py`, `test_capacity_notice.py`, `collectors.py`, `policy.py`, `sweep.py`, `view.py`, `routes.py`, `signatures.py`, `verify.py`, `marks.py`, `events.py`, `test_capacity_protect.py`, `limiter.py`, `overflow_spend.py`, `routes_view.py`, `overflow.py`, `0007_overflow_spend.py`, `test_capacity_overflow.py`, `test_capacity_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `test_capacity_smoothing.py`, `fair_share.py`, `test_capacity_fair_share.py`, `provider_concurrency.py`, `test_provider_concurrency_redis.py`, `overflow_seed.json`, `__init__.py`, `orthogonal.py`, `monid.py`, `catalogs.py`, `0006_overflow_route.py`, `test_capacity_overflow_routes.py`, `test_influencersclub_overflow.py`, `worker.py`, `provider_balances.py`, `0005_capacity_policy_snapshot.py`, `test_capacity_know.py`, `test_capacity_collectors.py`, `test_financialdatasets.py`, `test_tinyfish.py` |
+| `ops/capacity.md` | `__init__.py`, `capacity_notice.py`, `test_capacity_notice.py`, `collectors.py`, `policy.py`, `sweep.py`, `view.py`, `routes.py`, `signatures.py`, `verify.py`, `marks.py`, `events.py`, `test_capacity_protect.py`, `limiter.py`, `overflow_spend.py`, `routes_view.py`, `overflow.py`, `0007_overflow_spend.py`, `test_capacity_overflow.py`, `test_capacity_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `test_capacity_smoothing.py`, `fair_share.py`, `test_capacity_fair_share.py`, `provider_concurrency.py`, `test_provider_concurrency_redis.py`, `rate_observe.py`, `provider_rate.py`, `test_capacity_rate_observe.py`, `overflow_seed.json`, `__init__.py`, `orthogonal.py`, `monid.py`, `catalogs.py`, `0006_overflow_route.py`, `test_capacity_overflow_routes.py`, `test_influencersclub_overflow.py`, `worker.py`, `provider_balances.py`, `0005_capacity_policy_snapshot.py`, `test_capacity_know.py`, `test_capacity_collectors.py`, `test_financialdatasets.py`, `test_tinyfish.py` |
 | `ops/deploy.md` | `pyproject.toml`, `hatch_build.py`, `build-dashboard.sh`, `build-web.sh`, `frontend-e2e-server.sh`, `__main__.py`, `maintenance.py`, `env.py`, `0034_managed_api_keys.py`, `0035_default_key_generation.py`, `0036_activity_key_indexes.py`, `worker.py`, `selfhost.sh`, `config.py`, `db.py`, `money_admission.py`, `bench_money_admission.py`, `email.py`, `audit.py`, `dev-local.sh`, `render.example.yaml` |
 | `reference/glossary.md` | `2026-06-30-jason-tools-registry.md` |

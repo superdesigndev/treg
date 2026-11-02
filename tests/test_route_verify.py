@@ -52,6 +52,8 @@ def verifiers_on(monkeypatch, platform_on):
 def _relay(answers: dict[str, list[tuple[int, dict]]], seen: list, gate: dict | None = None):
     """A fake upstream keyed by vendor host and job: `tomba` finds, `tomba-verify` checks."""
     async def relay(request, upstream_url, tool, secrets, client, **kwargs):
+        if before_outbound := kwargs.get("before_outbound"):
+            await before_outbound()
         provider = next(p for p in ("bounceban", "tomba", "hunter") if p in upstream_url)
         key = provider + ("-verify" if "verif" in upstream_url and provider != "bounceban" else "")
         seen.append(key)
@@ -99,6 +101,8 @@ async def test_a_hit_is_checked_by_bounceban_and_the_verdict_is_stored(clients: 
     v = d["_treg"]["verification"]
     assert v["verdict"] == "invalid" and v["checked"] is True and "reason" not in v
     assert v["served_by"] == "bounceban.people.email.verify" and v["cost_micro"] > 0
+    contract = catalog_store.load().contracts["people.email.find"]
+    assert d["_treg"]["advice"] == contract.check.disagree_advice, "the check wins over the finder's claim"
     total = int(r.headers["X-Treg-Cost-Micro"])
     assert total == d["_treg"]["charged_micro"] == TOMBA_FIND_PRICE + v["cost_micro"]
     assert before - await _balance(clients) == total
@@ -125,6 +129,39 @@ async def test_a_checked_hit_drops_the_advice(
     assert r.json()["_treg"]["verification"]["verdict"] == "valid" and "advice" not in r.json()["_treg"]
     r = await clients.post(f"/call/{FIND}", json=ASK)
     assert "X-Treg-Route-Verify" in r.json()["_treg"]["advice"], "the advice names the header"
+
+
+@pytest.mark.parametrize(("finder_status", "result", "flags", "disagrees"), [
+    ("valid", "deliverable", {}, False),
+    ("valid", "risky", {"is_accept_all": True}, True),
+    ("valid", "unknown", {}, True),
+    ("accept_all", "undeliverable", {}, False),
+])
+async def test_the_check_wins_over_a_verified_claim_it_does_not_confirm(
+    clients: AsyncClient, verifiers_on, monkeypatch, finder_status, result, flags, disagrees,
+):
+    """Only a `verified: true` hit can be contradicted; the finder's answer stays as it said."""
+    hit = (200, {"data": {"email": "a@stripe.com", "score": 90, "verification": {"status": finder_status}}})
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [hit], "bounceban": [_bb(result, **flags)]}, []))
+    r = await clients.post(f"/call/{FIND}", json=ASK, headers=ON)
+    d = r.json()
+    assert d["output"]["verified"] is (finder_status == "valid")
+    assert d["_treg"]["verification"]["checked"] is True
+    advice = catalog_store.load().contracts["people.email.find"].check.disagree_advice
+    assert (d["_treg"].get("advice") == advice) is disagrees
+    if not disagrees:
+        assert "advice" not in d["_treg"]
+
+
+def test_disagree_advice_needs_a_verified_output():
+    from treg.domain.catalog.routing import contracts as C
+    base = {"identity": [{"email": "str"}], "output": {"email": {"type": "str"}, "verified": {"type": "bool"}}}
+    check = {"endpoint": VERIFY, "field": "email"}
+    with pytest.raises(ValueError, match="verified"):
+        C.parse_contracts({"contracts": {"x.find": {
+            **base, "output": {"email": {"type": "str"}}, "check": {**check, "disagree_advice": "x"}}}})
+    c = C.parse_contracts({"contracts": {"x.find": {**base, "check": {**check, "disagree_advice": "x"}}}})
+    assert c["x.find"].check.disagree_advice == "x"
 
 
 async def test_a_plain_verify_call_keeps_its_own_order(clients: AsyncClient, verifiers_on, monkeypatch):
@@ -235,6 +272,8 @@ async def test_a_check_still_verifying_is_pending_and_left_to_the_worker(clients
     call_id = r.headers["X-Treg-Call-Id"]
     assert v["verdict"] == "unknown" and v["checked"] is True and v["pending"] is True
     assert v["call_id"] == f"{call_id}:v:r0" and v["served_by"] == "bounceban.people.email.verify"
+    assert v["async"]["task_id"] == "bb-1"
+    assert v["async"]["poll"]["endpoint"] == "bounceban.people.email.verify.status"
     async with session_maker() as db:
         [task] = (await db.execute(select(AsyncTaskRecord))).scalars().all()
     assert task.status == "pending" and v["cost_micro"] == task.reserved_micro
@@ -306,6 +345,8 @@ async def test_a_refused_check_says_why_and_costs_nothing(kind, reason):
     parent = type("P", (), {})()
     parent.call_ref = "c1"
     parent.meta = None
+    parent.quota_admissions = set()
+    parent.quota_pending = ()
     parent.input = type("I", (), {"raw_headers": (), "caller": None, "client_ip": "", "catalog_only": False})()
     v, cost = await call_route._run_check(parent, Check(endpoint=VERIFY, field="email", prefer=("bounceban",)),
                                           {"email": "a@b.c"}, None, [], refuse, None)

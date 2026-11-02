@@ -135,6 +135,7 @@ class Catalog:
     # service -> {in, name, unit}: a caller ceiling forwarded as an upstream query param.
     # Kept off provider_meta so catalog reads do not grow a new public field.
     ceiling_params: dict[str, dict] = field(default_factory=dict)
+    client_headers: dict[str, str] = field(default_factory=dict)
     contracts: dict = field(default_factory=dict)   # capability -> routing.Contract
     adapters: dict = field(default_factory=dict)    # endpoint id -> routing.Adapter (verified flag set)
 
@@ -335,12 +336,29 @@ _Loader.yaml_implicit_resolvers = {
     for ch, rs in yaml.SafeLoader.yaml_implicit_resolvers.items()}
 
 
+def _core_first(path: Path) -> tuple[str, bool]:
+    name = path.name.removesuffix(".yaml")
+    return (name.removesuffix(".extended"), name.endswith(".extended"))
+
+
 def _read_yaml(path: Path) -> dict:
     try:
         data = yaml.load(path.read_text(encoding="utf-8"), Loader=_Loader)
     except (OSError, yaml.YAMLError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _with_query_params(input_schema: object, shared: dict) -> dict:
+    """`input` with the provider's shared query parameters added under names it does not declare.
+    Accepts the flat `{name: spec}` form and the `{properties: {...}}` form an endpoint may use."""
+    inp = dict(input_schema) if isinstance(input_schema, dict) else {}
+    own = inp.get("queryParams")
+    if isinstance(own, dict) and isinstance(own.get("properties"), dict):
+        inp["queryParams"] = {**own, "properties": {**shared, **own["properties"]}}
+    else:
+        inp["queryParams"] = {**shared, **(own if isinstance(own, dict) else {})}
+    return inp
 
 
 def effective_async_descriptor(default: object, override: object = None) -> object:
@@ -435,13 +453,24 @@ def _parse(directory: Path) -> Catalog:
     by_id: dict[str, dict] = {}
     provider_meta: dict[str, dict] = {}
     ceiling_params: dict[str, dict] = {}
-    # Sorted so a rebuild is deterministic; `<service>.extended.yaml` sorts right after
-    # `<service>.yaml`, and both land under the same provider (curation splits a provider's
-    # core operations from the long tail across two files).
-    for path in sorted(directory.glob("*.yaml")):
-        if path.name in (CAPABILITIES_FILE, FX_FILE, ALIASES_FILE, CONTRACTS_FILE, ADAPTERS_FILE):
-            continue
-        doc = _read_yaml(path)
+    client_headers: dict[str, str] = {}
+    # Sorted so a rebuild is deterministic; `<service>.yaml` is read right before
+    # `<service>.extended.yaml`, and both land under the same provider (curation splits a
+    # provider's core operations from the long tail across two files). Reading the core file first
+    # makes it authoritative: its header facts and its endpoint ids win over the extended file's.
+    files = [(path, _read_yaml(path)) for path in sorted(directory.glob("*.yaml"), key=_core_first)
+             if path.name not in (CAPABILITIES_FILE, FX_FILE, ALIASES_FILE, CONTRACTS_FILE, ADAPTERS_FILE)]
+    # Query parameters a provider takes on every call (AnyAPI's response-budget controls) are
+    # declared once at the file header and merged into each endpoint's `input.queryParams`; the
+    # endpoint's own declaration of a name wins. Resolved before any endpoint is read, so the core
+    # file's block also reaches the extended file's endpoints.
+    provider_query_params: dict[str, dict] = {}
+    for path, doc in files:
+        block = doc.get("queryParams")
+        provider = doc.get("provider") or path.name.split(".")[0]
+        if isinstance(block, dict) and block:
+            provider_query_params.setdefault(provider, block)
+    for path, doc in files:
         provider = doc.get("provider") or path.name.split(".")[0]
         # A capability a provider file proposes is not yet in the shared taxonomy, but it is
         # already the join key of its endpoints — carry its description so the API can label it.
@@ -462,22 +491,29 @@ def _parse(directory: Path) -> Catalog:
         _validate_cache(doc.get("cache"), header=True)
         if doc.get("cache") and not meta.get("cache"):
             meta["cache"] = doc["cache"]
-        # A provider that accepts a caller ceiling as a query param states it once. The core file
-        # is authoritative: an extended file is parsed first and must not shadow it.
+        # A provider that accepts a caller ceiling as a query param states it once.
         rule = doc.get("ceiling_param")
-        if isinstance(rule, dict) and (provider not in ceiling_params or not path.name.endswith(".extended.yaml")):
-            ceiling_params[provider] = rule
+        if isinstance(rule, dict):
+            ceiling_params.setdefault(provider, rule)
+        # A provider that splits usage per customer names the header for treg's per-team code.
+        header = doc.get("client_header")
+        if isinstance(header, str) and header:
+            client_headers.setdefault(provider, header.lower())
         for raw in doc.get("endpoints") or []:
             if not isinstance(raw, dict) or not raw.get("id"):
                 continue
             if "cache" not in raw and meta.get("cache") is not None:
                 raw = {**raw, "cache": meta["cache"]}
+            if "response_retention" not in raw and doc.get("response_retention") is not None:
+                raw = {**raw, "response_retention": doc["response_retention"]}
             # Same inheritance for the provider's SUCCESS rule. A vendor's "HTTP 200 always, read
             # `code`" convention is one fact about the whole provider, and stating it per endpoint
             # means an ingest that adds routes silently ships them without one, and settle.py bills
             # the estimate when it cannot tell a failure from a hit.
             if "expect" not in raw and doc.get("expect") is not None:
                 raw = {**raw, "expect": doc["expect"]}
+            if provider in provider_query_params:
+                raw = {**raw, "input": _with_query_params(raw.get("input"), provider_query_params[provider])}
             effective_async = effective_async_descriptor(doc.get("async"), raw.get("async"))
             if effective_async is not None:
                 raw = {**raw, "async": effective_async}
@@ -542,7 +578,7 @@ def _parse(directory: Path) -> Catalog:
     cat = Catalog(fx=fx, credit_rates=credit_rates, unit_rates=unit_rates,
                   shared_plans=shared_plans, trial_pools=trial_pools, platforms=platforms,
                   capabilities=capabilities, capability_titles=capability_titles, endpoints=endpoints, by_id=by_id,
-                  provider_meta=provider_meta, ceiling_params=ceiling_params, aliases=aliases,
+                  provider_meta=provider_meta, ceiling_params=ceiling_params, client_headers=client_headers, aliases=aliases,
                   contracts=contracts, adapters=adapters)
     from .routing.synthetic import routed_endpoint
     for cap, contract in contracts.items():
@@ -761,8 +797,12 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         # Generated media and its task/result utilities must never replay shared-account ids.
         # Enforce this for core and generated extended rows without changing their public kind.
         "cache": "forbidden" if platform in {"image-gen", "video-gen", "voice-gen", "music-gen"} else raw.get("cache"),
+        "response_retention": raw.get("response_retention"),
         "verified": str(verified) if verified else None,
         "added": str(raw.get("added") or "") or None,
+        # The first UTC day whose observations describe the service as it is now; ranking and the
+        # published call figures drop the days before it (the provider replaced the service).
+        "observed_from": str(raw.get("observed_from") or "") or None,
         # {status, means} — a status the provider uses for "asked and answered: no result" (PDL
         # 404s a person it has no record of). Only endpoints with evidenced miss semantics carry
         # it; for everything else an error status means what it says.
@@ -818,10 +858,33 @@ def example_path(endpoint_id: str) -> Path | None:
 _COST_EVIDENCE = frozenset({"note", "source", "source_url", "checked", "confidence"})
 
 
+def cost_row(ep: dict, cat: Catalog) -> dict | None:
+    """An endpoint's price as a comparison row shows it: the cost view without its evidence."""
+    cost = cat.cost_view(ep["cost"], ep["provider"])
+    return {k: v for k, v in cost.items() if k not in _COST_EVIDENCE} if cost else cost
+
+
+_QUOTE_COST = frozenset({"type", "value", "currency", "per", "unit", "usd", "usd_min", "varies", "display_usd",
+                         "display_unit", "display_prefix", "display_suffix", "rate_usd", "rate_usd_min", "rate_unit"})
+
+
+def quote_cost(cost: dict | None) -> dict | None:
+    """A cost as one line of a routed quote reads it: the price and its unit, not how it settles.
+    What every row would repeat is left out: `per` 1, a USD `value` (it is `usd`), and the `unit` of a
+    price per one of them (the `type` says it)."""
+    if not cost:
+        return cost
+    usd_native = cost.get("currency", "USD") == "USD" and cost.get("usd") is not None
+    per_one = (cost.get("per") or 1) == 1
+    return {k: v for k, v in cost.items() if k in _QUOTE_COST
+            and not (k == "per" and per_one)
+            and not (k in ("value", "currency") and usd_native)
+            and not (k == "unit" and per_one and cost.get("usd") is not None)}
+
+
 def sibling_view(ep: dict, provider_display: str, cat: Catalog) -> dict:
     """One row of an endpoint's comparison with the other providers of its job; the full view is
     that endpoint's own detail."""
-    cost = cat.cost_view(ep["cost"], ep["provider"])
     return {
         "id": ep["id"],
         "provider": ep["provider"],
@@ -829,7 +892,7 @@ def sibling_view(ep: dict, provider_display: str, cat: Catalog) -> dict:
         "name": ep.get("name") or "",
         "scope": ep["scope"],
         "kind": ep.get("kind") or DEFAULT_KIND,
-        "cost": {k: v for k, v in cost.items() if k not in _COST_EVIDENCE} if cost else cost,
+        "cost": cost_row(ep, cat),
         "platform_eligible": cat.platform_eligible(ep),
         "status": ep.get("status") or None,
         "status_note": ep.get("status_note") or None,
@@ -1822,14 +1885,22 @@ def tool_examples(service: str) -> list[dict]:
     return out
 
 
+_HEADLINE: tuple[Catalog, tuple[str, int]] | None = None
+
+
 def headline_counts(cat: Catalog) -> tuple[str, int]:
     """The two numbers every agent-facing surface quotes, taken from the loaded catalog instead of
     typed by hand: direct (non-routed) endpoints rounded DOWN to the hundred with a trailing "+",
     and the providers behind them. Six hand-written copies once disagreed with each other and the
     smallest undersold the catalog by six hundred endpoints; generated, the number cannot drift."""
+    global _HEADLINE
+    if _HEADLINE is not None and _HEADLINE[0] is cat:
+        return _HEADLINE[1]
     direct = [e for e in cat.by_id.values() if e.get("kind") != "routed"]
     providers = {e.get("provider") for e in direct if e.get("provider")}
-    return f"{len(direct) // 100 * 100:,}+", len(providers)
+    counts = f"{len(direct) // 100 * 100:,}+", len(providers)
+    _HEADLINE = cat, counts
+    return counts
 
 
 def empty_is_failure(endpoint_id: str) -> bool:

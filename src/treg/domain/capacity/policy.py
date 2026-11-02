@@ -19,6 +19,8 @@ AGGREGATORS = ("orthogonal", "monid")
 # imports as unknown/unknown and is flagged by the sweep - a policy row must be classified by a
 # person, never guessed by code.
 _KNOWN: dict[str, tuple[str, str, str]] = {
+    "orbisearch": ("credits", "manual", "api"),
+    "theirstack": ("credits", "manual", "api"),
     "enrichlayer": ("credits", "auto_recharge", "api"),
     "adyntel": ("credits", "manual", "manual"),
     "dropleads": ("credits", "manual", "api"),
@@ -35,6 +37,8 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "contactout": ("credits", "unknown", "api"),  # independent pools; overages unconfirmed
     "leadmagic": ("credits", "manual", "api"),
     "findymail": ("credits", "manual", "api"),
+    "anymailfinder": ("credits", "manual", "api"),
+    "enrow": ("credits", "manual", "api"),
     "leadsforge": ("credits", "manual", "api"),
     "thecompaniesapi": ("credits", "manual", "api"),
     "tomba": ("monthly_quota", "quota_reset", "api"),
@@ -51,6 +55,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "hlrlookup": ("credits", "manual", "api"),
     "tavily": ("credits", "manual", "api"),
     "search1api": ("credits", "auto_recharge", "api"),
+    "bravesearch": ("cash", "auto_recharge", "manual"),
     "octen": ("cash", "manual", "manual"),
     "linkup": ("cash", "manual", "api"),
     # The balance route needs an Account API OAuth token, not the API key treg holds.
@@ -113,6 +118,12 @@ _QUOTAS: dict[str, dict] = {
     "aiark": {"limit": 15000, "period": "billing", "resets_at_rule": "monthly subscription; date not reported by API"},
 }
 _RATE_LIMITS: dict[str, dict] = {
+    "orbisearch": {"limit": 15, "window_s": 1, "source": "policy"},
+    "enrow": {"limit": 8, "window_s": 1, "source": "policy"},
+    # The published 60 requests/second is shared across enrichment and result polling. Leave
+    # headroom for account checks and manual use of the same key; BYOK bypasses this pace.
+    "dropcontact": {"limit": 30, "window_s": 1, "source": "policy"},
+    "theirstack": {"limit": 4, "window_s": 1, "source": "docs"},
     "enrichlayer": {"limit": 300, "window_s": 60, "source": "docs"},
     # Agent's entry-tier limit is one request per second. Shared-key smoothing is provider-wide,
     # so Search also uses this conservative pace even though its own allowance is higher.
@@ -166,6 +177,7 @@ _RATE_LIMITS: dict[str, dict] = {
     # Most routes allow 200/min; screenshot has a separate 10/min ceiling. This provider-wide
     # spacer is not a strict quota gate, so do not slow every search to screenshot's allowance.
     "search1api": {"limit": 200, "window_s": 60, "source": "docs"},
+    "bravesearch": {"limit": 50, "window_s": 1, "source": "docs"},
     # The free Base plan allows up to 20 QPS. Pace the shared key below that ceiling;
     # endpoint-specific Extract URL limits remain enforced by Octen.
     "octen": {"limit": 5, "window_s": 1, "source": "policy"},

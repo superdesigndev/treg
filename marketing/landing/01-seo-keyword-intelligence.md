@@ -95,7 +95,7 @@ The results endpoints are the most-used tools in the whole catalog, so their rec
 |---|---|---|---|---|
 | **Organic** | DataForSEO | $0.002 | **100% (2,075 calls)** | 5.5 s |
 | | ScrapeCreators | $0.00188 | 100% (343 calls) | 1.6 s |
-| | Serpstat | $0.0005 | 100% (77 calls) | 1.2 s |
+| | Serpstat | $0.0005 / row | 100% (77 calls) | 1.2 s |
 | | SerpApi | $0.015 |: |: |
 | **Maps / local** | DataForSEO | $0.002 | **100% (2,646 calls)** | 1.9 s |
 | **News** | DataForSEO | $0.002 | 100% (690 calls) | 9.0 s |
@@ -191,7 +191,7 @@ searchapi.io, you.com.
 
 **Price a content plan before you commit writers to it.**
 Hand the agent 200 candidate titles. It returns real monthly volume, difficulty and intent for each, and
-flags where the current top three are weaker than you are. At $0.0005 a keyword that is a few cents, not a
+flags where the current top three are weaker than you are. At $0.0005 a keyword that is about ten cents, not a
 month of Semrush.
 
 **Find out who actually earned the ranking.**

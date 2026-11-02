@@ -154,6 +154,42 @@ async def test_view_sees_a_published_state_from_a_fresh_process_within_the_ttl()
     assert view.get("findymail").exhausted_until == state.exhausted_until
 
 
+@pytest.mark.parametrize(("provider", "path", "body"), [
+    ("fiber-ai", "/v1/get-org-credits", {"output": [{"available": 0, "max": 100}]}),
+    ("mobiusengine-jobs", "/v1/balance", {"mode": "wallet", "balance_usd": 0}),
+    ("findymail", "/api/credits", {"credits": 0}),
+])
+async def test_a_swept_empty_account_reaches_the_call_path_under_its_catalog_id(
+    monkeypatch, provider, path, body,
+):
+    """The sweep keys an account by its Settings slot (`fiber_ai`); the call path asks with the
+    catalog id (`fiber-ai`). Both must name the same published state."""
+    from treg.application.call import keyslots
+    from treg.config import get_settings, platform_setting_name
+
+    await reset_db()
+    slot = platform_setting_name(provider).removeprefix("platform_key_")
+    monkeypatch.setenv(f"TREG_PLATFORM_KEY_{slot.upper()}", "k")
+    get_settings.cache_clear()
+
+    def serve(request):
+        assert request.url.path == path
+        return httpx.Response(200, json=body)
+
+    try:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as upstream:
+            async with session_maker() as db:
+                result = await run_sweep(db, client=upstream, only={slot})
+    finally:
+        get_settings.cache_clear()
+    assert result.states[slot].health == "exhausted"
+    view = LatestStateView()
+    await view.load(force=True)
+    monkeypatch.setattr(keyslots, "capacity_view", view)
+    assert view.get(provider) is not None and view.is_exhausted(provider)
+    assert keyslots.exhausted(provider, f"{provider}.x", None)
+
+
 def test_capacity_view_getters_are_sync_and_io_free():
     import inspect
     assert not inspect.iscoroutinefunction(LatestStateView.get)

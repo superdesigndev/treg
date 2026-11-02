@@ -1,0 +1,15 @@
+{
+  "grounding": {
+    "generic": [
+      {
+        "url": "https://example.com",
+        "title": "Example Domain",
+        "snippets": [
+          "Example passage"
+        ]
+      }
+    ],
+    "map": []
+  },
+  "sources": []
+}

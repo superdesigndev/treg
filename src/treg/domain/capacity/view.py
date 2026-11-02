@@ -17,7 +17,7 @@ from ...models import Ephemeral
 from ...timeutil import utcnow_naive
 from .marks import LOCK_NS, Lock, lock_key
 from .policy import _CONCURRENCY, _ENDPOINT_RATE_LIMITS, _RATE_LIMITS, LatestState
-from .sweep import STATE_NS
+from .sweep import STATE_NS, state_key
 
 TTL_S = 60.0
 
@@ -43,7 +43,7 @@ class LatestStateView:
 
     def get(self, provider: str) -> LatestState | None:
         """The sweep's state; call `load()` first. Sync and I/O-free on purpose (resolve.py rule)."""
-        return self._states.get(provider)
+        return self._states.get(state_key(provider))
 
     def locks(self, provider: str, endpoint_id: str | None = None,
               slot: str | None = None, *, metered: bool = True) -> list[Lock]:
@@ -71,7 +71,7 @@ class LatestStateView:
         lock = self.active_lock(provider, endpoint_id, slot, metered=metered)
         if lock is not None:
             return lock.until
-        state = self._states.get(provider) if slot is None and metered else None
+        state = self._states.get(state_key(provider)) if slot is None and metered else None
         return state.exhausted_until if state and state.is_exhausted() else None
 
     def rate_bucket(self, provider: str, endpoint_id: str | None,
@@ -91,7 +91,7 @@ class LatestStateView:
     def rate_limit(self, provider: str) -> tuple[int, float] | None:
         """(limit, window_s) for the provider's platform key, or None when unknown. Published by the
         sweep from the policy; the verified defaults apply before a sweep has run. Sync, I/O-free."""
-        state = self._states.get(provider)
+        state = self._states.get(state_key(provider))
         return _pair((state.rate_limit if state and state.rate_limit else None)
                      or _RATE_LIMITS.get(provider))
 
