@@ -254,6 +254,10 @@ _CONCURRENCY: dict[str, int] = {
     "litescrape": 100,
     # treg's own conservative setting for the shared account (catalog row `limits`).
     "fishaudio": 5,
+    # Filtrat asks for at most 10 verifications and 8 finder searches in progress on treg's partner
+    # key (a 9th search waits up to 10 s, then 503 SERVER_BUSY). The gate is per provider, so it takes
+    # the lower figure; 8 verifications at the observed 0.6 s median still clear the 600 a minute.
+    "filtrat": 8,
 }
 
 
