@@ -13,6 +13,7 @@ from treg.application.call import service
 from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
 from treg.domain.catalog import store as catalog_store
+from treg.domain.identity import api_keys as managed_keys
 from treg.infra import db as infra_db
 from treg.infra.db import session_maker
 from treg.models import Hold, LedgerEntry
@@ -419,6 +420,8 @@ async def test_web_arena_releases_api_connection_while_provider_waits(clients, m
             "task": "search", "value": "pool check", "providers": ["firecrawl"], "jev": False})
         assert quote.status_code == 200, quote.text
         run_id = quote.json()["id"]
+        # The quote schedules a last-used write on SQLite's shared pool.
+        await managed_keys.drain_last_used()
         assert (await clients.post(f"/web-arena/api/runs/{run_id}/start")).status_code == 200
         await asyncio.wait_for(entered.wait(), 15)
         assert infra_db._engine.sync_engine.pool.checkedout() == 0
