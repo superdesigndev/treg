@@ -156,6 +156,8 @@ jobs:
           tests/test_org_flow_control_reader.py
           tests/test_org_flow_control_redis.py
           tests/test_org_rate_limit_redis.py
+          tests/test_provider_concurrency_redis.py
+          tests/test_capacity_rate_observe.py
           tests/test_money_trace.py
           tests/test_money_trace_postgres.py
           tests/test_money_trace_runner.py

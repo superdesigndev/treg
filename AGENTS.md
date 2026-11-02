@@ -46,8 +46,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    connection to treg's own Meta app it also carries `appsecret_proof`, the HMAC of the injected
    token with the app secret, replacing any caller value), the transport headers listed in
    `src/treg/infra/upstream/relay.py`, and (on treg's shared key only) the per-org and, for pinned
-   agents, per-pin re-scoping of the caller's `Idempotency-Key` and treg's own `User-Agent` in place
-   of the caller's are the only rewrites of what the caller sent. One addition is allowed: when the
+   agents, per-pin re-scoping of the caller's `Idempotency-Key`, treg's own `User-Agent` in place
+   of the caller's, and, where the provider file names a `client_header`, treg's opaque per-team code
+   in that header (HMAC of `TREG_CLIENT_ID_SECRET` over provider and team, never a team id, name or
+   email) are the only rewrites of what the caller sent. One addition is allowed: when the
    catalog declares `ceiling_param` (`{in: query, name, unit: usd}` on the provider file or on that
    endpoint's `cost`), the call carries a caller ceiling, and the caller did not already send that
    query name, the call application appends `name=<remaining ceiling in USD>` to the outbound query
@@ -150,8 +152,8 @@ agents then built against a constitution that was wrong.
   credentials, catalog prices and balances, and writes only what `tests/test_call_architecture.py`
   allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
-  archive-question marks, durable provider-resource ownership, and Redis org/endpoint
-  quota admission counters). Extend the
+  archive-question marks, durable provider-resource ownership, Redis org/endpoint
+  quota admission counters, and the shared provider rate window's members). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary
   calls: every step goes through `execute_call` under its own hold, a catalog step as the caller and

@@ -1,8 +1,10 @@
-"""Only quota-admitted upstream attempts enter the provider rate observation."""
+"""Only quota-admitted upstream attempts count in the provider rate window: a quota refusal gives
+the window member back and is not counted."""
 
 import pytest
 
 from treg.application.call import service as call_service
+from treg.domain.capacity import rate_observe
 
 from test_capacity_rate_observe import _counts, emitted, observing  # noqa: F401
 from test_capacity_smoothing import _publish_rate, _relay_script
@@ -14,7 +16,7 @@ from test_org_endpoint_quota_call import _assert_no_money, _enable
 async def test_rate_observation_follows_quota_admission(
     clients, monkeypatch, observing, emitted, limit, unavailable, status,
 ):
-    verdicts, asked = observing
+    verdicts, asked, released = observing
     _enable(monkeypatch, {EP: limit}, unavailable=unavailable)
     await _publish_rate("tikhub", 20, 60.0)
     verdicts.append("over")
@@ -25,11 +27,15 @@ async def test_rate_observation_follows_quota_admission(
     assert response.status_code == status, response.text
     if status == 429:
         assert response.json()["detail"]["error"] == "org_endpoint_quota_exceeded"
-        assert asked == emitted == sent == []
+        assert asked == [("tikhub", 20, 60.0)] and len(released) == 1
+        rate_observe.flush()
+        assert emitted == sent == []
         assert await _balance(clients) == before
         await _assert_no_money()
     else:
         assert len(sent) == 1
         assert asked == [("tikhub", 20, 60.0)]
+        assert released == []
+        rate_observe.flush()
         assert len(emitted) == 1 and _counts(emitted[0]) == {"over_2xx": 1}
         assert before - await _balance(clients) == EP_MICRO

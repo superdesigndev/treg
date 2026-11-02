@@ -664,35 +664,59 @@ process enforces the cap on its own, which is exact for one process. `share_wait
 a call that met a full provider. Choosing an account (`keyslots`) still reads only this process's
 places.
 
-## Protect, part four - a shared rate window, observed before it refuses
+## Protect, part four - a shared rate window, observed everywhere, enforced where listed
 
 The smoother (D′) is per process and never refuses, so demand above a declared rate still reaches
 the provider and is answered 429, and every further process adds its own allowance. The shared
-window is the gate that would hold the declared rate across processes; it runs in observe mode
-first, so the declared numbers are checked against what providers actually serve before any call
-is refused on them.
+window holds the declared rate across processes. It observes every bucket, so the declared numbers
+are checked against what providers actually serve, and refuses only on the buckets an operator
+lists once those numbers hold.
 
-`TREG_PROVIDER_RATE_MODE` = `off` (default) | `observe`, with `TREG_KV_URL` set. In `observe`, a
-platform call about to go upstream (not an archive hit, never an own key) asks
-`infra/provider_rate.admit` about its smoothing bucket (`view.rate_bucket`: the provider, an
-endpoint with its own allowance, each further treg-owned account). The window is one sorted set
-per bucket, `treg:provider-rate:v1:` plus the bucket key, on the slot script org concurrency
-uses: an admitted call is a member that expires `window_s` later by the store's clock, and the
-window is full at `limit` live members. A call the window would refuse adds no member, so the
-admitted count is what the provider would see under enforcement. A store fault or a reply slower
-than 200 ms is an `unknown` verdict. The call is relayed unchanged whatever the verdict; the
-smoother's wait and the one `retry-after` re-send (not observed) still apply.
-When an org/endpoint quota admission is pending, it runs before the rate observation: a quota
-refusal neither asks the shared rate window nor records a provider attempt without an answer.
+`TREG_PROVIDER_RATE_MODE` = `off` (default) | `observe` turns the window on;
+`TREG_PROVIDER_RATE_ENFORCE` names the buckets it refuses on (comma-separated `view.rate_bucket`
+keys without the `#account` suffix, case-insensitive, so a name covers every treg-owned account of
+that bucket; startup warns `event=provider_rate_enforce_unknown` for a name this build declares no
+rate for). Either needs a Redis `TREG_KV_URL`, and an enforce list needs `observe`; `Settings`
+refuses to start otherwise. A platform call about to go upstream (not an archive hit, never an own
+key) asks `infra/provider_rate.admit` about its smoothing bucket (`view.rate_bucket`: the provider,
+an endpoint with its own allowance, each further treg-owned account). The check runs inside relay's
+`before_outbound`, after relay's own pre-send refusals, so a call relay refuses takes no room. The
+window is one sorted set per bucket and window length, `treg:provider-rate:v3:<bucket>:<window_ms>`:
+an admitted call is a member that expires `window_s` later by the store's clock, the window is full
+at `limit` live members, and a refusal adds no member and returns when the oldest one expires. A
+changed limit judges the same members; a changed length starts a new window. A store fault or a
+reply slower than 200 ms is an `unknown` verdict and skips the store for 5 s in that process; after
+that, one call probes it while the others still skip it, and only that probe closes the breaker. An
+unknown verdict never refuses.
 
-`domain/capacity/rate_observe.py` counts each verdict (`admit`, `over`, `unknown`) against the
-provider's status (`2xx`, `429`, `other`, `none` when the relay raised) and emits one `capacity`
-line `rate_observe` per bucket and process at most once a minute, on that bucket's next call, with
-`provider`, `bucket`, `limit`, `window_s`, `observed_s` and the nonzero cells (`over_2xx`,
-`admit_429`, ...). A quiet bucket's last counts wait for its next call; process exit loses them.
-Sum the lines across processes over the same period. `over_2xx` is what enforcing the declared
-rate would cost (calls the provider served that the gate would have refused); `admit_429` is
-allowance the declared rate overstates.
+On an enforced bucket a full window refuses the call before it is sent: the typed
+`provider_rate_limited` 429 (`interface/api.md`), `Retry-After` and `retry_after_s` rounded up
+from the oldest member's expiry, not charged (the hold is released), the smoother's token given
+back, and `refused_by=capacity` on its record. Overflow then gets its chance as for a provider's own
+burst 429 (forced trigger `burst`), through the same child cycle as a skip-direct call; when it
+does not serve, for whatever reason, the caller still gets the rate refusal. A routed job records
+the candidate as `skipped` without spending its error budget, and answers `provider_rate_limited`
+itself only when every candidate was skipped that way. A capacity probe
+(`probe_lock_id`) and a team's poll of its own submitted job (`free_owned_poll`) are counted but
+never refused. Elsewhere the call is relayed unchanged whatever the verdict. The window runs after
+the smoother's wait. The one `retry-after` re-send asks the window after its sleep; on an enforced
+bucket with a full window it is not sent and the provider's first 429 stands. When an org/endpoint
+quota admission is pending, the window is asked first: a rate refusal spends no quota, and a quota
+refusal gives its member back (`provider_rate.release`, awaited by `provider_rate.drain` before the
+store closes) and is not counted.
+
+`domain/capacity/rate_observe.py` counts each verdict (`admit`, `over`, `unknown`) against what
+happened: the provider's status (`2xx`, `429`, `other`, `none` when the relay raised) or
+`refused`. Each process emits one `capacity` line `rate_observe` per bucket and rate about once a
+minute (`flush_worker`, started by every app role's lifespan when the window is on) and once more
+at shutdown; `treg-worker` flushes when its command ends. Each line carries `provider`, `bucket`,
+`limit`, `window_s`, `enforced`, `observed_s` and the nonzero cells (`over_2xx`, `over_refused`,
+...). An abrupt exit loses the counts not yet emitted. Sum the lines across processes over the same
+period. `over_2xx` is what enforcing the declared rate would cost (calls the provider served that
+the window would refuse), so a large one says the declared rate is too low. `admit_429` says it is
+too high only while `over_*` is near zero: calls the window would refuse still spend the provider's
+allowance when they are relayed, and public-resource checks, compensating deletes and the worker's
+async polls on the same key are not counted.
 
 ## Overflow, the child cycle (step E) — off by default
 
