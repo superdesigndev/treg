@@ -1,4 +1,4 @@
-"""The registry data model — minimal on purpose (charter: don't invent extra nouns).
+"""The registry data model — minimal on purpose (don't invent extra nouns).
 
 Multi-tenancy (orgs) shape: an **Org** is the tenant that owns resources; a **User** is a
 global identity; a **Membership** links a user to an org with a role and IS where the caller's

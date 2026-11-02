@@ -1111,7 +1111,7 @@ def near_ids(endpoint_id: str, cat: Catalog, limit: int = 3) -> list[str]:
     # claim that the caller mistyped, and `apollo.people.email.find` is not a typo for
     # `hunter.people.email.find` — it is a different vendor, a different price and a different
     # credential. On a path that spends money, "did you mean <competitor>?" is provider routing
-    # wearing a spellcheck's clothes, which is exactly what the charter says treg does not do:
+    # wearing a spellcheck's clothes, which is exactly what treg does not do:
     # treg compares providers side by side and the CALLER chooses.
     if provider not in cat.provider_meta:
         return []

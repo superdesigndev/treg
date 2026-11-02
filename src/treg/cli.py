@@ -1,4 +1,4 @@
-"""treg — a thin CLI over the registry API. It owns NO logic of its own (charter: the API is the
+"""treg — a thin CLI over the registry API. It owns NO logic of its own (the API is the
 only brain); every command is one HTTP call. Config lives in ~/.treg/config.json.
 
 Auth is identity-first: `treg login` opens the browser, you authenticate with GitHub, and the CLI
@@ -999,9 +999,9 @@ def _is_rootish(d: Path) -> bool:
 
 
 def _pick_path(cfg: dict) -> str:
-    """The 3-path onboarding menu (Set up / Access / Demo). Interactive default is Setup; the
-    non-interactive path keeps the smart org-based pick (a team with tools → Access; an empty
-    team you admin → Set up; else Demo) so scripted/agent runs stay unchanged."""
+    """The onboarding menu (Catalog / Set up / Access / Demo). Interactive default is Catalog; the
+    non-interactive path picks by org (a team with tools → Access; an empty team you admin →
+    Set up; else Catalog, which needs nothing) so scripted/agent runs stay unchanged."""
     if not sys.stdin.isatty():
         org = _onboard_active_org(cfg)
         has_tools = bool(org and org.get("tool_count"))
@@ -1017,7 +1017,7 @@ def _pick_path(cfg: dict) -> str:
         ("catalog", "Call something now", "find a tool in the catalog and call it — no key, no setup"),
         ("setup", "Share your own keys & skills", "upload this project's .env + skills (admins)"),
         ("access", "Use your team's tools", "pull your team's shared skills + make a call"),
-        ("demo", "See how it works", "a walkthrough with a throwaway team"),
+        ("demo", "See how it works", "a walkthrough; nothing is created or changed"),
     ], default="catalog")
     if picked is None:  # Ctrl-C / Esc / EOF
         raise SystemExit(0)
