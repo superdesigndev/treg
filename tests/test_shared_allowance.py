@@ -160,15 +160,12 @@ async def test_a_spent_youtube_allowance_refuses_treg_app_connections_until_a_pr
     assert [c["refused_by"] for c in refused] == ["capacity"]
 
 
-@pytest.mark.parametrize("answer", [(429, YT_SEARCH_QUOTA), (403, YT_QUOTA)],
-                         ids=["search-limit", "units-spent-on-a-search"])
-async def test_a_costly_call_running_out_leaves_cheap_calls_serving(
-        clients: AsyncClient, allowance_mode, upstream, answer):
+async def test_search_running_out_of_its_own_limit_leaves_the_rest_serving(
+        clients: AsyncClient, allowance_mode, upstream):
     await _connect(clients, "youtube", YT_HOST, provider="youtube")
-    upstream.answer = answer
+    upstream.answer = (429, YT_SEARCH_QUOTA)
     for _ in range(2):
-        r = await clients.get("/call/youtube/youtube/v3/search?q=x&part=id")
-        assert r.status_code == answer[0]
+        assert (await clients.get("/call/youtube/youtube/v3/search?q=x&part=id")).status_code == 429
     assert (await _lock("allowance:youtube/search")).is_active()
     assert await _lock("allowance:youtube") is None
 
@@ -177,7 +174,33 @@ async def test_a_costly_call_running_out_leaves_cheap_calls_serving(
     assert r.status_code == 503 and r.json()["detail"]["error"] == "shared_allowance_exhausted"
     assert (await clients.get("/call/youtube/youtube/v3/videos?id=a&part=id")).status_code == 200
     r = await clients.post("/call/youtube/youtube/v3/videos?part=snippet", json={})
-    assert r.status_code == 200, "a write is its own costly pool, not search's"
+    assert r.status_code == 200, "a write is not limited by search's own limit"
+
+
+async def test_a_costly_call_told_the_units_are_spent_leaves_cheap_calls_serving(
+        clients: AsyncClient, allowance_mode, upstream):
+    await _connect(clients, "youtube", YT_HOST, provider="youtube")
+    upstream.answer = (403, YT_QUOTA)
+    for _ in range(2):
+        assert (await clients.put("/call/youtube/youtube/v3/videos?part=snippet",
+                                  json={})).status_code == 403
+    assert (await _lock("allowance:youtube/writes")).is_active()
+    assert await _lock("allowance:youtube") is None
+
+    upstream.answer = (200, b'{"items": []}')
+    assert (await clients.put("/call/youtube/youtube/v3/videos?part=snippet",
+                              json={})).status_code == 503
+    assert (await clients.get("/call/youtube/youtube/v3/search?q=x&part=id")).status_code == 200
+
+
+async def test_a_search_told_the_units_are_spent_locks_the_whole_allowance(
+        clients: AsyncClient, allowance_mode, upstream):
+    await _connect(clients, "youtube", YT_HOST, provider="youtube")
+    upstream.answer = (403, YT_QUOTA)
+    for _ in range(2):
+        await clients.get("/call/youtube/youtube/v3/search?q=x&part=id")
+    assert (await _lock("allowance:youtube")).is_active()
+    assert await _lock("allowance:youtube/search") is None
 
 
 async def test_a_success_between_two_quota_answers_keeps_the_allowance_open(
@@ -266,11 +289,12 @@ async def test_a_call_probes_only_a_lock_its_answer_can_prove(
     assert (await _lock("allowance:youtube")).is_active()
     assert (await _lock("allowance:youtube/search")).is_active()
 
-    # A search cannot prove the cheap calls serve: with the whole allowance locked it never probes.
+    # A costly write cannot prove the cheap calls serve: with the whole allowance locked it never
+    # probes.
     capacity_marks._last_probe.clear()
     upstream.answer = (200, b'{"items": []}')
     relayed = len(upstream.calls)
-    assert (await clients.get(search)).status_code == 503
+    assert (await clients.put("/call/youtube/youtube/v3/videos?part=id", json={})).status_code == 503
     assert len(upstream.calls) == relayed
 
     # A cheap call probes the whole allowance; then a search probes its own scope.

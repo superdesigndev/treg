@@ -37,9 +37,9 @@ quota error until the provider resets.
   and is never counted. The binding's `account` gives each of treg's credentials its own pool.
 
 `scopes` names smaller pools inside the allowance: the calls each covers (`call_regex` over
-"METHOD /upstream/path") and, where the provider names it, the exhaustion answer that does
-(`body_regex`). YouTube has two: `search` (its own per-day limit, and a far higher unit price) and
-`writes` (every non-GET, uploads included).
+"METHOD /upstream/path"). A scope with `body_regex` is a limit of its own the provider names when
+it runs out; one without is a class of costly calls. YouTube has two: `search` (its own daily call
+limit) and `writes` (every non-GET, priced far above a read).
 
 `application/call/allowance.draw_for` makes the decision from the tool and the loaded secrets, with
 no I/O. It runs at the same point as the paused-provider check, so a catalog call on a connection,
@@ -56,8 +56,8 @@ burst, and a row that expects one but finds none is unknown) or a named reset su
 midnight Pacific time. A per-account limit or a short token-wide wait never strikes.
 
 A spent answer strikes the narrowest pool it proves spent: a scope its body names, else the
-call's own scope, else the whole allowance. Costly calls running out (the last units cannot pay
-for a search) leaves cheap calls serving; a cheap call told the units are spent locks everything.
+call's costly scope, else the whole allowance. Costly calls running out (the last units cannot pay
+for a write) leaves cheap calls serving; a cheap call told the units are spent locks everything.
 
 Two signatures lock, as on treg's own keys. A lock lasts to the stated reset, bounded by the
 lock row's lifetime (`MAX_LOCK`), instead of the six hours that bound a platform key's lock. While
@@ -66,8 +66,8 @@ it holds, a drawing call the archive cannot answer is refused before it leaves, 
 `message` naming the team's own client or credential as the way around it), not charged, audited
 `refused_by=capacity`. One call
 per process per minute is let through as a probe, never answered from the archive, and only
-through a lock its answer can prove: the whole allowance's by a call in no scope, a scope's by a
-call in it once the whole allowance is open. A probe's 2xx lifts every lock on the pools the call
+through a lock its answer can prove: the whole allowance's by a call that is not costly, a
+scope's by a call in it once the whole allowance is open. A probe's 2xx lifts every lock on the pools the call
 draws on. An archive hit is never recovery evidence. `observe` logs `allowance_would_refuse` at
 the same point `enforce` refuses, after the archive lookup, so it counts what enforcing would.
 

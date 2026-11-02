@@ -39,6 +39,7 @@ class Draw:
     service: str
     key: str
     scope_keys: tuple[str, ...]
+    costly_key: str | None = None
     probe_lock_id: str | None = None
     refused_until: datetime | None = None
 
@@ -82,16 +83,17 @@ def draw_for(tool, secrets: dict, method: str, upstream_url: str) -> Draw | None
 def _draw(provider, account: str | None, method: str, upstream_url: str) -> Draw:
     key = f"{KEY_PREFIX}{provider.service}" + (f"#{account}" if account else "")
     call = f"{method.upper()} {urlsplit(upstream_url).path}"
-    scope_keys = tuple(f"{key}/{scope.name}" for scope in provider.shared_allowance.scopes
-                       if re.search(scope.call_regex, call))
-    return Draw(provider.service, key, scope_keys)
+    scopes = [scope for scope in provider.shared_allowance.scopes
+              if re.search(scope.call_regex, call)]
+    costly = next((f"{key}/{scope.name}" for scope in scopes if not scope.body_regex), None)
+    return Draw(provider.service, key, tuple(f"{key}/{scope.name}" for scope in scopes), costly)
 
 
 async def admit(draw: Draw | None) -> Draw | None:
     """Decide a drawing call against the locks on its allowance: let it through, let it through as
     a probe, or mark it refused until the lock that lasts longest. A call probes only a lock its
-    answer can prove: the whole allowance's by a call in no scope, a scope's by a call in it once
-    the whole allowance is open. Reads the cached capacity view; call it with no database
+    answer can prove: the whole allowance's by a call that is not costly, a scope's by a call in it
+    once the whole allowance is open. Reads the cached capacity view; call it with no database
     connection held. A view that cannot be read refuses nothing."""
     if draw is None:
         return None
@@ -104,7 +106,7 @@ async def admit(draw: Draw | None) -> Draw | None:
     if not locked:
         return draw
     whole = next((lock for lock in locked if lock.key == draw.key), None)
-    provable = whole if whole is not None and not draw.scope_keys else None
+    provable = whole if whole is not None and draw.costly_key is None else None
     if whole is None:
         provable = max(locked, key=lambda lock: lock.until)
     if provable is not None and capacity_marks.probe_due(provable.key):
@@ -143,7 +145,7 @@ def _own_credential(provider) -> str:
 
 async def note_answer(draw: Draw | None, status: int, headers, body: bytes) -> None:
     """After the answer: a spent-allowance signature strikes the breaker on the narrowest pool it
-    proves spent (a scope its body names, else the call's own scope, else the whole allowance); a
+    proves spent (a scope its body names, else the call's costly scope, else the whole allowance); a
     2xx clears pending strikes and the lock this call probed. Never raises."""
     if draw is None:
         return
@@ -164,7 +166,7 @@ async def _strike(draw: Draw, status: int, headers, body: bytes) -> None:
     text = body[:_SCAN_BYTES].decode("utf-8", "replace")
     named = next((f"{draw.key}/{scope.name}" for scope in provider.shared_allowance.scopes
                   if scope.body_regex and re.search(scope.body_regex, text)), None)
-    key = named or next(iter(draw.scope_keys), draw.key)
+    key = named or draw.costly_key or draw.key
     lock = await capacity_marks.strike(
         key, endpoint_id=None, kind=signal.kind, resets_at=signal.resets_at, max_lock=MAX_LOCK,
         note=f"{signal.kind} signature on {draw.service}: {signal.detail[:80]}")
