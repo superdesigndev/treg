@@ -200,7 +200,7 @@ async def test_routed_verifying_is_waited_for_not_a_miss(
     assert result.status_code == 200, result.text
     meta = result.json()["_treg"]
     assert meta["served_by"] == VERIFY and meta["outcome"] == "hit"
-    assert result.json()["output"] == {"valid": False, "status": "undeliverable", "score": 99}
+    assert result.json()["output"] == {"valid": False, "status": "undeliverable", "score": 99, "accept_all": False}
     assert upstream.seen == ["submit", "poll", "poll"]  # the second verifier was never asked
     [task] = await _tasks()
     assert task.status == "settled" and task.settled_micro > 0

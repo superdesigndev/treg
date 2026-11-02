@@ -514,7 +514,7 @@ adapters:
     accepts: [[email]]
     in: {email: queryParams.email}
     const: {queryParams.timeout: 20}
-    out: {valid: "status == 'safe'", status: status, score: confidence}
+    out: {valid: "status == 'safe'", status: status, score: confidence, accept_all: is_domain_catch_all}
     miss: "status == null"
     verdict: "choose(is_domain_catch_all == true, choose(status == 'risky', 'catch_all', status), status)"
     verdicts: {safe: valid}
@@ -586,7 +586,7 @@ adapters:
   bounceban.people.email.verify:
     accepts: [[email]]
     in: {email: queryParams.email}
-    out: {valid: "result == 'deliverable'", status: result, score: score}
+    out: {valid: "result == 'deliverable'", status: result, score: score, accept_all: is_accept_all}
     # A status=verifying submission is waited for (the endpoint's `async` block) and judged on
     # its finished answer, so this rule sees only finished answers: one without a verdict is a miss.
     miss: "result == null"
@@ -618,7 +618,7 @@ adapters:
   limadata.people.email.verify:
     accepts: [[email]]
     in: {email: body.email}
-    out: {valid: "result == 'Valid'", status: result, score: score}
+    out: {valid: "result == 'Valid'", status: result, score: score, accept_all: is_catch_all}
     miss: "result == null"
     # LimaData reports a catch-all domain as a flag next to `Risky`.
     verdict: "choose(is_catch_all == true, choose(result == 'Risky', 'catch_all', result), result)"

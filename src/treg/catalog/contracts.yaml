@@ -219,6 +219,7 @@ contracts:
       valid: {type: bool, required: true, note: "the provider says the mailbox accepts mail", analytics: value}
       status: {type: str, note: "the provider's own verdict word (valid | invalid | accept_all | unknown | …)", analytics: value}
       score: {type: int, analytics: value}
+      accept_all: {type: bool, note: "the provider flags the domain as accept-all (catch-all); a valid verdict there is the provider's own catch-all check, not a strict mailbox confirmation", analytics: value}
     miss: "status == null"
     idempotent: true
     # Stored per call. Each adapter maps its provider's words (`verdicts`); `unknown` is a word,
