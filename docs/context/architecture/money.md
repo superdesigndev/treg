@@ -114,6 +114,14 @@ The balance is a column because `reserve` must be one conditional UPDATE. Every 
 `LedgerEntry` **in the same transaction, synchronously, in-request**. Never route a ledger write
 through `audit.py`: it drops rows past its queue bound and swallows exceptions.
 
+**Column width.** A Postgres `integer` holds at most $2,147.48 in micro-USD. Running totals and caps
+(`Org.balance_micro`, `daily_cap_micro`, the auto-top-up amounts, `CreditBlock.amount_micro` and
+`remaining_micro`, `Hold.amount_micro`, `TagBudget`'s caps, `spent_today_micro`) are `BIGINT`
+(revision 0093). Per-row journal amounts (`LedgerEntry`, `CallRecord`, `TagSpend`) stay `integer`:
+one row holds one call's or one top-up's amount, which `billing.TOPUP_MAX_USD` keeps far below the
+limit, and changing a type there rewrites a very large table under an exclusive lock. A new column
+that sums or caps money is `BIGINT` from its first revision.
+
 `AsyncTaskRecord` is the durable owner of an existing hold after a metered asynchronous submission;
 it creates no other money movement.
 
