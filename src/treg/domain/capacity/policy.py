@@ -237,6 +237,9 @@ _ENDPOINT_RATE_LIMITS: dict[str, dict] = {
     "contactout.people.email.verify": {"limit": 20, "window_s": 60, "source": "headers"},
 }
 
+# Buckets whose provider counts the declared rate per source address, not per account.
+_PER_EGRESS_RATE: frozenset[str] = frozenset({"contactout.people.email.verify"})
+
 # Calls in progress a provider allows on treg's own key (domain/capacity/fair_share.py shares them
 # between teams; BYOK calls bypass it). Only providers that publish or report such a cap belong here.
 _CONCURRENCY: dict[str, int] = {

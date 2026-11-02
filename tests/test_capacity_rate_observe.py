@@ -245,6 +245,26 @@ def test_an_enforced_name_covers_every_account_of_the_bucket(monkeypatch):
     assert not rate_observe._enforced("tinyfish")
 
 
+async def test_a_bucket_counted_per_source_address_gets_this_instances_window(monkeypatch):
+    monkeypatch.setenv("TREG_PROVIDER_RATE_MODE", "observe")
+    monkeypatch.setenv("TREG_KV_URL", "redis://127.0.0.1:6399/0")
+    monkeypatch.setattr(rate_observe, "_EGRESS", "web-a")
+    asked: list[str] = []
+
+    async def admit(bucket, limit, window_s):
+        asked.append(bucket)
+        return None
+    monkeypatch.setattr(provider_rate, "admit", admit)
+    buckets = ["contactout.people.email.verify", "contactout.people.email.verify#b", "tinyfish"]
+    for egress in ("shared", "instance"):
+        monkeypatch.setenv("TREG_PROVIDER_RATE_EGRESS", egress)
+        get_settings.cache_clear()
+        seen = [await rate_observe.observe("p", (b, 20, 60.0)) for b in buckets]
+        assert [s.bucket for s in seen] == buckets, "the bucket's name is never scoped"
+    assert asked == buckets + [
+        "contactout.people.email.verify@web-a", "contactout.people.email.verify#b@web-a", "tinyfish"]
+
+
 def test_settings_refuse_an_incomplete_configuration():
     with pytest.raises(ValidationError, match="requires a valid Redis kv_url"):
         Settings(provider_rate_mode="observe", kv_url="")
@@ -370,6 +390,19 @@ async def test_a_changed_limit_keeps_the_window_and_a_changed_length_starts_one(
     assert (await provider_rate.admit(bucket, 2, 60.0)).verdict == "admit", "the member admitted at 1 still counts"
     assert (await provider_rate.admit(bucket, 2, 60.0)).verdict == "over"
     assert (await provider_rate.admit(bucket, 1, 1.0)).verdict == "admit"
+
+
+async def test_each_egress_address_gets_its_own_window(redis_store, monkeypatch):
+    monkeypatch.setenv("TREG_PROVIDER_RATE_MODE", "observe")
+    monkeypatch.setenv("TREG_PROVIDER_RATE_EGRESS", "instance")
+    get_settings.cache_clear()
+    bucket = (f"contactout.people.email.verify#{uuid4().hex}", 2, 60.0)
+
+    async def verdicts(egress: str, n: int) -> list[str]:
+        monkeypatch.setattr(rate_observe, "_EGRESS", egress)
+        return [(await rate_observe.observe("contactout", bucket)).verdict for _ in range(n)]
+    assert await verdicts("web-a", 3) == ["admit", "admit", "over"]
+    assert await verdicts("web-b", 3) == ["admit", "admit", "over"]
 
 
 async def test_a_released_member_gives_its_room_back(redis_store):

@@ -684,7 +684,12 @@ an endpoint with its own allowance, each further treg-owned account). The check 
 window is one sorted set per bucket and window length, `treg:provider-rate:v3:<bucket>:<window_ms>`:
 an admitted call is a member that expires `window_s` later by the store's clock, the window is full
 at `limit` live members, and a refusal adds no member and returns when the oldest one expires. A
-changed limit judges the same members; a changed length starts a new window. A store fault or a
+changed limit judges the same members; a changed length starts a new window. A provider may count
+a declared rate per source address rather than per account; such buckets are listed in
+`_PER_EGRESS_RATE` (`domain/capacity/policy.py`). `TREG_PROVIDER_RATE_EGRESS` = `shared` (default,
+one egress address, every window global) | `instance` (each instance has its own egress address)
+then gives each listed bucket one window per instance, keyed `<bucket>@<hostname>`; the bucket's
+name in logs, tallies and the enforce list is unchanged. A store fault or a
 reply slower than 200 ms is an `unknown` verdict and skips the store for 5 s in that process; after
 that, one call probes it while the others still skip it, and only that probe closes the breaker. An
 unknown verdict never refuses.
@@ -802,9 +807,10 @@ catalog examples cannot renew successful contact checks. Hosted policy, mode and
 remain private operational state.
 
 ContactOut documents per-minute ceilings for People Search, Contact Checker and its other APIs, but
-none for Email Verifier, whose 429s report `x-ratelimit-limit: 20`. Only that route is smoothed, as
-its own 20/minute bucket in `_ENDPOINT_RATE_LIMITS`; a provider-wide entry would hold every other
-ContactOut route to the verifier's ceiling. The bounded wait cannot add allowance: demand above it
+none for Email Verifier, whose 429s report `x-ratelimit-limit: 20`. ContactOut counts that limit
+per source address, not per account, so the bucket is listed in `_PER_EGRESS_RATE`. Only that route
+is smoothed, as its own 20/minute bucket in `_ENDPOINT_RATE_LIMITS`; a provider-wide entry would
+hold every other ContactOut route to the verifier's ceiling. The bounded wait cannot add allowance: demand above it
 still reaches ContactOut and is answered 429, which a routed verify treats as an error and tries
 the next provider.
 

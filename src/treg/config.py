@@ -273,9 +273,13 @@ class Settings(BaseSettings):
     # A shared rate window on treg's own keys (domain/capacity/rate_observe.py). `observe` asks it
     # about every platform call that goes upstream and logs its verdicts; the buckets named in
     # `provider_rate_enforce` (comma-separated, `view.rate_bucket` keys without the `#account`
-    # suffix) are also refused when full. Both need a Redis TREG_KV_URL.
+    # suffix) are also refused when full. Both need a Redis TREG_KV_URL. `provider_rate_egress`
+    # says whether the deployment has one egress address (`shared`) or one per instance
+    # (`instance`); with `instance`, a bucket a provider counts per source address gets one
+    # window per instance.
     provider_rate_mode: Literal["off", "observe"] = "off"
     provider_rate_enforce: str = ""
+    provider_rate_egress: Literal["shared", "instance"] = "shared"
 
     @model_validator(mode="after")
     def _provider_rate_configuration(self):

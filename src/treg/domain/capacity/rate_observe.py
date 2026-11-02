@@ -13,6 +13,7 @@ calls the window would refuse still spend the provider's allowance when they are
 from __future__ import annotations
 
 import asyncio
+import socket
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -21,8 +22,10 @@ from typing import Literal
 from ...config import get_settings
 from ...infra import provider_rate
 from . import events
+from .policy import _ENDPOINT_RATE_LIMITS, _PER_EGRESS_RATE, _RATE_LIMITS
 
 FLUSH_S = 60.0
+_EGRESS = socket.gethostname()
 
 
 @dataclass(frozen=True)
@@ -74,15 +77,23 @@ def _enforced(bucket: str) -> bool:
 def unknown_enforced_names() -> list[str]:
     """Listed names that are no bucket this build declares a rate for (a deployment's own
     `CapacityPolicy` rows may still declare one), for a startup warning."""
-    from .policy import _ENDPOINT_RATE_LIMITS, _RATE_LIMITS
     return sorted(enforced_names() - {*_RATE_LIMITS, *_ENDPOINT_RATE_LIMITS})
+
+
+def _window(bucket: str) -> str:
+    """The shared window a bucket counts in: its own, or this instance's where the provider
+    counts per source address and each instance has its own (`provider_rate_egress`)."""
+    if (get_settings().provider_rate_egress == "instance"
+            and bucket.split("#", 1)[0] in _PER_EGRESS_RATE):
+        return f"{bucket}@{_EGRESS}"
+    return bucket
 
 
 async def observe(provider: str, bucket: tuple[str, int, float] | None) -> Seen | None:
     if bucket is None or not enabled():
         return None
     key, limit, window_s = bucket
-    admission = await provider_rate.admit(key, limit, window_s)
+    admission = await provider_rate.admit(_window(key), limit, window_s)
     return Seen(provider, key, limit, window_s, admission.verdict if admission else "unknown",
                 _enforced(key), admission.retry_after_s if admission else 0, admission)
 
