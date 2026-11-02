@@ -2,6 +2,7 @@
 import asyncio
 import os
 import sys
+import time
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -77,6 +78,7 @@ async def test_renewal_outlives_original_lease_and_shorter_owner_does_not_shorte
     assert await first.acquire_slot(key, "long", 2000, 2) == "acquired"
     assert await second.acquire_slot(key, "short", 150, 2) == "acquired"
     assert await first._client.pttl(key) > 1500
+    time.sleep(0.2)
     for _ in range(4):
         await asyncio.sleep(0.06)
         assert await second.renew_slot(key, "short", 150) == "renewed"
