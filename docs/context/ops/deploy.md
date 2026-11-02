@@ -53,6 +53,12 @@ calls or settles async tasks (web and the async worker); `TREG_CALL_EVENTS_TOKEN
 bearer when it requires one. Keep the secret stable: changing it breaks every join across the
 change.
 
+## Provider client codes
+
+A provider file's `client_header` is filled only once `TREG_CLIENT_ID_SECRET` is set on the web
+processes (the ones that relay calls). Turn it on after the provider is ready to read the header.
+Keep the secret stable: changing it gives every team a new code at every provider.
+
 ## Additional public domains
 
 `TREG_PUBLIC_HOST_ALIASES` is a JSON array of bare hostnames accepted for same-host social-login
