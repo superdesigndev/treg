@@ -630,10 +630,14 @@ def cmd_login(args, cfg) -> None:
     # session with one click, else offers every configured door (GitHub / Google / email code).
     wait = bool(getattr(args, "wait", False))
     pending = cfg.get("pending_login")
-    if wait and pending and pending["base_url"] == cfg["base_url"] and time.time() < pending["expires_at"]:
-        _print_login_link(pending["url"], pending["code"])
-        _finish_waiting(cfg)
-        return
+    if pending and pending["base_url"] == cfg["base_url"] and time.time() < pending["expires_at"]:
+        status = _claim_pending_login(cfg, wait=False)
+        if status == "logged_in":
+            _maybe_offer_onboarding(cfg)
+            return
+        if status == "pending":
+            _show_pending_login(cfg, wait=wait)
+            return
     import secrets as _secrets
     base = cfg["base_url"].rstrip("/")
     # Ask the SERVER to start the login: it mints the login_id AND a short pairing code. The browser
@@ -684,18 +688,10 @@ def cmd_login(args, cfg) -> None:
         webbrowser.open(url)
     except Exception:  # noqa: BLE001 - optional extras; the treg skill already installed
         pass
-    if deferrable and not (wait or sys.stdout.isatty()):
-        print(f"Sign in to treg at:\n  {url}\n\n"
-              f"The sign-in page shows this code; check it matches:  {code}\n\n"
-              f"Give this link to the person you are working for. When they have signed in, run any "
-              f"treg command, or `treg login --wait`. The link expires in {expires_in // 60} minutes.",
-              flush=True)
-        _note(login="pending")
+    if deferrable:
+        _show_pending_login(cfg, wait=wait)
         return
     _print_login_link(url, code)
-    if deferrable:
-        _finish_waiting(cfg)
-        return
     deadline = time.monotonic() + LOGIN_HANDSHAKE_SECONDS
     while time.monotonic() < deadline:
         time.sleep(1)
@@ -721,10 +717,21 @@ def _print_login_link(url: str, code: str | None) -> None:
     print("Waiting for authorization…", flush=True)
 
 
-def _finish_waiting(cfg: dict) -> None:
-    if _claim_pending_login(cfg, wait=True) != "logged_in":
-        sys.exit("That sign-in link expired before it was used. Run `treg login` again.")
-    _maybe_offer_onboarding(cfg)
+def _show_pending_login(cfg: dict, *, wait: bool) -> None:
+    pending = cfg["pending_login"]
+    if wait or sys.stdout.isatty():
+        _print_login_link(pending["url"], pending["code"])
+        if _claim_pending_login(cfg, wait=True) != "logged_in":
+            sys.exit("That sign-in link expired before it was used. Run `treg login` again.")
+        _maybe_offer_onboarding(cfg)
+        return
+    minutes = max(1, round((pending["expires_at"] - time.time()) / 60))
+    print(f"Sign in to treg at:\n  {pending['url']}\n\n"
+          f"The sign-in page shows this code; check it matches:  {pending['code']}\n\n"
+          f"Give this link to the person you are working for. When they have signed in, run any "
+          f"treg command, or `treg login --wait`. The link expires in {minutes} minutes.",
+          flush=True)
+    _note(login="pending")
 
 
 def _poll_login(base: str, login_id: str, *, verifier: str, timeout: float) -> dict:

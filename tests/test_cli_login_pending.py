@@ -112,6 +112,22 @@ async def test_agent_login_returns_and_the_next_command_collects_the_token(regis
     assert "pending_login" not in stored and stored["active_org"] == registry.org
 
 
+async def test_second_login_while_pending_reprints_the_same_link(registry, capsys):
+    pending = await _login_without_waiting(capsys)
+    with pytest.raises(SystemExit):
+        await asyncio.to_thread(cli.main, ["whoami"])
+    capsys.readouterr()
+
+    assert await _login_without_waiting(capsys) == pending
+    assert registry.paths.count("/auth/cli/start") == 1
+    assert _stored()["pending_login"] == pending
+
+    await _approve(registry, pending)
+    await asyncio.to_thread(cli.main, ["whoami"])
+    assert "✓ Logged in as pending@example.test" in capsys.readouterr().err
+    assert _stored()["token"] and "pending_login" not in _stored()
+
+
 async def test_unfinished_sign_in_is_named_on_stderr_and_kept(registry, capsys):
     pending = await _login_without_waiting(capsys)
     with pytest.raises(SystemExit):
