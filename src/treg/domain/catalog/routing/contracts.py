@@ -9,7 +9,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
+
 from . import paths as P
+
+_HTTP_URL = TypeAdapter(AnyHttpUrl)
 
 
 @dataclass(frozen=True)
@@ -17,13 +21,16 @@ class Check:
     """The opt-in check after a hit (`X-Treg-Route-Verify`): one more call, to `endpoint`, with the
     hit's `field` as its identity key of the same name. `prefer` orders that call's providers only.
     `when` is an expression over `{field: value}`; a hit failing it is not checked, for `skip_reason`,
-    and `skip_advice` replaces the find's advice then: the caller already asked for the check."""
+    and `skip_advice` replaces the find's advice then: the caller already asked for the check.
+    The check wins over the finder's own `verified`: a completed verdict other than `valid` on a
+    `verified: true` hit attaches `disagree_advice`, and the finder's answer is left as it said."""
     endpoint: str
     field: str
     prefer: tuple[str, ...] = ()
     when: str = ""
     skip_reason: str = ""
     skip_advice: str = ""
+    disagree_advice: str = ""
 
 
 @dataclass(frozen=True)
@@ -44,6 +51,11 @@ class Contract:
     # set there attaches to EVERY hit — deliberate for `people.search`, whose rows carry emails
     # nobody vouched for. A suggestion only unless the caller asks for the check (`check`, below).
     advice_unverified: str = ""
+    # One sentence the router attaches as `_treg.advice` when a hit's email domain does not match
+    # the domain the caller asked for (`_treg.domain_match: false`). Disclose only — the answer is
+    # not altered. Empty = flag only, no advice. A LinkedIn-only child often returns a former
+    # employer when the caller also sent a domain.
+    advice_domain_mismatch: str = ""
     # False = the contract exists so the archive can judge found/empty (`results.has_result_rules`
     # needs a verified adapter, and an adapter verifies only against a contract); no
     # `treg.<capability>` row is ever generated from it, however many children verify. Used where
@@ -201,9 +213,38 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
     return tuple(out)
 
 
+CONTRACT_KEYS = frozenset({
+    "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
+    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "prefer", "check", "confirm",
+    "empty_is_failure", "one_subject", "complete", "verdict"})
+ADAPTER_KEYS = frozenset({
+    "accepts", "in", "in_expr", "body_array", "test_identity", "cost_units", "max",
+    "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts"})
+
+
+def _known_keys(what: str, raw: object, known: frozenset[str]) -> dict:
+    if not isinstance(raw, dict):
+        raise ValueError(f"{what}: a mapping")
+    if unknown := sorted(set(raw) - known):
+        raise ValueError(f"{what}: unknown key {', '.join(unknown)}")
+    return raw
+
+
+def _expressions(what: str, *exprs: object) -> None:
+    for expr in exprs:
+        try:
+            P.parse(expr)
+        except ValueError as exc:
+            raise ValueError(f"{what}: {exc}") from None
+
+
 def parse_contracts(doc: dict) -> dict[str, Contract]:
     out = {}
     for cap, c in (doc.get("contracts") or {}).items():
+        _known_keys(f"contract {cap}", c, CONTRACT_KEYS)
+        _expressions(f"contract {cap}", *(c.get("derive") or {}).values(),
+                     *([c["miss"]] if c.get("miss") else []),
+                     *([c["check"]["when"]] if isinstance(c.get("check"), dict) and c["check"].get("when") else []))
         types = {}
         for v in c.get("identity") or []:
             if isinstance(v, dict):
@@ -229,6 +270,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             miss=str(c.get("miss") or ""), idempotent=bool(c.get("idempotent", True)),
             default_max_cost_usd=(float(c["default_max_cost_usd"]) if c.get("default_max_cost_usd") is not None else None),
             advice_unverified=str(c.get("advice_unverified") or ""),
+            advice_domain_mismatch=str(c.get("advice_domain_mismatch") or ""),
             routed=bool(c.get("routed", True)),
             scoping=tuple(str(k) for k in scoping),
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
@@ -257,10 +299,13 @@ def _parse_check(cap: str, raw, output: dict) -> Check | None:
         raise ValueError(f"contract {cap}: check `when` and `skip_reason` come together")
     if raw.get("skip_advice") and not raw.get("when"):
         raise ValueError(f"contract {cap}: check `skip_advice` needs a `when`")
+    if raw.get("disagree_advice") and "verified" not in output:
+        raise ValueError(f"contract {cap}: check `disagree_advice` needs a `verified` output")
     return Check(endpoint=str(raw["endpoint"]), field=str(raw["field"]),
                  prefer=tuple(str(p).lower() for p in raw.get("prefer") or ()),
                  when=str(raw.get("when") or ""), skip_reason=str(raw.get("skip_reason") or ""),
-                 skip_advice=str(raw.get("skip_advice") or ""))
+                 skip_advice=str(raw.get("skip_advice") or ""),
+                 disagree_advice=str(raw.get("disagree_advice") or ""))
 
 
 def _parse_confirm(cap: str, raw, output: dict) -> str:
@@ -288,6 +333,9 @@ def _parse_verdict(cap: str, raw) -> dict:
 def parse_adapters(doc: dict) -> dict[str, Adapter]:
     out = {}
     for eid, a in (doc.get("adapters") or {}).items():
+        _known_keys(f"adapter {eid}", a, ADAPTER_KEYS)
+        _expressions(f"adapter {eid}", *(a.get("in_expr") or {}).values(), *(a.get("out") or {}).values(),
+                     *(a[k] for k in ("miss", "verdict") if a.get(k)))
         out[eid] = Adapter(
             endpoint_id=eid, accepts=_variants(a.get("accepts")), in_map=dict(a.get("in") or {}),
             in_expr=dict(a.get("in_expr") or {}), body_array=bool(a.get("body_array")),
@@ -366,17 +414,51 @@ def _body_matches(when: Any, body: Any) -> bool:
         return False
 
 
+def _as_url(v: Any) -> str | None:
+    """An http(s) URL with a dotted host and no userinfo, or None. Parsing is the WHATWG parser's;
+    the value is kept as sent, a scheme-less one with `https://` added."""
+    if not isinstance(v, str) or not (s := v.strip()):
+        return None
+    candidate = s if re.match(r"(?i)https?://", s) else "https://" + s
+    try:
+        url = _HTTP_URL.validate_python(candidate)
+    except ValidationError:
+        return None
+    host = (url.host or "").strip(".")
+    if url.username is not None or not ("." in host or host.startswith("[")):
+        return None
+    return candidate
+
+
+_TYPE_NORMALISERS = {"url": _as_url}
+
+
+def _sent(v: Any) -> bool:
+    return v is not None and not (isinstance(v, str) and not v.strip())
+
+
+def invalid_identity(contract: Contract, given: dict[str, Any]) -> list[dict[str, Any]]:
+    """The caller's identity fields that are present but not of their declared type."""
+    bad = []
+    for k, t in contract.identity_types.items():
+        v = given.get(k)
+        if _sent(v) and (norm := _TYPE_NORMALISERS.get(t)) and norm(v) is None:
+            shown = v if isinstance(v, str) else json.dumps(v, default=str)
+            bad.append({"field": k, "type": t,
+                        "value": shown[:200].encode("utf-8", "backslashreplace").decode("utf-8")})
+    return bad
+
+
 def canonical_identity(contract: Contract, given: dict[str, Any]) -> tuple[dict[str, Any], tuple[str, ...] | None]:
     """The caller's fields + everything derivable → (identity, the variant they supplied), or
     (identity, None) when no variant is complete. Derived keys count for matching adapters."""
-    ident = {k: v for k, v in given.items() if k in contract.identity_types and v not in (None, "")}
+    ident = {k: v for k, v in given.items() if k in contract.identity_types and _sent(v)}
     supplied = next((v for v in contract.identity if all(k in ident for k in v)), None)
     if supplied is None:
         return ident, None
-    if isinstance(ident.get("linkedin_url"), str):
-        # One normalisation for every adapter that forwards the URL raw: a scheme-less
-        # `linkedin.com/in/x` is refused by some providers; a handle becomes the public URL.
-        ident["linkedin_url"] = P.linkedin_url(ident["linkedin_url"]) or ident["linkedin_url"]
+    for k, t in contract.identity_types.items():
+        if k in ident and (norm := _TYPE_NORMALISERS.get(t)):
+            ident[k] = norm(ident[k]) or ident[k]
     for _ in range(2):  # derive until stable (join needs first+last; split needs full_name)
         for k, expr in contract.derive.items():
             if ident.get(k) in (None, ""):

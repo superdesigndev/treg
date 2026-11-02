@@ -257,6 +257,7 @@ def test_public_task_previews_show_verified_search_providers(monkeypatch):
         search = {row["provider"] for row in tasks["search"]["provider_previews"]}
         assert {"crawl4ai", "exa", "firecrawl", "tavily", "tinyfish", "serper", "spidercloud", "octen",
                 "parallel"} <= search
+        assert "bravesearch" not in search
         fetch = {row["endpoint_id"] for row in tasks["fetch"]["provider_previews"]}
         assert "parallel.web.extract" in fetch
         news = {row["provider"] for row in tasks["news"]["provider_previews"]}
@@ -615,6 +616,95 @@ async def test_news_search_quotes_platform_providers_with_news_parameters(client
         assert attempts["tavily"]["body"]["include_usage"] is True
     finally:
         get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(("task", "other_provider"), [
+    ("search", "crawl4ai"),
+    ("news", "tinyfish"),
+])
+async def test_brave_is_not_offered_in_arena_quote(clients, monkeypatch, task, other_provider):
+    monkeypatch.setenv("TREG_WEB_ARENA_ENABLED", "true")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", f"bravesearch,{other_provider}")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_BRAVESEARCH", "TEST-BRAVE")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_" + other_provider.upper(), "TEST-OTHER")
+    get_settings.cache_clear()
+    try:
+        response = await clients.post("/web-arena/api/quotes", json={
+            "task": task, "value": "AI policy", "mode": "battle", "jev": False})
+        assert response.status_code == 200, response.text
+        quote = response.json()
+        assert {p["provider"] for p in quote["providers"]} == {other_provider}
+        refused = await clients.post("/web-arena/api/quotes", json={
+            "task": task, "value": "AI policy", "mode": "battle", "providers": ["bravesearch"], "jev": False})
+        assert refused.status_code == 409
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("routed", [False, True])
+async def test_forbidden_response_retention_keeps_charge_receipt(clients, monkeypatch, routed):
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "bravesearch")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_BRAVESEARCH", "TEST-BRAVE")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(service, "relay", _relay_by_provider({"*": [
+        (200, {"web": {"results": [{"title": "Example", "url": "https://example.com/private"}]}}),
+    ]}, seen))
+    try:
+        headers = {"Idempotency-Key": "brave-no-retain"}
+        if routed:
+            headers |= {"X-Treg-Route-Prefer": "bravesearch", "X-Treg-Route-Waterfall": "0"}
+        async def call():
+            if routed:
+                return await clients.post("/call/treg.web.search", json={"q": "example", "limit": 1},
+                                          headers=headers)
+            return await clients.get("/call/bravesearch.web.search?q=example", headers=headers)
+
+        response = await call()
+        assert response.status_code == 200, response.text
+        assert response.headers["x-treg-cost-micro"] == "5000"
+        assert len(seen) == 1
+        before_retry = await _balance(clients)
+        retry = await call()
+        assert retry.status_code == 410, retry.text
+        assert retry.headers["x-treg-idempotent-replay"] == "true"
+        assert retry.headers["x-treg-cost-micro"] == "0"
+        assert retry.headers["x-treg-original-cost-micro"] == "5000"
+        assert retry.json()["detail"] == {
+            "error": "idempotency_response_not_retained",
+            "call_id": response.headers["x-treg-call-id"],
+            "charged_micro": 5000,
+            "message": "the provider response was not retained for replay. Send a new key to call again.",
+        }
+        assert len(seen) == 1
+        assert await _balance(clients) == before_retry
+        from treg.models import IdempotentCall
+        async with session_maker() as db:
+            row = (await db.execute(select(IdempotentCall).where(
+                IdempotentCall.key == "brave-no-retain"))).scalar_one()
+        assert row.status == "done" and row.response_status == 410
+        assert b"example.com/private" not in row.response_body
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_forbidden_response_retention_keeps_own_key_receipt(clients, monkeypatch):
+    saved = await clients.post("/secrets", json={"name": "bravesearch", "value": "OWNKEY"})
+    assert saved.status_code in (200, 201), saved.text
+    seen = []
+    monkeypatch.setattr(service, "relay", _relay_by_provider({"*": [
+        (200, {"web": {"results": [{"url": "https://example.com/private"}]}}),
+    ]}, seen))
+    headers = {"Idempotency-Key": "brave-own-no-retain"}
+    first = await clients.get("/call/bravesearch.web.search?q=example", headers=headers)
+    assert first.status_code == 200, first.text
+    assert "x-treg-cost-micro" not in first.headers
+    retry = await clients.get("/call/bravesearch.web.search?q=example", headers=headers)
+    assert retry.status_code == 410
+    assert retry.headers["x-treg-idempotent-replay"] == "true"
+    assert retry.json()["detail"]["error"] == "idempotency_response_not_retained"
+    assert retry.json()["detail"]["charged_micro"] == 0
+    assert len(seen) == 1
 
 
 @pytest.mark.parametrize(("task", "value", "expected"), [

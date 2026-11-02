@@ -3,6 +3,7 @@ title: Enforced import boundaries
 status: shipped
 sources:
   - pyproject.toml
+  - src/treg/domain/plugins/__init__.py
   - .github/workflows/ci.yml
   - src/treg/application/__init__.py
   - src/treg/application/call/__init__.py
@@ -168,3 +169,8 @@ The feedback domain (`treg.domain.feedback`) owns durable report inserts and que
 forbids direct imports of API, bootstrap, routers, application orchestration, sibling domains,
 best-effort audit, FastAPI, and Starlette. Shared models and SQLAlchemy remain available; transaction
 commits and call-reference verification belong to `treg.application.feedback`.
+
+The plugins domain (`treg.domain.plugins`) holds a provider's pure functions that catalog rows name
+(catalog-schema.md). Replay runs them, so they may do no I/O: its contract forbids the API, routers,
+application, bootstrap, audit, models, infra and config, and the network, database and storage
+clients (httpx, SQLModel, SQLAlchemy, redis, obstore).

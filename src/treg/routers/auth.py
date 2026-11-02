@@ -50,6 +50,7 @@ class EmailStartIn(BaseModel):
 class EmailVerifyIn(BaseModel):
     email: str
     code: str
+    cli_pairing: bool = False  # sent by the /login?cli= page: this sign-in completes a `treg login`
 
 
 _EMAIL_HTTP_ERRORS = {
@@ -120,8 +121,11 @@ async def auth_email_verify(
     (same path as GitHub login) — one endpoint serves both clients."""
     require_managed_cli(request)
     try:
+        client = _client(request)
+        if client == "browser" and body.cli_pairing:
+            client = "cli_browser"
         verified = await auth_use_cases.verify_email_login(body.email, body.code,
-            entry_surface=request.cookies.get("treg_entry_surface", ""), client=_client(request))
+            entry_surface=request.cookies.get("treg_entry_surface", ""), client=client)
     except auth_use_cases.EmailAuthError as exc:
         raise _email_http_error(exc) from exc
     # Only a proven email: stashing at /start would let anyone tie their click to any address.
@@ -453,20 +457,28 @@ async def auth_cli_approve(
 
 
 @app.get("/login", include_in_schema=False)
-async def login_page(request: Request, cli: str = "", treg_session: str = Cookie(default="")):
+async def login_page(request: Request, cli: str = "", ad: str = "", treg_session: str = Cookie(default="")):
     """The universal sign-in page `treg login` opens: reuses an existing dashboard session with one
     click ("Continue as …"), else offers every configured door — GitHub, Google, email one-time code.
-    The email door is always present, so login works even with no OAuth app configured."""
+    The email door is always present, so login works even with no OAuth app configured.
+
+    `ad` is the short install link's code (`architecture/ads-conversions.md`, "Capture")."""
     if not cli:
-        return RedirectResponse("/app" + ("?" + request.url.query if request.url.query else ""),
+        resp = RedirectResponse("/app" + ("?" + request.url.query if request.url.query else ""),
                                 status_code=302)  # preserve incoming attribution for the SPA
-    if not _LOGIN_ID_RE.fullmatch(cli):
+    elif not _LOGIN_ID_RE.fullmatch(cli):
         return _auth_page("Login failed", "Bad login link. Run <code>treg login</code> again.", ok=False, status=400)
-    s = get_settings()
-    session_email = await auth_use_cases.cli_session_email(treg_session)
-    return HTMLResponse(_login_page_html(
-        cli, session_email=session_email,
-        github=bool(s.github_client_id), google=bool(s.google_client_id)))
+    else:
+        s = get_settings()
+        session_email = await auth_use_cases.cli_session_email(treg_session)
+        resp = HTMLResponse(_login_page_html(
+            cli, session_email=session_email,
+            github=bool(s.github_client_id), google=bool(s.google_client_id)))
+    restored, max_age = await signup.redeem_ad_link(ad)
+    if restored and not request.cookies.get("treg_ad"):
+        resp.set_cookie("treg_ad", restored, max_age=max_age, path="/", samesite="lax",
+                        secure=_is_https(request), httponly=False)
+    return resp
 
 
 def _login_page_html(login_id: str, *, session_email: str | None, github: bool, google: bool) -> str:
@@ -622,7 +634,7 @@ async function sendCode(){err('');const em=document.getElementById('em').value.t
  }catch(e){err(e.message)}finally{b.disabled=false}}
 async function verifyCode(){err('');const em=document.getElementById('em').value.trim(),co=document.getElementById('code').value.trim();
  if(!co)return err('enter the code');
- try{await post('/auth/email/verify',{email:em,code:co});
+ try{await post('/auth/email/verify',{email:em,code:co,cli_pairing:true});
   // The email door just set a session cookie — hide the doors and show the team picker.
   const d=document.getElementById('doors');if(d)d.style.display='none';
   const o=document.getElementById('other-acct');if(o)o.style.display='none';

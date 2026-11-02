@@ -31,6 +31,11 @@ related:
 
 # Web Arena
 
+Brave Search stays available through direct catalog calls and routed Web and News Search tools,
+but Web Arena excludes it from Search and News comparisons. Its response-retention rule prevents
+Arena from saving result links for later viewing, so it cannot offer the same comparison as the
+other providers. Existing Brave Arena runs keep only aggregate result counts and quality scores.
+
 `/web-arena` is one standalone Vue page; the old `/web-arena/leaderboard` path redirects there.
 The page shares Enrich Arena's tokens, type, light canvas, fighter sprites, and dialogs, with its
 own layout. There is no page navigation: the brand links home and the page is the arena. The

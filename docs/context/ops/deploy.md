@@ -53,6 +53,12 @@ calls or settles async tasks (web and the async worker); `TREG_CALL_EVENTS_TOKEN
 bearer when it requires one. Keep the secret stable: changing it breaks every join across the
 change.
 
+## Provider client codes
+
+A provider file's `client_header` is filled only once `TREG_CLIENT_ID_SECRET` is set on the web
+processes (the ones that relay calls). Turn it on after the provider is ready to read the header.
+Keep the secret stable: changing it gives every team a new code at every provider.
+
 ## Additional public domains
 
 `TREG_PUBLIC_HOST_ALIASES` is a JSON array of bare hostnames accepted for same-host social-login
@@ -131,7 +137,10 @@ its own revision: its lock permits ordinary reads and writes, although it confli
 maintenance. Such a revision restores the caller's timeouts and handles interruption: invalid builds
 must be rebuilt, and a partially completed removal must be retryable. Revision `0061` removes only
 ordinary indexes with verified unique-constraint replacements; its rollback recreates those indexes
-concurrently and requires enough disk space for them. Revision `0072` builds
+concurrently and requires enough disk space for them. Revision `0091` does the same for single-column
+indexes whose column leads a surviving composite index; on a busy database, drop them out of band
+with `DROP INDEX CONCURRENTLY IF EXISTS` before deploying, so the deploy's migration only records
+the revision. Revision `0072` builds
 `ix_callrecord_call_ref` where a database stamped at the baseline never got it; a build on a large
 table outlasts any fixed statement timeout, so it lifts `statement_timeout` for that one statement
 (the lock timeout stays bounded) and the deploy's own pre-deploy limit bounds it. Deploy such a
@@ -244,6 +253,8 @@ controls as appropriate. Connection/query failures propagate without primary fal
 primary pool and releases its connection before the report begins. With no read URL configured,
 `get_admin_read_session` preserves the original admin pool rather than using the general reader's
 API-pool fallback. Configured reader failures never retry on the primary.
+Its statements stop after 3 seconds (the report-busy 429), because it shares the read pool with
+the dashboard reports.
 Before enabling a hosted cutover, verify the running process has the intended read URL, the target
 is a readable replica with the required table grants, and replication lag is acceptable. Configuring
 a URL also moves the dashboard reports above and no other report. Removing it returns `/admin/errors`

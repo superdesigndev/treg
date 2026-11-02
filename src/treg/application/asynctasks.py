@@ -493,18 +493,26 @@ async def _answers_allowed(db, org_id: int | None) -> bool:
     return org is not None and org.archive_opt_out_at is None
 
 
+def terminal_judgement(endpoint_id: str, outcome: str, status_code: int,
+                       body: bytes) -> tuple[bool | None, str | None]:
+    """The hit and verdict word a task's terminal outcome records. Pure: reads only this
+    checkout's catalog."""
+    # A confirmed terminal failure produced no contact for this attempt. Count it in
+    # routing's P(hit); pending and timed-out jobs still have no known verdict.
+    hit = (classify(endpoint_id, status_code, body).hit if outcome == "success" else
+           False if has_result_rules(endpoint_id) else None)
+    # Only a finished answer carries a verdict word; a failure has nothing to judge.
+    word = verdict(endpoint_id, status_code, body) if outcome == "success" else None
+    return hit, word
+
+
 async def _finish_terminal(snapshot: AsyncTaskRecord, outcome: str, document: object,
                            status_code: int, body: bytes, now, *, require_usage: bool = False,
                            expected_attempt: int | None = None,
                            answers_allowed: bool = False, deadline: float | None = None) -> str:
     """One settlement and evidence path for caller polling and the recovery worker."""
-    # A confirmed terminal failure produced no contact for this attempt. Count it in
-    # routing's P(hit); pending and timed-out jobs still have no known verdict.
-    terminal_hit = (classify(snapshot.endpoint_id, status_code, body).hit
-                    if outcome == "success" else
-                    False if has_result_rules(snapshot.endpoint_id) else None)
-    # Only a finished answer carries a verdict word; a failure has nothing to judge.
-    terminal_verdict = verdict(snapshot.endpoint_id, status_code, body) if outcome == "success" else None
+    terminal_hit, terminal_verdict = terminal_judgement(
+        snapshot.endpoint_id, outcome, status_code, body)
     # The snapshot only selects admission. _finish rechecks the locked row and remains the
     # authority for charging; a release inside an already-admitted success scope is not a second admit.
     # Missing usage skips admission only when a non-expired success or billed failure will

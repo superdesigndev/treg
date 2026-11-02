@@ -44,8 +44,17 @@ contracts:
     # scored, not a delivery check: 2026-09-06 one team sent to catch-all (`accept_all`) and
     # pattern-guessed hits without verifying and bounced on most of them.
     advice_unverified: "This address was found, not confirmed deliverable (verified != true). Send X-Treg-Route-Verify: true and treg checks it with treg.people.email.verify in the same call, or run that check yourself before outreach — a fraction of a cent, and it catches catch-all domains and dead mailboxes."
+    # Attached as `_treg.advice` when the hit's mailbox domain differs from the domain the caller
+    # sent (`_treg.domain_match: false`). LinkedIn-only children ignore the domain and often return
+    # a former employer; the flag discloses it, the answer is not altered.
+    advice_domain_mismatch: "The address is at a different domain than the one you sent (_treg.domain_match: false). A LinkedIn-only provider often returns a former employer. Treat this as a possible stale hit: prefer a provider that takes domain, or re-ask with X-Treg-Route-Prefer naming one that does."
     # `X-Treg-Route-Verify`: checks every hit, a finder's own `verified` included; BounceBan first here only.
-    check: {endpoint: treg.people.email.verify, field: email, prefer: [bounceban]}
+    # The check wins over the finder's claim: a `verified: true` hit it does not find valid says so.
+    check:
+      endpoint: treg.people.email.verify
+      field: email
+      prefer: [bounceban]
+      disagree_advice: "The provider marked this address verified, but treg's check did not confirm it: read _treg.verification.verdict, which wins over output.verified. Do not send to an invalid address, and treat catch_all, risky or unknown as unconfirmed."
     # `X-Treg-Route-Confirm`: a hit counts only once a second provider returns the same address.
     # Finders that guess from the same name patterns can still agree on a wrong one.
     confirm: email
@@ -68,7 +77,11 @@ contracts:
     one_subject: true           # every variant names one person: cost per hit ranks first
     # A personal find is a guess tied to a profile: one finder's hits have belonged to someone else.
     advice_unverified: "A personal email is found, not confirmed to belong to this person or to accept mail. Send X-Treg-Route-Verify: true and treg checks it with treg.people.email.verify in the same call, or run that check yourself before outreach."
-    check: {endpoint: treg.people.email.verify, field: email, prefer: [bounceban]}
+    check:
+      endpoint: treg.people.email.verify
+      field: email
+      prefer: [bounceban]
+      disagree_advice: "The provider marked this address verified, but treg's check did not confirm it: read _treg.verification.verdict, which wins over output.verified. Do not send to an invalid address, and treat catch_all, risky or unknown as unconfirmed."
 
   # ---- batch 1: social lookups (2026-08-28) ---------------------------------------------------
   instagram.user.profile:
@@ -140,6 +153,7 @@ contracts:
     summary: "Find someone's phone number — treg picks the provider (own keys first, then cheapest per hit) and names the one that served"
     identity:
       - {linkedin_url: url}
+      - {linkedin_handle: str}
       - {email: str}
       - {full_name: str, domain: str}
       - {first_name: str, last_name: str, domain: str}
@@ -343,6 +357,7 @@ contracts:
       next_cursor: {type: str}
     miss: "people == []"
     idempotent: true
+    prefer: [crawl4ai]
     # Search rows are directory listings. An email in a row is found, not confirmed deliverable,
     # unless that row's own verification field says so — a team that mailed Hunter domain-search
     # rows unverified (`verification: null`, confidence 10) bounced on 73 of 79 addresses that one
@@ -376,6 +391,7 @@ contracts:
       linkedin_url: {type: str}
     miss: "name == null"
     idempotent: true
+    prefer: [crawl4ai]
 
   companies.similar:
     summary: "Find companies similar to a seed domain"

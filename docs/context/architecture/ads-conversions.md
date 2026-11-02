@@ -68,6 +68,21 @@ read-side Ads catalog calls (`oauth_providers.GOOGLE_ADS`), a separate credentia
    wins over the cookie. A `|` inside the landing is kept, on both the script and the server
    parser. Restoring a cookie alone does not renew its expiry. `/login` preserves its
    query on the dashboard redirect, and the CLI login shell loads the capture script too.
+   **The short install link** covers the sign-in that happens in a browser the ad never touched
+   (an agent's embedded browser holds its own cookie jar). When `/start` sees the
+   `treg_ad` cookie it asks `POST /i` for a six-character code (`signup.mint_ad_link`: the cookie's
+   normalised value under the hashed code in the `Ephemeral` store, namespace `ad_link`, 30 days,
+   30 codes per address per 10 minutes) and swaps the copied command to
+   `curl -fsSL {BASE}/i/<code> | sh && treg login`. `GET /i/<code>` serves `install.sh` with the
+   code templated in, and the script leaves it in `~/.treg/ad-link`; `treg login` sends it as
+   `/login?cli=…&ad=<code>` and deletes the file once the login succeeds; `/login` redeems it
+   (`signup.redeem_ad_link`) and sets `treg_ad` in the response, the shape the script writes, so
+   carry, stash and both signup doors run unchanged. A code redeems once: the first `/login` deletes
+   it, so a command pasted into a README or a prompt carries the click to nobody else. The restored
+   cookie lives until 90 days after the code was minted, never a fresh 90 days, and a browser that
+   already holds `treg_ad` keeps its own. An unknown, expired or redeemed code installs exactly like
+   `/install.sh` and restores nothing. No click, or capture off, means the
+   plain command. The CLI never sends a value that is not a well-formed code.
 2. **Store** (`application.signup._ad_attribution_from`, read at both signup doors: `register_user` (`POST /users`)
    and `create_org` (`POST /orgs`), since a browser visitor who clicked an ad can land on either).
    The cookie is decoded and persisted onto the new `Org`: `ad_gclid` (the historical column name,

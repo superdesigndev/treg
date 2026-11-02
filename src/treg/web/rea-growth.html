@@ -1,0 +1,1275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REA for Growth — Reverse Engineer How a Company Grows | treg</title>
+<meta name="description" content="Name the company winning your market. Your agent takes its distribution apart through treg, from first touch to sharing, and returns a playbook of plays, each marked backed by data or educated guess, with the prompt to run it.">
+<link rel="canonical" href="{BASE}/rea-growth"/>
+<meta property="og:title" content="REA for Growth — Reverse Engineer How a Company Grows | treg"/>
+<meta property="og:description" content="Name a company. Your agent takes its distribution apart and hands you the plays to copy."/>
+<meta property="og:url" content="{BASE}/rea-growth"/>
+<meta property="og:type" content="website"/>
+<meta name="twitter:card" content="summary"/>
+<link rel="icon" href="favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;800&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Geist+Pixel&display=swap">
+<style>
+  :root {
+    --bg: #17151C; --card: #211E27; --ink: #FFFFFF; --muted: rgba(255,255,255,.46); --line: rgba(255,255,255,.10);
+    --green: var(--s2); --green-soft: color-mix(in oklab, var(--s2) 14%, transparent); --red: var(--s1);
+    --glass: rgba(255,255,255,.05); --tx: rgba(255,255,255,.72);
+    --display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+    --text: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --pink: var(--s1); --pink-soft: color-mix(in oklab, var(--s1) 18%, transparent);
+    --pixel: "Geist Pixel", "Geist Mono", ui-monospace, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--text); font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  ::selection { background: color-mix(in oklab, var(--s2) 30%, transparent); }
+  a { color: inherit; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); text-decoration: none; cursor: pointer; font-family: var(--text); }
+  .pill:hover { background: var(--card); }
+  .pill.dark { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .pill.dark:hover { background: rgba(255,255,255,.85); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+  /* nav */
+  .nav { position: fixed; inset: 0 0 auto 0; z-index: 90; display: flex; align-items: center; justify-content: space-between; padding: 14px 28px; background: transparent; border-bottom: 1px solid transparent; transition: border-color .3s, background .3s; }
+  .nav.scrolled { background: rgba(23,21,28,.8); backdrop-filter: blur(12px); }
+  .wordmark { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 15px; }
+  .wordmark svg { width: 22px; height: 22px; border-radius: 6px; }
+  .nav-links { display: flex; gap: 22px; align-items: center; margin-right: 10px; }
+  .nav-links a { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 500; color: var(--tx); text-decoration: none; }
+  .nav-links a:hover { color: var(--ink); }
+  @media (max-width: 900px) { .nav-links { display: none; } }
+  .ctas { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .ctas[hidden] { display: none; }
+  /* sections fade up as they enter */
+  .rv { opacity: 0; transform: translateY(22px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.8,.2,1); }
+  .rv.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } }
+
+  /* code card */
+  .code { background: #0C0B0F; color: #D6D6D2; border-radius: 16px; padding: 18px 20px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto; white-space: pre-wrap; position: relative; }
+  .section { padding: 124px 24px 0; }
+  .section h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; line-height: 1.12; font-size: clamp(30px, 4.6vw, 46px); text-align: center; margin: 0 0 14px; text-wrap: balance; }
+  @keyframes hlDrift { to { background-position: 300% 0; } }
+  /* the AEO page's oil-painting colour field, dimmed for the dark page */
+  .field { position: relative; isolation: isolate; overflow: hidden; }
+  .field > .paint { position: absolute; inset: -30%; z-index: -1; background: url(media/aeo/field.jpg) center / cover no-repeat; filter: blur(48px) saturate(1.5) brightness(.86); transform: scale(1.08); pointer-events: none; }
+  .hero > .paint { opacity: .78; filter: blur(64px) saturate(1.6) brightness(.82); }
+  .hero.field::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(180deg, rgba(5,4,7,.05) 0%, rgba(5,4,7,.3) 55%, var(--bg) 100%); }
+  .final-in.field { background: #0E0B10; }
+  .final-in > .paint { opacity: .5; filter: blur(60px) saturate(1.4) brightness(.5); }
+  @media (prefers-reduced-motion: reduce) { .field > .paint { animation: none; } }
+  .fineprint { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 34px; }
+  /* final CTA */
+  .final { max-width: 1048px; margin: 124px auto 0; padding: 0 24px; }
+  .final-in { background: var(--glass); border: 1px solid var(--line); color: #fff; border-radius: 24px; padding: 60px 40px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 26px; }
+  .final h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.03em; font-size: clamp(32px, 4.6vw, 52px); line-height: 1.08; margin: 0; }
+  .final .pill { border-color: rgba(255,255,255,.2); background: transparent; color: #fff; }
+  .final .pill.light { background: #fff; color: var(--bg); border-color: #fff; }
+  .final .pill.light:hover { background: rgba(255,255,255,.85); }
+  @media (max-width: 860px) { .final-in { padding: 40px 22px; } }
+
+  /* footer */
+  .bigfoot { border-top: 1px solid var(--line); margin-top: 124px; padding: 46px 24px 40px; background: transparent; }
+  .bigfoot-in { max-width: 1000px; margin: 0 auto; display: flex; gap: 44px; justify-content: space-between; flex-wrap: wrap; }
+  .bf-brand .bfb { display: inline-flex; align-items: center; gap: 9px; font-family: var(--display); font-weight: 600; font-size: 16px; }
+  .bf-brand .bfb svg { width: 20px; height: 20px; border-radius: 5px; }
+  .bf-brand .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .bf-cols { display: flex; gap: 48px; flex-wrap: wrap; }
+  .bf-col { display: flex; flex-direction: column; gap: 8px; }
+  .bf-col .lab { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
+  .bf-col a { color: var(--ink); text-decoration: none; font-size: 13.5px; }
+  .bf-col a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .bf-tag { max-width: 1020px; margin: 36px auto 0; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+
+ color: var(--red); font-size: 11.5px; margin-top: 10px; min-height: 14px; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+  .hero { position: relative; isolation: isolate; padding: 128px 24px 36px; text-align: center; color: var(--ink); background: var(--bg); }
+  .hero h1 { font-family: var(--display); font-weight: 500; letter-spacing: -.035em; font-size: clamp(34px, 5.2vw, 62px); line-height: 1.04; margin: 0 0 14px; text-wrap: balance; }
+  .you { color: var(--ink); font-weight: 500; }
+  .note { min-height: 92px; margin: 34px auto 26px; max-width: 520px; }
+  .note small { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--muted); }
+  .note b { display: block; font-family: var(--display); font-weight: 600; font-size: 19px; letter-spacing: -.015em; margin: 6px 0 3px; }
+  .note span { font-size: 14px; color: rgba(255,255,255,.55); }
+  .note button { margin-left: 8px; padding: 0; border: 0; background: none; font: inherit; font-size: 14px; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  @media (max-width: 760px) {
+    .hero { padding-top: 104px; }
+  }
+  /* how it works: three cards */
+  .how { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 34px; }
+  .how div { position: relative; background: var(--glass); border: 0; border-radius: 18px; padding: 22px; }
+  .how div + div::before { content: "→"; position: absolute; left: -27px; top: 50%; transform: translateY(-50%); font-size: 20px; color: var(--muted); }
+  .how .n { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font: 800 17px var(--display); color: #fff; background: url(media/aeo/field.jpg) center / 400% no-repeat; }
+  .how h3 { font-family: var(--display); font-weight: 500; letter-spacing: -.02em; font-size: 21px; margin: 14px 0 6px; }
+  .how p { margin: 0; font-size: 14.5px; color: var(--tx); }
+  @media (max-width: 760px) { .how { grid-template-columns: 1fr; gap: 30px; } .how div + div::before { content: "↓"; left: 50%; top: -28px; transform: translateX(-50%); } }
+  /* the path: one row per stage */
+  .path { max-width: 1000px; margin: 0 auto; background: var(--glass); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+  .path p { margin: 0; font-size: 14.5px; color: var(--tx); }
+  /* one colour per section, in the launch film's spectrum */
+  :root { --s1: #F7B8B5; --s2: #F2C8B3; --s3: #ECD68E; --s4: #BFBD77; --s5: #C9DDE4; --s6: #EDE0CF; }
+  .hero { --sc: var(--s1); }
+  #how { --sc: var(--s2); }
+  #example { --sc: var(--s4); }
+  #plays { --sc: var(--s5); }
+  #prompt { --sc: var(--s6); }
+  .bigfoot { --sc: var(--s1); }
+  .hero, .section, .final, .bigfoot { position: relative; isolation: isolate; overflow-x: clip; }
+  .hero::before, .section::before, .final::before, .bigfoot::before { content: ""; position: absolute; z-index: -1; left: 50%; top: 40px; width: min(1100px, 100%); height: 520px; transform: translateX(-50%); background: radial-gradient(50% 50% at 50% 50%, color-mix(in oklab, var(--sc) 16%, transparent), transparent 70%); filter: blur(30px); pointer-events: none; }
+  .section h2::after, .final h2::after { content: ""; display: block; width: 44px; height: 3px; margin: 16px auto 0; border-radius: 3px; background: var(--sc); }
+  #example { --f: var(--s2); --o: rgba(255,255,255,.22); --tx2: var(--tx); }
+  #example .note { min-height: 0; font-size: 13.5px; color: var(--muted); margin: 6px 0 12px; }
+  #example .card + .note { margin-top: 12px; }
+  #example .card { background: var(--glass); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; margin-top: 12px; min-width: 0; }
+  #example .card h5 { margin: 0; font-size: 15px; font-weight: 600; }
+  #example .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 860px) { #example .two { grid-template-columns: 1fr 1fr; } #example .two { grid-template-columns: 1fr; } }
+  .chart { width: 100%; height: auto; display: block; }
+  .chart .ax { font: 500 13px var(--mono); fill: rgba(255,255,255,.7); }
+  .chart .ar { fill: color-mix(in oklab, var(--s2) 12%, transparent); }
+  .chart .ln { fill: none; stroke: var(--s4); stroke-width: 2; stroke-linejoin: round; }
+  .chart.big .ar { fill: url(#gLn); opacity: .35; mask: url(#mAr); }
+  .chart.big .ln { stroke: url(#gLn); stroke-width: 3; stroke-linecap: round; }
+  .chart .pin { cursor: pointer; outline: none; }
+  .chart .pin .stm { stroke: var(--c, #A9A59D); stroke-width: 1; opacity: .35; }
+  .chart .pin:hover .stm, .chart .pin:focus .stm, .chart .pin.on .stm { opacity: 1; stroke: #FFFFFF; }
+  .chart .pin { transition: opacity .15s; }
+  .who { display: flex; flex-direction: column; gap: 4px; }
+  .who b { font: 500 30px var(--display); color: var(--green); letter-spacing: -.02em; }
+  .who span { font-size: 14.5px; }
+  .who small { display: block; font: 12px var(--mono); color: var(--muted); margin-top: 2px; }
+  .split { display: flex; gap: 2px; height: 16px; border-radius: 4px; overflow: hidden; margin-top: 12px; }
+  .split.big { height: 28px; }
+  .split i.f { background: var(--f); }
+  #example table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px; }
+  #example th, #example td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+  #example th { font: 11px var(--mono); letter-spacing: .05em; color: var(--muted); border-top: 0; }
+  #example table.mini td:nth-child(2), #example table.mini td:nth-child(3) { font-family: var(--mono); white-space: nowrap; }
+  #example td code { font-size: 11.5px; word-break: break-all; }
+  .data { margin-top: 10px; font-size: 13px; } .data summary { cursor: pointer; color: var(--tx2); }
+  .ch { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px 3px 4px; font-size: 13px; background: rgba(255,255,255,.03); }
+  .ch s { text-decoration: none; width: 18px; height: 18px; border-radius: 50%; background: var(--o); color: var(--ink); display: grid; place-items: center; font: 11px var(--mono); }
+  .ch.me { background: var(--f); color: var(--bg); border-color: var(--f); } .ch.me s { background: var(--bg); color: var(--f); }
+  #example blockquote { margin: 12px 0 0; padding: 10px 12px; background: var(--card); border-radius: 10px; font-size: 13.5px; }
+  #example blockquote small { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .split i.g { background: var(--line); }
+  .pls { position: relative; background: var(--glass); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+  .pl { position: relative; padding: 20px 22px 20px 66px; border-top: 1px solid var(--line); }
+  .pl:first-child { border-top: 0; }
+  .pl::before { content: ""; position: absolute; left: 34px; top: 0; bottom: 0; width: 1px; background: var(--line); }
+  .pl:first-child::before { top: 34px; }
+  .pl:last-child::before { bottom: auto; height: 34px; }
+  .pl header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pl .pn { position: absolute; left: 20px; top: 20px; z-index: 1; width: 29px; height: 29px; border-radius: 50%; display: grid; place-items: center; background: var(--glass); border: 1px solid var(--line); font: 600 11.5px var(--mono); color: var(--f); }
+  .pl h4 { margin: 0; font-family: var(--display); font-weight: 500; font-size: 19px; letter-spacing: -.01em; margin-right: auto; }
+  .pl .st2 { font: 11px var(--mono); letter-spacing: .06em; color: var(--muted); }
+  .pl p { margin: 10px 0 0; font-size: 14px; color: var(--tx2); }
+  .pl p b, .pl .meta3 b { display: block; font: 11px var(--mono); letter-spacing: .06em; color: var(--ink); margin-bottom: 2px; }
+  .pl .meta3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; font-size: 13.5px; color: var(--tx2); }
+  @media (max-width: 640px) { .pl .meta3 { grid-template-columns: 1fr; } .pl { padding-left: 54px; } .pl .pn { left: 12px; } .pl::before { left: 26px; } }
+  .pl .ask { display: none; }
+  .pl { padding: 16px 22px 16px 66px; }
+  .pl .st2, .pl .eff { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font: 600 12px var(--text); letter-spacing: 0; color: var(--ink); background: color-mix(in oklab, var(--c, var(--muted)) 16%, transparent); }
+  .pl .st2::before { content: ""; width: 7px; height: 7px; background: var(--c, var(--muted)); }
+  .pl .st2[data-st="get-noticed"] { --c: var(--s5); }
+  .pl .st2[data-st="sign-up"] { --c: var(--s4); }
+  .pl .st2[data-st="pay"] { --c: var(--s3); }
+  .pl .st2[data-st="share"] { --c: var(--s1); }
+  .pl .eff { background: transparent; color: var(--muted); padding-right: 0; }
+  .pl .eff::before { content: "◷"; font-size: 14px; }
+  .pl .eff b { display: none; }
+  .pl > p { margin-top: 8px; }
+  .pl .meta3 { display: block; margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .pl .meta3 b { display: inline; font: 600 13px var(--text); letter-spacing: 0; color: var(--ink); margin-right: 6px; }
+  .pl .meta3 b::before { content: "→ "; }
+  /* closing receipt: what the run cost, printed like a lab ticket */
+  .rcpt-wrap { max-width: 1000px; margin: 64px auto 0; }
+  .ctw { overflow-x: auto; background: var(--glass); border: 1px solid var(--line); border-radius: 14px; }
+  .cnote { margin: -4px 0 14px; font-size: 14.5px; color: var(--muted); }
+  table.cost { width: 100%; border-collapse: collapse; font-size: 14px; }
+  #example .cost th { background: rgba(255,255,255,.04); font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; color: var(--muted); font-weight: 500; text-align: left; padding: 10px 14px; }
+  #example .cost td { padding: 10px 14px; border-top: 1px solid rgba(255,255,255,.06); }
+  #example .cost th:last-child { text-align: right; }
+  #example .cost td.m { text-align: right; font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+  #example .cost tr.nb td { color: var(--muted); }
+  #example .cost tr.nb small { margin-left: 6px; font-family: var(--mono); font-size: 11px; color: rgba(255,255,255,.34); }
+  #example .cost tfoot td { border-top: 1.5px solid var(--ink); font-weight: 600; vertical-align: middle; }
+  #example .cost tfoot td.m { font-family: var(--display); font-size: 22px; color: var(--green); }
+  .rcpt-wrap .fineprint { margin-top: 26px; text-align: center; }
+  #tip { position: fixed; z-index: 300; pointer-events: none; max-width: 340px; background: rgba(22,20,26,.92); border: 1px solid rgba(255,255,255,.12); -webkit-backdrop-filter: blur(30px) saturate(1.4); backdrop-filter: blur(30px) saturate(1.4); color: #F3F1EC; font-size: 12.5px; line-height: 1.45; padding: 8px 10px; border-radius: 8px; opacity: 0; transition: opacity .12s; }
+  #tip.on { opacity: 1; }
+  #tip.rich { max-width: 300px; padding: 11px 13px 10px; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+  /* the meta prompt */
+  .prompt-d { width: min(640px, 100%); }
+  .prompt-d.open { width: min(820px, 100%); }
+  .prompt-d .code { border-radius: 0 0 16px 16px; background: #0F0F0E; border: 1px solid rgba(255,255,255,.12); border-top: 1px solid #2E2E2C; max-height: 520px; overflow: auto; font-size: 12px; text-align: left; }
+
+  /* liquid glass layer: a dim painted field behind the whole page, frosted panels over it */
+  :root { --gl-bg: linear-gradient(160deg, rgba(255,255,255,.09), rgba(255,255,255,.025) 46%, rgba(255,255,255,.05)); --gl-bd: rgba(255,255,255,.13); --gl-hi: inset 0 1px 0 rgba(255,255,255,.22), inset 0 -1px 0 rgba(255,255,255,.04); --gl-sh: 0 30px 80px -30px rgba(0,0,0,.75); --gl-blur: blur(28px) saturate(1.7); --ui: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter Tight", "Inter", system-ui, sans-serif; }
+  body { --display: var(--ui); background: var(--bg); }
+  body::after { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(120% 80% at 50% 0%, transparent 30%, rgba(5,4,7,.7) 100%); }
+  .section::before, .final::before, .bigfoot::before { opacity: .55; }
+  .section h2::after, .final h2::after { display: none; }
+  /* panels */
+  .how div, .path, #example .card, .pls, .ctw, .final-in, .prompt-d .code {
+    background: var(--gl-bg); border: 1px solid var(--gl-bd); box-shadow: var(--gl-hi), var(--gl-sh);
+    -webkit-backdrop-filter: var(--gl-blur); backdrop-filter: var(--gl-blur); }
+  .how div, #example .card, .pls, .path, .ctw { border-radius: 24px; }
+  #example blockquote { background: rgba(255,255,255,.045); box-shadow: inset 0 1px 0 rgba(255,255,255,.08); -webkit-backdrop-filter: none; backdrop-filter: none; border: 0; }
+  .how div { transition: transform .4s cubic-bezier(.2,.8,.2,1), border-color .3s, box-shadow .4s; }
+  .how div:hover { transform: translateY(-3px); border-color: rgba(255,255,255,.24); box-shadow: var(--gl-hi), 0 40px 90px -30px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.04); }
+  /* flat: content sits on the page, a hairline above each group instead of a panel */
+  .how div, .path, #example .card, .pls {
+    background: none; border: 0; border-top: 1px solid rgba(255,255,255,.12); border-radius: 0; box-shadow: none;
+    -webkit-backdrop-filter: none; backdrop-filter: none; padding-left: 0; padding-right: 0; }
+  .how div:hover { transform: none; box-shadow: none; }
+  /* nav: a floating capsule */
+  .nav.scrolled { background: rgba(10,9,12,.55); border-bottom-color: var(--gl-bd); -webkit-backdrop-filter: var(--gl-blur); backdrop-filter: var(--gl-blur); }
+  .nav-links a { color: rgba(255,255,255,.66); transition: color .2s; }
+  .nav-links a:hover { color: #fff; }
+  /* buttons */
+  .pill { border-color: var(--gl-bd); background: rgba(255,255,255,.06); color: #fff; box-shadow: var(--gl-hi); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); transition: background .2s, transform .2s, box-shadow .3s; }
+  .pill:hover { background: rgba(255,255,255,.12); }
+  .pill.dark, .final .pill.light { background: #fff; color: #0A090C; border-color: rgba(255,255,255,.9); box-shadow: none; }
+  .pill.dark:hover, .final .pill.light:hover { background: #fff; transform: translateY(-1px); box-shadow: none; }
+  .ch { background: rgba(255,255,255,.06); border-color: var(--gl-bd); }
+  /* type: luminous headings */
+  .hero h1, .section h2, .final h2 { font-family: var(--ui); font-weight: 600; letter-spacing: -.045em; background: linear-gradient(180deg, #fff 30%, rgba(255,255,255,.62)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .hero h1 { font-size: clamp(40px, 6.4vw, 80px); line-height: 1; padding-bottom: .06em; background: none; color: #fff; -webkit-text-fill-color: #fff; }
+  /* hero: the AEO page's hero (eyebrow, pixel headline, highlighted hook, two CTAs), dark */
+  .hero { padding: 132px 24px 48px; }
+  .hero h1 { font-family: var(--pixel); font-weight: 400; letter-spacing: -.02em; text-transform: lowercase; font-size: clamp(24px, 4.4vw, 54px); line-height: 1.06; margin: 0 0 22px; }
+  .section h2 { font-size: clamp(32px, 4.8vw, 52px); }
+  .section h2, .final h2 { background: none; color: #fff; -webkit-text-fill-color: #fff; }
+  .how h3, .pl h4, #example .card h5 { font-family: var(--ui); letter-spacing: -.02em; }
+  .who b { background: linear-gradient(180deg, #fff, rgba(255,255,255,.7)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; font-family: var(--ui); font-weight: 600; letter-spacing: -.035em; }
+  .how .n { display: block; width: auto; height: auto; border-radius: 0; background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; color: #fff; font: 800 32px/1 var(--ui); letter-spacing: -.03em; }
+  .pl .pn { background: rgba(20,18,24,.7); border-color: var(--gl-bd); }
+  .bigfoot { background: rgba(10,9,12,.4); border-top-color: var(--gl-bd); -webkit-backdrop-filter: var(--gl-blur); backdrop-filter: var(--gl-blur); }
+  #tip { background: rgba(255,255,255,.62); border-color: rgba(255,255,255,.85); color: #101010; box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 16px 40px -12px rgba(16,16,16,.28); }
+  #tip.rich { box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 16px 40px -12px rgba(16,16,16,.28); }
+  @media (prefers-reduced-motion: reduce) { .how div:hover { transform: none; } }
+  .hero, .hero.field { background: transparent; }
+  .hero.field::after { background: linear-gradient(180deg, rgba(5,4,7,0) 0%, rgba(5,4,7,.2) 60%, rgba(5,4,7,0) 100%); }
+  .hero > .paint { -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent 74%); mask-image: linear-gradient(180deg, #000 30%, transparent 74%); }
+  .hero { min-height: min(100svh, 860px); display: flex; flex-direction: column; justify-content: center; box-sizing: border-box; }
+  /* headline stats: an open grid split by hairlines, no boxes */
+  .ch.me { background: #fff; color: #0A090C; border-color: #fff; box-shadow: 0 0 18px rgba(255,255,255,.25); } .ch.me s { background: #0A090C; color: #fff; }
+  #how > div, #how > div:hover { background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; transform: none; padding: 8px 4px; }
+  /* no outlines anywhere: shapes are told apart by fill and space, never by a stroke */
+  body *, body *::before, body *::after { border-color: transparent !important; }
+  .pill:not(.dark):not(.light), .ch, .pl .pn { background-color: rgba(255,255,255,.08); }
+  .ctw, .prompt-d .code, .final-in { box-shadow: none; }
+  #example .cost tbody tr:nth-child(odd) td { background: rgba(255,255,255,.025); }
+  .chart text { stroke: none; paint-order: normal; }
+  /* hero headline: the last words cycle */
+  .rot { display: inline-grid; grid-template-columns: 100%; justify-items: center; vertical-align: bottom; transition: width .6s cubic-bezier(.2,.8,.2,1); }
+  .rot > span { grid-area: 1 / 1; opacity: 0; transform: translateY(.35em); filter: blur(10px); transition: opacity .6s ease, transform .7s cubic-bezier(.2,.8,.2,1), filter .6s ease; white-space: nowrap; }
+  .rot > span.on { opacity: 1; transform: none; filter: none; }
+  .rot > span.out { opacity: 0; transform: translateY(-.35em); filter: blur(10px); }
+  @media (prefers-reduced-motion: reduce) { .rot > span { transition: none; } }
+  /* no glows or paint layers: the page is flat */
+  body::after, .hero::before, .section::before, .final::before, .bigfoot::before, .hero.field::after, .field > .paint { display: none; }
+  .final-in.field { background: var(--glass); }
+  .hero .ctas { margin-top: 44px; }
+  /* final box: a white card with a switch between the agent prompt and the website */
+  .final .final-in, .final .final-in.field { background: linear-gradient(160deg, rgba(255,255,255,.12), rgba(255,255,255,.04)); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 30px 80px -30px rgba(0,0,0,.6); -webkit-backdrop-filter: blur(28px) saturate(1.4); backdrop-filter: blur(28px) saturate(1.4); }
+  .final .final-in h2 { color: #fff; -webkit-text-fill-color: #fff; }
+  .final .final-in .pill { background: rgba(255,255,255,.08); color: #fff; box-shadow: none; }
+  .final .final-in .pill.light { background: #fff; color: #101010; }
+  .final .final-in .pill.light:hover { background: rgba(255,255,255,.85); transform: none; box-shadow: none; }
+  .final .prompt-d .code { background: rgba(0,0,0,.32); }
+  .howto { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(255,255,255,.08); }
+  .howto button { border: 0; border-radius: 999px; padding: 8px 18px; font: 500 14px var(--ui); color: rgba(255,255,255,.66); background: transparent; cursor: pointer; }
+  .howto button[aria-selected="true"] { background: #fff; color: #101010; }
+  .howweb { width: min(640px, 100%); text-align: left; }
+  .howweb ol { list-style: none; counter-reset: s; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .howweb li { counter-increment: s; position: relative; padding-left: 30px; color: rgba(255,255,255,.72); }
+  .howweb li::before { content: counter(s); position: absolute; left: 0; top: 0; font-weight: 700; color: #fff; }
+  .howweb b { color: #fff; font-weight: 600; }
+  /* copy button at the right end of the tab row, shown while the row is hovered */
+  /* hero: AEO layout, dark */
+  .hero { min-height: 0; display: block; padding: 160px 24px 120px; }
+  .hero h1 { font-size: clamp(30px, 5.8vw, 76px); margin: 0 0 22px; }
+  .hero .you { padding: 0 .22em; border-radius: .28em; background: #fff; color: #050407; }
+  .hero .meta { font-size: 17px; color: rgba(255,255,255,.66); margin: 0 auto 30px; max-width: 620px; text-wrap: balance; }
+  .hero .ctas { margin-top: 0; }
+  @media (max-width: 760px) { .hero { padding: 120px 16px 80px; }  }
+  /* the Lovable teardown reads as a light document: white page, black text */
+  #example { background: #fff; color: #101010; padding-bottom: 96px;
+    --bg: #FFFFFF; --card: #F5F4F1; --ink: #101010; --muted: #6E6A62; --line: #E9E7E2; --glass: #F6F5F2; --tx: #43413E; --tx2: #55524D; --o: rgba(0,0,0,.13);
+    --f: var(--s4); }
+  #example, #prompt { --s1: #C8646A; --s2: #C97A55; --s3: #A8861E; --s4: #7F8230; --s5: #4F8A9E; --s6: #9C8566;
+    --green: var(--s2); --green-soft: color-mix(in oklab, var(--s2) 14%, transparent); --red: var(--s1); --pink: var(--s1); --pink-soft: color-mix(in oklab, var(--s1) 14%, transparent); }
+  #example h2, #example .who b { background: none; color: #101010; -webkit-text-fill-color: #101010; }
+  #example .chart .ax { fill: #6E6A62; }
+  #example .chart .pin:hover .stm, #example .chart .pin:focus .stm, #example .chart .pin.on .stm { stroke: #101010; }
+  #example .cost th { background: #F6F5F2; }
+  #example .cost tr.nb small { color: #A8A49C; }
+  #example .cost tbody tr:nth-child(odd) td { background: #FAF9F7; }
+  #example blockquote { background: #F6F5F2; box-shadow: none; }
+  #example .pill:not(.dark):not(.light), #example .ch, #example .pl .pn { background-color: #F1EFEA; color: #101010; box-shadow: none; }
+  #example .ch.me { background: #101010; color: #fff; box-shadow: none; }
+  #example .ch.me s { background: #fff; color: #101010; }
+  #example .pill.dark { background: #101010; color: #fff; box-shadow: none; }
+  #example .how div, #example .path, #example .card, #example .pls, #example .ctw { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .nav { transition: border-color .3s, background .3s, color .3s; }
+  .nav.light { --muted: rgba(16,16,16,.5); color: #101010; background: rgba(255,255,255,.78); border-bottom-color: rgba(16,16,16,.08); }
+  .nav.light .nav-links a { color: rgba(16,16,16,.66); }
+  .nav.light .nav-links a:hover { color: #101010; }
+  .nav.light .pill.dark { background: #101010; color: #fff; border-color: #101010; box-shadow: none; }
+  /* growth chart on the white section */
+  #example .chart.big .ln { stroke: url(#gOrbLn); stroke-width: 3.5; }
+  #example .chart.big .ar { fill: url(#gOrb); opacity: .5; filter: blur(2px); }
+  #example .chart .ax { font: 500 12px var(--ui); font-variant-numeric: tabular-nums; fill: #2A2824; }
+  #example .chart .pin .stm { stroke-dasharray: 3 3; opacity: .45; }
+  #example .chart .pin:hover .stm, #example .chart .pin.on .stm { stroke: var(--c); stroke-dasharray: none; opacity: 1; }
+  .hero { padding: 160px 24px 64px; }
+  .hero h1 { margin-bottom: 24px; }
+  .hero .meta { margin-bottom: 0; }
+  .hero .ctas { margin-top: 28px; }
+  #plays { padding-top: 64px; padding-bottom: 96px; }
+  .section h2 { margin-bottom: 16px; }
+  .how div { padding: 24px; }
+  .how div { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 16px; align-content: start; }
+  .how div > * { grid-column: 2; }
+  .how .n { grid-column: 1; grid-row: 1 / span 3; font-size: 64px; line-height: .8; letter-spacing: -.05em; }
+  .how h3 { margin-top: 0; }
+  .how p { font-size: 12.5px; line-height: 19.375px; }
+  .how div > .pill { justify-self: start; margin-top: 16px; white-space: nowrap; }
+  #example { padding-top: 128px; padding-bottom: 128px; }
+  .final { margin-top: 128px; }
+  .final-in { padding: 64px 40px; gap: 24px; }
+  .bigfoot { margin-top: 128px; }
+  @media (max-width: 760px) {
+    .hero { padding: 120px 16px 48px; }
+    #plays { padding-top: 48px; padding-bottom: 64px; }
+    #example { padding-top: 96px; }
+    .final, .bigfoot { margin-top: 96px; }
+    .final-in { padding: 40px 24px; }
+    .how { gap: 32px; }
+  }
+  .hero h1 .rot > span { text-transform: capitalize; background: url(media/aeo/field.jpg) center / cover; -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; filter: saturate(1.3) brightness(1.15); }
+  .hero h1 .rot { perspective: 800px; }
+  .hero h1 .rot > span { transform-origin: 50% 50% -.45em; transform: rotateX(-90deg); backface-visibility: hidden; transition: opacity .5s ease, transform .7s cubic-bezier(.65,0,.35,1); }
+  .hero h1 .rot > span.on { transform: rotateX(0); }
+  .hero h1 .rot > span.out { transform: rotateX(90deg); }
+  /* the closing prompt section: AEO's dark card on a white page */
+  #prompt.final { max-width: none; margin: 0; padding: 0 24px 124px; background: #fff; }
+  #prompt + .bigfoot { margin-top: 0; }
+  .bigfoot { background: #fff; color: #101010; border-top-color: rgba(16,16,16,.08); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .bigfoot .bf-col a { color: #101010; }
+  .bigfoot .bf-col .lab, .bigfoot .bf-brand .note, .bigfoot .bf-tag { color: #6E6A62; }
+  .bigfoot .bf-tag { border-top-color: rgba(16,16,16,.08); }
+  #prompt .final-in, #prompt .final-in.field { max-width: 1032px; margin: 0 auto; background: #1B1B1A; color: #fff; border-radius: 24px; padding: 60px 40px; gap: 26px; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  #prompt .final-in h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.035em; text-wrap: balance; font-size: clamp(32px, 3.7vw, 50px); line-height: 1.08; color: #fff; -webkit-text-fill-color: #fff; }
+  #prompt .prompt-d .code { background: rgba(15,15,14,.5); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.12) !important; color: #D6D6D2; }
+  #prompt .prompt-d .code { border-top-color: #2E2E2C !important; }
+  #prompt .copybox { background: rgba(15,15,14,.5); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.12); border-radius: 16px; padding: 16px 18px; font-family: var(--mono); font-size: 13px; color: #D6D6D2; text-align: left; }
+  #prompt .copybox .h { color: #9A9A9A; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 10px; }
+  #prompt .copybox .line { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+  #prompt .copybox .line span { color: #45E39E; word-break: break-all; }
+  #prompt .copybox .then { margin-top: 12px; color: #B5B5B0; }
+  #prompt .copybox .then a { color: #8FD4F2; text-decoration: none; word-break: break-all; }
+  #prompt .final-in .ctas .pill { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.2) !important; box-shadow: none; }
+  #prompt .final-in .ctas .pill.light { background: #fff; color: #101010; border-color: #fff !important; }
+  #prompt .final-in .ctas .pill.light:hover { background: #ECEAE5; }
+  @media (max-width: 860px) { #prompt .final-in, #prompt .final-in.field { padding: 40px 22px; } }
+  #prompt .final-in, #prompt .final-in.field { background: #0E0B10; }
+  #prompt .final-in > .paint { display: block; opacity: .6; filter: blur(60px) saturate(1.4) brightness(.5); }
+  #prompt .final-in, #prompt .final-in.field { background: #1B1B1A; }
+  #prompt .final-in > .paint { display: none; }
+  #prompt .copybox { background: #0F0F0E; -webkit-backdrop-filter: none; backdrop-filter: none; width: min(560px, 100%); box-sizing: border-box; }
+  /* moves vs growth */
+  #example .dots { display: inline-flex; gap: 4px; }
+  #example .dots i { width: 10px; height: 10px; border-radius: 50%; background: rgba(16,16,16,.12); }
+  #example .dots i.on { background: linear-gradient(90deg, #C97A55, #A8861E 25%, #7F8230 50%, #4F8A9E 75%, #C8646A) 0 0 / 38px 100%; }
+  #example .dots i.on:nth-child(2) { background-position-x: -14px; } #example .dots i.on:nth-child(3) { background-position-x: -28px; }
+  /* sign-in modal, as on /aeo */
+  .scrim { position: fixed; inset: 0; background: rgba(26,26,26,.55); display: none; place-items: center; z-index: 200; padding: 20px; backdrop-filter: blur(6px); }
+  .scrim.open { display: grid; }
+  .smodal { --bg: #FFFFFF; --ink: #101010; --muted: #6E6A62; --line: #E9E7E2; --card: #F5F4F1; color: var(--ink); width: min(400px, 94vw); background: #fff; border-radius: 20px; padding: 30px 28px; text-align: center; position: relative; box-shadow: 0 30px 90px -38px rgba(20,18,12,.4); }
+  .smodal .cls { position: absolute; top: 12px; right: 15px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+  .smodal h3 { font-family: var(--display); font-weight: 600; font-size: 22px; margin: 4px 0 6px; letter-spacing: -.015em; }
+  .smodal p { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 0 0 18px; }
+  .smodal .pill { width: 100%; justify-content: center; margin-top: 9px; }
+  .smodal .div { display: flex; align-items: center; gap: 10px; margin: 16px 0 6px; color: var(--muted); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
+  .smodal .div::before, .smodal .div::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .smodal input { width: 100%; margin-top: 9px; background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 11px 13px; font-family: var(--mono); font-size: 13px; outline: none; }
+  .smodal input:focus { border-color: var(--ink); }
+  .smodal .pill { background: #fff !important; color: #101010 !important; border: 1px solid #E9E7E2 !important; }
+  .smodal .pill.dark { background: #101010 !important; color: #fff !important; border-color: #101010 !important; }
+  .smodal .err { color: var(--red); font-size: 11.5px; margin-top: 10px; min-height: 14px; }
+  /* one white page */
+  body { background: #fff; }
+  #plays { background: #fff; --ink: #101010; --muted: #A8A49C; --tx: #43413E; }
+  #plays { padding-bottom: 24px; }
+  #plays .how div { border-radius: 20px; background: #F6F5F2; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  #plays .how div:hover { box-shadow: 0 24px 50px -30px rgba(16,16,16,.3); }
+  #plays .how h3, #plays .how .n { color: #101010; }
+  .rdemo { max-width: 980px; margin: 48px auto 0; background: #fff; border: 1px solid #E9E7E2; border-radius: 20px; overflow: hidden; box-shadow: 0 30px 90px -38px rgba(20,18,12,.28); text-align: left; }
+  .rd-strip { background: #1B1B1A; color: #E8E8E8; padding: 15px 20px; display: flex; gap: 12px; align-items: center; font: 15px var(--mono); min-height: 52px; box-sizing: border-box; }
+  .rd-strip img { width: 24px; height: 24px; border-radius: 7px; flex: none; }
+  .rd-strip .pr { color: #6FCDF0; flex: none; }
+  .rd-strip .typed { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rd-strip .cur { display: inline-block; width: 9px; height: 19px; background: #6FCDF0; flex: none; animation: rdblink 1s steps(1) infinite; }
+  @keyframes rdblink { 50% { opacity: 0; } }
+  .rd-body { display: flex; }
+  .rd-chart { flex: 1; min-width: 0; padding: 16px 18px 8px; }
+  .rd-cap { display: flex; gap: 6px; font: 12px var(--mono); color: #6E6A62; }
+  .rd-cap b { color: #101010; font-weight: 500; }
+  .rd-cap span { margin-left: auto; color: #101010; font-weight: 500; opacity: 0; transition: opacity .4s; }
+  .rd-cap span.on { opacity: 1; }
+  .rdemo svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--mono); }
+  .rdemo .base { stroke: #E9E7E2; }
+  .rdemo .ax { font-size: 10px; fill: #A8A49C; }
+  .rdemo .curve { fill: none; stroke: #101010; stroke-width: 2.5; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1.6s cubic-bezier(.4,0,.2,1); }
+  .rdemo .curve.on { stroke-dashoffset: 0; }
+  .rdemo .area { fill: rgba(16,16,16,.04); opacity: 0; transition: opacity .8s .9s; }
+  .rdemo .area.on { opacity: 1; }
+  .rdemo .infl { fill: rgba(201,122,85,.12); opacity: 0; transition: opacity .5s; }
+  .rdemo .infl-t { font-size: 11px; font-weight: 600; fill: #A85A36; opacity: 0; transition: opacity .5s; }
+  .rdemo .infl.on, .rdemo .infl-t.on { opacity: 1; }
+  .rdemo .ln line { stroke: #F1EFEA; }
+  .rdemo .ln .lab { font-size: 10.5px; fill: #8A857C; }
+  .rdemo .ln .tx { font-size: 10.5px; fill: #43413E; opacity: 0; transition: opacity .4s .3s; }
+  .rdemo .ln circle { opacity: 0; transform-box: fill-box; transform-origin: center; transform: scale(0); transition: opacity .3s, transform .35s cubic-bezier(.3,1.6,.5,1); }
+  .rdemo .ln.on circle { opacity: 1; transform: none; }
+  .rdemo .ln.on .tx { opacity: 1; }
+  .rdemo .ln.on circle:nth-of-type(2) { transition-delay: .12s; } .rdemo .ln.on circle:nth-of-type(3) { transition-delay: .24s; } .rdemo .ln.on circle:nth-of-type(4) { transition-delay: .36s; }
+  .rdemo .ln.ads circle { fill: #C97A55; } .rdemo .ln.prod circle { fill: #4F8A9E; } .rdemo .ln.links circle { fill: #7F8230; } .rdemo .ln.news circle { fill: #C8646A; }
+  .rd-rail { width: 270px; flex: none; border-left: 1px solid #E9E7E2; background: #FBFAF8; padding: 12px; box-sizing: border-box; overflow: hidden; }
+  .rd-rh { font: 500 10.5px var(--mono); letter-spacing: .07em; text-transform: uppercase; color: #8A8885; margin: 2px 0 10px; }
+  .rd-call { background: #fff; border: 1px solid #E9E7E2; border-radius: 9px; padding: 7px 9px; margin-bottom: 6px; font: 11px/1.35 var(--mono); animation: rdin .3s ease both; }
+  .rd-call .lg { display: inline-flex; flex: none; margin-right: 1px; }
+  .rd-call .lg img { width: 16px; height: 16px; border-radius: 4px; object-fit: contain; background: #fff; box-shadow: 0 0 0 1.5px #fff; }
+  .rd-call .lg img + img { margin-left: -4px; }
+  .rd-call b { display: flex; align-items: center; gap: 7px; font-weight: 500; color: #101010; }
+  .rd-call b i { margin-left: auto; font-style: normal; color: #118453; }
+  .rd-call span { color: #8A857C; }
+  @keyframes rdin { from { opacity: 0; transform: translateY(6px); } }
+  .rd-foot { display: flex; justify-content: space-between; padding: 10px 16px; font: 12px var(--mono); color: #6E6A62; border-top: 1px solid #E9E7E2; background: #FBFAF8; }
+  .rd-foot .meter { color: #118453; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .rd-note { margin: 16px 0 0; font: 13px var(--mono); color: #8A857C; }
+
+  /* REA-Growth hero: the growth curve is the hero; moves pinned on it as it draws */
+  .xr { --paper: #FDFCFB; --ink: #101010; --hot: #118453; --mint: #45E39E; --line: #E9E7E2; --muted: #8A8885; position: relative; isolation: isolate; overflow: hidden; min-height: max(760px, 100svh); box-sizing: border-box; background: var(--paper); color: var(--ink); padding: 120px 24px 0; }
+  .xr { background: radial-gradient(70% 42% at 50% 0%, rgba(69,227,158,.18), transparent 72%), radial-gradient(40% 30% at 85% 8%, rgba(17,132,83,.07), transparent 70%), linear-gradient(180deg, #EBF5EF 0%, #F5FAF6 38%, #FDFCFB 78%); }
+  .xr-curve { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; overflow: visible; }
+  .xr-line { fill: none; stroke: var(--hot); stroke-width: 3.5; vector-effect: non-scaling-stroke; stroke-linecap: round; filter: drop-shadow(0 6px 14px rgba(17,132,83,.45)); }
+  .xr-reveal { transform-box: fill-box; transform-origin: 0 0; transform: scaleX(0); animation: xrdraw 2.6s cubic-bezier(.45,0,.35,1) .5s forwards; }
+  .xr-fill { fill: url(#xrFill); opacity: 0; animation: xrfade 1.2s ease 2.4s forwards; }
+  @keyframes xrdraw { to { transform: none; } }
+  @keyframes xrfade { to { opacity: 1; } }
+  .xr-pins { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+  .xr-pin, .xr-now { position: absolute; left: var(--x); top: var(--y); }
+  .xr-pin > i { position: absolute; left: -6px; top: -6px; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 0; box-shadow: 0 0 0 3px var(--ink), 0 0 0 6px rgba(253,252,251,.9); z-index: 1; box-sizing: border-box; transform: scale(0); animation: xrpop .4s cubic-bezier(.3,1.7,.5,1) var(--d) forwards; }
+  .xr-pin > span { position: absolute; left: 0; bottom: 0; height: var(--h); display: flex; align-items: flex-start; gap: 6px; padding-left: 9px; box-shadow: inset 1.5px 0 0 rgba(16,16,16,.55); white-space: nowrap; font: 500 12px/1 var(--mono); transform-origin: bottom; transform: scaleY(0); animation: xrstem .5s cubic-bezier(.2,.8,.2,1) var(--d) forwards; }
+  .xr-pin > span > * { opacity: 0; animation: xrfade .35s ease calc(var(--d) + .3s) forwards; }
+  .xr-pin > span img { width: 20px; height: 20px; padding: 3px; box-sizing: border-box; border-radius: 6px; background: #fff; box-shadow: 0 1px 0 rgba(16,16,16,.12); margin-top: -4px; }
+  .xr-pin b { position: relative; z-index: 2; font-weight: 500; background: #fff; color: #101010; box-shadow: 0 0 0 1px #E4E1DA, 0 4px 10px -6px rgba(16,16,16,.3); padding: 5px 8px; border-radius: 6px; margin-top: -8px; }
+  .xr-pin em { font-style: normal; color: rgba(16,16,16,.55); margin-top: -2px; }
+  @keyframes xrpop { to { transform: scale(1); } }
+  @keyframes xrstem { to { transform: scaleY(1); } }
+  .xr-now > i { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%; background: var(--hot); box-shadow: 0 0 0 6px rgba(17,132,83,.18); opacity: 0; animation: xrfade .3s ease 3s forwards; }
+  .xr-now > i::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--hot); animation: xrping 2s ease-out 3.2s infinite; opacity: 0; }
+  @keyframes xrping { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(2.6); opacity: 0; } }
+  .xr-now span { position: absolute; right: 18px; top: 14px; font: 600 13px var(--mono); color: var(--hot); white-space: nowrap; opacity: 0; animation: xrfade .4s ease 3.1s forwards; }
+  .xr-ticks { position: absolute; left: 0; right: 0; bottom: 16px; height: 14px; z-index: 1; }
+  .xr-ticks span { position: absolute; transform: translateX(-50%); font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: rgba(16,16,16,.45); }
+  .xr-ticks span:first-child { transform: none; } .xr-ticks span:last-child { transform: translateX(-100%); }
+  .xr-hair { position: absolute; top: 0; bottom: 30px; left: 0; z-index: 3; width: 1px; background: linear-gradient(rgba(16,16,16,.4), rgba(16,16,16,.08)); pointer-events: none; opacity: 0; transition: opacity .2s, transform .18s cubic-bezier(.2,.8,.2,1), top .18s cubic-bezier(.2,.8,.2,1); }
+  .xr-hair.on { opacity: 1; }
+  .xr-hair i { position: absolute; left: -6px; width: 12px; height: 12px; border-radius: 50%; background: var(--ink); border: 3px solid var(--paper); box-sizing: content-box; margin: -9px 0 0 -3px; transition: top .18s cubic-bezier(.2,.8,.2,1); }
+  .xr-hair span { position: absolute; left: 12px; padding: 7px 10px; border-radius: 8px; background: var(--ink); color: #fff; font: 500 12px var(--mono); white-space: nowrap; transition: top .18s cubic-bezier(.2,.8,.2,1); }
+  .xr-hair span b { color: var(--hot); font-weight: 600; }
+  .xr-in { position: relative; z-index: 4; text-align: center; padding-top: 5vh; }
+  .xr-eye { display: inline-flex; align-items: center; gap: .3em; margin: 0 0 .2em; font: 400 clamp(34px, 5vw, 76px)/1 var(--pixel); letter-spacing: -.01em; color: var(--ink); opacity: 0; animation: xrfade .6s ease .1s forwards; }
+  .xr-eye .ag { display: inline-flex; gap: .12em; }
+  .xr-eye .ag img { width: 1.2em; height: 1.2em; border-radius: .26em; object-fit: contain; transition: transform .3s cubic-bezier(.3,1.6,.5,1); }
+  .xr-eye .ag img:hover { transform: translateY(-3px) rotate(-6deg); }
+  .xr-t { margin: 0 auto; max-width: 1100px; font: 600 clamp(40px, 5.6vw, 84px)/1.02 "Inter Tight", var(--ui); white-space: nowrap; letter-spacing: -.05em; color: var(--ink); -webkit-text-fill-color: var(--ink); background: none; text-wrap: balance; }
+  .xr-t .w { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 .1em .3em; margin: 0 -.1em -.3em; }
+  .xr-t .w > span { display: inline-block; transform: translateY(105%); animation: xrrise .9s cubic-bezier(.2,.9,.1,1) .15s forwards; }
+  .xr-t .w + .w > span { animation-delay: .27s; }
+  @keyframes xrrise { to { transform: none; } }
+  .xr-rot { position: relative; display: inline-block; height: 1.12em; vertical-align: top; transition: width .5s cubic-bezier(.65,0,.35,1); }
+  .xr-b { position: absolute; left: 0; top: .05em; display: inline-flex; align-items: baseline; gap: .16em; line-height: 1.02; white-space: nowrap; color: var(--hot); -webkit-text-fill-color: var(--hot); opacity: 0; transform: translateY(35%); transition: opacity .28s, transform .6s cubic-bezier(.65,0,.35,1); }
+  .xr-b.on { opacity: 1; transform: none; }
+  .xr-b.out { opacity: 0; transform: translateY(-35%); }
+  .xr-b img.tile { padding: 0; }
+  .xr-b img { position: relative; top: .06em; width: .74em; height: .74em; padding: .07em; box-sizing: border-box; border-radius: .2em; background: #fff; box-shadow: 0 0 0 1px var(--line), 0 10px 24px -14px rgba(16,16,16,.35); }
+  .xr-cta { display: flex; gap: 10px; justify-content: center; align-items: center; margin-top: 34px; opacity: 0; animation: xrfade .6s ease .6s forwards; }
+  .xr-btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 22px; border-radius: 999px; background: var(--ink); color: #fff; text-decoration: none; font: 500 15px var(--text, var(--ui)); transition: transform .25s, box-shadow .25s; }
+  .xr-btn span { display: inline-block; transition: transform .25s; }
+  .xr-btn:hover { transform: translateY(-1px); box-shadow: 0 14px 30px -14px rgba(16,16,16,.55); }
+  .xr-btn:hover span { transform: translateX(4px); }
+  .xr-link { font: 500 15px var(--text, var(--ui)); color: var(--ink); text-decoration: none; padding: 12px 20px; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px var(--line); transition: background .2s; }
+  .xr-link:hover { background: #F5F4F1; }
+  @media (prefers-reduced-motion: reduce) {
+    .xr *, .xr *::before, .xr *::after { animation-duration: .01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; }
+  }
+  @media (max-width: 760px) {
+    .xr-t { font-size: 7.8vw; white-space: nowrap; } .xr-eye { font-size: 6.4vw; white-space: nowrap; }
+    .xr { min-height: 720px; padding: 104px 16px 0; }
+          .xr-pin, .xr-hair, .xr-now span, .xr-ticks span:nth-child(2), .xr-ticks span:nth-child(4) { display: none; }
+    .xr-pin b { font-size: 10.5px; }
+  }
+
+  /* the run: the /people-search demo card, curve in treg green */
+  .xr-run { background: #FDFCFB; padding: 72px 24px 24px; text-align: center; }
+  .xr-k { margin: 0 0 26px; font: 600 clamp(28px, 3.4vw, 44px)/1.1 "Inter Tight", var(--ui); letter-spacing: -.045em; color: #101010; }
+  .xr-k span { color: #118453; }
+  .xr-run .rdemo { margin-top: 0; }
+  .xr-run .rd-strip .dots { display: none; }
+  .xr-run .rdemo .curve { stroke: #118453; }
+  .xr-run .rdemo .area { fill: rgba(17,132,83,.08); }
+  .xr-run .rdemo .ln.ads circle { fill: #118453; } .xr-run .rdemo .ln.prod circle { fill: #101010; } .xr-run .rdemo .ln.links circle { fill: #45B07F; } .xr-run .rdemo .ln.news circle { fill: #8A8885; }
+  .xr-run .rdemo .infl { fill: rgba(17,132,83,.10); } .xr-run .rdemo .infl-t { fill: #0E6B43; }
+
+  /* the three steps: each card shows its step */
+  #plays .st3 { max-width: 1080px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 56px; }
+  .st3 article { background: #F5F4F1; border-radius: 22px; padding: 8px; display: flex; flex-direction: column; transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+  .st3 article { position: relative; }
+  .st3 article:not(:last-child)::after { content: "→"; position: absolute; z-index: 2; top: calc(50% - 17px); right: -45px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: #101010; color: #fff; font: 600 17px/1 var(--ui); box-shadow: 0 0 0 4px #fff; }
+  .st3 article:hover { transform: translateY(-3px); }
+  .st-v { position: relative; height: 220px; border-radius: 16px; background: #fff; box-shadow: 0 0 0 1px #E9E7E2; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 18px; box-sizing: border-box; }
+  .st-t { padding: 18px 14px 14px; text-align: left; }
+  .st-t .n { display: block; font: 800 44px/1 var(--ui); letter-spacing: -.04em; color: #101010; }
+  .st-t h3 { margin: 6px 0 4px; font: 600 21px/1.2 "Inter Tight", var(--ui); letter-spacing: -.03em; color: #101010; }
+  .st-t p { margin: 0; font-size: 14.5px; color: #6E6A62; }
+  .v1 .fld { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 250px; padding: 12px 14px; border-radius: 12px; background: #fff; font: 500 16px var(--mono); color: #101010; box-sizing: border-box; }
+  .v1 .fld img { width: 22px; height: 22px; }
+  .v1 .ty { display: inline-block; width: 0; overflow: hidden; white-space: nowrap; }
+  .v1 .car { width: 2px; height: 18px; background: #118453; animation: rdblink 1s steps(1) infinite; }
+  .v1 .rng { display: flex; align-items: center; gap: 8px; font: 500 13px var(--mono); color: #101010; opacity: 0; transform: translateY(6px); }
+  .v1 .rng span { padding: 7px 11px; border-radius: 999px; background: #F5F4F1; }
+  .v1 .rng b { color: #118453; font-weight: 500; }
+  #plays.in .v1 .ty { animation: sttype 1.1s steps(11) .5s forwards; }
+  #plays.in .v1 .rng { animation: stup .5s ease 1.8s forwards; }
+  @keyframes sttype { to { width: 11ch; } }
+  @keyframes stup { to { opacity: 1; transform: none; } }
+  .st-v { background: none; box-shadow: none; }
+  .st-net { width: 100%; height: 100%; overflow: visible; }
+  .st-net .ln line { stroke: #118453; stroke-width: 1.2; stroke-dasharray: 2 6; stroke-linecap: round; opacity: .55; }
+  #plays.in .st-net .ln line { animation: stflow 1.1s linear infinite; }
+  @keyframes stflow { to { stroke-dashoffset: -16; } }
+  .st-net .nd circle { fill: #fff; stroke: #E9E7E2; }
+  .st-net .nd { opacity: 0; transform-box: fill-box; transform-origin: center; transform: scale(.4); transition: opacity .4s, transform .5s cubic-bezier(.3,1.6,.5,1); transition-delay: calc(var(--i) * 70ms); }
+  #plays.in .st-net .nd { opacity: 1; transform: none; }
+  .st-net .hub { fill: #fff; filter: drop-shadow(0 4px 8px rgba(16,16,16,.14)); }
+  .st-net .pulse { fill: none; stroke: #118453; stroke-width: 2; transform-box: fill-box; transform-origin: center; opacity: 0; }
+  #plays.in .st-net .pulse { animation: stping 2s ease-out .8s infinite; }
+  @keyframes stping { 0% { transform: scale(.9); opacity: .7; } 100% { transform: scale(2.2); opacity: 0; } }
+  .v3 { justify-content: flex-start; align-items: stretch; gap: 10px; }
+  .v3 .bp-h { display: flex; align-items: center; gap: 7px; font: 500 11.5px var(--mono); color: #101010; }
+  .v3 .bp-h img { width: 16px; height: 16px; }
+  .st-mini { width: 100%; height: 58px; overflow: visible; }
+  .st-mini .ar { fill: rgba(17,132,83,.08); }
+  .st-mini .cv { fill: none; stroke: #118453; stroke-width: 2.5; stroke-dasharray: 1; stroke-dashoffset: 1; }
+  .st-mini circle { fill: #118453; opacity: 0; }
+  #plays.in .st-mini .cv { animation: stdraw 1.4s cubic-bezier(.45,0,.35,1) .4s forwards; }
+  #plays.in .st-mini circle { animation: stup .3s ease forwards; } #plays.in .st-mini circle:nth-of-type(1) { animation-delay: .8s; } #plays.in .st-mini circle:nth-of-type(2) { animation-delay: 1s; } #plays.in .st-mini circle:nth-of-type(3) { animation-delay: 1.4s; }
+  @keyframes stdraw { to { stroke-dashoffset: 0; } }
+  .v3 ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+  .v3 li { display: flex; align-items: center; gap: 8px; padding: 6px 9px; border-radius: 8px; background: #fff; font: 500 12.5px var(--ui); color: #101010; opacity: 0; transform: translateY(6px); }
+  .v3 li b { color: #118453; font-weight: 600; }
+  .v3 li em { margin-left: auto; font: 500 10.5px var(--mono); font-style: normal; color: #8A8885; }
+  #plays.in .v3 li { animation: stup .4s ease forwards; } #plays.in .v3 li:nth-child(1) { animation-delay: 1.7s; } #plays.in .v3 li:nth-child(2) { animation-delay: 1.9s; } #plays.in .v3 li:nth-child(3) { animation-delay: 2.1s; }
+  @media (max-width: 860px) { #plays .st3 { grid-template-columns: 1fr; max-width: 420px; } .st3 article:not(:last-child)::after { content: "↓"; top: auto; right: auto; bottom: -45px; left: calc(50% - 17px); } }
+  @media (prefers-reduced-motion: reduce) {
+    .st3 *, .st3 *::before { animation: none !important; transition: none !important; }
+    .v1 .ty { width: 11ch; } .v1 .rng, .st-net .nd, .st-mini circle, .v3 li { opacity: 1; transform: none; } .st-mini .cv { stroke-dashoffset: 0; }
+  }
+
+  /* the output: Lovable's growth blueprint */
+  #example .bp { max-width: 1100px; margin: 0 auto; }
+  .bp-hd { text-align: center; margin-bottom: 26px; }
+  .bp-k { margin: 0 0 8px; font: 500 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: #118453; }
+  #example .bp-hd h2 { margin: 0; font: 600 clamp(34px, 4.6vw, 56px)/1.04 "Inter Tight", var(--ui); letter-spacing: -.045em; }
+  #example .bp-hd h2::after { display: none; }
+  .bp-sub { margin: 10px 0 0; font-size: 16px; color: #6E6A62; }
+  .bp-sub b { color: #118453; font-weight: 600; }
+  .bp-card { background: #fff; border-radius: 20px; box-shadow: 0 0 0 1px #E9E7E2, 0 24px 60px -40px rgba(20,18,12,.3); padding: 22px 22px 26px; }
+  .bp-tl { padding: 0 0 12px; }
+  .bp-svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--mono); }
+  .bp-svg .cv { fill: none; stroke: #118453; stroke-width: 2.5; }
+  .bp-svg .ar { fill: url(#bpF); }
+  .bp-svg .base { stroke: #E9E7E2; }
+  .bp-svg .ax { font-size: 10.5px; fill: #A8A49C; letter-spacing: .06em; text-transform: uppercase; }
+  .bp-svg .lt { font: 600 12.5px var(--ui); fill: #101010; } .bp-svg .lt.sm { font: 400 10.5px var(--mono); fill: #A8A49C; }
+  .bp-svg .band { fill: #F7F6F3; transition: fill .25s; }
+  .bp-svg .chip text { font: 500 11.5px var(--ui); fill: #101010; pointer-events: none; }
+  .bp-svg .chip .cb { fill: #fff; stroke: #E4E1DA; transition: stroke .2s, fill .2s; }
+  .bp-svg .chip .stm { stroke: #101010; stroke-width: 1; stroke-dasharray: 2 3; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .bp-svg .chip .cd { fill: #fff; stroke: #101010; stroke-width: 1.5; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .bp-svg .chip:hover .stm, .bp-svg .chip:hover .cd, .bp-svg .chip:focus .stm, .bp-svg .chip:focus .cd { opacity: 1; }
+  .bp-svg .chip:hover .cb { stroke: #101010; }
+  .bp-svg .chip.go { cursor: pointer; } .bp-svg .chip.go .cb { fill: #118453; stroke: #118453; } .bp-svg .chip.go text { fill: #fff; }
+  .bp-svg .chip.go:hover .cb { fill: #0E6B43; stroke: #0E6B43; }
+  .bp-svg .lane { transition: opacity .25s; } .bp-svg.lhl .lane { opacity: .35; } .bp-svg.lhl .lane.on { opacity: 1; }
+  .bp-svg .lane.on .band { fill: #EEF6F1; }
+  .tk.flash { box-shadow: 0 0 0 3px #118453; transition: box-shadow .3s; }
+  .bp-svg .infl { fill: rgba(17,132,83,.06); }
+  .bp-svg .infl-t { font-size: 10.5px; font-weight: 500; fill: #0E6B43; }
+  .bp-svg .fr line { stroke: #A8A49C; stroke-width: 1.5; } .bp-svg .fr text { font-size: 9.5px; fill: #8A8885; text-anchor: middle; }
+  .bp-tabs { display: flex; justify-content: center; gap: 6px; margin: 34px auto 22px; padding: 5px; width: max-content; max-width: 100%; box-sizing: border-box; border-radius: 999px; background: #F1EFEA; }
+  .bp-tabs button { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 10px 18px; border-radius: 999px; font: 500 15px var(--ui); color: #55524D; cursor: pointer; transition: background .2s, color .2s; }
+  .bp-tabs button[aria-selected="true"] { background: #fff; color: #101010; box-shadow: 0 1px 2px rgba(16,16,16,.08), 0 6px 16px -10px rgba(16,16,16,.3); }
+  .bp-tabs .lg { display: inline-flex; } .bp-tabs .lg img { width: 18px; height: 18px; object-fit: contain; } .bp-tabs .lg img + img { margin-left: 3px; }
+  .bp-note { text-align: center; margin: -8px 0 16px; font: 500 13px var(--mono); color: #118453; }
+  .tks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .tk { background: #F5F4F1; border-radius: 20px; padding: 8px; display: flex; flex-direction: column; animation: stup .45s ease both; }
+  .tk:nth-child(2) { animation-delay: .06s; } .tk:nth-child(3) { animation-delay: .12s; }
+  .tk-ev { height: 250px; border-radius: 14px; background: #fff; box-shadow: 0 0 0 1px #E9E7E2; overflow: hidden; position: relative; }
+  .tk-tx { padding: 16px 12px 10px; }
+  .tk-n { font: 500 12px var(--mono); color: #118453; }
+  #example .tk-tx h4 { margin: 5px 0 6px; font: 600 20px/1.2 "Inter Tight", var(--ui); letter-spacing: -.03em; color: #101010; }
+  .tk-tx p { margin: 0; font-size: 14.5px; color: #55524D; }
+  .tk-tx p b { color: #101010; font-weight: 600; }
+  .tk-tx small { display: block; margin-top: 10px; font: 500 10.5px var(--mono); letter-spacing: .04em; color: #A8A49C; text-transform: uppercase; }
+  .tk code, .ev-ai code { font: 500 .9em var(--mono); background: #fff; padding: 1px 5px; border-radius: 5px; box-shadow: 0 0 0 1px #E9E7E2; }
+  .ev-badge { position: relative; height: 100%; overflow: hidden; background: #F5F4F1; }
+  .ev-badge .win { position: absolute; top: 18px; width: 46%; aspect-ratio: 4 / 3; border-radius: 9px; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px #E4E1DA, 0 14px 30px -18px rgba(16,16,16,.35); }
+  .ev-badge .w0 { left: 4%; transform: rotate(-7deg); } .ev-badge .w1 { left: 27%; top: 10px; z-index: 1; } .ev-badge .w2 { right: 4%; transform: rotate(7deg); }
+  .ev-badge .bar { display: flex; align-items: center; gap: 3px; height: 14px; padding: 0 6px; background: #F1EFEA; font-style: normal; }
+  .ev-badge .bar b { width: 4px; height: 4px; border-radius: 50%; background: #C9C5BC; }
+  .ev-badge .bar span { margin-left: 4px; font: 500 7px var(--mono); color: #8A8885; white-space: nowrap; overflow: hidden; }
+  .ev-badge .win img { display: block; width: 100%; height: calc(100% - 14px); object-fit: cover; object-position: top; }
+  .ev-badge .mini { position: absolute; right: 5px; bottom: 5px; padding: 2px 5px; border-radius: 4px; background: #1B1B1A; color: #fff; font: 500 6.5px var(--ui); font-style: normal; box-shadow: 0 0 0 2px rgba(17,132,83,.5); }
+  .ev-badge .big { position: absolute; left: 0; right: 0; bottom: 18px; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .ev-badge .bg { display: inline-flex; align-items: center; gap: 7px; padding: 10px 14px; border-radius: 12px; background: #1B1B1A; color: #A8A49C; font: 500 16px var(--ui); white-space: nowrap; box-shadow: 0 0 0 3px #fff, 0 0 0 5px #118453, 0 18px 40px -14px rgba(16,16,16,.6); }
+  .ev-badge .bg img { width: 17px; height: 17px; } .ev-badge .bg b { color: #fff; font-weight: 700; letter-spacing: -.02em; margin-left: -3px; }
+  .ev-badge .bg i { font-style: normal; color: #6E6A62; padding-left: 9px; margin-left: 2px; box-shadow: inset 1px 0 0 #3A3936; }
+  .ev-badge .big small { font: 500 11.5px var(--mono); color: #0E6B43; background: #fff; padding: 3px 8px; border-radius: 6px; box-shadow: 0 0 0 1px #E9E7E2; }
+  .ev-aff { list-style: none; margin: 0; padding: 18px 16px; display: grid; gap: 8px; }
+  .ev-aff li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: #F5F4F1; font: 500 12.5px var(--mono); color: #101010; white-space: nowrap; overflow: hidden; }
+  .ev-aff li i { font-style: normal; color: #A8A49C; } .ev-aff code { margin-left: auto; box-shadow: none; background: none; padding: 0; color: #8A8885; } .ev-aff code b { color: #118453; font-weight: 600; }
+  .ev-ai { padding: 18px; display: flex; flex-direction: column; gap: 12px; height: 100%; box-sizing: border-box; }
+  .ev-ai ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: r; }
+  .ev-ai li { counter-increment: r; display: flex; align-items: center; gap: 8px; padding: 8px 11px; border-radius: 10px; font: 500 14px var(--ui); color: #8A8885; background: #FBFAF8; }
+  .ev-ai li::before { content: counter(r); font: 500 11px var(--mono); color: #A8A49C; width: 12px; }
+  .ev-ai li.me { color: #101010; background: rgba(17,132,83,.1); box-shadow: inset 0 0 0 1.5px #118453; } .ev-ai li img { width: 16px; height: 16px; }
+  .ev-ai { gap: 8px; }
+  .ev-ai .gd { padding: 8px 11px; border-radius: 10px; background: #101010; color: #fff; font: 500 12px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ev-ai .gd span { color: #8A8885; } .ev-ai .gd b { font-weight: 500; }
+  .ev-ai .res { margin: 6px 0 0; font: 500 11px var(--mono); color: #8A8885; }
+  .ev-ai li { padding: 6px 11px; }
+  .ev-ads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 8px; height: 100%; box-sizing: border-box; }
+  .ev-ads.two { grid-template-columns: repeat(2, 1fr); }
+  .ev-ads img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; min-height: 0; }
+  .ev-ads figure { margin: 0; position: relative; min-height: 0; } .ev-ads figcaption { position: absolute; left: 6px; right: 6px; bottom: 6px; padding: 4px 7px; border-radius: 6px; background: rgba(16,16,16,.78); color: #fff; font: 500 11px var(--ui); }
+  .ev-cap { display: flex; flex-direction: column; height: 100%; }
+  .ev-cap > p { margin: 8px 8px 0; padding: 8px 10px; border-radius: 10px; background: #101010; color: #fff; font: 500 12px/1.35 var(--ui); }
+  .ev-cap .ev-ads { flex: 1; min-height: 0; }
+  .ev-post { padding: 12px 14px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 7px; font-size: 13px; color: #101010; }
+  .ev-post header { display: flex; align-items: center; gap: 7px; font-size: 12.5px; white-space: nowrap; overflow: hidden; }
+  .ev-post header img { width: 24px; height: 24px; border-radius: 50%; } .ev-post header span { color: #8A8885; overflow: hidden; text-overflow: ellipsis; }
+  .ev-post p { margin: 0; line-height: 1.4; } .ev-post mark { background: rgba(17,132,83,.14); color: #0E6B43; padding: 0 2px; border-radius: 3px; }
+  .ev-post .pi { flex: 1; min-height: 0; width: 100%; object-fit: cover; object-position: top; border-radius: 10px; box-shadow: 0 0 0 1px #E9E7E2; }
+  .ev-post .pi.fit { object-fit: contain; background: #fff; padding: 4px; box-sizing: border-box; }
+  .ev-post footer { font: 500 11.5px var(--mono); color: #8A8885; } .ev-post footer b { color: #101010; }
+  .bp-plays { margin-top: 56px; }
+  .bp-ph { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  #example .bp-ph h3 { margin: 0; font: 600 28px "Inter Tight", var(--ui); letter-spacing: -.04em; color: #101010; }
+  #example .bp-plays .pls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .bp-more { margin-top: 14px; } .bp-more > .pls { margin-top: 14px; }
+  .bp-more summary, .bp-rc summary { list-style: none; cursor: pointer; width: max-content; max-width: 100%; box-sizing: border-box; margin: 0 auto; padding: 11px 20px; border-radius: 999px; background: #F1EFEA; font: 500 14.5px var(--ui); color: #101010; }
+  .bp-more summary::-webkit-details-marker, .bp-rc summary::-webkit-details-marker { display: none; }
+  .bp-more summary:hover, .bp-rc summary:hover { background: #E9E7E2; }
+  .bp-rc { margin-top: 40px; } .bp-rc summary b { color: #118453; } .bp-rc[open] summary { margin-bottom: 16px; }
+  #example .bp-plays .pl .ev { display: none; }
+  @media (max-width: 760px) { .bp-card { padding: 16px 12px 18px; } .bp-tl { overflow-x: auto; padding: 0 0 8px; } .bp-svg { min-width: 720px; } }
+  @media (max-width: 900px) { .tks, #example .bp-plays .pls { grid-template-columns: minmax(0, 1fr); } .tk-ev { height: 260px; } .bp-tabs button { padding: 9px 12px; font-size: 14px; } .bp-tabs .lg { display: none; } }
+  .howweb .sn { margin: 0 auto; max-width: 760px; font-size: clamp(18px, 2vw, 22px); line-height: 1.7; color: rgba(255,255,255,.75); text-align: center; text-wrap: balance; }
+  .howweb .sn .nw, .howweb .sn .lg { white-space: nowrap; }
+  .howweb .sn .lg { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 3px; border-radius: 999px; background: rgba(255,255,255,.1); color: #fff; font-weight: 600; vertical-align: middle; }
+  .howweb .sn .lg img { width: 24px; height: 24px; border-radius: 50%; }
+  .howweb .sn .lg img.tg { border-radius: 6px; background: #fff; padding: 4px; box-sizing: border-box; }
+  .howto .tab-ag { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: -4px; }
+  .howto .tab-ag img { width: 18px; height: 18px; border-radius: 5px; }
+
+  /* phones */
+  .bp-swipe { display: none; }
+  @media (max-width: 760px) {
+    .xr { min-height: 600px; }
+    .xr-ticks { bottom: 6px; } .xr-ticks span { white-space: nowrap; } .xr-ticks span:first-child { display: none; }
+    .rdemo .ln .tx { display: none; }
+    .xr-k { text-wrap: balance; }
+    .xr-pin em { display: none; }
+    .xr-run { padding: 48px 16px 8px; } .xr-k { font-size: 26px; margin-bottom: 18px; }
+    .rd-strip { font-size: 12px; gap: 8px; padding: 13px 14px; min-height: 46px; } .rd-strip img { width: 20px; height: 20px; }
+    .rd-body { flex-direction: column; }
+    .rd-chart { padding: 12px 12px 4px; }
+    .rd-rail { display: block; width: auto; border-left: 0; border-top: 1px solid #E9E7E2; padding: 10px 12px 4px; }
+    .rd-call:nth-last-child(n+4) { display: none; }
+    .rd-foot { padding: 10px 12px; }
+    #plays { padding-top: 40px; padding-bottom: 24px; }
+    #example { padding-top: 56px; padding-bottom: 64px; }
+    .bp-swipe { display: block; margin: 0 4px 8px; text-align: right; font: 500 11.5px var(--mono); color: #8A8885; }
+    .bp-tabs { margin-top: 26px; }
+    .bp-plays { margin-top: 40px; }
+    #example .bp-ph h3 { font-size: 24px; } .bp-ph .pill { padding: 9px 14px; font-size: 13.5px; white-space: nowrap; }
+    .bp-rc { margin-top: 28px; }
+    #prompt.final { padding-bottom: 64px; }
+  }
+  @media (max-width: 360px) { .nav { padding: 12px 16px; } .wordmark { white-space: nowrap; font-size: 14px; gap: 8px; } .nav .pill { white-space: nowrap; padding: 9px 14px; font-size: 13px; } .xr-cta { gap: 8px; } .xr-btn, .xr-link { white-space: nowrap; padding: 12px 16px; font-size: 14px; } }
+  /* phones: every move as a small logo on the curve, no labels */
+  .xr-pin .ic { display: none; }
+  @media (max-width: 760px) {
+    .xr .xr-pin, .xr .xr-pin.sm-only { display: block; }
+    .xr-pin > span { display: none; }
+    .xr-pin > i { width: 8px; height: 8px; left: -4px; top: -4px; box-shadow: 0 0 0 2px #101010; }
+    .xr-pin .ic { display: grid; place-items: center; position: absolute; left: -11px; bottom: calc(10px + var(--lv) * 28px); width: 22px; height: 22px; border-radius: 7px; background: #fff; box-shadow: 0 0 0 1px #E4E1DA, 0 4px 10px -4px rgba(16,16,16,.3); opacity: 0; animation: xrfade .35s ease calc(var(--d) + .2s) forwards; }
+    .xr-pin .ic::after { content: ""; position: absolute; left: 50%; top: 100%; width: 1px; height: calc(var(--lv) * 28px + 6px); background: rgba(16,16,16,.35); }
+    .xr-pin .ic img { width: 14px; height: 14px; object-fit: contain; }
+    .xr-pin.key .ic { box-shadow: 0 0 0 2px #118453, 0 4px 10px -4px rgba(16,16,16,.3); }
+  }
+  .xr-pin.sm-only { display: none; }
+  .xr-pin.flip > span { left: auto; right: 0; padding: 0 9px 0 0; flex-direction: row-reverse; box-shadow: inset -1.5px 0 0 rgba(16,16,16,.55); }
+  /* over the hero the bar is see-through, so the hero's gradient runs to the top; it frosts once the page scrolls */
+  .nav.light:not(.scrolled) { background: transparent; border-bottom-color: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
+  .nav.light.scrolled { background: rgba(253,252,251,.82); -webkit-backdrop-filter: blur(14px) saturate(1.4); backdrop-filter: blur(14px) saturate(1.4); border-bottom-color: rgba(16,16,16,.06); }
+</style>
+<script src="/captcha.js" defer></script>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <span class="wordmark"><a href="/" style="display:inline-flex;align-items:center;gap:10px;color:inherit;text-decoration:none" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</a> <span style="color:var(--muted);font-weight:400">/</span> <span style="font-weight:500">REA growth</span></span>
+  <span style="display:flex;gap:8px">
+    <span class="nav-links"><a href="#example">REA Lovable distribution</a><a href="#prompt">The prompt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a></span>
+    <a class="pill dark" href="/app?ref=rea-growth" id="ctaNav">Set up treg</a>
+  </span>
+</nav>
+
+<header class="xr" id="top">
+  <svg class="xr-curve" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
+    <defs><linearGradient id="xrFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#118453" stop-opacity=".16"/><stop offset="1" stop-color="#118453" stop-opacity="0"/></linearGradient><clipPath id="xrClip"><rect class="xr-reveal" x="-40" y="-100" width="1080" height="1200"/></clipPath></defs>
+    <path class="xr-fill" clip-path="url(#xrClip)" d="M-20.0,959.8 C-11.7,959.8 3.5,960.4 30.0,959.8 C56.5,959.2 102.8,959.1 139.2,956.3 C175.6,953.5 212.0,954.3 248.4,943.0 C284.8,931.8 321.2,903.7 357.6,888.8 C394.0,874.0 430.4,864.6 466.8,854.1 C503.2,843.6 539.6,848.0 576.0,825.7 C612.4,803.4 642.7,759.0 685.2,720.3 C727.7,681.6 788.3,599.3 830.8,593.6 C873.3,588.0 921.8,670.9 940.0,686.4 L940.0,1000 L-20,1000 Z"/>
+    <path class="xr-line" id="xrLine" clip-path="url(#xrClip)" d="M-20.0,959.8 C-11.7,959.8 3.5,960.4 30.0,959.8 C56.5,959.2 102.8,959.1 139.2,956.3 C175.6,953.5 212.0,954.3 248.4,943.0 C284.8,931.8 321.2,903.7 357.6,888.8 C394.0,874.0 430.4,864.6 466.8,854.1 C503.2,843.6 539.6,848.0 576.0,825.7 C612.4,803.4 642.7,759.0 685.2,720.3 C727.7,681.6 788.3,599.3 830.8,593.6 C873.3,588.0 921.8,670.9 940.0,686.4"/>
+  </svg>
+  <div class="xr-pins" aria-hidden="true"><div class="xr-pin ads" data-m="3.29" style="--h:56px;z-index:944"><div class="ic" style="--lv:0"><img src="logos/google-ads.svg" alt=""></div><i></i><span><img src="logos/google-ads.svg" alt=""><b>Google Ads switched on</b></span></div><div class="xr-pin seo sm-only" data-m="3.9" style="--h:0px;z-index:1000"><div class="ic" style="--lv:1"><img src="media/growth-rea/link.svg" alt=""></div><i></i><span><img src="media/growth-rea/link.svg" alt=""><b>Affiliates link in</b></span></div><div class="xr-pin ads sm-only" data-m="4.94" style="--h:0px;z-index:1000"><div class="ic" style="--lv:2"><img src="logos/x-mono.svg" alt=""></div><i></i><span><img src="logos/x-mono.svg" alt=""><b>X Ads</b></span></div><div class="xr-pin seo key" data-m="5.26" style="--h:96px;z-index:904"><div class="ic" style="--lv:0"><img src="media/growth-rea/link.svg" alt=""></div><i></i><span><img src="media/growth-rea/link.svg" alt=""><b>A badge on every app links back</b></span></div><div class="xr-pin soc" data-m="5.77" style="--h:136px;z-index:864"><div class="ic" style="--lv:1"><img src="logos/x-mono.svg" alt=""></div><i></i><span><img src="logos/x-mono.svg" alt=""><b>“0 to $17M ARR in 3 months”</b></span></div><div class="xr-pin ads sm-only" data-m="6.06" style="--h:0px;z-index:1000"><div class="ic" style="--lv:3"><img src="media/aeo/logos/reddit.png" alt=""></div><i></i><span><img src="media/aeo/logos/reddit.png" alt=""><b>Reddit Ads</b></span></div><div class="xr-pin soc" data-m="6.32" style="--h:176px;z-index:824"><div class="ic" style="--lv:4"><img src="logos/x-mono.svg" alt=""></div><i></i><span><img src="logos/x-mono.svg" alt=""><b>“1,500 customers a day”</b></span></div><div class="xr-pin ads" data-m="7.29" style="--h:216px;z-index:784"><div class="ic" style="--lv:0"><img src="logos/tiktok.svg" alt=""></div><i></i><span><img src="logos/tiktok.svg" alt=""><b>TikTok ads</b></span></div><div class="xr-pin soc sm-only" data-m="8.97" style="--h:0px;z-index:1000"><div class="ic" style="--lv:1"><img src="logos/x-mono.svg" alt=""></div><i></i><span><img src="logos/x-mono.svg" alt=""><b>“$60M ARR”</b></span></div><div class="xr-pin ads" data-m="11.29" style="--h:56px;z-index:944"><div class="ic" style="--lv:0"><img src="logos/linkedin.svg" alt=""></div><i></i><span><img src="logos/linkedin.svg" alt=""><b>LinkedIn ads</b></span></div><div class="xr-pin soc" data-m="13.45" style="--h:96px;z-index:904"><div class="ic" style="--lv:0"><img src="logos/youtube.svg" alt=""></div><i></i><span><img src="logos/youtube.svg" alt=""><b>YouTube: “I cloned 3 apps” · 1.1M views</b></span></div><div class="xr-pin soc" data-m="16.81" style="--h:56px;z-index:944"><div class="ic" style="--lv:0"><img src="logos/x-mono.svg" alt=""></div><i></i><span><img src="logos/x-mono.svg" alt=""><b>A user’s app makes $100k/mo</b></span></div><div class="xr-pin soc sm-only" data-m="20.9" style="--h:0px;z-index:1000"><div class="ic" style="--lv:0"><img src="media/aeo/logos/reddit.png" alt=""></div><i></i><span><img src="media/aeo/logos/reddit.png" alt=""><b>Reddit thread · 142 comments</b></span></div><div class="xr-pin ads flip" data-m="24.23" style="--h:56px;z-index:944"><div class="ic" style="--lv:0"><img src="logos/meta-ads.svg" alt=""></div><i></i><span><img src="logos/meta-ads.svg" alt=""><b>Portuguese Meta ads</b></span></div><div class="xr-pin seo flip" data-m="25.16" style="--h:96px;z-index:904"><div class="ic" style="--lv:1"><img src="media/aeo/logos/chatgpt.svg" alt=""></div><i></i><span><img src="media/aeo/logos/chatgpt.svg" alt=""><b>ChatGPT names them first</b></span></div><div class="xr-now" data-m="25"><i></i><span>194K visits / mo</span></div></div>
+  <div class="xr-ticks" aria-hidden="true"><span style="left:3.00%">Sep 24</span><span style="left:17.56%">Jan 25</span><span style="left:35.76%">Jun 25</span><span style="left:61.24%">Jan 26</span><span style="left:94.00%">Oct 26</span></div>
+  <div class="xr-hair" id="xrHair" aria-hidden="true"><i></i><span id="xrRead"></span></div>
+  <div class="xr-in">
+    <p class="xr-eye"><span>/REA-growth with</span><span class="ag"><img src="media/people-search/claude-code.png" alt="Claude Code" title="Claude Code"><img src="media/growth-rea/codex.svg" alt="Codex" title="Codex"><img src="media/people-search/hermes.png" alt="Hermes" title="Hermes"></span></p>
+    <h1 class="xr-t"><span class="w"><span>Copy how <span class="xr-rot" id="xrRot"><span class="xr-b on"><img src="media/growth-rea/brands/lovable.svg" alt="">Lovable</span><span class="xr-b"><img src="logos/tinyfish.svg" alt="">TinyFish</span><span class="xr-b"><img src="media/growth-rea/brands/typesafe.png" alt="" class="tile">TypeSafe</span><span class="xr-b"><img src="logos/treg.svg" alt="">treg</span></span> grows</span></span></h1>
+    <div class="xr-cta"><a class="xr-btn" href="/app?ref=rea-growth" id="ctaHero">Set up treg <span>→</span></a><a class="xr-link" href="#prompt" id="ctaCopy">Copy prompt ↓</a></div>
+  </div>
+</header>
+
+<section class="xr-run" id="run">
+  <p class="xr-k">One line in. <span>A growth teardown out.</span></p>
+  <div class="rdemo" aria-label="Demo: an agent reverse engineering Lovable's growth through treg">
+    <div class="rd-strip"><span class="dots"><i></i><i></i><i></i></span>
+      <img src="media/people-search/claude-code.png" alt="">
+      <span class="pr">›</span><span class="typed" id="rdTyped"></span><span class="cur" id="rdCur"></span>
+    </div>
+    <div class="rd-body">
+      <div class="rd-chart">
+        <div class="rd-cap"><b>lovable.dev</b> · Google visits a month (US, est.)<span id="rdPeak">194K</span></div>
+        <svg viewBox="0 -10 600 340" aria-hidden="true">
+          <rect class="infl" id="rdInfl" x="126.4" y="0" width="108.0" height="214"/>
+          <text class="infl-t" id="rdInflT" x="132.4" y="14">Jan–Jun 2025 · 11×</text>
+          <line class="base" x1="40" x2="580" y1="214" y2="214"/>
+          <text class="ax" x="40.0" y="230">Sep 24</text><text class="ax" x="234.4" y="230" text-anchor="middle">Jun 25</text><text class="ax" x="580.0" y="230" text-anchor="end">Oct 26</text>
+          <polygon class="area" id="rdArea" points="40.0,214 40.0,213.9 104.8,212.2 169.6,205.8 234.4,179.7 299.2,162.9 364.0,149.3 428.8,98.4 515.2,37.4 580.0,82.1 580.0,214"/>
+          <polyline class="curve" id="rdCurve" pathLength="1" points="40.0,213.9 104.8,212.2 169.6,205.8 234.4,179.7 299.2,162.9 364.0,149.3 428.8,98.4 515.2,37.4 580.0,82.1"/>
+          <g class="ln ads" id="ln-ads" transform="translate(0 252)"><line x1="40" x2="580" y1="0" y2="0"/><text class="lab" x="0" y="4">Ads</text><circle cx="104.8" cy="0" r="4.5"><title>Google + Bing Ads · Dec 2024</title></circle><circle cx="126.4" cy="0" r="4.5"><title>X Ads · Jan 2025</title></circle><circle cx="169.6" cy="0" r="4.5"><title>Reddit Ads · Mar 2025</title></circle><circle cx="191.2" cy="0" r="4.5"><title>TikTok Pixel · Apr 2025</title></circle><text class="tx" x="240.4" y="4">Google, Bing, X, Reddit and TikTok ads switched on</text></g><g class="ln prod" id="ln-prod" transform="translate(0 276)"><line x1="40" x2="580" y1="0" y2="0"/><text class="lab" x="0" y="4">Product</text><circle cx="104.8" cy="0" r="4.5"><title>Supabase integration · Dec 2024</title></circle><circle cx="148.0" cy="0" r="4.5"><title>Badge on every app · Feb 2025</title></circle><text class="tx" x="240.4" y="4">Supabase integration, then a badge on every app built</text></g><g class="ln links" id="ln-links" transform="translate(0 300)"><line x1="40" x2="580" y1="0" y2="0"/><text class="lab" x="0" y="4">Links</text><circle cx="104.8" cy="0" r="4.5"><title>Rewardful affiliates · Dec 2024</title></circle><text class="tx" x="240.4" y="4">Rewardful affiliate program</text></g><g class="ln news" id="ln-news" transform="translate(0 324)"><line x1="40" x2="580" y1="0" y2="0"/><text class="lab" x="0" y="4">News</text><circle cx="148.0" cy="0" r="4.5"><title>$15M round · Feb 2025</title></circle><text class="tx" x="240.4" y="4">$15M round and the "0 to $17M ARR in 3 months" post</text></g>
+        </svg>
+      </div>
+      <aside class="rd-rail" aria-hidden="true">
+        <div class="rd-rh">treg calls</div>
+        <div id="rdCalls"></div>
+      </aside>
+    </div>
+    <div class="rd-foot"><span id="rdStatus">agent idle</span><span class="meter" id="rdMeter">$0.000</span></div>
+  </div>
+  <p class="rd-note">A real run on lovable.dev. Every call metered: $0.58 of data in total.</p>
+</section>
+
+<section class="section rv" id="plays">
+  <div class="st3">
+    <article>
+      <div class="st-v v1" aria-hidden="true">
+        <div class="fld"><img src="media/growth-rea/brands/lovable.svg" alt=""><span class="ty">lovable.dev</span><i class="car"></i></div>
+        <div class="rng"><span>Sep 2024</span><b>→</b><span>Oct 2026</span></div>
+      </div>
+      <div class="st-t"><span class="n">Step 1</span><h3>Name + time period in</h3><p>Any company, any window.</p></div>
+    </article>
+    <article>
+      <div class="st-v v2"><svg class="st-net" viewBox="0 0 320 200" aria-hidden="true"><g class="ln"><line x1="200.8" y1="27.7" x2="160" y2="100" style="--i:0"/><line x1="266.8" y1="55.3" x2="160" y2="100" style="--i:1"/><line x1="292.0" y1="100.0" x2="160" y2="100" style="--i:2"/><line x1="266.8" y1="144.7" x2="160" y2="100" style="--i:3"/><line x1="200.8" y1="172.3" x2="160" y2="100" style="--i:4"/><line x1="119.2" y1="172.3" x2="160" y2="100" style="--i:5"/><line x1="53.2" y1="144.7" x2="160" y2="100" style="--i:6"/><line x1="28.0" y1="100.0" x2="160" y2="100" style="--i:7"/><line x1="53.2" y1="55.3" x2="160" y2="100" style="--i:8"/><line x1="119.2" y1="27.7" x2="160" y2="100" style="--i:9"/></g><g class="nd" style="--i:0"><circle cx="200.8" cy="27.7" r="16"/><image href="logos/dataforseo.svg" x="191.8" y="18.7" width="18" height="18"/></g><g class="nd" style="--i:1"><circle cx="266.8" cy="55.3" r="16"/><image href="logos/predictleads.svg" x="257.8" y="46.3" width="18" height="18"/></g><g class="nd" style="--i:2"><circle cx="292.0" cy="100.0" r="16"/><image href="logos/cloro.svg" x="283.0" y="91.0" width="18" height="18"/></g><g class="nd" style="--i:3"><circle cx="266.8" cy="144.7" r="16"/><image href="logos/meta-ad-library.svg" x="257.8" y="135.7" width="18" height="18"/></g><g class="nd" style="--i:4"><circle cx="200.8" cy="172.3" r="16"/><image href="logos/google-ads.svg" x="191.8" y="163.3" width="18" height="18"/></g><g class="nd" style="--i:5"><circle cx="119.2" cy="172.3" r="16"/><image href="logos/linkedin.svg" x="110.2" y="163.3" width="18" height="18"/></g><g class="nd" style="--i:6"><circle cx="53.2" cy="144.7" r="16"/><image href="logos/x-mono.svg" x="44.2" y="135.7" width="18" height="18"/></g><g class="nd" style="--i:7"><circle cx="28.0" cy="100.0" r="16"/><image href="logos/youtube.svg" x="19.0" y="91.0" width="18" height="18"/></g><g class="nd" style="--i:8"><circle cx="53.2" cy="55.3" r="16"/><image href="media/aeo/logos/reddit.png" x="44.2" y="46.3" width="18" height="18"/></g><g class="nd" style="--i:9"><circle cx="119.2" cy="27.7" r="16"/><image href="logos/tinyfish.svg" x="110.2" y="18.7" width="18" height="18"/></g><circle class="pulse" cx="160" cy="100" r="24"/><rect class="hub" x="136" y="76" width="48" height="48" rx="13"/><image href="logos/treg.svg" x="146" y="86" width="28" height="28"/></svg></div>
+      <div class="st-t"><span class="n">Step 2</span><h3>treg collects every signal</h3><p>Traffic, search, AI answers, ads, posts, links, hiring.</p></div>
+    </article>
+    <article>
+      <div class="st-v v3" aria-hidden="true">
+        <div class="bp-h"><img src="media/growth-rea/brands/lovable.svg" alt="">Lovable · growth blueprint</div>
+        <svg class="st-mini" viewBox="0 0 280 74" aria-hidden="true"><path class="ar" d="M0,70 C40,69 60,66 90,52 C120,38 140,36 170,30 C200,24 225,8 250,6 C262,5 272,14 280,20 L280,74 L0,74 Z"/><path class="cv" pathLength="1" d="M0,70 C40,69 60,66 90,52 C120,38 140,36 170,30 C200,24 225,8 250,6 C262,5 272,14 280,20"/><circle cx="62" cy="64" r="6"/><circle cx="98" cy="48" r="6"/><circle cx="196" cy="24" r="6"/></svg>
+        <ul><li><b>✓</b>Badge on every app<em>Share</em></li><li><b>✓</b>Post your numbers<em>Noticed</em></li><li><b>✓</b>Pages AI reads<em>Noticed</em></li></ul>
+      </div>
+      <div class="st-t"><span class="n">Step 3</span><h3>Growth blueprint out</h3><p>What worked, when, and how to copy it.</p></div>
+    </article>
+  </div>
+</section>
+
+<section class="section" id="example">
+  <div class="bp">
+    <header class="bp-hd">
+      <p class="bp-k">The showcase</p>
+      <h2>Lovable’s growth blueprint</h2>
+      <p class="bp-sub">Sep 2024 → Oct 2026 · every number pulled through treg, the main run for <b>$0.58</b></p>
+    </header>
+    <p class="bp-swipe" aria-hidden="true">Swipe the timeline →</p>
+    <div class="bp-card">
+    <div class="bp-tl"><svg class="bp-svg" viewBox="0 0 1100 582" role="img" aria-label="lovable.dev Google visits a month, Sep 2024 to Oct 2026, with every dated move by channel">
+      <defs><linearGradient id="bpF" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#118453" stop-opacity=".18"/><stop offset="1" stop-color="#118453" stop-opacity="0"/></linearGradient></defs>
+      <text class="lt" x="12" y="30">Google visits</text><text class="lt sm" x="12" y="46">a month, US est.</text>
+      <rect class="infl" x="275.2" y="8" width="194.0" height="182" rx="8"/>
+      <text class="infl-t" x="283.2" y="21">11× in 6 months</text>
+      <path class="ar" d="M120.0,189.9 C126.5,189.9 145.9,189.9 158.8,189.8 C171.7,189.7 184.7,189.5 197.6,189.3 C210.5,189.0 223.5,188.7 236.4,188.4 C249.3,188.0 262.3,187.7 275.2,187.3 C288.1,186.8 301.1,186.5 314.0,185.8 C326.9,185.0 339.9,183.7 352.8,182.5 C365.7,181.3 378.7,181.0 391.6,178.6 C404.5,176.3 417.5,171.8 430.4,168.5 C443.3,165.1 456.3,161.0 469.2,158.5 C482.1,156.1 495.1,155.7 508.0,153.6 C520.9,151.5 533.9,147.5 546.8,145.8 C559.7,144.1 572.7,145.5 585.6,143.2 C598.5,140.9 611.5,132.8 624.4,132.1 C637.3,131.5 650.3,139.5 663.2,139.3 C676.1,139.0 689.1,135.7 702.0,130.6 C714.9,125.5 727.9,116.3 740.8,108.7 C753.7,101.1 766.7,89.0 779.6,84.9 C792.5,80.7 805.5,88.8 818.4,84.0 C831.3,79.3 844.3,62.1 857.2,56.4 C870.1,50.7 883.1,53.8 896.0,49.8 C908.9,45.7 921.9,35.9 934.8,32.2 C947.7,28.6 960.7,23.9 973.6,28.0 C986.5,32.1 999.5,50.3 1012.4,56.8 C1025.3,63.3 1038.3,65.0 1051.2,67.0 C1064.1,69.1 1083.5,68.7 1090.0,69.0 L1090,190 L120,190 Z"/><path class="cv" d="M120.0,189.9 C126.5,189.9 145.9,189.9 158.8,189.8 C171.7,189.7 184.7,189.5 197.6,189.3 C210.5,189.0 223.5,188.7 236.4,188.4 C249.3,188.0 262.3,187.7 275.2,187.3 C288.1,186.8 301.1,186.5 314.0,185.8 C326.9,185.0 339.9,183.7 352.8,182.5 C365.7,181.3 378.7,181.0 391.6,178.6 C404.5,176.3 417.5,171.8 430.4,168.5 C443.3,165.1 456.3,161.0 469.2,158.5 C482.1,156.1 495.1,155.7 508.0,153.6 C520.9,151.5 533.9,147.5 546.8,145.8 C559.7,144.1 572.7,145.5 585.6,143.2 C598.5,140.9 611.5,132.8 624.4,132.1 C637.3,131.5 650.3,139.5 663.2,139.3 C676.1,139.0 689.1,135.7 702.0,130.6 C714.9,125.5 727.9,116.3 740.8,108.7 C753.7,101.1 766.7,89.0 779.6,84.9 C792.5,80.7 805.5,88.8 818.4,84.0 C831.3,79.3 844.3,62.1 857.2,56.4 C870.1,50.7 883.1,53.8 896.0,49.8 C908.9,45.7 921.9,35.9 934.8,32.2 C947.7,28.6 960.7,23.9 973.6,28.0 C986.5,32.1 999.5,50.3 1012.4,56.8 C1025.3,63.3 1038.3,65.0 1051.2,67.0 C1064.1,69.1 1083.5,68.7 1090.0,69.0"/>
+      <line class="base" x1="120" x2="1090" y1="190" y2="190"/><text class="ax" x="120.0" y="210" text-anchor="start">Sep 24</text><text class="ax" x="275.2" y="210" text-anchor="middle">Jan 25</text><text class="ax" x="469.2" y="210" text-anchor="middle">Jun 25</text><text class="ax" x="740.8" y="210" text-anchor="middle">Jan 26</text><text class="ax" x="1090.0" y="210" text-anchor="end">Oct 26</text><g class="fr tip" data-tip="2024-10 · $7.5M pre-seed"><line x1="166.3" x2="166.3" y1="173.7" y2="184.7"/><text x="166.3" y="169.7">$7.5M</text></g><g class="fr tip" data-tip="2025-02 · $15M pre-Series A"><line x1="345.3" x2="345.3" y1="167.1" y2="178.1"/><text x="345.3" y="163.1">$15M</text></g><g class="fr tip" data-tip="2025-07 · $200M Series A at a $1.8B valuation"><line x1="528.0" x2="528.0" y1="133.6" y2="144.6"/><text x="528.0" y="129.6">$200M</text></g><g class="fr tip" data-tip="2025-12 · $330M at a $6.6B valuation, announced by the founder"><line x1="723.3" x2="723.3" y1="102.6" y2="113.6"/><text x="723.3" y="98.6">$330M</text></g><g class="fr tip" data-tip="2026-06 · Reported $500M annualized revenue"><line x1="952.3" x2="952.3" y1="14.3" y2="25.3"/><text x="952.3" y="10.3">$500M</text></g><g class="fr tip" data-tip="2026-08 · $400M Series C at a $13.3B valuation"><line x1="1026.2" x2="1026.2" y1="44.4" y2="55.4"/><text x="1026.2" y="40.4">$400M</text></g>
+      <g class="lane" data-lane="seo"><rect class="band" x="0" y="220" width="1100" height="102" rx="10"/><text class="lt" x="12" y="240">SEO / AEO</text><g class="chip go tip" data-tip="2024-12 · Rewardful (affiliates) first detected on lovable.dev" data-go="seo:1" tabindex="0" role="button"><line class="stm" x1="271.4" x2="271.4" y1="187.4" y2="228.0"/><circle class="cd" cx="271.4" cy="187.4" r="3.5"/><rect class="cb" x="265.4" y="228.0" width="80.0" height="20" rx="6"/><text x="273.4" y="242.0">Affiliates</text></g><g class="chip go tip" data-tip="2025-02 · “Edit with Lovable” badge link first seen. It now sits on 20,132 sites, 255,420 backlinks" data-go="seo:0" tabindex="0" role="button"><line class="stm" x1="324.0" x2="324.0" y1="184.9" y2="258.0"/><circle class="cd" cx="324.0" cy="184.9" r="3.5"/><rect class="cb" x="318.0" y="258.0" width="194.0" height="20" rx="6"/><image href="media/growth-rea/brands/lovable.svg" x="326.0" y="261.0" width="14" height="14"/><text x="345.0" y="272.0">“Edit with Lovable” badge</text></g><g class="chip tip" data-tip="2025-06 · Google visits 11× January&#x27;s: 4,411 → 50,556 a month (US estimate)"><line class="stm" x1="486.7" x2="486.7" y1="156.3" y2="228.0"/><circle class="cd" cx="486.7" cy="156.3" r="3.5"/><rect class="cb" x="480.7" y="228.0" width="104.4" height="20" rx="6"/><image href="media/aeo/logos/google.svg" x="488.7" y="231.0" width="14" height="14"/><text x="507.7" y="242.0">11× January</text></g><g class="chip tip" data-tip="2026-02 · Ranking keywords peak at 63,474, then fall to 7,183 while visits hold"><line class="stm" x1="797.1" x2="797.1" y1="84.5" y2="228.0"/><circle class="cd" cx="797.1" cy="84.5" r="3.5"/><rect class="cb" x="791.1" y="228.0" width="110.8" height="20" rx="6"/><image href="media/aeo/logos/google.svg" x="799.1" y="231.0" width="14" height="14"/><text x="818.1" y="242.0">Keyword peak</text></g><g class="chip tip" data-tip="2026-07 · Visits peak at 260,315 a month"><line class="stm" x1="991.1" x2="991.1" y1="41.0" y2="228.0"/><circle class="cd" cx="991.1" cy="41.0" r="3.5"/><rect class="cb" x="985.1" y="228.0" width="104.4" height="20" rx="6"/><image href="media/aeo/logos/google.svg" x="993.1" y="231.0" width="14" height="14"/><text x="1012.1" y="242.0">Visits peak</text></g><g class="chip tip" data-tip="2026-09 · Impact (affiliates) first detected on lovable.dev"><line class="stm" x1="1057.5" x2="1057.5" y1="67.4" y2="258.0"/><circle class="cd" cx="1057.5" cy="67.4" r="3.5"/><rect class="cb" x="1009.1" y="258.0" width="54.4" height="20" rx="6"/><text x="1017.1" y="272.0">Impact</text></g><g class="chip tip" data-tip="2026-09 · “Made with Lovable” badge variant first seen: 1,407 sites so far"><line class="stm" x1="1071.2" x2="1071.2" y1="68.1" y2="288.0"/><circle class="cd" cx="1071.2" cy="68.1" r="3.5"/><rect class="cb" x="934.4" y="288.0" width="142.8" height="20" rx="6"/><image href="media/growth-rea/brands/lovable.svg" x="942.4" y="291.0" width="14" height="14"/><text x="961.4" y="302.0">“Made with” badge</text></g></g><g class="lane" data-lane="ads"><rect class="band" x="0" y="328" width="1100" height="102" rx="10"/><text class="lt" x="12" y="348">Ads</text><g class="chip tip" data-tip="2024-12 · Google Ads first detected on lovable.dev"><line class="stm" x1="247.7" x2="247.7" y1="188.0" y2="336.0"/><circle class="cd" cx="247.7" cy="188.0" r="3.5"/><rect class="cb" x="241.7" y="336.0" width="98.0" height="20" rx="6"/><image href="logos/google-ads.svg" x="249.7" y="339.0" width="14" height="14"/><text x="268.7" y="350.0">Google Ads</text></g><g class="chip tip" data-tip="2024-12 · Bing Ads first detected on lovable.dev"><line class="stm" x1="255.2" x2="255.2" y1="187.8" y2="366.0"/><circle class="cd" cx="255.2" cy="187.8" r="3.5"/><rect class="cb" x="249.2" y="366.0" width="59.6" height="20" rx="6"/><image href="logos/microsoft-ads.svg" x="257.2" y="369.0" width="14" height="14"/><text x="276.2" y="380.0">Bing</text></g><g class="chip tip" data-tip="2025-01 · X (Twitter) Ads first detected on lovable.dev"><line class="stm" x1="311.5" x2="311.5" y1="185.8" y2="396.0"/><circle class="cd" cx="311.5" cy="185.8" r="3.5"/><rect class="cb" x="305.5" y="396.0" width="66.0" height="20" rx="6"/><image href="logos/x-mono.svg" x="313.5" y="399.0" width="14" height="14"/><text x="332.5" y="410.0">X Ads</text></g><g class="chip tip" data-tip="2025-03 · Reddit Ads first detected on lovable.dev"><line class="stm" x1="355.3" x2="355.3" y1="182.3" y2="336.0"/><circle class="cd" cx="355.3" cy="182.3" r="3.5"/><rect class="cb" x="349.3" y="336.0" width="98.0" height="20" rx="6"/><image href="media/aeo/logos/reddit.png" x="357.3" y="339.0" width="14" height="14"/><text x="376.3" y="350.0">Reddit Ads</text></g><g class="chip tip" data-tip="2025-04 · TikTok Pixel first detected on lovable.dev"><line class="stm" x1="402.9" x2="402.9" y1="175.7" y2="366.0"/><circle class="cd" cx="402.9" cy="175.7" r="3.5"/><rect class="cb" x="396.9" y="366.0" width="72.4" height="20" rx="6"/><image href="logos/tiktok.svg" x="404.9" y="369.0" width="14" height="14"/><text x="423.9" y="380.0">TikTok</text></g><g class="chip tip" data-tip="2025-07 · Hyros (ad attribution) first detected on lovable.dev"><line class="stm" x1="516.8" x2="516.8" y1="151.8" y2="336.0"/><circle class="cd" cx="516.8" cy="151.8" r="3.5"/><rect class="cb" x="510.8" y="336.0" width="48.0" height="20" rx="6"/><text x="518.8" y="350.0">Hyros</text></g><g class="chip tip" data-tip="2025-08 · LinkedIn Insight Tag first detected on lovable.dev"><line class="stm" x1="558.1" x2="558.1" y1="145.0" y2="366.0"/><circle class="cd" cx="558.1" cy="145.0" r="3.5"/><rect class="cb" x="552.1" y="366.0" width="85.2" height="20" rx="6"/><image href="logos/linkedin.svg" x="560.1" y="369.0" width="14" height="14"/><text x="579.1" y="380.0">LinkedIn</text></g><g class="chip tip" data-tip="2025-12 · DoubleClick Floodlight first detected on lovable.dev"><line class="stm" x1="715.8" x2="715.8" y1="122.8" y2="336.0"/><circle class="cd" cx="715.8" cy="122.8" r="3.5"/><rect class="cb" x="709.8" y="336.0" width="80.0" height="20" rx="6"/><text x="717.8" y="350.0">Floodlight</text></g><g class="chip go tip" data-tip="2026-09 · Portuguese Meta ads start: 21 of the top 24 send people to /pt-br/" data-go="ads:0" tabindex="0" role="button"><line class="stm" x1="1060.0" x2="1060.0" y1="67.5" y2="336.0"/><circle class="cd" cx="1060.0" cy="67.5" r="3.5"/><rect class="cb" x="910.4" y="336.0" width="155.6" height="20" rx="6"/><image href="logos/meta-ads.svg" x="918.4" y="339.0" width="14" height="14"/><text x="937.4" y="350.0">Portuguese Meta ads</text></g></g><g class="lane" data-lane="soc"><rect class="band" x="0" y="436" width="1100" height="132" rx="10"/><text class="lt" x="12" y="456">Social media</text><g class="chip tip" data-tip="2025-02 · “0 to $17m ARR in 3 months.” 1,407 likes, 335K views"><line class="stm" x1="344.0" x2="344.0" y1="183.2" y2="444.0"/><circle class="cd" cx="344.0" cy="183.2" r="3.5"/><rect class="cb" x="338.0" y="444.0" width="174.8" height="20" rx="6"/><image href="logos/x-mono.svg" x="346.0" y="447.0" width="14" height="14"/><text x="365.0" y="458.0">“$17m ARR in 3 months”</text></g><g class="chip go tip" data-tip="2025-03 · “Now adding 1,500 customers per day.” 1,518 likes, 376K views" data-go="soc:0" tabindex="0" role="button"><line class="stm" x1="365.3" x2="365.3" y1="181.3" y2="474.0"/><circle class="cd" cx="365.3" cy="181.3" r="3.5"/><rect class="cb" x="359.3" y="474.0" width="181.2" height="20" rx="6"/><image href="logos/x-mono.svg" x="367.3" y="477.0" width="14" height="14"/><text x="386.3" y="488.0">“1,500 customers a day”</text></g><g class="chip tip" data-tip="2025-04 · Personally tops up a young builder&#x27;s credits. 3,789 likes, 276K views"><line class="stm" x1="419.1" x2="419.1" y1="171.4" y2="504.0"/><circle class="cd" cx="419.1" cy="171.4" r="3.5"/><rect class="cb" x="413.1" y="504.0" width="181.2" height="20" rx="6"/><image href="logos/x-mono.svg" x="421.1" y="507.0" width="14" height="14"/><text x="440.1" y="518.0">Gifts a builder credits</text></g><g class="chip tip" data-tip="2025-05 · “Lovable just crossed $60M ARR.” 1,903 likes, 147K views"><line class="stm" x1="467.9" x2="467.9" y1="158.9" y2="534.0"/><circle class="cd" cx="467.9" cy="158.9" r="3.5"/><rect class="cb" x="461.9" y="534.0" width="98.0" height="20" rx="6"/><image href="logos/x-mono.svg" x="469.9" y="537.0" width="14" height="14"/><text x="488.9" y="548.0">“$60M ARR”</text></g><g class="chip tip" data-tip="2025-10 · Starter Story on YouTube: “I cloned 3 apps and now make $35K/month.” 1.1M views"><line class="stm" x1="641.9" x2="641.9" y1="135.4" y2="444.0"/><circle class="cd" cx="641.9" cy="135.4" r="3.5"/><rect class="cb" x="635.9" y="444.0" width="200.4" height="20" rx="6"/><image href="logos/youtube.svg" x="643.9" y="447.0" width="14" height="14"/><text x="662.9" y="458.0">YouTube: “I cloned 3 apps”</text></g><g class="chip go tip" data-tip="2026-01 · Post by @ArmanHezarkhani on X. 779 likes, 805K views" data-go="soc:1" tabindex="0" role="button"><line class="stm" x1="759.6" x2="759.6" y1="97.2" y2="474.0"/><circle class="cd" cx="759.6" cy="97.2" r="3.5"/><rect class="cb" x="753.6" y="474.0" width="181.2" height="20" rx="6"/><image href="logos/x-mono.svg" x="761.6" y="477.0" width="14" height="14"/><text x="780.6" y="488.0">Others on X: 805K views</text></g><g class="chip go tip" data-tip="2026-01 · A user&#x27;s pet-portrait app makes $100k/month: his most-liked post. 5,929 likes, 817K views" data-go="soc:2" tabindex="0" role="button"><line class="stm" x1="772.1" x2="772.1" y1="89.5" y2="504.0"/><circle class="cd" cx="772.1" cy="89.5" r="3.5"/><rect class="cb" x="766.1" y="504.0" width="194.0" height="20" rx="6"/><image href="logos/x-mono.svg" x="774.1" y="507.0" width="14" height="14"/><text x="793.1" y="518.0">User&#x27;s app makes $100k/mo</text></g><g class="chip tip" data-tip="2026-05 · r/vibecoding: “Why do people use apps like Lovable when Claude or Codex are cheaper and better?” 99 upvotes, 142 comments"><line class="stm" x1="931.0" x2="931.0" y1="33.9" y2="444.0"/><circle class="cd" cx="931.0" cy="33.9" r="3.5"/><rect class="cb" x="925.0" y="444.0" width="162.0" height="20" rx="6"/><image href="media/aeo/logos/reddit.png" x="933.0" y="447.0" width="14" height="14"/><text x="952.0" y="458.0">Reddit: 142 comments</text></g><g class="chip tip" data-tip="2026-08 · “I accidentally said a Lovable subscription costs $25 million on live TV.” 3,661 likes, 535K views"><line class="stm" x1="1049.9" x2="1049.9" y1="66.7" y2="534.0"/><circle class="cd" cx="1049.9" cy="66.7" r="3.5"/><rect class="cb" x="868.3" y="534.0" width="187.6" height="20" rx="6"/><image href="logos/x-mono.svg" x="876.3" y="537.0" width="14" height="14"/><text x="895.3" y="548.0">“$25 million” on live TV</text></g></g>
+    </svg></div>
+    <div class="bp-tabs" role="tablist"><button type="button" role="tab" data-t="soc" aria-selected="true"><span class="lg"><img src="logos/x-mono.svg" alt=""><img src="logos/youtube.svg" alt=""></span>Social media</button><button type="button" role="tab" data-t="ads" aria-selected="false"><span class="lg"><img src="logos/meta-ads.svg" alt=""><img src="logos/google-ads.svg" alt=""></span>Ads</button><button type="button" role="tab" data-t="seo" aria-selected="false"><span class="lg"><img src="media/aeo/logos/google.svg" alt=""><img src="media/aeo/logos/chatgpt.svg" alt=""></span>SEO / AEO</button></div>
+    <div class="bp-panel" data-p="soc" role="tabpanel"><p class="bp-note">Each post came right before Google visits grew faster.</p><div class="tks"><article class="tk"><div class="tk-ev"><div class="ev-post"><header><img src="media/growth-rea/out/anton-osika.jpg" alt=""><b>Anton Osika</b><span>@antonosika · Mar 11, 2025</span></header><p>Lovable’s growth increased by almost 50% last week, <mark>now adding 1,500 customers per day</mark></p><img class="pi fit" src="media/growth-rea/out/x-1500-chart.jpg" alt="" loading="lazy"><footer><b>376K</b> views · 1.5K likes</footer></div></div><div class="tk-tx"><span class="tk-n">01</span><h4>Post your growth numbers</h4><p>“1,500 customers a day” drew <b>376K views</b>.</p><small>X · Mar 2025</small></div></article><article class="tk"><div class="tk-ev"><div class="ev-post"><header><img src="media/growth-rea/out/arman-hezarkhani.jpg" alt=""><b>Arman Hezarkhani</b><span>@ArmanHezarkhani · Jan 16, 2026</span></header><p><mark>The Complete Lovable Presentation Guide</mark></p><img class="pi" src="media/growth-rea/out/x-arman-cover.jpg" alt="" loading="lazy"><footer><b>805K</b> views · 779 likes</footer></div></div><div class="tk-tx"><span class="tk-n">02</span><h4>Get creators to teach one use case</h4><p>A creator’s Lovable presentation guide drew <b>805K views</b>.</p><small>X · Jan 2026</small></div></article><article class="tk"><div class="tk-ev"><div class="ev-post"><header><img src="media/growth-rea/out/anton-osika.jpg" alt=""><b>Anton Osika</b><span>@antonosika · Jan 26, 2026</span></header><p>A Lovable user built a pet-portrait service. <mark>The app is now making $100k/month.</mark></p><img class="pi" src="media/growth-rea/out/x-pet-1.jpg" alt="" loading="lazy"><footer><b>817K</b> views · 5.9K likes</footer></div></div><div class="tk-tx"><span class="tk-n">03</span><h4>Share your users’ money stories</h4><p>A user’s $100k/month app is their <b>most-liked post</b>.</p><small>X · Jan 2026</small></div></article></div></div><div class="bp-panel" data-p="ads" role="tabpanel" hidden><div class="tks"><article class="tk"><div class="tk-ev"><div class="ev-ads"><img src="media/growth-rea/out/ad-pt-1.jpg" alt="" loading="lazy"><img src="media/growth-rea/out/ad-pt-2.jpg" alt="" loading="lazy"><img src="media/growth-rea/out/ad-pt-3.jpg" alt="" loading="lazy"></div></div><div class="tk-tx"><span class="tk-n">01</span><h4>Open a new country with local ads</h4><p>Their <b>4 most-seen</b> Meta ads are in Portuguese and land on <code>/pt-br/</code>.</p><small>90 most-seen Meta ads · 29 Oct 2026</small></div></article><article class="tk"><div class="tk-ev"><div class="ev-cap"><p>“With Lovable, you just describe what you want. AI turns it into a working product…”</p><div class="ev-ads"><img src="media/growth-rea/out/ad-en-1.jpg" alt="" loading="lazy"><img src="media/growth-rea/out/ad-en-2.jpg" alt="" loading="lazy"><img src="media/growth-rea/out/ad-en-3.jpg" alt="" loading="lazy"></div></div></div><div class="tk-tx"><span class="tk-n">02</span><h4>Keep one caption, test many visuals</h4><p><b>72 of their 90</b> top ads run on just 2 captions.</p><small>90 most-seen Meta ads · 29 Oct 2026</small></div></article><article class="tk"><div class="tk-ev"><div class="ev-ads two"><figure><img src="media/growth-rea/out/ad-cr-1.jpg" alt="" loading="lazy"><figcaption>a site for a Thai grocery store</figcaption></figure><figure><img src="media/growth-rea/out/ad-cr-2.jpg" alt="" loading="lazy"><figcaption>ChatGPT + Lovable</figcaption></figure></div></div><div class="tk-tx"><span class="tk-n">03</span><h4>Pay creators to build on camera</h4><p><code>#lovablepartner</code> creators make a real site in the video.</p><small>Meta ad library · 29 Oct 2026</small></div></article></div></div><div class="bp-panel" data-p="seo" role="tabpanel" hidden><div class="tks"><article class="tk"><div class="tk-ev"><div class="ev-badge"><div class="win w0"><i class="bar"><b></b><b></b><b></b><span>pilchago.lovable.app</span></i><img src="media/growth-rea/out/app-pilchago.jpg" alt="" loading="lazy"><i class="mini">Edit with ♥</i></div><div class="win w1"><i class="bar"><b></b><b></b><b></b><span>fragrancesfinder.lovable.app</span></i><img src="media/growth-rea/out/app-fragrancesfinder.jpg" alt="" loading="lazy"><i class="mini">Edit with ♥</i></div><div class="win w2"><i class="bar"><b></b><b></b><b></b><span>marketeria.lovable.app</span></i><img src="media/growth-rea/out/app-marketeria.jpg" alt="" loading="lazy"><i class="mini">Edit with ♥</i></div><div class="big"><span class="bg">Edit with <img src="media/growth-rea/brands/lovable.svg" alt=""><b>Lovable</b><i>×</i></span><small>↳ links every app back to lovable.dev</small></div></div></div><div class="tk-tx"><span class="tk-n">01</span><h4>Put a badge on every app users publish</h4><p><b>20,132 sites</b> now link back through “Edit with Lovable”.</p><small>Backlinks · DataForSEO</small></div></article><article class="tk"><div class="tk-ev"><ul class="ev-aff"><li><span>topai.tools</span><i>→</i><code>?via=<b>topaitools</b></code></li><li><span>bento.me</span><i>→</i><code>?via=<b>giovanna</b></code></li><li><span>madewithlovable.com</span><i>→</i><code>?via=<b>julien</b></code></li><li><span>programmercave.com</span><i>→</i><code>?via=<b>programmercave</b></code></li><li><span>news.unbeat.ai</span><i>→</i><code>?via=<b>unbeatai</b></code></li></ul></div><div class="tk-tx"><span class="tk-n">02</span><h4>Pay affiliates to link to you</h4><p><b>918 sites</b> now link in with an affiliate <code>?via=</code> code.</p><small>Backlinks · DataForSEO · 29 Oct 2026</small></div></article><article class="tk"><div class="tk-ev"><div class="ev-ai"><div class="gd"><span>lovable.dev/guides/</span><b>lovable-vs-bolt-vs-v0</b></div><div class="gd"><span>lovable.dev/guides/</span><b>bolt-vs-replit-vs-lovable</b></div><p class="res">ChatGPT: “best AI app builder for a non-technical founder?”</p><ol><li class="me"><img src="media/growth-rea/brands/lovable.svg" alt="">Lovable</li><li>Bubble</li><li>Replit</li></ol></div></div><div class="tk-tx"><span class="tk-n">03</span><h4>Publish “X vs Y” comparison guides</h4><p>ChatGPT now names them first in <b>3 of 3</b> buyer questions, citing these guides.</p><small>ChatGPT, 3 questions · cloro</small></div></article></div></div>
+    </div>
+    <div class="bp-plays" id="lovable-plays">
+      <div class="bp-ph"><h3>Copy these plays</h3><button type="button" class="pill dark" id="copyPlaybook">Copy the playbook</button></div>
+      <div class="pls"><article class="pl">
+  <header><span class="pn">01</span><h4>Put a badge on everything users publish</h4><span class="st2" data-st="share">Share</span><span class="eff"><b>Effort</b>A week</span></header>
+  <p class="ev">The “Edit with” link text is on 20,132 referring domains and 255,420 backlinks, first seen 9 Feb 2025. 134,702 backlinks come from users' apps on <code>lovable.app</code>.</p>
+  <div class="meta3"><span><b>First result</b>4-6 weeks; sign-ups referred by users&#x27; outputs</span></div>
+  <div class="ask"><b>Prompt</b><p>Add a small &#x27;Made with [product]&#x27; badge to every page, file or share our users publish. Link it to a page that starts a new project from that output, tag the link with the source, let paid plans remove it, and report weekly sign-ups that came from badges.</p></div>
+</article><article class="pl">
+  <header><span class="pn">02</span><h4>Post your numbers in public</h4><span class="st2" data-st="get-noticed">Get noticed</span><span class="eff"><b>Effort</b>An hour a week</span></header>
+  <p class="ev">The founder's most-liked X posts are milestones (“0 to $17m ARR in 3 months”, “growth up almost 50% last week, now adding 1,500 customers per day”) and users' money stories (a pet-portrait app “making $100k/month”, 5,929 likes).</p>
+  <div class="meta3"><span><b>First result</b>2-4 weeks; followers and replies</span></div>
+  <div class="ask"><b>Prompt</b><p>Every other Monday, draft an X post from our numbers: one metric that moved, why, and one customer story with a number in it. Send it to me to approve; never post on your own.</p></div>
+</article><article class="pl">
+  <header><span class="pn">03</span><h4>Turn customers&#x27; wins into creator videos</h4><span class="st2" data-st="get-noticed">Get noticed</span><span class="eff"><b>Effort</b>A week</span></header>
+  <p class="ev">The most-viewed YouTube results for “lovable ai app builder” are earnings stories: “I cloned 3 apps and now make $35K/month” (1.1M views), “How I Built A $1.4 Million/Month AI App At Age 18” (959K). Lovable's partner page invites content creators. Whether the videos were paid: not seen.</p>
+  <div class="meta3"><span><b>First result</b>4-8 weeks; views and sign-ups from links</span></div>
+  <div class="ask"><b>Prompt</b><p>Find our 5 customers with the strongest revenue or time-saved result, write a one-page story for each, and list 20 YouTube creators in our niche with 50K-500K subscribers who made a similar story in the last 6 months, with a pitch for each.</p></div>
+</article></div>
+      <details class="bp-more"><summary>+ 7 more plays</summary><div class="pls"><article class="pl">
+  <header><span class="pn">04</span><h4>Bundle into other companies&#x27; memberships</h4><span class="st2" data-st="sign-up">Sign up</span><span class="eff"><b>Effort</b>A week per partner</span></header>
+  <p class="ev"><code>/linkedin-premium-offer</code> (a year of Pro Lite and 300 credits for Premium members), <code>/lenny</code> (for Lenny's newsletter readers), <code>/students</code> (50% off Pro for 12 months), and an ONEGO partnership with 10 free credits.</p>
+  <div class="meta3"><span><b>First result</b>2-6 weeks; redemptions per partner page</span></div>
+  <div class="ask"><b>Prompt</b><p>List 10 newsletters, communities and memberships our buyers already pay for. For each, draft a partner offer (what members get, how they redeem it, the landing page) and the email to their partnerships contact.</p></div>
+</article><article class="pl">
+  <header><span class="pn">05</span><h4>Pay the people who sell you</h4><span class="st2" data-st="share">Share</span><span class="eff"><b>Effort</b>A week</span></header>
+  <p class="ev">Affiliates earn up to $100 per first-time subscriber; Experts earn 10% of every Business plan they bring and get a certified profile in a public directory. Rewardful (Dec 2024) and Impact (Sep 2026) affiliate tracking were detected on the site.</p>
+  <div class="meta3"><span><b>First result</b>6-8 weeks; partner-sourced sign-ups</span></div>
+  <div class="ask"><b>Prompt</b><p>Draft an affiliate and an expert program for us: commission rules, who qualifies, a directory page and the tool to track it. Estimate the cost per paying customer at our prices.</p></div>
+</article><article class="pl">
+  <header><span class="pn">06</span><h4>Write the comparison pages AI reads</h4><span class="st2" data-st="get-noticed">Get noticed</span><span class="eff"><b>Effort</b>A week</span></header>
+  <p class="ev">ChatGPT named Lovable first for all 3 buyer questions and cited <code>/guides/lovable-vs-bolt-vs-v0</code> and <code>/guides/bolt-vs-replit-vs-lovable</code>. The <code>/guides</code> section ranks for 517 keywords.</p>
+  <div class="meta3"><span><b>First result</b>4-8 weeks; how often AI names you</span></div>
+  <div class="ask"><b>Prompt</b><p>Write comparison guides for us against our top 3 competitors: who each is for, prices, a table, and when not to pick us. Then ask ChatGPT our 5 buyer questions and report whether we are named and which pages are cited.</p></div>
+</article><article class="pl">
+  <header><span class="pn">07</span><h4>Promote employees&#x27; posts to their peers</h4><span class="st2" data-st="get-noticed">Get noticed</span><span class="eff"><b>Effort</b>A day per post</span></header>
+  <p class="ev">11 of the 16 sampled LinkedIn ads with text are staff posts promoted as ads: the People lead (“the People team at Lovable builds its own software”), the first CSM, the revenue team. Each speaks to one job: marketers, People ops, revenue and customer success; the 5 company-page posts speak to product teams and designers.</p>
+  <div class="meta3"><span><b>First result</b>2-4 weeks; cost per click by job title</span></div>
+  <div class="ask"><b>Prompt</b><p>Interview three of our team about one tool or workflow they built with our product, draft a LinkedIn post in each person&#x27;s voice for their job function, and set each up as a thought-leader ad aimed at that job title.</p></div>
+</article><article class="pl">
+  <header><span class="pn">08</span><h4>Open one country at a time</h4><span class="st2" data-st="get-noticed">Get noticed</span><span class="eff"><b>Effort</b>A quarter</span></header>
+  <p class="ev">21 of the top 24 Meta ads are in Portuguese, point to <code>/pt-br/</code> and started in Sep 2026. A “Growth Lead, Brazil” role opened on 29 Sep 2026. The site has 7 language versions (about 529 URLs each). Platzi launched an official free course in Spanish.</p>
+  <div class="meta3"><span><b>First result</b>6-12 weeks; sign-ups from that country</span></div>
+  <div class="ask"><b>Prompt</b><p>Rank 5 countries by our current sign-ups, search demand and competitor presence. For the top one, plan a localized landing page, 5 ads in the local language and 3 local schools or communities to partner with.</p></div>
+</article><article class="pl">
+  <header><span class="pn">09</span><h4>Make the free plan a daily habit</h4><span class="st2" data-st="pay">Pay</span><span class="eff"><b>Effort</b>A week</span></header>
+  <p class="ev">Seen: the free plan grants 5 build credits a day, up to 30 a month, and the pricing page shows what each example prompt costs. Inferred: a daily grant brings people back every day and shows what a paid plan buys.</p>
+  <div class="meta3"><span><b>First result</b>4 weeks; day-7 return rate and free-to-paid</span></div>
+  <div class="ask"><b>Prompt</b><p>Model a daily free allowance for our product: how much a day, what it costs us per active user, and which upgrade prompt to show when it runs out.</p></div>
+</article><article class="pl">
+  <header><span class="pn">10</span><h4>Help your users grow theirs</h4><span class="st2" data-st="share">Share</span><span class="eff"><b>Effort</b>A quarter</span></header>
+  <p class="ev">Seen: <code>/grow</code> (launched 14 Oct 2026) plans SEO, posts and ads for the apps users build, and users approve before anything spends. Inferred: apps that get traffic carry the badge to more people, so users' growth feeds play 1.</p>
+  <div class="meta3"><span><b>First result</b>8-12 weeks</span></div>
+  <div class="ask"><b>Prompt</b><p>List the 3 things our users most need after their first result, and sketch a feature that does one of them inside our product, with the metric that shows it helped them.</p></div>
+</article></div></details>
+    </div>
+    <details class="bp-rc"><summary>Every call, and what it cost · <b>$0.58</b></summary>
+    <div class="rcpt-wrap">
+      
+    <p class="cnote">Every call the agent made to take lovable.dev apart on 23 October 2026. Page reads were free.</p>
+    <div class="ctw"><table class="cost">
+      <thead><tr><th>What the agent pulled</th><th>Cost</th></tr></thead>
+      <tbody><tr><td>Site: map + 10 page reads</td><td class="m">$0.001</td></tr><tr><td>Stack, news, funding, partners</td><td class="m">$0.160</td></tr><tr><td>Growth curve</td><td class="m">$0.151</td></tr><tr><td>Search: 1,000 keywords</td><td class="m">$0.132</td></tr><tr><td>AI answers × 3</td><td class="m">$0.008</td></tr><tr><td>Ads: 4 networks</td><td class="m">$0.031</td></tr><tr><td>Social: X, YouTube, Reddit</td><td class="m">$0.004</td></tr><tr><td>Links and anchors</td><td class="m">$0.050</td></tr><tr><td>Job openings</td><td class="m">$0.040</td></tr><tr class="nb"><td>Website history <small>provider 404</small></td><td class="m">not billed</td></tr><tr class="nb"><td>Backlink timeline <small>date rejected</small></td><td class="m">not billed</td></tr><tr class="nb"><td>Traffic by channel <small>needs own Akta key</small></td><td class="m">not billed</td></tr></tbody>
+      <tfoot><tr><td>Total for the full reverse engineer, through treg</td><td class="m">$0.58</td></tr></tfoot>
+    </table></div>
+    <p class="fineprint">US search data only; counts as of 23 October 2026; reported revenue comes from news, not filings; treg is not affiliated with Lovable. <a href="/rea-growth.md" target="_blank" rel="noopener">The full report</a>.</p>
+  </div>
+    </details>
+  </div>
+</section>
+
+<section class="rv final" id="prompt">
+  <div class="final-in field"><div class="paint" aria-hidden="true"></div>
+    <h2>Reverse engineer how any company grows</h2>
+    <div class="howto" role="tablist" aria-label="How to run it"><button type="button" role="tab" aria-selected="true" aria-controls="metaPrompt" id="howAgent">With your agent <span class="tab-ag"><img src="media/people-search/claude-code.png" alt="Claude Code"><img src="media/people-search/codex.png" alt="Codex"><img src="media/people-search/openclaw.png" alt="OpenClaw"><img src="media/people-search/hermes.png" alt="Hermes"></span></button><button type="button" role="tab" aria-selected="false" aria-controls="howWeb" id="howWebTab">On cloud agent</button></div>
+    <div class="prompt-d" id="metaPrompt" role="tabpanel">
+    <div class="copybox">
+      <div class="h">paste this into your agent</div>
+      <div class="line"><span id="llmsUrl">https://treg.to/llms.txt</span></div>
+      <div class="then">then: "Follow <a href="/skills/rea-growth/SKILL.md" target="_blank" rel="noopener">treg.to/skills/rea-growth/SKILL.md</a> to reverse engineer my competitor's growth."</div>
+    </div>
+    </div>
+    <div class="howweb" id="howWeb" role="tabpanel" hidden>
+      <p class="sn">Try on <span class="nw"><span class="lg"><img src="media/showcase/sharenow.jpg" alt="">sharenow</span>,</span> who came up with the <span class="nw">REA-growth</span> idea <span class="nw">using <span class="lg"><img src="logos/treg.svg" alt="" class="tg">treg</span></span></p>
+    </div>
+    <div class="ctas" id="agentCtas">
+      <button type="button" class="pill light" id="copySkill">Copy prompt</button>
+      <a class="pill" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">Open source</a>
+    </div>
+    <div class="ctas" id="webCtas" hidden>
+      <a class="pill light" href="https://sharenow.today/treg/" target="_blank" rel="noopener">Try it on sharenow</a>
+    </div>
+  </div>
+</section>
+
+<footer class="bigfoot">
+  <div class="bigfoot-in">
+    <div class="bf-brand">
+      <span class="bfb"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+      <div class="note">100% open source</div>
+    </div>
+    <nav class="bf-cols" aria-label="Site">
+      <div class="bf-col"><div class="lab">Explore</div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/blog">Launches</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><a href="/agents/claude-code">Agents</a></div>
+      <div class="bf-col"><div class="lab">Build</div>
+        <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
+      <div class="bf-col"><div class="lab">Company</div>
+        <a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </nav>
+  </div>
+  <div class="bf-tag">© 2026 treg — OpenRouter for agent tools.</div>
+</footer>
+
+<div class="scrim" id="signin-scrim">
+  <div class="smodal" role="dialog" aria-label="Sign in">
+    <button class="cls" id="signinClose" aria-label="Close">✕</button>
+    <h3>Sign in to treg</h3>
+    <p>first sign-in creates your account</p>
+    <a class="pill dark" href="/auth/github" style="text-decoration:none">Continue with GitHub</a>
+    <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
+    <div class="div">or email a code</div>
+    <div id="em-step1">
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
+      <button class="pill" id="em-btn1">Email me a sign-in code</button>
+    </div>
+    <div id="em-step2" style="display:none">
+      <input id="em-code" inputmode="numeric" placeholder="6-digit code"/>
+      <button class="pill dark" id="em-btn2">Sign in</button>
+    </div>
+    <div class="err" id="em-err"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /* in-page links scroll without writing #id into the address bar */
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest && ev.target.closest('a[href^="#"]'), t = a && a.getAttribute('href').length > 1 && $(a.getAttribute('href').slice(1));
+    if (!t) return;
+    ev.preventDefault(); t.scrollIntoView();
+  });
+
+
+  /* hero: the company name and logo rotate */
+  (function () {
+    var rot = $('xrRot'); if (!rot) return;
+    var w = rot.children, i = 0;
+    function fit() { rot.style.width = w[i].offsetWidth + 'px'; }
+    fit(); addEventListener('resize', fit); if (document.fonts) document.fonts.ready.then(fit);
+    if (reduced) return;
+    setInterval(function () {
+      var prev = w[i]; i = (i + 1) % w.length;
+      prev.classList.remove('on'); prev.classList.add('out');
+      w[i].classList.remove('out'); w[i].classList.add('on'); fit();
+      setTimeout(function () { prev.classList.remove('out'); }, 650);
+    }, 2400);
+  })();
+  /* REA-Growth hero: put each pin on the drawn curve, then a crosshair that snaps to the real data points */
+  (function () {
+    var hero = $('top'), path = $('xrLine'); if (!path || !path.getTotalLength) return;
+    var DATA = [[0,122],[3,2651],[6,12046],[9,50556],[12,75251],[15,95415],[18,170320],[22,260315],[25,194408]], MON = ['Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug'];
+    var total = path.getTotalLength();
+    function yAt(x) { var lo = 0, hi = total; for (var k = 0; k < 30; k++) { var mid = (lo + hi) / 2; if (path.getPointAtLength(mid).x < x) lo = mid; else hi = mid; } return path.getPointAtLength(lo).y; }
+    function xOf(m) { return (3 + m / 25 * 91) * 10; }
+    hero.querySelectorAll('[data-m]').forEach(function (el) {
+      var x = xOf(+el.getAttribute('data-m'));
+      el.style.setProperty('--x', x / 10 + '%'); el.style.setProperty('--y', yAt(x) / 10 + '%');
+      el.style.setProperty('--d', (reduced ? 0 : .45 + 2.6 * (x + 40) / 1080) + 's');
+    });
+    var hair = $('xrHair'), read = $('xrRead'), dot = hair.querySelector('i');
+    hero.addEventListener('mousemove', function (e) {
+      var r = hero.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width * 1000, best = DATA[0];
+      DATA.forEach(function (d) { if (Math.abs(xOf(d[0]) - fx) < Math.abs(xOf(best[0]) - fx)) best = d; });
+      var x = xOf(best[0]), y = yAt(x) / 1000 * r.height, mi = best[0] % 12, yr = 2024 + Math.floor((8 + best[0]) / 12);
+      hair.style.transform = 'translateX(' + (x / 1000 * r.width) + 'px)';
+      hair.style.top = y + 'px'; dot.style.top = '0px'; read.style.top = '-44px';
+      read.style.left = x > 800 ? 'auto' : '12px'; read.style.right = x > 800 ? '12px' : 'auto';
+      read.innerHTML = MON[mi] + ' ' + yr + ' · <b>' + best[1].toLocaleString('en-US') + '</b> visits';
+      hair.classList.add('on');
+    });
+    hero.addEventListener('mouseleave', function () { hair.classList.remove('on'); });
+  })();
+
+  /* hero pins: each takes the lowest free height where it touches no other pin, the buttons or the title; a pin with no room hides */
+  (function () {
+    var hero = $('top'), mq = matchMedia('(max-width: 760px)');
+    function hit(a, b, pad) { return a.left < b.right + pad && b.left < a.right + pad && a.top < b.bottom + pad && b.top < a.bottom + pad; }
+    function lay() {
+      var phone = mq.matches, LV = phone ? [0, 1, 2, 3, 4, 5] : [44, 80, 116, 152, 188, 224, 260, 296];
+      var pins = [].slice.call(hero.querySelectorAll('.xr-pin')).filter(function (p) { return phone || !p.classList.contains('sm-only'); });
+      var keep = [hero.querySelector('.xr-cta').getBoundingClientRect(), hero.querySelector('.xr-t').getBoundingClientRect(), hero.querySelector('.xr-eye').getBoundingClientRect()];
+      var now = hero.querySelector('.xr-now span'); if (now && !phone) keep.push(now.getBoundingClientRect());
+      pins.forEach(function (p) { var o = p.getBoundingClientRect(); keep.push({ left: o.left - 8, right: o.left + 8, top: o.top - 8, bottom: o.top + 8 }); });
+      pins.sort(function (a, b) { return (b.classList.contains('key') - a.classList.contains('key')) || (+a.dataset.m - +b.dataset.m); });
+      pins.forEach(function (p) {
+        p.style.visibility = '';
+        // boxes from final geometry: the labels are still growing in while this runs
+        var o = p.getBoundingClientRect(), sp = p.querySelector('span'), w = sp.offsetWidth, flip = p.classList.contains('flip'), ok = false;
+        for (var i = 0; i < LV.length && !ok; i++) {
+          var r;
+          if (phone) { p.querySelector('.ic').style.setProperty('--lv', LV[i]); var t = o.top - 10 - LV[i] * 28 - 22; r = { left: o.left - 11, right: o.left + 11, top: t, bottom: t + 22 }; }
+          else { p.style.setProperty('--h', LV[i] + 'px'); var l = flip ? o.left - w : o.left, tt = o.top - LV[i] - 10; r = { left: l, right: l + w, top: tt, bottom: tt + 26 }; }
+          ok = r.left >= 4 && r.right <= innerWidth - 4 && keep.every(function (k) { return !hit(r, k, phone ? 3 : 6); });
+          if (ok) keep.push(r);
+        }
+        if (!ok) p.style.visibility = 'hidden';
+      });
+    }
+    lay(); addEventListener('resize', lay); addEventListener('load', lay); if (document.fonts) document.fonts.ready.then(lay);
+  })();
+  /* hero demo: the Lovable run, replayed. Calls and costs are the run's own (rea-growth.md, method notes) */
+  (function () {
+    var typed = $('rdTyped'), cur = $('rdCur'), calls = $('rdCalls'), status = $('rdStatus'), meter = $('rdMeter');
+    if (!typed) return;
+    var CMD = '/rea-growth how did lovable grow?';
+    var CALLS = [
+      ['treg · web.map', '5,000 URLs on lovable.dev', .001],
+      ['treg · web.extract ×10', 'pricing, affiliates, partners…', 0],
+      ['DataForSEO · rank history', '26 months of search traffic', .151, 'curve'],
+      ['PredictLeads · tech stack', '483 detections, ad pixels dated', .04, 'ads', 'links'],
+      ['PredictLeads · news + rounds', '164 events, 7 rounds', .12, 'news', 'prod'],
+      ['DataForSEO · ranked keywords', '7,005 keywords', .132],
+      ['cloro · ChatGPT ×3', 'named first, 3 of 3', .008],
+      ['Ad libraries ×4', '692 Meta · 392 LinkedIn ads', .031],
+      ['X · YouTube · Reddit', 'posts, ranked per channel', .004],
+      ['DataForSEO · backlinks', '46,791 referring domains', .049],
+      ['PredictLeads · job openings', '678 openings: what comes next', .04]
+    ];
+    var LOGOS = { treg: ['logos/treg.svg'], DataForSEO: ['logos/dataforseo.svg'], PredictLeads: ['logos/predictleads.svg'], cloro: ['logos/cloro.svg'],
+      'Ad libraries ×4': ['logos/meta-ad-library.svg', 'logos/google-ads.svg', 'logos/linkedin.svg'], X: ['logos/x-mono.svg', 'logos/youtube.svg', 'media/aeo/logos/reddit.png'] };
+    var marks = ['rdCurve', 'rdArea', 'rdInfl', 'rdInflT', 'rdPeak', 'ln-ads', 'ln-prod', 'ln-links', 'ln-news'];
+    function on(id, v) { var el = $(id); if (el) el.classList.toggle('on', v); }
+    function fx(k) { if (k === 'curve') { on('rdCurve', 1); on('rdArea', 1); on('rdPeak', 1); } else if (k) on('ln-' + k, 1); }
+    function done() {
+      typed.textContent = CMD;
+      CALLS.forEach(function (c) { fx(c[3]); fx(c[4]); });
+      on('rdInfl', 1); on('rdInflT', 1);
+      status.textContent = 'done · playbook written'; meter.textContent = '$0.58';
+    }
+    if (reduced) {
+      CALLS.slice(-5).forEach(add); done(); return;
+    }
+    var spent = 0, t = [];
+    function at(ms, f) { t.push(setTimeout(f, ms)); }
+    function add(c) {
+      var d = document.createElement('div'); d.className = 'rd-call';
+      var lg = (LOGOS[c[0].split(' · ')[0]] || []).map(function (u) { return '<img src="' + u + '" alt="">'; }).join('');
+      d.innerHTML = '<b><span class="lg">' + lg + '</span>' + c[0] + '<i>' + (c[2] ? '$' + c[2].toFixed(3) : 'free') + '</i></b><span>' + c[1] + '</span>';
+      calls.appendChild(d);
+      while (calls.children.length > 5) calls.removeChild(calls.firstChild);
+    }
+    function run() {
+      t.forEach(clearTimeout); t = []; spent = 0;
+      marks.forEach(function (id) { on(id, 0); });
+      calls.innerHTML = '';
+      status.textContent = 'agent idle'; meter.textContent = '$0.000';
+      var ms = 600;
+      if (typed.textContent !== CMD) {
+        CMD.split('').forEach(function (ch, i) { at(ms + i * 45, function () { typed.textContent = CMD.slice(0, i + 1); }); });
+        ms += CMD.length * 45 + 500;
+      }
+      at(ms, function () { status.textContent = 'pulling lovable.dev through treg…'; });
+      CALLS.forEach(function (c, i) {
+        at(ms + 300 + i * 650, function () {
+          add(c); fx(c[3]); fx(c[4]);
+          spent += c[2]; meter.textContent = '$' + spent.toFixed(3);
+          status.textContent = 'call ' + (i + 1) + ' of ' + CALLS.length;
+        });
+      });
+      ms += 300 + CALLS.length * 650 + 400;
+      at(ms, function () { on('rdInfl', 1); on('rdInflT', 1); status.textContent = 'lining moves up against growth…'; });
+      at(ms + 1400, done);
+      at(ms + 8500, run);
+    }
+    run();
+  })();
+  /* reveal on scroll */
+  if ('IntersectionObserver' in window && !reduced) {
+    var ro = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); ro.unobserve(e.target); } }); }, { rootMargin: '0px 0px -10% 0px' });
+    document.querySelectorAll('.rv').forEach(function (el) { ro.observe(el); });
+  } else { document.querySelectorAll('.rv').forEach(function (el) { el.classList.add('in'); }); }
+
+  var nav = $('nav');
+  var lights = [$('top'), $('run'), $('plays'), $('example'), $('prompt')];
+  function navState() {
+    nav.classList.toggle('scrolled', scrollY > 8);
+    var y = nav.offsetHeight / 2;
+    nav.classList.toggle('light', lights.some(function (el) { var r = el.getBoundingClientRect(); return r.top <= y && r.bottom > y; }));
+  }
+  addEventListener('scroll', navState, { passive: true });
+  navState();
+
+  /* copy button: the meta prompt */
+  function copy(btn, txt, label) {
+    function done() { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = label; }, 1600); }
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(done, function () {
+      var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta);
+      ta.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta);
+      if (ok) done(); else { btn.textContent = 'Copy failed'; setTimeout(function () { btn.textContent = label; }, 1600); }
+    });
+  }
+  /* final box: run it with your agent, or on the website */
+  (function () {
+    var tabs = [$('howAgent'), $('howWebTab')], panes = [[$('metaPrompt'), $('agentCtas')], [$('howWeb'), $('webCtas')]];
+    tabs.forEach(function (t, i) {
+      t.addEventListener('click', function () {
+        tabs.forEach(function (x, j) { x.setAttribute('aria-selected', i === j); panes[j].forEach(function (p) { p.hidden = i !== j; }); });
+      });
+    });
+  })();
+
+  /* blueprint timeline: hover a lane to light it; a green chip opens its evidence */
+  (function () {
+    var svg = document.querySelector('.bp-svg'); if (!svg) return;
+    svg.querySelectorAll('.lane').forEach(function (l) {
+      l.addEventListener('mouseenter', function () { svg.classList.add('lhl'); l.classList.add('on'); });
+      l.addEventListener('mouseleave', function () { svg.classList.remove('lhl'); l.classList.remove('on'); });
+    });
+    function go(c) {
+      var p = c.getAttribute('data-go').split(':'), tab = document.querySelector('.bp-tabs button[data-t="' + p[0] + '"]');
+      if (tab) tab.click();
+      var card = document.querySelectorAll('.bp-panel[data-p="' + p[0] + '"] .tk')[+p[1]];
+      if (!card) return;
+      card.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+      card.classList.add('flash'); setTimeout(function () { card.classList.remove('flash'); }, 1600);
+    }
+    svg.querySelectorAll('.chip.go').forEach(function (c) {
+      c.addEventListener('click', function () { go(c); });
+      c.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(c); } });
+    });
+  })();
+  /* the blueprint's channel tabs */
+  (function () {
+    var bar = document.querySelector('.bp-tabs'); if (!bar) return;
+    bar.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      bar.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-selected', x === b ? 'true' : 'false'); });
+      document.querySelectorAll('.bp-panel').forEach(function (p) { p.hidden = p.getAttribute('data-p') !== b.getAttribute('data-t'); });
+    });
+  })();
+  /* chart tooltips: any .tip carries its numbers in data-tip */
+  var tip = document.createElement('div'); tip.id = 'tip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip);
+  document.addEventListener('mousemove', function (ev) {
+    var t = ev.target.closest && ev.target.closest('.tip');
+    if (!t) { tip.classList.remove('on'); return; }
+    if (t._tip) tip.replaceChildren(t._tip()); else tip.textContent = t.getAttribute('data-tip');
+    tip.classList.toggle('rich', !!t._tip); tip.classList.add('on');
+    var x = Math.min(ev.clientX + 14, innerWidth - tip.offsetWidth - 8), y = ev.clientY + 16;
+    if (y + tip.offsetHeight > innerHeight - 8) y = ev.clientY - tip.offsetHeight - 12;
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  });
+  /* one button copies the whole playbook as plain text, a prompt under each play */
+  function copyPlaybook() {
+    var out = ["Lovable's growth playbook, reverse engineered with treg"];
+    document.querySelectorAll('#lovable-plays .pl').forEach(function (pl) {
+      var h = pl.querySelector('header'), lines = [];
+      lines.push(h.querySelector('.pn').textContent + '. ' + h.querySelector('h4').textContent + ' (' + h.querySelector('.st2').textContent + ')');
+      pl.querySelectorAll('header .eff, :scope > p, .meta3 > span').forEach(function (x) {
+        var b = x.querySelector('b'); lines.push(b ? b.textContent + ': ' + x.textContent.slice(b.textContent.length).trim() : x.textContent.trim());
+      });
+      lines.push('Prompt for your agent: ' + pl.querySelector('.ask p').textContent);
+      out.push(lines.join('\n'));
+    });
+    copy(this, out.join('\n\n'), 'Copy the playbook');
+  }
+  $('copyPlaybook').addEventListener('click', copyPlaybook);
+  function promptText() {
+    return 'I approve you setup treg following ' + $('llmsUrl').textContent + '\n\n' + document.querySelector('#prompt .copybox .then').textContent;
+  }
+  $('copySkill').addEventListener('click', function () { copy(this, promptText(), 'Copy prompt'); });
+  /* hero: copies the same prompt, then shows it at the bottom */
+  $('ctaCopy').addEventListener('click', function (e) {
+    e.preventDefault();
+    copy(this, promptText(), 'Copy prompt ↓');
+    $('prompt').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+  });
+  /* Setup CTAs: signed in → the app; signed out → the sign-in modal */
+  var APP = '/app?ref=rea-growth'; /* the CTAs' href; boot.js keeps the ref through sign-in */
+  var scrim = $('signin-scrim');
+  function openSignin() { scrim.classList.add('open'); $('em-input').focus(); }
+  function closeSignin() { scrim.classList.remove('open'); }
+  $('signinClose').addEventListener('click', closeSignin);
+  scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSignin(); });
+  addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSignin(); });
+  ['ctaNav', 'ctaHero', 'ctaFinal'].forEach(function (id) {
+    var el = $(id);
+    if (!el) return;
+    el.addEventListener('click', function (e) {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+      e.preventDefault();
+      fetch('/auth/me', { credentials: 'same-origin' }).then(function (r) {
+        if (r.ok) location.href = APP; else openSignin();
+      }).catch(openSignin);
+    });
+  });
+  $('em-btn1').addEventListener('click', emailStart);
+  $('em-input').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailStart(); });
+  $('em-btn2').addEventListener('click', emailVerify);
+  $('em-code').addEventListener('keyup', function (e) { if (e.key === 'Enter') emailVerify(); });
+  function emailStart() {
+    var em = $('em-input').value.trim(), err = $('em-err');
+    if (!em) { err.textContent = 'Enter your email address.'; return; }
+    if ($('em-btn1').disabled) return; $('em-btn1').disabled = true; $('em-btn1').textContent = 'Sending…'; err.textContent = '';
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { if (!r.ok) throw new Error(d.detail || 'could not send the code'); return d; }); })
+      .then(function (d) {
+        $('em-step1').style.display = 'none'; $('em-step2').style.display = 'block';
+        if (d.dev_code) { $('em-code').value = d.dev_code; err.style.color = 'var(--green)'; err.textContent = 'dev mode — your code: ' + d.dev_code; }
+        else { err.style.color = ''; }
+        $('em-code').focus();
+      })
+      .catch(function (e2) { err.textContent = e2.message; $('em-btn1').disabled = false; $('em-btn1').textContent = 'Email me a sign-in code'; });
+  }
+  function emailVerify() {
+    var em = $('em-input').value.trim(), code = $('em-code').value.trim(), err = $('em-err');
+    if (!code || $('em-btn2').disabled) return;
+    $('em-btn2').disabled = true; $('em-btn2').textContent = 'Verifying…'; err.textContent = '';
+    fetch('/auth/email/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, code: code }) })
+      .then(function (r) { if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.detail || "that code didn't work"); }); location.href = APP; })
+      .catch(function (e2) { err.textContent = e2.message; $('em-btn2').disabled = false; $('em-btn2').textContent = 'Sign in'; });
+  }
+
+})();
+</script>
+<script src="/sitetrack.js"></script>
+<script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
+</body>

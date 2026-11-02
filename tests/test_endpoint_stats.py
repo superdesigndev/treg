@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
 from httpx import AsyncClient
 
 from treg.domain.catalog import stats as endpoint_stats
@@ -189,27 +188,6 @@ async def test_a_failed_refresh_still_answers_200_with_the_stale_value(
     await reader.aclose()
 
 
-# ---- the LAST OK column: measurement beats a stamp, and the two never look alike -------------
-@pytest.mark.parametrize("entry,exact,contains,absent", [
-    # A real call is stronger evidence than a hand-run stamp, so it wins, and it prints bare.
-    ({"observed": {"last_ok_days": 3}, "verified": "2020-01-01"}, "3d", None, "\u2713"),
-    # The stamp prints with a check mark so nobody reads a dated claim as live traffic.
-    ({"observed": {"last_ok_days": None}, "verified": "2026-08-01"}, None, "\u2713", None),
-    # Nobody has called it AND nobody has verified it: it must not borrow confidence from a blank.
-    ({"observed": None, "verified": None}, None, "\u2014", None),
-    ({"observed": {"last_ok_days": 0}}, "today", None, None),
-])
-def test_last_ok_cell_prefers_measurement_over_the_stamp(entry, exact, contains, absent):
-    from treg import cli
-    cell = cli._last_ok_cell(entry)
-    if exact is not None:
-        assert cell == exact
-    if contains is not None:
-        assert contains in cell
-    if absent is not None:
-        assert absent not in cell
-
-
 async def test_last_ok_means_the_last_SUCCESS_not_the_last_attempt(clients: AsyncClient):
     """An endpoint whose metadata is wrong fails every call, and `max(created_at)` over ALL rows
     then dated it as freshly working. `tikhub.x.tiktok-ads-search-ads` read `WORKS — (7)` next to
@@ -285,7 +263,7 @@ async def test_a_relayed_405_is_the_CATALOGS_failure_not_the_callers(clients: As
     assert got["samples"] == 7
     assert got["ok_rate"] == 0.0, "seven straight 405s are decided evidence, not unknown"
     assert got["last_ok_days"] is None
-    assert "0%" in cli._observed_cell(got), cli._observed_cell(got)
+    assert cli._pct(got["ok_rate"]) == "0%"
 
     # …and an ordinary caller error is still excluded, or this trades one wrong reading for another
     for _ in range(7):

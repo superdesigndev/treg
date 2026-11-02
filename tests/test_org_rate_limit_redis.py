@@ -23,6 +23,9 @@ async def _ready(store):
         async with asyncio.timeout(5):
             while not await store.ping():
                 await asyncio.sleep(0.05)
+            # Open the pool's connections up front so a concurrent burst spends admission's
+            # short timeout on Redis, not on connecting.
+            await asyncio.gather(*(store._client.ping() for _ in range(20)))
     except TimeoutError as exc:
         raise AssertionError("disposable Redis did not become ready within five seconds") from exc
 

@@ -63,3 +63,22 @@ async def test_provider_page_reads_the_observation_reader_not_the_session(client
     assert "endpoint stats unavailable" not in caplog.text
 
 
+
+
+async def test_a_provider_page_offers_treg_s_key_only_where_this_deploy_holds_one(clients, monkeypatch):
+    """A priceable row is not a platform offer on its own: without an enabled treg key the call
+    refuses, so the page must not say treg serves it (an Atly page once claimed 4 platform tools)."""
+    from treg.config import get_settings
+    monkeypatch.delenv("TREG_PLATFORM_KEY_TRYKITT", raising=False)
+    get_settings.cache_clear()
+    keyless = (await clients.get("/tools/trykitt")).text
+    assert "Platform + BYOK" not in keyless and "NO SIGNUP" not in keyless
+
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TRYKITT", "TEST-KITT-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "trykitt")
+    get_settings.cache_clear()
+    try:
+        served = (await clients.get("/tools/trykitt")).text
+    finally:
+        get_settings.cache_clear()
+    assert "Platform + BYOK" in served or "NO SIGNUP" in served

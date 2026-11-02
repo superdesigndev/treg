@@ -287,13 +287,24 @@ remains unresolved; newer different answers never substitute for historical evid
 CTE requires SQLAlchemy 2.0.42 or newer, reflected in the server dependency floor.
 `ArenaInsightState` serializes the cursor across workers and stores the aggregate;
 partial initial history is withheld until the first pass completes; a previous completed publication
-remains visible during a version-triggered rebuild. Steady state refreshes about every two
-minutes (plus collection time), allowing one minute for audit/archive writes and revisiting ten minutes
-of recent evidence. The first backfill may take longer. Evidence that arrives later than this revisit
-window remains unresolved until a version-triggered rebuild; lossy audit cannot establish complete traffic.
+remains visible during a version-triggered rebuild. Once caught up, `collect_batch` returns before
+reading any record until `REFRESH_SECONDS` have passed since the last publication; then one cycle
+collects from the cursor and republishes, allowing one minute for audit/archive writes and
+revisiting ten minutes of recent evidence. The first backfill may take
+longer. Evidence that arrives later than this revisit window remains unresolved until a
+version-triggered rebuild; lossy audit cannot establish complete traffic.
 
-The source window is 30 days, with old facts pruned. Rule, adapter or contract changes produce a new
-version/cursor and rebuild from available evidence. PostgreSQL computes medians and unique-request
+The version (the `ArenaInsightState` id and `ArenaObservation.version`) is a hash of
+`domain.arena_insights.RULES_VERSION` and `domain.arena.VERSION` only; bump one of them when
+classification changes and the collector rebuilds from available evidence. Catalog changes do
+not move the cursor; the endpoint set is applied when aggregating instead: facts of an endpoint that left the Arena drop
+out at the next publication; an endpoint that joins counts from calls after the cursor; an
+adapter edit applies to calls classified after it, older facts age out of the window.
+`prune`, at the start of every `drain` pass whether or not there is backlog, deletes the current
+version's facts older than the window being collected and every fact of a superseded version, and
+deletes superseded state rows once the current version has a ready payload (until then they are the
+fallback above). A superseded row's cursor and `updated_at` are reset with its facts while its payload
+stays, so a collector rolled back to that version rebuilds before it publishes again. PostgreSQL computes medians and unique-request
 counts in SQL; local SQLite uses an exact Python median. The collector owns writes to the two new
 tables, created by Alembic revision `0028`. Run `python -m treg upgrade` before restarting the app.
 A refresh failure retains the last aggregate and its original timestamp; partial collection is never
@@ -512,7 +523,9 @@ at the first structural hit: the adapter supplies the contract's required fields
 does not mean verified deliverability; phone found does not mean a live line. A negative mailbox
 verification verdict is a successful answer. An async attempt that remains in progress, or whose
 foreground poll cannot prove a declared terminal state, is saved and shown as pending with its
-reservation and call reference. Pending stops only that entry's Waterfall; Battle may finish other
+reservation, task ID and call reference. Internal polls continue an admitted submission without
+consuming another endpoint allowance or depending on quota Redis; they still use ordinary call
+authorization and resource ownership checks. Pending stops only that entry's Waterfall; Battle may finish other
 explicitly selected providers concurrently. Only a declared terminal provider status permits the
 entry to advance. Terminal attempts show the actual settled charge, not the maximum reservation.
 Each step shows queued/running, pending, found/no match, error/timeout, skipped/not attempted,
@@ -624,8 +637,10 @@ page still disables autocapture and recording. Explicit events contain product m
   from the 90-day first-party cookie, distinct from UTMs/referrer; it is not historical attribution
   for visits before this tracking shipped.
 - `signup_completed` is emitted by email OTP and GitHub/Google provisioning **after commit and
-  only for a new User**. Returning sign-ins and failed proofs do not count. `signup_method` and
-  the allowlisted entry surface are included. The event uses the same email identity as calls.
+  only for a new User**. Returning sign-ins and failed proofs do not count. `signup_method`, the
+  allowlisted entry surface and `client` are included: `cli` for the terminal's email door,
+  `cli_browser` for a browser sign-in that completes a `treg login` (the `/login?cli=` page sends
+  `cli_pairing` with its email code; a social callback carries the pairing state), else `browser`. The event uses the same email identity as calls.
 - `arena_run_started` is emitted after a successful database claim, not for quotes or duplicate
   start requests. `arena_run_completed` is emitted after saving the initial run's terminal state.
   Both include run ID, capability, mode, entry count and team; completion includes `successful_call`

@@ -2845,6 +2845,23 @@ SERPER = OAuthProvider(
     probe_path="/account",
 )
 
+BRAVESEARCH = OAuthProvider(
+    service="bravesearch", display_name="Brave Search", auth_kind="key",
+    token_label="Search API key", token_placeholder="your Brave Search API key",
+    token_header="X-Subscription-Token", token_format="{secret}",
+    setup_url="https://api-dashboard.search.brave.com/app/keys",
+    setup_action_label="Get your Brave Search API key",
+    setup_steps=("Activate the Search plan in Brave's API dashboard.",
+                 "Create a Search API key and paste it here."),
+    setup_note="Brave has no key-readable balance endpoint. Connecting checks the key with one paid web search.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Search Brave's web, news, images, videos and places, and retrieve LLM context.",
+    base_url="https://api.search.brave.com/res",
+    docs_url="https://api-dashboard.search.brave.com/documentation",
+    probe_path="/v1/web/search?q=example.com&count=1",
+)
+
 LITESCRAPE = OAuthProvider(
     service="litescrape",
     display_name="Litescrape",
@@ -2981,6 +2998,10 @@ CRAWL4AI = OAuthProvider(
     base_url="https://api.crawl4ai.com",
     docs_url="https://api.crawl4ai.com/docs",
     probe_path="/v1/billing/balance",  # free: reads the credit balance, spends nothing
+    catalog_targets=(
+        # Lead (company and people search) answers from its own gate; the same key, same Bearer header.
+        CatalogTarget(host="gate.crawl4ai.com", base_url="https://gate.crawl4ai.com"),
+    ),
 )
 
 SPIDERCLOUD = OAuthProvider(
@@ -3642,6 +3663,32 @@ VILLAGE = OAuthProvider(
     probe_path="/v2/user/me",  # free; a bad token gets HTTP 401 (verified live 2026-10-07)
 )
 
+ATLY = OAuthProvider(
+    service="atly",
+    display_name="Atly",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Atly API key (atly_…)",
+    # Atly also accepts `Authorization: Bearer <key>`.
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://agentic-api.atly.com/v2/docs",
+    setup_action_label="Get a free Atly API key",
+    setup_steps=(
+        "POST https://agentic-api.atly.com/v2/keys with {\"email\": \"you@example.com\"}; the key comes back in the response.",
+        "Optional: POST https://agentic-api.atly.com/v2/keys/verify with {\"email\", \"code\"} (the 6-digit code emailed to you), sending the key as X-API-Key, to move that key to the verified daily quota.",
+    ),
+    setup_note="Every operation is free. A key is limited by a daily quota, larger once its email is verified.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Find places by intent (work friendly, gluten free, cappuccino) near a city or point, ranked by a score from reviews, with quotable review statements.",
+    base_url="https://agentic-api.atly.com/v2",
+    docs_url="https://agentic-api.atly.com/v2/docs",
+    probe_path="/keys/me",  # free, uses no quota; a bad key gets HTTP 401 (verified live 2026-10-27)
+)
+
 
 INFLUENCERSCLUB = OAuthProvider(
     service="influencersclub",
@@ -4150,11 +4197,13 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, PARALLEL, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
-        SCRAPEGRAPHAI, SERPER, LITESCRAPE, CLORO,
+        SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE,
+        # Places: intent-scored local search
+        ATLY,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,

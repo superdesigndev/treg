@@ -17,6 +17,7 @@ from .. import oauth_providers
 from .. import providers as _providers
 from ..application import call_usage, key_spend
 from ..application import enterprise_sso
+from ..application import home as home_app
 from ..application import images
 from ..application.onboard import demo as demo_seed
 from ..application import archive_erasure
@@ -39,6 +40,7 @@ from ..domain.governance.teams import _slugify
 from ..domain.identity.access import (
     AGENT_DOMAIN,
     PUBLIC_DEMO_DOMAIN,
+    NoTeam,
     Caller,
     _is_agent_email,
     _is_machine_email,
@@ -456,6 +458,15 @@ app = APIRouter()
 org_entry_router = app
 
 
+async def _visible_orgs(user_id: int, x_treg_token: str, x_treg_org: str, treg_session: str,
+                        db: AsyncSession) -> list[dict]:
+    """The caller's memberships, narrowed to its one team when it signed in through that team's SSO."""
+    orgs = await teams.list_user_orgs(user_id=user_id, x_treg_token=x_treg_token, x_treg_org=x_treg_org, db=db)
+    sso_org_id = ((identity_session.read_identity_claims(x_treg_token) or {}).get("sso_org_id")
+                  if x_treg_token else (identity_session.read_session_claims(treg_session) or {}).get("sso_org_id"))
+    return orgs if sso_org_id is None else [org for org in orgs if org["org_id"] == sso_org_id]
+
+
 @app.get("/orgs")
 async def list_orgs(
     user: User = Depends(require_identity),
@@ -464,19 +475,31 @@ async def list_orgs(
     treg_session: str = Cookie(default=""),
     db: AsyncSession = Depends(get_session),
 ) -> list[dict]:
-    orgs = await teams.list_user_orgs(
-        user_id=user.id,
-        x_treg_token=x_treg_token,
-        x_treg_org=x_treg_org,
-        db=db,
-    )
-    sso_org_id = ((identity_session.read_identity_claims(x_treg_token) or {}).get("sso_org_id")
-                  if x_treg_token else (identity_session.read_session_claims(treg_session) or {}).get("sso_org_id"))
-    if sso_org_id is not None:
-        orgs = [org for org in orgs if org["org_id"] == sso_org_id]
+    orgs = await _visible_orgs(user.id, x_treg_token, x_treg_org, treg_session, db)
     for o in orgs:  # the team's picture as a URL (None = initials); the key stays internal
         o["avatar_url"] = images.public_url(o.pop("avatar_key", None))
     return orgs
+
+
+@app.get("/home")
+async def home(
+    request: Request,
+    x_treg_token: str = Header(default=""),
+    x_treg_org: str = Header(default=""),
+    treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Bare `treg` in one round trip. A member (an agent key included) answers in full; a signed-in
+    user whose team does not resolve (none created or chosen yet, or one they have left) answers
+    with `team: null`; every other refusal (an invalid token, a suspended account or team, SSO) is
+    refused as everywhere else, so the CLI can say which."""
+    try:
+        caller = await require_member(request, x_treg_token, x_treg_org, treg_session, db)
+        user = caller.user
+    except NoTeam:
+        caller, user = None, await require_identity(request, x_treg_token, x_treg_org, treg_session, db)
+    count = len(await _visible_orgs(user.id, x_treg_token, x_treg_org, treg_session, db))
+    return await home_app.summary(db, user.email, caller, teams=count)
 
 
 app = APIRouter()

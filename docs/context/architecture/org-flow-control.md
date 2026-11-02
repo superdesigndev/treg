@@ -21,6 +21,11 @@ related:
 
 # Published organization pause, rate and concurrency admission
 
+Exact one-time org/endpoint call allowances use a separate
+[quota store](org-endpoint-quota.md). These temporary allowances allow calls on unknown Redis
+state, including previously restricted targets; they do not repair missing counters. The root-only,
+expiring and cached admission policies below do not apply to them.
+
 `org_flow_control.check` reads operator-published Redis snapshots at
 `routers.call.run_call_surface`, after trusted Caller/context resolution and before the optional
 Org rate/concurrency gate, money admission, body consumption or upstream work. It applies to the

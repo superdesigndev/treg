@@ -113,7 +113,7 @@ See [feedback](../architecture/feedback.md) for the contract and provenance boun
 answers `{url, token, content_type, size, expires_at}`; `GET /m/{token}` serves it publicly, no
 token, because the vendor's fetcher has none. 30 MB per file, 300 MB per org per 24 h, 7-day TTL,
 `image/*` / `audio/*` / `video/*` only, refused in the sandbox. Refusals: 415 type, 413 size, 429
-quota, 403 sandbox. Not metered. See [media](../architecture/media.md).
+quota, 403 sandbox, 503 when the object store cannot take or serve the bytes. Not metered. See [media](../architecture/media.md).
 
 ## Pictures and the showcase leaderboard
 
@@ -301,6 +301,14 @@ same platform key, `retry=1` when a burst-429 with a short `retry-after` was re-
 (`ops/capacity.md` § fair share). Informational; the status and body are the provider's. See
 `architecture/proxy-model.md` § Burst smoothing. A call that waited too long is refused instead with the
 typed `share_busy` 429 (`retry_after_s`, not charged); a routed job asks its next provider.
+On a bucket listed in `TREG_PROVIDER_RATE_ENFORCE`, a call that the shared rate window finds full
+(`ops/capacity.md` § part four) is refused before it is sent with the typed `provider_rate_limited`
+429: `detail` carries `provider`, `endpoint_id`, `retry_after_s` and a message, `Retry-After` the
+same seconds, `X-Treg-Error: 1`, not charged. With an enabled overflow route the same endpoint may be
+served through an aggregator instead (`X-Treg-Served-Via: overflow:<name>`, billed at its price). A
+routed job records the candidate as `skipped` without spending its error budget and asks the next
+one; when every candidate was skipped this way the routed call itself answers `provider_rate_limited`
+with the shortest `retry_after_s`.
 
 ## `X-Treg-Error` - whose refusal is this?
 `bootstrap_handlers._mark_treg_own_errors` tags treg's **own**
@@ -356,6 +364,8 @@ dependency-cached session remains usable because every session maker sets `expir
 primary admin handlers. `/admin/errors` and `/admin/daily` (per-day calls and per-job answers from
 `endpointdaystat`, optionally split out for one provider) use `get_admin_read_session` for their reads
 after the gate releases its connection: a configured reader, otherwise the original admin pool.
+Each of its statements is cut off after 3 seconds and answered as the report-busy 429, so a polled
+admin report cannot hold the read pool the dashboard reports share.
 It accepts replication lag for the report, never for authorization, and never retries a failed
 reader on the primary (see [super-admin](../architecture/super-admin.md)).
 Authz = org scoping + a role gate: `_can_manage` lets admin/owner manage any org resource, a member only
@@ -411,7 +421,13 @@ shared HTTP client. `/auth/logout` remains an HTTP-only cookie action.
   each org carries a `tool_count` - one grouped query - so the dashboard can land on the org with tools;
   its `active` flag follows `require_member`'s precedence - per-org membership token, else `X-Treg-Org`,
   else a team-pinned identity token's own `org` claim - so `treg login --token <pinned key>` lands on the
-  baked-in team instead of the caller's first membership);
+  baked-in team instead of the caller's first membership); `home` (`GET /home`) is bare `treg` in one
+  read: account, active team and role, the `/orgs` team count, balance (an auto top-up trigger, as the
+  balance route is), own tool names (`access.usable_tools`, the same filter `/tools` applies) and the
+  catalog's headline size (the catalog read off the event loop, the counts cached per loaded catalog). A member (an agent key included) answers in full; a signed-in user whose
+  team does not resolve (`require_member` raises the typed `access.NoTeam`: no team chosen, one
+  the user has left, or the bootstrap token before team setup) answers with
+  `team: null`; every other refusal of `require_member` is returned as it is;
   invites via `create_invite` (`POST /orgs/{id}/invites`, admin+) → one-time code (**emailed** via
   `email.send_invite`, best-effort, along with a separate inbox-only `email_token` sign-in link - the
   token is never in the JSON response; see the invite sign-in link below), `accept_invite`
@@ -1063,7 +1079,7 @@ if returning the hold itself fails, the money comes back when the hold is reaped
 | `GET /calls?days=&before_id=&limit=` | this team's calls, windowed and pageable. Analytics - **not** an invoice source |
 | `GET /activity?before=&limit=&api_key_id=` | the dashboard's feed: calls, server runs and local runs merged newest first, `{rows, next}`; each row says its `source` (`call`/`run`); pass `next` as `before` for the page after, null on the last |
 | `GET /calls/{call_ref}` | one call by its `X-Treg-Call-Id`, plus the ledger entries for it and its `async_task` view when it was a metered generation |
-| `GET /calls/{id}/result` | `id` is the row id or the `X-Treg-Call-Id`; what one call asked and what came back - the archive's copy; recorded catalog 2xx only (platform or own key), `stored: false` + `note` otherwise |
+| `GET /calls/{id}/result` | `id` is the row id or the `X-Treg-Call-Id`; what one call asked and what came back - the archive's copy; recorded catalog 2xx only (platform or own key), `stored: false` + `note` otherwise; a routed call lists the `children` that hold its answer |
 | `GET /orgs/{id}/usage/by-tag?key=&days=` | per-value spend for one tag key. **Money from the ledger**; admin+ |
 | `GET/PUT/DELETE /orgs/{id}/budgets[/{dim}/{val}]` | per-tag limits and blocking; admin+ |
 | `PATCH /orgs/{id}` | (admin+) rename the team: `name` and/or `slug`; the old slug stays an alias so existing keys keep working |

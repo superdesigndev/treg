@@ -60,7 +60,10 @@ async def test_token_bucket_spaces_a_burst_and_never_waits_past_the_cap():
 # ---- the call path ------------------------------------------------------------------------------
 
 def _relay_script(answers: list[tuple[int, tuple, bytes]], seen: list):
-    async def _relay(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False):
+    async def _relay(request, upstream_url, tool, secrets, client, drop_params=None,
+                     force_identity=False, before_outbound=None):
+        if before_outbound is not None:
+            await before_outbound()
         seen.append((request.method, tuple(request.query_items), time.monotonic()))
         status, headers, body = answers.pop(0)
         async def _s():

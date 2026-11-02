@@ -61,6 +61,14 @@ Streaming retains the root slot through response cleanup. Routing children do no
 additional root slots or rate tokens. Published null disables its limit; legacy environment
 maps have no effect.
 
+The separate [exact org/endpoint allowance](org-endpoint-quota.md) runs inside the shared call
+application after canonical resolution and local/money admission, immediately before returning
+a cache hit or sending a direct/overflow request. It counts logical admissions across credential
+tiers and releases unused holds on refusal. An exhausted child may be skipped for another routed
+candidate. Redis uncertainty allows calls, including previously restricted targets, without
+repairing counters; operators can set limits again after loss. Optional verification preserves
+the find result on a known refusal.
+
 Named catalog calls with authorization metadata select the provider and grant method before
 comparing hosts. This separates Facebook and Instagram tools sharing `graph.facebook.com`;
 the resulting tool enters the same relay without provider-specific relay logic.
@@ -164,6 +172,12 @@ Faithfulness mechanics inside `relay()`:
   to its phone reveals for a day. A team's own key relays the caller's header verbatim. The
   shared client (`app.state.http`), the async-task poller and the capacity collectors send the same
   header by default, so treg's own requests never go out as `python-httpx`.
+- on the platform tier only, `relay.tag_shared_client` then sets the header the provider file names in
+  `client_header` to `relay.shared_client_code`: `t_` + the first 24 hex characters of
+  HMAC-SHA256(`TREG_CLIENT_ID_SECRET`, provider + team id). The provider can split usage per customer
+  on treg's account without learning the team, and two providers' codes for one team differ. A value
+  the caller sent under that name is replaced. Unset secret or no declaration: nothing changes. A
+  team's own key relays the caller's headers verbatim.
 - query as the router-captured ordered pairs in `UpstreamRequest.query_items` (keeps duplicate keys
   like `?tag=a&tag=b`), merged onto the upstream URL with `copy_add_param` rather than passed as
   `params=`: httpx replaces a URL's existing query whenever `params` is given, even empty, which
@@ -341,7 +355,9 @@ After credential refresh and relay, `_audit` records the attempt and mirrors it 
 `_tool_called_props` / `analytics.capture`. Provider identity is the catalog provider or the
 own tool's upstream host. Analytics includes outcome, status, timing, cost, call reference,
 capacity/cache/smoothing signals and user-agent attribution (plus the MCP host for a call made
-through either MCP surface), never params or bodies.
+through either MCP surface), and from the CLI its release (`client_version`), hashed session
+(`session`) and agent label (`agent`), each from its `X-Treg-*` header, truncated, null when
+absent. Never params or bodies.
 
 `domain.catalog.results.classify` shares verified hit/miss rules between business-hit telemetry
 and cache admission. Found means `hit=true`, explicit empty means false, and errors/unknown
@@ -432,7 +448,9 @@ child's reserve. The parent - not each child - decides whether the caller pays, 
 closes every child's hold exactly once with `settle.close_deferred(charge=…)`: `charge=True` settles
 each billable child as its own settle would have, `charge=False` releases all of them, because a
 routed call that fails charges the caller nothing. A crash before `close_deferred` runs leaves the
-holds to the reaper, which releases in the caller's favour. The parent only assembles
+holds to the reaper, which releases in the caller's favour. Each child's answer is read by
+`route.child_outcome` (declared miss, not found, rejected, error, adapter error, miss or hit),
+which the replay engine also calls (architecture/replay.md). The parent only assembles
 `{output, raw, _treg}` and owns the idempotency label.
 
 A routed call whose outcome is still pending (`202` with `X-Treg-Route-Outcome: pending`) leaves
@@ -549,7 +567,7 @@ Many callers share one platform key, so tier 4 makes its own bursts: leadsforge 
 calls, crustdata 34%, with `retry-after` headers nobody downstream could act on. Two bounded
 mechanisms in `service._execute_call`, both **after the DB phase ended and before the relay** (the
 pool-discipline rule holds through the wait; proven by test), both platform-tier only, neither ever a
-refusal:
+refusal (the shared window below is the refusing gate):
 
 1. **Spacer** - `infra/upstream/limiter.py`: one call per `window_s / limit` per provider (a token
    bucket of capacity one - a burst of `limit` at t=0 is legal for a classic bucket and exactly what a
@@ -561,13 +579,16 @@ refusal:
    differs from its provider's is its own bucket (`policy._ENDPOINT_RATE_LIMITS`, read through
    `view.rate_bucket`); it replaces the provider's limit for that route and does not draw from the
    provider's bucket. Each account other than the primary has its own allowance, so its own
-   bucket (`<key>#<label>`). In-process on purpose: a second replica
-   doubles the effective rate, and the `rate_pressure` alert (step C) is the answer to that, not a
-   shared counter on the request path.
+   bucket (`<key>#<label>`). The spacer stays in-process because its wait needs no round trip, so
+   each replica adds its own allowance. The shared window over the same buckets
+   ([capacity](../ops/capacity.md) § part four) holds the declared rate across replicas: it
+   observes every bucket and refuses, with the typed `provider_rate_limited` 429, only on the
+   buckets listed in `TREG_PROVIDER_RATE_ENFORCE`.
 2. **One bounded `retry-after` re-send** - on a tier-4 **429** classified `burst` with
    `retry-after ≤ 5 s` (`SMOOTHING_RETRY_MAX_S`), for a **body-less GET/HEAD only**: close the first
    response, sleep, send the identical `UpstreamRequest` once more on the same hold, settle on the
-   second answer. A quota-429 (lusha "Daily", hunter "per billing period", any `retry-after` > 60 s), an
+   second answer. The re-send asks the shared rate window after the sleep; on an enforced bucket
+   with a full window it is not sent and the first 429 stands. A quota-429 (lusha "Daily", hunter "per billing period", any `retry-after` > 60 s), an
    unknown 429, a POST, or a second 429 are relayed as is. The "no retries" rule for 401/402/5xx stands.
 
 Both are visible: `X-Treg-Smoothed: wait=<ms>` and/or `retry=1` on the response (metered exit only).
@@ -577,8 +598,9 @@ change kept out of this behaviour PR.
 ## Overflow - the child cycle (plan step E; off by default)
 
 **Overflow = the same vendor endpoint, another account of ours.** When a tier-4 call fails on treg's
-own key for a treg-side reason - a balance/quota signature, a burst-429 smoothing could not absorb -
-and the worker has an enabled `OverflowRoute` for the endpoint, `application.call.overflow.
+own key for a treg-side reason - a balance/quota signature, a burst-429 smoothing could not absorb,
+or treg's own rate window refusing it before it was sent (`provider_rate_limited`, forced trigger
+`burst`) - and the worker has an enabled `OverflowRoute` for the endpoint, `application.call.overflow.
 maybe_overflow` runs a **child cycle** after the primary's settle released its hold:
 
 1. Route from the in-process route view (`domain.capacity.routes_view`, Orthogonal first), skipping

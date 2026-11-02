@@ -73,6 +73,8 @@ os.environ["TREG_WORKOS_CLIENT_ID"] = ""
 os.environ["TREG_WORKOS_WEBHOOK_SECRET"] = ""
 os.environ["TREG_PUBLIC_URL"] = "https://treg.to"
 os.environ["TREG_OVERFLOW_MODE"] = "off"
+os.environ["TREG_PROVIDER_RATE_MODE"] = "off"
+os.environ["TREG_PROVIDER_RATE_ENFORCE"] = ""
 os.environ["TREG_OVERFLOW_KEY_ORTHOGONAL"] = ""
 os.environ["TREG_OVERFLOW_KEY_MONID"] = ""
 # A merged local .env can carry newly added funded platform keys that the fixed list below has not
@@ -86,6 +88,8 @@ for _platform_name in _platform_names:
     os.environ[_platform_name] = ""
 # Never let a developer's Redis URL or rollout settings turn tests into shared-store traffic.
 os.environ["TREG_KV_URL"] = ""
+os.environ["TREG_ORG_ENDPOINT_QUOTA_ENABLED"] = "false"
+os.environ["TREG_ORG_ENDPOINT_QUOTA_REDIS_URL"] = ""
 os.environ["TREG_MONEY_ADMISSION_ENABLED"] = "false"
 os.environ["TREG_MONEY_ADMISSION_ORG_IDS"] = "[]"
 os.environ["TREG_ORG_FLOW_CONTROL_ENABLED"] = "false"
@@ -120,7 +124,7 @@ for _k in (
     "PLATFORM_KEY_FINANCIALDATASETS",
     "PLATFORM_KEY_ADYNTEL", "PLATFORM_EMAIL_ADYNTEL",
     "PLATFORM_KEY_KEENABLE", "PLATFORM_KEY_OLOSTEP",
-    "PLATFORM_KEY_SEARCH1API",
+    "PLATFORM_KEY_SEARCH1API", "PLATFORM_KEY_BRAVESEARCH",
 ):
     os.environ[f"TREG_{_k}"] = ""  # the test upstream is an in-process ASGI transport, not real DNS
 
@@ -135,6 +139,7 @@ from treg import archive  # noqa: E402
 from treg.config import get_settings  # noqa: E402
 from treg.infra.db import reset_db  # noqa: E402
 from treg.domain.identity import api_keys as managed_keys  # noqa: E402
+from treg.application import media as media_app  # noqa: E402
 
 
 # The OTP-start + sandbox throttles (and the OTP codes) now live in the DB's `ephemeral` table, not in
@@ -512,6 +517,8 @@ async def drain_background_writes():
     # throttle claim left over from one test would land on, or suppress, the next test's key.
     await managed_keys.drain_last_used()
     managed_keys._last_used_claims.clear()
+    # And `treg host`'s background object deleter.
+    await media_app.drain()
 
 
 @pytest.fixture(autouse=True)

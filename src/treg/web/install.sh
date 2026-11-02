@@ -10,11 +10,17 @@ BASE="{BASE}"
 # With it, this installs the CLI + skill AND signs in + registers the MCP server into every supported
 # agent, header-authed — no browser. The key bakes in the team, so nothing else is needed. Without a
 # token, it installs the CLI + skill and prints the sign-in step (the original behavior, unchanged).
+#
+# Only the treg skill installs by default. The registry's other skills are opt-in, named with
+#   curl -fsSL {BASE}/install.sh | sh -s -- --skills lead-signals,recruit      (or: --skills all)
 TOKEN="${TREG_TOKEN:-}"
+SKILLS=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --token) TOKEN="$2"; shift 2 ;;
+    --token) TOKEN="${2:-}"; [ $# -gt 1 ] && shift; shift ;;
     --token=*) TOKEN="${1#--token=}"; shift ;;
+    --skills) SKILLS="${2:-}"; [ $# -gt 1 ] && shift; shift ;;
+    --skills=*) SKILLS="${1#--skills=}"; shift ;;
     *) shift ;;
   esac
 done
@@ -70,10 +76,19 @@ fi
 # point the CLI at this server (falls back silently on older CLIs)
 treg config --base-url "$BASE" >/dev/null 2>&1 || true
 
+# Fetched as {BASE}/i/<code>: leave the code for the next `treg login`. Empty on the plain URL.
+AD_LINK="{AD_LINK}"
+if [ -n "$AD_LINK" ]; then
+  mkdir -p "$HOME/.treg" 2>/dev/null && printf '%s\n' "$AD_LINK" > "$HOME/.treg/ad-link" 2>/dev/null || true
+fi
+
 # install the official treg skill into every detected agent so it knows how to use treg.
 # `treg skill bootstrap` fans out across all supported agents (Claude Code, Cursor, Codex, Gemini,
-# Copilot, OpenCode, Windsurf, …). Fall back to the Claude-only drop for older CLIs without it.
-if treg skill bootstrap 2>/dev/null; then
+# Copilot, OpenCode, Windsurf, …). A CLI too old for `--skills` still installs the treg skill
+# without it; one too old for bootstrap gets the Claude-only drop.
+if [ -n "$SKILLS" ] && treg skill bootstrap --skills "$SKILLS" 2>/dev/null; then
+  :
+elif treg skill bootstrap 2>/dev/null; then
   :
 else
   SKILL_DIR="$HOME/.claude/skills/treg"
