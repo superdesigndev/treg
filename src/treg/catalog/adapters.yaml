@@ -2964,6 +2964,9 @@ adapters:
           about: output.data.about, linkedin_url: output.data.url}
     miss: "output.found == false"
   crawl4ai.google.serp.organic:
+    # Destination URLs are often domain/path-prefix, breadcrumb-derived, empty, or google.com/goto —
+    # evidence only, not a routed google.serp.organic child. Fixture kept; callable by id.
+    route: false
     accepts: [[q]]
     in: {q: queryParams.q}
     in_expr: {queryParams.country: "lower(country)", queryParams.language: "lower(language)", queryParams.num: "at_most(ceil_to(limit, 10), 100)",
@@ -3179,6 +3182,9 @@ adapters:
     out: {results: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
   crawl4ai.web.search:
+    # Destination URLs are often domain/path-prefix, breadcrumb-derived, empty, or google.com/goto —
+    # evidence only, not a routed web.search child. Fixture kept; callable by id.
+    route: false
     accepts: [[q]]
     in: {q: queryParams.q}
     out: {results: results, count: "len(results)"}

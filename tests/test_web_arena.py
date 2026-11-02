@@ -255,8 +255,9 @@ def test_public_task_previews_show_verified_search_providers(monkeypatch):
     try:
         tasks = {row["id"]: row for row in app.tasks()}
         search = {row["provider"] for row in tasks["search"]["provider_previews"]}
-        assert {"crawl4ai", "exa", "firecrawl", "tavily", "tinyfish", "serper", "spidercloud", "octen",
+        assert {"exa", "firecrawl", "tavily", "tinyfish", "serper", "spidercloud", "octen",
                 "parallel"} <= search
+        assert "crawl4ai" not in search
         assert "bravesearch" not in search
         fetch = {row["endpoint_id"] for row in tasks["fetch"]["provider_previews"]}
         assert "parallel.web.extract" in fetch
@@ -530,34 +531,17 @@ async def test_tinyfish_first_page_is_capped_for_comparison(clients, monkeypatch
         get_settings.cache_clear()
 
 
-async def test_crawl4ai_first_page_is_capped_for_comparison(clients, monkeypatch):
+async def test_crawl4ai_search_is_not_offered_in_arena_quotes(clients, monkeypatch):
+    # crawl4ai.web.search is route:false (destination URL fidelity); arena uses candidates_for.
     monkeypatch.setenv("TREG_WEB_ARENA_ENABLED", "true")
     monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "TEST-CRAWL4AI")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai")
     get_settings.cache_clear()
-    seen = []
-    rows = [{"url": f"https://example.com/{index}", "title": str(index)} for index in range(11)]
-    monkeypatch.setattr(service, "relay", _relay_by_provider({"crawl4ai": [(200, {
-        "results": rows, "n": 11})]}, seen))
     try:
         response = await clients.post("/web-arena/api/quotes", json={
             "task": "search", "value": "example query", "mode": "battle",
             "providers": ["crawl4ai"], "jev": False})
-        assert response.status_code == 200, response.text
-        quote = response.json()
-        assert quote["providers"][0]["endpoint_id"] == "crawl4ai.web.search"
-        started = await clients.post(f"/web-arena/api/runs/{quote['id']}/start")
-        assert started.status_code == 200, started.text
-        worker = app._owners.get(quote["id"])
-        if worker:
-            await asyncio.wait_for(asyncio.shield(worker), 15)
-        finished = await clients.get(f"/web-arena/api/runs/{quote['id']}")
-        assert finished.status_code == 200, finished.text
-        output = finished.json()["attempts"][0]["output"]
-        assert output["results"] == rows[:10]
-        assert output["count"] == 10
-        assert len(seen) == 1
-        assert seen[0][2] == {"q": "example query"}
+        assert response.status_code == 409, response.text
     finally:
         get_settings.cache_clear()
 
@@ -619,7 +603,7 @@ async def test_news_search_quotes_platform_providers_with_news_parameters(client
 
 
 @pytest.mark.parametrize(("task", "other_provider"), [
-    ("search", "crawl4ai"),
+    ("search", "firecrawl"),
     ("news", "tinyfish"),
 ])
 async def test_brave_is_not_offered_in_arena_quote(clients, monkeypatch, task, other_provider):

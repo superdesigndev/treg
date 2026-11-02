@@ -34,8 +34,7 @@ _owners: dict[str, asyncio.Task] = {}
 MAX_RESULT_BYTES = 256_000
 APIFY_MAPS_RESULT_BYTES = 800_000
 RUN_SECONDS = 180
-FIXED_PAGE_SEARCH = {"branddev.web.search", "tinyfish.web.search", "tinyfish.web.search.news",
-                     "crawl4ai.web.search"}
+FIXED_PAGE_SEARCH = {"branddev.web.search", "tinyfish.web.search", "tinyfish.web.search.news"}
 NEWS_ENDPOINTS = {"tinyfish.web.search.news", "search1api.web.news", "exa.web.search.news",
                   "anyapi.google.serp.news", "serper.google.serp.news", "cloro.google.serp.news",
                   "serpapi.x.google-news", "dataforseo.x.serp-google-news-live-advanced",
@@ -348,8 +347,7 @@ async def _run(run_id, task, mode, payload, snapshot, client, client_ip):
                     outcome, output = "error", {}
                 else:
                     output = ad.from_upstream(doc)
-                    if (a["endpoint_id"] in {"tinyfish.web.search", "tinyfish.web.search.news",
-                                               "crawl4ai.web.search"} or
+                    if (a["endpoint_id"] in {"tinyfish.web.search", "tinyfish.web.search.news"} or
                             task in {"news", "papers", "youtube", "maps"} or
                             a["endpoint_id"] in UNBOUNDED_SITEMAP) and isinstance(output.get("results"), list):
                         # Compare only the requested first page when upstream cannot accept a count.

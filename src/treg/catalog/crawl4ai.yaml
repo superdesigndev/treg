@@ -154,7 +154,7 @@ endpoints:
     input:
       queryParams:
         q: {type: string, required: true, note: "max 512 characters", example: "rust web crawler"}
-      note: "For follow-up questions, related queries, an entity card, videos and news, use crawl4ai.web.search.rich."
+      note: "For follow-up questions, related queries, an entity card, videos and news, use crawl4ai.web.search.rich. Result url values may be a domain, path prefix, breadcrumb reconstruction, empty, or an opaque google.com/goto form rather than the page the title describes — treat them as display hints, not guaranteed landing URLs."
     test_request: {queryParams: {q: "rust web crawler"}}
     cost:
       type: per_call
@@ -354,7 +354,7 @@ endpoints:
     added: '2026-10-09'
     docs_url: https://crawl4ai.com/llms.txt
     example_response: examples/crawl4ai.google.serp.organic.json
-    note: "The answer's source names the path that answered: gg is Google fetched directly and carries ai_overview when Google showed one; gs is Crawl4AI's fallback and never carries ai_overview. source=google always answers from gg (a free 503 when Google cannot be reached): 9 of 10 AI-Overview questions returned it, 0.7 to 3 s, observed live 2026-10-13. Routed treg.google.serp.organic sends source=google when the caller sets ai_overview true."
+    note: "The answer's source names the path that answered: gg is Google fetched directly and carries ai_overview when Google showed one; gs is Crawl4AI's fallback and never carries ai_overview. source=google always answers from gg (a free 503 when Google cannot be reached): 9 of 10 AI-Overview questions returned it, 0.7 to 3 s, observed live 2026-10-13. Routed treg.google.serp.organic sends source=google when the caller sets ai_overview true. Result url values may be a domain, path prefix, breadcrumb reconstruction, empty, or an opaque google.com/goto form rather than the page the title describes — treat them as display hints, not guaranteed landing URLs."
 
   # --- Many URLs ---------------------------------------------------------------------------------
   - id: crawl4ai.web.extract.batch
