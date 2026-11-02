@@ -15,8 +15,7 @@
 #
 # `kind: treg_shared_plan` marks a rate TREG SET, not one the vendor published. It exists for
 # flat-fee providers (a monthly subscription with a rate limit or unlimited calls), where no
-# per-call vendor price can exist. The full pricing ladder, the honesty rules and the monthly
-# review live in docs/SHARED-PLAN-PRICING-PLAN.md; the short form:
+# per-call vendor price can exist. The pricing ladder:
 #   real credits -> divide (the normal entries above). monthly request cap -> fee / cap, also a
 #   normal entry. rate limit only -> fee / theoretical max is the FLOOR, the rate sits above it
 #   at a stated break-even. unlimited -> a treg rate with the break-even printed.

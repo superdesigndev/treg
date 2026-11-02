@@ -350,7 +350,7 @@ async def catalog_search(request: Request, q: str = "", limit: int = 25,
     ranked, total, tie_truncated = catalog_store.rank_band(q, cat, min(100, limit * 4))
     stats = await _observed_or_empty(observations, [ep["id"] for ep, _ in ranked])
     ranked = catalog_store.rerank(ranked, stats, cat)
-    # Listed hub tools (docs/hub-listing-decisions.md): scored with the same tokens and idf, merged
+    # Listed hub tools: scored with the same tokens and idf, merged
     # by score with no boost; their evidence is the 30-day ok rate of runs by others.
     from ..application import hub as hub_app
     from .hub_gate import reader
@@ -385,7 +385,7 @@ async def catalog_search(request: Request, q: str = "", limit: int = 25,
     else:
         top = results[0]
         # A hub tool has no catalog row and no provider key: its call line is the tool id, and the
-        # maker's own keys serve its steps (docs/hub-listing-decisions.md).
+        # maker's own keys serve its steps.
         run_hint = (f"treg call {top['id']} --data '{{...}}'   # run it — the maker's keys serve it"
                     if top.get("kind") == "hub"
                     else _run_hint(cat.by_id.get(top['id'], ranked[0][0])))
@@ -647,7 +647,7 @@ async def catalog_endpoint(
         except (OSError, ValueError):
             example = None
     # What the calls we have already served say about this endpoint and its alternatives — the half
-    # of "compare providers" that only treg can answer (see endpoint_stats + CAPABILITY-CHOICE-PLAN).
+    # of "compare providers" that only treg can answer (see endpoint_stats).
     # Attached to the SAME response because the choice is made here; a second round-trip to compare
     # reliability is a round-trip an agent will skip.
     observed_ids = [endpoint_id] + [s["id"] for s in siblings]
@@ -658,8 +658,7 @@ async def catalog_endpoint(
     verdicts = await _verdicts_or_empty()
     view = _with_reviews(view | {"observed": stats.get(endpoint_id)} | overflow, verdicts)
     siblings = [_with_reviews(s | {"observed": stats.get(s["id"])}, verdicts, quotes=False) for s in siblings]
-    # Hub tools treg approved for this job sit beside its providers (docs/hub-listing-decisions.md
-    # round 3), with a seeded success rate while they are new. Shown for comparison only: they are
+    # Hub tools treg approved for this job sit beside its providers, with a seeded success rate while they are new. Shown for comparison only: they are
     # never a routed child (AGENTS.md non-negotiable 4).
     from ..application import hub as hub_app
     from .hub_gate import reader
@@ -756,7 +755,7 @@ async def _hub_endpoint_view(endpoint_id: str, db: AsyncSession,
                              *, org_slug: str | None = None, email: str | None = None) -> dict | None:
     """The public contract of one hub tool, in the shape `treg catalog get` and `catalog_get`
     already print: `endpoint` (with `kind: "hub"`), `provider` (the maker's team). Hides the
-    script, the maker's tools and every key (docs/HUB-DECISIONS.md round 4 q4, round 5 q7)."""
+    script, the maker's tools and every key."""
     from ..application import hub as hub_app
     from ..domain.hub import PAY_NOTE as HUB_PAY_NOTE, fees_label as hub_fees_label, price_label as hub_price_label
     from ..models import HubListing, Org

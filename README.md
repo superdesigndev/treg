@@ -471,8 +471,7 @@ treg/
 │   └── web/             # dashboard, landing, tutorial, llms.txt, skill.md, install.sh
 ├── tests/               # pytest suite (CI + local default: pytest-xdist -n auto)
 ├── docs/
-│   ├── context/         # design fragments (codemap system) + generated index
-│   └── ONBOARDING.md    # first-time bootstrap
+│   └── context/         # design fragments (codemap system) + generated index
 ├── USAGE.md             # full treg CLI reference
 └── pyproject.toml
 ```

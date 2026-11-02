@@ -1,6 +1,6 @@
 """Team policy on WHICH provider serves a job.
 
-The agent chooses (see docs/CAPABILITY-CHOICE-PLAN.md) — a pin is where the team's decision stops
+The agent chooses — a pin is where the team's decision stops
 that freedom. These pin the parts that are judgement, not plumbing: that a pin is a GATE rather than
 a hint, that a typo cannot silently block a real job, and that a refusal tells the caller what to do
 instead.

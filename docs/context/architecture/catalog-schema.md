@@ -53,17 +53,11 @@ other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
   tells them apart. Nothing in the call runtime reads the v2 keys yet, so the validator refuses
   any v2 row until the v2 settlement order ships; until then the catalog stays in today's spelling.
 
-The v2 settlement order, the outcome classification and the first v2 rows ship next; until then no
-v2 row may ship. A resolved v2 row still carries pydantic objects (`Price`, `Bill`, predicate
-leaves) where served readers expect plain dicts (`.get` on `expect` and `miss`, `json.dumps` of the
-row), so v2 rows need a plain-dict served representation before the validator's guard is lifted.
+A resolved v2 row still carries pydantic objects (`Price`, `Bill`, predicate leaves) where served
+readers expect plain dicts (`.get` on `expect` and `miss`, `json.dumps` of the row), so v2 rows need
+a plain-dict served representation before the validator's guard is lifted.
 
-When a pull request changes loader, schema or validator source (anything under
-`src/treg/domain/catalog/`, `scripts/catalog_validate.py`, `scripts/catalog_dump.py` or the Replay
-workflow), the Replay job dumps the loaded catalog (`scripts/catalog_dump.py`: every field of the
-loaded `Catalog` and each row's cost view, sorted keys) on the base and on the merge result and
-fails on any byte difference, naming the first differing path. A pure catalog data pull request
-skips the check and owes it nothing.
+The byte-identical claim is checked by the catalog dump in [replay](replay.md).
 
 v2 paths are one syntax (`response.tasks.0.status_code`, `body.limit`, `query.q`, `*`, `[k=v]`)
 and one predicate (`{path, op, value}`, a list for all, `{any: [...]}`), parsed by
@@ -92,8 +86,8 @@ pull request that adds an entry the base branch lacks. Fix the data; never grow 
 - `schema.Manifest` models a provider manifest (`src/treg/catalog/providers/<slug>.yaml`). The
   validator checks any that exist; the loader reads none yet.
 - A v2 row names a plugin as `<module>.<function>`; `domain/plugins` resolves it by import from the
-  row's own provider module (the slug with `-` as `_`). The package is empty, and an import-linter
-  contract keeps it free of I/O.
-- `uv run python scripts/catalog_schema.py OUT_DIR` writes the JSON Schemas for editors; every field
-  carries `x-kind` (provider fact, account term, deployment switch, catalog curation) and credential
-  placement carries `x-gated`.
+  row's own provider module (the slug with `-` as `_`); it may do no I/O
+  ([import-boundaries](import-boundaries.md)).
+- In the editor JSON Schemas (`scripts/catalog_schema.py`) every field carries `x-kind` (provider
+  fact, account term, deployment switch, catalog curation) and credential placement carries
+  `x-gated`.

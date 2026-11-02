@@ -1,4 +1,4 @@
-"""Step E of docs/PROVIDER-CAPACITY-PLAN.md — the overflow child cycle: the same vendor endpoint
+"""Provider capacity: the overflow child cycle: the same vendor endpoint
 served through a treg-owned aggregator account when treg's own account fails a tier-4 call.
 Off by default; shadow mode never changes the caller's answer."""
 
@@ -625,7 +625,7 @@ async def test_child_with_no_reported_cost_settles_at_the_aggregator_reserve(
     assert 3_000 != EP_MICRO, "the fixture must price the aggregator differently from direct"
 
 
-# --- Apollo: "out of credits" is a 422, not a 402 (ops/capacity.md, 2026-09-01) --------------
+# --- Apollo: "out of credits" is a 422, not a 402 -----------------------------------------------
 
 APOLLO_EP = "apollo.people.enrich"           # POST /people/match, 1 credit = $0.026 per hit
 APOLLO_PATH = "/people/match"

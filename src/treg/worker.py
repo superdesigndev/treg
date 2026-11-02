@@ -264,7 +264,7 @@ async def _asynctasks_settle(args) -> int:
 
 
 async def _hub_check(args) -> int:
-    """The scheduled health check (docs/HUB-DECISIONS.md round 2 q8; architecture/hub.md): every
+    """The scheduled health check (docs/context/architecture/hub.md): every
     live tool's newest version runs its check.json once as its maker. The verdict lands on the
     row; health is derived from the last three runs. Cron it every 6 hours."""
     import httpx
