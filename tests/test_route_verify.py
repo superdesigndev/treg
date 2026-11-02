@@ -272,6 +272,8 @@ async def test_a_check_still_verifying_is_pending_and_left_to_the_worker(clients
     call_id = r.headers["X-Treg-Call-Id"]
     assert v["verdict"] == "unknown" and v["checked"] is True and v["pending"] is True
     assert v["call_id"] == f"{call_id}:v:r0" and v["served_by"] == "bounceban.people.email.verify"
+    assert v["async"]["task_id"] == "bb-1"
+    assert v["async"]["poll"]["endpoint"] == "bounceban.people.email.verify.status"
     async with session_maker() as db:
         [task] = (await db.execute(select(AsyncTaskRecord))).scalars().all()
     assert task.status == "pending" and v["cost_micro"] == task.reserved_micro

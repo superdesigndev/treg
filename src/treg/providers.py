@@ -427,8 +427,7 @@ def classify_cli(entry: dict, *, installed: bool, secret_present: bool, logged_i
     (is the `bin` installed? is its credential env var set? is a login config file present?). PURE — no
     filesystem/network here, so it's fully unit-testable. Returns a decision dict:
       {status, tier?, env?, action?, reason?} where status ∈
-      ready | needs_key | needs_login | unsupported | not_installed, and tier ∈ server | local.
-    See docs/CLI-AUTOIMPORT-PLAN.md §5."""
+      ready | needs_key | needs_login | unsupported | not_installed, and tier ∈ server | local."""
     cli = entry.get("cli") or {}
     mech = cli.get("auth_mechanism", "env")
     if cli.get("unsupported") or mech == "device":

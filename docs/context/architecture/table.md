@@ -1,6 +1,6 @@
 ---
-title: The table layer — one call, answered as rows and columns (`/table/`)
-status: built, behind `table_enabled` (TREG_TABLE_ENABLED), off by default
+title: The table layer - one call, answered as rows and columns (`/table/`)
+status: shipped
 sources:
   - src/treg/domain/table/__init__.py
   - src/treg/application/table.py
@@ -30,17 +30,12 @@ must return the provider's answer unchanged (AGENTS.md, non-negotiable 4).
 
 ## One call road, two endings
 
-`routers.call.run_call_surface(rest, request, caller, prefix=, finish=, headers=)` is the whole call
-road for every call surface: the caller's identity stashed for the refusal fallback, the raw path
-rebuilt from `raw_path` after `prefix`, the `CallInput`, `create_call_context`, `execute_call`, and
-the same bookkeeping on every exit (audit row, idempotency-claim release, `X-Treg-Call-Id`).
-`call_tool` passes `_relay_answer` (stream the answer unchanged, attach the async descriptor and the
-review invitation); `table_tool` passes `_table_answer`. `finish` runs inside the same `try`, so a
-fault while converting is audited and released like any other.
+`routers.call.run_call_surface` is the whole call road for every call surface; `call_tool` and
+`table_tool` differ only in the `finish` they pass. `finish` runs inside the same `try` as the call,
+so a fault while converting is audited and its idempotency claim released like any other.
 
 `table_tool` passes `headers=application.table.plain_headers(...)`: the caller's headers with
-`Accept-Encoding: identity`, because the table must parse the body (the hub runner asks its steps the
-same way). A provider that answers gzip or deflate anyway is decoded (`_decoded`); any other encoding
+`Accept-Encoding: identity`, because the table must parse the body. A provider that answers gzip or deflate anyway is decoded (`_decoded`); any other encoding
 reads as a `raw` table.
 
 `/table/` is in `call_surface._CALL_SURFACES` (surface label `table`), so its refusals get
@@ -54,16 +49,16 @@ Nothing here holds, charges or refunds. `execute_call` returns with the call alr
 cost is on the answer as `X-Treg-Cost-Micro`), so a conversion that fails can only make the view
 `raw`: it can never charge twice or leave a hold open. The table answer carries the call's own
 `X-Treg-*` headers (call id, cost, served-by, `X-Treg-Idempotent-Replay`), and the same
-`Idempotency-Key` returns the same table for nothing. `application.table.read_answer` reads at most
-`MAX_TABLE_BYTES` (8 MiB); a bigger answer is `raw`, `truncated: true`, cut to 64 KB.
+`Idempotency-Key` returns the same table for nothing. An answer over `MAX_TABLE_BYTES` is `raw` and
+`truncated: true`.
 
 An upstream non-2xx keeps its status and answers `{error: "upstream_error", upstream_status,
-body_excerpt}` (the first 2 KB). A treg refusal (`CallFailure`) is raised exactly as on `/call/`.
+body_excerpt}`. A treg refusal (`CallFailure`) is raised exactly as on `/call/`.
 
 ## The flag
 
 `application.table.enabled_for(slug, email)`: `table_enabled`, then `table_teams` / `table_users`
-(either list lets a caller in; both empty means every team), the same pattern as the hub. A caller
+(either list lets a caller in; both empty means every team); off by default. A caller
 outside answers a plain 404 **returned, not raised**: a raised 404 on a call surface is stamped and
 audited as a refusal, and with the flag off the route must leave no row. `llms.txt` and `skill.md`
 do not mention `/table/` while the flag is off.
@@ -77,11 +72,9 @@ per Apps Script project), and it exists only while `table_enabled` is on and a U
 `_client_resource` gives it that resource and nothing else, and refuses that resource to every other
 client, so an MCP token never works here and this token never works on MCP.
 
-Two owner decisions (2026-09-26) shape it:
-
 - **The token works only on the table routes.** `routers.table.table_caller` accepts `Authorization:
   Bearer` on `/table/*`, `/table-columns/*` and `/table-account`, checks the audience, and presents
-  the person to `require_member` as a two-minute identity, the way MCP exchanges its own token
+  the person to `require_member` as a short-lived identity, the way MCP exchanges its own token
   (`mcp._internal_auth`). Every other route ignores a Bearer header, so the token gets 401 there. The
   catalog search and endpoint pages need no key. The `Authorization` header is removed before the
   call (`plain_headers(drop_authorization=True)`): it is treg's token, not the provider's.
@@ -89,12 +82,10 @@ Two owner decisions (2026-09-26) shape it:
   has no team picker; the token carries the person's first team as a default, and each request picks
   a team with `X-Treg-Org`, checked by `require_member` (membership, role, suspension) every time. A
   refresh whose default team the person left moves the default to another of their teams; only
-  leaving every team ends the grant. `GET /table-account` lists `{email, active_team, teams: [{org_id,
-  slug, name, role, balance_micro}]}`: every team the OAuth sign-in may use (respecting SSO scope
-  and required SSO), or the key's one team with a team key.
+  leaving every team ends the grant. `GET /table-account` lists every team the OAuth sign-in may use
+  (respecting SSO scope and required SSO), or the key's one team with a team key.
 
-Lifetimes are the MCP ones: access `ACCESS_TTL_SECONDS` (1 hour), refresh `REFRESH_TTL_S` (30 days,
-renewed at each refresh, rotated, replay revokes the family). Sign-out is `POST /oauth/revoke`.
+Lifetimes and refresh rotation are the MCP ones (`mcp_oauth.ACCESS_TTL_SECONDS`, `REFRESH_TTL_S`). Sign-out is `POST /oauth/revoke`.
 
 ## The free column preview (`GET /table-columns/<tool id>`)
 
@@ -106,10 +97,8 @@ column_source, tables?}` with no rows (`domain.table.columns_only`):
 
 - a routed job: its contract. A list job converts a sample of items, taken from the first child in
   `routed_children` that has a saved example (`domain.table.sample_items`), so the preview shows the
-  mapped columns first, then that provider's own fields. Other providers may add other fields;
-  A routed job also answers `coverage` (`_coverage`): for each output field (a list job: the list
-  field only), `{filled_by, providers}`, where `providers` counts the children with an adapter and
-  `filled_by` those whose adapter's `out` maps the field. The cheapest provider answers first, so a
+  mapped columns first, then that provider's own fields. It also answers `coverage` (`_coverage`):
+  per output field, how many children's adapters map it. The cheapest provider answers first, so a
   field only some providers give can come back empty; the add-on ticks only fields every provider
   fills;
 - a hub tool: its manifest's output fields;
@@ -119,33 +108,23 @@ column_source, tables?}` with no rows (`domain.table.columns_only`):
 
 ## The converter (`domain.table`)
 
-Pure and stdlib-only (import-linter contract "Table domain is a pure stdlib leaf"). `to_table(body,
-contract_output=, list_field=, hub_fields=)` never raises: anything it cannot shape is `raw`.
-`application.table.table_answer` chooses the source of columns (`column_source`):
+Pure and stdlib-only (import-linter contract "Table domain is a pure stdlib leaf"). `to_table` never
+raises: anything it cannot shape is `raw`. `application.table.table_answer` chooses the source of
+columns (`column_source`):
 
-- **contract**: a routed job (`catalog.by_id[id].kind == "routed"`, contract from
-  `catalog.contracts[capability]`). A flat contract: its `output` fields in contract order, then
-  `served_by` (from `_treg.served_by`); one row, none when `_treg.outcome == "miss"`. A contract with
-  a required `list` field (`people`, `companies`, `results`...): shape `list`, one row per item.
-  Items are the provider's own objects, so `LIST_MAPS` (data, keyed by the list field; `people` today)
-  maps common names to fixed columns first: `first_name`, `last_name`, `title`, `company`,
-  `linkedin_url`, `location`, first matching path that holds text wins (`organization.name` is a path; an object is never
-  taken, so an object `company` falls through to `company.name`); every other
-  field follows under the provider's own name, minus the paths a mapped column used.
-- **hub**: an id not in the catalog that `hub.tool_for` resolves for this caller (one short read,
-  after the answer is read: non-negotiable 3). Columns are the manifest's `output.fields`, or its
-  `output` keys, in manifest order; one row.
-- **generated**: anything else. `_find_tables` collects every list of objects, searching inside a
-  one-object list whose key is in `ENVELOPE_KEYS` (`summary[0]`, `tasks[0].result[0]`) and never
-  inside a table's own items. None: shape `flat`, one row of `flatten` (dotted keys, `MAX_DEPTH` 3).
-  One: shape `list` (with its `path`). Two or more: shape `nested`, with `tables` (name, path,
-  row_count, columns, rows) and `summary` (`field`, `value` rows of the tables' common parent; a
-  list of objects is one cell of each item's first value). `columns`/`rows` are the summary, so a
-  client that reads only those still gets a grid.
+- **contract**: a routed job. Columns follow the capability contract's `output` order, then
+  `served_by`; a miss has no row. A contract with a required `list` field is one row per item; the
+  items are the provider's own objects, so `LIST_MAPS` (data) maps common names to fixed columns
+  first and every other field follows under the provider's own name.
+- **hub**: an id not in the catalog that `hub.tool_for` resolves for this caller, read after the
+  answer is read (non-negotiable 3). Columns are the manifest's output fields, one row.
+- **generated**: anything else. `_find_tables` collects every list of objects (looking inside
+  `ENVELOPE_KEYS` wrappers): none is `flat`, one is `list`, two or more is `nested` with `tables`
+  and a `summary` that also fills `columns`/`rows`, so a client that reads only those still gets a
+  grid.
 
-Cells (`cell`): a scalar as it is; a list of scalars joined with `", "`; an object or a list holding
-objects as compact JSON. A field whose name starts with `_` (`_treg`, a provider's `_note`) is never
-a column; a routed answer's `_treg` goes into the reply's `_treg` with `call_id` and `cost_micro`.
+A field whose name starts with `_` (`_treg`, a provider's `_note`) is never a column; a routed
+answer's `_treg` goes into the reply's `_treg` with `call_id` and `cost_micro`.
 
 **Trap:** the saved example answers (`src/treg/catalog/examples/`) end every long list with the
 string `"… N more item(s) truncated"` (written by `scripts/catalog_verify.py`). A list with that

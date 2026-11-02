@@ -1117,21 +1117,23 @@ def test_a_fixed_price_spools_when_its_success_rule_is_declared():
 
 
 def test_the_fast_catalog_loader_reads_every_file_like_the_pure_python_one():
-    """`store._Loader` uses libyaml's C parser when it is installed; every shipped catalog file must
-    parse to the same document as with the pure-Python SafeLoader, timestamps kept as strings."""
+    """The catalog's YAML reading uses libyaml's C parser when it is installed; every shipped catalog
+    file must parse to the same document as with the pure-Python SafeLoader, timestamps kept as
+    strings."""
     import yaml
     from treg.domain.catalog import store
+    from treg.domain.catalog.schema import files
 
     class Pure(yaml.SafeLoader):
         pass
-    Pure.yaml_implicit_resolvers = store._Loader.yaml_implicit_resolvers
+    Pure.yaml_implicit_resolvers = files._Loader.yaml_implicit_resolvers
     if not getattr(yaml, "__with_libyaml__", False):
         pytest.skip("libyaml not installed")
-    assert issubclass(store._Loader, yaml.CSafeLoader)
+    assert issubclass(files._Loader, yaml.CSafeLoader)
     for path in sorted(store.CATALOG_DIR.rglob("*.yaml")):
         text = path.read_text(encoding="utf-8")
-        assert yaml.load(text, Loader=store._Loader) == yaml.load(text, Loader=Pure), path.name
-    assert yaml.load("checked: 2026-09-01", Loader=store._Loader) == {"checked": "2026-09-01"}
+        assert yaml.load(text, Loader=files._Loader) == yaml.load(text, Loader=Pure), path.name
+    assert yaml.load("checked: 2026-09-01", Loader=files._Loader) == {"checked": "2026-09-01"}
 
 
 def _per_result_cost(**extra):
@@ -1263,3 +1265,44 @@ def test_the_validator_reads_the_settle_count_path_against_the_example(tmp_path,
     _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", rows % "total")
     assert validator.main(["tikhub"]) == 1
     assert "is not a list in the example_response" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("block, ok", [
+    ({"jq": {"type": "string"}}, True),
+    ({}, False),
+    ({"jq": "string"}, False),
+    ({"bad-name": {"type": "string"}}, False),
+    ({"jq": {"type": "string", "required": True}}, False),
+])
+def test_provider_query_params_shape(block, ok):
+    errors: list[str] = []
+    validator.check_provider_query_params(block, "test", errors)
+    assert (not errors) is ok, errors
+
+
+def test_bills_miss_is_true_and_only_on_a_per_success_price():
+    base = {
+        "type": "per_success", "value": 6, "currency": "credit", "per": 1,
+        "unit": "result", "source": "docs", "source_url": "https://example.com/pricing",
+        "checked": "2026-10-27", "confidence": "documented",
+    }
+    ok: list[str] = []
+    validator.check_cost(base | {"bills_miss": True}, "catalog:test", ok, [])
+    assert ok == []
+    for bad in (base | {"bills_miss": False}, base | {"bills_miss": "yes"},
+                base | {"type": "per_call", "bills_miss": True}):
+        errors: list[str] = []
+        validator.check_cost(bad, "catalog:test", errors, [])
+        assert any("bills_miss" in e for e in errors), bad
+
+
+def test_no_v2_row_ships_until_the_call_runtime_bills_and_judges_it(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", "      reserve: {entities: {}}\n")
+    assert validator.main(["tikhub"]) == 0
+
+    legacy = (tmp_path / "tikhub.yaml").read_text()
+    v2 = legacy[:legacy.index("    cost:\n")] + "    price: {value: '0'}\n"
+    (tmp_path / "tikhub.yaml").write_text(v2)
+    assert validator.main(["tikhub"]) == 1
+    assert "the v2 spelling is loaded but not yet billed or judged" in capsys.readouterr().out

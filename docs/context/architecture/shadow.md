@@ -1,5 +1,5 @@
 ---
-title: Shadow provider — a candidate asked the same question as served calls, after the fact, and compared
+title: Shadow provider - a candidate asked the same question as served calls, after the fact, and compared
 status: building
 sources:
   - src/treg/domain/catalog/shadow.py
@@ -8,7 +8,7 @@ sources:
   - tests/test_shadow.py
 related:
   - architecture/catalog.md
-  - architecture/search-experiment.md
+  - architecture/find.md
 ---
 
 # Shadow provider
@@ -39,20 +39,14 @@ cost. Nothing about the candidate is in the public catalog; it is described only
   legal suffixes, other fields by normalized equality). Optional `count` and `with_email` output
   keys give list sizes, so "found" and "found with an email" are reported apart.
 
-## What is stored
+## What is stored and reported
 
-`ShadowPair`, one row per pair: capability, served endpoint, a salted hash of the identity, found on
-each side, list counts, the per-field yes/no map, the candidate's status, time and billed units (from
-`units_header`), and the served call's charge. No names, emails, phone numbers or answer bodies. Each
-run deletes rows older than `shadow_retention_days`.
+`ShadowPair` holds outcomes only (found flags, counts, per-field agreement, status, time, units,
+the served charge) keyed by a salted hash of the identity: never names, emails, phone numbers or
+answer bodies. Rows past `shadow_retention_days` are deleted each run.
 
-## The report
-
-`GET /admin/shadow?days=N` (superadmin) and `treg-worker shadow report`: per capability and served
-endpoint, the pair count, the pairs the candidate answered (a refusal, a timeout or a 5xx is no
-answer: it counts in the error rate and stays out of every hit rate), each side's hit rate, the candidate's hit rate with an email, its error
-rate, p50 and p95 time, per-field agreement, the candidate's units per 1,000 pairs and the served
-cost per 1,000 calls.
+The report (`GET /admin/shadow`, `treg-worker shadow report`) treats a candidate refusal, timeout or
+5xx as no answer: it counts in the error rate and stays out of every hit rate.
 
 ## The setting
 

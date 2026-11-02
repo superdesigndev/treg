@@ -73,6 +73,8 @@ os.environ["TREG_WORKOS_CLIENT_ID"] = ""
 os.environ["TREG_WORKOS_WEBHOOK_SECRET"] = ""
 os.environ["TREG_PUBLIC_URL"] = "https://treg.to"
 os.environ["TREG_OVERFLOW_MODE"] = "off"
+os.environ["TREG_PROVIDER_RATE_MODE"] = "off"
+os.environ["TREG_PROVIDER_RATE_ENFORCE"] = ""
 os.environ["TREG_OVERFLOW_KEY_ORTHOGONAL"] = ""
 os.environ["TREG_OVERFLOW_KEY_MONID"] = ""
 # A merged local .env can carry newly added funded platform keys that the fixed list below has not
@@ -137,6 +139,7 @@ from treg import archive  # noqa: E402
 from treg.config import get_settings  # noqa: E402
 from treg.infra.db import reset_db  # noqa: E402
 from treg.domain.identity import api_keys as managed_keys  # noqa: E402
+from treg.application import media as media_app  # noqa: E402
 
 
 # The OTP-start + sandbox throttles (and the OTP codes) now live in the DB's `ephemeral` table, not in
@@ -514,6 +517,8 @@ async def drain_background_writes():
     # throttle claim left over from one test would land on, or suppress, the next test's key.
     await managed_keys.drain_last_used()
     managed_keys._last_used_claims.clear()
+    # And `treg host`'s background object deleter.
+    await media_app.drain()
 
 
 @pytest.fixture(autouse=True)

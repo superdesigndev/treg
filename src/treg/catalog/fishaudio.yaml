@@ -1,4 +1,7 @@
 provider: fishaudio
+# Fish's single-model GET /model/{id} is not a catalog tool: it answers 403 for private workspace
+# voices that list, update, delete and TTS accept. It serves only as the public-voice lookup in the
+# TTS row's managed_resource.
 source:
   docs: https://docs.fish.audio/api-reference/introduction
   curated: 2026-09-21

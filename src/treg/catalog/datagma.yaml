@@ -55,7 +55,7 @@ endpoints:
     summary: Enrich one person from an email, LinkedIn URL, or name and company domain
     input:
       queryParams:
-        data: {type: string, required: true, note: Email, LinkedIn profile URL, or company domain when fullName is also supplied.}
+        data: {type: string, required: true, note: "Email, LinkedIn profile URL, or company domain when fullName is also supplied."}
         fullName: {type: string, required: false}
         countryCode: {type: string, required: false, note: Optional two-letter country hint.}
         companyPremium: {type: boolean, required: true, enum: [false]}
@@ -86,7 +86,7 @@ endpoints:
     summary: Enrich one company from its domain, name, email, or LinkedIn URL
     input:
       queryParams:
-        data: {type: string, required: true, example: algolia.com, note: Company domain, company name, company email, or LinkedIn company URL.}
+        data: {type: string, required: true, example: algolia.com, note: "Company domain, company name, company email, or LinkedIn company URL."}
         companyPremium: {type: boolean, required: true, enum: [true]}
         companyFull: {type: boolean, required: true, enum: [true]}
         personFull: {type: boolean, required: true, enum: [false]}
