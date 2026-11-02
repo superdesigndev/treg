@@ -84,7 +84,7 @@ async def enforce_daily_cap(caller: Caller, db: AsyncSession, *, sandbox: bool) 
     One conditional UPDATE of the member's row (`take_daily_slot`), exact under concurrency. Fails
     OPEN if that statement cannot run: a cap is a courtesy limit an admin set on a colleague, and
     the database being unavailable is not the colleague's fault - the money gates behind this one
-    are the ones that fail closed. See docs/USAGE-METERING-PLAN.md.
+    are the ones that fail closed.
     """
     cap = caller.membership.daily_call_cap
     if cap < 0 or sandbox:

@@ -113,7 +113,7 @@ async def _evidence(records, session_factory=session_maker):
     # Metadata and exact-version selection use a short session. Neither the cursor lock nor
     # another request-owned connection may survive across object reads, including DB fallback.
     async with session_factory() as db:
-        keymap, pointers = await _evidence_pointers(db, records)
+        keymap, pointers, _ = await _evidence_pointers(db, records)
     semaphore = asyncio.Semaphore(8)
     async def load(pair, pointer):
         async with semaphore:
@@ -138,10 +138,12 @@ async def _evidence(records, session_factory=session_maker):
     return result
 
 
-async def _evidence_pointers(db, records):
+async def _evidence_pointers(db, records, path="arena"):
+    """The archive key of each record's question, and a body pointer and media type for the exact
+    answer it received. `path` names the reader in the body-read switches and diagnostics."""
     keys = {r.archive_key_hash for r in records if r.archive_key_hash}
     if not keys:
-        return {}, {}
+        return {}, {}, {}
     # Read request metadata separately so explicit 404s can still be classified without a body.
     ak = (await db.execute(select(ArchiveKey).where(ArchiveKey.key_hash.in_(keys)))).scalars().all()
     keymap = {k.key_hash: k for k in ak}
@@ -157,18 +159,19 @@ async def _evidence_pointers(db, records):
         latest = (select(ArchiveSnapshot.id).where(ArchiveSnapshot.key_id == wanted.c.key_id,
             ArchiveSnapshot.content_hash == wanted.c.content_hash).order_by(ArchiveSnapshot.version.desc())
             .limit(1).correlate(wanted).scalar_subquery())
-        snaps = (await db.execute(select(ArchiveSnapshot).options(*archive_bodies.read_options("arena"))
+        snaps = (await db.execute(select(ArchiveSnapshot).options(*archive_bodies.read_options(path))
             .where(ArchiveSnapshot.id.in_(select(latest).select_from(wanted))))).scalars().all()
-    pointers = {}
+    pointers, media = {}, {}
     for snap in snaps:
         if snap.size_bytes > MAX_BODY_BYTES:
             continue
         try:
-            pointers[snap.key_id, snap.content_hash] = await archive_bodies.pointer(db, snap, "arena")
+            pointers[snap.key_id, snap.content_hash] = await archive_bodies.pointer(db, snap, path)
         except zlib.error:
             # In DB mode the pointer loads/decompresses bytes before releasing this session.
             continue
-    return keymap, pointers
+        media[snap.key_id, snap.content_hash] = snap.media_type
+    return keymap, pointers, media
 
 
 async def _aggregate(db, version, until, endpoints):

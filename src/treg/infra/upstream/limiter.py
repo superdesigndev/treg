@@ -7,8 +7,9 @@ being relayed into a 429 the caller cannot fix. The hold is already placed, so t
 org latency, never money; beyond `max_wait_ms` the call proceeds as today (no refusal here, ever).
 
 In-process and DB-free on purpose: this runs between "DB phase ended" and the relay, where the
-call must hold no connection. A second replica doubles the effective rate; the `rate_pressure`
-alert (step C) is the signal to tighten, not a shared counter on the request path.
+call must hold no connection, and its wait needs no round trip. Each replica adds its own
+allowance; the shared window (domain/capacity/rate_observe.py) is what holds the declared rate
+across replicas.
 """
 
 from __future__ import annotations
@@ -92,6 +93,12 @@ class Limiter:
             return 0
         await asyncio.sleep(wait_s)
         return int(wait_s * 1000)
+
+    def refund(self, provider: str, limit: int, window_s: float) -> None:
+        """Give back the token of a call refused before it was sent, never above capacity."""
+        if limit > 0 and window_s > 0:
+            b = self.bucket(provider, limit, window_s)
+            b.tokens = min(b.CAPACITY, b.tokens + 1.0)
 
     def reset(self) -> None:
         self._buckets.clear()

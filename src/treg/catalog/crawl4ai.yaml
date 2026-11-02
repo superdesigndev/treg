@@ -5,6 +5,8 @@ source:
   openapi: null
   curated: '2026-10-05'
 pricing_url: https://api.crawl4ai.com/v1/prices
+# Crawl4AI splits usage, errors and cost per customer from this header (relay rewrite 6).
+client_header: x-c4-client
 limits: >-
   Prepaid credits, 1 credit = $0.001 at the $10 pack. A page already in Crawl4AI's archive costs
   half; the effort a page needed sets the rest (x0.5 archived, x1 light/standard, x2 browser, x4

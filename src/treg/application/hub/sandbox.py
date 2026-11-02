@@ -1,4 +1,4 @@
-"""The hub's script sandbox — the PARENT side (docs/HUB-DECISIONS.md round 2).
+"""The hub's script sandbox — the PARENT side.
 
 Spawns `python -m treg.hub_sandbox` as a separate short-lived process with the discipline
 `treg/runner.py` already has for vendor CLIs: a scrubbed environment (never the server's), a

@@ -1,4 +1,4 @@
-"""Health of a hub tool (docs/HUB-DECISIONS.md round 2 q8, round 5 q7), and the scheduled check.
+"""Health of a hub tool, and the scheduled check.
 
 Health is DERIVED, never stored: a version is `failing` when its last three runs (callers' runs
 and scheduled checks alike) all failed, else `ok`; `unknown` before any run. Nothing to keep in

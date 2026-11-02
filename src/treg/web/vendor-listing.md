@@ -28,8 +28,7 @@ that fails them will be declined.
    their key. Copy the shape of the `HUNTER` entry.
 2. **Logo** — `src/treg/web/logos/<service>.svg`, a **neutral lettermark** (do not reproduce the
    real brand mark).
-3. **Tests** — add the service id to `test_every_provider_is_registered`
-   (tests/test_oauth_providers_m3.py) and the offerable loop in tests/test_key_providers.py.
+3. **Tests** — none to edit: the registry-wide tests pick the new entry up on their own.
 4. **Core catalog file** — `src/treg/catalog/<service>.yaml` with the 8–15 endpoints an agent
    would actually reach for, each with: a `capability` from `src/treg/catalog/capabilities.yaml`
    (propose missing ones under `proposed_capabilities:`), typed `input` params, a **cheap**

@@ -411,7 +411,7 @@ async def test_oauth_callback_carries_arena_acquisition_and_counts_signup_once(g
         assert r.status_code == 302 and r.headers["location"] == "/enrich-arena"
     signups = [a for a in events if a[1] == "signup_completed"]
     assert len(signups) == 1
-    assert signups[0][2] == {"signup_method": "github", "entry_surface": "arena"}
+    assert signups[0][2] == {"signup_method": "github", "entry_surface": "arena", "client": "browser"}
 
 
 async def test_oauth_arena_return_cookie_encrypts_and_restores_query(gc):

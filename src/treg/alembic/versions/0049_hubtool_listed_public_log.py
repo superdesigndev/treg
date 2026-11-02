@@ -1,4 +1,4 @@
-"""hubtool.listed + hubtool.public_log — the maker's two distribution switches (docs/hub-listing-decisions.md)
+"""hubtool.listed + hubtool.public_log — the maker's two distribution switches
 
 Revision ID: 0046
 Revises: 0045

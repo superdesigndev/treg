@@ -2177,7 +2177,7 @@ details.tl li.more a{color:var(--link);text-decoration:none}
 </style>"""
 
 
-# The hub's public share page (docs/HUB-DECISIONS.md).
+# The hub's public share page.
 
 # Scoped to the hub page: the public stylesheet styles cards and pre blocks by their own class
 # names, so a hub page defines its few shapes here on the SAME variables (light-only, like every
@@ -2266,7 +2266,7 @@ def _md_lite(text: str) -> str:
 
 
 async def _hub_recent_runs(db: AsyncSession, tool_id: str, maker_org_id: int, *, last: int = 20) -> dict:
-    """The public run log (docs/hub-listing-decisions.md, decision 3): the last `last` runs by
+    """The public run log: the last `last` runs by
     OTHERS and runs per day for 30 days. Per run: when, outcome, duration, steps, units (a
     per_unit tool's count), the price paid. Never who called, never the inputs, never the output;
     `units` is the one integer read out of the stored output, nothing else leaves it."""
@@ -2542,7 +2542,10 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
     blurb = (getattr(reg, "summary", "") or "") if reg else ""
     base_api = (getattr(reg, "base_url", "") or "") if reg else ""
     docs_url = (getattr(reg, "docs_url", "") or "") if reg else ""
-    platform_eps = [e for e in eps if cat.platform_eligible(e)]
+    # Both halves of tier 4, as `no_key_needed` in mcp.py: a priceable row is servable only where this
+    # deploy holds an enabled key for the provider; an eligible-but-keyless row refuses at call time.
+    served = bool(get_settings().platform_key_for(svc))
+    platform_eps = [e for e in eps if served and cat.platform_eligible(e)]
     byok_only = len(eps) - len(platform_eps)
     key_auth = bool(reg and reg.auth_kind == "key")
     oauth_metered = bool(reg and reg.platform_billed and svc in get_settings().oauth_billed_set)
@@ -2762,7 +2765,7 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         shown = sorted(items, key=lambda e: (not e.get("verified"), e["id"]))[:max_shown]
         for e in shown:
             price = _price_label(cat.cost_view(e.get("cost"), e.get("provider")))
-            eligible = cat.platform_eligible(e)
+            eligible = served and cat.platform_eligible(e)
             if reg and reg.auth_kind == "oauth":
                 access = "OAuth connection · metered" if oauth_metered else "OAuth connection"
             elif key_auth:

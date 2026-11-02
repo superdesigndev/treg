@@ -1786,3 +1786,54 @@ def test_a_terminal_on_submission_row_archives_only_finished_answers():
     assert not call_service._only_submits(instant)
     assert call_service._unfinished_submission(instant, b'{"status": "queued"}')
     assert not call_service._unfinished_submission(instant, b'{"status": "done"}')
+
+
+def _upstream_header(relayed: list, name: bytes) -> list[str]:
+    return [v.decode() for req in relayed for k, v in req.raw_headers if k.lower() == name]
+
+
+async def test_shared_key_calls_carry_an_opaque_per_team_client_code(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    """A provider that names a `client_header` gets treg's code for the team on treg's key: stable per
+    team, different per team and per provider, never the team's id, and replacing any caller value.
+    A team's own key, and an unset secret, add nothing."""
+    from dataclasses import replace
+
+    from treg.domain.catalog import store as catalog_store
+    from treg.infra.upstream.relay import shared_client_code
+
+    cat = catalog_store.load()
+    monkeypatch.setattr(catalog_store, "load",
+                        lambda: replace(cat, client_headers={**cat.client_headers, "replicate": "x-client-id"}))
+    relayed = []
+
+    async def fake_relay(request, *args, **kwargs):
+        relayed.append(request)
+        return _response(201, {"id": f"prediction-{len(relayed)}", "status": "starting"})
+
+    monkeypatch.setattr(call_service, "relay", fake_relay)
+    body = {"input": {"prompt": "a"}}
+    forged = {"X-Client-Id": "someone-else"}
+
+    assert (await clients.post(f"/call/{EP}", json=body, headers=forged)).status_code == 201
+    assert _upstream_header(relayed, b"x-client-id") == ["someone-else"], "no secret set: header untouched"
+
+    monkeypatch.setenv("TREG_CLIENT_ID_SECRET", "test-secret")
+    get_settings.cache_clear()
+    assert (await clients.post(f"/call/{EP}", json=body, headers=forged)).status_code == 201
+    assert (await clients.post(f"/call/{EP}", json=body)).status_code == 201
+    other = await verified_signup(clients, json={"email": "client-code-stranger@example.com"})
+    assert (await clients.post(f"/call/{EP}", json=body,
+                               headers={"X-Treg-Token": other.json()["token"]})).status_code == 201
+    first, again, stranger = _upstream_header(relayed, b"x-client-id")[1:]
+    assert first == again, "one team keeps one code"
+    assert first != stranger, "two teams share a code"
+    assert first.startswith("t_") and len(first) == 26 and first[2:].isalnum()
+    assert first == shared_client_code("test-secret", "replicate", 1)
+    assert first != shared_client_code("test-secret", "crawl4ai", 1), "the code differs per provider"
+    assert "1" != first and "someone-else" not in _upstream_header(relayed, b"x-client-id")[1:]
+
+    await clients.post("/secrets", json={"name": "replicate", "value": "own-token"})
+    assert (await clients.post(f"/call/{EP}", json=body)).status_code == 201
+    assert _upstream_header(relayed[-1:], b"x-client-id") == [], "a team's own key carries no code"

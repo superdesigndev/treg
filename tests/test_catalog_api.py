@@ -20,6 +20,7 @@ from httpx import AsyncClient
 from treg import oauth_providers as P
 from treg.domain.catalog import find_recall
 from treg.domain.catalog import store as cs
+from treg.domain.catalog.schema import CatalogSchemaError
 
 
 def test_loaded_rows_are_plain_json(tmp_path):
@@ -178,7 +179,8 @@ def test_a_job_files_under_the_domain_most_of_its_providers_give_it(tmp_path):
         (tmp_path / f"{prov}.yaml").write_text(
             f"provider: {prov}\nendpoints:\n  - id: {prov}.local\n    platform: google\n"
             f"    capability: google.serp.local\n    domain: {domain}\n    method: GET\n"
-            f"    path: /local\n    summary: Local pack\n    cost: {{usd: {usd}}}\n")
+            f"    path: /local\n    summary: Local pack\n"
+            f"    cost: {{type: per_call, value: {usd}, currency: USD, unit: call}}\n")
     cat = cs.load(directory=tmp_path)
     pairs = [(e, cs.endpoint_view(e, e["provider"], cat)) for e in cat.endpoints]
     [section] = cs.domain_rows(pairs, cat.capabilities, cat.capability_titles)
@@ -744,7 +746,7 @@ def test_catalog_validator_rejects_an_unknown_endpoint_array_encoding(tmp_path, 
         cv.CATALOG = original
     output = capsys.readouterr().out
     assert result == 1
-    assert "input.queryArrayEncoding must be one of" in output
+    assert "input.queryArrayEncoding: Input should be 'json', 'comma' or 'repeated'" in output
 
 
 # ---- example responses -------------------------------------------------------------------
@@ -796,6 +798,50 @@ def test_an_extended_file_merges_into_the_same_provider(tmp_path):
     assert tiers["tikhub.tiktok.user.mix"] == "extended"
 
 
+def test_the_core_file_wins_over_its_extended_file(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text("platforms: {web: Web}\ncapabilities: {}\n")
+    row = "  - id: demo.web.page\n    platform: web\n    name: {name}\n    method: GET\n    path: /{name}\n"
+    (tmp_path / "demo.yaml").write_text(
+        "provider: demo\npricing_url: https://core.example/pricing\nlimits: core limits\n"
+        "source: {docs: https://core.example/docs}\n"
+        "cache: {mode: public, ttl: 1d, licence: core}\n"
+        "ceiling_param: {in: query, name: core_max, unit: usd}\n"
+        "endpoints:\n" + row.format(name="core"))
+    extended = (
+        "provider: demo\npricing_url: https://ext.example/pricing\nlimits: ext limits\n"
+        "source: {docs: https://ext.example/docs}\n"
+        "cache: {mode: forbidden, licence: extended}\n"
+        "ceiling_param: {in: query, name: ext_max, unit: usd}\n"
+        "endpoints:\n"
+        "  - id: demo.web.other\n    platform: web\n    tier: extended\n    method: GET\n    path: /other\n")
+    (tmp_path / "demo.extended.yaml").write_text(extended)
+
+    cat = cs.load(directory=tmp_path)
+    assert cat.provider_meta["demo"]["pricing_url"] == "https://core.example/pricing"
+    assert cat.provider_meta["demo"]["limits"] == "core limits"
+    assert cat.provider_meta["demo"]["docs"] == "https://core.example/docs"
+    assert cat.provider_meta["demo"]["cache"]["licence"] == "core"
+    assert cat.ceiling_params["demo"]["name"] == "core_max"
+    assert cat.by_id["demo.web.other"]["cache"]["licence"] == "core"
+
+    (tmp_path / "demo.extended.yaml").write_text(
+        extended + row.format(name="extended").replace("platform: web", "platform: web\n    tier: extended"))
+    with pytest.raises(CatalogSchemaError, match="duplicate endpoint id demo.web.page"):
+        cs.load(directory=tmp_path)
+
+
+def test_observed_from_reaches_the_loaded_row(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text("platforms: {web: Web}\ncapabilities: {}\n")
+    (tmp_path / "demo.yaml").write_text(
+        "provider: demo\nendpoints:\n"
+        "  - id: demo.web.page\n    platform: web\n    method: GET\n    path: /a\n"
+        "    observed_from: '2026-01-02'\n"
+        "  - id: demo.web.other\n    platform: web\n    method: GET\n    path: /b\n")
+    cat = cs.load(directory=tmp_path)
+    assert cat.by_id["demo.web.page"]["observed_from"] == "2026-01-02"
+    assert cat.by_id["demo.web.other"]["observed_from"] is None
+
+
 def test_async_defaults_apply_per_endpoint_and_an_endpoint_block_replaces_them_whole(tmp_path):
     (tmp_path / "capabilities.yaml").write_text(
         "platforms: {video-gen: Video}\ncapabilities: {video-gen.from_text: Generate}\n")
@@ -844,13 +890,16 @@ def test_async_defaults_apply_per_endpoint_and_an_endpoint_block_replaces_them_w
     assert cs.effective_async_descriptor(None, {"id_from": "b"}) == {"id_from": "b"}
 
 
-def test_a_missing_catalog_directory_is_an_empty_catalog_not_a_crash(tmp_path):
+def test_a_missing_catalog_directory_is_empty_and_a_malformed_file_fails_the_load(tmp_path):
     cat = cs.load(directory=tmp_path / "nope")
     assert cat.endpoints == [] and cat.platforms == {}
-    # a half-written dir (no taxonomy, malformed provider file) must degrade the same way
     (tmp_path / "capabilities.yaml").write_text("platforms: {tiktok: TikTok}\n")
     (tmp_path / "broken.yaml").write_text("provider: broken\nendpoints: [{no_id: true}]\n")
-    assert cs.load(directory=tmp_path).endpoints == []
+    with pytest.raises(CatalogSchemaError, match="broken.yaml: id: Field required; no_id: Extra inputs"):
+        cs.load(directory=tmp_path)
+    (tmp_path / "broken.yaml").write_text("provider: broken\nendpoints: [{id: broken.x\n")
+    with pytest.raises(CatalogSchemaError, match="broken.yaml: .*YAMLError|broken.yaml: Parser|broken.yaml: Scanner"):
+        cs.load(directory=tmp_path)
 
 
 def test_a_proposed_capability_still_gets_a_description(tmp_path):

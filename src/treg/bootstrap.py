@@ -769,6 +769,10 @@ def _lifespan(role: AppRole):
             # Find's card vectors (docs/context/architecture/find.md): built now, in the background,
             # instead of by the first find after a deploy; off without an embedding key.
             find_task = asyncio.create_task(find_index.warm()) if find_index.enabled() else None
+            from .domain.capacity import rate_observe
+            rate_task = asyncio.create_task(rate_observe.flush_worker()) if rate_observe.enabled() else None
+            for name in rate_observe.unknown_enforced_names():
+                logging.getLogger("treg").warning("event=provider_rate_enforce_unknown name=%s", name)
             endpoint_observations = app.state.endpoint_observation_reader
             routed_call.configure_endpoint_observation_reader(endpoint_observations)
             # Measured verdict quality for X-Treg-Route-Decisive; unset settings keep price order.
@@ -802,7 +806,7 @@ def _lifespan(role: AppRole):
             finally:
                 try:
                     workers = [task for task in (
-                        gauge_task, ads_task, archive_task, prune_task, find_task,
+                        gauge_task, ads_task, archive_task, prune_task, find_task, rate_task,
                     ) if task is not None]
                     for task in workers:
                         task.cancel()
@@ -822,9 +826,13 @@ def _lifespan(role: AppRole):
                     await call_events.drain()
                     if gauge_task is not None:
                         _emit_money_timings()
+                    if rate_task is not None:
+                        rate_observe.flush()
                     await stop_money_trace(trace_runner)
                     await analytics.drain()
                     await app.state.http.aclose()
+                    from .infra import provider_rate
+                    await provider_rate.drain()
                     await kv.close()
                     from .infra import org_endpoint_quota
                     await org_endpoint_quota.close()

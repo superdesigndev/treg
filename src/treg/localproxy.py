@@ -4,31 +4,24 @@ Today treg only works when the agent is told to use it (`treg call …`, or the 
 moment an agent writes its own script that talks to `api.stripe.com` directly, treg is invisible and
 the script has no key. This module closes that gap: the agent makes an ordinary HTTPS call, we catch
 it on the way out (`HTTPS_PROXY` + a certificate authority generated on this machine), and the
-**registry server** adds the credential. No vendor key ever lands here. Spec:
-docs/LOCAL-PROXY-PLAN.md.
+**registry server** adds the credential. No vendor key ever lands here.
 
 **Not `infra/upstream/relay.py`.** That one is the SERVER relay (`relay()`), the thing that injects.
 This one is the local catcher that feeds it. They are two ends of the same call and the names are close on purpose —
 the module is named for `localrun.py`, its neighbour in "code that runs on the member's machine".
 
-Shipped here: **P0** (listen, authenticate, blind-tunnel every byte), **P1** (the certificate
-authority, the trust bundle, leaf certificates) and **P2** (intercept an allow-listed host and
-re-address it to treg's `/call/` passthrough). Still to come: P3 fetches the allow-list from
-`GET /tools` and refreshes it — until then `ProxyConfig.hosts` is whatever the caller passes, and an
-empty set means the proxy decrypts nothing at all.
-
 Because an intercepted call lands on the ordinary `/call/` path, everything already built keeps
 working with no second copy: the per-member tool list, project scope, deny rules, daily caps, the
 audit record, OAuth refresh. That is the reason this module is small.
 
-The rules this file exists to keep (plan §"The non-negotiables"):
+The rules this file exists to keep:
 
 1. The CA private key is generated **per machine**, mode 0600, never shipped or shared. One CA handed
    to every user would let any holder impersonate any site to all of them.
 2. **Never touch the system trust store.** Trust is scoped by environment variables
    (`NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, …), so only the agent's process tree trusts us — not the
    browser, not the operating system.
-3. **Allow-list only** (P2): intercept a host only when it is a registered tool; everything else stays
+3. **Allow-list only**: intercept a host only when it is a registered tool; everything else stays
    a blind tunnel we cannot read. This is also what stops us reading the agent's own
    `api.anthropic.com` traffic.
 4. Bind `127.0.0.1` only, never `0.0.0.0`.
