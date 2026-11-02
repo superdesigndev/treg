@@ -90,16 +90,16 @@ agents then built against a constitution that was wrong.
 ## Where the truth lives
 
 - **Design docs are fragments.** `docs/context/` holds one per subsystem, each naming its
-  `src/treg/*` sources in frontmatter; `docs/context/README.md` is the generated index and
-  `docs/context/foundation/charter.md` the start. Read the fragment before changing an area (the
-  `tools-registry-context` skill in `.agents/skills/` loads it).
+  `src/treg/*` sources in frontmatter; `docs/context/README.md` is the generated index and the
+  start. Read the fragment before changing an area (the `tools-registry-context` skill in
+  `.agents/skills/` loads it).
 - **Before pushing:** `bash .agents/skills/tools-registry-context/scripts/drift.sh` maps changed
   sources to fragments. Update them and commit the docs **in the same commit as the code**.
 - **Agent-facing files are the product's front door**, not documentation: `src/treg/web/llms.txt`
   and `src/treg/web/skill.md` (installed into every agent by `install.sh`). They, `README.md` and
   this file must agree on how treg works; a behavior change asks whether all four move.
-- **Three files move together** or they drift: `src/treg/web/tutorial.js` (the only interactive
-  source) and its hand-kept prose mirrors `src/treg/web/tutorial.md` and `docs/TUTORIAL.md`.
+- **Two files move together** or they drift: `src/treg/web/tutorial.js` (the only interactive
+  source) and its hand-kept prose mirror `src/treg/web/tutorial.md`.
 - `README.md` is the overview and quickstart, `USAGE.md` the CLI reference, `CONTRIBUTING.md` the
   dev setup, `SECURITY.md` required reading before touching the proxy, runners, auth or secrets.
 - If available, `../treg-internal` holds private operational configuration and tools; read its
@@ -161,12 +161,12 @@ agents then built against a constitution that was wrong.
   `earned` block in one transaction (`money.settle_to_in_transaction`, the only cross-team money
   movement). A steps recipe has one fixed price (`price_usd`); a script declares `max_price_usd` and
   prices itself with `ctx.charge(usd, note)` lines, so the cap is held and the sum of the lines is
-  settled, the rest refunded (`docs/hub-pricing-decisions.md`). A script runs in a separate process
+  settled, the rest refunded (hub.md "ctx.charge: a script's price"). A script runs in a separate process
   with no network; `ctx.call` is its only road out and `uses` in the manifest names every host it
   may reach. A hub tool is out of catalog search until its maker asks and treg approves (`HubListing`); once
   approved it stays under review for good, unlisted or not, and its share
   page shows a run log of outcomes only unless the maker turns `public_log` off
-  (`docs/hub-listing-decisions.md`). See `docs/context/architecture/hub.md`.
+  (hub.md "The surfaces"). See `docs/context/architecture/hub.md`.
 - **Signup credit.** Once per new verified user and once per inbox (Gmail dots and `+tag` aliases
   share one), enforced by a user-level atomic claim plus a `SignupPromoClaim` row committed with
   the grant. Team deletion never restores eligibility; legacy registration is not email proof.

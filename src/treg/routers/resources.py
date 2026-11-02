@@ -322,7 +322,7 @@ async def _validate_cli_secrets(cli: dict | None, caller: Caller, db: AsyncSessi
 
 def _allowed_server_bins() -> set[str]:
     """The commands `treg run --server` may execute: catalog-known CLIs + an admin allow-list. Blocks a
-    member naming `bash`/`python` to run arbitrary code as the server user (docs/CLI-RUN-PLAN.md Option A)."""
+    member naming `bash`/`python` to run arbitrary code as the server user."""
     from . import providers as prov
     bins = {(e.get("cli") or {}).get("bin") for e in prov.CATALOG}
     bins.discard(None)

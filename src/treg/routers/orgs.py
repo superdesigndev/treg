@@ -247,7 +247,7 @@ async def _usage_rollup(db: AsyncSession, org_id: int, since: datetime,
                         folded: list[call_usage.UsageRow] | None) -> dict:
     """Aggregate usage since `since` into by-user (with a per-kind split), by-tool, by-day, and totals.
     CallRecord carries `kind` ("call"/"local_run"); every RunRecord is a "server_run". Pure GROUP BY —
-    no request/response bodies are read (we don't store them). See docs/USAGE-METERING-PLAN.md.
+    no request/response bodies are read (we don't store them).
 
     The call side comes from `folded`, the daily rollup's rows (`application/call_usage.py`). Only
     when the rollup worker has never run is it None, and the audit table is aggregated here: ONE

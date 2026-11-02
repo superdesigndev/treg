@@ -1111,7 +1111,7 @@ def near_ids(endpoint_id: str, cat: Catalog, limit: int = 3) -> list[str]:
     # claim that the caller mistyped, and `apollo.people.email.find` is not a typo for
     # `hunter.people.email.find` — it is a different vendor, a different price and a different
     # credential. On a path that spends money, "did you mean <competitor>?" is provider routing
-    # wearing a spellcheck's clothes, which is exactly what the charter says treg does not do:
+    # wearing a spellcheck's clothes, which is exactly what treg does not do:
     # treg compares providers side by side and the CALLER chooses.
     if provider not in cat.provider_meta:
         return []
@@ -1488,7 +1488,7 @@ def candidates(query: str, cat: Catalog, limit: int = 30, platform: str | None =
 
 def score_extra(query: str, cat: Catalog,
                 extra: list[tuple[dict, list[tuple[int, str]]]]) -> list[tuple[dict, float]]:
-    """Score rows that are NOT in the catalog (a listed hub tool, docs/hub-listing-decisions.md)
+    """Score rows that are NOT in the catalog (a listed hub tool)
     with the SAME tokens, aliases, platform boost, idf and admission gate as `search`, so they rank
     by relevance beside catalog rows with no boost. `extra` is `[(row, haystacks)]` in the shape
     `_haystacks` produces. The idf is the catalog's: one extra row cannot move it."""
@@ -1512,7 +1512,7 @@ def score_extra(query: str, cat: Catalog,
 
 def merge_by_score(primary: list[tuple[dict, float]], extra: list[tuple[dict, float]]) -> list[tuple[dict, float]]:
     """Merge a second ranked list into the first by descending score. On a tie the primary (catalog)
-    rows stay first: a hub tool gets no boost (docs/hub-listing-decisions.md, decision 2)."""
+    rows stay first: a hub tool gets no boost."""
     out = list(primary)
     for ep, score in sorted(extra, key=lambda r: -r[1]):
         at = len(out)

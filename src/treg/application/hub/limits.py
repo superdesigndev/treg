@@ -1,4 +1,4 @@
-"""Four runs at a time per team (docs/HUB-DECISIONS.md round 3 q9).
+"""Four runs at a time per team.
 
 A run holds a request and, on the script road, a sandbox process, for up to 120 seconds; four
 in flight per team bounds both. The counter is in-process, which is exact for production as

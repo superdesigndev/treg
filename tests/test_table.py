@@ -2,7 +2,7 @@
 
 Two halves: the pure converter (`domain.table`) on saved real answers, and the route end to end
 (the flag, the four shapes, an upstream error, the money, and an `Idempotency-Key` replay).
-Design: tools-gsheet `docs/decisions.md`; the mechanism: docs/context/architecture/table.md.
+The mechanism: docs/context/architecture/table.md.
 """
 
 from __future__ import annotations

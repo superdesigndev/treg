@@ -318,7 +318,7 @@ async def repeat_rate(db: AsyncSession, since: datetime, *, top: int = 10) -> di
 async def shared_plan_recovery(db: AsyncSession, since: datetime) -> dict:
     """Fee versus collected, per provider whose rate TREG SET (fx.yaml `kind: treg_shared_plan`).
 
-    This is the monthly review's input (docs/SHARED-PLAN-PRICING-PLAN.md): a flat-fee subscription
+    This is the monthly review's input: a flat-fee subscription
     has no vendor per-call price, so treg publishes its own rate with a stated break-even, and this
     report is what keeps that rate honest over time. It REPORTS; a human edits fx.yaml. An
     auto-adjusting price would move under an agent's feet mid-session, and a rate card that moves on

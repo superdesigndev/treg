@@ -241,8 +241,7 @@ async def test_window_start_is_clamped(c: AsyncClient):
 # ---- shared-plan recovery (the monthly review's input) -----------------------------------------
 async def test_recovery_over_recovered_says_lower(c: AsyncClient):
     """Collected far above the (window-scaled) fee: the report must say so and suggest the rate at
-    which the MEASURED volume breaks even (fee ÷ calls) — the review rule from
-    docs/SHARED-PLAN-PRICING-PLAN.md applied mechanically.
+    which the MEASURED volume breaks even (fee ÷ calls) — the review rule applied mechanically.
 
     The fixture window is ONE day, so the monthly fee scales to 1/30 before comparison. The first
     version of this test assumed 30 days and failed against a correct report; the expectation now

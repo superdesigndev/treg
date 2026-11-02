@@ -98,11 +98,36 @@ Provider rows, the Connect button and the pickers are all data-driven from
 
 ### 6. Tests
 
-`tests/test_oauth_providers_m3.py::test_every_provider_is_registered` asserts an
-**exact set** of service names. Add yours or the suite fails.
+Registry-wide tests pick the new entry up on their own: a logo
+(`test_every_provider_has_a_logo`) and cumulative capabilities
+(`test_default_capability_is_the_broadest`). Run the full suite,
+`uv run --with pytest-xdist pytest -n auto -q`; the registry touches health, tools
+and connections.
 
-Then: `uv run --with pytest-xdist pytest -n auto -q` (full suite — the registry
-touches health, tools and connections).
+### More registry fields
+
+- **One provider, several grants** (Instagram Login plus optional Facebook Page
+  tools): use `authorization_methods` with capability ownership and protocol
+  overrides; never duplicate the provider. The chosen method is stored on the
+  pending flow and the secret, and endpoint authorization metadata lets catalog
+  resolution select by provider and grant before comparing shared hosts. See
+  `docs/context/architecture/instagram-oauth.md`.
+- `client_id_param` / `scope_separator` for consent URLs that rename `client_id`
+  or join scopes with commas (TikTok).
+- `extra_tools` when one product spans hosts (GA4 admin/data): each extra host
+  provisions a companion tool on the same secret, and
+  `_backfill_provider_extra_tools` gives existing connections new companions on
+  upgrade.
+- `resource_example` stamps a ready-made call onto the tool once the user picks a
+  resource.
+- Quirks are snapshotted onto `PendingOAuth`, and `client_secret_basic` is also
+  persisted into the token blob so refresh speaks the same dialect.
+- **Non-standard OAuth is not free.** An exchange with renamed parameters, a
+  JSON-body token request, a `code==0` envelope or a non-Bearer header (TikTok Ads)
+  does not work with the shared flow or the Bearer binding; it needs a protocol
+  adapter first.
+- Unset client credentials list the provider as `configured:false`; adding it
+  unconfigured is safe.
 
 ## The platform side (the actual long pole)
 

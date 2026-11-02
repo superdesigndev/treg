@@ -1205,8 +1205,8 @@ TRIAL_KIND = "treg_trial"
 def check_fx(errors: list[str]) -> None:
     """The fx entries that carry a rate TREG SET, not one the vendor published.
 
-    A `kind: treg_shared_plan` entry is the catalog asserting its own price for a flat-fee provider
-    (see docs/SHARED-PLAN-PRICING-PLAN.md). Everything downstream shows the basis string as
+    A `kind: treg_shared_plan` entry is the catalog asserting its own price for a flat-fee provider.
+    Everything downstream shows the basis string as
     provenance, so the honesty lives in that string — these checks make it impossible to add a
     treg-set rate that does not say whose price it is, what the vendor fee was, and what volume it
     breaks even at. A treg rate card with none of that printed is exactly the dishonesty the design

@@ -920,7 +920,7 @@
       },
       "PriceIn": {
         "additionalProperties": false,
-        "description": "One PATCH, three knobs of the newest live version, none bumps the version: the seller's\nprice, and the two distribution switches (docs/hub-listing-decisions.md). At least one.",
+        "description": "One PATCH, three knobs of the newest live version, none bumps the version: the seller's\nprice, and the two distribution switches. At least one.",
         "properties": {
           "listed": {
             "anyOf": [
@@ -1099,7 +1099,7 @@
       },
       "RunIn": {
         "additionalProperties": false,
-        "description": "A dry run of a folder: the four files plus the inputs. Nothing is stored; every step is\nreal and charged to the maker (HUB-DECISIONS round 4 q10 / round 5 q2: `treg hub run .`).",
+        "description": "A dry run of a folder: the four files plus the inputs. Nothing is stored; every step is\nreal and charged to the maker (`treg hub run .`).",
         "properties": {
           "check": {
             "additionalProperties": true,
@@ -6238,7 +6238,7 @@
     },
     "/calls/{call_id}/result": {
       "get": {
-        "description": "What one of this team's calls asked and what came back — the archive's copy.\n\n`call_id` is either the audit row's numeric `id` or the `X-Treg-Call-Id` the call returned (a\n32-hex call ref; a short all-digit value is the row id).\n\nOnly a METERED PLATFORM 2xx call has one: those answers are recorded by the archive (see\ndocs/context/architecture/archive.md), and the audit row keeps the identities of the exact\nbytes the caller received. Own-key and own-tool calls are relayed without being stored, a\nfailed call never is, and the redacted failure evidence stays admin-only — `stored` is false\nwith a `note` saying which. A routed call's answer is its children's: its row lists them in\n`children`, each readable here by its call ref. The request shape is the vendor-facing one\nBEFORE credential injection, so no secret can appear in it.",
+        "description": "What one of this team's calls asked and what came back — the archive's copy.\n\n`call_id` is either the audit row's numeric `id` or the `X-Treg-Call-Id` the call returned (a\n32-hex call ref; a short all-digit value is the row id).\n\nA 2xx answer the archive recorded has one (see docs/context/architecture/archive.md): a metered\nplatform call, or an own-key call whose answer fit the size cap while recording was on. The\naudit row keeps the identities of the exact bytes the caller received. Own-tool calls are\nrelayed without being stored, a failed call never is, and the redacted failure evidence stays admin-only — `stored` is false\nwith a `note` saying which. A routed call's answer is its children's: its row lists them in\n`children`, each readable here by its call ref. The request shape is the vendor-facing one\nBEFORE credential injection, so no secret can appear in it.",
         "operationId": "get_call_result_calls__call_id__result_get",
         "parameters": [
           {
@@ -7761,7 +7761,7 @@
     },
     "/hub/runs/{run_id}": {
       "get": {
-        "description": "One finished run. The CALLER's team sees what it paid, the inputs, the trace and the\noutput. The MAKER's team sees the run of its tool: inputs (secret inputs masked), the trace,\nthe script's log lines and the failure's error body, never the caller's identity or the\noutput (docs/HUB-DECISIONS.md round 2 q7, round 5 q8, q10). Anyone else: 404.",
+        "description": "One finished run. The CALLER's team sees what it paid, the inputs, the trace and the\noutput. The MAKER's team sees the run of its tool: inputs (secret inputs masked), the trace,\nthe script's log lines and the failure's error body, never the caller's identity or the\noutput. Anyone else: 404.",
         "operationId": "hub_run_hub_runs__run_id__get",
         "parameters": [
           {
@@ -8274,7 +8274,7 @@
     },
     "/hub/tools/{tool_id}/earnings": {
       "get": {
-        "description": "The seller's view (docs/HUB-DECISIONS.md round 3 q10, round 5 q9): per day, runs,\nsuccesses, failures and what was earned, for one of the team's tools. Counts and amounts only;\nnever who called. `format=csv` for a download.",
+        "description": "The seller's view: per day, runs,\nsuccesses, failures and what was earned, for one of the team's tools. Counts and amounts only;\nnever who called. `format=csv` for a download.",
         "operationId": "hub_tool_earnings_hub_tools__tool_id__earnings_get",
         "parameters": [
           {
