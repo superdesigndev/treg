@@ -335,6 +335,11 @@ _Loader.yaml_implicit_resolvers = {
     for ch, rs in yaml.SafeLoader.yaml_implicit_resolvers.items()}
 
 
+def _core_first(path: Path) -> tuple[str, bool]:
+    name = path.name.removesuffix(".yaml")
+    return (name.removesuffix(".extended"), name.endswith(".extended"))
+
+
 def _read_yaml(path: Path) -> dict:
     try:
         data = yaml.load(path.read_text(encoding="utf-8"), Loader=_Loader)
@@ -447,22 +452,22 @@ def _parse(directory: Path) -> Catalog:
     by_id: dict[str, dict] = {}
     provider_meta: dict[str, dict] = {}
     ceiling_params: dict[str, dict] = {}
-    # Sorted so a rebuild is deterministic; `<service>.extended.yaml` sorts right after
-    # `<service>.yaml`, and both land under the same provider (curation splits a provider's
-    # core operations from the long tail across two files).
-    files = [(path, _read_yaml(path)) for path in sorted(directory.glob("*.yaml"))
+    # Sorted so a rebuild is deterministic; `<service>.yaml` is read right before
+    # `<service>.extended.yaml`, and both land under the same provider (curation splits a
+    # provider's core operations from the long tail across two files). Reading the core file first
+    # makes it authoritative: its header facts and its endpoint ids win over the extended file's.
+    files = [(path, _read_yaml(path)) for path in sorted(directory.glob("*.yaml"), key=_core_first)
              if path.name not in (CAPABILITIES_FILE, FX_FILE, ALIASES_FILE, CONTRACTS_FILE, ADAPTERS_FILE)]
     # Query parameters a provider takes on every call (AnyAPI's response-budget controls) are
     # declared once at the file header and merged into each endpoint's `input.queryParams`; the
-    # endpoint's own declaration of a name wins. Resolved before any endpoint is read, because an
-    # extended file sorts first and the core file's block is authoritative.
+    # endpoint's own declaration of a name wins. Resolved before any endpoint is read, so the core
+    # file's block also reaches the extended file's endpoints.
     provider_query_params: dict[str, dict] = {}
     for path, doc in files:
         block = doc.get("queryParams")
         provider = doc.get("provider") or path.name.split(".")[0]
-        if isinstance(block, dict) and block and (
-                provider not in provider_query_params or not path.name.endswith(".extended.yaml")):
-            provider_query_params[provider] = block
+        if isinstance(block, dict) and block:
+            provider_query_params.setdefault(provider, block)
     for path, doc in files:
         provider = doc.get("provider") or path.name.split(".")[0]
         # A capability a provider file proposes is not yet in the shared taxonomy, but it is
@@ -484,11 +489,10 @@ def _parse(directory: Path) -> Catalog:
         _validate_cache(doc.get("cache"), header=True)
         if doc.get("cache") and not meta.get("cache"):
             meta["cache"] = doc["cache"]
-        # A provider that accepts a caller ceiling as a query param states it once. The core file
-        # is authoritative: an extended file is parsed first and must not shadow it.
+        # A provider that accepts a caller ceiling as a query param states it once.
         rule = doc.get("ceiling_param")
-        if isinstance(rule, dict) and (provider not in ceiling_params or not path.name.endswith(".extended.yaml")):
-            ceiling_params[provider] = rule
+        if isinstance(rule, dict):
+            ceiling_params.setdefault(provider, rule)
         for raw in doc.get("endpoints") or []:
             if not isinstance(raw, dict) or not raw.get("id"):
                 continue
@@ -790,6 +794,9 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         "response_retention": raw.get("response_retention"),
         "verified": str(verified) if verified else None,
         "added": str(raw.get("added") or "") or None,
+        # The first UTC day whose observations describe the service as it is now; ranking and the
+        # published call figures drop the days before it (the provider replaced the service).
+        "observed_from": str(raw.get("observed_from") or "") or None,
         # {status, means} — a status the provider uses for "asked and answered: no result" (PDL
         # 404s a person it has no record of). Only endpoints with evidenced miss semantics carry
         # it; for everything else an error status means what it says.
