@@ -529,6 +529,10 @@ to cost $0.001 (depth). The catalog carries both, in separate files, distinguish
 | example size | ~10 KB, arrays → 2 items | ~2 KB, arrays → 1 item (shape, not fidelity) |
 | `cost` | required | present when the provider publishes per-route prices |
 
+Both files load under one provider, the core file first: its header facts (`limits`,
+`pricing_url`, `source.docs`, `cache`, `ceiling_param`, `queryParams`) win over the extended file's,
+and an id declared in both resolves to the core row.
+
 The extended tier originally carried no `input`, `test_request` or verification at all — the tiers
 split on *curated vs. generated*, and it read as if it also split on *tested vs. untested*. It does
 not, and it should not: a provider that documents its parameters (with example values, as TikHub
@@ -666,7 +670,9 @@ endpoints:
         uniqueId: {type: string, required: false, note: "username from the profile URL", example: "tiktok"}
         secUid:   {type: string, required: false}
       note: "one of uniqueId | secUid; uniqueId preferred"
-      # also allowed: pathParams, body, bodyType (json|form)
+      # also allowed: pathParams, headers, body, bodyType (json|form). The validator rejects any
+      # other `input` key and any parameter-spec key outside its vocabulary (PARAM_SPEC_KEYS):
+      # a misspelt location or an unquoted note with a comma is otherwise silently dropped.
     test_request:                    # EXACT params catalog_verify.py sends — must be cheap
       queryParams: {uniqueId: "tiktok"}
     expect:                          # optional; default is "HTTP 2xx"
@@ -2364,9 +2370,13 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   "no result" status (`miss: {status: 404}` or `miss: {status: 400, when: …}`, see "`miss`
   semantics ride on the endpoint") is a MISS instead, not a fault. An adapter method
   (`to_upstream`, `from_upstream`, `is_miss`) that throws is recorded as an error attempt and the
-  waterfall continues; the identity's `linkedin_url` is normalised once at planning time
-  (`canonical_identity`: scheme-less URL or bare handle → public URL) so no adapter forwards an
-  invalid URL. Our 5xx/503/429 or a vendor 5xx/429/402 = error →
+  waterfall continues. Before planning, every identity field the caller sent is checked against
+  its declared type (`invalid_identity`; today only `url` has a check): a value that is not of
+  its type, such as `N/A` in a `url` field, is a 422 `invalid_identity` before any child is
+  called, even when another complete variant was sent. A `url` is what the WHATWG parser
+  (pydantic `AnyHttpUrl`) accepts with a dotted host and no userinfo; the value is kept as sent, a
+  scheme-less one with `https://` added. A derived `linkedin_url` is built only from a
+  handle-shaped value, never `/in/N/A`. Our 5xx/503/429 or a vendor 5xx/429/402 = error →
   next candidate, at most two extra, only for idempotent contracts. A treg-side
   `tool_access_denied`, `policy_denied`, or `capability_pinned` refusal is local to that child and
   follows the same error fallback. A platform child's vendor 401/403 also falls back because it

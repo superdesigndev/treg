@@ -135,13 +135,14 @@ def linkedin_handle(v: Any) -> str | None:
     """`https://www.linkedin.com/in/patrickcollison/` → `patrickcollison` (hunter wants the handle)."""
     if not isinstance(v, str) or not v:
         return None
-    m = re.search(r"linkedin\.com/(?:in|company)/([^/?#]+)", v)
+    m = re.search(r"linkedin\.com/(?:in|company)/([^/?#]+)", v, re.I)
     return m.group(1) if m else (v if "/" not in v else None)
 
 
 def linkedin_url(v: Any) -> str | None:
     """A handle → the public profile URL; a URL passes through; a scheme-less URL
-    (`linkedin.com/in/x`, `www.linkedin.com/in/x`) gets `https://`."""
+    (`linkedin.com/in/x`, `www.linkedin.com/in/x`) gets `https://`. Anything else that is not
+    handle-shaped (no letter or digit, or a `/`, `?`, `#` or space in it: `N/A`, `-`) is None, never `/in/N/A`."""
     if not isinstance(v, str) or not v:
         return None
     v = v.strip()
@@ -150,7 +151,10 @@ def linkedin_url(v: Any) -> str | None:
     m = re.match(r"^((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com)(/.*)$", v, re.I)  # anchored: the HOST is linkedin, not a path that mentions it
     if m:
         return f"https://{m.group(1).lower()}{m.group(2)}"   # lower-cased host so linkedin_handle() can derive from it
-    return f"https://www.linkedin.com/in/{v.strip('/')}"
+    handle = v.strip("/")
+    if not re.search(r"[^\W_]", handle) or re.search(r"[/?#\s]", handle):
+        return None
+    return f"https://www.linkedin.com/in/{handle}"
 
 
 def free_mail(domain: Any) -> bool:

@@ -697,6 +697,9 @@ async def list_calls(
     return [activity_routes.call_row(c, tasks.get(c.call_ref)) for c in rows]
 
 
+_ROUTED_CHILD_WINDOW = timedelta(hours=1)
+
+
 @app.get("/calls/{call_id}/result")
 async def get_call_result(
     call_id: str, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
@@ -710,8 +713,9 @@ async def get_call_result(
     docs/context/architecture/archive.md), and the audit row keeps the identities of the exact
     bytes the caller received. Own-key and own-tool calls are relayed without being stored, a
     failed call never is, and the redacted failure evidence stays admin-only — `stored` is false
-    with a `note` saying which. The request shape is the vendor-facing one BEFORE credential
-    injection, so no secret can appear in it.
+    with a `note` saying which. A routed call's answer is its children's: its row lists them in
+    `children`, each readable here by its call ref. The request shape is the vendor-facing one
+    BEFORE credential injection, so no secret can appear in it.
     """
     row = (await db.execute(
         select(CallRecord)
@@ -728,7 +732,24 @@ async def get_call_result(
            "cached": row.cached, "created_at": row.created_at.isoformat() if row.created_at else None,
            "stored": False, "note": None, "request": None, "response": None}
     if not row.archive_key_hash or not row.archive_content_hash:
-        if row.credential_tier != "platform":
+        if row.credential_tier == "routed" and row.call_ref:
+            children = (await db.execute(
+                select(CallRecord.id, CallRecord.call_ref, CallRecord.endpoint_id, CallRecord.provider,
+                       CallRecord.status_code, CallRecord.archive_key_hash)
+                .where(CallRecord.org_id == caller.org_id,
+                       CallRecord.created_at >= row.created_at - _ROUTED_CHILD_WINDOW,
+                       CallRecord.created_at <= row.created_at,
+                       CallRecord.call_ref.startswith(f"{row.call_ref}:", autoescape=True),
+                       *pinned_tag_predicates(CallRecord.tags, caller.membership.pinned_tags))
+                .order_by(CallRecord.id))).all()
+            out["children"] = [{"id": c.id, "call_ref": c.call_ref, "endpoint_id": c.endpoint_id,
+                                "provider": c.provider, "status_code": c.status_code,
+                                "has_result": c.archive_key_hash is not None} for c in children]
+            out["note"] = ("not stored here: a routed call's answer is its child calls'; read one "
+                           "with GET /calls/<child call_ref>/result" if children else
+                           "not stored here: a routed call's answer is its child calls', and none "
+                           "is on file")
+        elif row.credential_tier != "platform":
             out["note"] = ("not stored: calls on your own tools are relayed without being kept, "
                            "and an own-key answer is kept only when it fit the archive's size "
                            "cap while recording was on")
