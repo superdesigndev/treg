@@ -49,8 +49,8 @@ Ordinary catalog calls check after authorization, canonical resolution, resource
 money admission. A cache hit consumes one call immediately before serving the stored answer.
 On a cache miss, relay checks JSON, credential injection and SSRF before quota admission immediately
 before sending. Overflow checks its route, budget, child reservation and request preparation first.
-On the direct path, shared provider-rate observation follows quota admission, so a quota refusal
-does not consume the observed rate window or appear as a provider attempt without an answer.
+On the direct path the shared provider-rate window is asked first: a rate refusal spends no quota,
+and a quota refusal gives the window member back and is not counted as a provider attempt.
 Balance, daily/tag cap, resource and other pre-dispatch refusals consume no quota. A quota rejection
 releases any money hold and unused overflow budget; a successful Redis admission followed by
 cancellation or transport failure can still consume a unit without a completed provider request.

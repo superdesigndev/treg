@@ -635,6 +635,10 @@ async def _run_command(args) -> int:
             finally:
                 try:
                     emit_snapshot(role="worker", shutdown=True)
+                    from .domain.capacity import rate_observe
+                    from .infra import provider_rate
+                    rate_observe.flush()
+                    await provider_rate.drain()
                 except Exception:  # noqa: BLE001 - preserve the command's result/failure
                     pass
                 finally:
