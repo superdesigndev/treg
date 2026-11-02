@@ -1,6 +1,8 @@
 ---
 name: recruit
 description: Use when the user wants candidates for a role; they paste a LinkedIn job post (or a job description) and want the people who fit it, ranked, with a reason for each and a personal email and phone to reach them. Also for "source candidates", "find people for this job", "build a shortlist", or turning a job post into a contactable candidate list.
+metadata:
+  summary: Turns a job post into a ranked candidate shortlist, with the reason each person fits and a checked email and phone for each.
 ---
 
 # Recruit
