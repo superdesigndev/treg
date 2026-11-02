@@ -1,13 +1,8 @@
-"""treg as an OAuth **authorization server** — the metadata, and the tokens it will issue.
+"""treg as an OAuth **authorization server** — the metadata, and the tokens it issues.
 
 Everywhere else treg speaks OAuth as a *client*: `oauth.py` builds PKCE challenges to sign in with
 GitHub and to connect a provider account. This is the other direction — the thing that mints tokens
 rather than the thing that redeems them.
-
-This module is deliberately the FIRST piece built, and on its own it issues nothing. It is the part
-that **refuses**: the metadata that tells a client what we support, and the validation that rejects a
-token which is expired, forged, or minted for somebody else's server. Building the refusal before
-the issuance means there is never a window where we accept tokens we have not yet learned to check.
 
 **The `aud` claim is the load-bearing one.** The MCP spec has the client send `resource=<the mcp
 url>` on both the authorize and the token request, and the authorization server must copy it into the
@@ -18,7 +13,7 @@ argument. There is no default and no "skip the check" path, because the one thin
 happen by accident is not checking.
 
 Not ChatGPT-specific. The MCP authorization spec is the same for every compliant client, so this
-serves Claude Code, Cursor and anything else that implements it. See `docs/MCP-OAUTH-PLAN.md`.
+serves Claude Code, Cursor and anything else that implements it.
 """
 
 from __future__ import annotations

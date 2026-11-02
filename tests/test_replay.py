@@ -312,3 +312,10 @@ def test_the_cli_reads_declarations_from_a_markdown_block(tmp_path, capsys):
                     "  field: reserve.estimate_micro\n  reason: new price\n```\n")
     assert replay_cli.main(["diff", str(base), str(cand), "--declared-in", str(body)]) == 0
     assert "new price" in capsys.readouterr().out
+
+
+def test_a_line_is_the_compact_sorted_json_write_puts_on_each_row(tmp_path):
+    row = {"rid": "r1", "endpoint_id": "e", "b": 1, "a": [1, 2]}
+    assert records.line(row) == '{"a":[1,2],"b":1,"endpoint_id":"e","rid":"r1"}'
+    assert records.write(tmp_path / "x.jsonl", [row]) == 1
+    assert (tmp_path / "x.jsonl").read_text() == records.line(row) + "\n"

@@ -135,13 +135,14 @@ def linkedin_handle(v: Any) -> str | None:
     """`https://www.linkedin.com/in/patrickcollison/` → `patrickcollison` (hunter wants the handle)."""
     if not isinstance(v, str) or not v:
         return None
-    m = re.search(r"linkedin\.com/(?:in|company)/([^/?#]+)", v)
+    m = re.search(r"linkedin\.com/(?:in|company)/([^/?#]+)", v, re.I)
     return m.group(1) if m else (v if "/" not in v else None)
 
 
 def linkedin_url(v: Any) -> str | None:
     """A handle → the public profile URL; a URL passes through; a scheme-less URL
-    (`linkedin.com/in/x`, `www.linkedin.com/in/x`) gets `https://`."""
+    (`linkedin.com/in/x`, `www.linkedin.com/in/x`) gets `https://`. Anything else that is not
+    handle-shaped (no letter or digit, or a `/`, `?`, `#` or space in it: `N/A`, `-`) is None, never `/in/N/A`."""
     if not isinstance(v, str) or not v:
         return None
     v = v.strip()
@@ -150,7 +151,10 @@ def linkedin_url(v: Any) -> str | None:
     m = re.match(r"^((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com)(/.*)$", v, re.I)  # anchored: the HOST is linkedin, not a path that mentions it
     if m:
         return f"https://{m.group(1).lower()}{m.group(2)}"   # lower-cased host so linkedin_handle() can derive from it
-    return f"https://www.linkedin.com/in/{v.strip('/')}"
+    handle = v.strip("/")
+    if not re.search(r"[^\W_]", handle) or re.search(r"[/?#\s]", handle):
+        return None
+    return f"https://www.linkedin.com/in/{handle}"
 
 
 def free_mail(domain: Any) -> bool:
@@ -443,6 +447,47 @@ def evaluate(expr: str, doc: Any) -> Any:
     if lit is not _MISSING and (not re.match(r"^[A-Za-z_]", e) or e in ("null", "true", "false")):
         return lit
     return get_path(doc, e)
+
+
+_PATH_STEP = re.compile(r"[A-Za-z_][\w-]*(?:\[\d+\])?|\[\d+\]")
+
+
+def parse(expr: str) -> None:
+    """Raise ValueError unless `evaluate` reads `expr` as written: every call names a known
+    transform, every path is dotted steps, and the parentheses balance."""
+    e = expr.strip() if isinstance(expr, str) else ""
+    if not e:
+        raise ValueError(f"empty expression {expr!r}")
+    m = _CMP.match(e)
+    if m and not _CALL.match(e):
+        left, _, right = m.groups()
+        parse(left)
+        if _literal(right) is _MISSING:
+            parse(right)
+        return
+    m = _DIV.match(e)
+    if m and not _CALL.match(e):
+        parse(m.group(1))
+        return
+    m = _CALL.match(e)
+    if m:
+        name, args = m.group(1), m.group(2)
+        if name != "coalesce" and name not in TRANSFORMS:
+            raise ValueError(f"unknown transform {name!r} in {expr!r}")
+        depth = 0
+        for ch in args:
+            depth += {"(": 1, ")": -1}.get(ch, 0)
+            if depth < 0:
+                break
+        if depth:
+            raise ValueError(f"unbalanced parentheses in {expr!r}")
+        for arg in _split_args(args):
+            parse(arg)
+        return
+    if _literal(e) is not _MISSING and (not re.match(r"^[A-Za-z_]", e) or e in ("null", "true", "false")):
+        return
+    if e != "." and not all(_PATH_STEP.fullmatch(step) for step in e.split(".")):
+        raise ValueError(f"not a path, literal or call: {expr!r}")
 
 
 def _split_args(s: str) -> list[str]:

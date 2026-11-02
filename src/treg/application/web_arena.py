@@ -37,7 +37,6 @@ RUN_SECONDS = 180
 FIXED_PAGE_SEARCH = {"branddev.web.search", "tinyfish.web.search", "tinyfish.web.search.news",
                      "crawl4ai.web.search"}
 NEWS_ENDPOINTS = {"tinyfish.web.search.news", "search1api.web.news", "exa.web.search.news",
-                  "bravesearch.web.search.news",
                   "anyapi.google.serp.news", "serper.google.serp.news", "cloro.google.serp.news",
                   "serpapi.x.google-news", "dataforseo.x.serp-google-news-live-advanced",
                   "litescrape.google.serp.news", "tavily.web.search.news"}
@@ -48,6 +47,7 @@ YOUTUBE_ENDPOINTS = {"justoneapi.x.youtube-search-v1", "serpapi.youtube.search.v
 MAPS_ENDPOINTS = {"apify.google.serp.maps", "dataforseo.x.serp-google-maps-live-advanced",
                   "serpapi.x.google-maps"}
 UNBOUNDED_SITEMAP = {"search1api.web.sitemap"}
+ARENA_EXCLUDED = {"bravesearch.web.search", "bravesearch.web.search.news"}
 
 
 def _supports_result_limit(task: str, endpoint_id: str, adapter) -> bool:
@@ -67,10 +67,10 @@ def _capabilities(task: str) -> tuple[str, ...]:
 
 
 def _in_lineup(task: str, endpoint_id: str) -> bool:
-    return task not in {"news", "papers", "youtube", "maps"} or endpoint_id in {
+    return endpoint_id not in ARENA_EXCLUDED and (task not in {"news", "papers", "youtube", "maps"} or endpoint_id in {
         "news": NEWS_ENDPOINTS, "papers": PAPER_ENDPOINTS,
         "youtube": YOUTUBE_ENDPOINTS, "maps": MAPS_ENDPOINTS,
-    }[task]
+    }[task])
 
 
 def enabled() -> bool:

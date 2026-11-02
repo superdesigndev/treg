@@ -49,7 +49,7 @@ export default {
                 <template v-if="!agentInHost || welcomeAgent.setupFallback">
                 <section class="rd-setup-panel">
                   <p class="rd-panel-label">{{welcomeAgent.setupFallback || "In your agent's chat, send:"}}</p>
-                  <div class="lc-codewrap"><button class="lc-cp" @click="copyStart(welcomeSetupCopy,'gsc')">{{startCopied==='gsc'?'Copied':'Copy'}}</button><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{welcomeSetupShown}}</pre></div>
+                  <div class="lc-codewrap"><button class="lc-cp" @click="track('onboarding_setup_copied',{agent:welcome.agent,from:'start'}); copyStart(welcomeSetupCopy,'gsc')">{{startCopied==='gsc'?'Copied':'Copy'}}</button><pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{welcomeSetupShown}}</pre></div>
                 </section>
                 <section v-if="myToken" class="rd-setup-panel">
                   <p class="rd-panel-label">Your API key</p>

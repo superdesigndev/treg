@@ -1,4 +1,4 @@
-"""Routed endpoints — `POST /call/treg.<capability>` (docs/CAPABILITY-ROUTING-PLAN.md §3–§5).
+"""Routed endpoints — `POST /call/treg.<capability>`.
 
 The router PICKS a child endpoint and runs it through the SAME call use case as any `/call/`:
 each attempt is a full `execute_call` on a child `CallContext` whose `call_ref` is
@@ -19,7 +19,13 @@ only while what was already charged plus its catalog estimate fits under it.
 
 `X-Treg-Route-Verify` asks for one more call after a hit, the contract's `check` (an email find
 checked by `treg.people.email.verify`). It is its own linked child `:v` with its own hold and
-verdict, reported in `_treg.verification`; the find's answer is not altered.
+verdict, reported in `_treg.verification`; the find's answer is not altered. A check still pending
+after the routed async wait keeps `pending: true`, its `call_id`, and the child's `async` poll
+descriptor (`task_id` + poll endpoint) so the caller can resume; `cost_micro` is then the hold.
+
+When the caller sent a domain and the hit carries an email, `_treg.domain_match` (and
+`X-Treg-Domain-Match`) says whether the mailbox domain matches. A LinkedIn-only child that returns
+a former employer still counts as a hit and is billed; the flag discloses the mismatch.
 
 `X-Treg-Route-Confirm` makes a hit count only once a second provider returns the same value of the
 contract's `confirm` field: the waterfall goes on after an unconfirmed hit, each attempt at its own
@@ -66,7 +72,8 @@ from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import paths as P
 from ...domain.catalog.routing import quality as route_quality
-from ...domain.catalog.routing.contracts import canonical_identity, declared_miss, declared_not_found, miss_status
+from ...domain.catalog.routing.contracts import (canonical_identity, declared_miss, declared_not_found,
+                                                 invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
     MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank, unscoped,
 )
@@ -192,10 +199,11 @@ def _can_answer_fully(contract, adapter) -> bool:
 
 
 def _subject(key: str, value) -> str:
-    """A comparable form of an identity value: the profile handle for a LinkedIn URL, else the text."""
+    """A comparable form of an identity value: the profile handle for a LinkedIn URL, else the text
+    without a URL's scheme, `www.` and trailing slash (the identity's URL is normalised, a provider's echo is not)."""
     if key == "linkedin_url" or key.endswith("_handle"):
         return (P.linkedin_handle(value) or str(value)).strip("/").lower()
-    return str(value).strip().lower()
+    return re.sub(r"^(?:https?://)?(?:www\.)?", "", str(value).strip().lower()).rstrip("/")
 
 
 def _other_subject(contract, identity: dict, core: dict) -> str | None:
@@ -207,6 +215,31 @@ def _other_subject(contract, identity: dict, core: dict) -> str | None:
             if _subject(k, core[k]) != _subject(k, identity[k]):
                 return _subject(k, core[k])
     return None
+
+
+_DOMAIN_IDENTITY_KEYS = ("domain", "company_domain", "website")
+
+
+def _email_domain_match(identity: dict, output: dict | None) -> bool | None:
+    """True/False when the caller named a domain and the hit carries an email; else None.
+
+    Same comparison call-events uses for `answer_flags.domain_match`. Disclose on `_treg` and
+    `X-Treg-Domain-Match`; never alter the child's answer. A LinkedIn-only child often returns a
+    former employer when the caller also sent a domain.
+    """
+    if not output:
+        return None
+    email = output.get("email")
+    if not isinstance(email, str) or "@" not in email:
+        return None
+    asked = next((identity[k] for k in _DOMAIN_IDENTITY_KEYS if identity.get(k) not in (None, "")), None)
+    if asked in (None, ""):
+        return None
+    asked_host = P.host(asked)
+    got_host = P.host(email.rsplit("@", 1)[1])
+    if not asked_host or not got_host:
+        return None
+    return got_host == asked_host
 
 
 def _miss_status(endpoint: dict) -> int | None:
@@ -672,6 +705,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "route_upgrade_unsupported", "endpoint_id": ep["id"],
             "message": f"{UPGRADE_HEADER} names an identity key the answer carries and {ep['id']} accepts on its own; "
                        f"{options.upgrade!r} is not one. Nothing was charged."})
+    if contract and (invalid := invalid_identity(contract, given)):
+        raise ResolutionFailed("route_no_candidate", status_code=422, detail={
+            "error": "invalid_identity", "endpoint_id": ep["id"], "invalid": invalid,
+            "message": "; ".join(f"{i['field']} must be a {i['type']}" for i in invalid)
+                       + ". Omit a field you don't have rather than sending a placeholder. Nothing was charged."})
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
@@ -707,6 +745,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     best: tuple[int, tuple[Candidate, dict, dict, bytes]] | None = None   # best WEAK answer seen
     other_subject: list[tuple[str, tuple]] = []   # X-Treg-Route-Complete: answers about another identifier, never returned unconfirmed
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
+    rate_waits: list[int] = []     # retry_after_s of candidates skipped by treg's own rate window
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
@@ -779,6 +818,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     raise
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
                                      exc.status_code, 0, "endpoint call allowance exhausted"))
+                continue
+            if exc.kind == "provider_rate_limited":
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, "treg's account is at its rate limit"))
+                rate_waits.append(exc.retry_after_s or 1)
                 continue
             if exc.kind in _GLOBAL_REFUSALS or (
                 exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
@@ -1033,6 +1077,15 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if winner is None and best is not None:
         winner = best[1]          # nobody cleared min_results — the fullest answer we paid for wins
     if winner is None:
+        if tried and len(rate_waits) == len(tried):
+            wait = min(rate_waits)
+            _summarize(parent, tried_count=len(tried))
+            _audit_parent(parent, ep, 429, 0, audit_client)
+            raise GatewayFailed("provider_rate_limited", status_code=429, detail={
+                "error": "provider_rate_limited", "endpoint_id": ep["id"], "retry_after_s": wait,
+                "tried": [t.view() for t in tried],
+                "message": f"every candidate for {ep['id']} is at treg's rate limit; nothing was "
+                           f"charged, try again in {wait} s"}, retry_after_s=wait)
         if tried and all(t.outcome == "skipped" for t in tried):
             raise ResolutionFailed("route_max_cost", status_code=402, detail={
                 "error": "route_max_cost", "endpoint_id": ep["id"],
@@ -1094,6 +1147,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     # suggestion only, unless the caller sent `X-Treg-Route-Verify`: then the check runs below.
     advice = (plan.contract.advice_unverified
               if plan.contract.advice_unverified and output and output.get("verified") is not True else "")
+    advice_locked = False  # a check's disagree/skip advice wins over domain-mismatch advice
     verification = None
     check = plan.contract.check
     if options.verify and check is not None and winner_outcome in ("hit", "weak"):
@@ -1108,10 +1162,18 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             if (check.disagree_advice and output.get("verified") is True and not verification.get("pending")
                     and verification["verdict"] != "valid"):
                 advice = check.disagree_advice   # the check wins; say so where the claim is read
+                advice_locked = True
         elif check.skip_advice and verification["reason"] == check.skip_reason:
             advice = check.skip_advice   # the caller asked; say why this hit was not checked
+            advice_locked = True
     elif options.verify:
         verification = _unchecked("no_hit")   # a miss is never checked; say why
+    # Disclose whether the hit's mailbox domain matches the domain the caller sent. Never alter
+    # the answer: a LinkedIn-only child that returns a former employer is still a billed hit.
+    domain_match = (_email_domain_match(plan.identity, output)
+                    if winner_outcome in ("hit", "weak") else None)
+    if (domain_match is False and plan.contract.advice_domain_mismatch and not advice_locked):
+        advice = plan.contract.advice_domain_mismatch
     confirmation = ({"field": plan.contract.confirm, "confirmed": confirmed_by is not None, "confirmed_by": confirmed_by}
                     if options.confirm and winner_outcome in ("hit", "weak") else None)
     decision = ({"decided": decided_by is not None, "decided_by": decided_by,
@@ -1121,6 +1183,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 "_treg": {"served_by": served, "provider": provider, "tier": cand.tier,
                           **({"merged_from": merged_from} if merged_from else {}),
                           **({"advice": advice} if advice else {}),
+                          **({"domain_match": domain_match} if domain_match is not None else {}),
                           "outcome": winner_outcome, "tried": [t.view() for t in tried], "charged_micro": spent,
                           **({"verification": verification} if verification is not None else {}),
                           **({"confirmation": confirmation} if confirmation is not None else {}),
@@ -1138,6 +1201,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     return _json(body_out, 200, {"X-Treg-Served-By": served, "X-Treg-Providers-Tried": ",".join(t.provider for t in tried),
                                  **({"X-Treg-Merged-From": ",".join(merged_from)} if merged_from else {}),
                                  **({"X-Treg-Ignored-Filters": ",".join(cand.ignored)} if cand.ignored else {}),
+                                 **({"X-Treg-Domain-Match": str(domain_match).lower()} if domain_match is not None else {}),
                                  **({"X-Treg-Route-Capped": "true"} if cost_capped else {}),
                                  **({"X-Treg-Route-Confirmed": str(confirmation["confirmed"]).lower()} if confirmation else {}),
                                  **({"X-Treg-Route-Decided": str(decision["decided"]).lower()} if decision else {}),
@@ -1204,9 +1268,14 @@ async def _run_check(parent: CallContext, check, output: dict, remaining: int | 
         if response.status == 202 and meta.get("outcome") == "pending":
             # Still running after the routed wait (BounceBan `verifying`): its hold stays with the
             # async worker, which settles or releases it; nothing of it is charged now.
-            return {"verdict": "unknown", "checked": True, "served_by": meta.get("served_by"),
+            # Forward the child's async poll descriptor so the caller can resume without digging
+            # through GET /calls/{call_id}; cost_micro is the hold (reserved), not a settled charge.
+            view = {"verdict": "unknown", "checked": True, "served_by": meta.get("served_by"),
                     "cost_micro": int(meta.get("reserved_micro") or 0), "pending": True,
-                    "call_id": meta.get("call_ref")}, 0
+                    "call_id": meta.get("call_ref")}
+            if isinstance(meta.get("async"), dict):
+                view["async"] = meta["async"]
+            return view, 0
         cost = int(_header(response, "X-Treg-Cost-Micro") or 0)
         served = meta.get("served_by")
         if not 200 <= response.status < 300 or meta.get("outcome") not in ("hit", "weak", "miss"):

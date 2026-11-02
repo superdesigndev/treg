@@ -1,9 +1,9 @@
-"""The registry data model — minimal on purpose (charter: don't invent extra nouns).
+"""The registry data model — minimal on purpose (don't invent extra nouns).
 
 Multi-tenancy (orgs) shape: an **Org** is the tenant that owns resources; a **User** is a
 global identity; a **Membership** links a user to an org with a role and IS where the caller's
 token lives (a token = a (user, org) pair). Secrets/tools/bundles/call records carry `org_id`,
-so every list/call/mutation is scoped to the caller's org. See docs/MULTI-TENANCY-PLAN.md.
+so every list/call/mutation is scoped to the caller's org.
 """
 
 from __future__ import annotations
@@ -516,7 +516,7 @@ class CallRecord(SQLModel, table=True):
                             sqlite_where=text("api_key_id IS NOT NULL")),)
 
     id: int | None = Field(default=None, primary_key=True)
-    org_id: int | None = Field(default=None, foreign_key="org.id", index=True)
+    org_id: int | None = Field(default=None, foreign_key="org.id")
     user_email: str = Field(index=True)
     tool_name: str = Field(index=True)
     method: str
@@ -654,7 +654,7 @@ class Bundle(SQLModel, table=True):
     packaging. "Register a skill" creates a bundle; its secrets/tools point back via `bundle_id`.
 
     Execution config (both `treg run` tiers) lives on `Tool.cli` — one profile, read by the local
-    grant path and the server runner alike (see docs/CLI-RUN-PLAN.md). The old bundle-side run
+    grant path and the server runner alike. The old bundle-side run
     columns (runtime/package/entrypoint/runnable) were folded into `Tool.cli` by a startup
     migration; they may still exist physically in older databases but nothing reads them.
     """
@@ -988,7 +988,7 @@ class LedgerEntry(SQLModel, table=True):
                             sqlite_where=text("kind = 'topup'")))
 
     id: str = Field(primary_key=True)  # uuid4 hex
-    org_id: int = Field(foreign_key="org.id", index=True)
+    org_id: int = Field(foreign_key="org.id")
     block_id: str | None = Field(default=None, index=True)
     # grant | topup | reserve | settle | release
     kind: str = Field(index=True)
@@ -1133,7 +1133,7 @@ class TagSpend(SQLModel, table=True):
     __table_args__ = (Index("ix_tagspend_org_dim_val_created", "org_id", "dim", "val", "created_at"),)
 
     id: int | None = Field(default=None, primary_key=True)
-    org_id: int = Field(foreign_key="org.id", index=True)
+    org_id: int = Field(foreign_key="org.id")
     dim: str  # the tag key, e.g. "customer"
     val: str  # the tag value, e.g. "cust_8123"
     # The hold this belongs to (== call_id). Kept after settle so a row can be traced back to its call.
@@ -1488,7 +1488,7 @@ class Feedback(SQLModel, table=True):
 
 
 class HubTool(SQLModel, table=True):
-    """One version of a tool a maker published on the hub (docs/HUB-DECISIONS.md). A tool is
+    """One version of a tool a maker published on the hub. A tool is
     made of other tools: either a JSON list of steps or a script that runs in a sandbox. The row
     stores the four files a maker ships (manifest, script, check, readme) plus what the runner
     and the catalog read straight off the row.
@@ -1515,23 +1515,23 @@ class HubTool(SQLModel, table=True):
     readme: str = Field(default="")
     created_by: str = Field(default="")              # the maker's email
     created_at: datetime = Field(default_factory=_now)
-    # The check run's verdict (docs/HUB-DECISIONS.md round 2 q10): {status, run_id, checked_at,
+    # The check run's verdict: {status, run_id, checked_at,
     # error?, trace?}. Declared LAST to match the migration's ALTER TABLE append position.
     check_result: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
-    # The maker's uploaded CSV (docs/HUB-DECISIONS.md round 1 q6): at most 50 MB, read-only after
+    # The maker's uploaded CSV: at most 5 MB, read-only after
     # upload, a replacement is a new version; the script reads it as ctx.data. Declared LAST
     # (migration 0037).
     data: str | None = Field(default=None)
-    # docs/hub-listing-decisions.md: flipped without a version bump. Whether the tool is in
+    # Flipped without a version bump. Whether the tool is in
     # catalog search is not a version's switch: it is the tool's HubListing row.
     listed: bool = Field(default=False)              # UNREAD since migration 0050 (expand-only); use HubListing
     public_log: bool = Field(default=True)           # true = the share page shows the recent-runs log
 
 
 class HubListing(SQLModel, table=True):
-    """A hub tool's place in catalog search (docs/hub-listing-decisions.md round 2, 2026-09-24): the
+    """A hub tool's place in catalog search: the
     maker requests it, a superadmin approves or rejects it. One row per tool, not per version, so
-    the listing stays while each new version waits for its own review (round 4); unlisting deletes the row, and listing again
+    the listing stays while each new version waits for its own review; unlisting deletes the row, and listing again
     is a new request. Only `approved` puts the tool in search."""
 
     tool_id: str = Field(primary_key=True)           # `<slug>.<name>`
@@ -1562,7 +1562,7 @@ class HubRun(SQLModel, table=True):
     """One run of a hub tool: who called, which version, what ran, what it cost. Kept 30 days.
     Every step is ALSO an ordinary CallRecord under `{run_id}:s{n}`, so nothing here is a second
     source of truth for money — the ledger holds the holds and settles; this row holds the trace
-    a caller and a maker read (docs/HUB-DECISIONS.md rounds 2 and 5)."""
+    a caller and a maker read."""
 
     id: int | None = Field(default=None, primary_key=True)
     run_id: str = Field(index=True)                  # `r_<hex>`, also the parent call_ref
@@ -1582,7 +1582,7 @@ class HubRun(SQLModel, table=True):
     error: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     started_at: datetime = Field(default_factory=_now, index=True)
     finished_at: datetime | None = Field(default=None)
-    # The run's answer, for the caller's run page (docs/HUB-DECISIONS.md round 5 q8); only for
+    # The run's answer, for the caller's run page; only for
     # successful runs, capped by the runner's 2 MB output rule. Declared LAST (migration 0029).
     output: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
 class FeedbackHandling(SQLModel, table=True):
@@ -1645,8 +1645,9 @@ class CallReview(SQLModel, table=True):
 
 class Media(SQLModel, table=True):
     """A reference file a member hosted for a vendor to fetch (`treg host`): the image, voice clip
-    or video an AIGC endpoint takes as a public URL. Bytes live in the row, expire by TTL, and are
-    served by an opaque token that names no org or file. See docs/context/architecture/media.md.
+    or video an AIGC endpoint takes as a public URL. The bytes live in the object store under
+    `object_key`, or in `body` when the registry keeps them in the database; they expire by TTL and
+    are served by an opaque token that names no org or file. See docs/context/architecture/media.md.
     """
 
     __table_args__ = (Index("ix_media_org_created", "org_id", "created_at"),)
@@ -1655,7 +1656,8 @@ class Media(SQLModel, table=True):
     org_id: int = Field(foreign_key="org.id")
     content_type: str
     size: int = Field(default=0)
-    body: bytes
+    body: bytes | None = Field(default=None)
+    object_key: str | None = Field(default=None)
     created_at: NaiveUTC = Field(default_factory=_now)
     expires_at: NaiveUTC = Field(index=True)
 
@@ -1773,7 +1775,7 @@ class CapacityPolicy(SQLModel, table=True):
     `source` how we learn it (its free account API, response headers, a calculation, a hand entry,
     nothing). `unknown`/`none` are honest defaults for a provider nobody has classified yet — a
     sweep flags them rather than inventing a number. Numbers only: no key or payment detail lives
-    here. See docs/PROVIDER-CAPACITY-PLAN.md §2.2.
+    here.
     """
 
     provider: str = Field(primary_key=True)
@@ -1833,7 +1835,7 @@ class OverflowRoute(SQLModel, table=True):
     `enabled` is DERIVED by `domain.capacity.routes.eligible` at sync time (same unit, ratio ≤ 4,
     platform-eligible, policy allows, verified < 7 days ago); the call path only ever reads it.
     Prices are the aggregator's list price in micro-USD: the caller pays exactly that, 0% markup,
-    disclosed in-band. See docs/PROVIDER-CAPACITY-PLAN.md §4.3.
+    disclosed in-band.
     """
 
     endpoint_id: str = Field(primary_key=True)
@@ -1968,7 +1970,7 @@ class ArchiveSnapshot(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    key_id: int = Field(foreign_key="archivekey.id", index=True)
+    key_id: int = Field(foreign_key="archivekey.id")
     version: int = Field(default=1)                # 1..N within the key, newest = max
     status_code: int = Field(default=200)
     media_type: str = Field(default="")
@@ -2007,7 +2009,7 @@ class ArchiveKeyOrg(SQLModel, table=True):
     __table_args__ = (UniqueConstraint("org_id", "key_hash", name="uq_archive_key_org"),)
 
     id: int | None = Field(default=None, primary_key=True)
-    org_id: int = Field(index=True)
+    org_id: int
     key_hash: str = Field(index=True)
     first_call_at: NaiveUTC = Field(default_factory=_now)
     last_call_at: NaiveUTC = Field(default_factory=_now)
