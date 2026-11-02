@@ -1220,16 +1220,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     if paused is not None:
         _audit(503, refused_by="paused", answered=False)
         raise provider_paused(paused)
-    allowance_draw = allowance.draw_for(tool, secrets, upstream_url)
-    if allowance_draw is not None:
-        # The capacity view opens its own session when its cache is stale: end this one first.
-        await _await_before_reserve(db.commit(), request, call_ref)
-        try:
-            allowance_draw = await _await_before_reserve(
-                allowance.admit(allowance_draw), request, call_ref)
-        except CallFailure as exc:
-            _audit(exc.status_code, refused_by="capacity", answered=False)
-            raise
+    allowance_draw = allowance.draw_for(tool, secrets, request.method, upstream_url)
     billed_provider = _oauth_billed_provider(secrets)
     if billed_provider is not None:
         # The sandbox never reaches here (it returned above); the public demo could, and one shared
@@ -1367,6 +1358,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # End the DB phase before network I/O. The session is `expire_on_commit=False`, so
         # `tool`/`secrets`/`caller.org` stay usable without a reload.
         await db.commit()
+        allowance_draw = await allowance.admit(allowance_draw)
         share_slot = NO_SLOT
         rl = None
         try:
@@ -1465,6 +1457,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 archive_key_hash, archive_content_hash = served["key_hash"], served["content_hash"]
                 response = _served_response(served, body)
             else:
+                if allowance_draw is not None and allowance_draw.refused:
+                    raise allowance.exhausted(allowance_draw)
                 if platform_tier and (cap := capacity_view.concurrency(mk.provider)) \
                         and (wait_s := get_settings().fair_share_wait_s) > 0:
                     # Fair share (domain/capacity/fair_share.py): every team shares this account's
@@ -1658,7 +1652,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # it is the one worth keeping: this branch carries refresh, timeout, injection and SSRF 502s.
         _renderings = _safe_secret_renderings(tool, secrets)
         _audit(exc.status_code, charged_micro=0 if metered or free_poll else None,
-               refused_by="policy" if exc.kind in routed._QUOTA_REFUSALS else None,
+               refused_by=("policy" if exc.kind in routed._QUOTA_REFUSALS
+                           else "capacity" if exc.kind == "provider_capacity" else None),
                duration_ms=_now_ms() - started, answered=False,
                error_request=(
                    _ERROR_MASKING_FAILED if _renderings is None else
@@ -1767,13 +1762,13 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         except asyncio.CancelledError:
             await _finish_cancelled_call(request, mk, call_ref, response)
             raise
-        try:
-            await allowance.note_answer(
-                None if served_hit else allowance_draw, response.status,
-                httpx.Headers(response.raw_headers), body)
-        except asyncio.CancelledError:
-            await _finish_cancelled_call(request, mk, call_ref, response)
-            raise
+        if allowance_draw is not None and not served_hit:
+            try:
+                await allowance.note_answer(
+                    allowance_draw, response.status, httpx.Headers(response.raw_headers), body)
+            except asyncio.CancelledError:
+                await _finish_cancelled_call(request, mk, call_ref, response)
+                raise
         capacity_signal = None
         if response.status >= 400 or account_out_2xx:
             # Did the provider just say OUR account is out? Mark it for the next caller. After the
@@ -1925,13 +1920,13 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 request.headers.get("content-type", ""),
                 tool, caller_body, _renderings)
             err_response = _error_response_evidence(response.raw_headers, body, _renderings)
-    try:
-        await allowance.note_answer(
-            None if served_hit else allowance_draw, response.status,
-            httpx.Headers(response.raw_headers), body)
-    except asyncio.CancelledError:
-        await _finish_cancelled_call(request, mk, call_ref, response)
-        raise
+    if allowance_draw is not None and not served_hit:
+        try:
+            await allowance.note_answer(
+                allowance_draw, response.status, httpx.Headers(response.raw_headers), body)
+        except asyncio.CancelledError:
+            await _finish_cancelled_call(request, mk, call_ref, response)
+            raise
     free_poll = mk is not None and mk.free_owned_poll
     _audit(response.status, duration_ms=duration_ms,
            charged_micro=0 if free_poll else None,

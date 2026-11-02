@@ -1,6 +1,6 @@
 ---
 title: Shared allowances on treg's app - a connection's calls that spend one pool
-status: shipped
+status: built, behind `shared_allowance_mode` (TREG_SHARED_ALLOWANCE_MODE), off by default
 sources:
   - src/treg/application/call/allowance.py
   - src/treg/application/call/service.py
@@ -36,8 +36,10 @@ quota error until the provider resets.
   equal to `extra_credential_setting`. A team that supplies its own value binds a secret instead
   and is never counted. The binding's `account` gives each of treg's credentials its own pool.
 
-`scopes` names a smaller limit inside the pool (YouTube's `search.list` per-day limit): the calls
-it covers by upstream path, and the exhaustion answer that names it by body.
+`scopes` names smaller pools inside the allowance: the calls each covers (`call_regex` over
+"METHOD /upstream/path") and, where the provider names it, the exhaustion answer that does
+(`body_regex`). YouTube has two: `search` (its own per-day limit, and a far higher unit price) and
+`writes` (every non-GET, uploads included).
 
 `application/call/allowance.draw_for` makes the decision from the tool and the loaded secrets, with
 no I/O. It runs at the same point as the paused-provider check, so a catalog call on a connection,
@@ -46,22 +48,31 @@ a URL passthrough, MCP and hub steps all pass through it.
 ## Refuse until the reset
 
 The pool rides the call path's breaker (`domain/capacity/marks.py`, `ops/capacity.md`) under its
-own lock keys, `allowance:<service>[#<account>]` and `<that>/<scope>`. The signature table
-recognises each provider's spent-allowance answer and its reset: a wait stated in the body
-(`wait_regex`; a stated wait no longer than a burst is a burst) or a named reset such as the next
+own lock keys, `allowance:<service>[#<account>]` and `<that>/<scope>`. Only the provider's own
+signature rows judge an answer (`signatures.classify_own`): the generic rows (a bare 402, a 429
+with a long `Retry-After`) cannot tell treg's app allowance from one connected account's. A row
+gives the reset: a wait stated in the body (`wait_regex`; a stated wait no longer than a burst is a
+burst, and a row that expects one but finds none is unknown) or a named reset such as the next
 midnight Pacific time. A per-account limit or a short token-wide wait never strikes.
+
+A spent answer strikes the narrowest pool it proves spent: a scope its body names, else the
+call's own scope, else the whole allowance. Costly calls running out (the last units cannot pay
+for a search) leaves cheap calls serving; a cheap call told the units are spent locks everything.
 
 Two signatures lock, as on treg's own keys. A lock lasts to the stated reset, bounded by the
 lock row's lifetime (`MAX_LOCK`), instead of the six hours that bound a platform key's lock. While
-it holds, a drawing call is refused before it leaves, with a 503 of kind `provider_capacity` and
-body error `shared_allowance_exhausted` (`provider`, `resets_at`, a `message` naming the team's own
-client or credential as the way around it), not charged, audited `refused_by=capacity`. One call
+it holds, a drawing call the archive cannot answer is refused before it leaves, with a 503 of kind
+`provider_capacity` and body error `shared_allowance_exhausted` (`provider`, `resets_at`, a
+`message` naming the team's own client or credential as the way around it), not charged, audited
+`refused_by=capacity`. One call
 per process per minute is let through as the probe, never answered from the archive; its 2xx
 clears the lock it probed. An archive hit is never recovery evidence.
 
-The admission reads the cached capacity view and may open its own session when the cache is
-stale, so the request's session is committed first. Marks are written after the answer, on their
-own short session, and never raise.
+The admission reads the cached capacity view after the request's session has ended its DB phase,
+before the archive lookup (a probe skips it); the refusal comes after the lookup, inside the
+relay's failure handling, so a hold, if any, is released there. Recovery reloads the view first, so
+a strike written while the call was in flight is still cleared by its 2xx. Marks are written after
+the answer, on their own short session, and never raise.
 
 ## Mode
 

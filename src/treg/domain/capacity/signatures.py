@@ -51,7 +51,7 @@ class Signature:
     match wins. `resets` names when a quota with no wait header serves again; None leaves it to
     the sweep's account call. `wait_regex` reads the wait in seconds from the body (group 1) when a
     vendor states it there rather than in a header; a stated wait short enough to be a burst is
-    one. `tripwire` marks a plain capacity phrase that arms the `unrecorded` tripwire for every
+    one, and a row that expects one but finds none is unknown. `tripwire` marks a plain capacity phrase that arms the `unrecorded` tripwire for every
     other vendor."""
     provider: str
     status: int
@@ -145,7 +145,7 @@ _TABLE: list[Signature] = [
     # Google Ads: the developer token's daily operations are spent, with the wait in the body's
     # `quotaErrorDetails.retryDelay`. Other rate scopes (one customer account) are not ours to mark.
     Signature("google-ads", 429, r'"rateScope"\s*:\s*"DEVELOPER"', "quota",
-              wait_regex=r'"retryDelay"\s*:\s*"(\d+)s"'),
+              wait_regex=r'"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"'),
     # YouTube Data API: the project's daily units, and search.list's own daily limit inside them.
     # Both reset at midnight Pacific time. https://developers.google.com/youtube/v3/getting-started#quota
     Signature("youtube", 403, r'"reason"\s*:\s*"quotaExceeded"', "quota",
@@ -269,17 +269,8 @@ def classify(provider: str, status: int, headers=None, body: bytes | str = b"",
     provider = (provider or "").lower()
     if _edge_block(status, headers, text_l):  # before the table: a block page carries no vendor body to match
         return Signal("edge_block", None, None, detail=text[:120])
-    for sig in _TABLE:
-        if sig.status != status or sig.provider not in ("*", provider):
-            continue
-        if sig.body_regex and not re.search(sig.body_regex, text, re.IGNORECASE):
-            continue
-        if sig.kind == "quota" and (wait := _body_wait(sig, text)) is not None:
-            if wait <= BURST_MAX_RETRY_AFTER_S:
-                return Signal("burst", None, wait, detail=text[:120])
-            return Signal("quota", now + timedelta(seconds=wait), None, detail=text[:120])
-        return Signal(sig.kind, _quota_reset(sig, headers, now),
-                      _retry_after(headers, now) if sig.kind == "burst" else None, detail=text[:120])
+    if (signal := _row_signal(provider, status, headers, text, now, ("*", provider))) is not None:
+        return signal
     if status == 429:
         wait = _retry_after(headers, now)
         if wait is not None and wait <= BURST_MAX_RETRY_AFTER_S:
@@ -295,10 +286,38 @@ def classify(provider: str, status: int, headers=None, body: bytes | str = b"",
     return None
 
 
+def classify_own(provider: str, status: int, headers=None, body: bytes | str = b"",
+                 now: datetime | None = None) -> Signal | None:
+    """The capacity meaning of one answer by the provider's own rows alone, or None: no generic
+    row or fallback, which cannot tell an allowance treg's app holds from one connected account's."""
+    text = body.decode("utf-8", "replace") if isinstance(body, bytes) else (body or "")
+    provider = (provider or "").lower()
+    return _row_signal(provider, status, headers, text, now or utcnow_naive(), (provider,))
+
+
+def _row_signal(provider: str, status: int, headers, text: str, now: datetime,
+                providers: tuple[str, ...]) -> Signal | None:
+    for sig in _TABLE:
+        if sig.status != status or sig.provider not in providers:
+            continue
+        if sig.body_regex and not re.search(sig.body_regex, text, re.IGNORECASE):
+            continue
+        if sig.kind == "quota" and sig.wait_regex is not None:
+            wait = _body_wait(sig, text)
+            if wait is None:
+                return Signal("unknown", None, None, detail=text[:120])
+            if wait <= BURST_MAX_RETRY_AFTER_S:
+                return Signal("burst", None, wait, detail=text[:120])
+            return Signal("quota", now + timedelta(seconds=wait), None, detail=text[:120])
+        return Signal(sig.kind, _quota_reset(sig, headers, now),
+                      _retry_after(headers, now) if sig.kind == "burst" else None, detail=text[:120])
+    return None
+
+
 def _body_wait(sig: Signature, text: str) -> int | None:
-    if sig.wait_regex is None or (m := re.search(sig.wait_regex, text)) is None:
+    if (m := re.search(sig.wait_regex, text)) is None:
         return None
-    wait = int(m.group(1))
+    wait = math.ceil(float(m.group(1)))
     return wait if wait <= _MAX_WAIT_S else None
 
 

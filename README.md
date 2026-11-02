@@ -30,8 +30,9 @@ bills fractions of a cent per call.
 - **Your own tools** — anything a teammate registered: a paid API account, an OAuth connection, a
   vendor CLI, a `SKILL.md`. **Your own key always wins over treg's, and those calls are never
   metered.** Where a provider meters a daily allowance on treg's app rather than on your account
-  (YouTube, Google Ads), a connection made through treg's app shares it with every team and pauses
-  until the provider resets it; connect with your own OAuth client or developer token to avoid that.
+  (YouTube, Google Ads), a connection made through treg's app shares it with every team and can be
+  paused until the provider resets it; connect with your own OAuth client or developer token to
+  avoid that.
 
 The vocabulary for the second half:
 

@@ -26,7 +26,8 @@ holds those accounts and bills a fraction of a cent per call.
   key always wins over treg's and is never billed. One exception: an X connection made through
   treg's own X app is billed per call, because X bills the app owner for every use. And where a
   provider meters a daily allowance on treg's app (YouTube, Google Ads), a connection made through
-  treg's app shares it with every team and is refused once it is spent, until the provider resets it.
+  treg's app shares it with every team and can be refused once it is spent, until the provider
+  resets it.
 
 **Set up: first identify where you run.** The setups differ, and the wrong one cannot work.
 

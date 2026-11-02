@@ -48,11 +48,13 @@ class CatalogTarget:
 
 @dataclass(frozen=True)
 class AllowanceScope:
-    """A smaller allowance inside a shared one: the calls it covers (`path_regex`, searched in the
-    upstream path) and the exhaustion answer that names it (`body_regex`)."""
+    """A smaller pool inside a shared allowance: the calls it covers (`call_regex`, searched in
+    "METHOD /upstream/path") and, when the provider names it, the exhaustion answer that does
+    (`body_regex`). A call in a scope that is told the allowance is spent locks only its scope:
+    costly calls running out says nothing about cheap ones."""
     name: str
-    path_regex: str
-    body_regex: str
+    call_regex: str
+    body_regex: str | None = None
 
 
 @dataclass(frozen=True)
@@ -785,11 +787,12 @@ YOUTUBE = OAuthProvider(
     discover_key="items",
     discover_id_field="id",
     discover_label_field="snippet.title",
-    # The Data API's daily units belong to the Cloud project behind treg's client, and search.list
-    # has its own smaller daily limit inside them.
-    # https://developers.google.com/youtube/v3/getting-started#quota
+    # The Data API's daily units belong to the Cloud project behind treg's client. search.list has
+    # its own smaller daily limit inside them, and it and every write cost far more units than a
+    # list. https://developers.google.com/youtube/v3/determine_quota_cost
     shared_allowance=SharedAllowance(drawn_by="app", scopes=(
-        AllowanceScope("search", r"/youtube/v3/search$", r"defaultSearchListPerDayPerProject"),
+        AllowanceScope("search", r"^GET /youtube/v3/search$", r"defaultSearchListPerDayPerProject"),
+        AllowanceScope("writes", r"^(?:POST|PUT|PATCH|DELETE) "),
     )),
 )
 

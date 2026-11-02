@@ -65,14 +65,15 @@ class Upstream:
         if before := kwargs.get("before_outbound"):
             await before()
         self.calls.append(upstream_url)
-        status, body = self.answer
+        status, body, *headers = self.answer
 
         async def stream():
             yield body
 
         async def close():
             return None
-        return UpstreamResponse(status, ((b"content-type", b"application/json"),), stream(), close)
+        return UpstreamResponse(status, ((b"content-type", b"application/json"), *headers),
+                                stream(), close)
 
 
 @pytest.fixture
@@ -159,12 +160,15 @@ async def test_a_spent_youtube_allowance_refuses_treg_app_connections_until_a_pr
     assert [c["refused_by"] for c in refused] == ["capacity"]
 
 
-async def test_youtube_search_running_out_leaves_the_rest_of_the_allowance_serving(
-        clients: AsyncClient, allowance_mode, upstream):
+@pytest.mark.parametrize("answer", [(429, YT_SEARCH_QUOTA), (403, YT_QUOTA)],
+                         ids=["search-limit", "units-spent-on-a-search"])
+async def test_a_costly_call_running_out_leaves_cheap_calls_serving(
+        clients: AsyncClient, allowance_mode, upstream, answer):
     await _connect(clients, "youtube", YT_HOST, provider="youtube")
-    upstream.answer = (429, YT_SEARCH_QUOTA)
+    upstream.answer = answer
     for _ in range(2):
-        assert (await clients.get("/call/youtube/youtube/v3/search?q=x&part=id")).status_code == 429
+        r = await clients.get("/call/youtube/youtube/v3/search?q=x&part=id")
+        assert r.status_code == answer[0]
     assert (await _lock("allowance:youtube/search")).is_active()
     assert await _lock("allowance:youtube") is None
 
@@ -172,6 +176,19 @@ async def test_youtube_search_running_out_leaves_the_rest_of_the_allowance_servi
     r = await clients.get("/call/youtube/youtube/v3/search?q=y&part=id")
     assert r.status_code == 503 and r.json()["detail"]["error"] == "shared_allowance_exhausted"
     assert (await clients.get("/call/youtube/youtube/v3/videos?id=a&part=id")).status_code == 200
+    r = await clients.post("/call/youtube/youtube/v3/videos?part=snippet", json={})
+    assert r.status_code == 200, "a write is its own costly pool, not search's"
+
+
+async def test_a_success_between_two_quota_answers_keeps_the_allowance_open(
+        clients: AsyncClient, allowance_mode, upstream):
+    await _connect(clients, "youtube", YT_HOST, provider="youtube")
+    channels = "/call/youtube/youtube/v3/channels?part=id&mine=true"
+    for answer in ((403, YT_QUOTA), (200, b'{"items": []}'), (403, YT_QUOTA)):
+        upstream.answer = answer
+        await clients.get(channels)
+    lock = await _lock("allowance:youtube")
+    assert lock is not None and not lock.is_active() and lock.strikes == 1
 
 
 async def test_google_ads_locks_on_the_developer_tokens_daily_operations_only(
@@ -181,9 +198,13 @@ async def test_google_ads_locks_on_the_developer_tokens_daily_operations_only(
                    developer_token="TEAM-TOKEN")
     search = "/call/google-ads/v25/customers/123/googleAds:search"
 
-    # One customer account's limit, and a short wait on the token, are not a spent day.
-    for body in (_ads_quota("ACCOUNT", 40000), _ads_quota("DEVELOPER", 30)):
-        upstream.answer = (429, body)
+    # One customer account's limit, a short or unstated wait on the token, and a long
+    # Retry-After on an answer the provider's rows do not recognise are not a spent day.
+    no_delay = _ads_quota("DEVELOPER", 0).replace(b'"retryDelay": "0s"', b'"other": 1')
+    for body in (_ads_quota("ACCOUNT", 40000), _ads_quota("DEVELOPER", 30),
+                 _ads_quota("DEVELOPER", 30).replace(b'"30s"', b'"30.500s"'), no_delay,
+                 b'{"error": {"code": 429, "status": "RESOURCE_EXHAUSTED"}}'):
+        upstream.answer = (429, body, (b"retry-after", b"3600"))
         for _ in range(2):
             assert (await clients.post(search, json={"query": "SELECT x"})).status_code == 429
     assert await _lock("allowance:google-ads") is None
