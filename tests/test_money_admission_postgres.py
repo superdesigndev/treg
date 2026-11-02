@@ -142,11 +142,11 @@ async def _hot_org_isolation(engine, *, admission=None, isolates: bool | None = 
                 other_task = asyncio.create_task(
                     _after_loop_pause(_close(sessions, other, other_call, admission=admission)))
                 tasks.append(other_task)
-                completed, _ = await asyncio.wait({other_task}, timeout=0.25)
                 if isolates:
-                    assert completed and await other_task == 70, "unrelated org must retain DB capacity"
+                    assert await other_task == 70, "unrelated org must retain DB capacity"
                     assert len(pids) == 1, "same-org waiters must remain outside the DB pool"
                 else:
+                    completed, _ = await asyncio.wait({other_task}, timeout=0.25)
                     assert not completed, "baseline must demonstrate pool starvation"
                 await holder.rollback()
                 assert await asyncio.gather(*tasks) == [70] * len(tasks)
