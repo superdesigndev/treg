@@ -1,6 +1,6 @@
 ---
 title: Replay - recorded exchanges re-run through one checkout's billing, outcome and routing code
-status: building
+status: shipped
 sources:
   - src/treg/application/replay/__init__.py
   - src/treg/application/replay/__main__.py
@@ -47,16 +47,8 @@ the observed override of a rejected submission) and composes the existing pure f
 
 ## What one replay runs
 
-| Output group | Production function | Fields |
-|---|---|---|
-| `reserve` | `price_call`, `money.with_margin` | `estimate_micro`, `hold_micro`, `unit_micro`, `reported_charge_unit_micro`, the basis's `when`, kind, reserve and fallback, and a digest of the whole basis |
-| `settle` | `submission_state`, `decide_settle` | `deferred`, `billable`, `reason`, `observed_micro`, `actual_micro`, `charged_micro` |
-| `outcome` | `results.classify`, `results.verdict` | `state`, `reason`, `hit`, `verdict` |
-| `adapter` | `Adapter.from_upstream`, `Adapter.is_miss` | whether the body is JSON, the adapter miss, a digest of the mapped core, the empty required fields |
-| `routing` | `child_outcome` (verified, routable adapters only) | `kind`, `why`, `rows` |
-| `stats` | `stats.Tally.fold` | whether the row counts, and which counters it moves |
-| `async` | `asynctasks.classify_terminal`, `settlement.settle`, `terminal_judgement` | terminal `outcome`, `settled_micro`, `charged_micro`, `hit`, `verdict` |
-
+One output record per input, grouped as `reserve`, `settle`, `outcome`, `adapter`, `routing`,
+`stats` and `async` (`engine.py`), each from the production function that decides it.
 Every call is replayed as a call on treg's own key (`tier: platform`), with the settings of the
 process running it. A step that cannot apply is `null`; a step that raises reports only the
 exception's type and typed kind, never its message, which may quote the body. An accepted async

@@ -26,7 +26,7 @@ A listing has **three parts**, and all three ship in the same PR:
 And every listing PR carries a **verification evidence ledger** (Step 7b). No ledger, no merge.
 
 Deep references (read before non-trivial work; do not duplicate them here):
-- `docs/context/guides/expanding-a-category.md` — the add-a-provider playbook, verify toolbox, traps
+- `references/expanding-a-category.md` - the verify toolbox, provider traps and selection heuristics
 - `docs/context/architecture/catalog.md` — catalog schema, cost provenance, verify pipeline, PII rules
 - `docs/VENDORS.md` — what we told the vendor to prepare (their checklist)
 - `src/treg/web/vendor-listing.md` — the HOSTED instructions (served at `/vendor-listing`) that a
@@ -66,7 +66,7 @@ Reject decisively, with a recorded reason, when:
 
 Add an `OAuthProvider(auth_kind="key", …)` in `oauth_providers.py` and append it to `REGISTRY`.
 Model it on `HUNTER` (a clean key provider). Pick the verify fields from the toolbox table in
-`expanding-a-category.md` (`token_header`/`token_format`, `token_location="query"`+`token_param`,
+`references/expanding-a-category.md` (`token_header`/`token_format`, `token_location="query"`+`token_param`,
 `probe_url`, `probe_method`+`probe_json`, `token_verify_field`, `token_ok_field`+`token_ok_value`,
 `token_reject_field`, `probe_reject_statuses`, …). Prefer a header over a query key so the secret
 never lands in a logged URL. Set `category` (add to `CATEGORY_ORDER` only if genuinely new),

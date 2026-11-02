@@ -10,5 +10,5 @@ Each mention has `source`, `url`, `author`, `where` (subreddit or x), `created_a
 answers.
 
 Priced in the script: `ctx.charge(mentions.length * 0.002, "per mention")`, on top of the provider
-fees (about $0.003 per run), capped at `max_price_usd` $0.10 (50 mentions, the most `limit` allows).
+fees, capped at `max_price_usd` $0.10 (50 mentions, the most `limit` allows).
 A run that finds nothing pays only the fees.

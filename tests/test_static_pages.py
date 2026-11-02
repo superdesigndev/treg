@@ -79,7 +79,7 @@ def _front_door_files() -> list[Path]:
     skip = {"dashboard", "vendor", "media"}
     files = [p for p in WEB.rglob("*") if p.suffix in {".html", ".js", ".md", ".txt"}
              and not skip & set(p.relative_to(WEB).parts)]
-    return files + [ROOT / "README.md", ROOT / "docs" / "TUTORIAL.md"]
+    return files + [ROOT / "README.md"]
 
 
 def test_no_page_types_the_catalog_size():

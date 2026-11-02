@@ -59,8 +59,7 @@ Or open an issue or PR on this repo yourself, with:
 8. **A self-verification ledger**: before submitting, run every `test_request` live against your
    own account and record, per endpoint, the HTTP status, the cost your YAML claims, and the cost
    your meter actually charged (charge field, rate-card endpoint, or balance delta), dated. Docs
-   drift; meters don't — a real submission's docs-transcribed price was 5× under what the meter
-   charged. Deliberate-miss test targets must be labeled as such, with the hit price observed
+   drift; meters don't. Deliberate-miss test targets must be labeled as such, with the hit price observed
    once on a real target.
 9. **A full-surface map**: every documented operation, marked catalogued or excluded-with-reason —
    including the free count/preview routes and your cheapest operation tiers, which are the ones
