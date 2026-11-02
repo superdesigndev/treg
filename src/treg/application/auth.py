@@ -344,7 +344,8 @@ async def verify_email_login(
             logging.getLogger("treg").info(
                 "event=turnstile_email_verify outcome=%s new_user=%s client=%s",
                 entry["captcha"], user.id in created, client)
-        signup.track_signup(user, created, "email", entry_surface, captcha=entry.get("captcha", ""))
+        signup.track_signup(user, created, "email", entry_surface, captcha=entry.get("captcha", ""),
+                            client=client)
         token = sess.make_identity(
             user.id, user.token_version, ttl=sess.BOOTSTRAP_TTL_SECONDS,
             scope=sess.BOOTSTRAP_SCOPE,
@@ -631,9 +632,11 @@ async def _provision_social_user(email: str, state: str, door: str, entry_surfac
         await db.commit()
         if proven:
             await signup.grant_signup_promo_on_proof(user.id)
-        signup.track_signup(user, created, door, entry_surface)
         # Browser session OR `treg login` handshake - both go through the /login team picker.
-        return SocialLoginProof(user=user, cli_state=await _consume_cli_state(state))
+        cli_state = await _consume_cli_state(state)
+        signup.track_signup(user, created, door, entry_surface,
+                            client="cli_browser" if cli_state is not None else "browser")
+        return SocialLoginProof(user=user, cli_state=cli_state)
 
 
 async def complete_github_login(

@@ -459,6 +459,11 @@
       },
       "EmailVerifyIn": {
         "properties": {
+          "cli_pairing": {
+            "default": false,
+            "title": "Cli Pairing",
+            "type": "boolean"
+          },
           "code": {
             "title": "Code",
             "type": "string"
