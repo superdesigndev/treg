@@ -20,8 +20,11 @@ holds one call's or one payment's amount, and a type change there rewrites the w
 an ACCESS EXCLUSIVE lock for hours, which stops every paid call.
 
 On Postgres each table changes in one `ALTER TABLE` statement, so it is rewritten once, not once
-per column. `SET LOCAL lock_timeout` makes the deploy fail fast if live traffic holds a lock on
-one of these tables, instead of queueing every call behind the waiting ALTER.
+per column, and each statement commits on its own. Live calls touch `org` and `creditblock` in
+one transaction; a migration that held `org` while it waited for `creditblock` deadlocked with
+them. One table per transaction holds only one table's lock at a time, so it cannot. A table that
+already has the target type is skipped, so a retry after a lock timeout resumes where it stopped.
+`env.py`'s session `lock_timeout` makes each statement fail fast under contention.
 
 Rollback floor: code older than this revision runs on BIGINT columns unchanged, so a code rollback
 does not need the downgrade. The downgrade works only while every value still fits in `integer`;
@@ -38,8 +41,6 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 contract = True  # column type change; see the rollback floor note
 
-_LOCK_TIMEOUT = "5s"
-
 _COLUMNS: dict[str, dict[str, bool]] = {  # table -> column -> nullable
     "org": {"balance_micro": False, "daily_cap_micro": False,
             "autotopup_amount_micro": False, "autotopup_threshold_micro": False},
@@ -48,14 +49,22 @@ _COLUMNS: dict[str, dict[str, bool]] = {  # table -> column -> nullable
     "tagbudget": {"daily_cap_micro": True, "monthly_cap_micro": True},
 }
 
+_TYPES = sa.text(
+    "SELECT column_name, data_type FROM information_schema.columns "
+    "WHERE table_schema = current_schema() AND table_name = :table")
+
 
 def _retype(old: type[sa.types.TypeEngine], new: type[sa.types.TypeEngine], sql_type: str) -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        bind.execute(sa.text(f"SET LOCAL lock_timeout = '{_LOCK_TIMEOUT}'"))
-        for table, columns in _COLUMNS.items():
-            clauses = ", ".join(f"ALTER COLUMN {name} TYPE {sql_type}" for name in columns)
-            op.execute(sa.text(f"ALTER TABLE {table} {clauses}"))
+        with op.get_context().autocommit_block():
+            for table, columns in _COLUMNS.items():
+                types = dict(bind.execute(_TYPES, {"table": table}).all())
+                pending = [name for name in columns if types.get(name) != sql_type.lower()]
+                if not pending:
+                    continue
+                clauses = ", ".join(f"ALTER COLUMN {name} TYPE {sql_type}" for name in pending)
+                bind.execute(sa.text(f"ALTER TABLE {table} {clauses}"))
         return
     for table, columns in _COLUMNS.items():
         with op.batch_alter_table(table) as batch:
