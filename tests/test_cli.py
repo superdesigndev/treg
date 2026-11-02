@@ -1512,3 +1512,12 @@ def test_login_ignores_a_malformed_ad_link_file(monkeypatch, tmp_path):
     cli.cmd_login(args, {"base_url": "https://treg.to", "token": None})
 
     assert opened and "ad=" not in opened[0]
+
+
+def test_a_misspelled_call_option_is_answered_with_its_real_name(monkeypatch, capsys):
+    monkeypatch.setattr(cli.cli_analytics, "track_command", lambda **kw: None)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["call", "reapi.tasks.get", "--path-params", "id=1", "-o", "a.json"])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "--query K=V" in err and "redirect stdout" in err

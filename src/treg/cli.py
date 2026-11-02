@@ -6384,7 +6384,8 @@ def _params_view(inp: dict) -> dict:
                          "required": bool(spec.get("required")), "_prose": (spec.get("note") or "").strip(),
                          "_spec": spec})
 
-    for where, key in (("path", "pathParams"), ("query", "queryParams"), ("body", "body")):
+    # `in` is how the CLI sends it: a catalog id's path parameters go in --query like the rest.
+    for where, key in (("query", "pathParams"), ("query", "queryParams"), ("body", "body")):
         if isinstance(inp.get(key), dict):
             walk(inp[key], where, "")
     rows.sort(key=lambda r: not r["required"])
@@ -7736,6 +7737,7 @@ def _main(argv: list[str]) -> None:
             parser.error(argparse._("unrecognized arguments: %s") % " ".join(unrecognized))
     except SystemExit as exc:
         if exc.code == 2:
+            _usage_hint(argv, unrecognized)
             cli_analytics.track_command(
                 command="usage_error", exit_code=2,
                 duration_ms=round((time.monotonic() - parsing) * 1000),
@@ -7776,6 +7778,27 @@ def _main(argv: list[str]) -> None:
             exit_code=exit_code, duration_ms=round((time.monotonic() - started) * 1000),
             base_url=cfg.get("base_url", PRODUCTION_BASE_URL), config_path=CONFIG_PATH,
             detail=detail)
+
+
+# Options agents reach for on `treg call` that it spells differently. Path parameters of a catalog
+# id travel as --query too: the server folds them into the path.
+_CALL_OPTION_HINTS = {
+    **dict.fromkeys(("--path", "--path-param", "--path-params", "--param", "--params"),
+                    "path and query parameters both go in --query K=V (repeatable), e.g. --query id=123"),
+    **dict.fromkeys(("--body", "--json-body", "--payload", "-d"),
+                    "the request body goes in --data '<json>' (or --data @file.json)"),
+    **dict.fromkeys(("-o", "--output", "--out"),
+                    "there is no output flag; redirect stdout instead: treg call ... > answer.json"),
+}
+
+
+def _usage_hint(argv: list[str], unrecognized: list[str]) -> None:
+    """After argparse's own error, one line per unknown `treg call` option naming its real spelling."""
+    if not argv or argv[0] != "call":
+        return
+    for hint in dict.fromkeys(_CALL_OPTION_HINTS[n] for n in _option_names(unrecognized)
+                              if n in _CALL_OPTION_HINTS):
+        print(f"treg: {hint}", file=sys.stderr)
 
 
 def _option_names(unrecognized: list[str]) -> list[str]:
