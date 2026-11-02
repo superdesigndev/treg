@@ -2542,7 +2542,10 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
     blurb = (getattr(reg, "summary", "") or "") if reg else ""
     base_api = (getattr(reg, "base_url", "") or "") if reg else ""
     docs_url = (getattr(reg, "docs_url", "") or "") if reg else ""
-    platform_eps = [e for e in eps if cat.platform_eligible(e)]
+    # Both halves of tier 4, as `no_key_needed` in mcp.py: a priceable row is servable only where this
+    # deploy holds an enabled key for the provider; an eligible-but-keyless row refuses at call time.
+    served = bool(get_settings().platform_key_for(svc))
+    platform_eps = [e for e in eps if served and cat.platform_eligible(e)]
     byok_only = len(eps) - len(platform_eps)
     key_auth = bool(reg and reg.auth_kind == "key")
     oauth_metered = bool(reg and reg.platform_billed and svc in get_settings().oauth_billed_set)
@@ -2762,7 +2765,7 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         shown = sorted(items, key=lambda e: (not e.get("verified"), e["id"]))[:max_shown]
         for e in shown:
             price = _price_label(cat.cost_view(e.get("cost"), e.get("provider")))
-            eligible = cat.platform_eligible(e)
+            eligible = served and cat.platform_eligible(e)
             if reg and reg.auth_kind == "oauth":
                 access = "OAuth connection · metered" if oauth_metered else "OAuth connection"
             elif key_auth:

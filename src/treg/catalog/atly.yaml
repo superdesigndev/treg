@@ -35,7 +35,7 @@ endpoints:
       bodyType: json
       body:
         categories: {type: "array[string]", required: true, minItems: 1, maxItems: 5, note: "1-5 category names or ids from atly.places.categories, most important first. A name must be exact; a near miss is refused with the close matches. Every result matches all of them; if none does, trailing ones are dropped (never the first) and dropped_categories names them.", example: ["Cappuccino"]}
-        area_id: {type: string, required: false, maxLength: 120, note: "An area id from atly.places.areas, or a city name such as \"Austin\" or \"Boise, ID\". Give this or lat and lon, not both.", example: "New York"}
+        area_id: {type: string, required: false, note: "Up to 120 characters. An area id from atly.places.areas, or a city name such as \"Austin\" or \"Boise, ID\". Give this or lat and lon, not both.", example: "New York"}
         lat: {type: number, required: false, min: -90, max: 90, note: "With lon (and optionally radius_km) instead of area_id."}
         lon: {type: number, required: false, min: -180, max: 180}
         radius_km: {type: number, required: false, default: 5, note: "Search radius around lat/lon in km, held to 0.2-50."}
@@ -86,7 +86,7 @@ endpoints:
     summary: "List intent categories"
     input:
       queryParams:
-        q: {type: string, required: false, maxLength: 60, note: "One concept per call, e.g. coffee, dog friendly, gluten-free. Exact and prefix matches rank first; plurals, hyphens and small typos are tolerated. Without q, the full list.", example: "cappuccino"}
+        q: {type: string, required: false, note: "Up to 60 characters. One concept per call, e.g. coffee, dog friendly, gluten-free. Exact and prefix matches rank first; plurals, hyphens and small typos are tolerated. Without q, the full list.", example: "cappuccino"}
         limit: {type: integer, required: false, default: 2000, min: 1, max: 2000, example: 3, note: "Categories to return."}
     test_request:
       queryParams: {q: "cappuccino", limit: 3}
@@ -108,7 +108,7 @@ endpoints:
     summary: "List supported areas"
     input:
       queryParams:
-        q: {type: string, required: false, maxLength: 80, note: "Area name or common abbreviation, e.g. san diego, midtown, nyc. Exact and prefix matches rank first.", example: "new york"}
+        q: {type: string, required: false, note: "Up to 80 characters. Area name or common abbreviation, e.g. san diego, midtown, nyc. Exact and prefix matches rank first.", example: "new york"}
         level: {type: string, required: false, enum: [city, neighborhood, state], example: "city"}
         limit: {type: integer, required: false, default: 50, min: 1, max: 200, example: 1, note: "Areas to return; without q, ordered by place count."}
     test_request:

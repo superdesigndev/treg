@@ -912,8 +912,10 @@ gates; the use-case map lives in `marketing/rebuild/06-grok-bot-use-cases.md`. T
 The browse census still excludes management tools. Mixed-access key-provider pages show total, platform + BYOK
 and BYOK-only counts; each tool labels access, helper/account kind and verification. Small provider
 inventories (up to 50) list every tool. Prices use the display units from `Catalog.cost_view`, and
-notes explain composite or rounded billing. Only platform-eligible prices inform the platform
-starting price. OAuth rows use account-connection language; configured billed OAuth calls are
+notes explain composite or rounded billing. A tool counts as platform only when it is
+platform-eligible AND the deploy holds an enabled key for its provider (`platform_key_for`, the
+same two halves as MCP's `no_key_needed`); a keyless provider's page reads as own-key. Only those
+prices inform the platform starting price. OAuth rows use account-connection language; configured billed OAuth calls are
 labeled metered. The sample uses `call_template`, including the upstream method and inputs.
 
 The landing redesign is released to all homepage visitors and is independent of Dashboard account
