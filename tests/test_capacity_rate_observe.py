@@ -13,7 +13,10 @@ import pytest
 from httpx import AsyncClient
 from pydantic import ValidationError
 
-from treg.application.call import service as call_service
+from types import SimpleNamespace
+
+from treg.application.call import overflow as overflow_cycle, route as call_route, service as call_service
+from treg.application.call.types import GatewayFailed
 from treg.config import Settings, get_settings
 from treg.domain.capacity import rate_observe
 from treg.infra import kv, provider_rate
@@ -22,7 +25,9 @@ from treg.timeutil import utcnow_naive
 
 from test_capacity_smoothing import _publish_rate, _relay_script
 from test_marketplace_call import EP, _balance, platform_on  # noqa: F401
+from test_capacity_overflow import VENDOR_BODY, _holds, _orthogonal, _route, overflow_on  # noqa: F401
 from test_org_endpoint_quota_call import _assert_no_money
+from test_route_verify import ASK, FIND, _relay as _verify_relay, verifiers_on  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
@@ -119,7 +124,8 @@ async def test_a_relay_that_raises_is_counted_as_no_answer(
 ):
     await _publish_rate("tikhub", 20, 60.0)
 
-    async def broken(*a, **kw):
+    async def broken(*a, before_outbound=None, **kw):
+        await before_outbound()
         raise httpx.ConnectError("connection reset")
     monkeypatch.setattr(call_service, "relay", broken)
     r = await clients.get(f"/call/{EP}?aweme_id=7")
@@ -230,10 +236,11 @@ async def test_the_retry_re_send_takes_its_own_room(
 def test_an_enforced_name_covers_every_account_of_the_bucket(monkeypatch):
     monkeypatch.setenv("TREG_PROVIDER_RATE_MODE", "observe")
     monkeypatch.setenv("TREG_KV_URL", "redis://127.0.0.1:6399/0")
-    _enforce(monkeypatch, " contactout.people.email.verify , tinyfish")
+    _enforce(monkeypatch, " ContactOut.People.Email.Verify , TinyFish,, nosuchbucket")
     assert rate_observe._enforced("contactout.people.email.verify")
     assert rate_observe._enforced("contactout.people.email.verify#b")
     assert rate_observe._enforced("tinyfish") and not rate_observe._enforced("tinyfish.web.fetch")
+    assert rate_observe.unknown_enforced_names() == ["nosuchbucket"]
     _enforce(monkeypatch, "")
     assert not rate_observe._enforced("tinyfish")
 
@@ -314,7 +321,7 @@ async def test_a_failing_store_is_skipped_for_a_while_then_probed_once(monkeypat
     monkeypatch.setattr(kv, "store", lambda: store)
     assert await provider_rate.admit("p", 2, 1.0) is None
     assert await provider_rate.admit("p", 2, 1.0) is None and len(asked) == 1, "skipped while cooling"
-    monkeypatch.setattr(provider_rate, "_down_until", time.monotonic() - 1)
+    provider_rate._down_until = time.monotonic() - 1
     store.down = False
     probe, during = await asyncio.gather(provider_rate.admit("p", 2, 1.0), provider_rate.admit("p", 2, 1.0))
     assert probe.verdict == "admit" and during is None and len(asked) == 2, "one probe, the rest skip"
@@ -357,9 +364,11 @@ async def test_the_window_admits_its_limit_then_says_when_the_oldest_expires(red
     assert (await provider_rate.admit(bucket, 2, 0.5)).verdict == "admit"
 
 
-async def test_a_changed_rate_starts_its_own_window(redis_store):
+async def test_a_changed_limit_keeps_the_window_and_a_changed_length_starts_one(redis_store):
     bucket = f"treg-test-{uuid4().hex}"
     assert [(await provider_rate.admit(bucket, 1, 60.0)).verdict for _ in range(2)] == ["admit", "over"]
+    assert (await provider_rate.admit(bucket, 2, 60.0)).verdict == "admit", "the member admitted at 1 still counts"
+    assert (await provider_rate.admit(bucket, 2, 60.0)).verdict == "over"
     assert (await provider_rate.admit(bucket, 1, 1.0)).verdict == "admit"
 
 
@@ -370,3 +379,150 @@ async def test_a_released_member_gives_its_room_back(redis_store):
     provider_rate.release(taken)
     await asyncio.gather(*provider_rate._pending)
     assert (await provider_rate.admit(bucket, 1, 60.0)).verdict == "admit"
+
+
+# ---- enforcing: what is never refused, and what a refusal leads to -----------------------------
+
+async def test_a_relay_refusal_before_sending_takes_no_room(
+    clients: AsyncClient, observing, emitted, monkeypatch,
+):
+    _, asked, _ = observing
+    _enforce(monkeypatch, "tikhub")
+    await _publish_rate("tikhub", 20, 60.0)
+
+    async def ssrf(*a, before_outbound=None, **kw):
+        raise GatewayFailed("ssrf_refused", status_code=502, detail="upstream host is not public")
+    monkeypatch.setattr(call_service, "relay", ssrf)
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 502
+    assert asked == [] and _flushed(emitted) == []
+
+
+async def test_the_retry_re_send_is_judged_after_its_wait(
+    clients: AsyncClient, observing, emitted, monkeypatch,
+):
+    verdicts, _, _ = observing
+    await _publish_rate("tikhub", 20, 60.0)
+    asked_at = []
+    scripted = provider_rate.admit
+
+    async def timed(*a):
+        asked_at.append(time.monotonic())
+        return await scripted(*a)
+    monkeypatch.setattr(provider_rate, "admit", timed)
+    burst = (429, ((b"retry-after", b"1"),), b'{"detail":"slow"}')
+    monkeypatch.setattr(call_service, "relay", _relay_script([burst, (200, (), b'{"ok":true}')], []))
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 200
+    assert len(asked_at) == 2 and asked_at[1] - asked_at[0] >= 0.9
+
+
+async def test_a_refused_call_gives_its_spacer_token_back(
+    clients: AsyncClient, observing, emitted, monkeypatch,
+):
+    verdicts, _, _ = observing
+    _enforce(monkeypatch, "tikhub")
+    await _publish_rate("tikhub", 20, 60.0)
+    verdicts.append("over")
+    monkeypatch.setattr(call_service, "relay", _relay_script([], []))
+    assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 429
+    assert limiter.pending_wait_s("tikhub", 20, 60.0) == 0
+
+
+async def test_a_rate_refusal_is_served_through_overflow_when_a_route_is_on(
+    clients: AsyncClient, observing, overflow_on, emitted, monkeypatch,
+):
+    verdicts, _, _ = observing
+    _enforce(monkeypatch, "tikhub")
+    await _publish_rate("tikhub", 20, 60.0)
+    await _route(price_micro=3_000)
+    verdicts.append("over")
+    direct = []
+    monkeypatch.setattr(call_service, "relay", _relay_script([], direct))
+    seen = []
+    monkeypatch.setattr(overflow_cycle, "_send", _orthogonal(
+        [(200, {"success": True, "data": VENDOR_BODY, "priceCents": 0.3})], seen))
+    before = await _balance(clients)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 200 and r.headers["X-Treg-Served-Via"] == "overflow:orthogonal", r.text
+    assert direct == [] and len(seen) == 1
+    assert before - await _balance(clients) == 3_000 and await _holds() == []
+    assert _counts(_flushed(emitted)[0]) == {"over_refused": 1}
+
+
+def test_a_capacity_probe_and_an_owned_poll_are_counted_but_never_refused():
+    full = rate_observe.Seen("tikhub", "tikhub", 20, 60.0, "over", enforced=True)
+    call = SimpleNamespace(probe_lock_id=None, free_owned_poll=False)
+    assert call_service._rate_refuses(call, full)
+    assert not call_service._rate_refuses(SimpleNamespace(probe_lock_id="lock", free_owned_poll=False), full)
+    assert not call_service._rate_refuses(SimpleNamespace(probe_lock_id=None, free_owned_poll=True), full)
+    assert not call_service._rate_refuses(call, rate_observe.Seen("tikhub", "tikhub", 20, 60.0, "over"))
+    assert not call_service._rate_refuses(call, None)
+
+
+@pytest.fixture
+def finders_rated(monkeypatch, observing, verifiers_on):
+    _enforce(monkeypatch, "tomba,hunter")
+    full: set[str] = set()
+
+    async def admit(bucket, limit, window_s):
+        verdict = "over" if bucket in full else "admit"
+        return provider_rate.Admission(verdict, f"k:{bucket}", uuid4().hex, 9 if verdict == "over" else 4)
+    monkeypatch.setattr(provider_rate, "admit", admit)
+    return full
+
+
+async def test_a_rate_refused_routed_candidate_is_skipped_without_spending_the_error_budget(
+    clients: AsyncClient, finders_rated, monkeypatch,
+):
+    await _publish_rate("tomba", 20, 60.0)
+    await _publish_rate("hunter", 20, 60.0)
+    monkeypatch.setattr(call_route, "MAX_ERROR_FALLBACKS", 0)
+    finders_rated.add("tomba")
+    seen = []
+    hunter_hit = (200, {"data": {"email": "synthetic@example.com", "score": 99,
+                                "verification": {"status": "valid"}}})
+    monkeypatch.setattr(call_service, "relay", _verify_relay({"hunter": [hunter_hit]}, seen))
+    r = await clients.post(f"/call/{FIND}", json=ASK, headers={"X-Treg-Route-Prefer": "tomba,hunter"})
+    assert r.status_code == 200, r.text
+    tried = r.json()["_treg"]["tried"]
+    assert (tried[0]["endpoint_id"], tried[0]["outcome"]) == ("tomba.people.email.find", "skipped")
+    assert r.json()["_treg"]["served_by"] == "hunter.people.email.find" and seen == ["hunter"]
+
+
+async def test_a_route_whose_every_candidate_is_rate_refused_says_when_to_retry(
+    clients: AsyncClient, finders_rated, monkeypatch,
+):
+    await _publish_rate("tomba", 20, 60.0)
+    await _publish_rate("hunter", 20, 60.0)
+    finders_rated.update({"tomba", "hunter"})
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _verify_relay({}, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{FIND}", json=ASK, headers={"X-Treg-Route-Prefer": "tomba,hunter"})
+    assert r.status_code == 429, r.text
+    assert r.json()["detail"]["error"] == "provider_rate_limited"
+    assert r.json()["detail"]["retry_after_s"] == 9 and r.headers["retry-after"] == "9"
+    assert seen == [] and await _balance(clients) == before
+    await _assert_no_money()
+
+
+async def test_a_late_healthy_reply_does_not_close_a_newly_opened_breaker(monkeypatch, fresh_breaker):
+    asked = []
+    slow_started = asyncio.Event()
+
+    class Store:
+        async def rate_window(self, key, token, ttl_ms, limit):
+            asked.append(key)
+            if len(asked) == 1:
+                slow_started.set()
+                await asyncio.sleep(0.05)
+                return kv.RateWindowResult("admit")
+            return kv.RateWindowResult("unavailable")
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    monkeypatch.setattr(kv, "store", lambda: Store())
+
+    async def fault_after_start():
+        await slow_started.wait()
+        return await provider_rate.admit("p", 2, 1.0)
+    late, fault = await asyncio.gather(provider_rate.admit("p", 2, 1.0), fault_after_start())
+    assert late.verdict == "admit" and fault is None
+    assert await provider_rate.admit("p", 2, 1.0) is None and len(asked) == 2, "still cooling down"

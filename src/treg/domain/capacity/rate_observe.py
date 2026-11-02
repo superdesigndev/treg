@@ -55,9 +55,20 @@ def enabled() -> bool:
     return get_settings().provider_rate_mode == "observe"
 
 
+def enforced_names() -> set[str]:
+    return {n.strip().lower() for n in get_settings().provider_rate_enforce.split(",") if n.strip()}
+
+
 def _enforced(bucket: str) -> bool:
-    names = get_settings().provider_rate_enforce
-    return bool(names) and bucket.split("#", 1)[0] in {n.strip() for n in names.split(",")}
+    names = enforced_names()
+    return bool(names) and bucket.split("#", 1)[0].lower() in names
+
+
+def unknown_enforced_names() -> list[str]:
+    """Listed names that are no bucket this build declares a rate for (a deployment's own
+    `CapacityPolicy` rows may still declare one), for a startup warning."""
+    from .policy import _ENDPOINT_RATE_LIMITS, _RATE_LIMITS
+    return sorted(enforced_names() - {*_RATE_LIMITS, *_ENDPOINT_RATE_LIMITS})
 
 
 async def observe(provider: str, bucket: tuple[str, int, float] | None) -> Seen | None:

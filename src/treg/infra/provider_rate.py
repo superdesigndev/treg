@@ -1,11 +1,12 @@
 """Calls admitted on one treg-owned provider bucket inside its declared window, across every process.
 
-One sorted set per smoothing bucket and declared rate in the shared store (`infra/kv.py`): each
+One sorted set per smoothing bucket and window in the shared store (`infra/kv.py`): each
 admitted call is a member that expires `window_s` after it was admitted, by the store's clock, so
 fewer than `limit` live members means the window has room. A refused call adds no member and learns
-when the oldest one expires. A changed rate starts its own window. No shared store
+when the oldest one expires. A changed limit keeps the window; a changed length starts a new one.
+No shared store
 (`TREG_KV_URL` unset) or a store fault reads as `None`; after a fault the store is not asked for
-`COOLDOWN_S`, then one call probes it while the others still skip it.
+`COOLDOWN_S`, then one call probes it while the others still skip it; only that probe closes it.
 """
 from __future__ import annotations
 
@@ -34,9 +35,9 @@ class Admission:
     retry_after_s: int = 0
 
 
-def _key(bucket: str, limit: int, window_s: float) -> tuple[str, int]:
+def _key(bucket: str, window_s: float) -> tuple[str, int]:
     window_ms = max(1, round(window_s * 1000))
-    return f"treg:provider-rate:v2:{bucket}:{limit}/{window_ms}", window_ms
+    return f"treg:provider-rate:v3:{bucket}:{window_ms}", window_ms
 
 
 async def admit(bucket: str, limit: int, window_s: float) -> Admission | None:
@@ -49,7 +50,7 @@ async def admit(bucket: str, limit: int, window_s: float) -> Admission | None:
         return None
     probe = _down_until > 0.0
     _probing = probe
-    key, window_ms = _key(bucket, limit, window_s)
+    key, window_ms = _key(bucket, window_s)
     token = uuid.uuid4().hex
     try:
         store = kv.store()
@@ -64,7 +65,9 @@ async def admit(bucket: str, limit: int, window_s: float) -> Admission | None:
             log.warning("provider_rate store_unavailable; skipping it for %ss", COOLDOWN_S)
         _down_until = time.monotonic() + COOLDOWN_S
         return None
-    _down_until = 0.0
+    if probe:
+        # Only the probe closes the breaker: a reply to a call sent before it opened says nothing.
+        _down_until = 0.0
     return Admission(result.outcome, key, token, max(1, math.ceil(result.retry_after_ms / 1000))
                      if result.outcome == "over" else 0)
 
@@ -81,9 +84,17 @@ def release(admission: Admission | None) -> None:
 async def _release(admission: Admission) -> None:
     try:
         store = kv.store()
-        await store.release_slot(admission.key, admission.token)
+        outcome = await store.release_slot(admission.key, admission.token)
     except Exception:  # noqa: BLE001 - an unreleased member expires with its window
-        pass
+        outcome = "unavailable"
+    if outcome == "unavailable":
+        log.warning("provider_rate release_unavailable key=%s; it expires with its window", admission.key)
+
+
+async def drain() -> None:
+    """Wait for releases still in flight; the app lifespan calls this before closing the store."""
+    if _pending:
+        await asyncio.gather(*_pending, return_exceptions=True)
 
 
 def reset() -> None:

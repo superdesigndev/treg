@@ -581,7 +581,8 @@ refusal (the shared window below is the refusing gate):
 2. **One bounded `retry-after` re-send** - on a tier-4 **429** classified `burst` with
    `retry-after ≤ 5 s` (`SMOOTHING_RETRY_MAX_S`), for a **body-less GET/HEAD only**: close the first
    response, sleep, send the identical `UpstreamRequest` once more on the same hold, settle on the
-   second answer. A quota-429 (lusha "Daily", hunter "per billing period", any `retry-after` > 60 s), an
+   second answer. The re-send asks the shared rate window after the sleep; on an enforced bucket
+   with a full window it is not sent and the first 429 stands. A quota-429 (lusha "Daily", hunter "per billing period", any `retry-after` > 60 s), an
    unknown 429, a POST, or a second 429 are relayed as is. The "no retries" rule for 401/402/5xx stands.
 
 Both are visible: `X-Treg-Smoothed: wait=<ms>` and/or `retry=1` on the response (metered exit only).
@@ -591,8 +592,9 @@ change kept out of this behaviour PR.
 ## Overflow - the child cycle (plan step E; off by default)
 
 **Overflow = the same vendor endpoint, another account of ours.** When a tier-4 call fails on treg's
-own key for a treg-side reason - a balance/quota signature, a burst-429 smoothing could not absorb -
-and the worker has an enabled `OverflowRoute` for the endpoint, `application.call.overflow.
+own key for a treg-side reason - a balance/quota signature, a burst-429 smoothing could not absorb,
+or treg's own rate window refusing it before it was sent (`provider_rate_limited`, forced trigger
+`burst`) - and the worker has an enabled `OverflowRoute` for the endpoint, `application.call.overflow.
 maybe_overflow` runs a **child cycle** after the primary's settle released its hold:
 
 1. Route from the in-process route view (`domain.capacity.routes_view`, Orthogonal first), skipping

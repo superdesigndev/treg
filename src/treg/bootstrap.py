@@ -770,8 +770,9 @@ def _lifespan(role: AppRole):
             # instead of by the first find after a deploy; off without an embedding key.
             find_task = asyncio.create_task(find_index.warm()) if find_index.enabled() else None
             from .domain.capacity import rate_observe
-            rate_task = (asyncio.create_task(rate_observe.flush_worker())
-                         if role != "control" and rate_observe.enabled() else None)
+            rate_task = asyncio.create_task(rate_observe.flush_worker()) if rate_observe.enabled() else None
+            for name in rate_observe.unknown_enforced_names():
+                logging.getLogger("treg").warning("event=provider_rate_enforce_unknown name=%s", name)
             endpoint_observations = app.state.endpoint_observation_reader
             routed_call.configure_endpoint_observation_reader(endpoint_observations)
             # Measured verdict quality for X-Treg-Route-Decisive; unset settings keep price order.
@@ -830,6 +831,8 @@ def _lifespan(role: AppRole):
                     await stop_money_trace(trace_runner)
                     await analytics.drain()
                     await app.state.http.aclose()
+                    from .infra import provider_rate
+                    await provider_rate.drain()
                     await kv.close()
                     from .infra import org_endpoint_quota
                     await org_endpoint_quota.close()

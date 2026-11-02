@@ -94,6 +94,12 @@ class Limiter:
         await asyncio.sleep(wait_s)
         return int(wait_s * 1000)
 
+    def refund(self, provider: str, limit: int, window_s: float) -> None:
+        """Give back the token of a call refused before it was sent, never above capacity."""
+        if limit > 0 and window_s > 0:
+            b = self.bucket(provider, limit, window_s)
+            b.tokens = min(b.CAPACITY, b.tokens + 1.0)
+
     def reset(self) -> None:
         self._buckets.clear()
 

@@ -201,9 +201,10 @@ pin a job to one provider (`treg org pin`), and then calls to the job's other pr
   check the parsed results before looping over the whole list: a parse bug throws away answers that
   were already paid for.
 - **Calling in parallel is fine**, within limits: treg sets no per-token or per-team concurrency
-  limit, and provider rate limits are relayed as they are. Where treg's own account for a provider is
-  at its limit of calls in progress, a team that already has calls running on it gets 429
-  `share_busy`: send fewer at once, or call the routed tool, which moves on by itself.
+  limit, and a provider's own rate limits are relayed as they are. Where treg's own account for a
+  provider is at its limit of calls in progress, a team that already has calls running on it gets
+  429 `share_busy`; where it is at its rate limit, a call may get 429 `provider_rate_limited`. Send
+  fewer at once, retry after `retry_after_s`, or call the routed tool, which moves on by itself.
 - **Over raw HTTP**, if a body carrying SQL or HTML is refused with an HTML 403 page by the hosting
   edge before treg sees it, base64-encode the body and add `X-Treg-Body-Encoding: base64` (also
   `gzip` or `base64+gzip`). The CLI does this by itself.

@@ -304,7 +304,11 @@ typed `share_busy` 429 (`retry_after_s`, not charged); a routed job asks its nex
 On a bucket listed in `TREG_PROVIDER_RATE_ENFORCE`, a call that the shared rate window finds full
 (`ops/capacity.md` § part four) is refused before it is sent with the typed `provider_rate_limited`
 429: `detail` carries `provider`, `endpoint_id`, `retry_after_s` and a message, `Retry-After` the
-same seconds, `X-Treg-Error: 1`, not charged; a routed job asks its next provider.
+same seconds, `X-Treg-Error: 1`, not charged. With an enabled overflow route the same endpoint may be
+served through an aggregator instead (`X-Treg-Served-Via: overflow:<name>`, billed at its price). A
+routed job records the candidate as `skipped` without spending its error budget and asks the next
+one; when every candidate was skipped this way the routed call itself answers `provider_rate_limited`
+with the shortest `retry_after_s`.
 
 ## `X-Treg-Error` - whose refusal is this?
 `bootstrap_handlers._mark_treg_own_errors` tags treg's **own**
