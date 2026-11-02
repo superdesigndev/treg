@@ -38,12 +38,12 @@ adapters:
     out: {email: email, first_name: info.firstname, last_name: info.lastname,
           verified: "qualification == 'valid'"}
     miss: "email == null"
-  filtrat.people.email.find:
+  filtrat.people.email.find.resolve_catchall:
     accepts: [[first_name, last_name, domain]]
     in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain}
-    const: {body.resolve_catchall: false}
-    # A found address was checked against the mail server unless the domain is a catch-all,
-    # where it comes back as the most likely address with catchall_unverified: true.
+    const: {body.resolve_catchall: true}
+    # On a catch-all domain the address is resolved against the mail server instead of returned as
+    # a guess; one the resolution could not settle still comes back with catchall_unverified: true.
     out: {email: found_email, confidence: "confidence / 100", verified: "catchall_unverified != true"}
     miss: "found_email == null"
   contactout.people.contact.work:
