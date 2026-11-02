@@ -19,7 +19,7 @@ proposed_capabilities:
   places.areas: "Find the covered city or neighborhood id for a place name"
 endpoints:
   - id: atly.places.search.intent
-    added: '2026-10-27'
+    added: '2026-11-02'
     verified: '2026-11-02'
     example_response: examples/atly.places.search.intent.json
     capability: places.search.intent
@@ -48,7 +48,7 @@ endpoints:
     docs_url: https://agentic-api.atly.com/v2/docs
 
   - id: atly.places.detail
-    added: '2026-10-27'
+    added: '2026-11-02'
     verified: '2026-11-02'
     example_response: examples/atly.places.detail.json
     capability: places.detail
@@ -72,7 +72,7 @@ endpoints:
     docs_url: https://agentic-api.atly.com/v2/docs
 
   - id: atly.places.categories
-    added: '2026-10-27'
+    added: '2026-11-02'
     verified: '2026-11-02'
     example_response: examples/atly.places.categories.json
     capability: places.categories
@@ -94,7 +94,7 @@ endpoints:
     docs_url: https://agentic-api.atly.com/v2/docs
 
   - id: atly.places.areas
-    added: '2026-10-27'
+    added: '2026-11-02'
     verified: '2026-11-02'
     example_response: examples/atly.places.areas.json
     capability: places.areas
@@ -117,7 +117,7 @@ endpoints:
     docs_url: https://agentic-api.atly.com/v2/docs
 
   - id: atly.account.usage
-    added: '2026-10-27'
+    added: '2026-11-02'
     verified: '2026-11-02'
     example_response: examples/atly.account.usage.json
     kind: account
