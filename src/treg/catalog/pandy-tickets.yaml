@@ -1,8 +1,8 @@
 # Pandy Tickets organizer REST API, reached with an organization's OWN API key (pt_live_...).
 # Every endpoint is scope own_account: a key resolves to exactly one organization and cannot
-# read anyone else's data. Not live-verified: written from the OpenAPI spec and the contract
-# (docs/api/platform-organizer-api.md) before a key existed; the vendor ledger and the bad-key
-# probe are in the PR description.
+# read anyone else's data. Written from the OpenAPI spec (https://tickets.pandy.cloud/api/v1/openapi.json)
+# and the developer page (https://tickets.pandy.cloud/developers); every test_request was run live by
+# the vendor on 2026-11-02, and the ledger and the bad-key probe are in the PR description.
 #
 # The API is free; Pandy Tickets bills per ticket on the platform, not per API call (pricing_url).
 #
