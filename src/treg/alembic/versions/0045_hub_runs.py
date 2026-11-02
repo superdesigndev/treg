@@ -1,4 +1,4 @@
-"""hubrun — one run of a hub tool: the trace a caller and a maker read (docs/HUB-DECISIONS.md)
+"""hubrun — one run of a hub tool: the trace a caller and a maker read
 
 Revision ID: 0042
 Revises: 0041

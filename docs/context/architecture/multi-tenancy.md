@@ -119,8 +119,7 @@ deletion, and global user erasure remove it.
 
 The registry is **tenant-isolated**: an **Org** owns resources, a **User** is a global identity, and a
 **Membership** links them with a role and IS where the caller's token lives. A token = a `(user, org)`
-pair, so every list/create/mutation and the proxy are scoped to the caller's org. Design source:
-`docs/MULTI-TENANCY-PLAN.md` (standalone plan).
+pair, so every list/create/mutation and the proxy are scoped to the caller's org.
 
 ## Owned-team limit
 

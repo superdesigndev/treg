@@ -3709,9 +3709,7 @@ INFLUENCERSCLUB = OAuthProvider(
 )
 
 
-# Market data API-key providers (pricing: docs/SHARED-PLAN-PRICING-PLAN.md; provider selection:
-# docs/MARKET-DATA-CATEGORY-RESEARCH.md). CoinGecko leads because it is the one true credit-priced
-# provider in the sector - its fx.yaml entry divides like Hunter's.
+# Market data API-key providers.
 
 COINGECKO = OAuthProvider(
     service="coingecko",

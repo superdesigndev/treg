@@ -5,7 +5,7 @@ source:
   curated: 2026-08-15
 # TRIAL POOL + own-key: treg holds the free Basic key; Twelve Data's Individual pricing is for personal,
 # non-commercial purposes, and the business tier with external display rights is Venture at
-# $499/mo (research doc, licensing table). No fx rate -> usd null -> platform_eligible FALSE.
+# $499/mo. No fx rate -> usd null -> platform_eligible FALSE.
 pricing_url: https://twelvedata.com/pricing
 endpoints:
   - id: twelvedata.quote

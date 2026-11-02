@@ -1,6 +1,6 @@
 ---
 title: The tool hub — tools a maker publishes, made of other tools
-status: built (phases 1–10, 2026-09-09/14; pricing flexibility 9.1–9.5 (`docs/hub-pricing-decisions.md`), listing + public run log 10.1–10.5 (`docs/hub-listing-decisions.md`)); behind `hub_enabled` (TREG_HUB_ENABLED), off in production until the final merge
+status: built (phases 1–10, 2026-09-09/14; pricing flexibility 9.1–9.5, listing + public run log 10.1–10.5); behind `hub_enabled` (TREG_HUB_ENABLED), off in production until the final merge
 sources:
   - src/treg/domain/hub/__init__.py
   - src/treg/domain/hub/manifest.py
@@ -53,8 +53,7 @@ related:
 A **hub tool** is a tool a maker publishes on treg, made of other tools: either a JSON list of
 steps, or a script that runs in a sandbox. Every step is an ordinary treg call, so identity, the
 access rules, key injection and money already exist once per call; the hub adds the graph, the
-sandbox, the maker's road, the seller's price, and the surfaces. The decisions are in
-`docs/HUB-DECISIONS.md` (50 questions, settled 2026-09-09); the case study (a real Supabase
+sandbox, the maker's road, the seller's price, and the surfaces. The case study (a real Supabase
 table served as a tool, walked by hand) is recorded at the end of this file.
 
 Everything sits behind `hub_enabled` (`TREG_HUB_ENABLED`, default off): with the flag off every
@@ -111,8 +110,7 @@ or a `default`; an `int` input names a `max`. `uses` is the security boundary: e
 catalog id or one of the maker's own tool names; a hub id is refused (depth one); a script that
 serves only its data may leave it empty. Every step's `call` must be in `uses` (`<tool>/<path>`
 for an own tool, optional `method`, `allow_fail`). Limits: `steps` ≤ 20, `wall_s` ≤ 120,
-the money fields 0–100 dollars with at most six decimals. **Pricing** (`docs/hub-pricing-decisions.md` round 4,
-2026-09-24): one rule per kind, and only the maker's part (the provider fees, the catalog steps,
+the money fields 0–100 dollars with at most six decimals. **Pricing**: one rule per kind, and only the maker's part (the provider fees, the catalog steps,
 are billed to the caller on top). A steps recipe has one fixed price per successful run,
 `"pricing": {"price_usd": N}` (a file with only a top-level `price_usd` means the same; both
 together is refused unless they are a stored manifest's same number). A script declares
@@ -191,7 +189,8 @@ heap is capped at 64 MB. The whole surface a script gets: `ctx.inputs`, `ctx.cal
 headers are removed; `cost_usd` is what that call charged, so a script can keep its own budget and
 stop before the ceiling: a run that passes it is stopped by treg and returns nothing), `ctx.charge(usd, label)` → nothing (the script's price, one line at a time, below), `ctx.csv(text)` → rows
 keyed by the header (RFC 4180), `ctx.data` → the rows of `data.csv` (≤ 5 MB, parsed once per run in the
-parent), `ctx.log(text)` (50 lines × 2 KB). `ctx.call` crosses to the parent as one JSON line
+parent), `ctx.log(text)` (50 lines × 2 KB). There is no `ctx.secret`: a key reaches an upstream only inside
+`ctx.call`, through a registered tool's binding, so a script never holds one. `ctx.call` crosses to the parent as one JSON line
 over stdin/stdout; the parent enforces `uses` per call (a call outside the list is refused and
 the run stops), the 20-call cap, the ceiling, and the output (one JSON object ≤ 2 MB carrying
 every field in `output.fields`, else 424 `hub_output_invalid`). A memory bomb ends as `memory`,
@@ -313,7 +312,7 @@ bump; a script's amounts change only with a new version of run.js.
   rate from runs by others; unlisted, unapproved, failed and retired never appear. Its `added` is the
   UTC day of the approval (`HubListing.decided_at`), so a recently-added search lists it beside
   catalog tools (`search_listed(everything=True)` with no words; catalog.md "`added`").
-- **The listing review** (`docs/hub-listing-decisions.md` round 2, 2026-09-24): `PATCH
+- **The listing review**: `PATCH
   /hub/tools/{id} {"listed": true}` (`treg hub list`) is a request, a `HubListing` row, one per
   tool and not per version, so the listing stays while each new version is reviewed (below; migration 0050; the old
   per-version `hubtool.listed` column stays unread, expand-only). `set_flags` creates it in state
@@ -389,7 +388,7 @@ bump; a script's amounts change only with a new version of run.js.
 - **The public share page** `GET /hub/<id>` (and `.md`; `@N`): the contract for a person or an
   agent on the public stylesheet; the price as the mode and the worst case ("seller $X per unit,
   up to $Y per run"; the schema.org Offer carries the worst case); the RUN LOG when the maker left
-  `public_log` on (10.3): the last 20 runs by others and runs per day over 30 days, each row time,
+  `public_log` on (10.3): the last 20 runs by others, failed ones included, and runs per day over 30 days, each row time,
   outcome, ms, steps, `units` and the price paid, and never the caller, the inputs or the output;
   the check trace as shape only (never what each step called);
   "made of N tools (names and keys hidden)"; reliability over 30 days; older versions still

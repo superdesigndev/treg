@@ -475,7 +475,7 @@ shared HTTP client. `/auth/logout` remains an HTTP-only cookie action.
   both run tiers - see [proxy-model](../architecture/proxy-model.md). `GET /orgs/{id}/policy/cli-deny`
   (admin+, read-only) reports each CLI tool's effective argv deny patterns with their source (skill
   `treg.json` vs catalog) so the Policy screen shows every deny layer in one place.
-- **Usage metering + caps** (usage-metering v1, `docs/USAGE-METERING-PLAN.md`): `org_usage`
+- **Usage metering + caps**: `org_usage`
   (`GET /orgs/{id}/usage?days=`, admin+) rolls up `CallRecord` + `RunRecord` since the window start into
   **by-user** (with a `call`/`local_run`/`server_run` split), **by-tool**, **by-day**, and totals - pure
   counts, **no request/response bodies** (they aren't stored). The call side reads the daily usage

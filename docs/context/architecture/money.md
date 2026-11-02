@@ -1458,7 +1458,7 @@ hub seller's price. It spends after the free kinds and before `purchased`. `sett
 closes a hold on the payer and, in the same transaction, grants the settled amount to the payee as
 an `earned` block. `actual_micro=None` settles the full reserved amount (a flat price); a given
 `actual_micro` settles that much and refunds the rest of the hold to the payer (a variable hub
-price: the runner reserved the declared maximum and pays the real price, `docs/hub-pricing-decisions.md`).
+price: the runner reserved the declared maximum and pays the real price).
 The entries: a `settle` entry on the payer whose meta names
 `payee_org_id`, and a `grant` entry on the payee whose meta names `payer_org_id` and the run. The
 invariant holds on both teams at every instant. It does not commit; the hub runner owns the

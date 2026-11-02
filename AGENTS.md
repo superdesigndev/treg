@@ -161,12 +161,12 @@ agents then built against a constitution that was wrong.
   `earned` block in one transaction (`money.settle_to_in_transaction`, the only cross-team money
   movement). A steps recipe has one fixed price (`price_usd`); a script declares `max_price_usd` and
   prices itself with `ctx.charge(usd, note)` lines, so the cap is held and the sum of the lines is
-  settled, the rest refunded (`docs/hub-pricing-decisions.md`). A script runs in a separate process
+  settled, the rest refunded (hub.md "ctx.charge: a script's price"). A script runs in a separate process
   with no network; `ctx.call` is its only road out and `uses` in the manifest names every host it
   may reach. A hub tool is out of catalog search until its maker asks and treg approves (`HubListing`); once
   approved it stays under review for good, unlisted or not, and its share
   page shows a run log of outcomes only unless the maker turns `public_log` off
-  (`docs/hub-listing-decisions.md`). See `docs/context/architecture/hub.md`.
+  (hub.md "The surfaces"). See `docs/context/architecture/hub.md`.
 - **Signup credit.** Once per new verified user and once per inbox (Gmail dots and `+tag` aliases
   share one), enforced by a user-level atomic claim plus a `SignupPromoClaim` row committed with
   the grant. Team deletion never restores eligibility; legacy registration is not email proof.

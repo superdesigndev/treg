@@ -2177,7 +2177,7 @@ details.tl li.more a{color:var(--link);text-decoration:none}
 </style>"""
 
 
-# The hub's public share page (docs/HUB-DECISIONS.md).
+# The hub's public share page.
 
 # Scoped to the hub page: the public stylesheet styles cards and pre blocks by their own class
 # names, so a hub page defines its few shapes here on the SAME variables (light-only, like every
@@ -2266,7 +2266,7 @@ def _md_lite(text: str) -> str:
 
 
 async def _hub_recent_runs(db: AsyncSession, tool_id: str, maker_org_id: int, *, last: int = 20) -> dict:
-    """The public run log (docs/hub-listing-decisions.md, decision 3): the last `last` runs by
+    """The public run log: the last `last` runs by
     OTHERS and runs per day for 30 days. Per run: when, outcome, duration, steps, units (a
     per_unit tool's count), the price paid. Never who called, never the inputs, never the output;
     `units` is the one integer read out of the stored output, nothing else leaves it."""

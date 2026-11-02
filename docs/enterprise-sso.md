@@ -19,7 +19,7 @@ identity; treg resumes that pending SSO attempt in the same browser.
 
 ## Configure the deployment
 
-1. Apply Alembic migrations through `0085` before running the new code.
+1. Apply Alembic migrations (`python -m treg upgrade`); the server refuses to boot on an older schema.
 2. In the WorkOS environment, create an API key and find the client ID. Set
    `TREG_WORKOS_API_KEY` and `TREG_WORKOS_CLIENT_ID` on the server. Set a stable
    `TREG_SECRET_KEY` and `TREG_SESSION_SECRET` for the state and browser cookies.

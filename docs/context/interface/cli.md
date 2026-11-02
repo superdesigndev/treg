@@ -398,7 +398,7 @@ Bare **`treg connections`** now lists (the subparser is `required=False` with a 
   validates method + required params BEFORE money is spent, and fills `{placeholder}` path params from
   `--query` (consumed — dropped from the relayed query via `relay(drop_params=…)`). Members restricted
   via `--tools` get no marketplace calls; a bare provider name (`call tikhub /path`) still 404s but
-  points at the endpoint-id form. See [cli-audit-2026-07-28](cli-audit-2026-07-28.md) (design section).
+  points at the endpoint-id form.
   `-p` is a short alias for `--query`. `catalog get` prints the whole contract an agent needs to
   build the cheapest valid request: the PARAMS table flattens nested objects to dotted names and
   its NOTE column carries the prose rule, the enum (`one of:`), the default, the numeric range and
@@ -434,7 +434,7 @@ Bare **`treg connections`** now lists (the subparser is `required=False` with a 
   swallows a treg flag typed AFTER the tool name; `cmd_run` guards against that by reading the **real**
   `sys.argv` and refusing a tier flag (`--server`/`--local`/`--timeout`) placed after the tool but before the
   `--` separator — while still letting a flag after `--` reach the vendor CLI (so `treg run db -- --timeout
-  30` works and passes `--timeout` to the CLI). Two execution tiers (see [CLI-RUN-PLAN](../../CLI-RUN-PLAN.md)):
+  30` works and passes `--timeout` to the CLI). Two execution tiers (see [local-run](../architecture/local-run.md)):
   - **`--local`** (default, `_run_local`) — run the vendor CLI on THIS machine as a dedicated `treg-run`
     user so the credential is unreadable by the member (see [local-run](../architecture/local-run.md)). On
     Linux with local-run set up, the member hands off via `sudo -u treg-run <runner>`, passing its own

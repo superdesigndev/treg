@@ -963,7 +963,7 @@ It is a gate, not a hint - a catalog call to a different provider of a pinned ca
 in `_resolve_marketplace_call`, before anything is reserved, and the 403 carries `use_endpoint` so
 the caller is told what to use instead rather than just "no". Both halves are validated against the
 catalog when the pin is set, because a typo would otherwise block a job the team really uses and
-surface at 3am in an agent's log. See [catalog](catalog.md) and `docs/CAPABILITY-CHOICE-PLAN.md`.
+surface at 3am in an agent's log. See [catalog](catalog.md).
 
 ## OAuth (the MCP authorization server)
 

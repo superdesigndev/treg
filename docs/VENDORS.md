@@ -1,9 +1,9 @@
 # List your API on treg
 
-treg is the tool catalog for AI agents: ~2,600 endpoints across ~40 providers, discoverable by
-*capability* ("get a domain's backlink summary") rather than by vendor name. Agents search the
-catalog, compare providers side by side on price / measured success rate / speed, and call your
-API through treg's proxy with the credential injected server-side.
+treg is the tool catalog for AI agents: endpoints discoverable by *capability* ("get a domain's
+backlink summary") rather than by vendor name. Agents search the catalog, compare providers side
+by side on price / measured success rate / speed, and call your API through treg's proxy with the
+credential injected server-side.
 
 **What listing gets you:**
 
@@ -105,8 +105,9 @@ ACMESEO = OAuthProvider(
 )
 ```
 
-…added to the `REGISTRY` tuple, plus a neutral lettermark at `src/treg/web/logos/acmeseo.svg`
-and the two test-list additions (`test_every_provider_is_registered`, `test_key_providers`).
+…added to the provider tuple that builds `REGISTRY`, plus a neutral lettermark at
+`src/treg/web/logos/acmeseo.svg` (`test_every_provider_has_a_logo` fails without it). The
+registry-wide tests pick the new entry up on their own; no test list needs editing.
 
 If your API answers HTTP 200 even for a bad key, the entry instead names the body field that
 distinguishes them (`token_verify_field`, `token_ok_field`/`token_ok_value`, or
@@ -148,6 +149,7 @@ endpoints:
       checked: 2026-08-12
       confidence: documented
     docs_url: https://docs.acmeseo.example/backlinks-summary
+    added: 2026-08-12                      # written by scripts/catalog_added.py
   # …7–14 more endpoints, same shape
 ```
 
@@ -172,7 +174,7 @@ with our meter gets corrected from the observed charge.
 ```bash
 # 1. Live bogus-key test: a garbage key POSTed to /connections/token must come back rejected
 # 2. Live verification of every endpoint's test_request (with the test credential, from env)
-TREG_CATALOG_CRED='<key>' uv run python scripts/catalog_verify.py acmeseo.yaml
+TREG_CATALOG_CRED='<key>' uv run python scripts/catalog_verify.py acmeseo --write
 # 3. Schema + referential integrity
 uv run python scripts/catalog_validate.py     # must exit 0
 # 4. The full test suite

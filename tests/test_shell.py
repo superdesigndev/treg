@@ -3,7 +3,6 @@
 These exercise the client-side pieces without a live server or a real vendor CLI: the tool→shim
 selection, the shim contract (clean PATH + verbatim args + exit-code passthrough → no recursion), the
 session wiring (shim dir first on PATH, REALPATH kept clean, teardown), and the stop/guard paths.
-See docs/CLI-SHELL-MODE-PLAN.md §7.
 """
 
 from __future__ import annotations
@@ -245,7 +244,7 @@ def test_cmd_shell_start_no_runnable_clis_exits(monkeypatch):
         cli.cmd_shell_start(args, {"token": "t", "base_url": "http://x"})
 
 
-# ---- --proxy wiring (P4 of docs/LOCAL-PROXY-PLAN.md) ---------------------------------------
+# ---- --proxy wiring ------------------------------------------------------------------------
 def test_start_session_publishes_the_proxy_env_and_stops_it(tmp_path, monkeypatch):
     """The seam `--proxy` uses: extra variables go into the subshell, and the proxy is stopped on the
     way out — a listener left running after the shell closed would keep answering for a session that

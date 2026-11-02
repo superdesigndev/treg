@@ -1936,7 +1936,7 @@ def _import_clis(args, cfg, env_path: str) -> None:
     """Scan the machine for INSTALLED catalog CLIs, classify each (server-injectable / local / gap), and
     register the ready ones on the right tier — server-side when treg can hold the key, local when the
     credential lives in the CLI's own config. Prints an actionable report; fix a gap and re-run. `--status`
-    (or `--dry-run`) reports without registering. See docs/CLI-AUTOIMPORT-PLAN.md."""
+    (or `--dry-run`) reports without registering."""
     import shutil
     from . import providers as prov
     if getattr(args, "add", None):  # register an UNKNOWN (non-catalog) installed CLI
@@ -2976,7 +2976,7 @@ def cmd_audit(args, cfg) -> None:
 
 
 def cmd_run(args, cfg) -> None:
-    """`treg run <tool> -- <args>` dispatcher over two execution tiers (docs/CLI-RUN-PLAN.md):
+    """`treg run <tool> -- <args>` dispatcher over two execution tiers:
       --local  (default): run the CLI on THIS machine; the credential is isolated under the treg-run user.
       --server          : run the CLI on the registry server (Tier 0), streaming stdout/stderr back.
     """
@@ -3823,9 +3823,9 @@ def cmd_serve_env(args, cfg) -> None:
 
 def cmd_shell_start(args, cfg) -> None:
     """Open a subshell where the team's registered CLIs run with the credential injected — the member
-    types `stripe …`/`gh …` normally and treg handles auth behind the scenes (docs/CLI-SHELL-MODE-PLAN.md).
+    types `stripe …`/`gh …` normally and treg handles auth behind the scenes.
     MVP: shims call `treg run <tool>`, reusing the whole local-run path. With `--proxy`, calls the
-    AGENT makes directly to a registered API are caught too (docs/LOCAL-PROXY-PLAN.md)."""
+    AGENT makes directly to a registered API are caught too."""
     from . import shell as sh
     if os.environ.get(sh.ENV_ACTIVE) == "1":
         sys.exit("treg: you're already in a treg shell — type `exit` to leave first.")

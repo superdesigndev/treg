@@ -108,8 +108,7 @@ them generically — do not hardcode credit arithmetic in `api.py` per provider 
 
 ## Step 4 — tests
 
-- Add the id to `test_every_provider_is_registered` (test_oauth_providers_m3)
-- Add it to the offerable loop in `test_key_providers`
+No test list needs editing: the registry-wide tests pick the new entry up on their own.
 
 ## Step 5 — LIVE bogus-key test (load-bearing; never skip)
 

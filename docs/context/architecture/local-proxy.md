@@ -20,7 +20,7 @@ add the credential.
 
 **Not `infra/upstream/relay.py`.** That is the SERVER relay (`relay()`), the thing that injects. This is the local
 catcher that feeds it — two ends of one call. The module is named for `localrun.py`, its neighbour in
-"code that runs on the member's machine". Plan + build log: `docs/LOCAL-PROXY-PLAN.md`.
+"code that runs on the member's machine".
 
 ## The whole thing in one picture
 
@@ -130,6 +130,7 @@ with none of the reach. **Do not re-add it.**
 
 ## Certificates (`CertAuthority`, `ensure_ca`, `build_bundle`)
 Generated **per machine** on first use: ECDSA P-256, 2 years, self-signed, `BasicConstraints(ca=True)`.
+Keep the lifetime short: a key that can impersonate any site should not sit on a laptop for a decade.
 The private key file is created 0600 **before any bytes go in** — writing first and chmod-ing after
 leaves a window where a private key is world-readable. It regenerates when the files are unreadable or
 inside the last 30 days (`_RENEW_WITHIN_DAYS`), so an expiry never surfaces mid-session as an

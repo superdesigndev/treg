@@ -1,11 +1,9 @@
 # The MiniMax plugin, and how to submit it
 
-treg's fifth shop window: the **MiniMax Plugin Marketplace**, which serves both **MiniMax Code**
-(desktop) and **MiniMax Agent** (cloud). Like the Claude Code and Cursor plugins it is
-**skills-only**, and for a harder reason than convenience: MiniMax rejects any package holding a
-credential, and treg's MCP is bearer-authed per user. An authenticated MCP would have to go through
-their **App/Connector** program (OAuth MCP server, PKCE, MiniMax-registered client) — see
-"Later: an App" below.
+The **MiniMax Plugin Marketplace** serves both **MiniMax Code** (desktop) and **MiniMax Agent**
+(cloud). Unlike the Claude Code and Cursor plugins it is **skills-only**: MiniMax rejects any
+package holding a credential, and admits an authenticated MCP only through their **App/Connector**
+program (OAuth MCP server, PKCE, MiniMax-registered client); see "Later: an App" below.
 
 Source of the rules: MiniMax's *Plugin Development and Submission Guide* (Feishu wiki
 `QlTLwbAGNiACwLkWI85cFxHzn4L`, last updated 2026-08-17). It is a JS-rendered page behind a Feishu
@@ -77,7 +75,7 @@ use one the team keeps, the *same* account must query status later):
 | Delivery target | **Desktop (MiniMax Code) + Cloud (MiniMax Agent)** — the skill is CLI-driven, so cloud only helps if the Agent sandbox can run `install.sh`; pick both, they can disable one |
 | Source | GitHub |
 | Repo | `https://github.com/superdesigndev/treg` |
-| Ref | `main` (or the release tag, e.g. `v0.12.1`) |
+| Ref | `main` (or the release tag) |
 | Plugin subdirectory | `plugins/minimax` |
 | Email | jason@superdesign.dev |
 
@@ -101,8 +99,9 @@ diff the MR.
 
 1. **`curl … | sh` in the skill.** The package contains no install script, but the skill *tells the
    agent to run one*. ClawHub's LLM review flagged the same line (`SQP-2`, see
-   `docs/CLAUDE-PLUGIN.md`). If a reviewer objects, the fallback is `pip install treg` /
-   `uv tool install treg` — the CLI is on PyPI — and a one-line swap in `MINIMAX_BOOTSTRAP`.
+   `docs/CLAUDE-PLUGIN.md`). If a reviewer objects, the fallback is `uv tool install tools-registry` (the CLI is on PyPI
+   as `tools-registry`), carried in a MiniMax bootstrap in `scripts/build_plugin.py`; today the
+   MiniMax skill has none.
 2. **Cloud target.** On MiniMax Agent the skill only works if the sandbox has a shell with network
    egress and can open a browser for `treg login` (device-code login is what to point them at if
    not). If cloud fails their verification, resubmit desktop-only — that is a catalog-metadata change,
@@ -112,11 +111,11 @@ diff the MR.
 
 ## Later: an App
 
-To get the five MCP tools into MiniMax natively, treg would enter their **App/Connector** track:
+To get treg's MCP tools into MiniMax natively, treg would enter their **App/Connector** track:
 contact MiniMax *before* building, provide test + prod Streamable-HTTP MCP endpoints, an OAuth
 issuer with discovery metadata, authorization/token/registration/revocation endpoints, scopes,
 DCR/PKCE (S256) support, refresh tokens, callback allowlist needs, a test account, rate limits and
 error codes. MiniMax then assigns a `provider` and the plugin gains `treg.app.json`
-(`{"schemaVersion":1,"provider":"treg"}`). treg's MCP currently authenticates with a static bearer
-token, which their guide says to raise with them *before* development — so this is a product
-decision (an OAuth AS in front of `/mcp/`), not a packaging one.
+(`{"schemaVersion":1,"provider":"treg"}`). treg already runs an OAuth authorization server in front
+of `/mcp/` (DCR, PKCE, refresh, revocation; docs/context/architecture/mcp-oauth.md), so what remains
+is enrolling in their track and registering MiniMax as a client.

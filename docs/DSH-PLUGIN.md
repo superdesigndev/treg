@@ -1,7 +1,7 @@
 # The DeepSeek Harness bundle
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) is a coding agent built
-on "everything is a plugin". It is the fourth shop window for the same skill, and the only one that
+on "everything is a plugin". It is another shop window for the same skill, and the only one that
 can ship the connector **and** the CLI path in a single zero-config install.
 
 ## Install
@@ -30,23 +30,26 @@ dsh/skills/treg/SKILL.md      GENERATED — never edit by hand
 
 The Claude Code and Cursor plugins declare treg's MCP server URL-only and let the host run OAuth,
 so it waits for sign-in. `@deepseek-ai/dsh-mcp-client` builds its Streamable HTTP transport with
-`requestInit.headers` and no `authProvider`, so it runs no OAuth even though its MCP SDK can
-(checked through `0.2.1-rc.4` and master; `latest` on npm still points at `0.0.1-rc.1`). So a row
-registered before there is a token would be five always-on tools that 401 on every call. A dsh row carries a `disabled` expression evaluated at boot:
+`requestInit.headers` and no `authProvider`, so it runs no OAuth even though its MCP SDK can. So a
+row registered before there is a token would be always-on tools that 401 on every call. A dsh row
+carries a `disabled` expression evaluated at boot:
 
 ```yaml
 - id: treg-mcp
   name: '@deepseek-ai/dsh-mcp-client'
-  disabled: !!js !process.env.TREG_TOKEN
+  disabled: !!js (process.env.TREG_TOKEN ?? '') === ''
 ```
+
+The expression may not begin with `!`: YAML reads it as a second tag after `!!js` and the whole
+layer fails to parse.
 
 So a user with `TREG_TOKEN` in their environment gets `mcp__treg__catalog_search` and friends at
 boot, and everyone else gets a clean install and a skill that walks them through `treg login`. The
 row is evaluated **at boot**, so a token exported afterwards needs a `dsh` restart — the bootstrap
 says so, because a human waiting for tools that will not appear this session is the failure mode.
 
-`treg mcp install` is deliberately *not* part of that path: it writes Claude Code, Cursor and
-opencode configs (`mcp_install.py`), and a dsh profile is none of those. `treg mcp install` prints
+`treg mcp install` is deliberately *not* part of that path: it writes Claude Code, Cursor,
+opencode and Codex configs (`mcp_install.py`), and a dsh profile is none of those. `treg mcp install` prints
 that instruction when it detects `~/.dsh`, and the dsh bootstrap steers away from it.
 
 ## Two constraints on `dsh/index.js`
