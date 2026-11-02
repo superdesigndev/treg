@@ -22,7 +22,7 @@ endpoints:
     method: GET
     path: /v1/jobs
     name: "Search job postings (listing fields)"
-    summary: "Search open job postings taken from employers' own career pages. Filter by title, company, country, remote, salary, job system (Workday, Greenhouse, Lever, Ashby, SmartRecruiters and others) or posted date, newest first. Each job has its title, company, locations, dates, seniority, pay when published, skills and apply link, without the description text."
+    summary: "Search open job postings taken from employers' own career pages. Filter by title, company, country, remote, salary, job system (Workday, Greenhouse, Lever, Ashby, SmartRecruiters, Teamtailor, Breezy, Personio, Pinpoint, Gem) or posted date, newest first. Each job has its title, company, locations, dates, seniority, pay when published, skills and apply link, without the description text."
     input:
       queryParams:
         title: {type: "array[string]", required: false, note: "job title keywords (repeat the parameter); up to 10, a job matches if its title has any as consecutive words", example: "data engineer"}
