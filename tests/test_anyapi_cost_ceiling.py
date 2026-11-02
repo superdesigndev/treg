@@ -168,17 +168,26 @@ async def test_routed_anyapi_child_receives_the_remaining_ceiling(clients, monke
 
 
 async def test_routed_max_cost_exceeded_is_a_failed_attempt(clients, monkeypatch):
+    # crawl4ai.google.serp.organic is route:false; fall through to a cheap routed child (dataforseo).
     monkeypatch.setenv("TREG_PLATFORM_KEY_ANYAPI", "PLATFORM-ANYAPI")
-    monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "PLATFORM-CRAWL4AI")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "anyapi,crawl4ai")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_DATAFORSEO", "login:password")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "anyapi,dataforseo")
     get_settings.cache_clear()
     seen: list = []
+    # Both live/regular and live/advanced share the dataforseo host; queue a hit for each.
+    dfs_hit = {
+        "status_code": 20000, "status_message": "Ok.", "cost": 0.002,
+        "tasks_count": 1, "tasks_error": 0,
+        "tasks": [{"id": "t1", "status_code": 20000, "status_message": "Ok.", "cost": 0.002,
+                   "result_count": 1,
+                   "result": [{"items": [{"title": "t", "url": "https://example.com"}], "items_count": 1}]}],
+    }
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({
         "anyapi": [(400, {
             "code": "max_cost_exceeded",
             "error": "max_cost_exceeded: no source serves this request within $0.01; the cheapest is $0.02 per request (no charge)",
         })],
-        "crawl4ai": [(200, {"results": [{"title": "t", "url": "https://example.com", "snippet": "s"}]})],
+        "dataforseo": [(200, dfs_hit), (200, dfs_hit)],
     }, seen))
     before = await _balance(clients)
     response = await clients.post(
@@ -190,7 +199,7 @@ async def test_routed_max_cost_exceeded_is_a_failed_attempt(clients, monkeypatch
     assert tried[0]["endpoint_id"] == "anyapi.google.serp.organic"
     assert tried[0]["outcome"] == "error" and tried[0]["status"] == 400
     assert tried[0]["charged_micro"] == 0
-    assert tried[1]["provider"] == "crawl4ai" and tried[1]["outcome"] == "hit"
+    assert tried[1]["provider"] == "dataforseo" and tried[1]["outcome"] == "hit"
     assert seen[0] == ("anyapi", {"max_cost_usd": "0.01"})
     assert "max_cost_usd" not in seen[1][1]
     assert body["_treg"]["charged_micro"] == tried[1]["charged_micro"]
