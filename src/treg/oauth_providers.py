@@ -1452,6 +1452,32 @@ OPENMART = OAuthProvider(
     # Missing and bogus Bearer keys returned 401; a valid key returned 200.
 )
 
+LOCALPROSPECTS = OAuthProvider(
+    service="localprospects",
+    display_name="Local Prospects",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Local Prospects API key (starts with lp_)",
+    # The REST API reads the key from x-api-key only; a header keeps it out of logged URLs.
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://localprospects.ai/dashboard",
+    setup_action_label="Get your Local Prospects API key",
+    setup_steps=(
+        "Sign up or sign in at localprospects.ai. The free plan includes 300 lead credits and API access.",
+        "Open the dashboard, create an API key and copy it (it starts with lp_).",
+    ),
+    setup_note="Searches charge 1 lead credit per unique business returned and enrichment 1 credit per domain; location lookup, job polling and results are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Search Google Maps businesses by niche and city, enriched with owner names, emails, phone types, socials and website data.",
+    base_url="https://localprospects.ai",
+    docs_url="https://localprospects.ai/docs",
+    probe_path="/api/v1/locations?q=denver",  # free; a bad key gets 401 {"error":"Invalid or missing API key"}
+)
+
 HARVESTAPI = OAuthProvider(
     service="harvestapi", display_name="HarvestAPI", auth_kind="key",
     token_label="API key", token_placeholder="your HarvestAPI API key",
@@ -4185,7 +4211,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, LOCALPROSPECTS, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

@@ -1,0 +1,341 @@
+# Local Prospects API. Vendor-submitted listing (curated 2026-11-02 by the Local Prospects team).
+#
+# What it is: Google Maps business search by niche + location, with every business that has a
+# website run through an enrichment pipeline (owner name, emails, phone line type and carrier,
+# socials, BBB match, tech stack, website text). Plus standalone enrichment by domain, and
+# multi-location "campaigns" that walk a country, state or list of cities one location at a time.
+#
+# Billing: one prepaid pool of LEAD CREDITS per account (Free 300 lifetime; paid plans reset
+# monthly). Four rules:
+#   - A search RESERVES its `depth` (100/300/500/700) up front, then settles at 1 credit per unique
+#     business returned and refunds the rest in the same response (`leads_charged`,
+#     `credits_refunded`, `leads_remaining`). Enrichment of the returned businesses is included in
+#     that 1 credit; there is no second charge. A failed search refunds the whole reservation.
+#   - /api/v1/enrich charges 1 credit per domain and refunds domains whose site could not be
+#     scraped (`usage.leads_charged`, `usage.leads_refunded`).
+#   - Campaign locations reserve 100 each and charge a Google Maps CID once per campaign; repeats
+#     and unused credits are refunded as each location settles.
+#   - Location lookup, category lookup, job polling, results, campaign preview/create/status/leads
+#     are free.
+# The search and enrich responses carry the meter (charged, refunded, remaining), so a cost can be
+# read off the response itself.
+#
+# Search and campaign rows come from live Google Maps searches, so the async pair matters: the
+# search response already lists the businesses, and /job/{job_id}/results returns them enriched
+# once /job/{job_id} reports `completed` (typically 1-3 minutes).
+provider: localprospects
+source:
+  docs: https://localprospects.ai/docs
+  openapi: null # no OpenAPI document is published yet; routes transcribed from the docs page
+  curated: '2026-11-02'
+limits: "search 30 requests/minute per key, enrich 20 requests/minute per key (429 with retryAfter); enrich takes at most 10 domains per call"
+pricing_url: https://localprospects.ai/docs#plans  # Free 300 lead credits; Starter $39/mo 10,000; Agency $97/mo 50,000; Scale $297/mo 200,000 (yearly billing cheaper)
+proposed_capabilities:
+  google.serp.locations: "Look up the location codes a Google Maps search takes, by city, region or country name"
+  google.serp.maps.campaign.preview: "Plan a Google Maps lead search across many cities, a state or a country, and see the locations and credits before running it"
+  google.serp.maps.campaign.create: "Save a Google Maps lead search across many cities, a state or a country, ready to start"
+  google.serp.maps.campaign.start: "Start (run) a saved multi-location Google Maps lead search"
+  google.serp.maps.campaign.status: "Check a multi-location Google Maps lead search's progress, spend and per-location status"
+  google.serp.maps.campaign.leads: "List the deduplicated businesses a multi-location Google Maps lead search has found"
+endpoints:
+  - id: localprospects.google.serp.maps
+    added: '2026-11-02'
+    capability: google.serp.maps
+    platform: google
+    scope: any_account
+    method: POST
+    path: /api/v1/search
+    name: "Search Google Maps businesses by niche and city, enriched"
+    summary: "Find businesses by niche and location. Requires a location_code from the locations endpoint. Returns a job ID; enrichment runs async in the background."
+    resource_ownership:
+      produces:
+        - {kind: job, path: job_id}
+    input:
+      body:
+        keyword: {type: string, required: false, note: "business type, e.g. electrician, dentist, roofer. Optional when exact_category_key is sent. An exact Google category name (case-insensitive) switches on primary-category matching automatically", example: "coffee shop"}
+        location_code: {type: integer, required: true, note: "a city/region code from localprospects.google.serp.locations (GET /api/v1/locations)", example: 1026593}
+        depth: {type: integer, required: false, enum: [100, 300, 500, 700], note: "max Google Maps results to pull. THIS IS THE RESERVATION: the full depth is reserved up front, then you pay 1 credit per unique business returned and the rest is refunded. Default 300", example: 100}
+        exact_category_key: {type: string, required: false, note: "a category_key from localprospects.google-business.categories to keep only businesses whose PRIMARY category matches; send null with a keyword to search broadly", example: "dentist"}
+      bodyType: json
+      note: "returns immediately with job_id, status (enriching), counts, the meter (credits_reserved, leads_charged, credits_refunded, leads_remaining) and the Google Maps rows: name, phone, website, address, city, state, rating, reviews, rating_distribution, cid/google_cid, place_id, category, latitude, longitude, is_claimed, rank, main_image. Enriched fields (owner, emails, phone types, socials, BBB, tech, website text) arrive through localprospects.web.scrape.job.results once localprospects.web.scrape.job.status says completed. 429 insufficient_credits before any provider work when the account cannot reserve the depth"
+    test_request:
+      body: {keyword: "coffee shop", location_code: 1026593, depth: 100}
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: result
+      source: observed
+      source_url: https://localprospects.ai/docs#search
+      checked: '2026-11-02'
+      confidence: verified
+      note: "OBSERVED 2026-11-02 on the test_request (coffee shop, Marfa TX, depth 100): credits_reserved 100, total_raw 27, total_unique 2, leads_charged 2, credits_refunded 98; account balance 1300 -> 1298. You pay for the unique businesses kept, not the raw provider rows. 1 lead credit per unique business returned; enrichment of those businesses is included. `depth` credits are reserved first and the unused part is refunded in the same response (credits_refunded); a failed search refunds the whole reservation. An account with 1-99 credits left can still run one depth-100 search capped at its balance"
+    docs_url: https://localprospects.ai/docs#search
+
+  - id: localprospects.web.scrape.job.status
+    added: '2026-11-02'
+    kind: utility
+    capability: web.scrape.job.status
+    platform: web
+    scope: any_account
+    method: GET
+    path: /api/v1/job/{job_id}
+    name: "Check a Local Prospects search's enrichment progress"
+    summary: "Poll every 5 seconds until status is completed, then call the results endpoint to get enriched data."
+    resource_ownership:
+      requires: {kind: job, param: job_id}
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "the job_id from localprospects.google.serp.maps (POST /api/v1/search)", example: "a3f8c21d-7b04-4e19-9c6a-d42e8f1b5a07"}
+      note: "status is searching | enriching | completed | error, with total_businesses, enriched_count, failed_count, progress (0-100), created_at, completed_at. Jobs belong to the key's account: another account's job_id answers 403 (an unknown one 404). CHAINED ID: the test_request job_id is a real job (coffee shop, Marfa TX, 2026-11-02) on the treg reviewer account whose key Local Prospects sends the maintainers, so it replays with that key; any other key gets 403. To re-verify on another account, run a search and harvest its job_id"
+    test_request:
+      pathParams: {job_id: "19f12776-e130-4e23-9a81-440dcc36dff9"}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://localprospects.ai/docs#poll', checked: '2026-11-02', confidence: verified, note: "OBSERVED free 2026-11-02 (balance 1300 -> 1281 across the whole run reconciles to the three paid calls alone, 2 + 16 + 1). polling is free"}
+    docs_url: https://localprospects.ai/docs#poll
+
+  - id: localprospects.web.scrape.job.results
+    added: '2026-11-02'
+    capability: web.scrape.job.results
+    platform: web
+    scope: any_account
+    method: GET
+    path: /api/v1/job/{job_id}/results
+    name: "Download a search's enriched leads: owners, emails, phones"
+    summary: "Fetch the full enriched business data for a completed job. Each business includes promoted best-match email, GBP phone, mobile number when found, grouped sections for contact, reputation, services, and web/tech data."
+    resource_ownership:
+      requires: {kind: job, param: job_id}
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "the job_id from localprospects.google.serp.maps", example: "a3f8c21d-7b04-4e19-9c6a-d42e8f1b5a07"}
+      queryParams:
+        has_website: {type: boolean, required: false, note: "true keeps only businesses with a website, false only those without", example: true}
+        has_email: {type: boolean, required: false, note: "true keeps only businesses with at least one discovered email", example: true}
+        has_phone: {type: boolean, required: false, note: "true keeps only businesses with at least one phone of any type"}
+        has_mobile_phone: {type: boolean, required: false, note: "true keeps only businesses with a phone classified as mobile"}
+        format: {type: string, required: false, enum: [json, simple, advanced, ghl, instantly, 1cw], note: "json (default) returns {businesses: [...]}; the others return a text/csv export preset (GoHighLevel, Instantly, ...). Choosing a format never re-runs the search or charges credits", example: "json"}
+      note: "filters combine with AND and apply to JSON and every CSV format. Each business carries owner (name, title, verified), best-match email plus every discovered email, GBP phone and phones with line type and carrier, socials, BBB match, website_status, tech stack and up to ~1,000 characters of website text, alongside the Google Maps fields. Safe to call before completion: it returns what is enriched so far. CHAINED ID: see localprospects.web.scrape.job.status"
+    test_request:
+      pathParams: {job_id: "19f12776-e130-4e23-9a81-440dcc36dff9"}
+      queryParams: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://localprospects.ai/docs#results', checked: '2026-11-02', confidence: verified, note: "OBSERVED free 2026-11-02 (balance 1300 -> 1281 across the whole run reconciles to the three paid calls alone, 2 + 16 + 1). free: the leads were paid for by the search that produced the job"}
+    docs_url: https://localprospects.ai/docs#results
+
+  - id: localprospects.companies.enrich
+    added: '2026-11-02'
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /api/v1/enrich
+    name: "Enrich local businesses by domain: owner, emails, phones"
+    summary: "Already have leads? Pass an array of domains and get back the full enrichment pipeline, no search required. Each lead costs 1 lead credit. Failed enrichments are refunded automatically."
+    input:
+      body:
+        leads: {type: "array[object]", required: true, note: "1-10 objects, each {domain (required), business_name, city, state}. business_name and city/state improve owner and BBB matching", example: [{domain: "stripe.com"}]}
+      bodyType: json
+      note: "returns {total, succeeded, failed, results[], usage}. Each result is {domain, status, result} where result has the same shape as a search result minus Maps-only fields: owner name/title, contacts, best-match email and all emails, phones with line type and carrier, socials, logo, BBB match, website_status, tech stack and website text. usage = {leads_charged, leads_refunded, leads_remaining}. Runs 3 domains concurrently; allow up to ~60 s per call"
+    test_request:
+      body: {leads: [{domain: "stripe.com"}]}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: domain
+      source: observed
+      source_url: https://localprospects.ai/docs#enrich
+      checked: '2026-11-02'
+      confidence: verified
+      note: "1 lead credit per domain, charged up front and refunded for domains whose site could not be scraped. OBSERVED 2026-11-02: stripe.com hit usage {leads_charged: 1, leads_refunded: 0}; a deliberate miss on a domain that does not exist answered HTTP 200 with usage {leads_charged: 0, leads_refunded: 1} and result.website_status 'dead' (results[0].status still reads 'success', so read usage.leads_refunded or website_status, not status, to tell a miss)"
+    docs_url: https://localprospects.ai/docs#enrich
+
+  - id: localprospects.google.serp.locations
+    added: '2026-11-02'
+    kind: utility
+    capability: google.serp.locations
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/v1/locations
+    name: "Look up Google Maps location codes by city name"
+    summary: "Fuzzy search for cities and regions. Returns location_code values required by the search endpoint. No credits consumed."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "city or region name, min 2 characters, e.g. miami, denver co, austin texas", example: "denver"}
+        country: {type: string, required: false, note: "2-letter ISO country code to restrict matches", example: "US"}
+      note: "returns up to 8 matches {location_code, name, region, country, type, full_name}, most relevant first (US cities first). Also the registry's connection probe"
+    test_request:
+      queryParams: {q: "denver"}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://localprospects.ai/docs#locations', checked: '2026-11-02', confidence: verified, note: "OBSERVED free 2026-11-02 (balance 1300 -> 1281 across the whole run reconciles to the three paid calls alone, 2 + 16 + 1). no credits consumed"}
+    docs_url: https://localprospects.ai/docs#locations
+
+  - id: localprospects.google-business.categories
+    added: '2026-11-02'
+    kind: utility
+    capability: google-business.categories
+    platform: google-business
+    scope: any_account
+    method: GET
+    path: /api/search/categories
+    name: "Look up Google business categories by name"
+    summary: "Find primary business categories for exact category search. This public endpoint needs no API key and consumes no lead credits."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "category name, 2-80 characters", example: "dentist"}
+      note: "returns up to 3 {category_key, display_name}: an exact name first, then by how many businesses carry the category. Pass a category_key as exact_category_key to localprospects.google.serp.maps or a campaign to keep only businesses whose PRIMARY Google category matches"
+    test_request:
+      queryParams: {q: "dentist"}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://localprospects.ai/docs#categories', checked: '2026-11-02', confidence: verified, note: "OBSERVED free 2026-11-02 (balance 1300 -> 1281 across the whole run reconciles to the three paid calls alone, 2 + 16 + 1). public and free"}
+    docs_url: https://localprospects.ai/docs#categories
+
+  - id: localprospects.google.serp.locations.browse
+    added: '2026-11-02'
+    kind: utility
+    capability: google.serp.locations
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/v1/campaign-locations
+    name: "Browse countries, states and cities for location codes"
+    summary: "Browse countries, regions, and cities for scope codes"
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "search by name; returns up to 20 matches", example: "texas"}
+        country: {type: string, required: false, note: "2-letter ISO country code to restrict a q search", example: "US"}
+        parent_code: {type: integer, required: false, note: "list the children (regions or cities) of this location code, 100 per page"}
+        offset: {type: integer, required: false, note: "paging offset for parent_code listings; follow next_offset"}
+      note: "no parameters lists the countries. Each row is {location_code, location_name, search_name, location_type, country_iso_code, parent_code, has_children, eligible_count}. Unlike localprospects.google.serp.locations this also returns states and countries, which is what a campaign scope.include takes"
+    test_request:
+      queryParams: {q: "texas", country: "US"}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://localprospects.ai/docs#campaigns', checked: '2026-11-02', confidence: verified, note: "OBSERVED free 2026-11-02 (balance 1300 -> 1281 across the whole run reconciles to the three paid calls alone, 2 + 16 + 1). free"}
+    docs_url: https://localprospects.ai/docs#campaigns
+
+  - id: localprospects.google.serp.maps.campaign.preview
+    added: '2026-11-02'
+    capability: google.serp.maps.campaign.preview
+    platform: google
+    scope: any_account
+    method: POST
+    path: /api/v1/campaigns/preview
+    name: "Preview a multi-city Google Maps lead search before paying"
+    summary: "Use POST /api/v1/campaigns/preview with the same body to resolve and review the plan without saving it."
+    input:
+      body:
+        keyword: {type: string, required: false, note: "one business niche; optional when exact_category_key is sent", example: "coffee shop"}
+        exact_category_key: {type: string, required: false, note: "require this primary Google category; null searches broadly"}
+        name: {type: string, required: false, note: "display name"}
+        max_leads: {type: integer, required: false, note: "campaign-wide stop after this many charged unique leads; at least 100", example: 100}
+        scope.include: {type: "array[integer]", required: true, note: "ordered country, region or city location codes from localprospects.google.serp.locations.browse", example: [1026403]}
+        scope.exclude: {type: "array[integer]", required: false, note: "descendant codes to leave out of an included area"}
+      bodyType: json
+      note: "resolves the scope into the ordered city plan without saving anything: planned_location_count, planned_depth (the maximum credits the whole plan could reserve, 100 per location), next_search_credits and the resolved scope.plan. Use it to size a country/state run before localprospects.google.serp.maps.campaign.create. Only campaign-eligible cities count: a scope of only tiny towns (e.g. Marfa TX) answers 400 \"The selected scope contains no searchable cities\""
+    test_request:
+      body: {keyword: "coffee shop", max_leads: 100, scope: {include: [1026403]}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://localprospects.ai/docs#campaigns', checked: '2026-11-02', confidence: verified, note: "OBSERVED free 2026-11-02 (balance 1300 -> 1281 across the whole run reconciles to the three paid calls alone, 2 + 16 + 1). free: nothing is saved or searched"}
+    docs_url: https://localprospects.ai/docs#campaigns
+
+  - id: localprospects.google.serp.maps.campaign.create
+    added: '2026-11-02'
+    capability: google.serp.maps.campaign.create
+    platform: google
+    scope: any_account
+    method: POST
+    path: /api/v1/campaigns
+    name: "Create a multi-city Google Maps lead search campaign"
+    summary: "Create a resumable multi-location search. Campaigns are available on every plan and use the same lead-credit balance as ordinary searches."
+    resource_ownership:
+      produces:
+        - {kind: campaign, path: campaign.id}
+    input:
+      body:
+        keyword: {type: string, required: false, note: "one business niche; optional when exact_category_key is sent", example: "coffee shop"}
+        exact_category_key: {type: string, required: false, note: "require this primary Google category; null searches broadly"}
+        campaign_id: {type: string, required: false, note: "client-generated UUID used as an idempotency key; reuse it when retrying a create"}
+        name: {type: string, required: false, note: "display name", example: "Fredericksburg coffee shops"}
+        max_leads: {type: integer, required: false, note: "campaign-wide stop after this many charged unique leads; at least 100", example: 100}
+        scope.include: {type: "array[integer]", required: true, note: "ordered country, region or city location codes from localprospects.google.serp.locations.browse", example: [1026403]}
+        scope.exclude: {type: "array[integer]", required: false, note: "descendant codes to leave out of an included area"}
+      bodyType: json
+      note: "answers 201 {campaign: {...}} with status ready. Creating spends nothing; credits move only after localprospects.google.serp.maps.campaign.start"
+    test_request:
+      body: {name: "treg verification", keyword: "coffee shop", max_leads: 100, scope: {include: [1026403]}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://localprospects.ai/docs#campaigns', checked: '2026-11-02', confidence: verified, note: "OBSERVED free 2026-11-02 (balance 1300 -> 1281 across the whole run reconciles to the three paid calls alone, 2 + 16 + 1). free: a created campaign is saved as ready and searches nothing until started"}
+    docs_url: https://localprospects.ai/docs#campaigns
+
+  - id: localprospects.google.serp.maps.campaign.start
+    added: '2026-11-02'
+    capability: google.serp.maps.campaign.start
+    platform: google
+    scope: any_account
+    method: POST
+    path: /api/v1/campaigns/{campaign_id}/actions/start
+    name: "Start a multi-city Google Maps lead search campaign"
+    summary: "Start a ready campaign"
+    resource_ownership:
+      requires: {kind: campaign, param: campaign_id}
+    input:
+      pathParams:
+        campaign_id: {type: string, required: true, note: "campaign.id from localprospects.google.serp.maps.campaign.create", example: "5b0c8f7e-2d1a-4c3b-9e8f-1a2b3c4d5e6f"}
+      note: "the campaign then searches one location at a time in the background, each as a normal search job. Starting a completed campaign answers 409 invalid_campaign_transition, so the test_request id (89f39ade-95da-47b6-ad6a-7b71dae83b21) is a READY campaign left unstarted on the treg reviewer account for exactly one replay; after that, create a fresh one with localprospects.google.serp.maps.campaign.create and start its id. It stops at max_leads, at the end of the plan, or pauses at zero credits until more are added. Sibling actions pause, resume and stop share this path shape"
+    test_request:
+      pathParams: {campaign_id: "89f39ade-95da-47b6-ad6a-7b71dae83b21"}
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: result
+      source: observed
+      source_url: https://localprospects.ai/docs#campaigns
+      checked: '2026-11-02'
+      confidence: verified
+      note: "OBSERVED 2026-11-02 (coffee shop, Fredericksburg TX, one location): the campaign completed with lead_count 16 and credits_used 16, balance 1298 -> 1282 before the enrich call. The start call itself is free; the campaign then charges 1 lead credit per NEW unique business (Google Maps CID) across all its locations. Each location reserves 100 credits (or the remaining balance when under 100) and refunds repeats and unused credits as it settles. Bound the bill with max_leads"
+    docs_url: https://localprospects.ai/docs#campaigns
+
+  - id: localprospects.google.serp.maps.campaign.status
+    added: '2026-11-02'
+    kind: utility
+    capability: google.serp.maps.campaign.status
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/v1/campaigns/{campaign_id}
+    name: "Check a Google Maps lead campaign's progress and spend"
+    summary: "Campaign, ordered plan, child searches, stats, and activity"
+    resource_ownership:
+      requires: {kind: campaign, param: campaign_id}
+    input:
+      pathParams:
+        campaign_id: {type: string, required: true, note: "campaign.id from localprospects.google.serp.maps.campaign.create", example: "5b0c8f7e-2d1a-4c3b-9e8f-1a2b3c4d5e6f"}
+      note: "status is ready | running | paused | needs_attention | completed | stopped, with pause_reason, completed/failed location counts, lead_count, credits_used, child search job_ids and recent activity. CHAINED ID: the test_request campaign_id is a real completed campaign (coffee shop, Fredericksburg TX, 2026-11-02) on the treg reviewer account, so it replays with that key"
+    test_request:
+      pathParams: {campaign_id: "db6cbe66-4d11-47d9-b372-cfab1fc86644"}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://localprospects.ai/docs#campaigns', checked: '2026-11-02', confidence: verified, note: "OBSERVED free 2026-11-02 (balance 1300 -> 1281 across the whole run reconciles to the three paid calls alone, 2 + 16 + 1). free"}
+    docs_url: https://localprospects.ai/docs#campaigns
+
+  - id: localprospects.google.serp.maps.campaign.leads
+    added: '2026-11-02'
+    capability: google.serp.maps.campaign.leads
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/v1/campaigns/{campaign_id}/leads
+    name: "List a Google Maps lead campaign's enriched businesses"
+    summary: "Paginated, cross-search deduplicated campaign leads"
+    resource_ownership:
+      requires: {kind: campaign, param: campaign_id}
+    input:
+      pathParams:
+        campaign_id: {type: string, required: true, note: "campaign.id from localprospects.google.serp.maps.campaign.create", example: "5b0c8f7e-2d1a-4c3b-9e8f-1a2b3c4d5e6f"}
+      queryParams:
+        page: {type: integer, required: false, note: "1-based page, default 1", example: 1}
+        page_size: {type: integer, required: false, note: "rows per page, 1-100, default 25", example: 25}
+        q: {type: string, required: false, note: "text filter over the leads"}
+        count_only: {type: boolean, required: false, note: "true returns only the lead counts, no rows"}
+      note: "returns {businesses, page, page_size, unique_seen, has_more}; each business has the same enriched shape as localprospects.web.scrape.job.results, deduplicated across all the campaign's locations. GET /api/v1/campaigns/{campaign_id}/export returns the whole pool as one CSV. CHAINED ID: see localprospects.google.serp.maps.campaign.status"
+    test_request:
+      pathParams: {campaign_id: "db6cbe66-4d11-47d9-b372-cfab1fc86644"}
+      queryParams: {page: 1, page_size: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: 'https://localprospects.ai/docs#campaigns', checked: '2026-11-02', confidence: verified, note: "OBSERVED free 2026-11-02 (balance 1300 -> 1281 across the whole run reconciles to the three paid calls alone, 2 + 16 + 1). free: leads were paid for as the campaign found them"}
+    docs_url: https://localprospects.ai/docs#campaigns
