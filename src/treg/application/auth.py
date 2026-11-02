@@ -360,27 +360,43 @@ def _norm_pair_code(code: str | None) -> str:
     return "".join((code or "").split()).replace("-", "").upper()
 
 
-async def start_cli_login() -> dict:
+async def start_cli_login(poll_challenge: str | None = None) -> dict:
     """Mint and retain the server side of a CLI pairing handshake."""
     login_id = _secrets.token_urlsafe(18)
     code = "".join(_secrets.choice(_PAIR_ALPHABET) for _ in range(4))
+    held = {"code": crypto.encrypt(code), "attempts": CLI_APPROVE_MAX_TRIES}
+    if poll_challenge:
+        held["poll_challenge"] = poll_challenge
     await _prune_handshakes()
     async with _cli_store_session() as db:
         db.add(Ephemeral(
-            ns=CLI_LOGIN_NS, k=crypto.hash_token(login_id),
-            v={"code": crypto.encrypt(code), "attempts": CLI_APPROVE_MAX_TRIES},
+            ns=CLI_LOGIN_NS, k=crypto.hash_token(login_id), v=held,
             expires_at=_utcnow_naive() + timedelta(seconds=HANDSHAKE_TTL),
         ))
         await db.commit()
-    return {"login_id": login_id, "code": code}
+    started = {"login_id": login_id, "code": code, "expires_in": HANDSHAKE_TTL}
+    if poll_challenge:
+        started["poll_verifier"] = True
+    return started
 
 
-async def poll_cli_login(login_id: str) -> dict:
-    """Return a completed handshake exactly once, otherwise report it pending."""
+def _poll_verifier_matches(held: dict, verifier: str) -> bool:
+    challenge = held.get("poll_challenge")
+    if challenge is None:
+        return True
+    return verifier.isascii() and mcp_oauth.verify_pkce(verifier, challenge)
+
+
+async def poll_cli_login(login_id: str, verifier: str = "") -> dict:
+    """Return a completed handshake exactly once to its verifier holder; report a live one pending
+    and a missing, consumed or expired one expired."""
     async with _cli_store_session() as db:
         key = crypto.hash_token(login_id)
         pending = await db.get(Ephemeral, (CLI_LOGIN_NS, key))
-        if pending is None or (pending.expires_at > _utcnow_naive() and "result" not in pending.v):
+        if pending is None:
+            return {"status": "expired"}
+        if pending.expires_at > _utcnow_naive() and (
+                "result" not in pending.v or not _poll_verifier_matches(pending.v, verifier)):
             return {"status": "pending"}  # no writes or commit for the ordinary waiting poll
         # DELETE RETURNING arbitrates competing consumers in the database. A pending entry must
         # survive polling, and no credential leaves this function before deletion is committed.
@@ -390,7 +406,7 @@ async def poll_cli_login(login_id: str) -> dict:
             | (Ephemeral.expires_at <= _utcnow_naive()),
         ).returning(Ephemeral.v, Ephemeral.expires_at)
           .execution_options(synchronize_session=False))).one_or_none()
-        result = {"status": "pending"}
+        result = {"status": "expired"}
         if entry is not None and entry.expires_at > _utcnow_naive() and "result" in entry.v:
             result = json.loads(crypto.decrypt(entry.v["result"]))
         await db.commit()
@@ -491,7 +507,8 @@ async def approve_cli_login(
         # rolling back also undoes any Default-key creation in this transaction.
         if pending.expires_at <= _utcnow_naive():
             raise CliPairingError("expired")
-        pending.v = {"result": crypto.encrypt(json.dumps(result))}
+        pending.v = {"result": crypto.encrypt(json.dumps(result)),
+                     **({"poll_challenge": pending.v["poll_challenge"]} if "poll_challenge" in pending.v else {})}
         pending.expires_at = _utcnow_naive() + timedelta(seconds=HANDSHAKE_TTL)
         await db.commit()
         return {"ok": True, "email": user.email, "active_org": active_org}

@@ -5,6 +5,8 @@ Run on SQLite and in the PostgreSQL CI job. No provider traffic or production cr
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import importlib.util
 import json
 import os
@@ -134,7 +136,7 @@ async def test_independent_workers_preserve_contract_and_encrypt_storage(workers
     claims = sess.read_identity_claims(result["token"])
     assert claims["uid"] == workers.user_id and claims["org"] == workers.org
     assert claims["scope"] == sess.TEAM_SCOPE and "exp" not in claims
-    assert await a.poll_cli_login(started["login_id"]) == {"status": "pending"}
+    assert await a.poll_cli_login(started["login_id"]) == {"status": "expired"}
     with pytest.raises(b.CliPairingError, match="expired"):
         await _approve(b, workers, started, workers.org)
 
@@ -153,7 +155,7 @@ async def test_concurrent_approvals_and_polls_have_one_winner(workers):
         worker.poll_cli_login(started["login_id"]) for worker in workers.modules * 3
     ))
     assert sum("token" in result for result in results) == 1
-    assert sum(result == {"status": "pending"} for result in results) == 8
+    assert sum(result == {"status": "expired"} for result in results) == 8
 
 
 async def test_concurrent_wrong_codes_share_one_attempt_budget(workers):
@@ -168,7 +170,7 @@ async def test_concurrent_wrong_codes_share_one_attempt_budget(workers):
     assert kinds.count("expired") == len(kinds) - auth.CLI_APPROVE_MAX_TRIES
     with pytest.raises(workers.modules[1].CliPairingError, match="expired"):
         await _approve(workers.modules[1], workers, started)
-    assert await workers.modules[2].poll_cli_login(started["login_id"]) == {"status": "pending"}
+    assert await workers.modules[2].poll_cli_login(started["login_id"]) == {"status": "expired"}
 
 
 async def test_last_wrong_code_races_valid_approval(workers):
@@ -187,7 +189,7 @@ async def test_last_wrong_code_races_valid_approval(workers):
         assert wrong.kind == "expired" and "token" in result
     else:
         assert wrong.kind == "too_many_wrong_codes" and right.kind == "expired"
-        assert result == {"status": "pending"}
+        assert result == {"status": "expired"}
 
 
 @pytest.mark.parametrize("completed", [False, True])
@@ -199,7 +201,7 @@ async def test_expiry_is_enforced_without_another_start(workers, completed):
     await _expire(started["login_id"])
     with pytest.raises(b.CliPairingError, match="expired"):
         await _approve(b, workers, started)
-    assert await c.poll_cli_login(started["login_id"]) == {"status": "pending"}
+    assert await c.poll_cli_login(started["login_id"]) == {"status": "expired"}
     assert await _row(started) is None
 
 
@@ -273,7 +275,7 @@ async def test_cancellation_before_commit_rolls_back(workers, monkeypatch, opera
         assert "token" in await c.poll_cli_login(started["login_id"])
     else:
         assert "token" in observed
-    assert await a.poll_cli_login(started["login_id"]) == {"status": "pending"}
+    assert await a.poll_cli_login(started["login_id"]) == {"status": "expired"}
 
 
 @pytest.mark.parametrize("operation", ["approve", "poll"])
@@ -304,7 +306,7 @@ async def test_commit_failure_never_republishes_credentials(workers, monkeypatch
         await _approve(a, workers, started, workers.org)
     result = await c.poll_cli_login(started["login_id"])
     assert ("token" in result) is not (operation == "poll" and committed)
-    assert await a.poll_cli_login(started["login_id"]) == {"status": "pending"}
+    assert await a.poll_cli_login(started["login_id"]) == {"status": "expired"}
 
 
 @pytest.mark.parametrize("provider", ["github", "google"])
@@ -379,7 +381,7 @@ asyncio.run(run())
     await fresh_process("approve_cli_login", workers.cookie, started["login_id"], started["code"], workers.org)
     result = await fresh_process("poll_cli_login", started["login_id"])
     assert sess.read_identity_claims(result["token"])["org"] == workers.org
-    assert await fresh_process("poll_cli_login", started["login_id"]) == {"status": "pending"}
+    assert await fresh_process("poll_cli_login", started["login_id"]) == {"status": "expired"}
 
 
 @pytest.mark.parametrize("login_id", ["", "no", "a" * 129, "valid-id\n", "<script>alert(1)</script>"])
@@ -390,7 +392,7 @@ async def test_invalid_poll_never_opens_a_store(workers, worker_clients, monkeyp
     for worker in workers.modules:
         monkeypatch.setattr(worker.database, "session_maker", forbidden)
     response = await worker_clients[0].get("/auth/cli/poll", params={"login_id": login_id})
-    assert response.status_code == 200 and response.json() == {"status": "pending"}
+    assert response.status_code == 200 and response.json() == {"status": "expired"}
     assert response.headers["cache-control"] == "no-store"
 
 
@@ -405,8 +407,8 @@ async def test_pending_and_unknown_polls_are_read_only(workers):
     event.listen(engine, "before_cursor_execute", capture)
     event.listen(engine, "commit", commit)
     try:
-        for login_id in (started["login_id"], "synthetic-unknown"):
-            assert await workers.modules[1].poll_cli_login(login_id) == {"status": "pending"}
+        assert await workers.modules[1].poll_cli_login(started["login_id"]) == {"status": "pending"}
+        assert await workers.modules[1].poll_cli_login("synthetic-unknown") == {"status": "expired"}
         assert statements == ["SELECT", "SELECT"] and commits == []
     finally:
         event.remove(engine, "before_cursor_execute", capture)
@@ -530,9 +532,50 @@ async def test_turnstile_email_browser_pairing_across_workers(
     assert result["email"] == "pair.ing+flow@gmail.com"
     claims = sess.read_identity_claims(result["token"])
     assert claims["scope"] == sess.BOOTSTRAP_SCOPE
-    assert (await c.get("/auth/cli/poll", params={"login_id": started["login_id"]})).json() == {"status": "pending"}
+    assert (await c.get("/auth/cli/poll", params={"login_id": started["login_id"]})).json() == {"status": "expired"}
     async with database.session_maker() as db:
         user = await db.get(User, claims["uid"])
         assert user.signup_promo_available is (verification == "pass")
     assert len(forms) == 1
     assert "synthetic-widget-token" not in caplog.text and "synthetic-secret" not in caplog.text
+
+
+async def test_poll_challenge_reserves_the_token_for_its_verifier(workers, worker_clients):
+    a, b, c = worker_clients
+    verifier = "synthetic-verifier-" + "v" * 30
+    digest = hashlib.sha256(verifier.encode()).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+    started = (await a.post("/auth/cli/start", json={"poll_challenge": challenge})).json()
+    assert started["poll_verifier"] is True and started["expires_in"] == auth.HANDSHAKE_TTL
+    assert (await _approve(workers.modules[1], workers, started, workers.org))["ok"]
+    poll = {"login_id": started["login_id"]}
+    for headers in ({}, {"X-Treg-Poll-Verifier": "wrong"}, {"X-Treg-Poll-Verifier": b"\xe9" * 43}):
+        response = await b.get("/auth/cli/poll", params=poll, headers=headers)
+        assert response.status_code == 200 and response.json() == {"status": "pending"}
+    assert "result" in (await _row(started)).v
+    claimed = (await c.get("/auth/cli/poll", params=poll, headers={"X-Treg-Poll-Verifier": verifier})).json()
+    assert sess.read_identity_claims(claimed["token"])["org"] == workers.org
+    again = await a.get("/auth/cli/poll", params=poll, headers={"X-Treg-Poll-Verifier": verifier})
+    assert again.json() == {"status": "expired"}
+
+
+async def test_start_without_a_body_keeps_the_codeless_poll(workers, worker_clients):
+    a, b, _ = worker_clients
+    started = (await a.post("/auth/cli/start")).json()
+    assert "poll_verifier" not in started and started["expires_in"] == auth.HANDSHAKE_TTL
+    await _approve(workers.modules[0], workers, started)
+    assert "token" in (await b.get("/auth/cli/poll", params={"login_id": started["login_id"]})).json()
+
+
+@pytest.mark.parametrize("challenge", ["short", "a" * 44, "+" * 43, 7])
+async def test_malformed_poll_challenge_is_refused(worker_clients, challenge):
+    response = await worker_clients[0].post("/auth/cli/start", json={"poll_challenge": challenge})
+    assert response.status_code == 422
+
+
+async def test_expired_challenge_handshake_reports_expired(workers, worker_clients):
+    started = (await worker_clients[0].post("/auth/cli/start", json={"poll_challenge": "c" * 43})).json()
+    await _expire(started["login_id"])
+    response = await worker_clients[1].get("/auth/cli/poll", params={"login_id": started["login_id"]})
+    assert response.json() == {"status": "expired"}
+    assert await _row(started) is None
