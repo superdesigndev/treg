@@ -181,6 +181,15 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   created after a non-`pass` gets `signup_promo_available=false`. Captcha refusals carry
   `X-Treg-Captcha: required` so `treg login --email` falls back to the browser handshake.
   `TREG_FIXED_LOGIN_CODES` accounts skip the check.
+- **Turnstile on social sign-in**, because a provider proves an identity, not a person, and fresh
+  GitHub or Google accounts are cheap. With Turnstile on, `GET /auth/<provider>` serves a page that
+  runs the `social_start` check and posts its token to `POST /auth/<provider>`, so every existing
+  link keeps working. The POST classifies the token under a per-IP window (over it, `missing`
+  without calling Cloudflare), keeps the verdict under the hashed OAuth `state`, then redirects to
+  the provider; the callback takes it once. Nothing is refused here: in `enforce` a new user whose
+  check was not `pass` (or whose login has no kept verdict) signs in with
+  `signup_promo_available=false`; existing users are untouched. Each new social user logs
+  `event=social_signup` with the outcome and, for GitHub, the account age in days.
 
 ## Membership and team lifecycle
 

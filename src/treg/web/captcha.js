@@ -1,4 +1,5 @@
-// Cloudflare Turnstile for every email sign-in form: `await tregCaptcha.token('email_start')`
+// Cloudflare Turnstile for every email sign-in form and the social sign-in check page:
+// `await tregCaptcha.token('email_start')` (or `'social_start'`)
 // resolves to a fresh single-use token, '' when this deployment has no widget, or `!<reason>`
 // when the browser could not get one (`!blocked` the script did not load, `!pending` still
 // waiting for a click, `!error` the widget failed). The server never sends a `!` value to
@@ -67,7 +68,7 @@
         el.setAttribute("data-treg-captcha-widget", "");
         // Shown only when Cloudflare wants a click: a bare checkbox under a dialog is easy to miss.
         var note = document.createElement("div"), slot = document.createElement("div");
-        note.textContent = "One quick check before we email your code";
+        note.textContent = action === "social_start" ? "One quick check before you continue" : "One quick check before we email your code";
         var dark = theme() === "dark";
         note.style.cssText = "display:none;margin:0 auto 6px;width:max-content;max-width:300px;padding:5px 10px;"
           + "border-radius:8px;font:13px/1.4 system-ui,-apple-system,sans-serif;text-align:center;"

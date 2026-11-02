@@ -58,6 +58,10 @@ OTP_START_WINDOW_S = 900      # 15 minutes
 OTP_START_MAX_PER_EMAIL = 5   # code requests for one inbox per window (caps bombing a single victim)
 OTP_START_MAX_PER_IP = 30     # code requests from one IP per window (looser — offices/NAT share an IP)
 TURNSTILE_ACTION = "email_start"  # must match the action the sign-in forms pass to captcha.js
+SOCIAL_TURNSTILE_ACTION = "social_start"  # must match the action /auth/<provider> passes to captcha.js
+SOCIAL_CHECK_NS = "social_check"
+SOCIAL_START_NS = "social_start"
+SOCIAL_START_MAX_PER_IP = 30  # siteverify calls from one IP per window; past it the check is `missing`
 AUTH_CODE_TTL_S = 300   # a code is redeemed within seconds; five minutes is generous, not a window
 
 
@@ -588,7 +592,9 @@ async def _consume_cli_state(state: str) -> tuple[str, datetime] | None:
         return result
 
 
-async def start_github_login(cli: str, callback_base: Callable[[], str]) -> SocialLoginStart:
+async def start_github_login(
+    cli: str, callback_base: Callable[[], str], *, captcha_token: str = "", client_ip: str = "",
+) -> SocialLoginStart:
     s = get_settings()
     if not s.github_client_id:
         raise SocialLoginError("github_not_configured")
@@ -596,12 +602,15 @@ async def start_github_login(cli: str, callback_base: Callable[[], str]) -> Soci
     state = crypto.new_token()
     if cli:  # this is a `treg login` handshake, not a browser session
         await _remember_cli_state(state, cli)
+    await _check_social_browser(state, captcha_token, client_ip, "github")
     url = (f"{s.github_authorize_url}?client_id={s.github_client_id}"
            f"&redirect_uri={quote(redirect, safe='')}&scope={quote('read:user user:email')}&state={state}")
     return SocialLoginStart(state=state, url=url)
 
 
-async def start_google_login(cli: str, callback_base: Callable[[], str]) -> SocialLoginStart:
+async def start_google_login(
+    cli: str, callback_base: Callable[[], str], *, captcha_token: str = "", client_ip: str = "",
+) -> SocialLoginStart:
     s = get_settings()
     if not s.google_client_id:
         raise SocialLoginError("google_not_configured")
@@ -609,19 +618,62 @@ async def start_google_login(cli: str, callback_base: Callable[[], str]) -> Soci
     state = crypto.new_token()
     if cli:  # a `treg login` handshake, not a browser session
         await _remember_cli_state(state, cli)
+    await _check_social_browser(state, captcha_token, client_ip, "google")
     url = (f"{s.google_authorize_url}?client_id={s.google_client_id}"
            f"&redirect_uri={quote(redirect, safe='')}&response_type=code"
            f"&scope={quote('openid email profile')}&state={state}&prompt=select_account")
     return SocialLoginStart(state=state, url=url)
 
 
-async def _provision_social_user(email: str, state: str, door: str, entry_surface: str = "") -> SocialLoginProof:
+async def _check_social_browser(state: str, captcha_token: str, client_ip: str, door: str) -> None:
+    """Classify the Turnstile token sent on the way to the provider and keep the verdict for the
+    callback under this login's state. Unlike the email door nothing is refused: the provider proves
+    the identity, so the check only decides whether a new user can claim signup credit."""
+    if not turnstile.enabled():
+        return
+    async with database.session_maker() as db:
+        await ratestore.sweep(db, SOCIAL_START_NS)
+        allowed = await ratestore.rate_check(
+            db, SOCIAL_START_NS, [(f"i:{client_ip}", SOCIAL_START_MAX_PER_IP)], OTP_START_WINDOW_S)
+        await db.commit()
+    outcome = (await turnstile.verify(captcha_token, action=SOCIAL_TURNSTILE_ACTION, remote_ip=client_ip)
+               if allowed else turnstile.MISSING)
+    mode = get_settings().turnstile_mode
+    logging.getLogger("treg").info(
+        "event=turnstile_social_start door=%s outcome=%s reason=%s limited=%s mode=%s",
+        door, outcome, turnstile.client_reason(captcha_token) or "-", not allowed, mode)
+    async with database.session_maker() as db:
+        await ratestore.sweep(db, SOCIAL_CHECK_NS)
+        await ratestore.kv_put(
+            db, SOCIAL_CHECK_NS, crypto.hash_token(state),
+            {"captcha": outcome, "promo": mode != "enforce" or outcome == turnstile.PASS}, HANDSHAKE_TTL)
+        await db.commit()
+
+
+async def _take_social_check(state: str) -> tuple[str, bool]:
+    """(captcha outcome, promo_eligible) for this login. Without a kept verdict (the login started
+    before the check was switched on, or outlived it) enforce gives no credit."""
+    if not turnstile.enabled():
+        return "", True
+    async with database.session_maker() as db:
+        kept = await ratestore.kv_take(db, SOCIAL_CHECK_NS, crypto.hash_token(state))
+        await db.commit()
+    if kept is None:
+        return turnstile.MISSING, get_settings().turnstile_mode != "enforce"
+    return kept["captcha"], bool(kept["promo"])
+
+
+async def _provision_social_user(
+    email: str, state: str, door: str, entry_surface: str = "", *, account_created_at: str = "",
+) -> SocialLoginProof:
     created: set[int] = set()
     proven: set[int] = set()
+    captcha, promo_eligible = await _take_social_check(state)
     async with database.session_maker() as db:
         try:
             user = await signup.find_or_create_user(
                 db, email, door=door, created=created, verified=True, proven=proven,
+                promo_eligible=promo_eligible,
             )  # first login creates only the user
         except signup.MachineIdentityError as exc:
             raise SocialLoginError("machine_identity") from exc
@@ -634,9 +686,24 @@ async def _provision_social_user(email: str, state: str, door: str, entry_surfac
             await signup.grant_signup_promo_on_proof(user.id)
         # Browser session OR `treg login` handshake - both go through the /login team picker.
         cli_state = await _consume_cli_state(state)
-        signup.track_signup(user, created, door, entry_surface,
+        if user.id in created:
+            logging.getLogger("treg").info(
+                "event=social_signup door=%s captcha=%s promo=%s account_age_days=%s",
+                door, captcha or "-", promo_eligible, _age_days(account_created_at))
+        signup.track_signup(user, created, door, entry_surface, captcha=captcha,
                             client="cli_browser" if cli_state is not None else "browser")
         return SocialLoginProof(user=user, cli_state=cli_state)
+
+
+def _age_days(created_at: str) -> str:
+    """Whole days since a provider's ISO-8601 account creation time, or `-` when it gave none."""
+    try:
+        born = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        return "-"
+    if born.tzinfo is None:
+        return "-"
+    return str((datetime.now(timezone.utc) - born).days)
 
 
 async def complete_github_login(
@@ -671,7 +738,8 @@ async def complete_github_login(
     except Exception as exc:
         print(f"[auth] github callback error: {exc}")  # keep internals server-side, not in the response
         raise SocialLoginError("callback_failed") from exc
-    return await _provision_social_user(email, state, "github", entry_surface)
+    return await _provision_social_user(email, state, "github", entry_surface,
+                                        account_created_at=str(prof.get("created_at") or ""))
 
 
 async def complete_google_login(

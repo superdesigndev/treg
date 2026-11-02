@@ -27,6 +27,7 @@ from ..config import get_settings
 from ..domain.identity import mcp_oauth
 from ..domain.identity import session as sess
 from ..domain.identity.access import require_identity
+from ..infra import turnstile
 from ..models import User
 from .auth_helpers import _is_https, _remember_oauth_return, _same_origin, require_managed_cli
 from .web import _esc_html
@@ -229,19 +230,62 @@ def _social_http_error(exc: auth_use_cases.SocialLoginError) -> HTTPException:
     return HTTPException(status_code=status_code, detail=detail)
 
 
-@app.get("/auth/github")
-async def auth_github(request: Request, cli: str = "", return_to: str = ""):
+_SOCIAL_STARTS = {
+    "github": auth_use_cases.start_github_login,
+    "google": auth_use_cases.start_google_login,
+}
+_SOCIAL_NAMES = {"github": "GitHub", "google": "Google"}
+
+
+async def _social_start(request: Request, provider: str, cli: str, return_to: str, captcha_token: str = ""):
     try:
-        started = await auth_use_cases.start_github_login(cli, lambda: _login_callback_base(request))
+        started = await _SOCIAL_STARTS[provider](
+            cli, lambda: _login_callback_base(request),
+            captcha_token=captcha_token, client_ip=_client_ip(request))
     except auth_use_cases.CliPairingError as exc:
         raise _cli_http_error(exc) from exc
     except auth_use_cases.SocialLoginError as exc:
         raise _social_http_error(exc) from exc
-    resp = RedirectResponse(started.url, status_code=302)
+    resp = RedirectResponse(started.url, status_code=302 if request.method == "GET" else 303)
     resp.set_cookie("treg_oauth_state", started.state, httponly=True, max_age=600,
                     samesite="lax", secure=_is_https(request))
     _arena_login_return(resp, request, return_to if not cli else "")
     return resp
+
+
+def _social_check_page(provider: str, cli: str, return_to: str) -> HTMLResponse:
+    """With Turnstile on, `/auth/<provider>` first runs the browser check here and posts its token
+    back, so every existing sign-in link keeps working. Without script the button still signs in."""
+    name = _SOCIAL_NAMES[provider]
+    html = (
+        f'{_AUTH_HEAD}<body><div class="wrap"><div class="card">'
+        f'<div class="logo">▚ tools-registry</div><h1>Continuing to {name}</h1>'
+        f'<form id="go" method="post" action="/auth/{provider}">'
+        f'<input type="hidden" name="cli" value="{_esc_html(cli)}">'
+        f'<input type="hidden" name="return_to" value="{_esc_html(return_to)}">'
+        f'<input type="hidden" name="captcha_token" value="">'
+        f'<p style="margin-bottom:18px">Checking your browser first.</p>'
+        f'<button class="pbtn" type="submit">Continue to {name}</button></form></div></div>'
+        f'<script src="/captcha.js"></script>'
+        "<script>(async()=>{const f=document.getElementById('go');"
+        "f.captcha_token.value=window.tregCaptcha?await window.tregCaptcha.token('social_start'):'!blocked';"
+        "f.submit()})()</script></body></html>"
+    )
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/auth/github")
+async def auth_github(request: Request, cli: str = "", return_to: str = ""):
+    if turnstile.enabled():
+        return _social_check_page("github", cli, return_to)
+    return await _social_start(request, "github", cli, return_to)
+
+
+@app.post("/auth/github", include_in_schema=False)
+async def auth_github_checked(
+    request: Request, cli: str = Form(""), return_to: str = Form(""), captcha_token: str = Form(""),
+):
+    return await _social_start(request, "github", cli, return_to, captcha_token)
 
 
 def _auth_page(headline: str, sub: str = "", *, ok: bool = True, status: int = 200) -> HTMLResponse:
@@ -333,17 +377,16 @@ async def auth_github_callback(
 @app.get("/auth/google")
 async def auth_google(request: Request, cli: str = "", return_to: str = ""):
     """Human login via Google OAuth — a parallel door to GitHub, same session/CLI-handshake plumbing."""
-    try:
-        started = await auth_use_cases.start_google_login(cli, lambda: _login_callback_base(request))
-    except auth_use_cases.CliPairingError as exc:
-        raise _cli_http_error(exc) from exc
-    except auth_use_cases.SocialLoginError as exc:
-        raise _social_http_error(exc) from exc
-    resp = RedirectResponse(started.url, status_code=302)
-    resp.set_cookie("treg_oauth_state", started.state, httponly=True, max_age=600,
-                    samesite="lax", secure=_is_https(request))
-    _arena_login_return(resp, request, return_to if not cli else "")
-    return resp
+    if turnstile.enabled():
+        return _social_check_page("google", cli, return_to)
+    return await _social_start(request, "google", cli, return_to)
+
+
+@app.post("/auth/google", include_in_schema=False)
+async def auth_google_checked(
+    request: Request, cli: str = Form(""), return_to: str = Form(""), captcha_token: str = Form(""),
+):
+    return await _social_start(request, "google", cli, return_to, captcha_token)
 
 
 @app.get("/auth/google/callback")

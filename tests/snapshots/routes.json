@@ -504,6 +504,14 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "POST"
+    ],
+    "name": "auth_github_checked",
+    "path": "/auth/github"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "GET",
       "HEAD"
     ],
@@ -517,6 +525,14 @@
       "HEAD"
     ],
     "name": "auth_google",
+    "path": "/auth/google"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "auth_google_checked",
     "path": "/auth/google"
   },
   {
