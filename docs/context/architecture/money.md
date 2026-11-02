@@ -664,7 +664,8 @@ row.
 - **The hold.** `price` gives the price of `per` units in its `currency` at the rate frozen at
   resolve: `value`, or the first `table` row whose `when` holds on the request (input defaults
   applied, values coerced by their declared type), times a bounded `times` field, else the
-  `fallback`. `reserve` gives the units: `rows` (the caller's integer clamped to `[1, max]`, else
+  `fallback`; `rates` prices plugin quantities only, so the schema requires a `reserve.plugin` beside
+  it and refuses `bill.miss` in units. `reserve` gives the units: `rows` (the caller's integer clamped to `[1, max]`, else
   its default; with no default treg's key refuses a request without it), `entities` (list items,
   comma-separated query values and scalars, added up, from one to `max`), or a `plugin` quantity
   priced at the frozen rates and capped at `max`; absent, one unit. `round: up` bills whole `per`
