@@ -76,6 +76,10 @@ or the CLI is enough, and having both is fine.
    treg login --token <team-token>       # non-interactive, for agents and CI
    ```
 
+   In your shell `treg login` prints a sign-in link and returns at once. Give the link to the human;
+   once they have signed in, your next treg command picks the login up, or `treg login --wait`
+   blocks until it does.
+
 3. **Neither**: treg is not set up here. Run the installer only when the human asked you to set treg
    up; otherwise give them these two ways and wait:
 

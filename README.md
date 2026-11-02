@@ -59,7 +59,7 @@ Same flow as the dashboard's **Getting started** guide:
 curl -fsSL https://treg.to/install.sh | sh
 
 # 2. sign in (GitHub default · --email for a one-time code · --token for agents/CI)
-treg login
+treg login       # in an agent's shell: prints the link for you and returns; --wait blocks
 
 # 3. do something useful immediately — no key, nothing registered
 treg catalog search "backlinks for a domain"     # find a tool by what it DOES
