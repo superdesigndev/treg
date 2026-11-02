@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from conftest import pause_loop_once_in_flight
 from pydantic import ValidationError
 from redis.exceptions import ConnectionError as RedisConnectionError
 
@@ -68,6 +69,7 @@ async def test_concurrent_instances_never_overissue(store):
     other = quota.RedisQuotaStore(
         "unix://" + store._client.connection_pool.connection_kwargs["path"])
     await put_rule(store, limit=17)
+    pause_loop_once_in_flight((store, other), 80, 1.2)
     results = await asyncio.gather(*[
         (store if i % 2 else other).admit(42, "example.read") for i in range(80)
     ])

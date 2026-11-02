@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
+from conftest import pause_loop_once_in_flight
 
 from treg.infra import kv
 
@@ -70,6 +71,7 @@ async def _admit(store, org_id, token, *, limit=3, rps=5e-324, burst=3):
 
 async def test_one_shared_burst_across_clients_processes_and_independent_orgs(stores):
     first, second, org_id, other_org = stores
+    pause_loop_once_in_flight((first, second), 20, 0.25)
     results = await asyncio.gather(*(
         _admit(first if index % 2 else second, org_id, f"owner-{index}", limit=None)
         for index in range(20)
@@ -159,6 +161,7 @@ async def test_rate_refusal_neither_allocates_nor_erases_slot_owners(stores):
 async def test_atomic_mixed_admission_counts_only_accepted_requests(stores):
     first, second, org_id, _ = stores
     rate_key, slot_key = _keys(org_id)
+    pause_loop_once_in_flight((first, second), 30, 0.25)
     results = await asyncio.gather(*(
         _admit(first if index % 2 else second, org_id, f"mixed-{index}", limit=3, burst=100)
         for index in range(30)
