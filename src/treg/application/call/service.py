@@ -1458,7 +1458,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 response = _served_response(served, body)
             else:
                 if allowance_draw is not None and allowance_draw.refused:
-                    raise allowance.exhausted(allowance_draw)
+                    allowance.refuse(allowance_draw)
                 if platform_tier and (cap := capacity_view.concurrency(mk.provider)) \
                         and (wait_s := get_settings().fair_share_wait_s) > 0:
                     # Fair share (domain/capacity/fair_share.py): every team shares this account's

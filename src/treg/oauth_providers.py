@@ -791,7 +791,7 @@ YOUTUBE = OAuthProvider(
     # its own smaller daily limit inside them, and it and every write cost far more units than a
     # list. https://developers.google.com/youtube/v3/determine_quota_cost
     shared_allowance=SharedAllowance(drawn_by="app", scopes=(
-        AllowanceScope("search", r"^GET /youtube/v3/search$", r"defaultSearchListPerDayPerProject"),
+        AllowanceScope("search", r"^GET /youtube/v3/search/*$", r"defaultSearchListPerDayPerProject"),
         AllowanceScope("writes", r"^(?:POST|PUT|PATCH|DELETE) "),
     )),
 )

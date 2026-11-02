@@ -250,3 +250,44 @@ def test_youtube_resets_at_midnight_pacific_on_either_side_of_daylight_saving():
     now = utcnow_naive()
     assert signatures.classify("youtube", 403, None, YT_QUOTA, now=now).resets_at \
         == signatures._next_pacific_midnight(now)
+
+
+async def test_a_call_probes_only_a_lock_its_answer_can_prove(
+        clients: AsyncClient, allowance_mode, upstream):
+    await _connect(clients, "youtube", YT_HOST, provider="youtube")
+    search = "/call/youtube/youtube/v3/search?q=x&part=id"
+    channels = "/call/youtube/youtube/v3/channels?part=id&mine=true"
+    upstream.answer = (429, YT_SEARCH_QUOTA)
+    for _ in range(2):
+        await clients.get(search)
+    upstream.answer = (403, YT_QUOTA)
+    for _ in range(2):
+        await clients.get(channels)
+    assert (await _lock("allowance:youtube")).is_active()
+    assert (await _lock("allowance:youtube/search")).is_active()
+
+    # A search cannot prove the cheap calls serve: with the whole allowance locked it never probes.
+    capacity_marks._last_probe.clear()
+    upstream.answer = (200, b'{"items": []}')
+    relayed = len(upstream.calls)
+    assert (await clients.get(search)).status_code == 503
+    assert len(upstream.calls) == relayed
+
+    # A cheap call probes the whole allowance; then a search probes its own scope.
+    assert (await clients.get(channels)).status_code == 200
+    assert await _lock("allowance:youtube") is None
+    assert (await clients.get(search)).status_code == 200
+    assert await _lock("allowance:youtube/search") is None
+
+
+async def test_an_unreadable_capacity_view_refuses_nothing(
+        clients: AsyncClient, allowance_mode, upstream, monkeypatch):
+    from treg.domain.capacity.view import view as capacity_view
+
+    await _connect(clients, "youtube", YT_HOST, provider="youtube")
+
+    async def broken(*args, **kwargs):
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(capacity_view, "load", broken)
+    assert (await clients.get("/call/youtube/youtube/v3/channels?part=id")).status_code == 200

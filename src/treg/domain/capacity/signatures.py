@@ -269,7 +269,8 @@ def classify(provider: str, status: int, headers=None, body: bytes | str = b"",
     provider = (provider or "").lower()
     if _edge_block(status, headers, text_l):  # before the table: a block page carries no vendor body to match
         return Signal("edge_block", None, None, detail=text[:120])
-    if (signal := _row_signal(provider, status, headers, text, now, ("*", provider))) is not None:
+    if (signal := _row_signal(provider, status, headers, text, now, ("*", provider),
+                              strict_wait=False)) is not None:
         return signal
     if status == 429:
         wait = _retry_after(headers, now)
@@ -292,20 +293,23 @@ def classify_own(provider: str, status: int, headers=None, body: bytes | str = b
     row or fallback, which cannot tell an allowance treg's app holds from one connected account's."""
     text = body.decode("utf-8", "replace") if isinstance(body, bytes) else (body or "")
     provider = (provider or "").lower()
-    return _row_signal(provider, status, headers, text, now or utcnow_naive(), (provider,))
+    return _row_signal(provider, status, headers, text, now or utcnow_naive(), (provider,),
+                       strict_wait=True)
 
 
 def _row_signal(provider: str, status: int, headers, text: str, now: datetime,
-                providers: tuple[str, ...]) -> Signal | None:
+                providers: tuple[str, ...], *, strict_wait: bool) -> Signal | None:
+    """`strict_wait`: a row expecting a body-stated wait that finds none is unknown, instead of a
+    quota reset from the headers or a guessed hold."""
     for sig in _TABLE:
         if sig.status != status or sig.provider not in providers:
             continue
         if sig.body_regex and not re.search(sig.body_regex, text, re.IGNORECASE):
             continue
-        if sig.kind == "quota" and sig.wait_regex is not None:
-            wait = _body_wait(sig, text)
-            if wait is None:
-                return Signal("unknown", None, None, detail=text[:120])
+        wait = _body_wait(sig, text) if sig.kind == "quota" and sig.wait_regex else None
+        if sig.kind == "quota" and sig.wait_regex and wait is None and strict_wait:
+            return Signal("unknown", None, None, detail=text[:120])
+        if wait is not None:
             if wait <= BURST_MAX_RETRY_AFTER_S:
                 return Signal("burst", None, wait, detail=text[:120])
             return Signal("quota", now + timedelta(seconds=wait), None, detail=text[:120])

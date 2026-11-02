@@ -27,6 +27,7 @@ from ...timeutil import utcnow_naive
 from .types import ResolutionFailed
 
 KEY_PREFIX = "allowance:"
+_SCAN_BYTES = 16 * 1024
 MAX_LOCK = timedelta(seconds=capacity_marks.LOCK_TTL_S)
 
 
@@ -88,23 +89,36 @@ def _draw(provider, account: str | None, method: str, upstream_url: str) -> Draw
 
 async def admit(draw: Draw | None) -> Draw | None:
     """Decide a drawing call against the locks on its allowance: let it through, let it through as
-    the probe of the lock that lasts longest, or mark it refused (`enforce`; `observe` logs it
-    instead). Reads the cached capacity view; call it with no database connection held."""
+    a probe, or mark it refused until the lock that lasts longest. A call probes only a lock its
+    answer can prove: the whole allowance's by a call in no scope, a scope's by a call in it once
+    the whole allowance is open. Reads the cached capacity view; call it with no database
+    connection held. A view that cannot be read refuses nothing."""
     if draw is None:
         return None
-    await capacity_view.load()
+    try:
+        await capacity_view.load()
+    except Exception:  # noqa: BLE001 - the guard is advisory; an unread view lets the call through
+        return draw
     locked = [lock for key in draw.keys
               if (lock := capacity_view.lock(key)) is not None and lock.is_active()]
     if not locked:
         return draw
-    lock = max(locked, key=lambda lock: lock.until)
-    if capacity_marks.probe_due(lock.key):
-        return replace(draw, probe_lock_id=lock.lock_id)
+    whole = next((lock for lock in locked if lock.key == draw.key), None)
+    provable = whole if whole is not None and not draw.scope_keys else None
+    if whole is None:
+        provable = max(locked, key=lambda lock: lock.until)
+    if provable is not None and capacity_marks.probe_due(provable.key):
+        return replace(draw, probe_lock_id=provable.lock_id)
+    return replace(draw, refused_until=max(lock.until for lock in locked))
+
+
+def refuse(draw: Draw) -> None:
+    """At the point a refused call would leave: raise the refusal (`enforce`), or log it (`observe`)."""
     if mode() == "observe":
-        capacity_events.emit("allowance_would_refuse", provider=draw.service, key=lock.key,
-                             until=lock.until)
-        return draw
-    return replace(draw, refused_until=lock.until)
+        capacity_events.emit("allowance_would_refuse", provider=draw.service, key=draw.key,
+                             until=draw.refused_until)
+        return
+    raise exhausted(draw)
 
 
 def exhausted(draw: Draw) -> ResolutionFailed:
@@ -143,11 +157,11 @@ async def note_answer(draw: Draw | None, status: int, headers, body: bytes) -> N
 
 
 async def _strike(draw: Draw, status: int, headers, body: bytes) -> None:
-    signal = capacity_signatures.classify_own(draw.service, status, headers, body[:4096])
+    signal = capacity_signatures.classify_own(draw.service, status, headers, body[:_SCAN_BYTES])
     if not capacity_signatures.is_exhausting(signal):
         return
     provider = oauth_providers.get(draw.service)
-    text = body[:4096].decode("utf-8", "replace")
+    text = body[:_SCAN_BYTES].decode("utf-8", "replace")
     named = next((f"{draw.key}/{scope.name}" for scope in provider.shared_allowance.scopes
                   if scope.body_regex and re.search(scope.body_regex, text)), None)
     key = named or next(iter(draw.scope_keys), draw.key)
@@ -167,12 +181,14 @@ async def _strike(draw: Draw, status: int, headers, body: bytes) -> None:
 
 
 async def _recover(draw: Draw) -> None:
+    """A probe's 2xx proves every pool the call draws on serves, so it lifts each active lock among
+    them; any 2xx clears pending strikes."""
     await capacity_view.load()
     for key in draw.keys:
         lock = capacity_view.lock(key)
-        if lock is None or (lock.is_active() and lock.lock_id != draw.probe_lock_id):
+        if lock is None or (lock.is_active() and draw.probe_lock_id is None):
             continue
-        if await capacity_marks.clear(key, lock_id=draw.probe_lock_id) and lock.is_active():
+        if await capacity_marks.clear(key, lock_id=lock.lock_id) and lock.is_active():
             capacity_view.invalidate()
             capacity_events.emit(
                 "lock_cleared", provider=draw.service, key=key, lock_id=lock.lock_id, via="probe",

@@ -65,14 +65,18 @@ it holds, a drawing call the archive cannot answer is refused before it leaves, 
 `provider_capacity` and body error `shared_allowance_exhausted` (`provider`, `resets_at`, a
 `message` naming the team's own client or credential as the way around it), not charged, audited
 `refused_by=capacity`. One call
-per process per minute is let through as the probe, never answered from the archive; its 2xx
-clears the lock it probed. An archive hit is never recovery evidence.
+per process per minute is let through as a probe, never answered from the archive, and only
+through a lock its answer can prove: the whole allowance's by a call in no scope, a scope's by a
+call in it once the whole allowance is open. A probe's 2xx lifts every lock on the pools the call
+draws on. An archive hit is never recovery evidence. `observe` logs `allowance_would_refuse` at
+the same point `enforce` refuses, after the archive lookup, so it counts what enforcing would.
 
 The admission reads the cached capacity view after the request's session has ended its DB phase,
 before the archive lookup (a probe skips it); the refusal comes after the lookup, inside the
-relay's failure handling, so a hold, if any, is released there. Recovery reloads the view first, so
-a strike written while the call was in flight is still cleared by its 2xx. Marks are written after
-the answer, on their own short session, and never raise.
+relay's failure handling, so a hold, if any, is released there. A view that cannot be read refuses
+nothing. Recovery reads the same cached view as the platform breaker: a 2xx clears a pending
+strike its process can see, so across processes "no 2xx in between" holds only within the view's
+TTL. Marks are written after the answer, on their own short session, and never raise.
 
 ## Mode
 
