@@ -140,6 +140,7 @@ class RowBase(Model):
     spooled_response: bool | None = field(kind="P")
     resource_ownership: dict[str, Json] | None = field(kind="P")
     managed_resource: dict[str, Json] | None = field(kind="P")
+    response_retention: str | None = field(kind="P")
 
     authorization_method: str | None = field(kind="P")
     authorization_methods: list[str] | None = field(kind="P")

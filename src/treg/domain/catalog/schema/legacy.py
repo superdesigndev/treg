@@ -111,6 +111,7 @@ class Cost(Model):
     presence: Presence | None = None
     modifiers: dict[str, Modifier] | None = None
     quantity: Quantity | None = None
+    ceiling_param: CeilingParam | None = field(kind="P")
     source: str | None = field(kind="C")
     source_url: str | None = field(kind="C")
     checked: str | None = field(kind="C")

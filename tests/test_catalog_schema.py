@@ -175,6 +175,16 @@ def test_the_loader_reads_both_spellings_into_one_resolved_row(tmp_path):
     assert not cat.platform_eligible(kept)
 
 
+def test_a_legacy_row_keeps_its_cost_ceiling_param_and_its_own_response_retention(tmp_path):
+    cat = _catalog(tmp_path, {"demo.yaml": "provider: demo\nendpoints:\n" + ROW.format(name="old")
+                              + "    response_retention: forbidden\n"
+                              "    cost: {type: per_call, value: 0, currency: USD, unit: call, "
+                              "ceiling_param: {in: query, name: max_usd, unit: usd}}\n"})
+    old = cat.by_id["demo.web.old"]
+    assert not is_v2(old) and old["response_retention"] == "forbidden"
+    assert old["cost"]["ceiling_param"] == {"in": "query", "name": "max_usd", "unit": "usd"}
+
+
 def test_provider_defaults_reach_both_files_and_refuse_a_legacy_row(tmp_path):
     with pytest.raises(CatalogSchemaError, match="demo.web.old: mixes today's spelling"):
         _catalog(tmp_path, {

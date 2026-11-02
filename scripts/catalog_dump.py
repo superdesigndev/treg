@@ -8,7 +8,8 @@ The dump is what readers consume after `catalog_store.load()`: every field of th
 (each served row by id, the discovery order as ids, provider facts, rates, taxonomy, aliases, routing
 contracts and adapters) plus each row's priced cost view, with sorted keys. It imports `treg` from
 the running environment, so CI runs this script on a pull request's base checkout and on its merge
-result and fails on any byte difference (.github/workflows/replay.yml).
+result, when the pull request changes loader, schema or validator source, and fails on any byte
+difference, naming the first differing path (.github/workflows/replay.yml).
 """
 
 from __future__ import annotations
@@ -37,8 +38,27 @@ def dump() -> str:
     return json.dumps(doc, sort_keys=True, ensure_ascii=False, default=_plain) + "\n"
 
 
+def first_difference(old: object, new: object, at: str = "") -> str | None:
+    """The dotted path of the first place two dumps differ, keys and indexes in sorted order."""
+    if old == new:
+        return None
+    if isinstance(old, dict) and isinstance(new, dict):
+        for key in sorted(old.keys() | new.keys()):
+            if key not in old or key not in new:
+                return f"{at}.{key}" if at else key
+            if (found := first_difference(old[key], new[key], f"{at}.{key}" if at else key)) is not None:
+                return found
+    if isinstance(old, list) and isinstance(new, list) and len(old) == len(new):
+        for i, (a, b) in enumerate(zip(old, new)):
+            if (found := first_difference(a, b, f"{at}.{i}" if at else str(i))) is not None:
+                return found
+    return at or "(root)"
+
+
 def compare(base: dict, candidate: dict) -> list[str]:
     out = []
+    if (path := first_difference(base, candidate)) is not None:
+        out.append(f"first difference: {path}")
     for section in sorted(base.keys() | candidate.keys()):
         old, new = base.get(section), candidate.get(section)
         if old == new:

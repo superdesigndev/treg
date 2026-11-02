@@ -58,6 +58,13 @@ v2 row may ship. A resolved v2 row still carries pydantic objects (`Price`, `Bil
 leaves) where served readers expect plain dicts (`.get` on `expect` and `miss`, `json.dumps` of the
 row), so v2 rows need a plain-dict served representation before the validator's guard is lifted.
 
+When a pull request changes loader, schema or validator source (anything under
+`src/treg/domain/catalog/`, `scripts/catalog_validate.py`, `scripts/catalog_dump.py` or the Replay
+workflow), the Replay job dumps the loaded catalog (`scripts/catalog_dump.py`: every field of the
+loaded `Catalog` and each row's cost view, sorted keys) on the base and on the merge result and
+fails on any byte difference, naming the first differing path. A pure catalog data pull request
+skips the check and owes it nothing.
+
 v2 paths are one syntax (`response.tasks.0.status_code`, `body.limit`, `query.q`, `*`, `[k=v]`)
 and one predicate (`{path, op, value}`, a list for all, `{any: [...]}`), parsed by
 `schema/paths.py`. A path's location must be one its reader allows: request paths in price tables
