@@ -50,6 +50,7 @@ class EmailStartIn(BaseModel):
 class EmailVerifyIn(BaseModel):
     email: str
     code: str
+    cli_pairing: bool = False  # sent by the /login?cli= page: this sign-in completes a `treg login`
 
 
 _EMAIL_HTTP_ERRORS = {
@@ -120,8 +121,11 @@ async def auth_email_verify(
     (same path as GitHub login) — one endpoint serves both clients."""
     require_managed_cli(request)
     try:
+        client = _client(request)
+        if client == "browser" and body.cli_pairing:
+            client = "cli_browser"
         verified = await auth_use_cases.verify_email_login(body.email, body.code,
-            entry_surface=request.cookies.get("treg_entry_surface", ""), client=_client(request))
+            entry_surface=request.cookies.get("treg_entry_surface", ""), client=client)
     except auth_use_cases.EmailAuthError as exc:
         raise _email_http_error(exc) from exc
     # Only a proven email: stashing at /start would let anyone tie their click to any address.
@@ -630,7 +634,7 @@ async function sendCode(){err('');const em=document.getElementById('em').value.t
  }catch(e){err(e.message)}finally{b.disabled=false}}
 async function verifyCode(){err('');const em=document.getElementById('em').value.trim(),co=document.getElementById('code').value.trim();
  if(!co)return err('enter the code');
- try{await post('/auth/email/verify',{email:em,code:co});
+ try{await post('/auth/email/verify',{email:em,code:co,cli_pairing:true});
   // The email door just set a session cookie — hide the doors and show the team picker.
   const d=document.getElementById('doors');if(d)d.style.display='none';
   const o=document.getElementById('other-acct');if(o)o.style.display='none';

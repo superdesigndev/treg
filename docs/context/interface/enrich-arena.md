@@ -637,8 +637,10 @@ page still disables autocapture and recording. Explicit events contain product m
   from the 90-day first-party cookie, distinct from UTMs/referrer; it is not historical attribution
   for visits before this tracking shipped.
 - `signup_completed` is emitted by email OTP and GitHub/Google provisioning **after commit and
-  only for a new User**. Returning sign-ins and failed proofs do not count. `signup_method` and
-  the allowlisted entry surface are included. The event uses the same email identity as calls.
+  only for a new User**. Returning sign-ins and failed proofs do not count. `signup_method`, the
+  allowlisted entry surface and `client` are included: `cli` for the terminal's email door,
+  `cli_browser` for a browser sign-in that completes a `treg login` (the `/login?cli=` page sends
+  `cli_pairing` with its email code; a social callback carries the pairing state), else `browser`. The event uses the same email identity as calls.
 - `arena_run_started` is emitted after a successful database claim, not for quotes or duplicate
   start requests. `arena_run_completed` is emitted after saving the initial run's terminal state.
   Both include run ID, capability, mode, entry count and team; completion includes `successful_call`
