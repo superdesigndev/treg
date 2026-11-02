@@ -207,12 +207,9 @@ endpoints:
   method: POST
   path: /v1/run/instagram.reels_search
   name: Instagram Reels Search
-  summary: Search Instagram Reels by keyword and get matching reels (caption, likes, comments, creator,
-    duration, and views). Responses do include a numeric `views` field; it is a provider-reported play
-    count that can combine Instagram and Facebook plays, so it is not an Instagram-only view count and
-    should not be used as an IG-only threshold. Results are relevance-ranked, not chronological. Recency
-    filtering is not supported on instagram.reels_search (AnyAPI offers it on instagram.web_reels_search).
-    Paging tops out around 110 reels per query (pages of about 12).
+  summary: 'Search Instagram Reels by keyword: caption, likes, comments, views, creator and duration.
+    `views` can exceed Instagram''s own play count (it may add Facebook plays), so it is not an
+    Instagram-only count. Relevance-ranked, no recency filter.'
   input:
     body:
       cursor:
@@ -222,7 +219,7 @@ endpoints:
       query:
         type: string
         required: true
-        note: Search keyword (e.g. "crossfit").
+        note: Search keyword (e.g. "travel").
         example: travel
     bodyType: json
   test_request:
@@ -251,7 +248,8 @@ endpoints:
     next. Every response reports its exact charge as `costUsd`, so `reported_charge` settles the real
     number rather than this estimate. A request no source could serve is not charged. Send
     `X-Treg-Route-Max-Cost` to cap what a failover source may settle; an explicit `max_cost_usd` query
-    parameter still passes through.'
+    parameter still passes through. Pages hold about 12 reels; AnyAPI drops reels seen on recent
+    pages, so paging often ends after two or three pages, and that last empty page is still charged.'
 - id: anyapi.google.serp.organic
   capability: google.serp.organic
   platform: google
