@@ -628,18 +628,12 @@ def cmd_login(args, cfg) -> None:
             if r.status_code >= 400:
                 _show(r)
                 return
-            d = r.json()
-            cfg.update(token=d["token"], email=d["email"], identity=True)
-            _save_config(cfg)  # persist the freshly-minted token BEFORE the optional org lookup
-            _forget_pending_login()
-            _pick_active_org(cfg, pin=False)
-            _pin_token_to_active_org(cfg, session_cookies=r.cookies)
-            print(f"✓ Logged in as {cfg['email']}. Active org: {cfg.get('active_org')}")
+            _adopt_login(cfg, r.json(), pick_org=True, session_cookies=r.cookies)
             _maybe_offer_onboarding(cfg)
             return
     # Browser handshake (register-or-login) — the /login page reuses an existing dashboard
     # session with one click, else offers every configured door (GitHub / Google / email code).
-    wait = bool(getattr(args, "wait", False))
+    blocking = bool(getattr(args, "wait", False)) or sys.stdout.isatty()
     pending = _load_pending_login()
     if pending and pending["base_url"] == cfg["base_url"]:
         status = _claim_pending_login(cfg, pending, wait=False)
@@ -647,7 +641,9 @@ def cmd_login(args, cfg) -> None:
             _maybe_offer_onboarding(cfg)
             return
         if status == "pending":
-            _show_pending_login(cfg, pending, wait=wait)
+            if blocking:
+                _open_login_page(pending["url"])
+            _show_pending_login(cfg, pending, blocking=blocking)
             return
     import secrets as _secrets
     base = cfg["base_url"].rstrip("/")
@@ -658,33 +654,35 @@ def cmd_login(args, cfg) -> None:
     verifier = _secrets.token_urlsafe(32)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     code = None
-    start_exc = None
     deferrable = False
     expires_in = LOGIN_HANDSHAKE_SECONDS
     try:
         st = httpx.post(f"{base}/auth/cli/start", json={"poll_challenge": challenge},
                         headers={"ngrok-skip-browser-warning": "1"}, timeout=10)
-        if st.status_code == 200:
+        if st.status_code == 404:
+            lid = _secrets.token_urlsafe(18)
+        elif st.status_code != 200:
+            sys.exit(f"Could not start the sign-in: {base} answered {st.status_code}. "
+                     f"Retry `treg login` in a moment.")
+        else:
             j = st.json(); lid = j["login_id"]; code = j.get("code")
             deferrable = j.get("poll_verifier") is True and isinstance(code, str)
             if isinstance(j.get("expires_in"), int):
                 expires_in = j["expires_in"]
-        else:
-            lid = _secrets.token_urlsafe(18)
     except Exception as exc:  # noqa: BLE001
-        start_exc = exc
-        lid = _secrets.token_urlsafe(18)
-    # Detect localhost-with-nothing-listening: the install.sh sets base_url but if that failed, the
-    # default is production treg.to. If someone explicitly points at localhost (for local dev) and
-    # nothing is there, fail early with a helpful message rather than opening a dead browser page.
-    if start_exc and _is_loopback_url(base):
-        sys.exit(
-            f"Cannot reach {base} — is a local treg server running?\n"
-            f"  If you meant to use the production registry, run:\n"
-            f"    treg config --base-url {PRODUCTION_BASE_URL}\n"
-            f"  then retry `treg login`.\n"
-            f"  (error: {start_exc})"
-        )
+        # Detect localhost-with-nothing-listening: the install.sh sets base_url but if that failed, the
+        # default is production treg.to. If someone explicitly points at localhost (for local dev) and
+        # nothing is there, fail early with a helpful message rather than opening a dead browser page.
+        if _is_loopback_url(base):
+            sys.exit(
+                f"Cannot reach {base} — is a local treg server running?\n"
+                f"  If you meant to use the production registry, run:\n"
+                f"    treg config --base-url {PRODUCTION_BASE_URL}\n"
+                f"  then retry `treg login`.\n"
+                f"  (error: {exc})"
+            )
+        sys.exit(f"Could not start the sign-in at {base} ({type(exc).__name__}: {exc}). "
+                 f"Retry `treg login` in a moment.")
     # The code rides in the URL FRAGMENT (never sent to the server, so it stays out of request logs):
     # the /login page displays it for a visual match against this terminal instead of making the user
     # type it. The server still validates the code at approve time — the guard itself is unchanged.
@@ -695,12 +693,9 @@ def cmd_login(args, cfg) -> None:
                    "code": code, "expires_at": int(time.time()) + expires_in, "expires_in": expires_in,
                    **({"ad_link": ad_link} if ad_link else {})}
         _write_private_json(_pending_login_path(), pending)
-    try:
-        webbrowser.open(url)
-    except Exception:  # noqa: BLE001 - optional extras; the treg skill already installed
-        pass
+    _open_login_page(url)
     if deferrable:
-        _show_pending_login(cfg, pending, wait=wait)
+        _show_pending_login(cfg, pending, blocking=blocking)
         return
     _print_login_link(url, code)
     deadline = time.monotonic() + LOGIN_HANDSHAKE_SECONDS
@@ -728,8 +723,15 @@ def _print_login_link(url: str, code: str | None) -> None:
     print("Waiting for authorization…", flush=True)
 
 
-def _show_pending_login(cfg: dict, pending: dict, *, wait: bool) -> None:
-    if wait or sys.stdout.isatty():
+def _open_login_page(url: str) -> None:
+    try:
+        webbrowser.open(url)
+    except Exception:  # noqa: BLE001 - optional extras; the treg skill already installed
+        pass
+
+
+def _show_pending_login(cfg: dict, pending: dict, *, blocking: bool) -> None:
+    if blocking:
         _print_login_link(pending["url"], pending["code"])
         if _claim_pending_login(cfg, pending, wait=True) != "logged_in":
             sys.exit("That sign-in link expired before it was used. Run `treg login` again.")
@@ -757,7 +759,8 @@ def _poll_login(base: str, login_id: str, *, verifier: str, timeout: float) -> d
     return d if isinstance(d, dict) else {}
 
 
-def _adopt_login(cfg: dict, d: dict, *, forget_ad_link: bool, out=None) -> None:
+def _adopt_login(cfg: dict, d: dict, *, forget_ad_link: bool = False, pick_org: bool = False,
+                 session_cookies=None, out=None) -> None:
     cfg.update(token=d["token"], email=d.get("email"), identity=True)
     if d.get("active_org"):
         cfg["active_org"] = d["active_org"]  # the team the user picked in the browser
@@ -765,13 +768,11 @@ def _adopt_login(cfg: dict, d: dict, *, forget_ad_link: bool, out=None) -> None:
     _forget_pending_login()
     if forget_ad_link:
         _forget_ad_link()
-    if not cfg.get("active_org"):
-        _pick_active_org(cfg)  # older server (no picker) - falls back to guessing, and pins
-    else:
-        # The browser picker already named the team, so `_pick_active_org` is skipped - and
-        # with it the pin. Pin here too, or the token this path stores works only inside the
-        # CLI (which supplies X-Treg-Org itself) and fails everywhere it gets pasted.
-        _pin_token_to_active_org(cfg)
+    if pick_org or not cfg.get("active_org"):
+        _pick_active_org(cfg, pin=False)
+    # Pin even when the browser picker named the team, or the token this stores works only inside
+    # the CLI (which supplies X-Treg-Org itself) and fails everywhere it gets pasted.
+    _pin_token_to_active_org(cfg, session_cookies=session_cookies)
     print(f"✓ Logged in as {cfg['email']}. Active org: {cfg.get('active_org')}", file=out or sys.stdout)
 
 

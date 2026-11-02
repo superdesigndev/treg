@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import pytest
 import uvicorn
+from fastapi import HTTPException
 from sqlalchemy import update
 
 from treg import cli, crypto
@@ -271,13 +272,18 @@ async def test_expired_handling_between_a_claim_and_its_save_keeps_the_token(reg
     assert _stored()["token"] and _pending() is None
 
 
-async def test_wait_resumes_the_saved_sign_in(registry, capsys):
+async def test_wait_resumes_the_saved_sign_in(registry, capsys, monkeypatch):
     pending = await _login_without_waiting(capsys)
+    opened: list[str] = []
+    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
     waiting = asyncio.create_task(asyncio.to_thread(cli.main, ["login", "--wait"]))
-    while registry.paths.count("/auth/cli/poll") < 2:
-        await asyncio.sleep(.05)
+    async with asyncio.timeout(10):
+        while registry.paths.count("/auth/cli/poll") < 2:
+            assert not waiting.done(), "login --wait returned before the approval"
+            await asyncio.sleep(.05)
     await _approve(registry, pending)
     await asyncio.wait_for(waiting, 10)
+    assert opened == [pending["url"]]
     assert "✓ Logged in as pending@example.test" in capsys.readouterr().out
     assert registry.paths.count("/auth/cli/start") == 1
     assert _stored()["token"] and _pending() is None
@@ -302,6 +308,17 @@ async def test_server_without_poll_verifier_keeps_the_blocking_login(registry, c
     await asyncio.wait_for(waiting, 10)
     assert "✓ Logged in as pending@example.test" in capsys.readouterr().out
     assert _stored()["token"] and _pending() is None
+
+
+async def test_a_failed_start_names_the_failure_instead_of_waiting(registry, monkeypatch):
+    async def unavailable(poll_challenge=None):
+        raise HTTPException(503, "synthetic outage")
+
+    monkeypatch.setattr(auth_routes.auth_use_cases, "start_cli_login", unavailable)
+    with pytest.raises(SystemExit) as failed:
+        await asyncio.to_thread(cli.main, ["login"])
+    assert "503" in str(failed.value) and "Retry `treg login`" in str(failed.value)
+    assert "/auth/cli/poll" not in registry.paths and _pending() is None
 
 
 async def test_logout_forgets_the_saved_sign_in(registry, capsys):

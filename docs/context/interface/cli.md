@@ -102,7 +102,8 @@ is self-teaching. This fragment holds only what the code and help cannot say.
   so never in request logs) so the user confirms it matches the terminal. The server still validates
   the code at approve time: a login you did not start cannot be approved into a token.
 - **Login without waiting.** `start` sends a `poll_challenge`; its verifier never enters the shared
-  link. Outside a terminal and without `--wait`, `login` saves `~/.treg/pending-login.json` (`0600`)
+  link. Only a 404 from `start` falls back to a locally minted id; any other failure exits naming
+  it, because a current server answers `expired` for an id it never issued. Outside a terminal and without `--wait`, `login` saves `~/.treg/pending-login.json` (`0600`)
   and returns 0. It is a separate file so a claim that sees `expired` never rewrites `config.json`
   while a parallel command saves the token there; the server, not the file, decides expiry, since
   approval extends it. `login` again or `login --wait` resumes it (a second handshake would orphan the link
