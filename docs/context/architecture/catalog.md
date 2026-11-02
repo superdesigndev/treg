@@ -1283,6 +1283,12 @@ source instead of settling it. The validator requires `in: query`, `unit: usd` a
 onto every cost, so catalog reads stay unchanged. A row-level `cost.ceiling_param` overrides it.
 The appended pair is outbound only: `params_hash` and the archive key stay the inbound query.
 
+A provider file may declare `client_header: x-<name>`: the header the provider reads to split
+usage, errors and cost per customer on treg's one account. The loader keeps it on
+`Catalog.client_headers` (core file first); the validator requires a lower-case `x-` name that is not
+`x-treg-*` or a credential header. The relay fills it only on treg's shared key (proxy-model, rewrite
+6).
+
 A provider file may declare a header `queryParams` block: optional query parameters every endpoint of
 that provider accepts (AnyAPI's response-budget controls `fields`, `max_items`, `summary`, `jq`).
 The loader merges it into each endpoint's `input.queryParams`; a name the endpoint declares itself

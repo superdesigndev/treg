@@ -480,6 +480,11 @@ class Settings(BaseSettings):
     # switch. The key is the candidate's own credential, never a team's.
     shadow_provider: str = ""
     shadow_provider_key: str = ""
+    # The key behind the per-team code a provider file's `client_header` asks for (relay rewrite 6):
+    # on treg's shared key the call carries HMAC(this, provider + team) so the provider can split
+    # usage per customer without learning who the customer is. Empty = the header is never sent;
+    # rotating it gives every team a new code.
+    client_id_secret: str = ""
     shadow_salt: str = ""
     # Candidate calls at once, per second, and the per-call time limit.
     shadow_concurrency: int = 16

@@ -135,6 +135,7 @@ class Catalog:
     # service -> {in, name, unit}: a caller ceiling forwarded as an upstream query param.
     # Kept off provider_meta so catalog reads do not grow a new public field.
     ceiling_params: dict[str, dict] = field(default_factory=dict)
+    client_headers: dict[str, str] = field(default_factory=dict)
     contracts: dict = field(default_factory=dict)   # capability -> routing.Contract
     adapters: dict = field(default_factory=dict)    # endpoint id -> routing.Adapter (verified flag set)
 
@@ -452,6 +453,7 @@ def _parse(directory: Path) -> Catalog:
     by_id: dict[str, dict] = {}
     provider_meta: dict[str, dict] = {}
     ceiling_params: dict[str, dict] = {}
+    client_headers: dict[str, str] = {}
     # Sorted so a rebuild is deterministic; `<service>.yaml` is read right before
     # `<service>.extended.yaml`, and both land under the same provider (curation splits a
     # provider's core operations from the long tail across two files). Reading the core file first
@@ -493,6 +495,10 @@ def _parse(directory: Path) -> Catalog:
         rule = doc.get("ceiling_param")
         if isinstance(rule, dict):
             ceiling_params.setdefault(provider, rule)
+        # A provider that splits usage per customer names the header for treg's per-team code.
+        header = doc.get("client_header")
+        if isinstance(header, str) and header:
+            client_headers.setdefault(provider, header.lower())
         for raw in doc.get("endpoints") or []:
             if not isinstance(raw, dict) or not raw.get("id"):
                 continue
@@ -572,7 +578,7 @@ def _parse(directory: Path) -> Catalog:
     cat = Catalog(fx=fx, credit_rates=credit_rates, unit_rates=unit_rates,
                   shared_plans=shared_plans, trial_pools=trial_pools, platforms=platforms,
                   capabilities=capabilities, capability_titles=capability_titles, endpoints=endpoints, by_id=by_id,
-                  provider_meta=provider_meta, ceiling_params=ceiling_params, aliases=aliases,
+                  provider_meta=provider_meta, ceiling_params=ceiling_params, client_headers=client_headers, aliases=aliases,
                   contracts=contracts, adapters=adapters)
     from .routing.synthetic import routed_endpoint
     for cap, contract in contracts.items():

@@ -172,6 +172,12 @@ Faithfulness mechanics inside `relay()`:
   to its phone reveals for a day. A team's own key relays the caller's header verbatim. The
   shared client (`app.state.http`), the async-task poller and the capacity collectors send the same
   header by default, so treg's own requests never go out as `python-httpx`.
+- on the platform tier only, `relay.tag_shared_client` then sets the header the provider file names in
+  `client_header` to `relay.shared_client_code`: `t_` + the first 24 hex characters of
+  HMAC-SHA256(`TREG_CLIENT_ID_SECRET`, provider + team id). The provider can split usage per customer
+  on treg's account without learning the team, and two providers' codes for one team differ. A value
+  the caller sent under that name is replaced. Unset secret or no declaration: nothing changes. A
+  team's own key relays the caller's headers verbatim.
 - query as the router-captured ordered pairs in `UpstreamRequest.query_items` (keeps duplicate keys
   like `?tag=a&tag=b`), merged onto the upstream URL with `copy_add_param` rather than passed as
   `params=`: httpx replaces a URL's existing query whenever `params` is given, even empty, which
