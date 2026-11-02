@@ -498,9 +498,12 @@ src/treg/catalog/
   <service>.yaml           # CORE tier — hand-curated; <service> = OAuthProvider.service
   <service>.extended.yaml  # EXTENDED tier — machine-generated full endpoint surface
   examples/<endpoint-id>.json  # truncated, scrubbed real responses captured at verify time
+src/treg/domain/catalog/schema/  # the strict models the loader and the validator share (catalog-schema.md)
 scripts/
   catalog_drift.py            # path+method drift against providers' public OpenAPI documents
-  catalog_validate.py         # schema + referential checks (run in CI / after any edit)
+  catalog_validate.py         # the strict models + referential checks (run in CI / after any edit)
+  catalog_schema.py           # writes the JSON Schemas for editors
+  catalog_shrink_only.py      # CI: the shrink-only violation list never gains an entry
   catalog_verify.py           # live-tests CORE endpoints with a real credential; writes examples/
   catalog_verify_extended.py  # the same for the extended tier, in bulk, under a spend cap
   catalog_ingest.py           # bulk-generates the extended tier from provider specs
@@ -670,9 +673,9 @@ endpoints:
         uniqueId: {type: string, required: false, note: "username from the profile URL", example: "tiktok"}
         secUid:   {type: string, required: false}
       note: "one of uniqueId | secUid; uniqueId preferred"
-      # also allowed: pathParams, headers, body, bodyType (json|form). The validator rejects any
-      # other `input` key and any parameter-spec key outside its vocabulary (PARAM_SPEC_KEYS):
-      # a misspelt location or an unquoted note with a comma is otherwise silently dropped.
+      # also allowed: pathParams, headers, body, bodyType (json|form|multipart). The strict models
+      # (catalog-schema.md) refuse any other `input` key and any parameter-spec key outside their
+      # vocabulary: a misspelt location or an unquoted note with a comma fails the load.
     test_request:                    # EXACT params catalog_verify.py sends — must be cheap
       queryParams: {uniqueId: "tiktok"}
     expect:                          # optional; default is "HTTP 2xx"

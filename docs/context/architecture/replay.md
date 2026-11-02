@@ -9,6 +9,8 @@ sources:
   - src/treg/application/replay/fixtures.py
   - src/treg/application/replay/differ.py
   - tests/test_replay.py
+  - scripts/catalog_dump.py
+  - tests/test_catalog_dump.py
 related:
   - architecture/money.md
   - architecture/proxy-model.md
@@ -157,6 +159,12 @@ counts as exercised.
 undeclared difference. The declarations are the pull request body's fenced `replay-declared`
 blocks, so they belong to the change that needs them and never accumulate in the repository;
 editing the body re-runs the job. The report goes to the job summary.
+
+When a pull request changes loader, schema or validator source, the same job also dumps the loaded
+catalog (`scripts/catalog_dump.py`) on the base and on the merge result and fails on any byte
+difference, naming the first differing path (architecture/catalog-schema.md). It needs no body
+declaration, and a pure catalog data pull request skips it. The replay diff still runs and reports
+when the dump check fails.
 
 A base without the engine skips the comparison. The ordinary test suite also replays the whole
 fixture corpus, so a seam that starts raising fails every pull request, not only those that differ.
