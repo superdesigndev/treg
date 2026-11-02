@@ -738,8 +738,9 @@ def _show_pending_login(cfg: dict, pending: dict, *, wait: bool) -> None:
     minutes = max(1, round((pending["expires_at"] - time.time()) / 60))
     print(f"Sign in to treg at:\n  {pending['url']}\n\n"
           f"The sign-in page shows this code; check it matches:  {pending['code']}\n\n"
-          f"Give this link to the person you are working for. When they have signed in, run any "
-          f"treg command, or `treg login --wait`. The link expires in {minutes} minutes.",
+          f"Give this link to the person you are working for. When they have signed in, run "
+          f"`treg login` again to finish, or `treg login --wait` to block until they do. "
+          f"The link expires in {minutes} minute{'' if minutes == 1 else 's'}.",
           flush=True)
     _note(login="pending")
 
@@ -798,9 +799,9 @@ def _pick_up_pending_login(cfg: dict) -> None:
     if not pending or pending["base_url"] != cfg["base_url"]:
         return
     out = io.StringIO() if _JSON_OVERRIDE else sys.stderr
-    status = _claim_pending_login(cfg, pending, wait=False, timeout=5.0, out=out)
+    status = _claim_pending_login(cfg, pending, wait=False, out=out)
     _note(pending_login=status)
-    if status == "pending" and not cfg.get("token"):
+    if status == "pending":
         print(f"treg: sign-in is not finished yet; open {pending['url']} to finish it", file=out)
     elif status == "expired" and not cfg.get("token"):
         print("treg: the sign-in link expired; run `treg login` again", file=out)
@@ -7878,7 +7879,8 @@ def _main(argv: list[str]) -> None:
                 config_path=CONFIG_PATH, detail={"options": _option_names(unrecognized)})
         raise
     cfg = _load_config()
-    if getattr(args, "fn", None) not in (cmd_login, cmd_logout, cmd_config, cmd_version, cmd_update):
+    if (getattr(args, "fn", None) not in (cmd_login, cmd_logout, cmd_config, cmd_version, cmd_update)
+            and not os.environ.get("TREG_TOKEN") and not cfg.get("token")):
         _pick_up_pending_login(cfg)
     if (override and cfg.get("identity") and cfg.get("token") and not os.environ.get("TREG_TOKEN")
             and override != cfg.get("active_org") and getattr(args, "fn", None) is not cmd_org_use):

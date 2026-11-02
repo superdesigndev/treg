@@ -138,6 +138,36 @@ async def test_second_login_while_pending_reprints_the_same_link(registry, capsy
     assert _stored()["token"] and _pending() is None
 
 
+async def test_a_signed_in_user_finishes_with_login_and_other_commands_never_poll(registry, capsys):
+    pending = await _login_without_waiting(capsys)
+    cli._save_config({**_stored(), "token": "synthetic-earlier-token", "identity": True})
+    with contextlib.suppress(SystemExit):
+        await asyncio.to_thread(cli.main, ["whoami"])
+    assert "/auth/cli/poll" not in registry.paths and _pending() == pending
+
+    await _approve(registry, pending)
+    await asyncio.to_thread(cli.main, ["login"])
+    assert "✓ Logged in as pending@example.test" in capsys.readouterr().out
+    assert _stored()["token"] != "synthetic-earlier-token" and _pending() is None
+
+
+async def test_a_process_with_treg_token_leaves_the_sign_in_alone(registry, capsys, monkeypatch):
+    pending = await _login_without_waiting(capsys)
+    await _approve(registry, pending)
+    monkeypatch.setenv("TREG_TOKEN", "synthetic-agent-token")
+    with contextlib.suppress(SystemExit):
+        await asyncio.to_thread(cli.main, ["whoami"])
+    assert "/auth/cli/poll" not in registry.paths
+    assert _pending() == pending and _stored().get("token") is None
+
+
+async def test_the_last_minute_is_singular(registry, capsys):
+    pending = await _login_without_waiting(capsys)
+    cli._write_private_json(_pending_file(), {**pending, "expires_at": int(time.time()) + 30})
+    await asyncio.to_thread(cli.main, ["login"])
+    assert "The link expires in 1 minute." in capsys.readouterr().out
+
+
 async def test_unfinished_sign_in_is_named_on_stderr_and_kept(registry, capsys):
     pending = await _login_without_waiting(capsys)
     with pytest.raises(SystemExit):

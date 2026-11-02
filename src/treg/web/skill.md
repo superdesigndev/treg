@@ -38,8 +38,8 @@ or the CLI is enough, and having both is fine.
    ```
 
    In your shell `treg login` prints a sign-in link and returns at once. Give the link to the human;
-   once they have signed in, your next treg command picks the login up, or `treg login --wait`
-   blocks until it does.
+   once they have signed in, run `treg login` again to finish, or `treg login --wait` to block until
+   they do.
 
 3. **Neither**: treg is not set up here. Run the installer only when the human asked you to set treg
    up; otherwise give them these two ways and wait:

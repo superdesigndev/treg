@@ -106,8 +106,9 @@ is self-teaching. This fragment holds only what the code and help cannot say.
   and returns 0. It is a separate file so a claim that sees `expired` never rewrites `config.json`
   while a parallel command saves the token there; the server, not the file, decides expiry, since
   approval extends it. `login` again or `login --wait` resumes it (a second handshake would orphan the link
-  already shared). Any other command collects it once before running,
-  reporting on stderr so its stdout stays parseable.
+  already shared). A signed-out command without `TREG_TOKEN` collects it once before running,
+  reporting on stderr so its stdout stays parseable; a process on another credential must not
+  consume the human's login.
 - **Team Default key, not bootstrap.** An org-less login yields a signed `scp=bootstrap` credential
   that identifies the account for onboarding, expires after seven days and cannot call team
   resources. Selecting, creating, joining or accepting a team replaces the stored token with that
