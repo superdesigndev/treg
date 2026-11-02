@@ -315,3 +315,56 @@ async def test_an_unreadable_capacity_view_refuses_nothing(
 
     monkeypatch.setattr(capacity_view, "load", broken)
     assert (await clients.get("/call/youtube/youtube/v3/channels?part=id")).status_code == 200
+
+
+async def test_an_upload_running_out_locks_only_uploads(
+        clients: AsyncClient, allowance_mode, upstream):
+    await _connect(clients, "youtube", YT_HOST, provider="youtube")
+    upload = "/call/youtube/upload/youtube/v3/videos?part=snippet"
+    upstream.answer = (403, YT_QUOTA)
+    for _ in range(2):
+        assert (await clients.post(upload, json={})).status_code == 403
+    assert (await _lock("allowance:youtube/uploads")).is_active()
+    assert await _lock("allowance:youtube/writes") is None
+    upstream.answer = (200, b'{}')
+    assert (await clients.post(upload, json={})).status_code == 503
+    assert (await clients.put("/call/youtube/youtube/v3/videos?part=id", json={})).status_code == 200
+
+
+async def test_a_search_held_by_its_own_limit_never_probes_the_whole_allowance(
+        clients: AsyncClient, allowance_mode, upstream):
+    await _connect(clients, "youtube", YT_HOST, provider="youtube")
+    search = "/call/youtube/youtube/v3/search?q=x&part=id"
+    upstream.answer = (429, YT_SEARCH_QUOTA)
+    for _ in range(2):
+        await clients.get(search)
+    upstream.answer = (403, YT_QUOTA)
+    for _ in range(2):
+        await clients.get("/call/youtube/youtube/v3/channels?part=id")
+    capacity_marks._last_probe.clear()
+    relayed = len(upstream.calls)
+    assert (await clients.get(search)).status_code == 503
+    assert len(upstream.calls) == relayed
+
+
+async def test_a_probe_leaves_a_lock_that_opened_while_it_was_in_flight(
+        clients: AsyncClient, allowance_mode, upstream, monkeypatch):
+    await _connect(clients, "youtube", YT_HOST, provider="youtube")
+    write = "/call/youtube/youtube/v3/videos?part=id"
+    upstream.answer = (403, YT_QUOTA)
+    for _ in range(2):
+        await clients.put(write, json={})
+    assert (await _lock("allowance:youtube/writes")).is_active()
+
+    capacity_marks._last_probe.clear()
+    upstream.answer = (200, b'{}')
+    plain = upstream.relay
+
+    async def whole_locks_meanwhile(*args, **kwargs):
+        await capacity_marks.strike("allowance:youtube", endpoint_id=None, kind="quota",
+                                    resets_at=None, immediate=True)
+        return await plain(*args, **kwargs)
+    monkeypatch.setattr(call_service, "relay", whole_locks_meanwhile)
+    assert (await clients.put(write, json={})).status_code == 200
+    assert await _lock("allowance:youtube/writes") is None, "the probed lock lifts"
+    assert (await _lock("allowance:youtube")).is_active(), "the newer lock stands"

@@ -38,8 +38,10 @@ quota error until the provider resets.
 
 `scopes` names smaller pools inside the allowance: the calls each covers (`call_regex` over
 "METHOD /upstream/path"). A scope with `body_regex` is a limit of its own the provider names when
-it runs out; one without is a class of costly calls. YouTube has two: `search` (its own daily call
-limit) and `writes` (every non-GET, priced far above a read).
+it runs out; one without is a class of calls whose failure proves only its own pool spent. YouTube
+has three: `search` (its own daily call limit), `uploads` (`videos.insert`, its own daily call limit,
+whose exhaustion answer is not named here) and `writes` (every other non-GET, priced far above a
+read).
 
 `application/call/allowance.draw_for` makes the decision from the tool and the loaded secrets, with
 no I/O. It runs at the same point as the paused-provider check, so a catalog call on a connection,
@@ -64,11 +66,11 @@ lock row's lifetime (`MAX_LOCK`), instead of the six hours that bound a platform
 it holds, a drawing call the archive cannot answer is refused before it leaves, with a 503 of kind
 `provider_capacity` and body error `shared_allowance_exhausted` (`provider`, `resets_at`, a
 `message` naming the team's own client or credential as the way around it), not charged, audited
-`refused_by=capacity`. One call
-per process per minute is let through as a probe, never answered from the archive, and only
-through a lock its answer can prove: the whole allowance's by a call that is not costly, a
-scope's by a call in it once the whole allowance is open. A probe's 2xx lifts every lock on the pools the call
-draws on. An archive hit is never recovery evidence. `observe` logs `allowance_would_refuse` at
+`refused_by=capacity`. One call per process per minute is let through as a probe, never answered
+from the archive, and only when a single lock holds the call and its answer can prove it: the
+whole allowance's by a call in no costly scope, a scope's by a call in it. A probe's 2xx lifts the
+lock it probed; a lock opened while it was in flight stands. An archive hit is never recovery
+evidence. `observe` logs `allowance_would_refuse` at
 the same point `enforce` refuses, after the archive lookup, so it counts what enforcing would.
 
 The admission reads the cached capacity view after the request's session has ended its DB phase,

@@ -51,7 +51,7 @@ class Signature:
     match wins. `resets` names when a quota with no wait header serves again; None leaves it to
     the sweep's account call. `wait_regex` reads the wait in seconds from the body (group 1) when a
     vendor states it there rather than in a header; a stated wait short enough to be a burst is
-    one, and a row that expects one but finds none is unknown. `tripwire` marks a plain capacity phrase that arms the `unrecorded` tripwire for every
+    one, and (to `classify_own`) a row that expects one but finds none is unknown. `tripwire` marks a plain capacity phrase that arms the `unrecorded` tripwire for every
     other vendor."""
     provider: str
     status: int
@@ -146,7 +146,7 @@ _TABLE: list[Signature] = [
     # `quotaErrorDetails.retryDelay`. Other rate scopes (one customer account) are not ours to mark.
     Signature("google-ads", 429, r'"rateScope"\s*:\s*"DEVELOPER"', "quota",
               wait_regex=r'"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"'),
-    # YouTube Data API: the project's daily units, and search.list's own daily limit inside them.
+    # YouTube Data API: the project's daily units, and search.list's own daily limit beside them.
     # Both reset at midnight Pacific time. https://developers.google.com/youtube/v3/getting-started#quota
     Signature("youtube", 403, r'"reason"\s*:\s*"quotaExceeded"', "quota",
               resets="next_pacific_midnight"),

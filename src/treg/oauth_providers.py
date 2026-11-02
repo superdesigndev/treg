@@ -788,12 +788,13 @@ YOUTUBE = OAuthProvider(
     discover_key="items",
     discover_id_field="id",
     discover_label_field="snippet.title",
-    # The Data API's daily units belong to the Cloud project behind treg's client. search.list has
-    # its own daily call limit beside them, and writes cost far more units than a read.
-    # https://developers.google.com/youtube/v3/determine_quota_cost
+    # The Data API's daily units belong to the Cloud project behind treg's client. search.list and
+    # videos.insert have their own daily call limits beside them, and other writes cost far more
+    # units than a read. https://developers.google.com/youtube/v3/determine_quota_cost
     shared_allowance=SharedAllowance(drawn_by="app", scopes=(
         AllowanceScope("search", r"^GET /youtube/v3/search/*$", r"defaultSearchListPerDayPerProject"),
-        AllowanceScope("writes", r"^(?:POST|PUT|PATCH|DELETE) "),
+        AllowanceScope("uploads", r"^POST /(?:upload/)?youtube/v3/videos/*$"),
+        AllowanceScope("writes", r"^(?:PUT|PATCH|DELETE) |^POST (?!/(?:upload/)?youtube/v3/videos/*$)"),
     )),
 )
 
