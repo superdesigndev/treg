@@ -1294,3 +1294,15 @@ def test_bills_miss_is_true_and_only_on_a_per_success_price():
         errors: list[str] = []
         validator.check_cost(bad, "catalog:test", errors, [])
         assert any("bills_miss" in e for e in errors), bad
+
+
+def test_no_v2_row_ships_until_the_call_runtime_bills_and_judges_it(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", "      reserve: {entities: {}}\n")
+    assert validator.main(["tikhub"]) == 0
+
+    legacy = (tmp_path / "tikhub.yaml").read_text()
+    v2 = legacy[:legacy.index("    cost:\n")] + "    price: {value: '0'}\n"
+    (tmp_path / "tikhub.yaml").write_text(v2)
+    assert validator.main(["tikhub"]) == 1
+    assert "the v2 spelling is loaded but not yet billed or judged" in capsys.readouterr().out
