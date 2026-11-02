@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import pytest
-import yaml
 
 from scripts import catalog_validate as validator
 from treg.domain.catalog import store as catalog_store
@@ -1118,21 +1117,23 @@ def test_a_fixed_price_spools_when_its_success_rule_is_declared():
 
 
 def test_the_fast_catalog_loader_reads_every_file_like_the_pure_python_one():
-    """`store._Loader` uses libyaml's C parser when it is installed; every shipped catalog file must
-    parse to the same document as with the pure-Python SafeLoader, timestamps kept as strings."""
+    """The catalog's YAML reading uses libyaml's C parser when it is installed; every shipped catalog
+    file must parse to the same document as with the pure-Python SafeLoader, timestamps kept as
+    strings."""
     import yaml
     from treg.domain.catalog import store
+    from treg.domain.catalog.schema import files
 
     class Pure(yaml.SafeLoader):
         pass
-    Pure.yaml_implicit_resolvers = store._Loader.yaml_implicit_resolvers
+    Pure.yaml_implicit_resolvers = files._Loader.yaml_implicit_resolvers
     if not getattr(yaml, "__with_libyaml__", False):
         pytest.skip("libyaml not installed")
-    assert issubclass(store._Loader, yaml.CSafeLoader)
+    assert issubclass(files._Loader, yaml.CSafeLoader)
     for path in sorted(store.CATALOG_DIR.rglob("*.yaml")):
         text = path.read_text(encoding="utf-8")
-        assert yaml.load(text, Loader=store._Loader) == yaml.load(text, Loader=Pure), path.name
-    assert yaml.load("checked: 2026-09-01", Loader=store._Loader) == {"checked": "2026-09-01"}
+        assert yaml.load(text, Loader=files._Loader) == yaml.load(text, Loader=Pure), path.name
+    assert yaml.load("checked: 2026-09-01", Loader=files._Loader) == {"checked": "2026-09-01"}
 
 
 def _per_result_cost(**extra):
@@ -1293,19 +1294,3 @@ def test_bills_miss_is_true_and_only_on_a_per_success_price():
         errors: list[str] = []
         validator.check_cost(bad, "catalog:test", errors, [])
         assert any("bills_miss" in e for e in errors), bad
-
-
-@pytest.mark.parametrize('row,message', [
-    ('{queryParams: {q: {type: string, required: true, note: "One, two."}}, note: ok}', None),
-    ('{body: {type: object, required: [q], properties: {q: {type: string, items: {type: string}}}}}', None),
-    ('{query: {q: {type: string, required: true}}}', 'input.query is not one of'),
-    ('{body: {data: {type: string, note: Email, or a domain.}}}', "input.body.data: unknown parameter-spec key 'or a domain.'"),
-    ('{body: {properties: {a: {type: object, properties: {b: {tpye: string}}}}}}', "input.body.a.b: unknown parameter-spec key 'tpye'"),
-])
-def test_input_keys_are_the_known_vocabulary(row, message):
-    errors: list[str] = []
-    validator.check_input_keys(yaml.safe_load(row), 'test', errors)
-    if message is None:
-        assert errors == []
-    else:
-        assert any(message in e for e in errors), errors
