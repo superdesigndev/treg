@@ -20,13 +20,14 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Archive - versioned history and cache admission](architecture/archive.md) | building | archive.py, hunter.yaml, results.py, 0031_archive_result_admission.py, … |
 | [Auth & secrets — injectors, encryption, OAuth freshness, health](architecture/auth-secrets.md) | shipped | injectors.py, ssrf.py, crypto.py, oauth.py, … |
 | [Call events — one pseudonymous event per call, to an Iceberg table outside Postgres](architecture/call-events.md) | building | call_events.py, call_events.py, contracts.yaml, test_call_events.py |
+| [Catalog schema - the strict models every catalog reader shares, in today's spelling and v2](architecture/catalog-schema.md) | building | __init__.py, base.py, paths.py, common.py, … |
 | [Endpoint catalog — what you can DO with a connected key, and which provider should do it](architecture/catalog.md) | shipped | rankings.py, rankings.py, test_rankings.py, catalog_added.py, … |
 | [Application composition and deployment roles](architecture/composition.md) | shipped | bootstrap.py, bootstrap_handlers.py, bootstrap_http.py, worker.py, … |
 | [Data model — the registry tables, async DB, audit writer](architecture/data-model.md) | shipped | 0042_pinned_read_scope.py, alembic.ini, env.py, 0001_baseline_current_schema.py, … |
 | [Feedback - private intake for problems and suggestions](architecture/feedback.md) | shipped | feedback_contract.py, __init__.py, reports.py, reviews.py, … |
 | [Find tools for a job - /catalog/find, recall by job and one judge request](architecture/find.md) | building | catalog_find.py, find_recall.py, find_index.py, embed.py, … |
 | [The tool hub — tools a maker publishes, made of other tools](architecture/hub.md) | built (phases 1–10, 2026-09-09/14; pricing flexibility 9.1–9.5 (`docs/hub-pricing-decisions.md`), listing + public run log 10.1–10.5 (`docs/hub-listing-decisions.md`)); behind `hub_enabled` (TREG_HUB_ENABLED), off in production until the final merge | __init__.py, manifest.py, refs.py, graph.py, … |
-| [Enforced import boundaries](architecture/import-boundaries.md) | shipped | pyproject.toml, ci.yml, __init__.py, __init__.py, … |
+| [Enforced import boundaries](architecture/import-boundaries.md) | shipped | pyproject.toml, __init__.py, ci.yml, __init__.py, … |
 | [Instagram OAuth — direct Login and optional Facebook Page tools](architecture/instagram-oauth.md) | built; Meta configuration and live verification pending | catalog_ingest.py, access.py, resolve.py, service.py, … |
 | [Local proxy — catch a program's own outgoing calls (`treg <command>`)](architecture/local-proxy.md) | shipped | localproxy.py, server.js |
 | [Local CLI runs — run a vendor CLI as a dedicated user with a server-held credential (`treg run`)](architecture/local-run.md) | shipped | localrun.py, egress.py, fsjail.py |
