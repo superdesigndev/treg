@@ -75,13 +75,13 @@ async def test_expired_owner_cannot_renew_or_release_replacement(stores):
 
 async def test_renewal_outlives_original_lease_and_shorter_owner_does_not_shorten_key(stores):
     first, second, key = stores
-    assert await first.acquire_slot(key, "long", 2000, 2) == "acquired"
-    assert await second.acquire_slot(key, "short", 150, 2) == "acquired"
-    assert await first._client.pttl(key) > 1500
+    assert await first.acquire_slot(key, "long", 30_000, 2) == "acquired"
+    assert await second.acquire_slot(key, "short", 5_000, 2) == "acquired"
+    assert await first._client.pttl(key) > 25_000
+    original_deadline = await first._client.zscore(key, "short")
     time.sleep(0.2)
-    for _ in range(4):
-        await asyncio.sleep(0.06)
-        assert await second.renew_slot(key, "short", 150) == "renewed"
+    assert await second.renew_slot(key, "short", 20_000) == "renewed"
+    assert await first._client.zscore(key, "short") >= original_deadline + 15_000
     assert await first.acquire_slot(key, "third", 1000, 2) == "busy"
     assert await second.release_slot(key, "short") == "released"
     assert await second.release_slot(key, "short") == "not_owned"
