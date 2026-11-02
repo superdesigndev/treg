@@ -2634,7 +2634,6 @@ adapters:
     accepts: [[company_domain]]
     in:  {company_domain: body.domain}
     out: {people: contacts, count: "len(contacts)"}
-    miss: "contacts == []"
 
   # *.bulk endpoints are never routed (Jason, 2026-08-29): a routed call is one subject, one answer.
   fiber-ai.people.enrich:

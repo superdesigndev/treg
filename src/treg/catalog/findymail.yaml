@@ -116,19 +116,21 @@ endpoints:
       note: "returns {contacts: [...]}. DEPRECATED in Findymail's own docs in favour of /search/employees, which takes explicit job titles and a result count — prefer that one for new work"
     test_request:
       body: {domain: "stripe.com", roles: ["ceo"]}
-    cost:
-      type: per_result
-      value: 1
+    price:
+      value: '1'
       currency: credit
       per: 1
       unit: result
-      reserve: {entities: {}}
-      settle: {count: {path: contacts}}
+      note: 1 finder credit per email found; free when none. The hold is one email per request.
+    provenance:
       source: docs
       source_url: https://app.findymail.com/docs/
       checked: '2026-10-28'
       confidence: documented
-      note: "1 finder credit per email found; free when none. The hold is one email per request."
+    settle: {count: {path: response.contacts}}
+    bill: {miss: charged, error: charged}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.contacts, op: empty}}
     note: "not live-tested to preserve trial credits; also marked deprecated upstream, so /search/employees is the route to verify first when credits allow"
     docs_url: https://app.findymail.com/docs/
 
@@ -369,19 +371,21 @@ endpoints:
       note: "returns {companies: [{domain, name, linkedin_url, company_size, country}], total, credits_used} — `credits_used` reports the actual charge back to you"
     test_request:
       body: {seed: "stripe.com", limit: 10}
-    cost:
-      type: per_result
-      value: 1
+    price:
+      value: '1'
       currency: credit
       per: 10
+      round: up
       unit: result
-      reserve: {rows: {param: body.limit, default: {value: 100, source: docs}, max: 10000}}
-      reported_charge: {path: credits_used, unit: credit}
+      note: 1 finder credit per 10 companies returned, rounded up; free when none. The response reports `credits_used`.
+    provenance:
       source: docs
       source_url: https://app.findymail.com/docs/
       checked: '2026-10-28'
       confidence: documented
-      note: "1 finder credit per 10 companies returned, rounded up; free when none. The response reports `credits_used`."
+    reserve: {rows: {param: body.limit, default: {value: 100, source: docs}, max: 10000}}
+    settle: {reported: {path: response.credits_used, unit: credit}}
+    bill: {miss: charged, error: charged}
     note: "not live-tested to preserve trial credits"
     docs_url: https://app.findymail.com/docs/
 
