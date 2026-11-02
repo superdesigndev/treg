@@ -153,6 +153,7 @@ contracts:
     summary: "Find someone's phone number — treg picks the provider (own keys first, then cheapest per hit) and names the one that served"
     identity:
       - {linkedin_url: url}
+      - {linkedin_handle: str}
       - {email: str}
       - {full_name: str, domain: str}
       - {first_name: str, last_name: str, domain: str}

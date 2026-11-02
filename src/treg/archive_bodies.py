@@ -320,7 +320,7 @@ class BodyPointer:
 def _r2_first(path: str) -> bool:
     # Auxiliary readers share existing rollout switches; none enables R2 independently.
     path = {"observation": "lookup", "initialization": "lookup",
-            "admin": "result", "arena": "result"}.get(path, path)
+            "admin": "result", "arena": "result", "replay": "result"}.get(path, path)
     return getattr(get_settings(), "archive_body_read_" + path) == "r2-first"
 
 

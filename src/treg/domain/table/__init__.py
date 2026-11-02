@@ -2,8 +2,7 @@
 
 Pure and stdlib-only: the parsed JSON answer goes in, with what the catalog knows about the tool,
 and a table comes out. No HTTP, no database, no money: the call is already made and settled by the
-time this runs (`application/table.py`). Design: tools-gsheet `docs/decisions.md` round 1 q1,
-round 2 q9, round 3 B and F.
+time this runs (`application/table.py`).
 
 Four kinds of tool, four sources of columns (`column_source`):
 

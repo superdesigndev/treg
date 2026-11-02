@@ -2,7 +2,7 @@
 
 The lexical page is the shipped ranker: `store.rank_band` over a band wider than the page (so a
 routed group can collapse without starving it), the evidence rerank, the listed hub tools merged by
-score with no boost (docs/hub-listing-decisions.md), routed parents grouped with their children, cut
+score with no boost, routed parents grouped with their children, cut
 to the page. Nothing here touches `store.search` or its scoring; the MCP layer only shapes the rows
 this returns.
 

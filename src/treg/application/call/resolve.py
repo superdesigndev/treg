@@ -1180,7 +1180,7 @@ def _capability_alternatives(ep: dict, *, limit: int = 3) -> list[str]:
 
     Read from `cat.endpoints`, which `_parse` has already stripped of marked rows, so a retirement
     stops being suggested the moment it is marked and no list here needs maintaining. This
-    COMPARES, it does not route: treg never fails over on the caller's behalf (see the charter),
+    COMPARES, it does not route: treg never fails over on the caller's behalf,
     so this names the options and their prices and leaves the choice where it belongs.
 
     Deliberately synchronous and I/O-free. Measured success would need `endpoint_stats.observed`
@@ -2511,7 +2511,7 @@ def _key_affinity(caller: Caller, headers) -> str:
 def _provider_capacity_unavailable(ep: dict, service: str, resets, *,
                                    probing: bool = False) -> ResolutionFailed:
     """The typed floor (plan §4.5): no charge, `resets_at` when known, and the same-capability
-    alternatives — treg names them and leaves the choice to the caller (charter: no failover)."""
+    alternatives — treg names them and leaves the choice to the caller."""
     # Say what treg is doing about it before what the caller could do: an agent quotes the first
     # imperative line back to its user, and "use your own key" reads as "your plan lost access".
     # Nothing about the caller's plan or balance changed.

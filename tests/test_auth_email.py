@@ -100,7 +100,25 @@ async def test_signup_tracking_only_after_new_identity_not_login_or_bad_code(cli
     await _otp_login(client, email)
     signups = [a for a, _ in events if a[1] == "signup_completed"]
     assert len(signups) == 1
-    assert signups[0] == (email, "signup_completed", {"signup_method": "email", "entry_surface": "arena"})
+    assert signups[0] == (email, "signup_completed",
+                          {"signup_method": "email", "entry_surface": "arena", "client": "cli"})
+
+
+@pytest.mark.parametrize(("headers", "body", "expected"), [
+    ({"X-Treg-Key-Protocol": "1"}, {}, "cli"),
+    ({"X-Treg-Key-Protocol": "0", "User-Agent": "Mozilla/5.0"}, {"cli_pairing": True}, "cli_browser"),
+    ({"X-Treg-Key-Protocol": "0", "User-Agent": "Mozilla/5.0"}, {}, "browser"),
+])
+async def test_signup_records_which_client_signed_up(client, monkeypatch, headers, body, expected):
+    from treg import analytics
+    events = []
+    monkeypatch.setattr(analytics, "capture", lambda *a, **k: events.append(a))
+    email = f"client-{expected}@example.test"
+    code = (await client.post("/auth/email/start", json={"email": email})).json()["dev_code"]
+    verify = await client.post("/auth/email/verify", json={"email": email, "code": code, **body}, headers=headers)
+    assert verify.status_code == 200
+    (signup,) = [a for a in events if a[1] == "signup_completed"]
+    assert signup[2]["client"] == expected
 
 
 @pytest.mark.parametrize("method", ["github", "google"])
@@ -112,7 +130,8 @@ async def test_social_signup_tracking_reuses_same_new_user_rule(client, monkeypa
     await _provision_social_user("social@example.test", "unused", method, "arena")
     await _provision_social_user("social@example.test", "unused", method, "arena")
     assert len(events) == 1
-    assert events[0][1:] == ("signup_completed", {"signup_method": method, "entry_surface": "arena"})
+    assert events[0][1:] == ("signup_completed",
+                             {"signup_method": method, "entry_surface": "arena", "client": "browser"})
 
 
 REVIEWER = "reviewer@example.com"

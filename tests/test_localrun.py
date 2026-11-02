@@ -1,6 +1,6 @@
-"""`treg run` — grants for local CLI execution (docs/CLI-RUN-PLAN.md).
+"""`treg run` — grants for local CLI execution (docs/context/architecture/local-run.md).
 
-Three layers, mirroring the plan's §12: pure unit tests on `localrun` (profile merge, deny
+Three layers: pure unit tests on `localrun` (profile merge, deny
 semantics, validation), endpoint tests on /grant + /run-report (custody, opt-in, deny, audit,
 health feedback, params, cross-org), and client tests on `cmd_run` (env composition, exit codes,
 verdict reporting) with subprocess/network mocked.

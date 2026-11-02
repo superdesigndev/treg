@@ -4,8 +4,8 @@ source:
   openapi: null # paths transcribed and live-verified 2026-08-15 (free Starter, 1,000 req/day)
   curated: 2026-08-15
 # TRIAL POOL + own-key: treg holds the free Starter key; Tiingo's individual plans are internal personal use
-# and even the $50/mo commercial tier is internal-only — redistribution is a sales bundle (research
-# doc, licensing table). No fx rate -> usd null -> platform_eligible FALSE.
+# and even the $50/mo commercial tier is internal-only — redistribution is a sales bundle.
+# No fx rate -> usd null -> platform_eligible FALSE.
 pricing_url: https://www.tiingo.com/about/pricing
 endpoints:
   - id: tiingo.daily.meta

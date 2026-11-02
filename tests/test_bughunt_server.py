@@ -1,4 +1,4 @@
-"""Regression tests for the sustained bug hunt (docs/BUGS.md) — server side.
+"""Regression tests for the sustained bug hunt — server side.
 
 One test (or small cluster) per fixed bug: email normalization, forgeable-session key, OTP
 brute-force, suspended-account doors, invite/role boundaries, resource validation, bundle

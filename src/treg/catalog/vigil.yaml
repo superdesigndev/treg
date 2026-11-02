@@ -107,7 +107,7 @@ endpoints:
     summary: "Resolve a ticker, CIK or issuer-name prefix to its SEC directory identity; also the registry's key check"
     input:
       queryParams:
-        q: {type: string, required: true, minLength: 1, maxLength: 100, note: "ticker, CIK or case-insensitive issuer-name prefix", example: NVDA}
+        q: {type: string, required: true, note: "ticker, CIK or case-insensitive issuer-name prefix; 1-100 characters", example: NVDA}
         limit: {type: integer, required: false, min: 1, max: 100, note: "default 20"}
     test_request: {queryParams: {q: NVDA}}
     cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://renolabshq.com/vigil/api", checked: '2026-10-19', confidence: documented, note: "Free and unbilled, but still keyed: a successful call consumes the calling key's monthly cap like a dataset call."}
@@ -126,7 +126,7 @@ endpoints:
     input:
       note: "Coverage: 13F report periods from 2021-03-31. Only managers with a filing in coverage are listed; pre-2021 filings are never served."
       queryParams:
-        q: {type: string, required: false, minLength: 1, maxLength: 100, note: "manager name or CIK prefix", example: BERKSHIRE}
+        q: {type: string, required: false, note: "manager name or CIK prefix; 1-100 characters", example: BERKSHIRE}
         fund_type: {type: string, required: false, note: "manager type filter"}
         featured: {type: boolean, required: false, note: "curated managers only"}
         min_reported_value_usd: {type: integer, required: false, min: 0, note: "latest reported value at or above this USD"}

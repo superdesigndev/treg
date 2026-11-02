@@ -1,4 +1,4 @@
-"""Step D′ of docs/PROVIDER-CAPACITY-PLAN.md — burst smoothing on treg's own platform keys:
+"""Provider capacity: burst smoothing on treg's own platform keys:
 a per-provider token bucket (wait ≤ 2 s, in-process, no DB) and one bounded `retry-after`
 re-send for idempotent reads. Never a refusal; never on tiers 1/2."""
 

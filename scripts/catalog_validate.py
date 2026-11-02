@@ -54,6 +54,7 @@ import sys
 from pathlib import Path
 
 import yaml
+from pydantic import ValidationError
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "src" / "treg" / "catalog"
@@ -68,9 +69,10 @@ from treg.domain.catalog.store import _effective_cost, effective_async_descripto
 from treg.application.call.resolve import _ENTITY_UNITS  # noqa: E402
 from treg.domain.asynctasks import json_path  # noqa: E402
 from treg.domain.catalog.routing import paths as _paths  # noqa: E402
+from treg.domain import plugins  # noqa: E402
+from treg.domain.catalog import schema  # noqa: E402
+from treg.domain.catalog.schema import violations  # noqa: E402
 
-SCOPES = {"any_account", "own_account"}
-METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 COST_TYPES = {"per_call", "per_result", "per_success", "free", "quota_rows"}
 # What the price is denominated in. `credit` and `unit` are PROVIDER-scoped meters, not currencies,
 # and convert via fx.yaml's `credit_rates_usd` / `unit_rates_usd` (see catalog_store.cost_view).
@@ -84,12 +86,7 @@ STALE_DAYS = 90
 # per-entry judgement call and leaves `cost.usd` null - indistinguishable, downstream, from
 # "price unknown".
 CANONICAL_FREE = {"value": 0, "currency": "USD", "unit": "call"}
-TIERS = {"core", "extended"}
-# what an endpoint IS (catalog browse surface vs. plumbing). Optional - absent reads as "data" -
-# but a stated one must be from this set. See docs/context/architecture/catalog.md.
-KINDS = {"data", "action", "account", "utility"}
 ENDPOINT_STATUSES = {"retired", "broken"}
-QUERY_ARRAY_ENCODINGS = {"json", "comma", "repeated"}
 ASYNC_PARAM_LOCATIONS = {"pathParams", "queryParams"}
 _IDENT = r"[A-Za-z_][A-Za-z0-9_-]*"
 JSON_PATH = re.compile(rf"(?:{_IDENT}|[0-9]+)(?:\.(?:{_IDENT}|[0-9]+))*")
@@ -962,6 +959,17 @@ def check_ceiling_param(rule, where: str, errors: list[str], *, prefix: str) -> 
         fail(errors, where, f"{prefix} must be {{in: query, name: <identifier>, unit: usd}}")
 
 
+_CLIENT_HEADER_NAME = re.compile(r"x-[a-z0-9]+(?:-[a-z0-9]+)*")
+
+
+def check_client_header(name, where: str, errors: list[str]) -> None:
+    """The header a provider reads treg's per-team code from: a lower-case `x-` name that cannot
+    collide with treg's own headers or a credential."""
+    if (not isinstance(name, str) or not _CLIENT_HEADER_NAME.fullmatch(name)
+            or name.startswith("x-treg-") or name in {"x-api-key", "x-forwarded-for", "x-real-ip"}):
+        fail(errors, where, "client_header must be a lower-case x- header name, not x-treg-* or a credential header")
+
+
 def check_provider_query_params(block, where: str, errors: list[str]) -> None:
     """A file-header `queryParams` block: optional query parameters every endpoint of the provider
     accepts, merged by the loader into each endpoint's own `input.queryParams`.
@@ -988,6 +996,10 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
     """
     if cost.get("type") not in COST_TYPES:
         fail(errors, where, f"cost.type missing or not one of {sorted(COST_TYPES)}")
+    # `bills_miss` marks a per-success price whose provider still charges for some misses (a
+    # routed row counts it among the children that bill a miss); other types already say so.
+    if "bills_miss" in cost and (cost["bills_miss"] is not True or cost.get("type") != "per_success"):
+        fail(errors, where, "cost.bills_miss must be true, and only on a per_success price")
     value, conf = cost.get("value"), cost.get("confidence")
     if conf is not None and conf not in CONFIDENCES:
         fail(errors, where, f"cost.confidence '{conf}' not one of {sorted(CONFIDENCES)}")
@@ -1193,8 +1205,8 @@ TRIAL_KIND = "treg_trial"
 def check_fx(errors: list[str]) -> None:
     """The fx entries that carry a rate TREG SET, not one the vendor published.
 
-    A `kind: treg_shared_plan` entry is the catalog asserting its own price for a flat-fee provider
-    (see docs/SHARED-PLAN-PRICING-PLAN.md). Everything downstream shows the basis string as
+    A `kind: treg_shared_plan` entry is the catalog asserting its own price for a flat-fee provider.
+    Everything downstream shows the basis string as
     provenance, so the honesty lives in that string — these checks make it impossible to add a
     treg-set rate that does not say whose price it is, what the vendor fee was, and what volume it
     breaks even at. A treg rate card with none of that printed is exactly the dishonesty the design
@@ -1332,12 +1344,59 @@ def check_proposed_capabilities(taxonomy: dict[str, str], docs: list[tuple[str, 
                             "unify them on one id or tell the jobs apart")
 
 
+PLUGIN_TESTS = ROOT / "tests" / "plugins"
+
+
+def check_v2_row(ep: dict, provider: str, where: str, errors: list[str]) -> None:
+    """A v2 row's plugins import from its own provider's module, each function has a unit test
+    (`tests/plugins/test_<module>.py` names it), and the row has an example response."""
+    names = [ep[k]["plugin"] for k in ("reserve", "settle", "error", "miss")
+             if isinstance(ep.get(k), dict) and ep[k].get("plugin")]
+    for name in names:
+        try:
+            plugins.resolve(name, provider)
+        except ValueError as exc:
+            fail(errors, where, str(exc))
+            continue
+        module, _, function = name.partition(".")
+        test = PLUGIN_TESTS / f"test_{module}.py"
+        if not test.is_file() or function not in test.read_text(encoding="utf-8"):
+            fail(errors, where, f"plugin {name} has no unit test in tests/plugins/test_{module}.py")
+    if names and not (ep.get("example_response") and (CATALOG / str(ep["example_response"])).is_file()):
+        fail(errors, where, "a row that names a plugin needs an example_response")
+
+
+def check_routing(errors: list[str]) -> None:
+    """contracts.yaml and adapters.yaml parse whole, every expression in them included."""
+    from treg.domain.catalog.routing.contracts import parse_adapters, parse_contracts
+
+    for name, parse in (("contracts.yaml", parse_contracts), ("adapters.yaml", parse_adapters)):
+        try:
+            parse(schema.read_yaml(CATALOG / name) or {})
+        except (ValueError, TypeError, AttributeError) as exc:
+            fail(errors, name, f"does not parse: {exc}")
+
+
+def check_manifests(errors: list[str]) -> None:
+    for path in sorted((CATALOG / "providers").glob("*.yaml")):
+        try:
+            manifest = schema.Manifest.model_validate(schema.read_yaml(path))
+        except schema.CatalogSchemaError as exc:
+            errors.append(str(exc))
+            continue
+        except ValidationError as exc:
+            fail(errors, f"providers/{path.name}", schema.files.describe(exc.errors()))
+            continue
+        if manifest.provider != path.stem:
+            fail(errors, f"providers/{path.name}", f"provider '{manifest.provider}' != filename stem")
+
+
 def main(argv: list[str]) -> int:
     errors: list[str] = []
     warnings: list[str] = []
     check_fx(errors)
     check_aliases(errors, warnings)
-    tax = yaml.safe_load((CATALOG / "capabilities.yaml").read_text())
+    tax = schema.read_yaml(CATALOG / "capabilities.yaml")
     platforms = set(tax.get("platforms") or {})
     taxonomy = tax.get("capabilities") or {}
     capabilities = set(taxonomy)
@@ -1349,22 +1408,34 @@ def main(argv: list[str]) -> int:
                        if p.name not in ("capabilities.yaml", "fx.yaml", "aliases.yaml", "contracts.yaml", "adapters.yaml"))
     # Successors can appear later in the same file or in another provider. Build the reference map
     # before validating any row; a one-pass lookup would make validity depend on filename order.
+    # Every file and row goes through the strict models the loader uses (catalog schema v2); the
+    # checks below judge only what parsed.
+    hits: set[tuple[str, str]] = set()
+    parsed: dict[Path, schema.EndpointDoc] = {}
+    for path in all_files:
+        try:
+            parsed[path] = schema.read_endpoint_file(path, hits)
+        except schema.CatalogSchemaError as exc:
+            errors.append(str(exc))
+    try:
+        defaults = schema.provider_defaults(parsed.values())
+    except schema.CatalogSchemaError as exc:
+        errors.append(str(exc))
+        defaults = {}
     endpoint_status: dict[str, str] = {}
     endpoint_index: dict[str, dict] = {}
     docs: list[tuple[str, dict]] = []
-    for path in all_files:
-        data = yaml.safe_load(path.read_text()) or {}
-        if not isinstance(data, dict):
-            continue
-        docs.append((path.name, data))
-        provider = str(data.get("provider") or path.stem.removesuffix(".extended"))
-        for ep in data.get("endpoints") or []:
+    for path, doc in parsed.items():
+        docs.append((path.name, doc.raw))
+        for ep in doc.raw["endpoints"]:
             if isinstance(ep, dict) and ep.get("id"):
                 endpoint_id = str(ep["id"])
                 endpoint_status[endpoint_id] = str(ep.get("status") or "").strip()
-                endpoint_index[endpoint_id] = {**ep, "provider": provider}
+                endpoint_index[endpoint_id] = {**schema.merge(ep, defaults.get(doc.provider)),
+                                               "provider": doc.provider}
     check_proposed_capabilities(taxonomy, docs, errors, warnings)
-    files = list(all_files)
+    files = [p for p in all_files if p in parsed]
+    uses: list[violations.Use] = []
     # "tikhub" selects tikhub.yaml AND tikhub.extended.yaml — a service is both its tiers
     service_of = {p: p.stem.removesuffix(".extended") for p in files}
     if only:
@@ -1386,14 +1457,9 @@ def main(argv: list[str]) -> int:
     for path in files:
         name = path.name
         text = path.read_text()
-        data = yaml.safe_load(text)
-        if not isinstance(data, dict):
-            fail(errors, name, "not a mapping")
-            continue
-        extended_file = path.name.endswith(".extended.yaml")
-        service = data.get("provider")
-        if service != service_of[path]:
-            fail(errors, name, f"provider '{service}' != filename stem '{service_of[path]}'")
+        data = parsed[path].raw
+        extended_file = parsed[path].tier == "extended"
+        service = parsed[path].provider
         if service not in REGISTRY:
             fail(errors, name, f"provider '{service}' not in oauth_providers.REGISTRY")
         src = data.get("source")
@@ -1406,20 +1472,27 @@ def main(argv: list[str]) -> int:
             check_ceiling_param(data.get("ceiling_param"), name, errors, prefix="ceiling_param")
         if "queryParams" in data:
             check_provider_query_params(data.get("queryParams"), name, errors)
+        if "client_header" in data:
+            check_client_header(data.get("client_header"), name, errors)
         proposed = set(data.get("proposed_capabilities") or {})
         known = capabilities | proposed
 
-        eps = data.get("endpoints")
-        if not isinstance(eps, list) or not eps:
-            fail(errors, name, "endpoints missing or empty")
-            continue
-        for ep in eps:
+        for ep in data["endpoints"]:
+            ep = schema.merge(ep, defaults.get(service))
             eid = ep.get("id", "<no id>")
             where = f"{name}:{eid}"
+            try:
+                row = schema.parse_row(ep, name, hits)
+            except schema.CatalogSchemaError as exc:
+                fail(errors, name, str(exc))
+                continue
+            uses.append(violations.Use(str(eid), str(service), ep))
+            legacy = not isinstance(row, schema.V2Row)
+            if not legacy:
+                fail(errors, where, "the v2 spelling is loaded but not yet billed or judged by the call "
+                                    "runtime; it ships with the v2 settlement order")
+                check_v2_row(ep, service, where, errors)
             tier = ep.get("tier", "extended" if extended_file else "core")
-            if tier not in TIERS:
-                fail(errors, where, f"bad tier '{tier}'")
-                tier = "extended" if extended_file else "core"
             if extended_file != (tier == "extended"):
                 fail(errors, where, f"tier '{tier}' does not belong in {name}")
             route_tiers.setdefault((service, ep.get("method"), ep.get("path")), {}) \
@@ -1428,7 +1501,7 @@ def main(argv: list[str]) -> int:
                 if not ep.get(f):
                     fail(errors, where, f"missing required field '{f}'")
             check_added(ep, where, errors)
-            miss = ep.get("miss")
+            miss = ep.get("miss") if legacy else None
             if isinstance(miss, dict) and miss.get("when") is not None:
                 # The router evaluates `when` against the provider body; a misspelt path parses
                 # fine, evaluates False on every body, and silently turns every declared miss back
@@ -1438,7 +1511,7 @@ def main(argv: list[str]) -> int:
                     fail(errors, where, f"miss.when must be a comparison or call in the adapter expression language, got {when!r}")
                 elif miss.get("status") is None:
                     fail(errors, where, "miss.when needs miss.status (the 4xx it narrows)")
-            nf = ep.get("not_found")
+            nf = ep.get("not_found") if legacy else None
             if nf is not None:
                 statuses = nf.get("status") if isinstance(nf, dict) else None
                 statuses = statuses if isinstance(statuses, list) else [statuses]
@@ -1476,13 +1549,6 @@ def main(argv: list[str]) -> int:
             dom = ep.get("domain")
             if dom is not None and not DOMAIN.fullmatch(str(dom)):
                 fail(errors, where, f"domain '{dom}' must be a single lowercase word (a-z0-9_)")
-            # `kind` is optional (absent ⇒ data); a stated one must be a known kind
-            if ep.get("kind") is not None and ep.get("kind") not in KINDS:
-                fail(errors, where, f"kind '{ep.get('kind')}' not one of {sorted(KINDS)}")
-            if ep.get("scope", "any_account") not in SCOPES:
-                fail(errors, where, f"bad scope '{ep.get('scope')}'")
-            if ep.get("method") not in METHODS:
-                fail(errors, where, f"bad method '{ep.get('method')}'")
             host = ep.get("host")
             if host is not None:
                 if not isinstance(host, str) or not HOST.fullmatch(host):
@@ -1495,8 +1561,6 @@ def main(argv: list[str]) -> int:
             check_status_marker(ep, where, endpoint_status, errors)
             inp = ep.get("input") or {}
             check_strict_query(ep, where, errors)
-            if "observed_from" in ep and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(ep["observed_from"])):
-                fail(errors, where, "observed_from must be a YYYY-MM-DD date")
             check_strict_body(ep, where, errors)
             check_body_allowlist(ep, where, errors)
             check_platform_auth(ep, where, errors)
@@ -1506,13 +1570,8 @@ def main(argv: list[str]) -> int:
                 check_team_label(ep["team_label"], inp, where, errors)
             if "caller_email" in ep:
                 check_caller_email(ep["caller_email"], inp, where, errors)
-            default_array_encoding = inp.get("queryArrayEncoding")
-            if (default_array_encoding is not None
-                    and default_array_encoding not in QUERY_ARRAY_ENCODINGS):
-                fail(errors, where, "input.queryArrayEncoding must be one of "
-                     f"{sorted(QUERY_ARRAY_ENCODINGS)}")
             cost = ep.get("cost")
-            if cost is not None or tier == "core":
+            if legacy and (cost is not None or tier == "core"):
                 # cost is optional in the extended tier — several providers publish prices per API
                 # family rather than per route — but a stated cost must still be a real cost model.
                 # An ABSENT one reads as "price unknown", never as free (catalog.md, Cost), which is
@@ -1541,8 +1600,9 @@ def main(argv: list[str]) -> int:
             if effective_async is not None:
                 # The price the call settles on: a declared cost, or the provider-reported charge a
                 # verification observed (a DataForSEO extended row carries `observed_cost` only).
-                check_async_descriptor(effective_async, where, str(service), endpoint_index,
-                                       _effective_cost(ep), errors)
+                if legacy:
+                    check_async_descriptor(effective_async, where, str(service), endpoint_index,
+                                           _effective_cost(ep), errors)
                 if isinstance(cost, dict) and cost.get("settle") == "terminal_presence":
                     body_fields = inp.get("body") or {}
                     bounded = any(isinstance(spec, dict) and str(spec.get("type", "")).startswith("array")
@@ -1564,7 +1624,7 @@ def main(argv: list[str]) -> int:
                 check_resource_ownership(ep["resource_ownership"], where, inp, errors)
             if ep.get("managed_resource") is not None:
                 check_managed_resource(ep["managed_resource"], where, inp, errors)
-            if "spooled_response" in ep:
+            if legacy and "spooled_response" in ep:
                 check_spooled_response(ep, effective_async, where, errors)
             if ep.get("example_response"):
                 check_example_file(CATALOG / str(ep["example_response"]), where, errors)
@@ -1576,16 +1636,18 @@ def main(argv: list[str]) -> int:
                     fail(errors, where, f"example_response '{ex}' does not exist")
                 if not ep.get("test_request"):
                     fail(errors, where, "verified but no test_request (nothing to re-verify with)")
+            claimed = [s for s in STATES if ep.get(s)]
+            if len(claimed) > 1 and (eid, "states") in violations.load().rejected:
+                hits.add((eid, "states"))
+            elif len(claimed) > 1:
+                fail(errors, where, f"claims {len(claimed)} states at once: {claimed} — "
+                                    "verified/unverified/untestable/skipped are exclusive")
             if tier == "extended":
                 # "been through the pipeline" = a run either built it a request or recorded an
                 # outcome for it. A freshly ingested entry that has never been verified has
                 # neither, and is left alone.
-                claimed = [s for s in STATES if ep.get(s)]
                 touched = ep.get("test_request") or any(s in ep for s in STATES)
-                if len(claimed) > 1:
-                    fail(errors, where, f"claims {len(claimed)} states at once: {claimed} — "
-                                        "verified/unverified/untestable/skipped are exclusive")
-                elif touched and not claimed:
+                if touched and not claimed:
                     empty = [s for s in STATES if s in ep]
                     fail(errors, where, f"no endpoint state: {sorted(empty)} present but empty"
                          if empty else "has a test_request but no verified/unverified/untestable/"
@@ -1620,6 +1682,10 @@ def main(argv: list[str]) -> int:
              f"drop the extended copy (core wins) or fix the ingester's core_routes dedup")
     for eid in sorted(UNDECLARED_RESERVE - endpoint_index.keys() if not only else ()):
         fail(errors, eid, "in UNDECLARED_RESERVE but not in the catalog")
+    if not only:
+        errors += violations.audit(uses, docs, hits)
+        check_routing(errors)
+        check_manifests(errors)
 
     for e in errors:
         print(e)

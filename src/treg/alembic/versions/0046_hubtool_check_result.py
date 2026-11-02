@@ -1,4 +1,4 @@
-"""hubtool.check_result — the check run's verdict on a version (docs/HUB-DECISIONS.md round 2 q10)
+"""hubtool.check_result — the check run's verdict on a version
 
 Revision ID: 0043
 Revises: 0042
