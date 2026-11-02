@@ -35,7 +35,7 @@ from ...domain.capacity.fair_share import NO_SLOT, ShareBusy, fair_share
 from ...domain.capacity.fair_share import RETRY_AFTER_S as RETRY_AFTER_SHARE_S
 from ...domain.capacity.view import view as capacity_view
 from ...infra.upstream.limiter import limiter as provider_limiter
-from ...infra.upstream.relay import identify_as_treg, relay, scope_shared_idempotency_key
+from ...infra.upstream.relay import identify_as_treg, relay, scope_shared_idempotency_key, tag_shared_client
 from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
@@ -1394,6 +1394,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 raw_headers = scope_shared_idempotency_key(
                     raw_headers, caller.org_id, pinned_tags=caller.membership.pinned_tags)
                 raw_headers = identify_as_treg(raw_headers)
+                raw_headers = tag_shared_client(
+                    raw_headers, catalog_store.load().client_headers.get(mk.provider),
+                    mk.provider, caller.org_id)
             query_items = tuple(request.query_params.multi_items())
             query_items += _ceiling_query(mk, query_items)
             upstream_request = UpstreamRequest(

@@ -1004,6 +1004,17 @@ def check_ceiling_param(rule, where: str, errors: list[str], *, prefix: str) -> 
         fail(errors, where, f"{prefix} must be {{in: query, name: <identifier>, unit: usd}}")
 
 
+_CLIENT_HEADER_NAME = re.compile(r"x-[a-z0-9]+(?:-[a-z0-9]+)*")
+
+
+def check_client_header(name, where: str, errors: list[str]) -> None:
+    """The header a provider reads treg's per-team code from: a lower-case `x-` name that cannot
+    collide with treg's own headers or a credential."""
+    if (not isinstance(name, str) or not _CLIENT_HEADER_NAME.fullmatch(name)
+            or name.startswith("x-treg-") or name in {"x-api-key", "x-forwarded-for", "x-real-ip"}):
+        fail(errors, where, "client_header must be a lower-case x- header name, not x-treg-* or a credential header")
+
+
 def check_provider_query_params(block, where: str, errors: list[str]) -> None:
     """A file-header `queryParams` block: optional query parameters every endpoint of the provider
     accepts, merged by the loader into each endpoint's own `input.queryParams`.
@@ -1453,6 +1464,8 @@ def main(argv: list[str]) -> int:
             check_ceiling_param(data.get("ceiling_param"), name, errors, prefix="ceiling_param")
         if "queryParams" in data:
             check_provider_query_params(data.get("queryParams"), name, errors)
+        if "client_header" in data:
+            check_client_header(data.get("client_header"), name, errors)
         proposed = set(data.get("proposed_capabilities") or {})
         known = capabilities | proposed
 
