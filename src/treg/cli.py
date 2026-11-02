@@ -96,28 +96,9 @@ def _load_config() -> dict:
         tok = (raw.get("orgs", {}).get(active) or {}).get("token")
         return {"base_url": base, "token": tok, "email": raw.get("email"), "active_org": active,
                 "identity": False, "admin_token": raw.get("admin_token")}
-    cfg = {"base_url": base, "token": raw.get("token"), "email": raw.get("email"),
-           "active_org": raw.get("active_org"), "identity": raw.get("identity", False),
-           "admin_token": raw.get("admin_token")}
-    pending = _parse_pending_login(raw.get("pending_login"))
-    if pending:
-        cfg["pending_login"] = pending
-    return cfg
-
-
-def _parse_pending_login(raw) -> dict | None:
-    """A browser login started without waiting: `{login_id, verifier, base_url, url, code,
-    expires_at, ad_link?}`. Anything else is dropped rather than polled."""
-    if not isinstance(raw, dict):
-        return None
-    fields = {"login_id": str, "verifier": str, "base_url": str, "url": str, "code": str,
-              "expires_at": (int, float)}
-    if not all(isinstance(raw.get(k), kind) for k, kind in fields.items()):
-        return None
-    pending = {k: raw[k] for k in fields}
-    if isinstance(raw.get("ad_link"), str):
-        pending["ad_link"] = raw["ad_link"]
-    return pending
+    return {"base_url": base, "token": raw.get("token"), "email": raw.get("email"),
+            "active_org": raw.get("active_org"), "identity": raw.get("identity", False),
+            "admin_token": raw.get("admin_token")}
 
 
 def _save_config(cfg: dict) -> None:
@@ -125,14 +106,44 @@ def _save_config(cfg: dict) -> None:
     if "_org_once" in cfg:
         kept = cfg.pop("_org_once")
         cfg = {**cfg, **kept}
-    CONFIG_PATH.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _write_private_json(CONFIG_PATH, cfg)
+
+
+def _write_private_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     # Write-then-rename so an interrupted save (kill / full disk) can't leave a truncated,
     # unparseable config that bricks every subsequent command.
-    tmp = CONFIG_PATH.with_name(CONFIG_PATH.name + ".tmp")
-    tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
     tmp.chmod(0o600)
-    os.replace(tmp, CONFIG_PATH)
-    CONFIG_PATH.chmod(0o600)
+    os.replace(tmp, path)
+    path.chmod(0o600)
+
+
+def _pending_login_path() -> Path:
+    return CONFIG_PATH.parent / "pending-login.json"
+
+
+def _load_pending_login() -> dict | None:
+    try:
+        raw = json.loads(_pending_login_path().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    fields = {"login_id": str, "verifier": str, "base_url": str, "url": str, "code": str,
+              "expires_at": (int, float), "expires_in": int}
+    if not isinstance(raw, dict) or not all(isinstance(raw.get(k), kind) for k, kind in fields.items()):
+        return None
+    pending = {k: raw[k] for k in fields}
+    if isinstance(raw.get("ad_link"), str):
+        pending["ad_link"] = raw["ad_link"]
+    return pending
+
+
+def _forget_pending_login(only_login_id: str | None = None) -> None:
+    if only_login_id is not None and (_load_pending_login() or {}).get("login_id") != only_login_id:
+        return
+    with contextlib.suppress(FileNotFoundError):
+        _pending_login_path().unlink()
 
 
 def _token_org_claim(token: str | None) -> str | None:
@@ -588,8 +599,8 @@ def cmd_login(args, cfg) -> None:
         if who.status_code >= 400:
             sys.exit(f"Token check failed ({who.status_code}): {who.text[:120]}")
         cfg["email"] = who.json().get("email")
-        cfg.pop("pending_login", None)
         _save_config(cfg)  # persist only a VERIFIED token
+        _forget_pending_login()
         _pick_active_org(cfg)
         if cfg.get("active_org"):
             print(f"✓ Token saved. Active org: {cfg['active_org']}")
@@ -619,8 +630,8 @@ def cmd_login(args, cfg) -> None:
                 return
             d = r.json()
             cfg.update(token=d["token"], email=d["email"], identity=True)
-            cfg.pop("pending_login", None)
             _save_config(cfg)  # persist the freshly-minted token BEFORE the optional org lookup
+            _forget_pending_login()
             _pick_active_org(cfg, pin=False)
             _pin_token_to_active_org(cfg, session_cookies=r.cookies)
             print(f"✓ Logged in as {cfg['email']}. Active org: {cfg.get('active_org')}")
@@ -629,14 +640,14 @@ def cmd_login(args, cfg) -> None:
     # Browser handshake (register-or-login) — the /login page reuses an existing dashboard
     # session with one click, else offers every configured door (GitHub / Google / email code).
     wait = bool(getattr(args, "wait", False))
-    pending = cfg.get("pending_login")
-    if pending and pending["base_url"] == cfg["base_url"] and time.time() < pending["expires_at"]:
-        status = _claim_pending_login(cfg, wait=False)
+    pending = _load_pending_login()
+    if pending and pending["base_url"] == cfg["base_url"]:
+        status = _claim_pending_login(cfg, pending, wait=False)
         if status == "logged_in":
             _maybe_offer_onboarding(cfg)
             return
         if status == "pending":
-            _show_pending_login(cfg, wait=wait)
+            _show_pending_login(cfg, pending, wait=wait)
             return
     import secrets as _secrets
     base = cfg["base_url"].rstrip("/")
@@ -680,16 +691,16 @@ def cmd_login(args, cfg) -> None:
     ad_link = _pending_ad_link()
     url = f"{base}/login?cli={lid}" + (f"&ad={ad_link}" if ad_link else "") + (f"#code={code}" if code else "")
     if deferrable:
-        cfg["pending_login"] = {"login_id": lid, "verifier": verifier, "base_url": cfg["base_url"],
-                                "url": url, "code": code, "expires_at": int(time.time()) + expires_in,
-                                **({"ad_link": ad_link} if ad_link else {})}
-        _save_config(cfg)
+        pending = {"login_id": lid, "verifier": verifier, "base_url": cfg["base_url"], "url": url,
+                   "code": code, "expires_at": int(time.time()) + expires_in, "expires_in": expires_in,
+                   **({"ad_link": ad_link} if ad_link else {})}
+        _write_private_json(_pending_login_path(), pending)
     try:
         webbrowser.open(url)
     except Exception:  # noqa: BLE001 - optional extras; the treg skill already installed
         pass
     if deferrable:
-        _show_pending_login(cfg, wait=wait)
+        _show_pending_login(cfg, pending, wait=wait)
         return
     _print_login_link(url, code)
     deadline = time.monotonic() + LOGIN_HANDSHAKE_SECONDS
@@ -717,11 +728,10 @@ def _print_login_link(url: str, code: str | None) -> None:
     print("Waiting for authorization…", flush=True)
 
 
-def _show_pending_login(cfg: dict, *, wait: bool) -> None:
-    pending = cfg["pending_login"]
+def _show_pending_login(cfg: dict, pending: dict, *, wait: bool) -> None:
     if wait or sys.stdout.isatty():
         _print_login_link(pending["url"], pending["code"])
-        if _claim_pending_login(cfg, wait=True) != "logged_in":
+        if _claim_pending_login(cfg, pending, wait=True) != "logged_in":
             sys.exit("That sign-in link expired before it was used. Run `treg login` again.")
         _maybe_offer_onboarding(cfg)
         return
@@ -748,10 +758,10 @@ def _poll_login(base: str, login_id: str, *, verifier: str, timeout: float) -> d
 
 def _adopt_login(cfg: dict, d: dict, *, forget_ad_link: bool, out=None) -> None:
     cfg.update(token=d["token"], email=d.get("email"), identity=True)
-    cfg.pop("pending_login", None)
     if d.get("active_org"):
         cfg["active_org"] = d["active_org"]  # the team the user picked in the browser
     _save_config(cfg)  # persist first; the login_id is single-use, don't risk losing it
+    _forget_pending_login()
     if forget_ad_link:
         _forget_ad_link()
     if not cfg.get("active_org"):
@@ -764,34 +774,31 @@ def _adopt_login(cfg: dict, d: dict, *, forget_ad_link: bool, out=None) -> None:
     print(f"✓ Logged in as {cfg['email']}. Active org: {cfg.get('active_org')}", file=out or sys.stdout)
 
 
-def _claim_pending_login(cfg: dict, *, wait: bool, timeout: float = 10.0, out=None) -> str:
-    """Move the saved pending login to `logged_in` or `expired`, or report it still `pending`."""
-    pending = cfg["pending_login"]
-    while time.time() < pending["expires_at"]:
+def _claim_pending_login(cfg: dict, pending: dict, *, wait: bool, timeout: float = 10.0, out=None) -> str:
+    """Move the pending login to `logged_in` or `expired`, or report it still `pending`."""
+    hard_cap = pending["expires_at"] + pending["expires_in"]
+    while True:
         d = _poll_login(pending["base_url"], pending["login_id"], verifier=pending["verifier"], timeout=timeout)
         if d.get("token"):
             _adopt_login(cfg, d, forget_ad_link="ad_link" in pending, out=out)
             return "logged_in"
-        if d.get("status") == "expired":
+        if d.get("status") == "expired" or time.time() >= hard_cap:
             break
-        if not wait:
+        if not wait or time.time() >= pending["expires_at"]:
             return "pending"
         time.sleep(1)
-    fresh = _load_config()
-    if fresh.get("pending_login") == pending:
-        del fresh["pending_login"]
-        _save_config(fresh)
+    _forget_pending_login(pending["login_id"])
     cfg.clear()
-    cfg.update(fresh)
+    cfg.update(_load_config())
     return "expired"
 
 
 def _pick_up_pending_login(cfg: dict) -> None:
-    pending = cfg.get("pending_login")
+    pending = _load_pending_login()
     if not pending or pending["base_url"] != cfg["base_url"]:
         return
     out = io.StringIO() if _JSON_OVERRIDE else sys.stderr
-    status = _claim_pending_login(cfg, wait=False, timeout=5.0, out=out)
+    status = _claim_pending_login(cfg, pending, wait=False, timeout=5.0, out=out)
     _note(pending_login=status)
     if status == "pending" and not cfg.get("token"):
         print(f"treg: sign-in is not finished yet; open {pending['url']} to finish it", file=out)
@@ -801,8 +808,8 @@ def _pick_up_pending_login(cfg: dict) -> None:
 
 def cmd_logout(args, cfg) -> None:
     cfg.update(token=None, email=None, active_org=None, identity=False)
-    cfg.pop("pending_login", None)
     _save_config(cfg)
+    _forget_pending_login()
     print("Logged out.")
 
 

@@ -3,10 +3,13 @@ the token. Driven through `cli.main` against the real app on a loopback socket a
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import contextvars
 import json
 import socket
 import stat
 import threading
+import time
 from datetime import timedelta
 from urllib.parse import parse_qs, urlsplit
 
@@ -77,6 +80,15 @@ def _stored() -> dict:
     return json.loads(cli.CONFIG_PATH.read_text(encoding="utf-8"))
 
 
+def _pending_file():
+    return cli.CONFIG_PATH.parent / "pending-login.json"
+
+
+def _pending() -> dict | None:
+    path = _pending_file()
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
 async def _approve(registry, pending: dict) -> None:
     response = await registry.browser.post("/auth/cli/approve", json={
         "login_id": pending["login_id"], "code": pending["code"], "org": registry.org,
@@ -87,15 +99,15 @@ async def _approve(registry, pending: dict) -> None:
 async def _login_without_waiting(capsys) -> dict:
     await asyncio.to_thread(cli.main, ["login"])
     out = capsys.readouterr().out
-    pending = _stored()["pending_login"]
+    pending = _pending()
     assert pending["url"] in out and pending["code"] in out and "treg login --wait" in out
     return pending
 
 
 async def test_agent_login_returns_and_the_next_command_collects_the_token(registry, capsys):
     pending = await _login_without_waiting(capsys)
-    assert stat.S_IMODE(cli.CONFIG_PATH.stat().st_mode) == 0o600
-    assert _stored().get("token") is None
+    assert stat.S_IMODE(_pending_file().stat().st_mode) == 0o600
+    assert "pending_login" not in _stored() and _stored().get("token") is None
     assert "/auth/cli/poll" not in registry.paths
     login_id = parse_qs(urlsplit(pending["url"]).query)["cli"][0]
     assert login_id == pending["login_id"] and pending["verifier"] not in pending["url"]
@@ -108,8 +120,7 @@ async def test_agent_login_returns_and_the_next_command_collects_the_token(regis
     captured = capsys.readouterr()
     assert "✓ Logged in as pending@example.test" in captured.err
     assert "pending@example.test" in captured.out and "✓" not in captured.out
-    stored = _stored()
-    assert "pending_login" not in stored and stored["active_org"] == registry.org
+    assert _pending() is None and _stored()["active_org"] == registry.org
 
 
 async def test_second_login_while_pending_reprints_the_same_link(registry, capsys):
@@ -120,12 +131,11 @@ async def test_second_login_while_pending_reprints_the_same_link(registry, capsy
 
     assert await _login_without_waiting(capsys) == pending
     assert registry.paths.count("/auth/cli/start") == 1
-    assert _stored()["pending_login"] == pending
 
     await _approve(registry, pending)
     await asyncio.to_thread(cli.main, ["whoami"])
     assert "✓ Logged in as pending@example.test" in capsys.readouterr().err
-    assert _stored()["token"] and "pending_login" not in _stored()
+    assert _stored()["token"] and _pending() is None
 
 
 async def test_unfinished_sign_in_is_named_on_stderr_and_kept(registry, capsys):
@@ -133,7 +143,7 @@ async def test_unfinished_sign_in_is_named_on_stderr_and_kept(registry, capsys):
     with pytest.raises(SystemExit):
         await asyncio.to_thread(cli.main, ["whoami"])
     assert pending["url"] in capsys.readouterr().err
-    assert _stored()["pending_login"] == pending
+    assert _pending() == pending
 
 
 async def test_expired_sign_in_is_dropped(registry, capsys):
@@ -146,7 +156,28 @@ async def test_expired_sign_in_is_dropped(registry, capsys):
     with pytest.raises(SystemExit):
         await asyncio.to_thread(cli.main, ["whoami"])
     assert "expired" in capsys.readouterr().err
-    assert "pending_login" not in _stored()
+    assert _pending() is None
+
+
+async def test_approval_after_the_local_expiry_is_still_collected(registry, capsys):
+    pending = await _login_without_waiting(capsys)
+    await _approve(registry, pending)
+    cli._write_private_json(_pending_file(), {**pending, "expires_at": int(time.time()) - 60})
+
+    await asyncio.to_thread(cli.main, ["whoami"])
+    assert "✓ Logged in as pending@example.test" in capsys.readouterr().err
+    assert _stored()["token"] and _pending() is None
+
+
+async def test_sign_in_past_the_longest_approval_window_is_dropped(registry, capsys):
+    pending = await _login_without_waiting(capsys)
+    past = int(time.time()) - pending["expires_in"] - 1
+    cli._write_private_json(_pending_file(), {**pending, "expires_at": past})
+
+    with pytest.raises(SystemExit):
+        await asyncio.to_thread(cli.main, ["whoami"])
+    assert "expired" in capsys.readouterr().err
+    assert registry.paths.count("/auth/cli/poll") == 1 and _pending() is None
 
 
 async def test_expired_claim_keeps_a_token_another_process_saved(registry, capsys):
@@ -155,12 +186,59 @@ async def test_expired_claim_keeps_a_token_another_process_saved(registry, capsy
     await _approve(registry, pending)
     other = await registry.browser.get("/auth/cli/poll", params={"login_id": pending["login_id"]},
                                        headers={"X-Treg-Poll-Verifier": pending["verifier"]})
-    winner = {k: v for k, v in _stored().items() if k != "pending_login"}
-    cli._save_config({**winner, "token": other.json()["token"], "identity": True})
+    cli._save_config({**_stored(), "token": other.json()["token"], "identity": True})
 
-    assert await asyncio.to_thread(cli._claim_pending_login, stale, wait=False) == "expired"
-    assert _stored()["token"] == other.json()["token"] and "pending_login" not in _stored()
+    assert await asyncio.to_thread(cli._claim_pending_login, stale, pending, wait=False) == "expired"
+    assert _stored()["token"] == other.json()["token"] and _pending() is None
     assert stale["token"] == other.json()["token"]
+
+
+async def test_expired_handling_between_a_claim_and_its_save_keeps_the_token(registry, capsys, monkeypatch):
+    pending = await _login_without_waiting(capsys)
+    await _approve(registry, pending)
+    role = contextvars.ContextVar("role", default="")
+    a_claimed, b_polled, b_loaded, a_done = (threading.Event() for _ in range(4))
+    real_save, real_load, real_poll = cli._save_config, cli._load_config, cli._poll_login
+
+    def save(cfg):
+        if role.get() == "A" and cfg.get("token") and not a_claimed.is_set():
+            a_claimed.set()
+            assert b_loaded.wait(10), "B never reloaded the config"
+        real_save(cfg)
+
+    def poll(*args, **kwargs):
+        answer = real_poll(*args, **kwargs)
+        if role.get() == "B":
+            assert answer == {"status": "expired"}
+            b_polled.set()
+        return answer
+
+    def load():
+        cfg = real_load()
+        if role.get() == "B" and b_polled.is_set() and not b_loaded.is_set():
+            b_loaded.set()
+            assert a_done.wait(10), "A never finished"
+        return cfg
+
+    monkeypatch.setattr(cli, "_save_config", save)
+    monkeypatch.setattr(cli, "_poll_login", poll)
+    monkeypatch.setattr(cli, "_load_config", load)
+
+    def run(name: str) -> None:
+        role.set(name)
+        try:
+            with contextlib.suppress(SystemExit):
+                cli.main(["whoami"])
+        finally:
+            if name == "A":
+                a_done.set()
+
+    first = asyncio.create_task(asyncio.to_thread(run, "A"))
+    assert await asyncio.to_thread(a_claimed.wait, 10)
+    second = asyncio.create_task(asyncio.to_thread(run, "B"))
+    await asyncio.wait_for(asyncio.gather(first, second), 20)
+    assert b_loaded.is_set()
+    assert _stored()["token"] and _pending() is None
 
 
 async def test_wait_resumes_the_saved_sign_in(registry, capsys):
@@ -172,7 +250,7 @@ async def test_wait_resumes_the_saved_sign_in(registry, capsys):
     await asyncio.wait_for(waiting, 10)
     assert "✓ Logged in as pending@example.test" in capsys.readouterr().out
     assert registry.paths.count("/auth/cli/start") == 1
-    assert _stored()["token"] and "pending_login" not in _stored()
+    assert _stored()["token"] and _pending() is None
 
 
 async def test_server_without_poll_verifier_keeps_the_blocking_login(registry, capsys, monkeypatch):
@@ -193,10 +271,10 @@ async def test_server_without_poll_verifier_keeps_the_blocking_login(registry, c
     await _approve(registry, {"login_id": login_id, "code": urlsplit(url).fragment.removeprefix("code=")})
     await asyncio.wait_for(waiting, 10)
     assert "✓ Logged in as pending@example.test" in capsys.readouterr().out
-    assert _stored()["token"] and "pending_login" not in _stored()
+    assert _stored()["token"] and _pending() is None
 
 
 async def test_logout_forgets_the_saved_sign_in(registry, capsys):
     await _login_without_waiting(capsys)
     await asyncio.to_thread(cli.main, ["logout"])
-    assert "pending_login" not in _stored()
+    assert _pending() is None
