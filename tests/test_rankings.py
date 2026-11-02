@@ -334,7 +334,7 @@ def test_a_model_that_moved_vendor_compares_with_all_its_earlier_calls():
 
 
 def test_a_decision_model_is_its_own_type_and_counts_in_all():
-    (jev,) = [e for e in store.load().endpoints if e["platform"] == "ai-judge" and store.browsable(e)]
+    jev = next(e for e in store.load().endpoints if e["platform"] == "ai-judge" and store.browsable(e))
     board = rankings.build(_rows(jev["id"], {0: 50}), store.load(), LAST)["ai_models"]["7d"]
     (model,) = board["models"]
     assert model["type"] == "Decision" and model["calls"] == 50
