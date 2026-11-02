@@ -537,6 +537,21 @@ async def test_read_switches_and_fallback_without_db_connection(clients, r2, mon
     assert r2.get_calls > 0
 
 
+async def test_terminal_snapshots_carry_the_recorded_status_and_use_the_given_sessions(clients, r2, monkeypatch):
+    monkeypatch.setattr(get_settings(), 'archive_body_read_terminal', 'r2-first')
+    await archive.store_terminal_response('terminal-404', 'tikhub', EP, 404, RAW)
+    r2.objects.clear()  # the bytes now come from the DB fallback, through the given factory
+    opened = []
+
+    def factory():
+        opened.append(True)
+        return db.session_maker()
+    assert await archive.load_terminal_snapshots(
+        [('terminal-404', EP), ('absent', EP)], session_factory=factory) == {'terminal-404': (404, RAW)}
+    assert len(opened) == 2  # the metadata session, then the fallback read
+    assert await archive.load_terminal_responses([('terminal-404', EP)]) == {'terminal-404': RAW}
+
+
 async def test_defaults_read_db_and_r2_only_has_no_db_carrier(clients, r2, monkeypatch):
     await clients.get(URL)
     await archive.drain()
