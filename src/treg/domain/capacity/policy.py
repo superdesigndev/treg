@@ -39,6 +39,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "findymail": ("credits", "manual", "api"),
     "anymailfinder": ("credits", "manual", "api"),
     "enrow": ("credits", "manual", "api"),
+    "filtrat": ("credits", "manual", "api"),
     "leadsforge": ("credits", "manual", "api"),
     "thecompaniesapi": ("credits", "manual", "api"),
     "tomba": ("monthly_quota", "quota_reset", "api"),
@@ -120,6 +121,9 @@ _QUOTAS: dict[str, dict] = {
 _RATE_LIMITS: dict[str, dict] = {
     "orbisearch": {"limit": 15, "window_s": 1, "source": "policy"},
     "enrow": {"limit": 8, "window_s": 1, "source": "policy"},
+    # treg's partner key is limited to 600 verifications and 200 finder searches a minute (429 with
+    # Retry-After: 60 above that); pace the whole provider at the verification allowance.
+    "filtrat": {"limit": 600, "window_s": 60, "source": "docs"},
     # The published 60 requests/second is shared across enrichment and result polling. Leave
     # headroom for account checks and manual use of the same key; BYOK bypasses this pace.
     "dropcontact": {"limit": 30, "window_s": 1, "source": "policy"},
@@ -235,6 +239,9 @@ _ENDPOINT_RATE_LIMITS: dict[str, dict] = {
     # Email Verifier publishes no limit; its 429s carry x-ratelimit-limit 20 per minute, far below
     # the documented 1,000/min for other APIs. A provider-wide 20/min would slow every other route.
     "contactout.people.email.verify": {"limit": 20, "window_s": 60, "source": "headers"},
+    # Both finder rows share the vendor's 200-a-minute finder allowance on treg's partner key.
+    "filtrat.people.email.find": {"limit": 100, "window_s": 60, "source": "docs"},
+    "filtrat.people.email.find.resolve_catchall": {"limit": 100, "window_s": 60, "source": "docs"},
 }
 
 # Calls in progress a provider allows on treg's own key (domain/capacity/fair_share.py shares them
@@ -247,6 +254,10 @@ _CONCURRENCY: dict[str, int] = {
     "litescrape": 100,
     # treg's own conservative setting for the shared account (catalog row `limits`).
     "fishaudio": 5,
+    # Filtrat asks for at most 10 verifications and 8 finder searches in progress on treg's partner
+    # key (a 9th search waits up to 10 s, then 503 SERVER_BUSY). The gate is per provider, so it takes
+    # the lower figure; 8 verifications at the observed 0.6 s median still clear the 600 a minute.
+    "filtrat": 8,
 }
 
 
