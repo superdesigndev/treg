@@ -219,9 +219,30 @@ async def test_expired_claim_keeps_a_token_another_process_saved(registry, capsy
                                        headers={"X-Treg-Poll-Verifier": pending["verifier"]})
     cli._save_config({**_stored(), "token": other.json()["token"], "identity": True})
 
-    assert await asyncio.to_thread(cli._claim_pending_login, stale, pending, wait=False) == "expired"
+    assert await asyncio.to_thread(cli._claim_pending_login, stale, pending, wait=False) == "logged_in"
     assert _stored()["token"] == other.json()["token"] and _pending() is None
     assert stale["token"] == other.json()["token"]
+
+
+async def test_a_token_saved_just_after_an_expired_answer_is_adopted(registry, capsys, monkeypatch):
+    pending = await _login_without_waiting(capsys)
+    await _approve(registry, pending)
+    other = await registry.browser.get("/auth/cli/poll", params={"login_id": pending["login_id"]},
+                                       headers={"X-Treg-Poll-Verifier": pending["verifier"]})
+    token = other.json()["token"]
+    real_poll = cli._poll_login
+
+    def poll(*args, **kwargs):
+        answer = real_poll(*args, **kwargs)
+        assert answer == {"status": "expired"}
+        threading.Timer(.5, cli._save_config, [{**_stored(), "token": token, "identity": True}]).start()
+        return answer
+
+    monkeypatch.setattr(cli, "_poll_login", poll)
+    await asyncio.to_thread(cli.main, ["whoami"])
+    captured = capsys.readouterr()
+    assert "expired" not in captured.err and "pending@example.test" in captured.out
+    assert _stored()["token"] == token and _pending() is None
 
 
 async def test_expired_handling_between_a_claim_and_its_save_keeps_the_token(registry, capsys, monkeypatch):

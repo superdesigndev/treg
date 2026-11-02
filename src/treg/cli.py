@@ -779,6 +779,7 @@ def _adopt_login(cfg: dict, d: dict, *, forget_ad_link: bool = False, pick_org: 
 def _claim_pending_login(cfg: dict, pending: dict, *, wait: bool, timeout: float = 10.0, out=None) -> str:
     """Move the pending login to `logged_in` or `expired`, or report it still `pending`."""
     hard_cap = pending["expires_at"] + pending["expires_in"]
+    token_before = cfg.get("token")
     while True:
         d = _poll_login(pending["base_url"], pending["login_id"], verifier=pending["verifier"], timeout=timeout)
         if d.get("token"):
@@ -790,9 +791,19 @@ def _claim_pending_login(cfg: dict, pending: dict, *, wait: bool, timeout: float
             return "pending"
         time.sleep(1)
     _forget_pending_login(pending["login_id"])
-    cfg.clear()
-    cfg.update(_load_config())
-    return "expired"
+    settle_by = time.monotonic() + PARALLEL_LOGIN_SAVE_SECONDS
+    while True:
+        cfg.clear()
+        cfg.update(_load_config())
+        if cfg.get("token") and cfg["token"] != token_before:
+            print(f"✓ Logged in as {cfg['email']}. Active org: {cfg.get('active_org')}", file=out or sys.stdout)
+            return "logged_in"
+        if time.monotonic() >= settle_by:
+            return "expired"
+        time.sleep(.1)
+
+
+PARALLEL_LOGIN_SAVE_SECONDS = 2.0
 
 
 def _pick_up_pending_login(cfg: dict) -> None:

@@ -103,13 +103,14 @@ is self-teaching. This fragment holds only what the code and help cannot say.
   the code at approve time: a login you did not start cannot be approved into a token.
 - **Login without waiting.** `start` sends a `poll_challenge`; its verifier never enters the shared
   link. Only a 404 from `start` falls back to a locally minted id; any other failure exits naming
-  it, because a current server answers `expired` for an id it never issued. Outside a terminal and without `--wait`, `login` saves `~/.treg/pending-login.json` (`0600`)
-  and returns 0. It is a separate file so a claim that sees `expired` never rewrites `config.json`
-  while a parallel command saves the token there; the server, not the file, decides expiry, since
-  approval extends it. `login` again or `login --wait` resumes it (a second handshake would orphan the link
-  already shared). A signed-out command without `TREG_TOKEN` collects it once before running,
-  reporting on stderr so its stdout stays parseable; a process on another credential must not
-  consume the human's login.
+  it, because a current server answers `expired` for an id it never issued. Outside a terminal and
+  without `--wait`, `login` saves `~/.treg/pending-login.json` (`0600`) and returns 0; `login` again
+  or `--wait` resumes it rather than orphaning the link already shared. A signed-out command without
+  `TREG_TOKEN` collects it once before running and reports on stderr, so its stdout stays parseable
+  and a process on another credential never consumes the human's login. The server decides expiry,
+  since approval extends it. The pending login is a separate file so a claim that sees `expired`
+  never rewrites `config.json`; it then waits up to 2 s for a parallel command that consumed the same
+  login to save its token there.
 - **Team Default key, not bootstrap.** An org-less login yields a signed `scp=bootstrap` credential
   that identifies the account for onboarding, expires after seven days and cannot call team
   resources. Selecting, creating, joining or accepting a team replaces the stored token with that
