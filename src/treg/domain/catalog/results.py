@@ -6,6 +6,7 @@ import math
 import re
 from typing import Literal
 
+from .. import plugins
 from . import outcome
 from .schema.v2 import is_v2
 
@@ -145,13 +146,14 @@ def _declared_miss(endpoint_id: str, status: int, body: bytes) -> bool:
         return False
 
 
-def _judged(endpoint: dict, status: int, doc: object) -> Result:
+def _judged(endpoint: dict, status: int, body: bytes, doc: object) -> Result:
     """A v2 row's 2xx answer through its one outcome declaration, in the result vocabulary."""
-    judged = outcome.judge(endpoint, status, doc)
+    answer = plugins.Answer(status=status, headers={}, raw=body, body=doc)
+    judged = outcome.judge(endpoint, status, doc, answer=answer)
     if judged.cause == "expect":
         return Result("error", "expect_failed")
     if judged.cause == "error":
-        return Result("error", "provider_error", empty=outcome.miss_holds(endpoint, doc))
+        return Result("error", "provider_error", empty=outcome.miss_holds(endpoint, doc, answer=answer))
     if not isinstance(doc, (dict, list)):
         return Result("unknown", "invalid_shape")
     return Result("empty", "adapter_miss") if judged.state == "miss" else Result("found", "adapter_hit")
@@ -174,7 +176,7 @@ def classify(endpoint_id: str, status: int, body: bytes) -> Result:
 
     endpoint = load().by_id.get(endpoint_id) or {}
     if is_v2(endpoint):
-        return _judged(endpoint, status, doc)
+        return _judged(endpoint, status, body, doc)
     if _expect_failure(endpoint_id, doc) is not None:
         # The provider's own success rule failed: whatever the adapter reads off the remains, this
         # is not an answer to the question, found or empty. Neither cached nor counted.

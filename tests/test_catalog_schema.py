@@ -99,6 +99,10 @@ PROVENANCE = {"source": "docs", "source_url": "https://example.com/pricing", "ch
     ({"settle": {"count": {"path": "body.items"}}, "price": {"value": "0"}}, "body path"),
     ({"price": {"rates": {"a": "1"}}, "provenance": PROVENANCE, "settle": {"count": {"path": "response.a"}}},
      "price.rates stands only beside plugins"),
+    ({"price": {"rates": {"a": "1"}}, "provenance": PROVENANCE, "settle": {"plugin": "demo.used"}},
+     "price.rates stands only beside plugins"),
+    ({"price": {"rates": {"a": "1"}}, "provenance": PROVENANCE, "reserve": {"plugin": "demo.hold", "max": "1"},
+      "bill": {"miss": 2}}, "bill.miss in units needs a unit price"),
     ({"miss": {"status": [200]}}, "greater than or equal to 400"),
     ({"miss": {"means": "nothing"}}, "needs status, when or plugin"),
     ({"error": {"when": {"path": "response.e", "op": "present"}, "plugin": "demo.err"}}, "exactly one of when"),
@@ -124,8 +128,27 @@ def test_a_v2_row_is_served_as_plain_values_with_every_absent_meaning_and_its_co
     assert out["price"] == {"value": "1", "currency": "credit", "per": 10, "round": "up", "unit": "result"}
     assert out["expect"] is None and out["miss"] is None and out["bill"] == {"miss": "free", "error": "free"}
     assert out["cost"] == {"type": "per_result", "value": 1, "currency": "credit", "per": 10, "unit": "result",
-                           **PROVENANCE}
+                           "reserve": {"rows": {"param": "body.limit", "default": {"value": 100, "source": "docs"},
+                                                "max": 10000}},
+                           "reported_charge": {"path": "credits_used", "unit": "credit"}, **PROVENANCE}
     assert json.loads(json.dumps(out)) == out
+
+
+@pytest.mark.parametrize("keys,cost", [
+    ({"reserve": {"rows": {"param": "query.limit", "max": 50}}},
+     {"reserve": {"rows": {"param": "queryParams.limit", "max": 50}}}),
+    ({"reserve": {"rows": {"param": "query.n", "default": {"value": 5, "source": "docs"}, "max": 50}}},
+     {"reserve": {"rows": {"param": "pathParams.n", "default": {"value": 5, "source": "docs"}, "max": 50}}}),
+    ({"reserve": {"entities": {"from": "body.domains"}}, "settle": {"count": {"path": "response.data.items"}}},
+     {"reserve": {"entities": {}}, "settle": {"count": {"path": "data.items"}}}),
+    ({"settle": {"reported": {"header": "x-cost", "unit": "usd"}}}, {}),
+])
+def test_the_served_cost_rebuilds_todays_hold_and_settle_forms(keys, cost):
+    from treg.domain.catalog.schema.v2 import served
+    row = V2Row.model_validate(_v2(price={"value": "1"}, provenance=PROVENANCE, **keys))
+    out = served(row, {"pathParams": {"n": {"type": "integer"}}, "queryParams": {"limit": {"type": "integer"}}})
+    assert out["cost"] == {"type": "per_result" if "reserve" in keys or "count" in keys.get("settle", {})
+                           else "per_success", "value": 1, **cost, **PROVENANCE}
 
 
 def test_the_merge_rule_replaces_whole_inherits_the_absent_and_opts_out_on_null():

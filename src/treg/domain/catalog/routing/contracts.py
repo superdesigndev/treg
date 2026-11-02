@@ -11,6 +11,7 @@ from typing import Any
 
 from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 
+from ... import plugins
 from .. import outcome
 from ..schema.v2 import is_v2
 from . import paths as P
@@ -184,7 +185,9 @@ class Adapter:
         if endpoint is None:
             from ..store import load
             endpoint = load().by_id.get(self.endpoint_id) or {}
-        return outcome.miss_holds(endpoint, provider_body)
+        raw = json.dumps(provider_body).encode() if provider_body is not None else b""
+        return outcome.miss_holds(endpoint, provider_body,
+                                  answer=plugins.Answer(status=200, headers={}, raw=raw, body=provider_body))
 
     @property
     def records_verdict(self) -> bool:
@@ -393,7 +396,11 @@ def declared_miss(endpoint: dict, status: int, body: Any) -> bool:
     is the raw bytes or the parsed document; only a JSON object can satisfy a predicate, and a
     predicate that raises reads as "not a miss"."""
     if is_v2(endpoint):
-        return outcome.status_miss(endpoint, status, _document(body))
+        doc = _document(body)
+        raw = bytes(body) if isinstance(body, (bytes, bytearray)) else body.encode() \
+            if isinstance(body, str) else json.dumps(body).encode()
+        return outcome.status_miss(endpoint, status, doc,
+                                   answer=plugins.Answer(status=status, headers={}, raw=raw, body=doc))
     if status != miss_status(endpoint):
         return False
     return _body_matches((endpoint.get("miss") or {}).get("when"), body)

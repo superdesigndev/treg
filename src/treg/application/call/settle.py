@@ -1207,6 +1207,9 @@ def _decide_v2(mk: MarketplaceCall, status_code: int | None, body: bytes, header
                   else call_cost.reported(mk.cost_terms, doc, headers))
         billable = bool(figure) and status_code not in _NOT_THE_CALLERS_FAULT
         observed = actual = figure if billable else None
+        if not billable and _platform_billable(status_code, mk.cost_type):
+            return False, (_capacity_release(mk, status_code, headers, body)
+                           or f"rejected_unbilled_{status_code}"), None, None
     elif observed_override is not None:
         billable, observed, actual = True, observed_override, observed_override
     else:

@@ -88,6 +88,14 @@ def test_a_table_row_with_expect_and_an_adapter_miss_freezes_its_outcome():
     assert change.adapter_miss and change.replaced == ("cost", "expect") and _v2(change)
 
 
+@pytest.mark.parametrize("spec", [{"type": "string"}, {"type": "array[string]"}])
+def test_an_entity_hold_counts_the_one_declared_entity_field(spec):
+    change = codemod.rewrite({"id": "demo.x", "input": {"body": {"domain": spec, "roles": {"type": "string"}}},
+                              "cost": {"type": "per_result", "value": 1, "reserve": {"entities": {}},
+                                       **PROVENANCE}}, provider="demo", check_branches=False)
+    assert change.keys["reserve"] == {"entities": {"from": "body.domain"}} and _v2(change)
+
+
 @pytest.mark.parametrize("row,reason", [
     ({"cost": {"type": "quota_rows", "value": 1}}, "quota_rows"),
     ({"cost": {"type": "per_success", "value": 1, "settle": "modifiers"}}, "plugin"),

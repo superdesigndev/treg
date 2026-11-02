@@ -127,6 +127,7 @@ endpoints:
       source_url: https://app.findymail.com/docs/
       checked: '2026-10-28'
       confidence: documented
+    reserve: {entities: {from: body.domain}}
     settle: {count: {path: response.contacts}}
     bill: {miss: charged, error: charged}
     error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}

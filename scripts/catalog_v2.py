@@ -134,13 +134,6 @@ def _entities(row: dict) -> tuple[str, ...]:
     return tuple(found)
 
 
-def _spec(row: dict, path: str) -> dict:
-    location, _, name = path.partition(".")
-    block = (row.get("input") or {}).get("queryParams" if location == "query" else "body") or {}
-    block = block.get("properties", block) if isinstance(block, dict) else {}
-    return block.get(name) if isinstance(block.get(name), dict) else {}
-
-
 def _price(cost: dict, warnings: list[str]) -> dict:
     out: dict = {}
     if cost.get("table") is not None:
@@ -219,8 +212,7 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
         if len(fields) > 1:
             raise Refused(f"today's hold takes the first of {', '.join(fields)}; v2 adds them up")
         out.warnings.append("today's hold also counts entity fields the input does not declare")
-        spec = _spec(row, fields[0]) if fields else {}
-        if fields and not str(spec.get("type", "string")).startswith("string"):
+        if fields:
             keys["reserve"] = {"entities": {"from": fields[0]}}
     elif kind == "per_result" and cost.get("unit") != "call":
         raise Refused("today's per_result hold guesses the count from common parameter names; "

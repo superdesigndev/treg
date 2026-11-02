@@ -263,10 +263,12 @@ class V2Row(RowBase):
         if self.provenance is not None and (self.provenance.confidence == "unknown") != unknown:
             raise ValueError("provenance.confidence is unknown exactly when price.value is null")
         if self.price is not None and self.price.rates is not None:
-            hooks = [h for h in (self.reserve, self.settle) if h is not None]
-            if not hooks or any(h.plugin is None for h in hooks):
-                raise ValueError("price.rates stands only beside plugins: every reserve or settle "
-                                 "on the row is a plugin, and at least one is present")
+            if self.reserve is None or self.reserve.plugin is None \
+                    or (self.settle is not None and self.settle.plugin is None):
+                raise ValueError("price.rates stands only beside plugins: a reserve.plugin, and a "
+                                 "settle, if any, that is a plugin")
+            if self.bill is not None and isinstance(self.bill.miss, int):
+                raise ValueError("bill.miss in units needs a unit price; price.rates has none")
         return self
 
 
@@ -328,12 +330,22 @@ def cost_type(price: dict | None, reserve: dict | None, settle: dict | None, bil
     return "per_success"
 
 
+def _reserve_view(reserve: dict, input_schema: dict) -> dict:
+    if "rows" in reserve:
+        rows = reserve["rows"]
+        view = {"param": _legacy_location(rows["param"], input_schema)} if rows.get("param") else {}
+        return {"rows": {**view, **{k: rows[k] for k in ("default", "max") if k in rows}}}
+    return {"entities": {}} if "entities" in reserve else {}
+
+
 def served_cost(row: dict, input_schema: dict) -> dict | None:
-    """The served cost of a v2 row: its price and provenance in today's `cost` shape, so every view
-    and eligibility check that reads `cost` reads a v2 row unchanged. Billing never reads it."""
+    """The served cost of a v2 row: its price, provenance, hold and settle forms in today's `cost`
+    shape, so every view and eligibility check that reads `cost` reads a v2 row unchanged. Billing
+    never reads it."""
     price, provenance = row.get("price"), row.get("provenance") or {}
     if price is None:
         return None
+    reserve, settle = row.get("reserve") or {}, row.get("settle") or {}
     out: dict = {"type": cost_type(price, row.get("reserve"), row.get("settle"), row["bill"])}
     if price.get("value") is not None:
         out["value"] = _number(price["value"])
@@ -341,18 +353,28 @@ def served_cost(row: dict, input_schema: dict) -> dict | None:
         if (table := _table_view(price["table"], input_schema)) is not None:
             out["table"] = table
         out["fallback"] = {"value": _number(price["fallback"]["value"]), "note": price["fallback"]["note"]}
-    for key in ("currency", "per", "unit", "note"):
+    for key in ("currency", "per", "unit"):
         if key in price:
             out[key] = price[key]
     if "display" in price:
         out["display"] = {k: (_number(v) if k == "value" else v) for k, v in price["display"].items()}
-    usage = (row.get("settle") or {}).get("usage")
+    if view := _reserve_view(reserve, input_schema):
+        out["reserve"] = view
+    if "count" in settle:
+        out["settle"] = {"count": {"path": relative(settle["count"]["path"])}}
+    reported = settle.get("reported") or {}
+    if reported.get("path"):
+        out["reported_charge"] = {"path": relative(reported["path"]), "unit": reported["unit"]}
+    usage = settle.get("usage")
     if usage is not None:
         out["settle"] = "usage"
         out["usage"] = {"unit": usage["unit"], **(
             {"terms": [{"path": relative(t["path"]), "rate": float(t["rate"])} for t in usage["terms"]]}
             if "terms" in usage else {"path": relative(usage["path"])})}
-    return {**out, **provenance}
+    out.update(provenance)
+    if "note" in price:
+        out["note"] = price["note"]
+    return out
 
 
 def served(row: V2Row, input_schema: dict) -> dict:

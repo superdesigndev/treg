@@ -89,7 +89,9 @@ def amount(terms: dict, units: int | float | Decimal) -> int:
 def _priced(terms: dict, quantity: object) -> int | None:
     """A plugin's quantity priced: a number at the unit price, or `{rate: quantity}` at the frozen
     rates. None when the quantity is not one."""
-    if isinstance(quantity, dict) and terms.get("rates_micro") is not None:
+    if terms.get("rates_micro") is not None:
+        if not isinstance(quantity, dict):
+            return None
         total = Decimal(0)
         for name, count in quantity.items():
             if name not in terms["rates_micro"] or not _count(count):

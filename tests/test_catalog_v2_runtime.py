@@ -46,7 +46,8 @@ def call(ep: dict, body: dict | None = None, query: list | None = None, *, statu
     mk = MarketplaceCall(tool=None, upstream="", consumed=set(), endpoint_id=ep["id"], provider="demo",
                          tier="credential", estimate_micro=hold, unit_micro=unit,
                          reported_charge_unit_micro=credit, settlement_basis=basis, request_data=request,
-                         cost_terms=terms, call_id="c", deferred=[] if routed else None)
+                         cost_terms=terms, call_id="c", deferred=[] if routed else None,
+                         cost_type=(ep.get("cost") or {}).get("type") or "")
     raw = answer if isinstance(answer, bytes) else json.dumps(answer).encode()
     return hold, decide_settle(mk, status, raw, headers=headers)
 
@@ -111,6 +112,18 @@ def test_an_outcome_plugin_that_raises_is_false(monkeypatch):
     assert outcome.judge(row(miss={"plugin": "demo.found_nothing"}), 200, {}).state == "miss"
 
 
+def test_routing_hands_an_outcome_plugin_the_answer_it_holds(monkeypatch):
+    from treg.domain.catalog.routing.contracts import Adapter, declared_miss
+    module = types.ModuleType("treg.domain.plugins.demo")
+    module.gone = lambda request, answer: answer.status == 404 and answer.raw == b'{"e": 1}'
+    module.empty = lambda request, answer: answer.status == 200 and answer.body == {"items": []}
+    monkeypatch.setitem(sys.modules, "treg.domain.plugins.demo", module)
+    assert declared_miss(row(miss={"status": [404], "plugin": "demo.gone"}), 404, b'{"e": 1}')
+    adapter = Adapter(endpoint_id="demo.x", accepts=(), in_map={}, out_map={}, miss="")
+    assert adapter.is_miss({"items": []}, row(miss={"plugin": "demo.empty"}))
+    assert not adapter.is_miss({"items": [1]}, row(miss={"plugin": "demo.empty"}))
+
+
 # -- the hold ------------------------------------------------------------------------------------
 
 def test_a_value_price_holds_whole_per_blocks_when_it_rounds_up():
@@ -152,6 +165,17 @@ def test_a_reserve_plugin_is_priced_at_the_frozen_rates_and_capped(monkeypatch):
     assert call(ep, {"n": 3})[0] == 130000 and call(ep, {"n": 100})[0] == 500000
 
 
+def test_a_rates_plugin_that_returns_a_plain_number_is_missing_evidence(monkeypatch):
+    module = types.ModuleType("treg.domain.plugins.demo")
+    module.hold = lambda request: {"result": 2}
+    module.used = lambda request, answer: 1
+    monkeypatch.setitem(sys.modules, "treg.domain.plugins.demo", module)
+    ep = row(price={"rates": {"result": "0.01"}, "currency": "USD"},
+             reserve={"plugin": "demo.hold", "max": "0.5"}, settle={"plugin": "demo.used"})
+    hold, decision = call(ep)
+    assert hold == 20000 and decision.actual_micro == 20000
+
+
 # -- the settlement order ------------------------------------------------------------------------
 
 REPORTED = {"reported": {"path": "response.used", "unit": "credit"}}
@@ -170,6 +194,17 @@ REPORTED = {"reported": {"path": "response.used", "unit": "credit"}}
 def test_a_reported_charge_settles_uncapped_and_a_4xx_only_when_it_reports_one(status, answer, billable, actual):
     _, decision = call(row(settle=REPORTED), status=status, answer=answer)
     assert (decision.billable, decision.actual_micro) == (billable, actual)
+
+
+@pytest.mark.parametrize("bill,status,reason", [
+    ({"miss": "charged"}, 400, "rejected_unbilled_400"),               # today's per_call label
+    ({"miss": "charged"}, 429, ""),                                     # not the caller's fault
+    (None, 400, ""),
+])
+def test_an_unbilled_4xx_is_labelled_as_todays_per_call_row_labels_it(bill, status, reason):
+    keys = {"bill": bill} if bill else {}
+    _, decision = call(row(**keys), status=status, answer={})
+    assert (decision.billable, decision.reason) == (False, reason)
 
 
 def test_free_when_reads_the_request_and_the_answer_before_a_reported_charge():

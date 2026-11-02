@@ -58,11 +58,14 @@ other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
   was written as, predicates as written, and `tier` from the filename. `schema.is_v2(endpoint)`
   tells them apart. The validator refuses a row's own `ceiling_param` until non-negotiable 4 names
   that key; the file header's applies to v2 rows as to today's.
-- A v2 row also serves `cost` in today's shape, derived from its price and provenance: a `type`
-  label (free; per_result when a reserve, count or plugin decides the bill; per_call when a miss is
-  charged; else per_success), a price table as today's equality maps (omitted when a condition is
-  not one equality) and `settle: usage` with its meters. Every view, eligibility check and price
-  display that reads `cost` reads a v2 row unchanged; billing never reads it
+- A v2 row also serves `cost` in today's shape, derived from its price, provenance, reserve and
+  settle: a `type` label (free; per_result when a reserve, count or plugin decides the bill;
+  per_call when a miss is charged; else per_success), a price table as today's equality maps
+  (omitted when a condition is not one equality), `reserve.rows` with its parameter back in
+  `queryParams`/`pathParams`, `reserve.entities` as `{entities: {}}`, `settle.count` and a
+  `settle.reported` path (`reported_charge`) with answer-relative paths, and `settle: usage` with its
+  meters; `round` is not shown. Every view, eligibility check and price display that reads `cost`
+  reads a v2 row unchanged; billing never reads it
   ([money](money.md#rows-in-the-v2-spelling)).
 
 The byte-identical claim is checked by the catalog dump in [replay](replay.md).
