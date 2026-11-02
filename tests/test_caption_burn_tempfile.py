@@ -1,6 +1,7 @@
 """Test temp file cleanup in caption_burn.py and host_file.py."""
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -85,7 +86,7 @@ class TestWhisperWordsCleanup:
             raise AssertionError(f"Unexpected command: {cmd}")
 
         with mock.patch("subprocess.run", side_effect=mock_run):
-            with pytest.raises(Exception):
+            with pytest.raises(json.JSONDecodeError):
                 whisper_words(str(video))
 
         assert _temp_wav_count() == before
