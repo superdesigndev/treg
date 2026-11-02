@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
+from conftest import pause_loop_once_in_flight
 
 from treg.infra import kv
 from treg.infra import org_concurrency as guard
@@ -29,6 +30,7 @@ async def stores():
 
 async def test_atomic_n_slots_across_independent_clients_and_process(stores):
     first, second, key = stores
+    pause_loop_once_in_flight((first, second), 20, 1.2)
     results = await asyncio.gather(*(
         (first if n % 2 else second).acquire_slot(key, f"owner-{n}", 5000, 3)
         for n in range(20)
