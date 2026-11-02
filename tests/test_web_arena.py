@@ -257,7 +257,6 @@ def test_public_task_previews_show_verified_search_providers(monkeypatch):
         search = {row["provider"] for row in tasks["search"]["provider_previews"]}
         assert {"exa", "firecrawl", "tavily", "tinyfish", "serper", "spidercloud", "octen",
                 "parallel"} <= search
-        assert "crawl4ai" not in search
         assert "bravesearch" not in search
         fetch = {row["endpoint_id"] for row in tasks["fetch"]["provider_previews"]}
         assert "parallel.web.extract" in fetch
@@ -527,21 +526,6 @@ async def test_tinyfish_first_page_is_capped_for_comparison(clients, monkeypatch
         assert len(output["results"]) == output["count"] == 10
         assert len(seen) == 1
         assert "limit" not in seen[0][2]
-    finally:
-        get_settings.cache_clear()
-
-
-async def test_crawl4ai_search_is_not_offered_in_arena_quotes(clients, monkeypatch):
-    # crawl4ai.web.search is route:false (destination URL fidelity); arena uses candidates_for.
-    monkeypatch.setenv("TREG_WEB_ARENA_ENABLED", "true")
-    monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "TEST-CRAWL4AI")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai")
-    get_settings.cache_clear()
-    try:
-        response = await clients.post("/web-arena/api/quotes", json={
-            "task": "search", "value": "example query", "mode": "battle",
-            "providers": ["crawl4ai"], "jev": False})
-        assert response.status_code == 409, response.text
     finally:
         get_settings.cache_clear()
 

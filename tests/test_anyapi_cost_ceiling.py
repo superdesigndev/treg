@@ -168,7 +168,7 @@ async def test_routed_anyapi_child_receives_the_remaining_ceiling(clients, monke
 
 
 async def test_routed_max_cost_exceeded_is_a_failed_attempt(clients, monkeypatch):
-    # crawl4ai.google.serp.organic is route:false; fall through to a cheap routed child (dataforseo).
+    # Fall through to a cheap routed child after anyapi refuses the remaining ceiling.
     monkeypatch.setenv("TREG_PLATFORM_KEY_ANYAPI", "PLATFORM-ANYAPI")
     monkeypatch.setenv("TREG_PLATFORM_KEY_DATAFORSEO", "login:password")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "anyapi,dataforseo")
