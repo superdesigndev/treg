@@ -427,9 +427,8 @@ WIZA_EMAIL_BODY = {"individual_reveal": {"profile_url": "https://www.linkedin.co
 
 
 async def test_a_wiza_200_between_two_credit_errors_keeps_the_lock_closed(clients: AsyncClient, monkeypatch):
-    """Wiza's email and phone finds still answer 200 while its credit pool is empty, and a 2xx
-    erases the pending strike. So 400, 200, 400 never opens the lock: the breaker misses an empty
-    Wiza account whenever a find lands between two enrichments."""
+    """A 2xx from another Wiza route clears the pending strike of a credit error, so 400, 200, 400
+    does not lock."""
     monkeypatch.setenv("TREG_PLATFORM_KEY_WIZA", "PLATFORM-WIZA-KEY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "wiza")
     get_settings.cache_clear()
