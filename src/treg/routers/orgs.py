@@ -936,17 +936,18 @@ async def delete_org(
         raise HTTPException(status_code=409, detail="cancel the SSO subscription in Billing before deleting this team")
     if sso is not None and sso.workos_org_id and sso.workos_cleanup_completed_at is None:
         raise HTTPException(status_code=409, detail="wait for SSO setup cleanup before deleting this team")
-    # The team's archived answers go with it (archive.md, "Opting out"). The opt-out is set and
-    # committed first, so nothing new of the team's is recorded from here on; the object phase
-    # then runs on its own short sessions after this one has let go of its connection, and a
-    # failure there keeps the team (opted out), so the owner simply tries again.
+    # The team's archived answers go with it (archive.md, "Erasure"). The opt-out is set and
+    # committed first, so nothing new of the team's is recorded from here on. A small team is
+    # erased now, on short sessions after this one has let go of its connection (a failure keeps
+    # the team, opted out, so the owner simply tries again); a bigger one is queued by the
+    # cascade and erased by the worker after the team is gone.
     if org.archive_opt_out_at is None:
         org.archive_opt_out_at = _utcnow_naive()
     await db.commit()
-    await archive_erasure.erase_org(org_id)
+    erased = await archive_erasure.erase_small(org_id)
     await teams.cascade_delete_org(org, db)
     await db.commit()
-    return {"deleted_org": org_id}
+    return {"deleted_org": org_id, "archive_erasure": "done" if erased else "queued"}
 
 
 # Machine identities (the publishable demo token, and agents) are both Users on an UNROUTABLE

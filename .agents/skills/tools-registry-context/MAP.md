@@ -196,6 +196,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/alembic/versions/0090_ledgerentry_topup_index.py` | architecture/data-model.md |
 | `src/treg/alembic/versions/0091_remove_prefix_covered_indexes.py` | architecture/data-model.md |
 | `src/treg/alembic/versions/0092_media_object_key.py` | architecture/media.md |
+| `src/treg/alembic/versions/0094_archive_erasure_request.py` | architecture/archive.md |
 | `src/treg/analytics.py` | architecture/data-model.md, architecture/org-endpoint-quota.md |
 | `src/treg/api.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/super-admin.md, interface/api.md, interface/seo.md |
 | `src/treg/application/__init__.py` | architecture/import-boundaries.md |
@@ -356,6 +357,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/domain/feedback/verdicts.py` | architecture/feedback.md |
 | `src/treg/domain/governance/__init__.py` | architecture/import-boundaries.md |
 | `src/treg/domain/governance/access.py` | architecture/import-boundaries.md, architecture/multi-tenancy.md, architecture/proxy-model.md, interface/api.md |
+| `src/treg/domain/governance/archive_erasure.py` | architecture/archive.md |
 | `src/treg/domain/governance/budgets.py` | architecture/import-boundaries.md, architecture/money.md, architecture/multi-tenancy.md, interface/api.md |
 | `src/treg/domain/governance/publicdemo.py` | architecture/import-boundaries.md, architecture/multi-tenancy.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/domain/governance/sandbox.py` | interface/api.md |
@@ -581,6 +583,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_app_roles.py` | architecture/composition.md |
 | `tests/test_archive_batch.py` | architecture/archive.md |
 | `tests/test_archive_batch_postgres.py` | architecture/archive.md, architecture/money.md |
+| `tests/test_archive_erasure_queue.py` | architecture/archive.md |
 | `tests/test_archive_opt_out.py` | architecture/archive.md |
 | `tests/test_archive_r2.py` | architecture/archive.md |
 | `tests/test_arena_insights.py` | interface/enrich-arena.md |
@@ -712,7 +715,7 @@ Regenerate via `scripts/build-map.py`.
 | Fragment | Sources |
 |---|---|
 | `architecture/ads-conversions.md` | `adsconv.py`, `signup.py`, `settle.py`, `adtrack.js`, `gtag.js`, `auth.py`, `0075_ad_click_stash.py` |
-| `architecture/archive.md` | `archive.py`, `hunter.yaml`, `results.py`, `0031_archive_result_admission.py`, `test_cache_result_admission.py`, `test_archive_batch.py`, `test_archive_batch_postgres.py`, `archive_bodies.py`, `config.py`, `object_store.py`, `0032_archive_body_storage.py`, `test_archive_r2.py`, `fake_object_store.py`, `smoke_archive_r2.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0011_callrecord_archive_link.py`, `service.py`, `settle.py`, `0039_archive_own_key_and_repeat_pricing.py`, `backfill_call_archive_links.py`, `api.py`, `bootstrap.py`, `admin.py`, `asynctasks.py`, `archive_erasure.py`, `0067_org_archive_opt_out.py`, `test_archive_opt_out.py` |
+| `architecture/archive.md` | `archive.py`, `hunter.yaml`, `results.py`, `0031_archive_result_admission.py`, `test_cache_result_admission.py`, `test_archive_batch.py`, `test_archive_batch_postgres.py`, `archive_bodies.py`, `config.py`, `object_store.py`, `0032_archive_body_storage.py`, `test_archive_r2.py`, `fake_object_store.py`, `smoke_archive_r2.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0011_callrecord_archive_link.py`, `service.py`, `settle.py`, `0039_archive_own_key_and_repeat_pricing.py`, `backfill_call_archive_links.py`, `api.py`, `bootstrap.py`, `admin.py`, `asynctasks.py`, `archive_erasure.py`, `archive_erasure.py`, `0067_org_archive_opt_out.py`, `0094_archive_erasure_request.py`, `test_archive_opt_out.py`, `test_archive_erasure_queue.py` |
 | `architecture/auth-secrets.md` | `injectors.py`, `ssrf.py`, `crypto.py`, `oauth.py`, `__init__.py`, `authorization.py`, `oauth_flow.py`, `refresh.py`, `oauth_exchange.py`, `oauth_refresh.py`, `oauth_providers.py`, `session.js`, `keys.js`, `TeamPage.vue`, `health.py`, `connect.py`, `0051_context_dev_tool_host.py`, `connections.py`, `resources.py`, `__init__.py`, `bindings.py`, `bundles.py`, `api_keys.py`, `access.py`, `api_keys.py`, `test_api_keys.py`, `test_oauth_refresh.py`, `test_key_providers.py`, `config.py` |
 | `architecture/call-events.md` | `call_events.py`, `call_events.py`, `contracts.yaml`, `test_call_events.py` |
 | `architecture/catalog-schema.md` | `__init__.py`, `base.py`, `paths.py`, `common.py`, `legacy.py`, `v2.py`, `manifest.py`, `files.py`, `violations.py`, `violations.yaml`, `export.py`, `outcome.py`, `__init__.py`, `catalog_schema.py`, `catalog_shrink_only.py`, `catalog_v2.py`, `test_catalog_schema.py`, `test_catalog_v2_codemod.py` |

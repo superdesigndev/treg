@@ -9,14 +9,14 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, case, func, or_, text
 from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import reconcile
-from ..application import enterprise_sso, evidence_retention
+from ..application import archive_erasure, enterprise_sso, evidence_retention
 from ..config import get_settings
 from ..infra import kv
 from ..infra.db import get_admin_read_session, get_admin_session
@@ -834,6 +834,52 @@ async def admin_delete_user(
     await db.delete(user)
     await db.commit()
     return {"deleted_user": user_id, "deleted_empty_orgs": emptied}
+
+
+class ArchiveErasureIn(BaseModel):
+    include_public: bool = False
+    reference: str = Field(min_length=1, max_length=500)
+
+
+@app.post("/admin/orgs/{org_id}/archive-erasure")
+async def admin_enqueue_archive_erasure(
+    org_id: int, body: ArchiveErasureIn, principal: str = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_admin_session),
+) -> dict:
+    """Queue an erasure of what an opted-out team stored in the archive (archive.md, "Erasure").
+    Returns at once; the `treg-worker admin erase-pending` cron does the work."""
+    reference = body.reference.strip()
+    if not reference:
+        raise HTTPException(status_code=422, detail="reference is required")
+    try:
+        return await archive_erasure.enqueue(db, org_id, include_public=body.include_public,
+                                             reference=reference, requested_by=principal)
+    except archive_erasure.OrgNotFound:
+        raise HTTPException(status_code=404, detail="org not found") from None
+    except (archive_erasure.NotOptedOut, archive_erasure.AlreadyQueued) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+
+
+@app.get("/admin/orgs/{org_id}/archive-erasure")
+async def admin_archive_erasure_status(
+    org_id: int, _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session),
+) -> dict:
+    """The team's latest erasure request. Reads the request row only."""
+    row = await archive_erasure.status(db, org_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="no archive erasure request for this org")
+    return row
+
+
+@app.post("/admin/orgs/{org_id}/archive-erasure/cancel")
+async def admin_cancel_archive_erasure(
+    org_id: int, _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session),
+) -> dict:
+    """Cancel the team's pending or running request; a running worker stops after its batch."""
+    row = await archive_erasure.cancel(db, org_id)
+    if row is None:
+        raise HTTPException(status_code=409, detail="no pending or running archive erasure for this org")
+    return row
 
 
 @app.post("/admin/orgs/{org_id}/suspend")

@@ -183,8 +183,11 @@ agents then built against a constitution that was wrong.
   is free; a metered hit settles through the same hold, at `archive_hit_repeat_price_percent`
   once the team has paid for that question. A team that has opted out (`Org.archive_opt_out_at`)
   is neither served from nor recorded into the archive on any tier; erasing what it stored is a
-  separate act (team deletion, `treg-worker admin erase-archive`), never a side effect of the
-  switch. See `docs/context/architecture/archive.md`.
+  separate act (team deletion, or a request queued with `treg admin erase-archive` that the
+  `treg-worker admin erase-pending` cron runs in small batches under one lock), never a side
+  effect of the switch, and never a big erasure inside a web request. Public (platform-key)
+  answers only this team asked for are erased only when the request says `include_public`. See
+  `docs/context/architecture/archive.md`.
 
 ### Security guards that look redundant on purpose
 

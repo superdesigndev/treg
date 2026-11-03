@@ -153,6 +153,26 @@
         "title": "AgentIn",
         "type": "object"
       },
+      "ArchiveErasureIn": {
+        "properties": {
+          "include_public": {
+            "default": false,
+            "title": "Include Public",
+            "type": "boolean"
+          },
+          "reference": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference"
+        ],
+        "title": "ArchiveErasureIn",
+        "type": "object"
+      },
       "AutoTopupIn": {
         "properties": {
           "amount_usd": {
@@ -2967,6 +2987,200 @@
           }
         },
         "summary": "Admin Org Detail"
+      }
+    },
+    "/admin/orgs/{org_id}/archive-erasure": {
+      "get": {
+        "description": "The team's latest erasure request. Reads the request row only.",
+        "operationId": "admin_archive_erasure_status_admin_orgs__org_id__archive_erasure_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Admin Archive Erasure Status Admin Orgs  Org Id  Archive Erasure Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Archive Erasure Status"
+      },
+      "post": {
+        "description": "Queue an erasure of what an opted-out team stored in the archive (archive.md, \"Erasure\").\nReturns at once; the `treg-worker admin erase-pending` cron does the work.",
+        "operationId": "admin_enqueue_archive_erasure_admin_orgs__org_id__archive_erasure_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveErasureIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Admin Enqueue Archive Erasure Admin Orgs  Org Id  Archive Erasure Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Enqueue Archive Erasure"
+      }
+    },
+    "/admin/orgs/{org_id}/archive-erasure/cancel": {
+      "post": {
+        "description": "Cancel the team's pending or running request; a running worker stops after its batch.",
+        "operationId": "admin_cancel_archive_erasure_admin_orgs__org_id__archive_erasure_cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Admin Cancel Archive Erasure Admin Orgs  Org Id  Archive Erasure Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Cancel Archive Erasure"
       }
     },
     "/admin/orgs/{org_id}/credit": {

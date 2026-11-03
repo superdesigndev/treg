@@ -2128,6 +2128,42 @@ class ArenaEvaluation(SQLModel, table=True):
     created_at: NaiveUTC = Field(default_factory=_now)
 
 
+class ArchiveErasureRequest(SQLModel, table=True):
+    """One queued request to erase what a team stored in the archive (archive.md, "Erasure").
+
+    Written only by `domain.governance.archive_erasure`. `org_id` has no foreign key on purpose:
+    a team deletion queues its erasure and then deletes the team, so the request outlives it.
+    The partial unique index lets a team have at most one open (pending or running) request.
+    `phase` and `cursor` are the resume point: a run that stops anywhere continues from them."""
+
+    __table_args__ = (
+        Index("uq_archiveerasure_open_org", "org_id", unique=True,
+              postgresql_where=text("status IN ('pending', 'running')"),
+              sqlite_where=text("status IN ('pending', 'running')")),
+        Index("ix_archiveerasure_status_id", "status", "id"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    org_id: int = Field(index=True)
+    include_public: bool = Field(default=False)
+    reference: str = Field(default="")
+    requested_by_user_id: int | None = Field(default=None)
+    requested_by: str = Field(default="")
+    requested_at: NaiveUTC = Field(default_factory=_now)
+    status: str = Field(default="pending")         # pending | running | done | failed | cancelled
+    started_at: NaiveUTC | None = Field(default=None)
+    finished_at: NaiveUTC | None = Field(default=None)
+    phase: str = Field(default="private")          # private | public | marks | done
+    cursor: str = Field(default="")                # last key id (private) or key_hash (public)
+    keys: int = Field(default=0)
+    snapshots: int = Field(default=0)
+    objects: int = Field(default=0)
+    marks: int = Field(default=0)
+    kept_shared: int = Field(default=0)            # public keys another team marked meanwhile
+    last_error: str | None = Field(default=None)
+    updated_at: NaiveUTC = Field(default_factory=_now)
+
+
 class ArchiveEndpointStat(SQLModel, table=True):
     """The archive report's running totals, one row per endpoint — maintained by the recorder
     through batched per-endpoint deltas (archive.flush_stats), so the panel reads 50 tiny rows instead of walking

@@ -16,7 +16,8 @@
     treg-worker jev xboost [--posts 60] [--min-likes 150]   # the /jev launch-radar demo: X posts <24h -> jev
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
-    treg-worker admin erase-archive --org <id>             # erase what an opted-out team stored in the archive
+    treg-worker admin erase-archive --org <id> [--include-public]   # erase one opted-out team now
+    treg-worker admin erase-pending [--max-seconds 480]    # run queued archive erasures (every 10 min)
     treg-worker enterprise reconcile [--org <id>]          # repair missed Directory Sync removals
     treg-worker enterprise cleanup [--org <id>]            # remove WorkOS setup after paid SSO ends
     treg-worker enterprise purge-audit [--days 400]        # delete expired SSO audit evidence
@@ -494,8 +495,9 @@ async def _admin_purge_ad_clicks(args) -> int:
 
 
 async def _admin_erase_archive(args) -> int:
-    """Erase what one opted-out team stored in the archive (application/archive_erasure): the
-    answer to an erasure request. Refuses a team still in the archive; opt it out first."""
+    """Erase what one opted-out team stored in the archive, now, on the safe batch path
+    (application/archive_erasure). Refuses a team still in the archive; opt it out first. Exits 1
+    when another erasure holds the lock."""
     from . import bootstrap
     from .application import archive_erasure
     from .infra.db import verify_db
@@ -503,12 +505,28 @@ async def _admin_erase_archive(args) -> int:
     await verify_db()
     try:
         async with bootstrap.archive_object_store():
-            result = await archive_erasure.erase_org(args.org)
-    except archive_erasure.NotOptedOut as exc:
+            result = await archive_erasure.erase_org(
+                args.org, include_public=getattr(args, "include_public", False))
+    except (archive_erasure.NotOptedOut, archive_erasure.Busy) as exc:
         print(json.dumps({"error": str(exc)}, sort_keys=True))
         return 1
     print(json.dumps(result, sort_keys=True))
     return 0
+
+
+async def _admin_erase_pending(args) -> int:
+    """Run queued archive erasures for up to `--max-seconds`, then exit (the
+    `treg-archive-erasure` cron). Exits at once when another run holds the lock or the queue is
+    empty. Exit 1 when a request failed in this run."""
+    from . import bootstrap
+    from .application import archive_erasure
+    from .infra.db import verify_db
+
+    await verify_db()
+    async with bootstrap.archive_object_store():
+        result = await archive_erasure.run_pending(budget_s=args.max_seconds)
+    print(json.dumps(result, sort_keys=True))
+    return 1 if any(r["outcome"] == "failed" for r in result.get("requests", [])) else 0
 
 
 async def _enterprise_reconcile(args) -> int:
@@ -773,7 +791,13 @@ def main(argv: list[str] | None = None) -> int:
     clicks.set_defaults(fn=_admin_purge_ad_clicks)
     erase = adminsub.add_parser("erase-archive", help="erase what an opted-out team stored in the archive")
     erase.add_argument("--org", type=_positive_int, required=True, help="the team's org id")
+    erase.add_argument("--include-public", dest="include_public", action="store_true",
+                       help="also erase public answers that only this team ever marked")
     erase.set_defaults(fn=_admin_erase_archive)
+    pending = adminsub.add_parser("erase-pending", help="run queued archive erasures within a time budget")
+    pending.add_argument("--max-seconds", dest="max_seconds", type=float, default=480.0,
+                         help="stop starting batches after this many seconds (default 480)")
+    pending.set_defaults(fn=_admin_erase_pending)
     enterprise = sub.add_parser("enterprise", help="enterprise identity maintenance")
     enterprisesub = enterprise.add_subparsers(dest="cmd", required=True)
     reconcile = enterprisesub.add_parser("reconcile", help="repair missed WorkOS Directory Sync changes")

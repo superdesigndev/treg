@@ -29,8 +29,11 @@ sources:
   - src/treg/routers/admin.py
   - src/treg/application/asynctasks.py
   - src/treg/application/archive_erasure.py
+  - src/treg/domain/governance/archive_erasure.py
   - src/treg/alembic/versions/0067_org_archive_opt_out.py
+  - src/treg/alembic/versions/0094_archive_erasure_request.py
   - tests/test_archive_opt_out.py
+  - tests/test_archive_erasure_queue.py
 related:
   - architecture/data-model.md
   - architecture/proxy-model.md
@@ -164,38 +167,79 @@ hit touches demand and marks the team against the question, and the promise is "
 what you asked". `cache_outcome` reads `org_opt_out`. A call in flight at the switch may still
 land a recording; erasure removes the rest.
 
-**Erasure is a separate act, never a side effect of the switch.** Team deletion and
-`treg-worker admin erase-archive --org <id>` run `application/archive_erasure.erase_org`. Both
-refuse a team still in the archive: with the gate shut nothing new is recorded while rows go, so
-there is no sweep, pending state or recorder coordination. What is "the team's" is decided in
-governance (`teams.private_archive_key_ids`, `teams.erase_archive_rows`): every key under the
-team's `org:`/`conn:` scopes with its snapshots and request shape, plus every `ArchiveKeyOrg`
-mark. Platform-key answers are public questions and stay; once the marks go nothing names the
-team.
+### Erasure
 
-Order matters:
+**Erasure is a separate act, never a side effect of the switch.** It refuses a team still in the
+archive: with the gate shut nothing new is recorded while rows go. What is "the team's" is decided
+in `domain/governance/archive_erasure.py`:
 
-1. Objects before rows, in key batches, in short transactions with no connection held across
-   object I/O (non-negotiable 3).
-2. `teams.archive_bodies_only_under` judges in one anti-join which content hashes no other key's
-   snapshot shares (bodies are content-addressed and shared across keys); those objects are
-   deleted and dropped from the in-process upload cache (`archive_bodies.forget`).
-3. Only then the rows. A failed object delete stops the pass before the rows, so a retry starts
-   from them; deleting a row first would orphan its object for good.
+- **Private keys, always:** every key under the team's `org:`/`conn:` scopes (found through
+  `ArchiveSnapshot.origin_org_id`), with its snapshots and request shape.
+- **Marks, always:** every `ArchiveKeyOrg` row of the team.
+- **Public keys, only on request (`include_public`):** a platform-key key (`scope IS NULL`) that
+  the team marked and that NO other team has marked. Public answers are public questions and not
+  the team's data, so they stay by default, and once the marks go nothing names the team. They
+  are erased only when the customer asks in writing for "answers from calls on treg's own
+  provider keys" too, as a data-processing customer did. A key another team also marked is kept:
+  it is that team's question as well.
 
-Endpoint running totals subtract what each DELETE returned, so two erasers subtract once. Because
-another process's upload cache cannot be told, `archive_bodies.prepare` trusts a remembered
-upload only after one `head` confirms the object still exists. Accepted race (documented in the
-module): another team records identical bytes between the orphan judgment and the delete; its
-snapshot then reads as "bytes not on file", which every reader treats as a miss.
+Every path runs one batch engine (`application/archive_erasure.py`):
 
-Team deletion sets and commits the opt-out, calls `erase_org` after its request session has let go
-of its connection and before the cascade (a failure keeps the team, opted out, for a retry), then
-cascades. `cascade_delete_org` deletes the archive rows itself (the archive keys have no FK to the
-team, so the FK-walking guard test cannot see them), which keeps every other deletion path from
-leaving rows behind, at the price of objects those paths do not clear. Out of scope on purpose:
-async terminal evidence (public key, no team provenance), the `callrecord` audit trail and the
-idempotency replay store.
+1. Phases in order: private keys (keyset by key id), public keys (keyset by `key_hash` on the
+   `(org_id, key_hash)` unique index), then the team's remaining marks. Public keys can be found
+   only through the marks, so a public batch deletes only its own keys' marks and the rest go in
+   the last phase. A run that stops anywhere resumes from the request's `phase` and `cursor`.
+2. Each batch: a short read transaction selects the keys and judges, in one anti-join on
+   `ix_archive_snapshot_content`, which content hashes no other key's snapshot shares; the
+   transaction ends; those objects are deleted (a missing object is already deleted) and dropped
+   from the in-process upload cache (`archive_bodies.forget`); then one write transaction deletes
+   the rows. Objects before rows, because a row that outlives a failed object delete is what makes
+   a retry possible; no connection is held in a transaction across object I/O (non-negotiable 3).
+3. The "no other team marked it" check runs again inside each DELETE (`NOT EXISTS`), not only at
+   selection, so a key that becomes shared mid-run is kept, and the team's mark on it goes.
+4. Every transaction sets `statement_timeout` (30 s) and `lock_timeout` (3 s). A timeout halves the
+   batch (from 25 keys) and retries; three timeouts in a row at one key fail the request.
+5. No list larger than one batch reaches a query; selection is anti-joins and keyset pages.
+
+The running totals subtract what each DELETE returned, so two erasers on the same rows subtract
+once. The totals UPDATEs run last in the write transaction and in endpoint order, the order
+`flush_stats` uses: the call path never writes `ArchiveEndpointStat` (only the background flush
+and the pruner do), so erasure holds a totals row only until its commit and can delay a flush by
+milliseconds, never a call.
+
+Accepted races. (1) Another team records identical bytes between the orphan judgment and the
+object delete. (2) Another team marks a public key after its objects were deleted: the DELETE keeps
+the rows, the bodies are gone, and each such key is logged with the request id (`kept_shared`
+counts them). In both cases the snapshot reads back as "bytes not on file", which every reader
+treats as a miss: the vendor is asked again. Because another process's upload cache cannot be
+told, `archive_bodies.prepare` trusts a remembered upload only after one `head` confirms it.
+
+**The queue.** `ArchiveErasureRequest` holds one row per request: team, `include_public`, a free
+text `reference` (who asked, where), who queued it, status (`pending`, `running`, `done`, `failed`,
+`cancelled`), times, the resume point, counts and the last error. A partial unique index allows
+one open request per team. `org_id` has no foreign key: a request outlives a deleted team, and a
+missing team is no reason to stop. A team that exists and is back in the archive fails the request.
+
+- `treg admin erase-archive <org> [--include-public] --reference "..."` (superadmin,
+  `POST /admin/orgs/{id}/archive-erasure`) refuses a team not opted out and a team with an open
+  request, queues, and returns at once; nothing is erased inside a web request. `--status` reads
+  the latest request row; `--cancel` marks it cancelled.
+- `treg-worker admin erase-pending` (a cron) takes a Postgres advisory lock on its one
+  database connection (a separate engine with a pool of one) or exits; claims a running request
+  (resume) or the oldest pending one; saves progress with every batch; checks for a cancel between
+  batches; and stops starting batches after its time budget. An empty queue exits in seconds.
+- `treg-worker admin erase-archive --org <id> [--include-public]` runs the same engine now, under
+  the same lock, without a request row.
+
+**Team deletion.** The owner delete sets and commits the opt-out, then `erase_small` erases a team
+with at most 25 private keys and 500 marks inline, on short request-pool sessions (a failure keeps
+the team, opted out, for a retry). `cascade_delete_org` never bulk-deletes archive keys: when any
+private key or more than 500 marks remain, it queues a private-only request (`reference: team
+deletion`) that the worker finishes after the team is gone, objects included; otherwise it deletes
+the few marks. So the admin delete, the sandbox reaper and the demo reset are bounded too. The
+inline path does not take the advisory lock; a queued run on the same rows is harmless because
+every DELETE counts only what it deleted. Out of scope on purpose: async terminal evidence (public
+key, no team provenance), the `callrecord` audit trail and the idempotency replay store.
 
 ## Pricing a hit
 

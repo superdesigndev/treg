@@ -48,6 +48,9 @@ Routes live in `routers.admin` (plus `GET /admin/feedback` and `/admin/reviews`,
 - **Deleting a user** removes memberships, deletes any org left with no members via
   `cascade_delete_org` (`domain/governance/teams.py`, shared with the owner's own delete) and promotes a
   survivor to owner in any org left without one.
+- **Archive erasure** (`POST /admin/orgs/{org_id}/archive-erasure`, `GET` for the latest request,
+  `POST .../cancel`) queues an erasure of an opted-out team's archive and returns at once; the
+  `admin erase-pending` worker does the work ([archive](archive.md), "Erasure").
 - **Org credit** (`POST /admin/orgs/{org_id}/credit`, HTTP twin of `scripts/manual_grant.py`) grants
   through `money.grant()` with `kind="promotional"` so it burns before purchased balance; `ref` is the
   idempotency key (duplicate for the same org is 409).

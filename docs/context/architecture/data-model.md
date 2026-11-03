@@ -129,6 +129,7 @@ Single writers (AGENTS.md lists the money, audit and showcase ones):
 | `RankingsSnapshot` | `application.rankings.refresh`, replacing the row whole |
 | `AdClickStash` | `application.signup.stash_ad_click` |
 | `ArchiveKey`, `ArchiveSnapshot`, `ArchiveKeyOrg`, `ArchiveEndpointStat` | `archive.py` ([archive](archive.md)) |
+| `ArchiveErasureRequest` | `domain/governance/archive_erasure.py`; no FK to `org`, a request outlives its team ([archive](archive.md), "Erasure") |
 | `Media` | `application.media` ([media](media.md)) |
 | `Feedback` | `domain.feedback` inserts, `application.feedback` commits ([feedback](feedback.md)) |
 | `FeedbackHandling`, `FeedbackHandlingEvent` | the private admin service only |

@@ -312,7 +312,7 @@ async def test_two_erasers_on_the_same_rows_subtract_the_totals_once(
     await clients.get(f"/call/{EP}?aweme_id=8")
     await archive.drain()
     org_id = await _org_id(clients)
-    from treg.domain.governance.teams import erase_archive_rows, private_archive_key_ids
+    from treg.domain.governance.archive_erasure import erase_archive_rows, private_archive_key_ids
     async with session_maker() as s:
         key_ids = await private_archive_key_ids(s, org_id)
     assert len(key_ids) == 2
@@ -332,14 +332,14 @@ async def test_deleting_a_team_fences_its_writes_first(clients: AsyncClient, own
     recorded from that moment, and a team still in the archive is never erased by accident."""
     org = (await clients.get("/orgs")).json()[0]
     seen = []
-    real = archive_erasure.erase_org
+    real = archive_erasure.erase_small
 
     async def spy(org_id, **kw):
         async with session_maker() as s:
             row = await s.get(Org, org_id)
         seen.append(row.archive_opt_out_at is not None)
         return await real(org_id, **kw)
-    monkeypatch.setattr(archive_erasure, "erase_org", spy)
+    monkeypatch.setattr(archive_erasure, "erase_small", spy)
     r = await clients.delete(f"/orgs/{org['org_id']}", params={"confirm": org["slug"]})
     assert r.status_code == 200, r.text
     assert seen == [True]

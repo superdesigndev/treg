@@ -330,6 +330,10 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   off until `TREG_MEDIA_STORE_ENDPOINT`, its keys, `TREG_MEDIA_STAGING_BUCKET` and
   `TREG_MEDIA_PUBLIC_BUCKET` are set (SECURITY.md, "Picture storage"); `TREG_MEDIA_BASE_URL` empty
   means treg serves the bucket at `/media-files/`.
+- **`admin erase-pending`**: every 10 minutes. It needs the archive object-store settings of the
+  web service, or a queued erasure deletes rows but leaves the bodies. It holds one database
+  connection and a lock, so an overlapping run exits at once ([archive](../architecture/archive.md),
+  "Erasure").
 - **`admin purge-evidence`** and **`admin purge-ad-clicks`**: daily. Without them expired rows stop
   being shown or read but stay in the database.
 - **`hub check`** runs each live [hub](../architecture/hub.md) tool's `check.json` as its maker

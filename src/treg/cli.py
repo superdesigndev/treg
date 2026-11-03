@@ -5359,6 +5359,23 @@ def cmd_admin_suspend_org(args, cfg) -> None:
         _show(c.post(f"/admin/orgs/{args.org_id}/suspend", json={"value": not args.undo}))
 
 
+def cmd_admin_erase_archive(args, cfg) -> None:
+    """Queue, check or cancel an archive erasure for one opted-out team. The server never erases
+    inside this request; the erase-pending worker does it in small batches."""
+    path = f"/admin/orgs/{args.org_id}/archive-erasure"
+    if args.status and args.cancel:
+        _fail("bad_arguments", "use --status or --cancel, not both")
+    with _admin_client(cfg) as c:
+        if args.status:
+            _show(c.get(path))
+        elif args.cancel:
+            _show(c.post(f"{path}/cancel"))
+        else:
+            if not (args.reference or "").strip():
+                _fail("bad_arguments", "--reference is required to queue an erasure (who asked, and where)")
+            _show(c.post(path, json={"include_public": args.include_public, "reference": args.reference}))
+
+
 def cmd_admin_rm_org(args, cfg) -> None:
     with _admin_client(cfg) as c:
         _show(c.delete(f"/admin/orgs/{args.org_id}"))
@@ -7650,6 +7667,17 @@ def build_parser() -> argparse.ArgumentParser:
     aru.add_argument("user_id", type=int, help="the user id"); aru.set_defaults(fn=cmd_admin_rm_user)
     aso = mk(ad, "suspend-org", "Suspend (or --undo) an org platform-wide.", "treg admin suspend-org 2", "treg admin suspend-org 2 --undo")
     aso.add_argument("org_id", type=int, help="the org id"); aso.add_argument("--undo", action="store_true", help="un-suspend instead"); aso.set_defaults(fn=cmd_admin_suspend_org)
+    aea = mk(ad, "erase-archive", "Queue, check (--status) or cancel (--cancel) an archive erasure for an opted-out org.",
+             "treg admin erase-archive 2 --reference 'customer email 2026-11-02'",
+             "treg admin erase-archive 2 --include-public --reference 'customer email 2026-11-02'",
+             "treg admin erase-archive 2 --status", "treg admin erase-archive 2 --cancel")
+    aea.add_argument("org_id", type=int, help="the org id")
+    aea.add_argument("--include-public", dest="include_public", action="store_true",
+                     help="also erase public (platform-key) answers that only this org ever asked for")
+    aea.add_argument("--reference", default="", help="why: who asked and where (required to queue)")
+    aea.add_argument("--status", action="store_true", help="show the latest request instead")
+    aea.add_argument("--cancel", action="store_true", help="cancel the pending or running request")
+    aea.set_defaults(fn=cmd_admin_erase_archive)
     aro = mk(ad, "rm-org", "Delete an org platform-wide.", "treg admin rm-org 2")
     aro.add_argument("org_id", type=int, help="the org id"); aro.set_defaults(fn=cmd_admin_rm_org)
     acr = mk(ad, "credit", "Credit an org promotional balance (HTTP equivalent of scripts/manual_grant.py).",

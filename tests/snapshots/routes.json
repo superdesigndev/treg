@@ -2697,6 +2697,31 @@
     "methods": [
       "POST"
     ],
+    "name": "admin_enqueue_archive_erasure",
+    "path": "/admin/orgs/{org_id}/archive-erasure"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_archive_erasure_status",
+    "path": "/admin/orgs/{org_id}/archive-erasure"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_cancel_archive_erasure",
+    "path": "/admin/orgs/{org_id}/archive-erasure/cancel"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
     "name": "admin_suspend_org",
     "path": "/admin/orgs/{org_id}/suspend"
   },

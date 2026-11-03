@@ -361,6 +361,16 @@ async def reset_db() -> None:
         await _stamp_test_schema(connection)
 
 
+def single_connection_engine():
+    """A separate engine that can hold one connection only (pool 1, no overflow), for a worker
+    job that must never take more (the archive erasure). None on SQLite, which has no pool to
+    protect: the caller then uses `session_maker`. The caller disposes it."""
+    if _is_sqlite:
+        return None
+    return create_async_engine(_db_url, future=True, pool_size=1, max_overflow=0,
+                               pool_timeout=5, pool_pre_ping=True)
+
+
 async def dispose_engine() -> None:
     for engine in dict.fromkeys(_engines):
         await engine.dispose()
