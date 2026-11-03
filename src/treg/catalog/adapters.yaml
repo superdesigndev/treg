@@ -2729,7 +2729,7 @@ adapters:
     in: {company_domain: body.where.company.domain, title: body.where.person.title, full_name: body.where.person.name, q: body.q}
     in_expr:
       body.where.person.title: "scalar(title)"
-      body.where.company.country: "upper(country)"
+      body.where.company.country: "country_code(country)"
       body.where.company.city: location
       body.limit: limit
     max: {limit: 100}
@@ -3233,7 +3233,8 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.format: markdown, body.links: true, body.ttl: 0}
     out: {pages: results, count: "len(results)"}
-    miss: "coalesce(results[0].text, '') == ''"
+    # final_url is where the page was finally read: a redirect to the home page is not the page
+    miss: "choose(lost_path(results[0].url, results[0].final_url), true, coalesce(results[0].text, '') == '')"
   exa.web.contents.get:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
@@ -3295,7 +3296,8 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.formats: [markdown], body.onlyMainContent: false}
     out: {pages: "list(output.data)", count: "len(list(output.data))"}
-    miss: "coalesce(output.data.markdown, '') == ''"
+    # output.data.statusCode is the TARGET's status: a 4xx/5xx is the site's error page, not the page
+    miss: "choose(http_error(output.data.statusCode), true, coalesce(output.data.markdown, '') == '')"
   crawl4ai.web.extract.structured:
     accepts: [[url, schema, instruction], [url, schema], [url, instruction]]
     in: {url: body.url, schema: body.schema, instruction: body.instruction}
@@ -3321,7 +3323,7 @@ adapters:
     in: {url: body.url}
     const: {body.format: md}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: "coalesce(markdown, '') == ''"
+    miss: "coalesce(text_len, markdown, 0) == 0"
   firecrawl.web.scrape:
     accepts: [[url]]
     in: {url: body.url}
@@ -3554,6 +3556,14 @@ adapters:
     route: false
     accepts: [[q]]
     in: {q: body.query}
+    out: {results: results, count: "len(results)"}
+    miss: "coalesce(results, []) == []"
+  exa.web.search.lite:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query}
+    in_expr: {body.numResults: limit}
+    const: {body.type: lite}
     out: {results: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
   scrapegraphai.web.search.extract:

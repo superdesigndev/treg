@@ -940,6 +940,11 @@ returned and never documented as stable. An output field may say where it lands 
 - `routed: false` declares an admission-only contract: its adapters verify (the archive's
   `has_result_rules` reads them) but no `treg.<capability>` row is generated. For a capability whose
   "children" are one provider's price tiers.
+- `question_miss` is a miss rule that also sees the question: `child_outcome` evaluates it on the
+  caller's identity merged with the child's core output, after the adapter's own `miss`, and a hit it
+  marks true becomes a miss (`why: question_miss`) the route moves on from. It names no provider;
+  `no_result_on_site(q, results)` judges a `site:` question whose rows are all on other sites. A
+  call without an identity (a replay record) is not judged by it.
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
   never sends a supplied one is dropped from the plan, not ranked down, because a title-only search
   asked for one company's CEO bills title-matched strangers as a hit.
@@ -1052,6 +1057,12 @@ an invalid extra never disables the primary.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a
   503 stays reserved for capacity/key drops.
+- **More rows than `limit` are kept and disclosed**: when the caller sent `limit` and the serving
+  child (one that does not accept `limit`, or floors it) or a merge returns more list rows, every
+  row and an honest `count` stay, and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` name
+  `{asked, returned, why}`. The extra rows are already billed and a routed answer is never altered;
+  a contract default is not a question anyone asked, so it does not trigger the note. `limit`
+  stays out of `ignored_filters` (a page size, not a narrowing filter).
 - **Free text is a filter, not identity**: a brief's requirements ride in `keywords` (always sent),
   never in `q` alone, or a provider matching the `{title}` variant never sees them. Hard filters
   that broaden or over-constrain measured worse; add one opt-in, and measure it first.

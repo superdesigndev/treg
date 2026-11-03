@@ -149,7 +149,11 @@ private handler registry. This keeps clients from opening idle SSE streams.
 Tools reach the rest of treg through `httpx.ASGITransport` against treg's own app: a real request
 through the real routes without a socket. The enforcement rules (deny rules, pins, per-member tool
 access, the credential ladder, metering) live in those routes; a path that read the database
-directly would be a second implementation of each, drifting quietly. The catalog is the one
+directly would be a second implementation of each, drifting quietly. Those requests carry the
+caller's credential (for an OAuth bearer, the identity it is exchanged for), so the call tools
+refuse an `endpoint_id` with an empty, `.` or `..` segment at any depth of percent-encoding (a
+trailing slash excepted): httpx collapses dot segments, so `../orgs/...` would otherwise reach a
+management route. `_call_url` also checks the final path stays under the call route. The catalog is the one
 exception, read straight from `catalog_store` for speed, not permission.
 
 The in-process client stamps `X-Treg-Client: mcp` or `claude-connector` (attribution, never a gate)

@@ -201,8 +201,8 @@ class User(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
-    # Only an inbox proof or a provider-verified email can set this. Legacy /users and
-    # admin-visible invitation codes are not email proofs.
+    # Only an inbox proof or a provider-verified email can set this. Admin-visible invitation
+    # codes are not email proofs.
     email_verified_at: NaiveUTC | None = Field(default=None)
     # Consumed atomically with the signup grant; survives leaving/deleting every team.
     # The DB default is false so pre-upgrade users and old writers never gain a fresh claim.

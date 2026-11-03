@@ -21,6 +21,7 @@ from treg.application.connect import _backfill_provider_extra_tools
 from treg.config import get_settings
 from treg.infra.db import session_maker
 from treg.models import HubTool, Membership, Secret, Tool
+from conftest import verified_signup
 
 # The test upstream serves /token, standing in for Google's token endpoint.
 BYO = {
@@ -136,7 +137,7 @@ async def test_revoke_removes_the_connection(clients: AsyncClient):
 async def test_another_orgs_connection_is_not_reachable(clients: AsyncClient):
     """Connections are org-scoped; a bare id must not cross the tenant boundary."""
     st = await _connect_byo(clients)
-    other = await clients.post("/users", json={"email": "outsider@example.com"})
+    other = await verified_signup(clients, json={"email": "outsider@example.com"})
     hdr = {"X-Treg-Token": other.json()["token"]}
     r = await clients.get(f"/connections/{st['secret_id']}/resources", headers=hdr)
     assert r.status_code == 404

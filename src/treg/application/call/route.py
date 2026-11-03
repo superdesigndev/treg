@@ -27,6 +27,9 @@ When the caller sent a domain and the hit carries an email, `_treg.domain_match`
 `X-Treg-Domain-Match`) says whether the mailbox domain matches. A LinkedIn-only child that returns
 a former employer still counts as a hit and is billed; the flag discloses the mismatch.
 
+When the caller sent `limit` and the serving child (or a merge) returns more rows, every row stays
+and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` say so — paid rows are never trimmed.
+
 `X-Treg-Route-Confirm` makes a hit count only once a second provider returns the same value of the
 contract's `confirm` field: the waterfall goes on after an unconfirmed hit, each attempt at its own
 price. The first provider's answer is returned either way, reported in `_treg.confirmation`; when
@@ -274,7 +277,7 @@ class ChildOutcome:
 
 
 def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
-                  tier: str) -> ChildOutcome:
+                  tier: str, identity: dict | None = None) -> ChildOutcome:
     """Classify one routed child's answer. Pure: reads only this checkout's catalog."""
     if _declared_miss(endpoint, status, raw):
         return ChildOutcome("declared_miss")
@@ -309,10 +312,17 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
     # The provider's own `expect` success rule (a DataForSEO task status other than 20000 under
     # a 20000 envelope) says this request failed: not an answer, whatever the remains read as.
     upstream_failed = catalog_results.fails_expect(endpoint["id"], raw)
-    if doc is None or is_miss or empty_core or upstream_failed:
+    off_question = False
+    rule = getattr(contract, "question_miss", "")
+    if rule and identity and doc is not None and not (is_miss or empty_core):
+        try:
+            off_question = bool(P.evaluate(rule, {**identity, **core}))
+        except Exception as exc:  # noqa: BLE001 — a rule that cannot read this answer judges nothing
+            log.debug("question_miss failed on %s: %s", endpoint.get("id"), exc)
+    if doc is None or is_miss or empty_core or upstream_failed or off_question:
         why = tuple(name for name, on in (
             ("non_json", doc is None), ("adapter_miss", is_miss), ("empty_core", empty_core),
-            ("expect_failed", bool(upstream_failed))) if on)
+            ("expect_failed", bool(upstream_failed)), ("question_miss", off_question)) if on)
         return ChildOutcome(
             "miss", why=why, doc=doc,
             detail=f"provider reported failure: {upstream_failed}" if upstream_failed else "")
@@ -435,10 +445,32 @@ def _row_key(row) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(name).lower()) if name else ""
 
 
-def _merge_rows(field: str, answers: list[tuple], limit: int | None):
+def _adapter_uses_limit(adapter) -> bool:
+    """True when the adapter forwards `limit` (directly or through an expression). A child that
+    never sees limit answers at its own page size; that is disclosed after the fact, not ranked."""
+    used = set(adapter.in_map) | {
+        n for e in (adapter.in_expr or {}).values() for n in re.findall(r"[A-Za-z_]\w*", e)
+    }
+    return "limit" in used
+
+
+def _limit_exceeded_note(*, asked: int, returned: int, served_by: str, merged: bool, adapter) -> dict:
+    """Honest disclosure when a routed answer carries more rows than the caller asked for."""
+    if merged:
+        why = "merged answers exceeded the asked limit"
+    elif adapter is not None and not _adapter_uses_limit(adapter):
+        why = f"{served_by} does not accept limit"
+    else:
+        why = f"{served_by} returned more rows than asked"
+    return {"asked": asked, "returned": returned, "why": why}
+
+
+def _merge_rows(field: str, answers: list[tuple], limit: int | None = None):
     """Union in ATTEMPT order — the ranking of the provider that answered first leads, later
     providers append what they add. The caller already paid for every one of these rows
-    (`spent` sums every attempt), so discarding them is pure waste."""
+    (`spent` sums every attempt), so discarding them is pure waste. `limit` is accepted for
+    call-site clarity but never applied: excess is disclosed on `_treg.limit_exceeded` instead."""
+    del limit  # kept in the signature so call sites stay readable; never trim paid rows
     seen, out = set(), []
     for _cand, _doc, core, _raw in answers:
         for r in (core.get(field) or []):
@@ -448,7 +480,7 @@ def _merge_rows(field: str, answers: list[tuple], limit: int | None):
             if k:
                 seen.add(k)
             out.append(r)
-    return out[:limit] if limit else out
+    return out
 
 
 async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptions) -> Plan:
@@ -922,7 +954,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             winner = (cand, {}, {}, raw)
             break
         outcome = child_outcome(cand.endpoint, plan.contract, cand.adapter, response.status, raw,
-                                tier=cand.tier)
+                                tier=cand.tier, identity=plan.identity)
         if outcome.kind == "declared_miss":
             # The provider's declared "asked and answered: no result" status (`miss: {status, means}`
             # on the endpoint - aviato/hunter/leadmagic/... 404 a person they have no record of),
@@ -1136,6 +1168,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             rows = _merge_rows(field, answers, plan.identity.get("limit"))
             if len(rows) > len(output.get(field) or []):
                 output = {**output, field: rows}
+                if "count" in plan.contract.output:
+                    output["count"] = len(rows)
                 merged_from = [c.endpoint["id"] for c, _, core_i, _ in answers if (core_i.get(field) or [])]
                 served = merged_from[0]
     # The rows answer a LOOSER question than the caller asked when the winner could not express a
@@ -1179,6 +1213,22 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     decision = ({"decided": decided_by is not None, "decided_by": decided_by,
                  "ordered_by": "quality" if ordered_on and quality else "price"}
                 if options.decisive and winner_outcome in ("hit", "weak") else None)
+    # A child (or a merge) that answers more rows than the caller's sent `limit` still returns
+    # every billed row: routed endpoints wrap the child's answer and never alter it. Disclose the
+    # excess on `_treg` (and a header) instead of trimming. Only a limit the caller SENT counts —
+    # a contract default is not a question anyone asked.
+    limit_exceeded = None
+    asked_limit = plan.identity.get("limit")
+    if (isinstance(given, dict) and "limit" in given
+            and isinstance(asked_limit, (int, float)) and not isinstance(asked_limit, bool)):
+        list_field = _list_field(plan.contract)
+        returned_n = len((output or {}).get(list_field) or []) if list_field else 0
+        asked_n = int(asked_limit)
+        if list_field and returned_n > asked_n:
+            limit_exceeded = _limit_exceeded_note(
+                asked=asked_n, returned=returned_n, served_by=served,
+                merged=bool(merged_from), adapter=cand.adapter)
+
     body_out = {"output": output or {k: None for k in plan.contract.output}, "raw": doc,
                 "_treg": {"served_by": served, "provider": provider, "tier": cand.tier,
                           **({"merged_from": merged_from} if merged_from else {}),
@@ -1192,6 +1242,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"ordered_by": "quality" if ordered_on and quality else "price"} if options.quality else {}),
                           **({"capped": True} if cost_capped else {}),
                           **({"ignored_filters": list(cand.ignored)} if cand.ignored else {}),
+                          **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
     _summarize(parent, served_by=served, tried_count=len(tried), output=output,
                hit={"hit": True, "weak": True, "miss": False}.get(winner_outcome),
@@ -1201,6 +1252,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     return _json(body_out, 200, {"X-Treg-Served-By": served, "X-Treg-Providers-Tried": ",".join(t.provider for t in tried),
                                  **({"X-Treg-Merged-From": ",".join(merged_from)} if merged_from else {}),
                                  **({"X-Treg-Ignored-Filters": ",".join(cand.ignored)} if cand.ignored else {}),
+                                 **({"X-Treg-Limit-Exceeded":
+                                     f"asked={limit_exceeded['asked']},returned={limit_exceeded['returned']}"}
+                                    if limit_exceeded else {}),
                                  **({"X-Treg-Domain-Match": str(domain_match).lower()} if domain_match is not None else {}),
                                  **({"X-Treg-Route-Capped": "true"} if cost_capped else {}),
                                  **({"X-Treg-Route-Confirmed": str(confirmation["confirmed"]).lower()} if confirmation else {}),

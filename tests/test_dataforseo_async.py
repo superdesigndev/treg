@@ -16,6 +16,7 @@ from treg.config import get_settings
 from treg.domain.catalog import store as catalog_store
 from treg.infra.db import session_maker
 from treg.models import AsyncResourceRecord, AsyncTaskRecord
+from conftest import verified_signup
 
 POST = "dataforseo.x.business-data-google-reviews-task-post"
 GET = "dataforseo.x.business-data-google-reviews-task-get"
@@ -99,7 +100,7 @@ async def test_a_task_post_is_owned_polled_and_settled_at_the_submission_charge(
         task = await db.get(AsyncTaskRecord, task.call_id)
     assert task.status == "settled" and task.settled_micro == 7_500
 
-    other = await clients.post("/users", json={"email": "dfs-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "dfs-stranger@example.com"})
     stranger = {"X-Treg-Token": other.json()["token"]}
 
     async def must_not_relay(*args, **kwargs):
@@ -181,7 +182,7 @@ async def test_an_on_page_crawl_is_readable_only_by_the_team_that_paid_for_it(
     smuggled = await clients.post("/call/dataforseo.x.on-page-pages",
                                   json=[{"id": TASK_A}, {"id": TASK_B}])
     assert smuggled.status_code == 400
-    other = await clients.post("/users", json={"email": "crawl-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "crawl-stranger@example.com"})
     denied = await clients.post("/call/dataforseo.x.on-page-pages", json=[{"id": TASK_A}],
                                 headers={"X-Treg-Token": other.json()["token"]})
     assert denied.status_code == 403
