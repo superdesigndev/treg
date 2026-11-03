@@ -182,8 +182,8 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
         quantity = plugins.call(reserve["plugin"], provider, plugin_request(ep, request_data))
         held = _priced(terms, quantity)
         if held is None:
-            raise ResolutionFailed("catalog_price_unavailable", status_code=502, detail={
-                "error": "catalog_price_unavailable", "endpoint_id": ep["id"],
+            raise ResolutionFailed("catalog_price_invalid", status_code=503, detail={
+                "error": "catalog_price_invalid", "endpoint_id": ep["id"],
                 "message": f"{ep['id']} could not price this request"})
         hold = min(held, _micro_up(Decimal(reserve["max"]) * rate))
     else:
@@ -275,9 +275,14 @@ def _uncapped(terms: dict, doc: object, request: plugins.Request | None,
     if "count" in settle:
         path = settle["count"]["path"]
         found = select(path, {"response": doc})
-        if not parse_path(path).many:
-            if not found or not isinstance(found[0], list):
+        if parse_path(path).many:
+            prefix = _answer_path(path)
+            listed = select(f"response.{prefix}" if prefix else "response", {"response": doc})
+            if not listed or not isinstance(listed[0], list):
                 return None
+        elif not found or not isinstance(found[0], list):
+            return None
+        else:
             found = found[0]
         return amount(terms, sum(item is not None for item in found))
     if "plugin" in settle:

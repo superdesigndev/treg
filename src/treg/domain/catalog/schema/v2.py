@@ -349,6 +349,9 @@ def served_cost(row: dict, input_schema: dict) -> dict | None:
     out: dict = {"type": cost_type(price, row.get("reserve"), row.get("settle"), row["bill"])}
     if price.get("value") is not None:
         out["value"] = _number(price["value"])
+    if price.get("rates") is not None:
+        out["fallback"] = {"value": _number(reserve["max"]),
+                           "note": "the most one call is held at; its plugin's quantities are priced by the rates"}
     if price.get("table") is not None:
         if (table := _table_view(price["table"], input_schema)) is not None:
             out["table"] = table
@@ -382,7 +385,9 @@ def served(row: V2Row, input_schema: dict) -> dict:
     meaning (None, or the default `bill`), money as quoted decimal strings, predicates as written;
     and `cost`, the served cost view's source."""
     out = {key: _plain(getattr(row, key)) for key in RESOLVED_KEYS}
-    out["bill"] = (row.bill or Bill()).model_dump(mode="json", exclude_none=True)
+    bill = row.bill or Bill()
+    out["bill"] = {"miss": bill.miss, "error": bill.error,
+                   **({"free_when": _plain(bill.free_when)} if bill.free_when is not None else {})}
     return {**out, "cost": served_cost(out, input_schema)}
 
 
