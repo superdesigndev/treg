@@ -51,6 +51,7 @@ import json
 import math
 import re
 import sys
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import yaml
@@ -504,6 +505,15 @@ def check_enrichlayer_rule(cost: dict, input_schema: dict, where: str,
         fail(errors, where, "cost.enrichlayer.extra_per_result needs declared options with positive credit rates")
 
 
+def _v2_price_is_free(price: object) -> bool:
+    if not isinstance(price, dict) or price.get("value") is None:
+        return False
+    try:
+        return Decimal(str(price["value"])) == 0
+    except InvalidOperation:
+        return False
+
+
 def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
     """Anonymous platform fallback is intentionally narrow: proven public GETs that cost zero."""
     mode = ep.get("platform_auth")
@@ -515,8 +525,7 @@ def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
     if ep.get("method") != "GET":
         fail(errors, where, "platform_auth anonymous requires GET")
     cost, price = ep.get("cost"), ep.get("price")
-    if not (isinstance(cost, dict) and cost.get("type") == "free") \
-            and not (isinstance(price, dict) and price.get("value") == "0"):
+    if not (isinstance(cost, dict) and cost.get("type") == "free") and not _v2_price_is_free(price):
         fail(errors, where, "platform_auth anonymous requires cost.type free (in v2, price.value '0')")
     if not ep.get("verified"):
         fail(errors, where, "platform_auth anonymous requires live verification")

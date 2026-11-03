@@ -958,7 +958,10 @@ def test_body_allowlist_contract_validation(patch, valid):
     ({'authorization_method': 'oauth'}, False),
     ({'async': {'poll': {}}}, False),
     ({'cost': None, 'price': {'value': '0'}}, True),
+    ({'cost': None, 'price': {'value': '0.0'}}, True),
+    ({'cost': None, 'price': {'value': '0.00'}}, True),
     ({'cost': None, 'price': {'value': '0.02'}}, False),
+    ({'cost': None, 'price': {'value': 'free'}}, False),
 ])
 def test_anonymous_platform_auth_is_a_verified_free_read_only_contract(patch, valid):
     ep = {
@@ -972,6 +975,14 @@ def test_anonymous_platform_auth_is_a_verified_free_read_only_contract(patch, va
     errors = []
     validator.check_platform_auth(ep | patch, 'example', errors)
     assert (not errors) is valid
+
+
+def test_anonymous_platform_auth_refuses_a_priced_v2_row_naming_the_free_price():
+    ep = {'id': 'example.public.values', 'platform_auth': 'anonymous', 'method': 'GET',
+          'scope': 'any_account', 'price': {'value': '0.02'}, 'verified': '2026-09-15'}
+    errors = []
+    validator.check_platform_auth(ep, 'example', errors)
+    assert errors == ["example: platform_auth anonymous requires cost.type free (in v2, price.value '0')"]
 
 
 def test_missing_platform_auth_normalizes_as_absent():
