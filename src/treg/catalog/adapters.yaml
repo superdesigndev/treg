@@ -3295,7 +3295,8 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.formats: [markdown], body.onlyMainContent: false}
     out: {pages: "list(output.data)", count: "len(list(output.data))"}
-    miss: "coalesce(output.data.markdown, '') == ''"
+    # output.data.statusCode is the TARGET's status: a 4xx/5xx is the site's error page, not the page
+    miss: "choose(http_error(output.data.statusCode), true, coalesce(output.data.markdown, '') == '')"
   crawl4ai.web.extract.structured:
     accepts: [[url, schema, instruction], [url, schema], [url, instruction]]
     in: {url: body.url, schema: body.schema, instruction: body.instruction}
