@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import time
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -252,6 +253,7 @@ async def test_cancelled_refresh_preserves_shared_state_and_waiter_retries(env, 
         await asyncio.sleep(0)
     else:
         await entered.wait()
+    time.sleep(0.25)
     waiter = asyncio.create_task(reader.check(42, "waiter", 2))
     await asyncio.sleep(0)
     waiter.cancel()
