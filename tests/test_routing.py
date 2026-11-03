@@ -1619,7 +1619,8 @@ async def test_merge_past_limit_keeps_every_row_and_discloses(
     discarding paid rows is waste. Keep the full union and disclose the excess."""
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS-KEY")
     monkeypatch.setenv("TREG_PLATFORM_KEY_EXA", "PLATFORM-EXA-KEY")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,exa,fiber-ai,icypeas")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_QUICKENRICH", "PLATFORM-QUICKENRICH-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,exa,fiber-ai,icypeas,quickenrich")
     get_settings.cache_clear()
     icy = {"leads": [{"firstname": "Ada", "lastname": "L", "profileUrl": "https://linkedin.com/in/ada"},
                      {"firstname": "Bo", "lastname": "M", "profileUrl": "https://linkedin.com/in/bo"}], "total": 2}
@@ -1627,7 +1628,7 @@ async def test_merge_past_limit_keeps_every_row_and_discloses(
                          {"name": "Cy N", "url": "https://linkedin.com/in/cy"}]}
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"icypeas": [(200, icy)], "*": [(200, other)] * 8}, seen))
+        {"icypeas": [(200, icy)], "quickenrich": [(200, {"data": other["results"]})], "*": [(200, other)] * 8}, seen))
     r = await clients.post("/call/treg.people.search",
                            json={"q": "backend engineer", "title": "Backend Engineer", "limit": 2},
                            headers={"X-Treg-Route-Min-Results": "5", "X-Treg-Route-Merge": "1"})
