@@ -1355,7 +1355,7 @@ MOBIUSENGINE_JOBS = OAuthProvider(
     scopes={},
     client_id_setting="", client_secret_setting="",
     category="Jobs data",
-    summary="Search and count 4M+ open jobs from employers' own career sites, including Workday, Greenhouse, Lever, Ashby and SmartRecruiters, with an optional 300-character description preview.",
+    summary="Search and count open jobs from employers' own career sites, including Workday, Greenhouse, Lever, Ashby and SmartRecruiters, with an optional 300-character description preview.",
     base_url="https://jobs-api.arihaan.ai",
     docs_url="https://jobs.mobiusengine.ai/docs?utm_source=treg&utm_medium=docs",
     probe_path="/v1/balance",  # free; a bad or missing key gets HTTP 401 {"error": {"code": "unauthorized", ...}}

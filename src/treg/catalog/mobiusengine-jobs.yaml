@@ -89,7 +89,7 @@ endpoints:
 
   - id: mobiusengine-jobs.jobs.search.preview
     verified: '2026-10-28'
-    added: '2026-10-28'
+    added: '2026-11-03'
     example_response: examples/mobiusengine-jobs.jobs.search.preview.json
     domain: jobs
     capability: companies.jobs.search
@@ -125,7 +125,7 @@ endpoints:
 
   - id: mobiusengine-jobs.jobs.search.preview.post
     verified: '2026-10-28'
-    added: '2026-10-28'
+    added: '2026-11-03'
     example_response: examples/mobiusengine-jobs.jobs.search.preview.post.json
     domain: jobs
     capability: companies.jobs.search
@@ -162,7 +162,7 @@ endpoints:
 
   - id: mobiusengine-jobs.jobs.company
     verified: '2026-10-27'
-    added: '2026-10-28'
+    added: '2026-11-03'
     example_response: examples/mobiusengine-jobs.jobs.company.json
     domain: jobs
     capability: companies.jobs
