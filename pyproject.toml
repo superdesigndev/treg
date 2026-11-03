@@ -333,6 +333,7 @@ exclude = [
   ".codegraph",
   ".lavish",                # local visual review artifacts, not distributable product assets
   "frontend/node_modules", "frontend/test-results", "frontend/playwright-report",
+  "workers/**/node_modules", "workers/**/.wrangler",
   "videos",                 # git-excluded marketing renders
   "/src/treg/web/media/**/*.mp4",  # a local copy of a page video; the page serves it from the bucket
   "*.db", "*.sqlite3", "scratch*", "body.json",   # stray local artifacts

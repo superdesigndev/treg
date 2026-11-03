@@ -1,0 +1,14 @@
+name = "treg-hub-sandbox"
+main = "src/index.js"
+compatibility_date = "2026-08-06"
+
+# Busy-loop backstop for the loader itself. A script's wall clock is the parent's, because time
+# waiting on the bridge is not CPU. cpuMs on the dynamic worker is set per run from that wall.
+[limits]
+cpu_ms = 300000
+
+[[worker_loaders]]
+binding = "LOADER"
+
+# AUTH_SECRET is `wrangler secret put AUTH_SECRET`, the same value as TREG_HUB_WORKERS_AUTH_SECRET.
+# It authorizes a run body. It is not a provider key, and it is not passed into the dynamic worker.

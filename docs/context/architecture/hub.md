@@ -9,6 +9,7 @@ sources:
   - src/treg/application/hub/__init__.py
   - src/treg/application/hub/runner.py
   - src/treg/application/hub/sandbox.py
+  - src/treg/application/hub/sandbox_workers.py
   - src/treg/application/hub/limits.py
   - src/treg/application/hub/health.py
   - src/treg/hub_sandbox.py
@@ -40,6 +41,10 @@ sources:
   - docs/hub-recipes/engineering-team-size/run.js
   - tests/test_hub.py
   - tests/test_hub_sandbox.py
+  - tests/test_hub_sandbox_workers.py
+  - tests/hub_workers_runtime.py
+  - workers/hub-sandbox/src/index.js
+  - workers/hub-sandbox/wrangler.toml
   - tests/callmatrix/test_hub_run.py
 related:
   - architecture/proxy-model.md
@@ -160,6 +165,20 @@ engine, so concurrent calls run in the parent up to the JSON road's width. An en
 the parent's kill: the engine cannot call into Python with its own time limit set. `timeout_s` on
 one call answers `{status: 0, timed_out: true}` instead of ending the run, and the cancelled child
 releases its hold.
+
+`TREG_HUB_SANDBOX` selects the engine (`quickjs` default, or `workers`). The host rules above do
+not move. The workers loader (`workers/hub-sandbox`) puts the script in a dynamic worker whose
+`globalOutbound` is null and whose only binding is a loopback back to this process; that binding
+is not a place to inject a provider key, or the key would sit in the isolate with the script and
+the call path would no longer be the only place a key exists. `ctx.exports` (the loopback) needs a
+compatibility date on or after 2025-11-17; the date in the worker config is one the pinned
+workerd accepts, and a newer date than the deployed workerd refuses to boot. The auth secret is a
+Wrangler secret, the same value as `TREG_HUB_WORKERS_AUTH_SECRET`, and it authorizes the run body
+only. The bridge token is held by the process running the script, the same shape as the in-process
+run cap: another process answers 401. Workers isolate memory is the platform's 128 MB, not
+`MEMORY_MB`, and local workerd does not surface it before the wall clock. A tight loop also blocks
+that workerd thread, so the parent's wait is the kill that actually lands there; `cpuMs` does not
+include time spent waiting on the bridge. Dynamic workers disallow `eval` / `new Function`.
 
 ## The maker's road (`routers/hub.py`, `application/hub/__init__.py`)
 
