@@ -389,6 +389,26 @@ def count_with(items: Any, path: Any) -> int | None:
     return sum(1 for item in items if get_path(item, path) not in (None, "", [], {}))
 
 
+_LOCALE_SEGMENT = re.compile(r"[a-z]{2}(?:[-_][a-z]{2})?")
+
+
+def lost_path(requested: Any, final: Any) -> bool:
+    """True when the page asked for had a path but the provider ended on the site's home page: the
+    root, or one locale segment (`/`, `/en`, `/en-us/`). A provider that reports where it finally
+    read the page names both fields in its miss rule, so a redirect to a storefront or a sign-in
+    root is not taken for the page. Missing either address is never a loss."""
+    from urllib.parse import urlsplit
+    if not isinstance(requested, str) or not isinstance(final, str) or not requested or not final:
+        return False
+    asked = [s for s in urlsplit(requested).path.split("/") if s]
+    ended = [s for s in urlsplit(final).path.split("/") if s]
+    if not asked or len(ended) > 1:
+        return False
+    if ended and not _LOCALE_SEGMENT.fullmatch(ended[0].lower()):
+        return False
+    return len(asked) > len(ended)
+
+
 def http_error(v: Any) -> bool:
     """True when `v` is an HTTP error status, 400 to 599 (an int or a numeric string). A provider that
     answers 200 while reporting the TARGET's own status in the body names that field in its miss rule,
@@ -407,7 +427,7 @@ TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": c
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
-              "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "with_country_code": with_country_code,
+              "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
               "scalar": scalar}
 

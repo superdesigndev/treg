@@ -1246,6 +1246,20 @@ def test_http_error_is_true_only_for_a_4xx_or_5xx_status(status, error):
     assert P.evaluate("http_error(code)", {"code": status}) is error
 
 
+@pytest.mark.parametrize("asked, ended, lost", [
+    ("https://shop.fr/fr/idees-cadeaux/251-vernis", "https://shop.fr/", True),
+    ("https://shop.fr/fr/idees-cadeaux/251-vernis", "https://shop.fr/en-us/", True),
+    ("https://shop.fr/p/251", "https://shop.fr/p/251?ref=x", False),
+    ("https://shop.fr/p/251", "https://shop.fr/products/251", False),
+    ("https://shop.fr/", "https://shop.fr/", False),
+    ("https://shop.fr/fr", "https://shop.fr/fr/", False),
+    ("https://shop.fr/about", "https://shop.fr/blog", False),
+    ("https://shop.fr/p/251", None, False),
+])
+def test_lost_path_is_true_only_when_a_deep_page_ended_on_the_home_page(asked, ended, lost):
+    assert P.evaluate("lost_path(a, b)", {"a": asked, "b": ended}) is lost
+
+
 @pytest.mark.parametrize("doc, miss", [
     ({"code": 502, "text": "# 502 Bad Gateway"}, True), ({"code": 200, "text": "a page"}, False),
     ({"text": "a page"}, False), ({"code": 200, "text": ""}, True)])
