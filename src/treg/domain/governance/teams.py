@@ -64,6 +64,10 @@ from ...models import (
     WebArenaRun,
 )
 from . import archive_erasure as archive_rows
+# Private ops tooling (treg-internal tools/account-erasure) imports these names from this module.
+from .archive_erasure import (  # noqa: F401
+    ARCHIVE_PRIVATE_SCOPES, archive_bodies_only_under, erase_archive_rows, private_archive_key_ids,
+)
 from ..identity import session as sess
 from ..identity import api_keys as managed_keys
 from ..identity.access import _membership_by_token, _resolve_org, lock_user
