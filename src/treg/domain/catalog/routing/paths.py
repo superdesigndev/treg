@@ -262,6 +262,12 @@ def _country_code(v: Any) -> str | None:
     return next((code for code, name in names.items() if name.lower() == key), None)
 
 
+def country_code(v: Any) -> Any:
+    """`country_code('United Kingdom')` → 'gb': the ISO 3166 alpha-2 code, lowercase, for providers that
+    take only a code. A value that names no ISO country passes through, so the provider still says why."""
+    return _country_code(v) or v
+
+
 def country_name(v: Any) -> str | None:
     """`country_name('fr')` → 'France' — the ISO 3166 alpha-2 table (catalog/countries.json, generated
     from pycountry, common names). Providers that filter on a location NAME (icypeas, lusha, apollo)
@@ -390,7 +396,7 @@ def starts_with(v: Any, prefix: Any) -> bool:
 TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "has_type": has_type, "len": length,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
-              "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name,
+              "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
               "e164_digits": e164_digits, "starts_with": starts_with, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
               "scalar": scalar}

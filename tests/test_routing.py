@@ -1232,6 +1232,14 @@ def test_a_provider_that_cannot_express_a_supplied_filter_ranks_last_among_equal
     assert "country" not in simple.to_upstream({**by_name, "country": None}, ("full_name",))[0]
 
 
+@pytest.mark.parametrize("country, sent", [
+    ("United Kingdom", "gb"), ("GB", "gb"), ("uk", "gb"), ("spain", "es"), ("Narnia", "Narnia"), (None, None)])
+def test_country_code_turns_a_name_or_code_into_the_iso_code(country, sent):
+    """A provider that takes only a two-letter code answers 400 to a country name; a value that names
+    no country passes through so the provider still says why."""
+    assert P.evaluate("country_code(country)", {"country": country}) == sent
+
+
 async def test_the_geo_aware_child_wins_a_filtered_search_and_the_answer_says_what_was_dropped(
     clients: AsyncClient, enrichment_on, monkeypatch
 ):
