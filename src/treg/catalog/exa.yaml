@@ -73,13 +73,14 @@ endpoints:
     scope: any_account
     method: POST
     path: /search
+    platform_request: {body.type: lite}
     name: "Search the web at low cost and latency"
     summary: "Low-cost, low-latency search served from Exa's index without fetching pages at query time."
     input:
       bodyType: json
       body:
         query: {type: string, required: true, note: "one natural-language query", example: "open source vector database written in rust"}
-        type: {type: string, required: true, note: "must be `lite`", example: "lite"}
+        type: {type: string, required: true, enum: [lite], note: "must be `lite`", example: "lite"}
         numResults: {type: integer, required: false, note: "1-100, default 10; each result beyond 10 adds $0.001", example: 5}
         category: {type: string, required: false, note: "same values as exa.web.search"}
         includeDomains: {type: "array[string]", required: false, note: "only these hosts or host paths"}
@@ -92,7 +93,7 @@ endpoints:
     test_request:
       body: {query: "open source vector database written in rust", type: "lite", numResults: 3}
     verified: '2026-11-02'
-    added: '2026-11-02'
+    added: '2026-11-03'
     example_response: examples/exa.web.search.lite.json
     cost:
       type: per_call
@@ -318,7 +319,7 @@ endpoints:
     test_request:
       body: {query: "what Jensen Huang said about inference demand on recent podcasts", includeDomains: ["exa.ai/library/podcast"], numResults: 3, contents: {highlights: true}}
     verified: '2026-11-02'
-    added: '2026-11-02'
+    added: '2026-11-03'
     example_response: examples/exa.web.search.podcasts.json
     cost:
       type: per_call
@@ -401,15 +402,15 @@ endpoints:
     example_response: examples/exa.web.similar.json
     cost:
       type: per_call
-      value: 4
+      value: 7
       currency: USD
       per: 1000
       unit: call
       source: observed
       source_url: https://exa.ai/pricing
-      checked: '2026-11-02'
+      checked: '2026-08-27'
       confidence: verified
-      note: "$0.004 per call for up to 10 results (OBSERVED 2026-11-02: 3 results → costDollars.total 0.004), plus $0.001 per result beyond 10. Retained as historical pricing for this retired endpoint."
+      note: "$0.007 per call for up to 10 results (OBSERVED 2026-08-27: 5 results → costDollars.total 0.007), plus $0.001 per result beyond 10. Platform billing settles the exact costDollars.total."
     docs_url: https://docs.exa.ai/reference/find-similar-links
 
   - id: exa.creators.search
