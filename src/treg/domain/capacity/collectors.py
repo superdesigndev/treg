@@ -430,7 +430,7 @@ async def _mobiusengine_jobs(c, key):
     d = await _get(c, "https://jobs-api.arihaan.ai/v1/balance", headers={"x-api-key": key})
     left = _finite(d.get("balance_usd")) if isinstance(d, dict) and d.get("mode") == "wallet" else None
     if left is None or left < 0:
-        raise ValueError("MobiusEngine Jobs Data returned no pay-per-job balance")
+        raise ValueError("MobiusEngine.ai Jobs Data returned no pay-per-job balance")
     return {"value": left, "unit": "USD left",
             "note": "prepaid pay-per-job balance; HTTP 402 insufficient_balance at zero"}
 
