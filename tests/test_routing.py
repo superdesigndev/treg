@@ -1272,6 +1272,9 @@ def test_no_result_on_site_is_true_only_when_every_row_is_off_the_requested_site
     ('"Acme" OR "Globex" ceo', [{"title": "Globex Corporation leadership"}], False),
     ("\u201cTeleClinic\u201d youtube", [{"title": "Miami Dolphins forum"}], True),
     ("teleclinic youtube", [{"title": "Miami Dolphins forum"}], False),
+    ('Acme pricing -"careers"', [{"title": "Acme pricing plans"}], False),
+    ('Acme -intitle:"jobs board"', [{"title": "Acme pricing plans"}], False),
+    ('"Acme" -"careers"', [{"title": "Careers at Globex"}], True),
     ('"ab" x', [], False),
 ])
 def test_quoted_absent_is_true_only_when_no_row_mentions_a_quoted_phrase(q, rows, absent):
