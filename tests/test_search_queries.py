@@ -15,6 +15,7 @@ from treg.application import catalog_find as find
 from treg.application import catalog_search as cs
 from treg.domain.catalog import find_recall as fr
 from treg.domain.catalog import store as catalog_store
+from treg.domain.identity import api_keys as managed_keys
 from treg.infra import judge as judge_infra
 
 CASES = yaml.safe_load((Path(__file__).parent / "fixtures" / "search_queries.yaml").read_text())["cases"]
@@ -177,6 +178,8 @@ async def test_the_cli_search_holds_no_connection_while_the_judge_thinks(clients
         held.append(infra_db._engine.sync_engine.pool.checkedout())
         return await judged(query, cands, **kw)
     monkeypatch.setattr(judge_infra, "judge", watching)
+    # This search's auth would schedule a last-used write on SQLite's shared pool.
+    monkeypatch.setattr(managed_keys, "touch", lambda *args, **kwargs: None)
     out = (await clients.get("/catalog/search", params={"q": "find the work email of a hotel manager in Cape Town",
                                                          "engine": "agent"})).json()
     assert out["verdict"] == "strong" and held == [0]

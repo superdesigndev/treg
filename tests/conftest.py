@@ -7,6 +7,7 @@ The `clients` fixture also registers a user and authes the client by default.
 
 from __future__ import annotations
 
+import asyncio
 import atexit
 import glob
 import hashlib
@@ -15,6 +16,7 @@ import json
 import os
 import socket
 import tempfile
+import time
 from pathlib import Path
 
 # Tests and their CLI subprocesses must never emit production analytics.
@@ -170,6 +172,25 @@ def fake_getaddrinfo(monkeypatch):
         monkeypatch.setattr(socket, "getaddrinfo", resolve)
 
     return install
+
+
+STALL_PROOF_TIMEOUT_S = 30.0
+
+
+def pause_loop_once_in_flight(stores, calls: int, seconds: float) -> None:
+    """Block the event loop, as a GC pause does, once every Redis call is in flight."""
+    entered = 0
+    for store in stores:
+        evaluate = store._client.eval
+
+        async def paused(*args, evaluate=evaluate):
+            nonlocal entered
+            entered += 1
+            if entered == calls:
+                asyncio.get_running_loop().call_soon(time.sleep, seconds)
+            return await evaluate(*args)
+
+        store._client.eval = paused
 
 
 def make_upstream(hook_hits: list | None = None) -> FastAPI:
