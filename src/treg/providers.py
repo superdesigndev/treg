@@ -187,6 +187,7 @@ CATALOG: list[dict] = [
     {"provider": "Valyu",       "tokens": ["VALYU_API_KEY", "VALYU"], "base_url": "https://api.valyu.ai", "auth": {"shape": "api_key_header", "header": "X-API-Key"}, "probe": "v1/datasources"},
     {"provider": "Keenable",    "tokens": ["KEENABLE"],            "base_url": "https://api.keenable.ai",                         "auth": {"shape": "api_key_header", "header": "X-API-Key"}},
     {"provider": "Sixtyfour AI", "tokens": ["SIXTYFOUR"],           "base_url": "https://api.sixtyfour.ai",                       "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "check-balance"},
+    {"provider": "LeadOcean", "tokens": ["LEADOCEAN"], "base_url": "https://api.leadocean.io", "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "v1/account"},
     {"provider": "BlitzAPI",     "tokens": ["BLITZAPI", "BLITZ_API"], "base_url": "https://api.blitz-api.ai",                    "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "v2/account/key-info"},
     {"provider": "MobiusEngine.ai Jobs Data", "tokens": ["MOBIUSENGINE_JOBS"], "base_url": "https://jobs-api.arihaan.ai", "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "v1/balance"},
     {"provider": "Olostep",     "tokens": ["OLOSTEP"],             "base_url": "https://api.olostep.com",                         "auth": {"shape": "bearer"}, "probe": "user/credits/info"},

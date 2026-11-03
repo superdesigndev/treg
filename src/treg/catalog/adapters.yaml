@@ -3780,3 +3780,52 @@ adapters:
               body.max_results: "at_most(limit, 50)"}
     out: {companies: results, count: total_results, next_cursor: cursor}
     miss: "results == []"
+
+  # LeadOcean's finder only accepts a LinkedIn identity in the shared work-email contract.
+  # A non-verified address is useful in a direct call, but must not stop a routed waterfall.
+  leadocean.people.email.find.work:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.linkedin_url}
+    out: {email: data.email, verified: "data.status == 'verified'"}
+    miss: "data.status != 'verified'"
+  leadocean.people.email.find.personal:
+    route: false
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.linkedin_url}
+    out: {email: "data[0].email"}
+    miss: "data == []"
+  leadocean.people.phone.find:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.linkedin_url}
+    out: {phone: data.best.phone}
+    miss: "data.best.phone == null"
+  leadocean.people.enrich:
+    accepts: [[linkedin_url], [email]]
+    in: {linkedin_url: body.linkedin_url, email: body.email}
+    out: {full_name: data.profile_data.profile_full_name, first_name: data.profile_data.profile_first_name,
+          last_name: data.profile_data.profile_last_name, title: "data.contact_data.contact_current_experiences[0].job_title",
+          company: "data.contact_data.contact_current_experiences[0].company_name",
+          company_domain: "data.contact_data.contact_current_experiences[0].company_domain",
+          linkedin_url: data.profile_data.profile_url,
+          location: "join(data.profile_data.profile_address.city, data.profile_data.profile_address.country)"}
+    miss: "data.profile_data.profile_full_name == null"
+  leadocean.companies.enrich:
+    accepts: [[domain], [linkedin_url]]
+    in: {domain: body.domain, linkedin_url: body.linkedin_url}
+    out: {name: data.company_data.company_name, domain: data.company_data.company_domain,
+          website: data.company_data.company_web_address, description: data.company_data.company_description,
+          employees: data.company_data.company_employees,
+          location: "join(data.company_data.company_primary_address.city, data.company_data.company_primary_address.country)"}
+    miss: "data.company_data.company_name == null"
+  leadocean.people.search:
+    accepts: [[company_domain], [title], [q]]
+    in: {company_domain: queryParams.domain, title: queryParams.title, q: queryParams.q}
+    in_expr: {queryParams.limit: "at_most(limit, 25)"}
+    out: {people: data, count: meta.total, next_cursor: meta.nextCursor}
+    miss: "data == []"
+  leadocean.companies.search:
+    accepts: [[domain], [name], [industry], [q]]
+    in: {domain: queryParams.domain, name: queryParams.name, industry: queryParams.industry, q: queryParams.q}
+    in_expr: {queryParams.limit: "at_most(limit, 25)"}
+    out: {companies: data, count: meta.total, next_cursor: meta.nextCursor}
+    miss: "data == []"
