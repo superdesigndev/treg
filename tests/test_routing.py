@@ -1240,6 +1240,20 @@ def test_country_code_turns_a_name_or_code_into_the_iso_code(country, sent):
     assert P.evaluate("country_code(country)", {"country": country}) == sent
 
 
+@pytest.mark.parametrize("status, error", [
+    (511, True), (404, True), ("503", True), (200, False), (301, False), (600, False), (None, False), ("n/a", False)])
+def test_http_error_is_true_only_for_a_4xx_or_5xx_status(status, error):
+    assert P.evaluate("http_error(code)", {"code": status}) is error
+
+
+@pytest.mark.parametrize("doc, miss", [
+    ({"code": 502, "text": "# 502 Bad Gateway"}, True), ({"code": 200, "text": "a page"}, False),
+    ({"text": "a page"}, False), ({"code": 200, "text": ""}, True)])
+def test_a_miss_rule_can_combine_a_target_error_status_with_an_empty_text(doc, miss):
+    """The shape a provider row uses: the target's error status decides first, empty text second."""
+    assert P.evaluate("choose(http_error(code), true, coalesce(text, '') == '')", doc) is miss
+
+
 async def test_the_geo_aware_child_wins_a_filtered_search_and_the_answer_says_what_was_dropped(
     clients: AsyncClient, enrichment_on, monkeypatch
 ):

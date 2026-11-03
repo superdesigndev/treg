@@ -389,6 +389,16 @@ def count_with(items: Any, path: Any) -> int | None:
     return sum(1 for item in items if get_path(item, path) not in (None, "", [], {}))
 
 
+def http_error(v: Any) -> bool:
+    """True when `v` is an HTTP error status, 400 to 599 (an int or a numeric string). A provider that
+    answers 200 while reporting the TARGET's own status in the body names that field in its miss rule,
+    so the target's error page is not an extracted page."""
+    try:
+        return 400 <= int(v) <= 599
+    except (TypeError, ValueError):
+        return False
+
+
 def starts_with(v: Any, prefix: Any) -> bool:
     return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
 
@@ -397,7 +407,7 @@ TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": c
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
-              "e164_digits": e164_digits, "starts_with": starts_with, "with_country_code": with_country_code,
+              "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
               "scalar": scalar}
 
