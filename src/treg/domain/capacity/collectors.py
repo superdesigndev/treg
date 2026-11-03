@@ -411,6 +411,25 @@ async def _sixtyfour(c, key):
     return {"value": remaining, "unit": "credits", "note": "Organization credit balance"}
 
 
+async def _leadocean(c, key):
+    d = await _get(c, "https://api.leadocean.io/v1/usage", headers={"x-api-key": key})
+    pace = (d.get("data") or {}).get("pace") if isinstance(d, dict) else None
+    if not isinstance(pace, dict):
+        raise ValueError("LeadOcean returned no pace counters")
+    remaining = []
+    for group in ("search", "enrich"):
+        windows = pace.get(group)
+        if not isinstance(windows, list) or not windows:
+            raise ValueError(f"LeadOcean returned no {group} counters")
+        for window in windows:
+            used, limit = window.get("used"), window.get("limit")
+            if type(used) is not int or type(limit) is not int or used < 0 or limit < 0:
+                raise ValueError("LeadOcean returned an invalid pace counter")
+            remaining.append(max(0, limit - used))
+    return {"value": min(remaining), "unit": "records", "informational": True,
+            "note": "Smallest remaining search/enrichment window; pools are independent"}
+
+
 async def _blitzapi(c, key):
     d = await _get(c, "https://api.blitz-api.ai/v2/account/key-info",
                    headers={"x-api-key": key})
@@ -1109,6 +1128,7 @@ BALANCE_ROUTES = {
     "harvestapi": _harvestapi,
     "fetchinio": _fetchinio,
     "sixtyfour": _sixtyfour,
+    "leadocean": _leadocean,
     "blitzapi": _blitzapi,
     "mobiusengine_jobs": _mobiusengine_jobs,
     "prospeo": _prospeo,

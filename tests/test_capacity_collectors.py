@@ -117,6 +117,31 @@ async def test_sixtyfour_balance_uses_the_free_credit_route():
     assert row == {"value": 12.5, "unit": "credits", "note": "Organization credit balance"}
 
 
+async def test_leadocean_usage_monitors_independent_record_windows_without_blocking_both_pools():
+    def probe(request):
+        assert str(request.url) == "https://api.leadocean.io/v1/usage"
+        assert request.headers["x-api-key"] == "test"
+        return httpx.Response(200, json={"success": True, "data": {"pace": {
+            "search": [{"used": 10, "limit": 10}, {"used": 20, "limit": 100}],
+            "enrich": [{"used": 2, "limit": 10}, {"used": 4, "limit": 100}],
+        }}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+        row = await collectors._leadocean(client, "test")
+    assert row["value"] == 0 and row["informational"] is True
+    assert policy.default_policy("leadocean", has_key=True).rate_limit["limit"] == 25
+
+
+@pytest.mark.parametrize("bad", [None, True, "1", -1])
+async def test_leadocean_usage_rejects_invalid_counters(bad):
+    pace = {"search": [{"used": bad, "limit": 10}],
+            "enrich": [{"used": 1, "limit": 10}]}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json={"data": {"pace": pace}}))) as client:
+        with pytest.raises(ValueError, match="invalid pace counter"):
+            await collectors._leadocean(client, "test")
+
+
 @pytest.mark.parametrize("credits", [None, True, "12.5", float("nan"), -1])
 async def test_sixtyfour_balance_rejects_invalid_credit_values(credits):
     async with httpx.AsyncClient(transport=httpx.MockTransport(

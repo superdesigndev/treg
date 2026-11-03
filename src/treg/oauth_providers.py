@@ -1501,6 +1501,19 @@ SIXTYFOUR = OAuthProvider(
     probe_path="/check-balance",
 )
 
+LEADOCEAN = OAuthProvider(
+    service="leadocean", display_name="LeadOcean", auth_kind="key",
+    token_label="API key", token_placeholder="your LeadOcean API key",
+    token_header="x-api-key", token_format="{secret}",
+    setup_url="https://leadocean.io/", setup_action_label="Get your LeadOcean API key",
+    setup_steps=("Sign in to LeadOcean and copy an API key.", "Paste the key here."),
+    setup_note="Search and enrichment consume provider records. Connection verification is free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment", summary="Search and enrich people and companies, and find contact details.",
+    base_url="https://api.leadocean.io", docs_url="https://leadocean.io/docs",
+    probe_path="/v1/account",
+)
+
 BLITZAPI = OAuthProvider(
     service="blitzapi", display_name="BlitzAPI", auth_kind="key",
     token_label="API key", token_placeholder="your BlitzAPI API key",
@@ -4185,7 +4198,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,

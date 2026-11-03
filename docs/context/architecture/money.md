@@ -26,6 +26,8 @@ sources:
   - src/treg/application/call/route.py
   - src/treg/application/call/reserve.py
   - src/treg/application/call/settle.py
+  - src/treg/application/call/cost.py
+  - tests/test_catalog_v2_runtime.py
   - src/treg/catalog/tomba.yaml
   - src/treg/application/asynctasks.py
   - src/treg/alembic/versions/0017_async_task_record.py
@@ -649,6 +651,42 @@ upstream retry or extra ledger operation is introduced.
   rule first, then the routing adapter, else the estimate; a value in `expect.misses` settles at zero
   but stops the hit verdict calling a free miss a failure. `store.py` inherits provider-file `expect`
   rules onto endpoints. An undecidable rule does not imply a free call.
+
+## Rows in the v2 spelling
+
+A row in the v2 spelling (architecture/catalog-schema.md) is priced and settled by
+`application/call/cost.py` through the same two seams. `price_call` returns its hold and its cost
+terms, frozen at resolve (`Pricing.terms`, carried as `MarketplaceCall.cost_terms`: the unit price,
+the reported unit's rate, the plugin rates and the row's outcome and bill rules), and
+`decide_settle` follows the v2 settlement order; no provider-specific settlement rule reads a v2
+row.
+
+- **The hold.** `price` gives the price of `per` units in its `currency` at the rate frozen at
+  resolve: `value`, or the first `table` row whose `when` holds on the request (input defaults
+  applied, values coerced by their declared type), times a bounded `times` field, else the
+  `fallback`; `rates` prices plugin quantities only, so the schema requires a `reserve.plugin` beside
+  it and refuses `bill.miss` in units. `reserve` gives the units: `rows` (the caller's integer clamped to `[1, max]`, else
+  its default; with no default treg's key refuses a request without it), `entities` (list items,
+  comma-separated query values and scalars, added up, from one to `max`), or a `plugin` quantity
+  priced at the frozen rates and capped at `max`; absent, one unit. `round: up` bills whole `per`
+  blocks, in the hold and in a count. Amounts round up to whole micro-USD.
+- **The order.** No answer, a 3xx and a 5xx release. A 4xx releases unless `settle.reported` reads
+  a charge above zero and the status is not one of `_NOT_THE_CALLERS_FAULT`; then that is the bill.
+  On a 2xx, `bill.free_when` makes the call free; a readable `settle.reported` (after `scale`,
+  zero included) is the charge, uncapped; otherwise the outcome picks `bill.error` or `bill.miss`
+  (free by default, `charged`, or a number of units at the unit price capped at the hold) and a hit
+  is charged. A charged answer costs its `count` (non-null items) or `plugin` quantity capped at the
+  hold, its `usage` meters, which may exceed it, or the hold when there is no `settle` or no
+  evidence. An answer that would be billed is released when it carries a capacity signature.
+- **The frozen basis** keeps the vocabulary both spellings share, so either settles through the
+  same ledger code: a usage settle freezes its meters as today's `usage` basis, every other v2
+  settle is `observed` with the hold as its fallback. An async v2 row's terms ride its persisted
+  basis (`cost.persisted`); the worker settles a terminal answer through `cost.settle_terminal`: a
+  `billed_failure` by its `settle` form, a `success` by the order from `free_when` on, with a
+  charge the provider reported on the submission standing in for a missing one.
+- `MarketplaceCall.unit_micro` is one `price.value` (a table's fallback) and
+  `reported_charge_unit_micro` one frozen credit, as for a row in today's spelling; quotes, the
+  access check and the arena price a v2 row through `cost.price` as well.
 
 ## Pricing a cached hit
 

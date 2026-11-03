@@ -118,8 +118,9 @@ agents then built against a constitution that was wrong.
 | `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money`, `asynctasks`, `feedback`, `hub` (a maker's tool made of tools: the manifest, the reference language, the graph), `showcase` (leaderboard applications, tiers, badges, consent), `images` (picture kinds, sizes and limits), `plugins` (a provider's pure functions a catalog row names, resolved by import) | routers, application, concrete SDKs |
 | `infra/` | DB engine and sessions, crypto, upstream relay and SSRF, ratestore, the shared key-value store, email, Stripe | decisions |
 
-- Domains do not import each other, with three sanctioned edges: `governance -> identity`,
-  `tools -> connections`, `capacity -> catalog` (read-only). `identity` and `money` are leaves.
+- Domains do not import each other, with four sanctioned edges: `governance -> identity`,
+  `tools -> connections`, `capacity -> catalog` (read-only), `catalog -> plugins` (the functions its
+  rows name). `identity` and `money` are leaves.
   import-linter enforces the layering (`[tool.importlinter]` in `pyproject.toml`, run by CI);
   `docs/context/architecture/import-boundaries.md` explains each contract.
 - `bootstrap.py` alone knows concrete implementations. `api.py` is the legacy `all`-role

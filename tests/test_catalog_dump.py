@@ -28,3 +28,10 @@ def test_first_difference_walks_lists_and_names_a_missing_key():
     assert catalog_dump.first_difference({"a": {"x": 1}}, {"a": {"x": 1, "y": 2}}) == "a.y"
     assert catalog_dump.first_difference({"a": [1]}, {"a": [1, 2]}) == "a"
     assert catalog_dump.first_difference({"a": 1}, {"a": 1}) is None
+
+
+def test_the_dump_reads_another_catalog_directory(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text("platforms: {web: Web}\ncapabilities: {}\n")
+    (tmp_path / "demo.yaml").write_text("provider: demo\nendpoints:\n  - {id: demo.x, platform: web}\n")
+    assert catalog_dump.main([str(tmp_path / "out.json"), "--catalog", str(tmp_path)]) == 0
+    assert list(json.loads((tmp_path / "out.json").read_text())["by_id"]) == ["demo.x"]

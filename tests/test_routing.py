@@ -12,22 +12,24 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from httpx import AsyncClient
+from pydantic import ValidationError
 from sqlmodel import select
 
 from treg import audit
 from treg.domain import money as ledger
+from treg.domain.catalog.schema import is_v2
 from treg.application.call import overflow as call_overflow
 from treg.application.call import resolve as call_resolve
 from treg.application.call import route as call_route
 from treg.application.call import service as call_service
 from treg.application import catalog_stats
 from treg.application.call.types import ResolutionFailed, UpstreamResponse
-from treg.config import get_settings
+from treg.config import Settings, get_settings
 from treg.infra.db import session_maker
 from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing import paths as P
 from treg.domain.catalog.routing.contracts import canonical_identity
-from treg.domain.catalog.routing.plan import Candidate, cost_at, rank
+from treg.domain.catalog.routing.plan import Candidate, cost_at, rank, sampled_provider_allowed
 from treg.infra.catalog_observations import CachedEndpointObservationReader
 from treg.models import CallRecord, Hold, LedgerEntry, OverflowRoute
 from treg.timeutil import utcnow_naive
@@ -389,6 +391,92 @@ def test_cost_at_and_ranking_math():
     assert [c.endpoint["id"] for c in rank([a, b], exclude=["a"])] == ["b.x"]
     a.exhausted = True
     assert [c.endpoint["id"] for c in rank([a, b])] == ["b.x"]
+
+
+def test_sampled_provider_is_stable_and_applies_per_provider():
+    percentages = {"leadocean": 30, "second": 30, "other": 0}
+    decisions = [sampled_provider_allowed("leadocean", percentages, org_id=1,
+                 capability="people.email.find", identity={"linkedin_url": f"https://linkedin.com/in/person-{i}"})
+                 for i in range(1000)]
+    assert 250 <= sum(decisions) <= 350
+    assert decisions == [sampled_provider_allowed("leadocean", percentages, org_id=1,
+                         capability="people.email.find", identity={"linkedin_url": f"https://linkedin.com/in/person-{i}"})
+                         for i in range(1000)]
+    assert decisions != [sampled_provider_allowed("second", percentages, org_id=1,
+                         capability="people.email.find", identity={"linkedin_url": f"https://linkedin.com/in/person-{i}"})
+                         for i in range(1000)]
+    assert sampled_provider_allowed("unlisted", percentages, org_id=1, capability="people.email.find", identity={})
+    assert not sampled_provider_allowed("other", percentages, org_id=1, capability="people.email.find", identity={})
+
+
+@pytest.mark.parametrize("value", ["not-json", "[]", '{"leadocean":-1}', '{"leadocean":101}',
+                                          '{"leadocean":30.5}', '{"leadocean":true}', '{"LeadOcean":30}'])
+def test_sampled_provider_config_rejects_invalid_values(value):
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, route_provider_sample_pct=value)
+
+
+async def test_sampled_provider_only_filters_shared_key_routes(clients, monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "test-key")
+    get_settings.cache_clear()
+    ep = catalog_store.load().by_id[ROUTED]
+    options = call_route.RouteOptions.from_headers(lambda key: None)
+    identity = {"linkedin_url": "https://www.linkedin.com/in/example"}
+
+    class Caller:
+        org_id = 1
+        org = SimpleNamespace(id=1, platform_overflow_disabled=False)
+
+    try:
+        for value, expected in (("", True), ("{}", True), ('{"leadocean":0}', False),
+                                ('{"leadocean":100}', True)):
+            monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", value)
+            get_settings.cache_clear()
+            plan = await call_route.build_plan(ep, identity, Caller(), options)
+            assert any(c.endpoint["provider"] == "leadocean" for c in plan.candidates) is expected
+
+        async def own_key(*args, **kwargs):
+            return "own-key"
+
+        monkeypatch.setattr(call_route, "_marketplace_secret", own_key)
+        monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"leadocean":0}')
+        get_settings.cache_clear()
+        plan = await call_route.build_plan(ep, identity, Caller(), options)
+        assert any(c.endpoint["provider"] == "leadocean" and c.tier == "credential"
+                   for c in plan.candidates)
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_sampled_provider_changes_routed_call_not_direct_call(clients, monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "test-key")
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "leadocean": [(200, {"data": {"email": "person@example.com", "status": "verified"}}),
+                      (200, {"data": {"email": "person@example.com", "status": "verified"}})],
+    }, seen))
+    identity = {"linkedin_url": "https://www.linkedin.com/in/example"}
+    try:
+        monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"leadocean":0}')
+        get_settings.cache_clear()
+        refused = await clients.post(f"/call/{ROUTED}", json=identity)
+        assert refused.status_code == 503
+        assert seen == []
+        direct = await clients.get("/call/leadocean.people.email.find.work", params=identity)
+        assert direct.status_code == 200, direct.text
+        assert direct.json()["data"]["email"] == "person@example.com"
+
+        monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"leadocean":100}')
+        get_settings.cache_clear()
+        served = await clients.post(f"/call/{ROUTED}", json=identity)
+        assert served.status_code == 200, served.text
+        assert served.json()["_treg"]["served_by"] == "leadocean.people.email.find.work"
+        assert served.json()["_treg"]["charged_micro"] == 0
+        assert [provider for provider, *_ in seen] == ["leadocean", "leadocean"]
+    finally:
+        get_settings.cache_clear()
 
 
 async def test_concurrent_routed_plans_share_one_cached_observation_refresh(
@@ -1758,7 +1846,7 @@ def test_every_declared_miss_status_names_its_meaning():
     agent (tikhub answers 200 with a null body for an unknown id) and the adapter's own predicate
     decides that case, so `_miss_status` must never turn a success into a miss."""
     cat = catalog_store.load()
-    declared = {e["id"]: e["miss"] for e in cat.by_id.values() if e.get("miss")}
+    declared = {e["id"]: e["miss"] for e in cat.by_id.values() if e.get("miss") and not is_v2(e)}
     assert "aviato.people.phone.find" in declared and "hunter.people.enrich" in declared
     for eid, m in declared.items():
         assert isinstance(m, dict) and m.get("status") is not None and m.get("means"), eid
