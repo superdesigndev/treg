@@ -5,11 +5,15 @@ no treg call path here; that is tests/callmatrix/test_hub_run.py."""
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 
 from treg.application.hub import sandbox
 from treg.application.hub.sandbox import SandboxError, run_script
+from treg.config import get_settings
+
+_WORKERS_SECRET = "hub-workers-test-secret"
 
 
 async def _echo(req: sandbox.CallRequest) -> dict:
@@ -23,7 +27,26 @@ async def _run(script: str, inputs=None, *, execute=_echo, wall_s: int = 10) -> 
     return out, log
 
 
-async def test_a_script_returns_its_object_and_reads_inputs():
+@pytest.fixture(scope="session")
+def workers_runtime():
+    from tests.hub_workers_runtime import running
+    with running(_WORKERS_SECRET) as url:
+        yield url
+
+
+@pytest.fixture(params=["quickjs", "workers"])
+def backend(request, monkeypatch):
+    """The contract below runs on both engines. QuickJS stays the default."""
+    monkeypatch.setenv("TREG_HUB_SANDBOX", request.param)
+    if request.param == "workers":
+        monkeypatch.setenv("TREG_HUB_WORKERS_URL", request.getfixturevalue("workers_runtime"))
+        monkeypatch.setenv("TREG_HUB_WORKERS_AUTH_SECRET", _WORKERS_SECRET)
+    get_settings.cache_clear()
+    yield request.param
+    get_settings.cache_clear()
+
+
+async def test_a_script_returns_its_object_and_reads_inputs(backend):
     out, log = await _run("""
 export default async function run(ctx) {
   ctx.log("hello " + ctx.inputs.name);
@@ -33,7 +56,7 @@ export default async function run(ctx) {
     assert log == ["hello mitchel"]
 
 
-async def test_ctx_call_crosses_the_bridge_and_comes_back():
+async def test_ctx_call_crosses_the_bridge_and_comes_back(backend):
     out, _ = await _run("""
 export default async function run(ctx) {
   const a = await ctx.call("supabase/rest/v1/leads", { query: { select: "email" } });
@@ -44,12 +67,12 @@ export default async function run(ctx) {
 
 
 @pytest.mark.parametrize("expr", ["fetch", "require", "process", "setTimeout", "XMLHttpRequest", "WebSocket", "os"])
-async def test_no_road_out_but_ctx_call(expr):
+async def test_no_road_out_but_ctx_call(backend, expr):
     out, _ = await _run(f"export default async function run(ctx) {{ return {{ t: typeof {expr} }}; }}")
     assert out == {"t": "undefined"}
 
 
-async def test_a_refused_call_stops_the_run():
+async def test_a_refused_call_stops_the_run(backend):
     async def refuse(req):
         raise SandboxError("refused", f"{req.target!r} is not in the manifest's `uses`")
     with pytest.raises(SandboxError) as e:
@@ -76,25 +99,25 @@ async def test_an_endless_loop_dies_at_the_wall():
     assert e.value.kind == "timeout"
 
 
-async def test_a_thrown_error_is_reported_as_a_script_failure():
+async def test_a_thrown_error_is_reported_as_a_script_failure(backend):
     with pytest.raises(SandboxError) as e:
         await _run("export default async function run(ctx) { throw new Error('boom'); }")
     assert e.value.kind == "script" and "boom" in e.value.message
 
 
-async def test_a_script_without_the_export_is_refused():
+async def test_a_script_without_the_export_is_refused(backend):
     with pytest.raises(SandboxError) as e:
         await _run("function run(ctx) { return {}; }")
     assert e.value.kind == "script" and "export default" in e.value.message
 
 
-async def test_a_non_object_return_is_refused():
+async def test_a_non_object_return_is_refused(backend):
     with pytest.raises(SandboxError) as e:
         await _run("export default async function run(ctx) { return [1, 2]; }")
     assert e.value.kind == "output"
 
 
-async def test_the_log_is_capped_at_fifty_lines():
+async def test_the_log_is_capped_at_fifty_lines(backend):
     _, log = await _run("""
 export default async function run(ctx) {
   for (let i = 0; i < 80; i++) ctx.log("line " + i + " " + "y".repeat(5000));
@@ -103,7 +126,7 @@ export default async function run(ctx) {
     assert len(log) == 50 and all(len(line) <= 2000 for line in log)
 
 
-async def test_the_call_cap_is_enforced_by_the_parent():
+async def test_the_call_cap_is_enforced_by_the_parent(backend):
     calls = 0
 
     async def count(req):
@@ -127,7 +150,7 @@ async def test_the_child_sees_no_server_environment(monkeypatch):
     assert "TREG_SECRET_KEY" not in env and env["HOME"] == "/tmp/x"
 
 
-async def test_two_runs_in_parallel_do_not_mix():
+async def test_two_runs_in_parallel_do_not_mix(backend):
     a, b = await asyncio.gather(
         _run("export default async function run(ctx) { return { who: ctx.inputs.who }; }", {"who": "a"}),
         _run("export default async function run(ctx) { return { who: ctx.inputs.who }; }", {"who": "b"}),
@@ -135,7 +158,7 @@ async def test_two_runs_in_parallel_do_not_mix():
     assert a[0] == {"who": "a"} and b[0] == {"who": "b"}
 
 
-async def test_ctx_csv_parses_quotes_commas_and_newlines():
+async def test_ctx_csv_parses_quotes_commas_and_newlines(backend):
     out, _ = await _run(r'''
 export default async function run(ctx) {
   const rows = ctx.csv('name,note,n\r\n"Doe, Jane","said ""hi""\nthen left",3\nBob,,4\n');
@@ -146,7 +169,7 @@ export default async function run(ctx) {
     assert out["rows"][1] == {"name": "Bob", "note": "", "n": "4"}
 
 
-async def test_ctx_data_carries_the_uploaded_rows():
+async def test_ctx_data_carries_the_uploaded_rows(backend):
     log: list[str] = []
     out = await run_script("export default async function run(ctx) { return { n: ctx.data.length, first: ctx.data[0] }; }",
                            {}, wall_s=10, execute=_echo, log=log, data=[{"a": "1", "b": "x"}, {"a": "2", "b": "y"}])
@@ -155,7 +178,7 @@ async def test_ctx_data_carries_the_uploaded_rows():
     assert out2 == {"d": None}
 
 
-async def test_five_calls_in_one_promise_all_run_at_the_same_time():
+async def test_five_calls_in_one_promise_all_run_at_the_same_time(backend):
     """The AI visibility tool: five engines at ~30-47 s each cannot fit 120 s one after another.
     ctx.call no longer blocks the engine, so Promise.all overlaps them (the parent runs four at a
     time). Each call sleeps 0.3 s: five sequential would take 1.5 s; overlapped, well under 1 s."""
@@ -182,7 +205,7 @@ async def test_five_calls_in_one_promise_all_run_at_the_same_time():
     assert started[3] - started[0] < 0.2 and started[4] - started[0] >= 0.25
 
 
-async def test_a_refused_call_inside_promise_all_still_stops_the_run():
+async def test_a_refused_call_inside_promise_all_still_stops_the_run(backend):
     async def execute(req):
         if req.opts.get("query", {}).get("i") == 2:
             raise SandboxError("refused", "no")
@@ -199,7 +222,7 @@ async def test_a_refused_call_inside_promise_all_still_stops_the_run():
     assert e.value.kind == "refused"
 
 
-async def test_a_call_with_its_own_timeout_answers_timed_out_instead_of_ending_the_run():
+async def test_a_call_with_its_own_timeout_answers_timed_out_instead_of_ending_the_run(backend):
     """`timeout_s` on ctx.call: the slow engine is "did not answer", the fast one still counts."""
     async def execute(req):
         if req.opts.get("query", {}).get("slow"):
@@ -220,7 +243,7 @@ async def test_a_call_with_its_own_timeout_answers_timed_out_instead_of_ending_t
 # ---------------------------------------------------------------------------------------------
 # ctx.charge: the script prices itself, one line at a time, under pricing.max_price_usd (round 4, 2026-09-24)
 
-async def test_ctx_charge_lines_reach_the_parent_and_zero_is_dropped():
+async def test_ctx_charge_lines_reach_the_parent_and_zero_is_dropped(backend):
     charges: list = []
     out = await run_script(
         "export default async function run(ctx) {"
@@ -239,15 +262,26 @@ async def test_ctx_charge_lines_reach_the_parent_and_zero_is_dropped():
     ("ctx.charge(-1, 'x')", "a number of dollars"),
     ("for (let i = 0; i < 21; i++) ctx.charge(0.01, 'x')", "cap of 20 charges"),
 ])
-async def test_a_bad_charge_is_refused_and_stops_the_run(expr, rule):
+async def test_a_bad_charge_is_refused_and_stops_the_run(backend, expr, rule):
     with pytest.raises(SandboxError) as e:
         await run_script("export default async function run(ctx) { " + expr + "; return { ok: 1 }; }",
                          {}, wall_s=10, execute=None, log=[], charges=[], max_charge_micro=500_000)
     assert e.value.kind == "refused" and rule in e.value.message
 
 
-async def test_ctx_charge_without_a_declared_cap_is_refused():
+async def test_ctx_charge_without_a_declared_cap_is_refused(backend):
     with pytest.raises(SandboxError) as e:
         await run_script("export default async function run(ctx) { ctx.charge(0.01, 'x'); return { ok: 1 }; }",
                          {}, wall_s=10, execute=None, log=[])
     assert e.value.kind == "refused" and "max_price_usd" in e.value.message
+
+
+async def test_an_output_over_the_cap_is_refused(backend):
+    script = (
+        "export default async function run(ctx) { return { x: "
+        + json.dumps("a" * (sandbox.MAX_OUTPUT_BYTES + 1))
+        + " }; }"
+    )
+    with pytest.raises(SandboxError) as e:
+        await run_script(script, {}, wall_s=10, execute=_echo, log=[])
+    assert e.value.kind == "output"
