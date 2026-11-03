@@ -1233,15 +1233,11 @@ def test_a_provider_that_cannot_express_a_supplied_filter_ranks_last_among_equal
 
 
 @pytest.mark.parametrize("country, sent", [
-    ("United Kingdom", "gb"), ("GB", "gb"), ("uk", "gb"), ("spain", "es"), ("Narnia", "Narnia")])
-def test_a_code_only_provider_gets_the_iso_code_for_a_country_name(country, sent):
-    """Crawl4AI's people search takes only a two-letter code and answers 400 to a name; a name passed
-    through as `UNITED KINGDOM` was a refused child on every routed search that named the country."""
-    cat = catalog_store.load()
-    contract = cat.contracts["people.search"]
-    ident, _ = canonical_identity(contract, {"company_domain": "tesco.com", "country": country, "limit": 3})
-    _, body = cat.adapters["crawl4ai.people.search"].to_upstream(ident, ("company_domain",))
-    assert body["where"]["company"]["country"] == sent
+    ("United Kingdom", "gb"), ("GB", "gb"), ("uk", "gb"), ("spain", "es"), ("Narnia", "Narnia"), (None, None)])
+def test_country_code_turns_a_name_or_code_into_the_iso_code(country, sent):
+    """A provider that takes only a two-letter code answers 400 to a country name; a value that names
+    no country passes through so the provider still says why."""
+    assert P.evaluate("country_code(country)", {"country": country}) == sent
 
 
 async def test_the_geo_aware_child_wins_a_filtered_search_and_the_answer_says_what_was_dropped(
