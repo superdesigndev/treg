@@ -8,6 +8,7 @@ name: Catalog added dates
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
+  merge_group:
 
 concurrency:
   group: catalog-added-${{ github.ref }}
@@ -15,22 +16,46 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   unchanged:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      BASE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || format('origin/{0}', github.base_ref) }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ github.event_name == 'merge_group' && 0 || 1 }}
       - name: Fetch the base branch
+        if: github.event_name == 'pull_request'
         run: git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+      - name: Find the added-date-change label
+        id: label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_LABELED: ${{ contains(github.event.pull_request.labels.*.name, 'added-date-change') }}
+        # A merge queue build carries no pull request payload and holds every pull request queued
+        # ahead of this one; each is named by its merge or squash commit subject.
+        run: |
+          allow="$PR_LABELED"
+          if [ "$GITHUB_EVENT_NAME" = merge_group ]; then
+            for number in $(git log --first-parent --format=%s "$BASE..HEAD" | grep -oE '#[0-9]+' | tr -d '#' | sort -u); do
+              if gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name' 2>/dev/null \
+                  | grep -qx added-date-change; then
+                allow=true
+              fi
+            done
+          fi
+          echo "allow=$allow" >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.13"
       - name: Existing added dates are unchanged
         env:
-          ALLOW: ${{ contains(github.event.pull_request.labels.*.name, 'added-date-change') && '--allow-change' || '' }}
+          ALLOW: ${{ steps.label.outputs.allow == 'true' && '--allow-change' || '' }}
         # The helper needs only PyYAML; no project install.
-        run: uv run --no-project --with pyyaml python scripts/catalog_added.py --base "origin/${{ github.base_ref }}" $ALLOW
+        run: uv run --no-project --with pyyaml python scripts/catalog_added.py --base "$BASE" ${ALLOW:+"$ALLOW"}
       - name: The shrink-only violation list did not grow
-        run: uv run --locked python scripts/catalog_shrink_only.py --base "origin/${{ github.base_ref }}"
+        run: uv run --locked python scripts/catalog_shrink_only.py --base "$BASE"

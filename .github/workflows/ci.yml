@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
 
 # A new push supersedes the running build of the same branch or PR: the outdated run is cancelled
 # instead of holding a runner and queueing the new one behind it (two overlapped runs were live
@@ -30,8 +31,8 @@ jobs:
       - name: Detect a docs-only push
         id: docs
         # Direct pushes that change only docs/ and *.md skip the suite — half of one week's runs
-        # bought nothing. PULL REQUESTS ALWAYS RUN: the branch-protection check must report, and a
-        # skipped required check would block the merge forever.
+        # bought nothing. PULL REQUESTS AND MERGE QUEUE BUILDS ALWAYS RUN: the branch-protection check
+        # must report, and a skipped required check would block the merge forever.
         run: |
           ONLY=false
           if [ "${{ github.event_name }}" = "push" ]; then
