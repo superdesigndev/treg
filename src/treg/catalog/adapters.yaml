@@ -3321,7 +3321,7 @@ adapters:
     in: {url: body.url}
     const: {body.format: md}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: "coalesce(markdown, '') == ''"
+    miss: "coalesce(text_len, 0) == 0"
   firecrawl.web.scrape:
     accepts: [[url]]
     in: {url: body.url}
