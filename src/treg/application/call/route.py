@@ -81,7 +81,8 @@ from ...domain.catalog.schema.v2 import is_v2
 from ...domain.catalog.routing.contracts import (canonical_identity, declared_miss, declared_not_found,
                                                  invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
-    MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank, unscoped,
+    MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank,
+    sampled_provider_allowed, unscoped,
 )
 from .. import asynctasks as async_task_app
 from . import async_bridge, keyslots
@@ -501,6 +502,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     if contract is None:
         raise ResolutionFailed("target_not_found", status_code=404, detail=f"{ep['id']} has no contract")
     identity, variant = canonical_identity(contract, identity_given)
+    sample_percentages = get_settings().route_provider_sample_percentages
     if variant is None:
         raise ResolutionFailed("route_no_candidate", status_code=422, detail={
             "error": "identity_incomplete", "endpoint_id": ep["id"],
@@ -590,6 +592,11 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             # priceable, but this deployment holds no key for the provider: the child would answer
             # "no credential" (a 404 the router must not treat as the caller's fault).
             dropped.append({"endpoint_id": e["id"], "why": f"no {e['provider']} key on this deployment and no own key"})
+            continue
+        if tier == "platform" and not sampled_provider_allowed(
+                e["provider"], sample_percentages, org_id=caller.org_id,
+                capability=ep["capability"], identity=identity):
+            dropped.append({"endpoint_id": e["id"], "why": "not selected for this routed request"})
             continue
         if c.exhausted:
             dropped.append({"endpoint_id": e["id"], "why": "treg's account for this provider is exhausted right now"})
