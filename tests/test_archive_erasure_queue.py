@@ -266,6 +266,20 @@ async def test_missing_objects_count_as_deleted(clients: AsyncClient, store):
     assert await _key_names() == set()
 
 
+async def test_no_rows_are_deleted_when_their_bodies_live_in_a_store_this_process_lacks(
+        clients: AsyncClient, store):
+    """A worker started without the object-store settings would otherwise delete the rows and
+    leave the bodies behind with nothing pointing at them."""
+    a = await _org("team-a")
+    await _key(store, "k", scope="org", origin=a)
+    request_id = await _enqueue(a)
+    bootstrap.configure_archive_object_store(None)
+    assert (await erasure.run_pending())["requests"][0]["outcome"] == "failed"
+    req = await _request(request_id)
+    assert req.status == rows.FAILED and "no archive object store" in req.last_error
+    assert len(await _key_names()) == 1 and store.objects
+
+
 async def test_a_snapshot_whose_body_is_missing_is_served_as_a_miss(clients: AsyncClient, r2, monkeypatch):
     """The accepted race leaves a kept public key whose bytes are gone. A caller then gets a
     normal miss: the vendor is asked again and its answer relayed, never an error."""
@@ -377,13 +391,13 @@ async def test_the_advisory_lock_is_held_on_one_connection(clients: AsyncClient,
     async with erasure._exclusive():
         async with session_maker() as s:
             held = (await s.execute(text(
-                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND classid = :a AND objid = :b"),
+                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_database WHERE datname = current_database()) AND classid = :a AND objid = :b"),
                 {"a": erasure._LOCK[0], "b": erasure._LOCK[1]})).scalar_one()
         assert held == 1
         assert "another archive erasure" in (await erasure.run_pending())["skipped"]
     async with session_maker() as s:
         assert (await s.execute(text(
-            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND classid = :a"),
+            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_database WHERE datname = current_database()) AND classid = :a"),
             {"a": erasure._LOCK[0]})).scalar_one() == 0
 
 
@@ -533,9 +547,12 @@ async def test_the_worker_command_runs_the_queue(clients: AsyncClient, store, mo
     async def verified():
         return None
     monkeypatch.setattr(infra_db, "verify_db", verified)
+    real_store_context = bootstrap.archive_object_store
+    monkeypatch.setattr(bootstrap, "archive_object_store", lambda: real_store_context(store))
     a = await _org("team-a")
     await _key(store, "k", scope="org", origin=a)
     await _enqueue(a)
     assert await worker._admin_erase_pending(argparse.Namespace(max_seconds=60)) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["requests"][0]["outcome"] == "done" and out["requests"][0]["keys"] == 1
+    assert store.objects == {}

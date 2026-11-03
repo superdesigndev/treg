@@ -96,6 +96,15 @@ async def orphan_bodies_by_key(db: AsyncSession, key_ids: list[int]) -> dict[int
     return out
 
 
+async def has_stored_objects(db: AsyncSession, key_ids: list[int]) -> bool:
+    """True when any snapshot under `key_ids` keeps its bytes in the object store."""
+    if not key_ids:
+        return False
+    return (await db.execute(select(ArchiveSnapshot.id).where(
+        ArchiveSnapshot.key_id.in_(key_ids), ArchiveSnapshot.body_storage.in_(("both", "r2")))
+        .limit(1))).first() is not None
+
+
 async def archive_bodies_only_under(db: AsyncSession, key_ids: list[int]) -> set[str]:
     """The orphan hashes of `orphan_bodies_by_key`, as one set."""
     return set().union(*(await orphan_bodies_by_key(db, key_ids)).values())

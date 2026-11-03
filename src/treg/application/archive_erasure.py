@@ -86,6 +86,18 @@ class TooManyTimeouts(RuntimeError):
     pass
 
 
+class NoObjectStore(ObjectsFailed):
+    """Rows point at object-store bodies but this process has no store configured: deleting the
+    rows would leave the bodies behind for good, so nothing is deleted."""
+
+
+async def _require_store(db: AsyncSession, key_ids: list[int]) -> None:
+    if archive_bodies._store is None and await rows.has_stored_objects(db, key_ids):
+        raise NoObjectStore("archive rows point at object-store bodies, but no archive object "
+                            "store is configured in this process (TREG_ARCHIVE_MODE, "
+                            "TREG_ARCHIVE_BODY_* and TREG_ARCHIVE_OBJECT_STORE_*)")
+
+
 @dataclass
 class _Run:
     org_id: int
@@ -208,6 +220,7 @@ async def _private_batch(factory, run: _Run, limit: int) -> tuple[int, bool]:
         key_ids = await rows.private_archive_key_ids(
             db, run.org_id, limit=limit, after_id=int(run.cursor or 0))
         orphans = await rows.archive_bodies_only_under(db, key_ids)
+        await _require_store(db, key_ids)
         await db.commit()
     if not key_ids:
         return 0, True
@@ -227,6 +240,7 @@ async def _public_batch(factory, run: _Run, limit: int) -> tuple[int, bool]:
         marked = await rows.marked_public_keys(db, run.org_id, after_hash=run.cursor, limit=limit)
         key_ids = [m.key_id for m in marked if m.erasable and m.key_id is not None]
         orphans_by_key = await rows.orphan_bodies_by_key(db, key_ids)
+        await _require_store(db, key_ids)
         await db.commit()
     if not marked:
         return 0, True

@@ -200,6 +200,8 @@ Every path runs one batch engine (`application/archive_erasure.py`):
 4. Every transaction sets `statement_timeout` (30 s) and `lock_timeout` (3 s). A timeout halves the
    batch (from 25 keys) and retries; three timeouts in a row at one key fail the request.
 5. No list larger than one batch reaches a query; selection is anti-joins and keyset pages.
+6. A process without an object store refuses a batch whose snapshots keep bytes there
+   (`body_storage` `both` or `r2`): deleting those rows would orphan the bodies for good.
 
 The running totals subtract what each DELETE returned, so two erasers on the same rows subtract
 once. The totals UPDATEs run last in the write transaction and in endpoint order, the order
