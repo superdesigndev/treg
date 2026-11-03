@@ -679,8 +679,9 @@ row.
   is charged. A charged answer costs its `count` (non-null items) or `plugin` quantity capped at the
   hold, its `usage` meters, which may exceed it, or the hold when there is no `settle` or no
   evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
-  with `*` or a filter, the list its first `*` or filter selects from. An answer that would be
-  billed is released when it carries a capacity signature.
+  with `*` or a filter, when any list one of its `*` or filter steps iterates is missing or not a
+  list (an empty one counts 0). An answer that would be billed is released when it carries a
+  capacity signature.
 - **The frozen basis** keeps the vocabulary both spellings share, so either settles through the
   same ledger code: a usage settle freezes its meters as today's `usage` basis, every other v2
   settle is `observed` with the hold as its fallback. An async v2 row's terms ride its persisted
