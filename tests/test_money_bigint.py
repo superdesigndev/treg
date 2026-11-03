@@ -15,7 +15,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 
 from treg.api import app
 from treg.application import billing
@@ -55,7 +55,7 @@ async def _no_sdk(fn, /, **kw):
 
 
 async def _org_at_start(c: AsyncClient) -> int:
-    user = (await c.post("/users", json={"email": "big@x.dev"})).json()
+    user = (await verified_signup(c, json={"email": "big@x.dev"})).json()
     org_id = (await c.post("/orgs", headers={"X-Treg-Token": user["token"]},
                            json={"name": "Big Team"})).json()["org_id"]
     async with session_maker() as db:
