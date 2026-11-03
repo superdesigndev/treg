@@ -2,15 +2,17 @@ provider: reversecontact
 source:
   docs: https://docs.reversecontact.com
   openapi: https://api.reversecontact.com/openapi.json   # OpenAPI 3.1, public, no auth
-  curated: '2026-10-26'
-limits: "Per-workspace requests per minute set by the plan, read live from GET /v2/usage (quotas.workspace.minuteRateLimit); optional per-key minute and daily caps. Over a limit: HTTP 429 RATE_LIMIT_EXCEEDED or DAILY_LIMIT_EXCEEDED, with Retry-After (seconds) and X-RateLimit-Reset (Unix seconds) headers. GET /v2/usage, GET /v2/webhooks/{webhookId} and the two available-fields routes are not counted."
+  curated: '2026-11-03'
+limits: "Per-workspace requests per minute set by the plan, read live from GET /v2/usage (quotas.workspace.minuteRateLimit); optional per-key request caps (per minute, per day) and credit caps (per day, per month, in total). Over a limit: HTTP 429 RATE_LIMIT_EXCEEDED, DAILY_LIMIT_EXCEEDED or KEY_CREDIT_LIMIT_REACHED, with Retry-After (seconds) and X-RateLimit-Reset (Unix seconds) headers; a key's total credit cap answers 403 KEY_CREDIT_LIMIT_REACHED, with no reset. GET /v2/usage, GET /v2/webhooks/{webhookId} and the two available-fields routes are not counted."
 pricing_url: https://www.reversecontact.com/pricing
 
 # CURATED BY THE VENDOR and self-verified live on 2026-10-09 with a pay-as-you-go workspace key
 # (ledger in the PR), then brought up to date and re-checked live on 2026-10-26 with the production
 # API: company search moved to /v2/search/organizations (billed per company delivered, with a free
 # count), the email finder takes emailType (personal emails, a row of their own), and People Search
-# gained filters.
+# gained filters. Brought up to date again on 2026-11-03 from the public spec and changelog, with
+# no price change: more search filters (location.area, connectionsCount, contract types, schools),
+# a person id and Idempotency-Key on the contact finders, long polling on the job route.
 # No `verified:` stamp and no example response: those are the maintainers' to add.
 #
 # BILLING. One credit pool. The public pricing page lists the per-endpoint credit price, and every
@@ -28,10 +30,13 @@ pricing_url: https://www.reversecontact.com/pricing
 #
 # FREE PRE-FLIGHT ROUTES. The two /count routes size a search, the available-fields routes list
 # every filter and its accepted values, and the /check routes say whether a profile is on file and
-# how fresh it is. An agent can shape a whole query for nothing and pay only for rows.
+# how fresh it is. An agent can shape a whole query for nothing and pay only for rows. The /check
+# routes need 2 credits in the workspace (402 NO_CREDITS below that); a free trial with no credit
+# left gets the same answer on the /count routes.
 #
 # ASYNC. Live fetch and the contact finders answer at once with {status: created, webhookId,
-# pollUrl}; GET /v2/webhooks/{webhookId} is the free poll (results kept 72 hours). Webhook delivery
+# pollUrl}; GET /v2/webhooks/{webhookId} is the free poll (results kept 72 hours); ?wait=N (0 to 20
+# seconds) holds it until the job ends, and a poll of a running job carries Retry-After. Webhook delivery
 # (`webhookUrl`) is optional and not modelled: the poll is the honest interface for a proxy.
 #
 # NOT MODELLED (deliberate, see the surface map in the PR):
@@ -56,7 +61,7 @@ endpoints:
   # People
   # ---------------------------------------------------------------------------------------------
   - id: reversecontact.people.enrich
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: people.enrich
     platform: people
     scope: any_account
@@ -92,7 +97,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/enrich-person
 
   - id: reversecontact.linkedin.profile.from_email
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: linkedin.profile.from_email
     platform: linkedin
     scope: any_account
@@ -124,7 +129,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/enrich-person
 
   - id: reversecontact.people.enrich.linkedin
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: people.enrich
     platform: people
     scope: any_account
@@ -157,7 +162,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/fetch-profile
 
   - id: reversecontact.people.enrich.live
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: people.enrich
     platform: people
     scope: any_account
@@ -204,7 +209,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/fetch-profile-live
 
   - id: reversecontact.people.profile.check
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: people.profile.check
     platform: people
     scope: any_account
@@ -216,14 +221,14 @@ endpoints:
       body:
         url: {type: string, required: false, note: "LinkedIn profile URL", example: "https://www.linkedin.com/in/williamhgates"}
         id: {type: string, required: false, note: "Reverse Contact person id", example: "prs_01jbd5vewyenebxgaz869ffe5t"}
-      note: "exactly one of url | id. Returns exists, lastUpdate and section counts (experience, skills, schools): decide between the cached fetch (1 credit) and the live one (2) before paying."
+      note: "exactly one of url | id. Returns exists, lastUpdate and section counts (experience, skills, schools): decide between the cached fetch (1 credit) and the live one (2) before paying. Free, but needs at least 2 credits in the workspace: below that, 402 NO_CREDITS."
     test_request:
       body: {url: "https://www.linkedin.com/in/williamhgates"}
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://docs.reversecontact.com/endpoints/check-person
 
   - id: reversecontact.people.search
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: people.search
     platform: people
     scope: any_account
@@ -238,13 +243,16 @@ endpoints:
         currentFunction: {type: string, required: false, note: "string or array, closed taxonomy", example: "Sales"}
         currentCompanyName: {type: string, required: false, note: "string or array", example: "Stripe"}
         currentCompanyIndustry: {type: string, required: false, note: "string or array, closed list"}
-        location: {type: object, required: false, note: "{countryCode, country, region, city}, each a string or array", example: {countryCode: "FR"}}
+        location: {type: object, required: false, note: "{countryCode, country, area, region, city}, each a string or array. area takes zone ids (MR:EMEA, MC:DACH, IG:EU...), listed with their member countries by the free filter list: zones add up with each other and with countries, while region and city narrow", example: {countryCode: "FR"}}
         skills: {type: string, required: false, note: "string or array, OR-matched whole skill names (Java does not match JavaScript)", example: "Python"}
         keywords: {type: string, required: false, note: "every word must appear somewhere on the profile", example: "payments fraud"}
         changedJobsWithinDays: {type: integer, required: false, enum: [30, 60, 90, 120], note: "current position started within that many days"}
+        currentContractType: {type: string, required: false, note: "string or array: full-time, part-time, permanent, contract, internship, self-employed, freelance, apprenticeship. contractType does the same on any position, current or past. A position that declares no contract type never matches", example: "freelance"}
+        schoolName: {type: string, required: false, note: "string or array, OR-matched; every word must appear in the name of one school", example: "HEC Paris"}
+        connectionsCount: {type: object, required: false, note: "{min, max}, inclusive; one bound is enough", example: {min: 501}}
         cursor: {type: string, required: false, note: "data.metadata.nextCursor of the previous page"}
         perPage: {type: integer, required: false, note: "1-100, default 25. The page size caps the charge", example: 25}
-      note: "45+ filters combined with AND, languages and past experience included; GET /v2/search/people/available-fields lists every one with its accepted values, and /v2/search/people/count sizes the query, both free. An unknown filter or a value outside a closed list answers HTTP 422 with suggestions, at 0 credits. Each row is a full profile."
+      note: "50+ filters combined with AND, languages, schools, contract types and past experience included; GET /v2/search/people/available-fields lists every one with its accepted values, and /v2/search/people/count sizes the query, both free. An unknown filter or a value outside a closed list answers HTTP 422 with suggestions, at 0 credits. Each row is a full profile."
     test_request:
       body: {currentCompanyName: "Stripe", currentSeniority: ["VP"], perPage: 1}
     cost:
@@ -262,7 +270,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/search-people
 
   - id: reversecontact.people.search.count
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: people.search.count
     platform: people
     scope: any_account
@@ -281,7 +289,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/search-people-count
 
   - id: reversecontact.people.search.filters
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: people.search.filters
     platform: people
     scope: any_account
@@ -295,7 +303,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/search-people-available-fields
 
   - id: reversecontact.people.lookalike
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: people.lookalike
     platform: people
     scope: any_account
@@ -330,7 +338,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/search-people-lookalike
 
   - id: reversecontact.people.email.find
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: people.email.find
     platform: people
     scope: any_account
@@ -355,14 +363,17 @@ endpoints:
     summary: "Find contact email"
     platform_request: {body.emailType: professional}
     input:
+      headers:
+        Idempotency-Key: {type: string, required: false, note: "1 to 255 printable ASCII characters. For 24 hours, the same key with the same body returns the first job (header Idempotent-Replayed: true) with no second lookup and no second debit; the same key with another body answers 422 IDEMPOTENCY_KEY_REUSED", example: "treg-contact-001"}
       body:
         url: {type: string, required: false, note: "LinkedIn profile URL", example: "https://www.linkedin.com/in/janedoe"}
+        id: {type: string, required: false, note: "Reverse Contact person id (prs_...) from an earlier answer; wins over url when both are sent", example: "prs_01jbd5vewyenebxgaz869ffe5t"}
         fullName: {type: string, required: false, note: "with companyDomain", example: "Jane Doe"}
         firstName: {type: string, required: false, note: "with lastName and companyDomain", example: "Jane"}
         lastName: {type: string, required: false, example: "Doe"}
         companyDomain: {type: string, required: false, example: "acme.com"}
         emailType: {type: string, required: true, enum: [professional], note: "professional on treg's key (the API default when omitted); personal emails are reversecontact.people.email.find.personal", example: "professional"}
-      note: "one of: url | fullName + companyDomain | firstName + lastName + companyDomain. Answers {status: created, webhookId, pollUrl}; the emails arrive in the poll body's data.result as [{value, type}]. A miss ends errored with errorCode email-not-found or person-not-found."
+      note: "one of: url | id | fullName + companyDomain | firstName + lastName + companyDomain. Answers {status: created, webhookId, pollUrl}; the emails arrive in the poll body's data.result as [{value, type}]. A miss ends errored with errorCode email-not-found or person-not-found. An id that matches nobody answers 422 VALIDATION_ERROR and a person removed per a GDPR/CCPA request 451 DATA_SUBJECT_BLOCKED, both at 0 credits."
     test_request:
       body: {firstName: "Zzqvx", lastName: "Nonexistentprobe", companyDomain: "example.com", emailType: "professional"}
     cost:
@@ -382,7 +393,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/contact-email
 
   - id: reversecontact.people.email.find.personal
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: people.email.find.personal
     platform: people
     scope: any_account
@@ -407,14 +418,17 @@ endpoints:
     summary: "Find contact email"
     platform_request: {body.emailType: personal}
     input:
+      headers:
+        Idempotency-Key: {type: string, required: false, note: "1 to 255 printable ASCII characters. For 24 hours, the same key with the same body returns the first job (header Idempotent-Replayed: true) with no second lookup and no second debit; the same key with another body answers 422 IDEMPOTENCY_KEY_REUSED", example: "treg-contact-001"}
       body:
         url: {type: string, required: false, note: "LinkedIn profile URL", example: "https://www.linkedin.com/in/janedoe"}
+        id: {type: string, required: false, note: "Reverse Contact person id (prs_...) from an earlier answer; wins over url when both are sent", example: "prs_01jbd5vewyenebxgaz869ffe5t"}
         fullName: {type: string, required: false, note: "with companyDomain", example: "Jane Doe"}
         firstName: {type: string, required: false, note: "with lastName and companyDomain", example: "Jane"}
         lastName: {type: string, required: false, example: "Doe"}
         companyDomain: {type: string, required: false, example: "acme.com"}
         emailType: {type: string, required: true, enum: [personal], note: "personal on treg's key", example: "personal"}
-      note: "same route as reversecontact.people.email.find, asking for personal mailboxes only. One of: url | fullName + companyDomain | firstName + lastName + companyDomain. Async: the emails arrive in the poll body's data.result as [{value, type: personal}]. A miss ends errored with errorCode email-not-found or person-not-found."
+      note: "same route as reversecontact.people.email.find, asking for personal mailboxes only. One of: url | id | fullName + companyDomain | firstName + lastName + companyDomain. Async: the emails arrive in the poll body's data.result as [{value, type: personal}]. A miss ends errored with errorCode email-not-found or person-not-found. An id that matches nobody answers 422 VALIDATION_ERROR and a person removed per a GDPR/CCPA request 451 DATA_SUBJECT_BLOCKED, both at 0 credits."
     test_request:
       body: {firstName: "Zzqvx", lastName: "Nonexistentprobe", companyDomain: "example.com", emailType: "personal"}
     cost:
@@ -434,7 +448,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/contact-email
 
   - id: reversecontact.people.phone.find
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: people.phone.find
     platform: people
     scope: any_account
@@ -458,13 +472,16 @@ endpoints:
     name: "Find a direct phone number from LinkedIn URL or name"
     summary: "Find contact phone"
     input:
+      headers:
+        Idempotency-Key: {type: string, required: false, note: "1 to 255 printable ASCII characters. For 24 hours, the same key with the same body returns the first job (header Idempotent-Replayed: true) with no second lookup and no second debit; the same key with another body answers 422 IDEMPOTENCY_KEY_REUSED", example: "treg-contact-001"}
       body:
         url: {type: string, required: false, note: "LinkedIn profile URL", example: "https://www.linkedin.com/in/janedoe"}
+        id: {type: string, required: false, note: "Reverse Contact person id (prs_...) from an earlier answer; wins over url when both are sent", example: "prs_01jbd5vewyenebxgaz869ffe5t"}
         fullName: {type: string, required: false, note: "with companyDomain", example: "Jane Doe"}
         firstName: {type: string, required: false, note: "with lastName and companyDomain", example: "Jane"}
         lastName: {type: string, required: false, example: "Doe"}
         companyDomain: {type: string, required: false, example: "acme.com"}
-      note: "one of: url | fullName + companyDomain | firstName + lastName + companyDomain. Async like the email finder; a miss ends errored with errorCode phone-not-found. A workspace that opted out of the phone finder gets HTTP 410 endpoint_unavailable."
+      note: "one of: url | id | fullName + companyDomain | firstName + lastName + companyDomain. Async like the email finder; a miss ends errored with errorCode phone-not-found. An id that matches nobody answers 422 VALIDATION_ERROR and a person removed per a GDPR/CCPA request 451 DATA_SUBJECT_BLOCKED, both at 0 credits. A workspace that opted out of the phone finder gets HTTP 410 endpoint_unavailable."
     test_request:
       body: {firstName: "Zzqvx", lastName: "Nonexistentprobe", companyDomain: "example.com"}
     cost:
@@ -487,7 +504,7 @@ endpoints:
   # Companies
   # ---------------------------------------------------------------------------------------------
   - id: reversecontact.companies.enrich
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: companies.enrich
     platform: companies
     scope: any_account
@@ -519,7 +536,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/enrich-company
 
   - id: reversecontact.companies.enrich.linkedin
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: companies.enrich
     platform: companies
     scope: any_account
@@ -552,7 +569,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/fetch-company
 
   - id: reversecontact.companies.profile.check
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: companies.profile.check
     platform: companies
     scope: any_account
@@ -564,14 +581,14 @@ endpoints:
       body:
         url: {type: string, required: false, note: "LinkedIn company page URL", example: "https://www.linkedin.com/company/microsoft"}
         id: {type: string, required: false, note: "Reverse Contact company id", example: "com_01jbd5vewyenebxgaz869ffe5t"}
-      note: "exactly one of url | id. Returns exists and lastUpdate before paying for the profile."
+      note: "exactly one of url | id. Returns exists and lastUpdate before paying for the profile. Free, but needs at least 2 credits in the workspace: below that, 402 NO_CREDITS."
     test_request:
       body: {url: "https://www.linkedin.com/company/microsoft"}
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://docs.reversecontact.com/endpoints/check-company
 
   - id: reversecontact.companies.search
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: companies.search
     platform: companies
     scope: any_account
@@ -588,7 +605,7 @@ endpoints:
         employeeCountRange: {type: object, required: false, note: "{min, max}", example: {min: 50, max: 200}}
         foundedYear: {type: object, required: false, note: "{min, max}", example: {min: 2015}}
         followersCount: {type: object, required: false, note: "{min, max}"}
-        location: {type: object, required: false, note: "headquarters {countryCode, country, region, city}, each a string or array", example: {countryCode: "DE"}}
+        location: {type: object, required: false, note: "headquarters {countryCode, country, area, region, city}, each a string or array. area takes zone ids (MR:EMEA, MC:DACH, IG:EU...), listed with their member countries by the free filter list: zones add up with each other and with countries, while region and city narrow", example: {countryCode: "DE"}}
         maxDataAgeDate: {type: string, required: false, note: "ISO date: only profiles refreshed since then, next to another filter"}
         cursor: {type: string, required: false, note: "data.metadata.nextCursor of the previous page"}
         perPage: {type: integer, required: false, note: "1-100, default 25. The page size caps the charge", example: 25}
@@ -610,7 +627,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/search-companies
 
   - id: reversecontact.companies.search.count
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: companies.search.count
     platform: companies
     scope: any_account
@@ -630,7 +647,7 @@ endpoints:
     docs_url: https://docs.reversecontact.com/endpoints/search-companies-count
 
   - id: reversecontact.companies.search.filters
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: companies.search.filters
     platform: companies
     scope: any_account
@@ -647,7 +664,7 @@ endpoints:
   # Account plumbing
   # ---------------------------------------------------------------------------------------------
   - id: reversecontact.account.jobs.get
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: account.jobs.get
     platform: account
     scope: any_account
@@ -664,14 +681,16 @@ endpoints:
     input:
       pathParams:
         webhookId: {type: string, required: true, note: "data.webhookId of a live fetch, email or phone acknowledgement", example: "00000000-0000-0000-0000-000000000000"}
-      note: "returns data.status (created, in_progress, succeeded, errored), data.result, data.errorCode and the job's net data.creditsConsumed."
+      queryParams:
+        wait: {type: integer, required: false, min: 0, max: 20, note: "long poll: seconds to hold the request while the job runs; it answers as soon as the job ends, or after wait seconds with the job still running. Absent or 0 answers at once", example: 20}
+      note: "returns data.status (created, in_progress, succeeded, errored), data.result, data.errorCode and the job's net data.creditsConsumed. A poll of a running job carries Retry-After (2 seconds): start two polls at least that far apart."
     test_request:
       pathParams: {webhookId: "00000000-0000-0000-0000-000000000000"}
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://docs.reversecontact.com/guides/polling
 
   - id: reversecontact.account.usage
-    added: '2026-10-26'
+    added: '2026-11-03'
     capability: account.usage
     platform: account
     scope: own_account
