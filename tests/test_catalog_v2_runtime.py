@@ -124,6 +124,24 @@ def test_routing_hands_an_outcome_plugin_the_answer_it_holds(monkeypatch):
     assert not adapter.is_miss({"items": [1]}, row(miss={"plugin": "demo.empty"}))
 
 
+def test_routing_reads_a_v2_error_envelope_and_a_204_as_misses():
+    from types import SimpleNamespace
+
+    from treg.application.call.route import child_outcome
+    from treg.domain.catalog.routing.contracts import Adapter
+    ep = row(error={"when": {"path": "response.error", "op": "present"}})
+    adapter = Adapter(endpoint_id="demo.x", accepts=(), in_map={}, out_map={"email": "contacts[0].email"},
+                      miss="")
+    contract = SimpleNamespace(required_output=("email",))
+    read = lambda status, body: child_outcome(ep, contract, adapter, status, body, tier="platform")  # noqa: E731
+    found = b'{"contacts": [{"email": "a@b.co"}]}'
+    assert read(200, found).kind == "hit"
+    envelope = read(200, b'{"contacts": [{"email": "a@b.co"}], "error": "partial"}')
+    assert (envelope.kind, envelope.why) == ("miss", ("provider_error",))
+    assert (read(204, found).kind, read(204, found).why) == ("miss", ("adapter_miss",))
+    assert read(204, b"").why == ("non_json", "adapter_miss", "empty_core")
+
+
 # -- the hold ------------------------------------------------------------------------------------
 
 def test_a_value_price_holds_whole_per_blocks_when_it_rounds_up():

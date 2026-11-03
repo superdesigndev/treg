@@ -70,11 +70,14 @@ from ...domain.capacity.routes_view import view as overflow_routes_view
 from ...domain.capacity.view import view as capacity_view
 from ...domain.capacity.marks import spends_balance
 from ...domain.capacity.signatures import classify as classify_capacity
+from ...domain import plugins
+from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import paths as P
 from ...domain.catalog.routing import quality as route_quality
+from ...domain.catalog.schema.v2 import is_v2
 from ...domain.catalog.routing.contracts import (canonical_identity, declared_miss, declared_not_found,
                                                  invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
@@ -312,6 +315,12 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
     # The provider's own `expect` success rule (a DataForSEO task status other than 20000 under
     # a 20000 envelope) says this request failed: not an answer, whatever the remains read as.
     upstream_failed = catalog_results.fails_expect(endpoint["id"], raw)
+    provider_error = False
+    if is_v2(endpoint):
+        judged = catalog_outcome.judge(endpoint, status, doc,
+                                       answer=plugins.Answer(status=status, headers={}, raw=raw, body=doc))
+        provider_error = judged.cause == "error"
+        is_miss = is_miss or judged.cause == "no_content"
     off_question = False
     rule = getattr(contract, "question_miss", "")
     if rule and identity and doc is not None and not (is_miss or empty_core):
@@ -319,10 +328,11 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
             off_question = bool(P.evaluate(rule, {**identity, **core}))
         except Exception as exc:  # noqa: BLE001 — a rule that cannot read this answer judges nothing
             log.debug("question_miss failed on %s: %s", endpoint.get("id"), exc)
-    if doc is None or is_miss or empty_core or upstream_failed or off_question:
+    if doc is None or is_miss or empty_core or upstream_failed or provider_error or off_question:
         why = tuple(name for name, on in (
             ("non_json", doc is None), ("adapter_miss", is_miss), ("empty_core", empty_core),
-            ("expect_failed", bool(upstream_failed)), ("question_miss", off_question)) if on)
+            ("expect_failed", bool(upstream_failed)), ("provider_error", provider_error),
+            ("question_miss", off_question)) if on)
         return ChildOutcome(
             "miss", why=why, doc=doc,
             detail=f"provider reported failure: {upstream_failed}" if upstream_failed else "")
