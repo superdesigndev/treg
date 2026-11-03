@@ -1,4 +1,4 @@
-"""Routed endpoints — `POST /call/treg.<capability>` (docs/CAPABILITY-ROUTING-PLAN.md §3–§5).
+"""Routed endpoints — `POST /call/treg.<capability>`.
 
 The router PICKS a child endpoint and runs it through the SAME call use case as any `/call/`:
 each attempt is a full `execute_call` on a child `CallContext` whose `call_ref` is
@@ -277,7 +277,7 @@ class ChildOutcome:
 
 
 def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
-                  tier: str) -> ChildOutcome:
+                  tier: str, identity: dict | None = None) -> ChildOutcome:
     """Classify one routed child's answer. Pure: reads only this checkout's catalog."""
     if _declared_miss(endpoint, status, raw):
         return ChildOutcome("declared_miss")
@@ -312,10 +312,17 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
     # The provider's own `expect` success rule (a DataForSEO task status other than 20000 under
     # a 20000 envelope) says this request failed: not an answer, whatever the remains read as.
     upstream_failed = catalog_results.fails_expect(endpoint["id"], raw)
-    if doc is None or is_miss or empty_core or upstream_failed:
+    off_question = False
+    rule = getattr(contract, "question_miss", "")
+    if rule and identity and doc is not None and not (is_miss or empty_core):
+        try:
+            off_question = bool(P.evaluate(rule, {**identity, **core}))
+        except Exception as exc:  # noqa: BLE001 — a rule that cannot read this answer judges nothing
+            log.debug("question_miss failed on %s: %s", endpoint.get("id"), exc)
+    if doc is None or is_miss or empty_core or upstream_failed or off_question:
         why = tuple(name for name, on in (
             ("non_json", doc is None), ("adapter_miss", is_miss), ("empty_core", empty_core),
-            ("expect_failed", bool(upstream_failed))) if on)
+            ("expect_failed", bool(upstream_failed)), ("question_miss", off_question)) if on)
         return ChildOutcome(
             "miss", why=why, doc=doc,
             detail=f"provider reported failure: {upstream_failed}" if upstream_failed else "")
@@ -770,6 +777,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     best: tuple[int, tuple[Candidate, dict, dict, bytes]] | None = None   # best WEAK answer seen
     other_subject: list[tuple[str, tuple]] = []   # X-Treg-Route-Complete: answers about another identifier, never returned unconfirmed
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
+    rate_waits: list[int] = []     # retry_after_s of candidates skipped by treg's own rate window
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
@@ -842,6 +850,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     raise
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
                                      exc.status_code, 0, "endpoint call allowance exhausted"))
+                continue
+            if exc.kind == "provider_rate_limited":
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, "treg's account is at its rate limit"))
+                rate_waits.append(exc.retry_after_s or 1)
                 continue
             if exc.kind in _GLOBAL_REFUSALS or (
                 exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
@@ -941,7 +954,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             winner = (cand, {}, {}, raw)
             break
         outcome = child_outcome(cand.endpoint, plan.contract, cand.adapter, response.status, raw,
-                                tier=cand.tier)
+                                tier=cand.tier, identity=plan.identity)
         if outcome.kind == "declared_miss":
             # The provider's declared "asked and answered: no result" status (`miss: {status, means}`
             # on the endpoint - aviato/hunter/leadmagic/... 404 a person they have no record of),
@@ -1096,6 +1109,15 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if winner is None and best is not None:
         winner = best[1]          # nobody cleared min_results — the fullest answer we paid for wins
     if winner is None:
+        if tried and len(rate_waits) == len(tried):
+            wait = min(rate_waits)
+            _summarize(parent, tried_count=len(tried))
+            _audit_parent(parent, ep, 429, 0, audit_client)
+            raise GatewayFailed("provider_rate_limited", status_code=429, detail={
+                "error": "provider_rate_limited", "endpoint_id": ep["id"], "retry_after_s": wait,
+                "tried": [t.view() for t in tried],
+                "message": f"every candidate for {ep['id']} is at treg's rate limit; nothing was "
+                           f"charged, try again in {wait} s"}, retry_after_s=wait)
         if tried and all(t.outcome == "skipped" for t in tried):
             raise ResolutionFailed("route_max_cost", status_code=402, detail={
                 "error": "route_max_cost", "endpoint_id": ep["id"],

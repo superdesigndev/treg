@@ -1,5 +1,6 @@
 """Owned-team limits through the same HTTP routes used by the dashboard and CLI."""
 import asyncio
+from conftest import verified_signup
 
 
 async def test_eleventh_owned_team_is_refused(clients):
@@ -25,7 +26,7 @@ async def test_concurrent_creations_share_the_last_slot(clients):
 
 
 async def test_deletion_frees_a_slot_and_legacy_first_team_counts(clients):
-    first = (await clients.post('/users', json={'email': 'legacy-limit@example.org'})).json()
+    first = (await verified_signup(clients, json={'email': 'legacy-limit@example.org'})).json()
     headers = {'X-Treg-Token': first['token']}
     for i in range(9):
         r = await clients.post('/orgs', headers=headers, json={'name': f'legacy-{i}'})
@@ -44,7 +45,7 @@ async def test_joining_does_not_count_but_promotion_does(clients):
     from treg.infra.db import session_maker
     from treg.models import User
 
-    other = (await clients.post('/users', json={'email': 'other-owner@example.org'})).json()
+    other = (await verified_signup(clients, json={'email': 'other-owner@example.org'})).json()
     other_headers = {'X-Treg-Token': other['token']}
     inv = await clients.post(f"/orgs/{other['org_id']}/invites", headers=other_headers,
                              json={'email': 'tim@superdesign.dev', 'role': 'member'})
@@ -100,7 +101,7 @@ async def test_promotion_and_creation_compete_for_same_slot(clients):
     from treg.infra.db import session_maker
     from treg.models import User
 
-    other = (await clients.post('/users', json={'email': 'race-owner@example.org'})).json()
+    other = (await verified_signup(clients, json={'email': 'race-owner@example.org'})).json()
     headers = {'X-Treg-Token': other['token']}
     inv = await clients.post(f"/orgs/{other['org_id']}/invites", headers=headers,
                              json={'email': 'tim@superdesign.dev'})

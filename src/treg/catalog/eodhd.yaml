@@ -5,8 +5,8 @@ source:
   curated: 2026-08-15
 # OWN-KEY-ONLY: treg holds the free key (20 calls/DAY — a quota that could never carry shared
 # traffic, which is why eodhd sits out of even the trial-pool idea). All self-serve plans are
-# personal-use; the commercial license is a custom-quoted sales conversation (research doc,
-# licensing table). No fx rate -> usd null -> platform_eligible FALSE. Deliberately only three
+# personal-use; the commercial license is a custom-quoted sales conversation.
+# No fx rate -> usd null -> platform_eligible FALSE. Deliberately only three
 # endpoints: curated against a 20/day verification budget.
 pricing_url: https://eodhd.com/pricing
 endpoints:

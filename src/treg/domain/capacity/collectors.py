@@ -430,7 +430,7 @@ async def _mobiusengine_jobs(c, key):
     d = await _get(c, "https://jobs-api.arihaan.ai/v1/balance", headers={"x-api-key": key})
     left = _finite(d.get("balance_usd")) if isinstance(d, dict) and d.get("mode") == "wallet" else None
     if left is None or left < 0:
-        raise ValueError("MobiusEngine Jobs Data returned no pay-per-job balance")
+        raise ValueError("MobiusEngine.ai Jobs Data returned no pay-per-job balance")
     return {"value": left, "unit": "USD left",
             "note": "prepaid pay-per-job balance; HTTP 402 insufficient_balance at zero"}
 
@@ -822,6 +822,14 @@ async def _enrow(c, key):
     return {"value": credits, "unit": "credits", "note": ""}
 
 
+async def _filtrat(c, key):
+    d = await _get(c, "https://filtrat.io/v1/credits/balance", headers={"Authorization": f"Bearer {key}"})
+    credits = _finite(d.get("balance")) if isinstance(d, dict) else None
+    if credits is None or credits < 0:
+        raise ValueError("Filtrat returned an invalid credit balance")
+    return {"value": credits, "unit": "credits", "note": ""}
+
+
 async def _branddev(c, key):
     # No free account route exists — but a deliberate no-param call is a FREE validation error
     # (400, credits_consumed 0) whose body still carries key_metadata.credits_remaining.
@@ -1073,6 +1081,7 @@ BALANCE_ROUTES = {
     "findymail": _findymail,
     "anymailfinder": _anymailfinder,
     "enrow": _enrow,
+    "filtrat": _filtrat,
     "leadsforge": _leadsforge,
     "oceanio": _oceanio,
     "predictleads": _predictleads,

@@ -271,9 +271,26 @@ class Settings(BaseSettings):
     # refused, not charged. 0 turns the gate off (TREG_FAIR_SHARE_WAIT_S=0).
     fair_share_wait_s: float = Field(default=2.0, ge=0, le=30)
     # A shared rate window on treg's own keys (domain/capacity/rate_observe.py). `observe` asks it
-    # about every platform call that goes upstream and logs what it would refuse; nothing is refused.
-    # It needs TREG_KV_URL; without one every verdict is unknown.
+    # about every platform call that goes upstream and logs its verdicts; the buckets named in
+    # `provider_rate_enforce` (comma-separated, `view.rate_bucket` keys without the `#account`
+    # suffix) are also refused when full. Both need a Redis TREG_KV_URL.
     provider_rate_mode: Literal["off", "observe"] = "off"
+    provider_rate_enforce: str = ""
+
+    @model_validator(mode="after")
+    def _provider_rate_configuration(self):
+        if self.provider_rate_enforce.strip() and self.provider_rate_mode != "observe":
+            raise ValueError("TREG_PROVIDER_RATE_ENFORCE needs TREG_PROVIDER_RATE_MODE=observe")
+        if self.provider_rate_mode != "off":
+            try:
+                url = urlsplit(self.kv_url)
+                valid = (url.scheme in {"redis", "rediss"} and bool(url.hostname)
+                         or url.scheme == "unix" and bool(url.path))
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError("TREG_PROVIDER_RATE_MODE=observe requires a valid Redis kv_url")
+        return self
 
     # Flat bounties, not a percentage of top-ups. At 0% platform margin a percentage would be a
     # permanent share of pass-through GMV, and — unlike a flat figure — it rewards farming in
@@ -367,6 +384,7 @@ class Settings(BaseSettings):
     platform_key_findymail: str = ""      # Bearer key
     platform_key_anymailfinder: str = ""  # raw Authorization key; prepaid credits
     platform_key_enrow: str = ""          # x-api-key; prepaid email and phone credits
+    platform_key_filtrat: str = ""        # Bearer key (ak_…); prepaid credits, a partner account
     platform_key_branddev: str = ""       # Bearer key
     platform_key_icypeas: str = ""        # raw key (Authorization, no Bearer)
     platform_key_leadsforge: str = ""     # Bearer key
@@ -463,6 +481,11 @@ class Settings(BaseSettings):
     # switch. The key is the candidate's own credential, never a team's.
     shadow_provider: str = ""
     shadow_provider_key: str = ""
+    # The key behind the per-team code a provider file's `client_header` asks for (relay rewrite 6):
+    # on treg's shared key the call carries HMAC(this, provider + team) so the provider can split
+    # usage per customer without learning who the customer is. Empty = the header is never sent;
+    # rotating it gives every team a new code.
+    client_id_secret: str = ""
     shadow_salt: str = ""
     # Candidate calls at once, per second, and the per-call time limit.
     shadow_concurrency: int = 16
@@ -899,8 +922,8 @@ class Settings(BaseSettings):
     # The WHOLE email-domain blocklist (TREG_BLOCKED_EMAIL_DOMAINS), comma-separated:
     # "example-one.io,example-two.net". There is no list in the code; empty (the default) blocks
     # nothing. A listed domain blocks itself AND every subdomain, case-insensitively, at every
-    # sign-up and sign-in door and at the two doors that create a promo-funded team (POST /users,
-    # POST /orgs). Configuration rather than code because bulk registration moves to a new domain in
+    # sign-up and sign-in door and at the door that creates a promo-funded team (POST /orgs).
+    # Configuration rather than code because bulk registration moves to a new domain in
     # minutes, and a defence that needs a deploy to keep up is always behind. Existing accounts on a
     # listed domain are suspended out of band, so listing one strands nobody legitimate. A blocklist,
     # deliberately: no allowlist, no table, no admin UI.

@@ -1,9 +1,9 @@
-"""The registry data model — minimal on purpose (charter: don't invent extra nouns).
+"""The registry data model — minimal on purpose (don't invent extra nouns).
 
 Multi-tenancy (orgs) shape: an **Org** is the tenant that owns resources; a **User** is a
 global identity; a **Membership** links a user to an org with a role and IS where the caller's
 token lives (a token = a (user, org) pair). Secrets/tools/bundles/call records carry `org_id`,
-so every list/call/mutation is scoped to the caller's org. See docs/MULTI-TENANCY-PLAN.md.
+so every list/call/mutation is scoped to the caller's org.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ class Org(SQLModel, table=True):
     # open Holds. It exists as a column, not a query, because it is the hot-path spend gate: one
     # conditional UPDATE against this integer is what stops concurrent agent calls racing past zero
     # (see money.reserve). Only `domain/money` may write it.
-    balance_micro: int = Field(default=0)
+    balance_micro: int = Field(default=0, sa_type=BigInteger)
     # "Committed since midnight UTC": everything settled today plus everything still held from
     # today - the number the fail-closed daily cap is checked against on EVERY metered call. Kept
     # here, in the same UPDATE that moves the balance, because the equivalent aggregate over
@@ -77,8 +77,8 @@ class Org(SQLModel, table=True):
     # org explicitly turned it on AND recorded consent — an off-session charge with no mandate is an
     # unauthorized charge under PSD2/SCA, so `autotopup_consented_at` gates the charge, not the UI.
     autotopup_enabled: bool = Field(default=False)
-    autotopup_threshold_micro: int = Field(default=0)   # 0 = "use the configured default"
-    autotopup_amount_micro: int = Field(default=0)      # 0 = "use the configured default"
+    autotopup_threshold_micro: int = Field(default=0, sa_type=BigInteger)   # 0 = "use the configured default"
+    autotopup_amount_micro: int = Field(default=0, sa_type=BigInteger)      # 0 = "use the configured default"
     autotopup_monthly_cap_micro: int = Field(default=0)  # 0 = the default, `billing.TOPUP_MAX_USD`
     # How many automatic charges may run in one hour after a SUCCESSFUL one (0 = the configured
     # default). Part of the mandate the team agreed to, so it is stored next to the amounts.
@@ -111,7 +111,7 @@ class Org(SQLModel, table=True):
     # default. The EFFECTIVE cap is min(this, the platform ceiling): a team may lower it freely, and
     # raising it past the ceiling is refused — which makes that a conversation with us rather than an
     # env-var edit that lifts the blast-radius rail for every team at once.
-    daily_cap_micro: int = Field(default=0)
+    daily_cap_micro: int = Field(default=0, sa_type=BigInteger)
 
     # Google Ads attribution (see adsconv.py).
     # The click that produced this team, captured as a first-party cookie on landing and persisted
@@ -201,8 +201,8 @@ class User(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
-    # Only an inbox proof or a provider-verified email can set this. Legacy /users and
-    # admin-visible invitation codes are not email proofs.
+    # Only an inbox proof or a provider-verified email can set this. Admin-visible invitation
+    # codes are not email proofs.
     email_verified_at: NaiveUTC | None = Field(default=None)
     # Consumed atomically with the signup grant; survives leaving/deleting every team.
     # The DB default is false so pre-upgrade users and old writers never gain a fresh claim.
@@ -654,7 +654,7 @@ class Bundle(SQLModel, table=True):
     packaging. "Register a skill" creates a bundle; its secrets/tools point back via `bundle_id`.
 
     Execution config (both `treg run` tiers) lives on `Tool.cli` — one profile, read by the local
-    grant path and the server runner alike (see docs/CLI-RUN-PLAN.md). The old bundle-side run
+    grant path and the server runner alike. The old bundle-side run
     columns (runtime/package/entrypoint/runnable) were folded into `Tool.cli` by a startup
     migration; they may still exist physically in older databases but nothing reads them.
     """
@@ -946,8 +946,8 @@ class CreditBlock(SQLModel, table=True):
     id: str = Field(primary_key=True)  # uuid4 hex
     org_id: int = Field(foreign_key="org.id", index=True)
     kind: str = Field(default="promotional", index=True)  # promotional | purchased
-    amount_micro: int  # granted amount, micro-USD (1e-6 USD) — never mutated
-    remaining_micro: int  # what's left to spend from this block
+    amount_micro: int = Field(sa_type=BigInteger)  # granted amount, micro-USD (1e-6 USD) — never mutated
+    remaining_micro: int = Field(sa_type=BigInteger)  # what's left to spend from this block
     currency: str = Field(default="USD")
     expires_at: NaiveUTC | None = Field(default=None)
     # The already-authorized payment this block was funded by. Doubles as the idempotency
@@ -1012,7 +1012,7 @@ class Hold(SQLModel, table=True):
     id: str = Field(primary_key=True)  # == call_id
     org_id: int = Field(foreign_key="org.id", index=True)
     endpoint_id: str = Field(default="")
-    amount_micro: int  # what was withheld from the balance (margin already applied)
+    amount_micro: int = Field(sa_type=BigInteger)  # what was withheld from the balance (margin already applied)
     created_at: NaiveUTC = Field(default_factory=_now, index=True)
 
 
@@ -1180,8 +1180,8 @@ class TagBudget(SQLModel, table=True):
     # NULL = no ceiling on this axis. Caps are SOFT (see application/call/reserve.py
     # `_enforce_tag_budgets`): the figure they
     # test is an aggregate, not a materialized column, so concurrent calls can overshoot slightly.
-    daily_cap_micro: int | None = Field(default=None)
-    monthly_cap_micro: int | None = Field(default=None)
+    daily_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
+    monthly_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
     calls_per_day: int = Field(default=-1)  # -1 = unlimited, mirroring Membership.daily_call_cap
     # "active" | "blocked". Blocking is the soft form of revocation — it needs no token management,
     # and it is checked before the idempotency replay so a blocked user cannot be served a cached
@@ -1488,7 +1488,7 @@ class Feedback(SQLModel, table=True):
 
 
 class HubTool(SQLModel, table=True):
-    """One version of a tool a maker published on the hub (docs/HUB-DECISIONS.md). A tool is
+    """One version of a tool a maker published on the hub. A tool is
     made of other tools: either a JSON list of steps or a script that runs in a sandbox. The row
     stores the four files a maker ships (manifest, script, check, readme) plus what the runner
     and the catalog read straight off the row.
@@ -1515,23 +1515,23 @@ class HubTool(SQLModel, table=True):
     readme: str = Field(default="")
     created_by: str = Field(default="")              # the maker's email
     created_at: datetime = Field(default_factory=_now)
-    # The check run's verdict (docs/HUB-DECISIONS.md round 2 q10): {status, run_id, checked_at,
+    # The check run's verdict: {status, run_id, checked_at,
     # error?, trace?}. Declared LAST to match the migration's ALTER TABLE append position.
     check_result: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
-    # The maker's uploaded CSV (docs/HUB-DECISIONS.md round 1 q6): at most 50 MB, read-only after
+    # The maker's uploaded CSV: at most 5 MB, read-only after
     # upload, a replacement is a new version; the script reads it as ctx.data. Declared LAST
     # (migration 0037).
     data: str | None = Field(default=None)
-    # docs/hub-listing-decisions.md: flipped without a version bump. Whether the tool is in
+    # Flipped without a version bump. Whether the tool is in
     # catalog search is not a version's switch: it is the tool's HubListing row.
     listed: bool = Field(default=False)              # UNREAD since migration 0050 (expand-only); use HubListing
     public_log: bool = Field(default=True)           # true = the share page shows the recent-runs log
 
 
 class HubListing(SQLModel, table=True):
-    """A hub tool's place in catalog search (docs/hub-listing-decisions.md round 2, 2026-09-24): the
+    """A hub tool's place in catalog search: the
     maker requests it, a superadmin approves or rejects it. One row per tool, not per version, so
-    the listing stays while each new version waits for its own review (round 4); unlisting deletes the row, and listing again
+    the listing stays while each new version waits for its own review; unlisting deletes the row, and listing again
     is a new request. Only `approved` puts the tool in search."""
 
     tool_id: str = Field(primary_key=True)           # `<slug>.<name>`
@@ -1562,7 +1562,7 @@ class HubRun(SQLModel, table=True):
     """One run of a hub tool: who called, which version, what ran, what it cost. Kept 30 days.
     Every step is ALSO an ordinary CallRecord under `{run_id}:s{n}`, so nothing here is a second
     source of truth for money — the ledger holds the holds and settles; this row holds the trace
-    a caller and a maker read (docs/HUB-DECISIONS.md rounds 2 and 5)."""
+    a caller and a maker read."""
 
     id: int | None = Field(default=None, primary_key=True)
     run_id: str = Field(index=True)                  # `r_<hex>`, also the parent call_ref
@@ -1582,7 +1582,7 @@ class HubRun(SQLModel, table=True):
     error: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     started_at: datetime = Field(default_factory=_now, index=True)
     finished_at: datetime | None = Field(default=None)
-    # The run's answer, for the caller's run page (docs/HUB-DECISIONS.md round 5 q8); only for
+    # The run's answer, for the caller's run page; only for
     # successful runs, capped by the runner's 2 MB output rule. Declared LAST (migration 0029).
     output: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
 class FeedbackHandling(SQLModel, table=True):
@@ -1775,7 +1775,7 @@ class CapacityPolicy(SQLModel, table=True):
     `source` how we learn it (its free account API, response headers, a calculation, a hand entry,
     nothing). `unknown`/`none` are honest defaults for a provider nobody has classified yet — a
     sweep flags them rather than inventing a number. Numbers only: no key or payment detail lives
-    here. See docs/PROVIDER-CAPACITY-PLAN.md §2.2.
+    here.
     """
 
     provider: str = Field(primary_key=True)
@@ -1835,7 +1835,7 @@ class OverflowRoute(SQLModel, table=True):
     `enabled` is DERIVED by `domain.capacity.routes.eligible` at sync time (same unit, ratio ≤ 4,
     platform-eligible, policy allows, verified < 7 days ago); the call path only ever reads it.
     Prices are the aggregator's list price in micro-USD: the caller pays exactly that, 0% markup,
-    disclosed in-band. See docs/PROVIDER-CAPACITY-PLAN.md §4.3.
+    disclosed in-band.
     """
 
     endpoint_id: str = Field(primary_key=True)

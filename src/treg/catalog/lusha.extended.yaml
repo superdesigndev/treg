@@ -20,6 +20,8 @@ source:
 # signals, buying-group (the retired decision-makers route is kept as a tombstone), website-visits
 # and the webhook-subscription family. Auth is the same `api_key` header, no scheme prefix. No calls
 # were made while writing this file.
+# Hand-maintained: no ingester reads Lusha's client-rendered reference, so this file is never
+# regenerated and edits here (tombstones included) survive.
 endpoints:
   - id: lusha.x.contacts-prospecting-filters
     kind: utility

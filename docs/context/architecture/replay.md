@@ -1,6 +1,6 @@
 ---
 title: Replay - recorded exchanges re-run through one checkout's billing, outcome and routing code
-status: building
+status: shipped
 sources:
   - src/treg/application/replay/__init__.py
   - src/treg/application/replay/__main__.py
@@ -9,6 +9,8 @@ sources:
   - src/treg/application/replay/fixtures.py
   - src/treg/application/replay/differ.py
   - tests/test_replay.py
+  - scripts/catalog_dump.py
+  - tests/test_catalog_dump.py
 related:
   - architecture/money.md
   - architecture/proxy-model.md
@@ -45,16 +47,8 @@ the observed override of a rejected submission) and composes the existing pure f
 
 ## What one replay runs
 
-| Output group | Production function | Fields |
-|---|---|---|
-| `reserve` | `price_call`, `money.with_margin` | `estimate_micro`, `hold_micro`, `unit_micro`, `reported_charge_unit_micro`, the basis's `when`, kind, reserve and fallback, and a digest of the whole basis |
-| `settle` | `submission_state`, `decide_settle` | `deferred`, `billable`, `reason`, `observed_micro`, `actual_micro`, `charged_micro` |
-| `outcome` | `results.classify`, `results.verdict` | `state`, `reason`, `hit`, `verdict` |
-| `adapter` | `Adapter.from_upstream`, `Adapter.is_miss` | whether the body is JSON, the adapter miss, a digest of the mapped core, the empty required fields |
-| `routing` | `child_outcome` (verified, routable adapters only) | `kind`, `why`, `rows` |
-| `stats` | `stats.Tally.fold` | whether the row counts, and which counters it moves |
-| `async` | `asynctasks.classify_terminal`, `settlement.settle`, `terminal_judgement` | terminal `outcome`, `settled_micro`, `charged_micro`, `hit`, `verdict` |
-
+One output record per input, grouped as `reserve`, `settle`, `outcome`, `adapter`, `routing`,
+`stats` and `async` (`engine.py`), each from the production function that decides it.
 Every call is replayed as a call on treg's own key (`tier: platform`), with the settings of the
 process running it. A step that cannot apply is `null`; a step that raises reports only the
 exception's type and typed kind, never its message, which may quote the body. An accepted async
@@ -93,6 +87,16 @@ declared miss status, a 2xx error envelope, a 400 and a 500, and for an async en
 success, failure and billed-failure documents. Requests come from `test_request`, so a record's
 request fidelity is `reconstructed` and its response carries no headers. Nothing in it is
 customer data, and it is generated, never committed.
+
+## The production corpus
+
+Records from real traffic are extracted by a private operator script, run where production's
+database and archive are reachable, that writes this record shape to a temporary location deleted
+after the replay. It reuses treg's own readers rather than copying them:
+`arena_insights._evidence_pointers` (the exact snapshot each call received, with its media type,
+under the `replay` read path), `archive_bodies.read`, `archive.load_terminal_snapshots` (a task's
+terminal answer and its status), the archive opt-out state, the credential renderings of
+`call.evidence`, and `records.line` for each line it writes.
 
 ## Running it
 
@@ -147,6 +151,14 @@ counts as exercised.
 undeclared difference. The declarations are the pull request body's fenced `replay-declared`
 blocks, so they belong to the change that needs them and never accumulate in the repository;
 editing the body re-runs the job. The report goes to the job summary.
+
+When a pull request changes loader, schema or validator source (anything under
+`src/treg/domain/catalog/`, `scripts/catalog_validate.py`, `scripts/catalog_dump.py` or the Replay
+workflow), the same job also dumps the loaded catalog (`scripts/catalog_dump.py`: every field of the
+loaded `Catalog` and each row's cost view, sorted keys) on the base and on the merge result and fails
+on any byte difference, naming the first differing path ([catalog-schema](catalog-schema.md)). It
+needs no body declaration, and a pure catalog data pull request skips it. The replay diff still runs and reports
+when the dump check fails.
 
 A base without the engine skips the comparison. The ordinary test suite also replays the whole
 fixture corpus, so a seam that starts raising fails every pull request, not only those that differ.

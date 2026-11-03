@@ -308,3 +308,39 @@ async def test_a_provider_error_still_returns_the_place(clients: AsyncClient, pl
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code >= 500
     assert fair_share._pools["tikhub"].active == 0
+
+
+async def test_an_endpoint_family_with_its_own_allowance_has_its_own_places(
+    clients: AsyncClient, platform_on, gated, monkeypatch,
+):
+    """The Filtrat case: finder searches have their own in-progress allowance. A full provider does
+    not hold the family back, and the family's calls take places only from the family."""
+    from treg.domain.capacity import view as view_mod
+    monkeypatch.setitem(view_mod._ENDPOINT_CONCURRENCY, "tikhub.family", {"limit": 2, "endpoints": (EP,)})
+    assert capacity_view.concurrency_pool("tikhub", EP) == ("tikhub.family", 2)
+    assert capacity_view.concurrency_pool("tikhub", "tikhub.other") == ("tikhub", 1)
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ok":true}'))
+    provider_full = await fair_share.acquire("tikhub", -1, 1)    # the provider's only place is taken
+    family_one = await fair_share.acquire("tikhub.family", -1, 2)
+    try:
+        assert (await clients.get(f"/call/{EP}?aweme_id=7")).status_code == 200
+        assert fair_share._pools["tikhub.family"].active == 1, "the place is returned after the answer"
+        family_two = await fair_share.acquire("tikhub.family", -1, 2)
+        r = await clients.get(f"/call/{EP}?aweme_id=8")
+        assert r.status_code == 429 and "share_busy" in r.text, r.text
+        family_two.release()
+    finally:
+        provider_full.release()
+        family_one.release()
+    assert fair_share._pools["tikhub"].active == 0
+
+
+def test_every_endpoint_concurrency_family_names_catalog_endpoints_of_one_provider():
+    from treg.domain.capacity.policy import _CONCURRENCY, _ENDPOINT_CONCURRENCY
+    from treg.domain.catalog import store as catalog_store
+    by_id = catalog_store.load().by_id
+    for family, row in _ENDPOINT_CONCURRENCY.items():
+        assert int(row["limit"]) > 0 and row["endpoints"], family
+        providers = {by_id[endpoint_id]["provider"] for endpoint_id in row["endpoints"]}
+        assert len(providers) == 1 and family.startswith(f"{providers.pop()}."), family
+        assert family not in _CONCURRENCY, family

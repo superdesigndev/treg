@@ -67,7 +67,7 @@ from ...models import AsyncTaskRecord, CreditBlock, Hold, LedgerEntry, Org, TagS
 # kind must be added here or it silently gets the most expensive treatment available.
 # `bonus` (the tiered extra on a manual top-up, `billing.bonus_for_topup`) is the same kind of thing:
 # marketing spend keyed to a payment, never refundable, so it burns first too.
-# `earned`: a hub seller's credit (docs/HUB-DECISIONS.md) - spent after the free kinds and
+# `earned`: a hub seller's credit - spent after the free kinds and
 # before purchased money, so a maker's own dollars are used last.
 _KIND_ORDER = {"promotional": 0, "referral": 0, "bonus": 0, "earned": 1, "purchased": 2}
 
@@ -455,8 +455,8 @@ async def settle_to_in_transaction(
     meta: dict | None = None,
 ) -> int:
     """Close a hold and credit the settled amount to `payee_org_id` as an `earned` block — a hub
-    seller's price (docs/HUB-DECISIONS.md). `actual_micro` is the real price for a
-    variable-price tool (per_unit or cost_plus, docs/hub-pricing-decisions.md): that much
+    seller's price. `actual_micro` is the real price for a
+    variable-price tool (the sum of a script's ctx.charge lines): that much
     is settled, and the rest of the reserved hold is refunded to the payer. `None` settles the FULL
     reserved hold (a flat price). One transaction, two ledger entries: a `settle` on the payer (meta
     names the payee) and a `grant` on the payee (block kind `earned`, meta names the payer's run).
