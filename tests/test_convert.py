@@ -1,8 +1,11 @@
 """The skill scaffolder: deterministic discovery of recipe + secrets from a skill dir."""
 
+# Modified by dajiaohuang on 2026-11-04: cover cross-platform contract secret paths.
+
 from __future__ import annotations
 
 import json
+from pathlib import PurePosixPath
 
 import pytest
 
@@ -26,6 +29,15 @@ def test_resolve_secret_path_tolerates_secret_dir_spelling(tmp_path):
     assert resolve_secret_path(d, ".secrets/token.json") == d / ".secrets" / "token.json"
     # exact match wins when present; a genuinely missing file returns the exact (missing) path
     assert resolve_secret_path(d, ".secret/nope.json") == d / ".secret" / "nope.json"
+
+
+def test_resolve_secret_path_normalizes_windows_separators_on_posix(tmp_path, monkeypatch):
+    d = tmp_path / "skill"
+    (d / ".secrets").mkdir(parents=True)
+    (d / ".secrets" / "token.json").write_text("{}")
+    monkeypatch.setattr("treg.convert.Path", PurePosixPath)
+
+    assert resolve_secret_path(d, r".secret\token.json") == d / ".secrets" / "token.json"
 
 
 def _make_skill(tmp_path):
