@@ -92,7 +92,7 @@ explained in [seo](seo.md).
 `require_member()` resolves a membership token, a team Default key, a legacy identity bearer plus
 `X-Treg-Org`, or a session cookie plus `X-Treg-Org`, and returns a `Caller`. A 401 keeps `detail`
 and adds a top-level `hint`, because scripts and older CLIs print it verbatim. Open by design:
-`POST /users`, `POST /invites/accept`, `GET /oauth/callback` (protected by `state`). Identity and
+`POST /invites/accept`, `GET /oauth/callback` (protected by `state`). Identity and
 session validation live in `domain.identity.session`, authorization in `domain.identity.access`;
 org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
 
@@ -354,7 +354,7 @@ cookie-authenticated mutation.
 - `GET /meta` exposes only public configuration; empty third-party keys mean self-hosted pages
   load neither PostHog nor Intercom. `intercom_secret` never leaves the server: `GET /auth/me`
   carries its HMAC of the email as `intercom_user_hash`.
-- `/sitetrack.js` sets the first-party `treg_utm` first-touch cookie read by both signup doors;
+- `/sitetrack.js` sets the first-party `treg_utm` first-touch cookie read at team creation;
   `/adtrack.js` is empty when conversion tracking is off, so unconfigured deployments set no
   advertising cookies ([ads-conversions](../architecture/ads-conversions.md)).
 - Feedback, media hosting, pictures and the showcase are owned by their fragments:
@@ -383,10 +383,10 @@ query string as the SPA's. A `ref` alone or with only `utm_*` tags counts as par
 code is parked in `treg_ref` (httponly, lax, 30 days), revalidated on read because a cookie is
 attacker-supplied and reaches a query.
 
-Redemption happens at first team creation in both org-creating doors, right after the signup
-credit grant and with the same swallow-and-log posture: a referral must never be why someone cannot
-make a team. A failed grant rolls the session back, expiring every tracked object, so both doors
-read their response fields before granting and redemption refreshes `user`/`org` first.
+Redemption happens at team creation, right after the signup credit grant and with the same
+swallow-and-log posture: a referral must never be why someone cannot make a team. A failed grant
+rolls the session back, expiring every tracked object, so team creation reads its response fields
+before granting and redemption refreshes `user`/`org` first.
 
 ## Billing
 

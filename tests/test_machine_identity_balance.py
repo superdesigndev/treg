@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 from httpx import AsyncClient
+from conftest import verified_signup
 
 
 async def _agent_token(c: AsyncClient) -> tuple[str, int]:
@@ -47,7 +48,7 @@ async def test_a_missing_org_is_indistinguishable_from_one_you_cannot_see(client
     way: a non-existent org and someone else's org must answer identically, or the difference counts
     ids for an attacker."""
     _, org_id = await _agent_token(clients)
-    r = await clients.post("/users", json={"email": "stranger2@elsewhere.dev"})
+    r = await verified_signup(clients, json={"email": "stranger2@elsewhere.dev"})
     other = {"X-Treg-Token": r.json()["token"]}
     missing = await clients.get("/orgs/999999/balance", headers=other)
     existing = await clients.get(f"/orgs/{org_id}/balance", headers=other)

@@ -15,6 +15,7 @@ from treg.models import ArenaEvaluation, ArenaRun, AsyncTaskRecord, Hold, Ledger
 from treg.timeutil import utcnow_naive
 from test_marketplace_call import _balance, platform_on  # noqa: F401
 from test_routing import enrichment_on, _relay_by_provider  # noqa: F401
+from conftest import verified_signup
 
 IDENTITY = {"full_name": "Test Person", "domain": "example.com"}
 SECOND_IDENTITY = {"full_name": "Second Person", "domain": "second.example"}
@@ -457,7 +458,7 @@ async def test_no_partial_or_foreign_vote_and_no_cross_origin_start(clients,enri
     if task: await task
     assert (await clients.post(path+"/evaluations",json={"kind":"winner","selected":["invented"]})).status_code==422
     token=clients.headers["X-Treg-Token"]
-    other=(await clients.post('/users',json={"email":"other@superdesign.dev"})).json()["token"]
+    other=(await verified_signup(clients, json={"email":"other@superdesign.dev"})).json()["token"]
     clients.headers['X-Treg-Token']=other
     assert (await clients.get(path)).status_code==404
     assert (await clients.post(path+"/reveal")).status_code==404
@@ -710,7 +711,7 @@ async def test_manual_and_feedback_scope_validation_and_expiry(clients, enrichme
         await db.commit()
     assert (await clients.post(path+'/start',json={'quote_id':q['id']})).status_code == 409
     token = clients.headers['X-Treg-Token']
-    other = (await clients.post('/users',json={'email':'manual-other@superdesign.dev'})).json()['token']
+    other = (await verified_signup(clients, json={'email':'manual-other@superdesign.dev'})).json()['token']
     clients.headers['X-Treg-Token'] = other
     for suffix, body in [('plan',{}),('start',{'quote_id':q['id']}),('report',{'reason':'incorrect_data'}),('rating',{'value':'down'})]:
         assert (await clients.post(path+'/'+suffix,json=body)).status_code == 404
@@ -1020,7 +1021,7 @@ async def test_history_pages_keep_tied_rows_stable_and_never_dispatch(clients, e
     assert (await clients.get('/arena/runs', params={'before': q['id']})).status_code == 404
     for limit in [0, -1, 101]:
         assert (await clients.get('/arena/runs', params={'limit': limit})).status_code == 422
-    other = (await clients.post('/users', json={'email': 'history-other@superdesign.dev'})).json()['token']
+    other = (await verified_signup(clients, json={'email': 'history-other@superdesign.dev'})).json()['token']
     assert (await clients.get('/arena/runs', params={'before': ids[-1]}, headers={'X-Treg-Token': other})).status_code == 404
     assert await _balance(clients) == before_balance
     async with session_maker() as db:
@@ -1297,7 +1298,7 @@ async def test_verification_credit_admission_and_ownership(clients, enrichment_o
     assert (await clients.post(path+'/plan')).json()['affordable'] is False
     assert len(seen) == 1
     assert (await clients.post(path+'/plan',headers={'Origin':'https://evil.example'})).status_code == 403
-    other = (await clients.post('/users',json={'email':'verify-other@superdesign.dev'})).json()['token']
+    other = (await verified_signup(clients, json={'email':'verify-other@superdesign.dev'})).json()['token']
     assert (await clients.post(path+'/start',json={'quote_id':q['id']},headers={'X-Treg-Token':other})).status_code == 404
 
 
