@@ -448,10 +448,12 @@ def _strings(v: Any) -> list[str]:
 def quoted_absent(q: Any, rows: Any) -> bool:
     """True when the question quotes phrases (`"Dolby Family Ventures"`) and not one row mentions any of
     them in any of its text (title, snippet, link: every string the row carries), compared without
-    case, accents or punctuation. A question with no quoted phrase, or no rows, is never judged."""
+    case, accents or punctuation. A phrase the search operator excludes (`-"careers"`,
+    `-intitle:"jobs"`) is not asked for. A question with no quoted phrase, or no rows, is never judged."""
     if not isinstance(q, str) or not isinstance(rows, list) or not rows:
         return False
-    phrases = [_fold(a or b) for a, b in _QUOTED.findall(q)]
+    phrases = [_fold(m.group(1) or m.group(2)) for m in _QUOTED.finditer(q)
+               if not re.search(r"\S*$", q[:m.start()]).group().startswith("-")]
     phrases = [p for p in phrases if p]
     if not phrases:
         return False
