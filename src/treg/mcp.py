@@ -46,7 +46,7 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
 from typing import Annotated, Any, TypedDict
-from urllib.parse import parse_qsl, quote, urlencode, urlsplit
+from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
 
 import httpx
 from mcp.server import MCPServer
@@ -63,6 +63,7 @@ from .application import catalog_search as search_app
 from .application import search_experiment
 from .domain.catalog import store as catalog_store
 from .capacity_notice import account_out_notice, is_balance_refusal
+from .client_identity import printable_ascii
 from .config import get_settings
 from .feedback_contract import FeedbackCategory, FEEDBACK_DESCRIPTION, ReviewUsefulness, REVIEW_DESCRIPTION
 from .domain.catalog.stats import EndpointObservationReader
@@ -339,7 +340,7 @@ mcp = MCPServer(
 # NULLABLE as well: the SDK dumps every ABSENT key as `null` in `structuredContent`.
 class SearchResult(TypedDict, total=False):
     endpoint_id: str | None
-    kind: str | None             # "hub" for a listed hub tool (docs/hub-listing-decisions.md); absent otherwise
+    kind: str | None             # "hub" for a listed hub tool; absent otherwise
     name: str | None
     provider: str | None
     routed: str | None           # a routed row: what treg picks among, and where the rest are
@@ -422,6 +423,9 @@ class CatalogGetOut(TypedDict, total=False):
                                            # and `reviews` (what other teams' agents said after using it)
     provider: dict[str, Any] | None
     siblings: list[dict[str, Any]] | None  # other providers of the same capability, for comparison
+    routing: dict[str, Any] | None
+    related_capabilities: list[dict[str, Any]] | None
+    observed_pending: bool | None
     call_template: str | None
     example_response: Any                  # a dict for most endpoints, an ARRAY for providers whose
                                            # response is a list of records (brightdata datasets)
@@ -449,6 +453,9 @@ class CallOut(TypedDict, total=False):
     whose_error: str | None         # "treg" or "provider" — who to blame, and whether to retry
     hint: str | None
     did_you_mean: list[str] | None  # real ids close to one that missed
+    routed_tool: str | None
+    suggestion: str | None
+    upstream_failed: str | None
     error: str | None
     detail: str | None
 
@@ -503,6 +510,20 @@ class MyToolsOut(TypedDict, total=False):
 # request would come from the ASGI transport's loopback peer, and every MCP caller would share one
 # per-IP bucket. Task-scoped, so concurrent tool calls never see each other's address.
 _caller_ip: ContextVar[str] = ContextVar("treg_mcp_caller_ip", default="")
+# The MCP host behind that tool call (`clientInfo.name`, inbound User-Agent), forwarded the same way.
+_caller_host: ContextVar[tuple[str, str]] = ContextVar("treg_mcp_caller_host", default=("", ""))
+
+
+def _host_of(ctx: Context, headers: Any) -> tuple[str, str]:
+    """On the stateless transport only a 2026-07-28+ request carries `clientInfo` on every request;
+    an older client reports it at `initialize` alone, so its tool calls have only the User-Agent."""
+    try:
+        name = ctx.session.client_params.client_info.name or ""
+    except Exception:  # noqa: BLE001 - attribution must never fail the tool call
+        name = ""
+    user_agent = headers.get("user-agent") or headers.get("User-Agent") or ""
+    # An httpx header value must be ASCII.
+    return printable_ascii(str(name)), printable_ascii(user_agent)
 
 
 def _bearer(ctx: Context) -> str:
@@ -514,6 +535,7 @@ def _bearer(ctx: Context) -> str:
     """
     headers = ctx.headers or {}
     _caller_ip.set(client_ip.from_headers(headers, None) if headers else "")
+    _caller_host.set(_host_of(ctx, headers))
     raw = headers.get("authorization") or headers.get("Authorization") or ""
     return raw.removeprefix("Bearer ").removeprefix("bearer ").strip()
 
@@ -665,16 +687,52 @@ async def _api(token: str, *, client_name: str = "mcp"):
     """An in-process client bound to treg's own ASGI app, carrying the caller's identity."""
     from .api import app  # deferred: bootstrap imports THIS module while assembling api:app
 
+    host_name, host_user_agent = _caller_host.get()
+    host = {k: v for k, v in (("X-Treg-Mcp-Client", host_name),
+                              ("X-Treg-Mcp-User-Agent", host_user_agent)) if v}
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url=_INTERNAL_BASE,
         timeout=_TIMEOUT,
         # X-Treg-Client is attribution, not auth: without it every MCP-originated call lands
         # in the audit trail as client="", indistinguishable from unreported CLI traffic.
-        headers={**await _internal_auth(token), "X-Treg-Client": client_name,
+        headers={**await _internal_auth(token), "X-Treg-Client": client_name, **host,
                  **client_ip.forwarding_headers(_caller_ip.get())},
     ) as client:
         yield client
+
+
+_UNSAFE_SEGMENTS = frozenset({"", ".", ".."})
+
+
+def _leaves_route(endpoint_id: str) -> bool:
+    """Whether a dot or empty segment, at any depth of percent-encoding, could move the call off its
+    route: httpx collapses `..` before the in-process request, and the caller's credential rides it."""
+    path = endpoint_id.partition("?")[0].partition("#")[0]
+    for _ in range(4):
+        segments = path.split("/")
+        # A trailing slash is a real upstream path (`tool/items/`), not a way out.
+        if segments[-1] == "" and len(segments) > 1:
+            segments = segments[:-1]
+        if any(s in _UNSAFE_SEGMENTS for s in segments):
+            return True
+        decoded = unquote(path)
+        if decoded == path:
+            return False
+        path = decoded
+    return True
+
+
+_UNSAFE_ID_ERROR = {"error": "endpoint_id may not contain an empty, '.' or '..' path segment",
+                    "hint": "pass a catalog id or '<tool-name>/<path>' exactly"}
+
+
+def _call_url(route: str, endpoint_id: str) -> str:
+    url = f"{route}/{endpoint_id}"
+    path = httpx.URL(_INTERNAL_BASE + url).path
+    if _leaves_route(endpoint_id) or not path.startswith(route + "/"):
+        raise httpx.InvalidURL(f"{endpoint_id!r} does not stay under {route}/")
+    return url
 
 
 def _body(r: httpx.Response) -> Any:
@@ -1227,6 +1285,8 @@ async def _catalog_get_impl(
             out["overflow_price_usd"] = ep["overflow_price_usd"]
             out["overflow_price_unit"] = ep.get("overflow_price_unit")
             out["overflow_via"] = ep.get("overflow_via")
+    if isinstance(out, dict) and (out.get("routing") or {}).get("plan"):
+        out.pop("siblings", None)
     return out
 
 
@@ -1321,6 +1381,8 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     token = _bearer(ctx) if ctx else ""
     if not token:
         return _need_token()
+    if _leaves_route(endpoint_id):
+        return _UNSAFE_ID_ERROR | {"endpoint_id": endpoint_id}
 
     # BOTH halves answer here, exactly as `treg call` does: `/call/{rest}` resolves a team's own tool
     # first and falls back to a catalog id, so an org tool always wins over the catalog. Refusing
@@ -1504,7 +1566,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
                 parts.append((name, (filename, data, mime)))
             kw["files"] = parts
         route = "/catalog/call" if catalog_only else "/call"
-        r = await client.request(method, f"{route}/{endpoint_id}", **kw)
+        r = await client.request(method, _call_url(route, endpoint_id), **kw)
 
     out: dict[str, Any] = {"status": r.status_code, "endpoint_id": endpoint_id, "body": _body(r)}
     if retry_after := r.headers.get("Retry-After"):
@@ -1594,6 +1656,12 @@ async def _call_media_impl(
             content=[TextContent(type="text", text=json.dumps(problem))],
             structuredContent=problem, isError=True,
         )
+    if _leaves_route(endpoint_id):
+        problem = _UNSAFE_ID_ERROR | {"endpoint_id": endpoint_id}
+        return CallToolResult(
+            content=[TextContent(type="text", text=json.dumps(problem))],
+            structuredContent=problem, isError=True,
+        )
     extra_headers = {k: str(v) for k, v in (headers or {}).items()
                      if k.lower() not in ("x-treg-token", "x-treg-org", "authorization",
                                           "idempotency-key", "x-treg-meta")}
@@ -1619,7 +1687,7 @@ async def _call_media_impl(
         else:
             kw["json"] = body
         route = "/catalog/call" if catalog_only else "/call"
-        response = await client.post(f"{route}/{endpoint_id}", **kw)
+        response = await client.post(_call_url(route, endpoint_id), **kw)
     metadata: dict[str, Any] = {"status": response.status_code, "endpoint_id": endpoint_id}
     if retry_after := response.headers.get("Retry-After"):
         metadata["retry_after"] = retry_after

@@ -1,5 +1,5 @@
 import { storageSet, storageRemove } from './storage.js'
-import { requestJson } from '../api'
+import { requestJson, withReportRetry } from '../api'
 import { LS } from './constants.js'
 
 export default {
@@ -15,6 +15,8 @@ async api(path, opts={}){
         this.sessionMode=false; location.reload();
       }, () => this.sessionMode);
     },
+// The heavy dashboard reports (usage, spend by tag, observed agents) share a small server-side gate.
+reportApi(path){ return withReportRetry(() => this.api(path)); },
 save(){ storageSet(LS, JSON.stringify(this.cfg)); },
 connected(slug){ return this.sessionMode || !!this.cfg.orgs[slug]; },
 toggleTheme(){ this.theme=this.theme==='dark'?'light':'dark'; document.documentElement.dataset.theme=this.theme; storageSet('treg-theme',this.theme); },

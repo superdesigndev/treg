@@ -125,6 +125,22 @@ class Settings(BaseSettings):
     # The shared key-value store (Redis protocol). Empty = an in-process fallback; see infra/kv.py.
     kv_url: str = ""
 
+    org_endpoint_quota_enabled: bool = False
+    org_endpoint_quota_redis_url: str = ""
+
+    @model_validator(mode="after")
+    def _org_endpoint_quota_configuration(self):
+        if self.org_endpoint_quota_enabled:
+            try:
+                url = urlsplit(self.org_endpoint_quota_redis_url)
+                valid = (url.scheme in {"redis", "rediss"} and bool(url.hostname)
+                         or url.scheme == "unix" and bool(url.path))
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError("enabled endpoint quotas require a valid Redis quota URL")
+        return self
+
     # Published root-call pause, rate and concurrency admission.
     org_flow_control_enabled: bool = False
     org_flow_control_refresh_s: float = Field(default=2.0, ge=0.2, le=10)
@@ -192,10 +208,6 @@ class Settings(BaseSettings):
 
     api_token: str = "dev-token"
 
-    # DEMO Stripe webhook signing secret (env TREG_DEMO_STRIPE_WEBHOOK_SECRET) for the landing page's live
-    # payments feed (see pubfeed.py). Empty = the /stripe/webhook endpoint is off (404).
-    demo_stripe_webhook_secret: str = ""
-
     # The Stripe sandbox restricted key (env TREG_DEMO_STRIPE_KEY) behind the landing sandbox's ONE
     # live wire: a sandbox call to the exact seeded stripe tool relays for real with THIS key
     # injected — the key never exists in any sandbox org (see sandbox.is_live_tool / api.call_tool).
@@ -258,6 +270,27 @@ class Settings(BaseSettings):
     # how long a call waits in line for a place before a routed job moves on and a direct call is
     # refused, not charged. 0 turns the gate off (TREG_FAIR_SHARE_WAIT_S=0).
     fair_share_wait_s: float = Field(default=2.0, ge=0, le=30)
+    # A shared rate window on treg's own keys (domain/capacity/rate_observe.py). `observe` asks it
+    # about every platform call that goes upstream and logs its verdicts; the buckets named in
+    # `provider_rate_enforce` (comma-separated, `view.rate_bucket` keys without the `#account`
+    # suffix) are also refused when full. Both need a Redis TREG_KV_URL.
+    provider_rate_mode: Literal["off", "observe"] = "off"
+    provider_rate_enforce: str = ""
+
+    @model_validator(mode="after")
+    def _provider_rate_configuration(self):
+        if self.provider_rate_enforce.strip() and self.provider_rate_mode != "observe":
+            raise ValueError("TREG_PROVIDER_RATE_ENFORCE needs TREG_PROVIDER_RATE_MODE=observe")
+        if self.provider_rate_mode != "off":
+            try:
+                url = urlsplit(self.kv_url)
+                valid = (url.scheme in {"redis", "rediss"} and bool(url.hostname)
+                         or url.scheme == "unix" and bool(url.path))
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError("TREG_PROVIDER_RATE_MODE=observe requires a valid Redis kv_url")
+        return self
 
     # Flat bounties, not a percentage of top-ups. At 0% platform margin a percentage would be a
     # permanent share of pass-through GMV, and — unlike a flat figure — it rewards farming in
@@ -298,6 +331,7 @@ class Settings(BaseSettings):
     platform_key_trykitt: str = ""  # x-api-key; credits.jobCredits reports USD
     platform_key_contactout: str = ""  # raw API token; injected into the token header
     platform_key_millionverifier: str = ""  # raw key; injected as ?api=…
+    platform_key_orbisearch: str = ""  # X-API-Key; prepaid validation and enrichment credits
     platform_key_bounceban: str = ""  # raw key in Authorization; prepaid verification credits
     platform_key_hunter: str = ""
     platform_key_sumble: str = ""  # Bearer; Pro monthly credits, optional vendor auto-top-up
@@ -307,6 +341,7 @@ class Settings(BaseSettings):
     platform_key_fetchinio: str = ""  # X-API-Key; subscription + PAYG credit balance
     platform_key_sixtyfour: str = ""  # x-api-key; monthly credits, free balance check
     platform_key_blitzapi: str = ""  # x-api-key; monthly record allowance, free key-info balance
+    platform_key_mobiusengine_jobs: str = ""  # x-api-key; prepaid USD balance, free GET /v1/balance
     platform_key_anyapi: str = ""  # X-API-Key; prepaid USD wallet, exact charge settles from costUsd
     platform_key_dropleads: str = ""  # X-API-Key; PAYG credits priced in fx.yaml
     platform_key_quickenrich: str = ""  # Bearer; monthly subscription credits, not auto-top-up
@@ -321,6 +356,7 @@ class Settings(BaseSettings):
     platform_key_zerobounce: str = ""  # api_key query param; PAYG validation credits, Auto-Pay managed upstream
     platform_key_reversecontact: str = ""  # Bearer rc_ key; prepaid pay-as-you-go credits, valid 3 months
     platform_key_datagma: str = ""  # apiId query param; prepaid purchased credits, replenished manually
+    platform_key_dropcontact: str = ""  # X-Access-Token; Growth monthly credits with carry-over
     platform_key_leadmagic: str = ""
     platform_key_lusha: str = ""
     platform_key_pdl: str = ""
@@ -347,6 +383,9 @@ class Settings(BaseSettings):
     platform_key_oceanio: str = ""        # X-Api-Token; fx.yaml usd is null so tier 4 stays refused until priced
     platform_key_predictleads: str = ""   # base64 of "api_key:api_token" (HTTP Basic, like dataforseo)
     platform_key_findymail: str = ""      # Bearer key
+    platform_key_anymailfinder: str = ""  # raw Authorization key; prepaid credits
+    platform_key_enrow: str = ""          # x-api-key; prepaid email and phone credits
+    platform_key_filtrat: str = ""        # Bearer key (ak_…); prepaid credits, a partner account
     platform_key_branddev: str = ""       # Bearer key
     platform_key_icypeas: str = ""        # raw key (Authorization, no Bearer)
     platform_key_leadsforge: str = ""     # Bearer key
@@ -359,6 +398,7 @@ class Settings(BaseSettings):
     # (tomba's data routes need the header pair; TOMBA.platform_extra_setting names this second slot)
     platform_key_influencersclub: str = ""  # Bearer key (dashboard JWT); creator discovery + enrichment, fx.yaml $0.598/credit
     platform_key_crustdata: str = ""  # Bearer key; every call also needs the pinned x-api-version header
+    platform_key_theirstack: str = ""  # Bearer key; jobs and companies draw API credits
     platform_key_aviato: str = ""     # Bearer key; $10 auto-top-up buys 1,000 credits
     platform_key_enrichlayer: str = ""  # Bearer; pay-as-you-go credits
     platform_key_exa: str = ""        # x-api-key; dollar-metered ($7/1k searches, $1/1k pages); settles from costDollars.total
@@ -370,6 +410,7 @@ class Settings(BaseSettings):
     platform_key_you: str = ""        # X-API-Key; prepaid USD balance across You.com web APIs
     platform_key_valyu: str = ""      # X-API-Key; subscription credits shared across Valyu APIs
     platform_key_serper: str = ""     # X-API-KEY; prepaid Google search credits, exact charge in response.credits
+    platform_key_bravesearch: str = ""  # X-Subscription-Token; prepaid Search requests
     platform_key_litescrape: str = ""  # Bearer; prepaid calls, free key status endpoint
     platform_key_keenable: str = ""   # X-API-Key; $4/1,000-request package, 10 requests/s per organization
     platform_key_olostep: str = ""    # Bearer; prepaid credits, platform price $0.002/credit
@@ -434,6 +475,25 @@ class Settings(BaseSettings):
     # /catalog/find) to most callers and the same two pure holdouts. Any value here is also the
     # kill switch: a bad judge is one env change from off.
     search_experiment: str = "off"
+    # The shadow provider (application.shadow, `treg-worker shadow collect`): a candidate asked the
+    # same question as served calls, after the fact and never on the request path, to measure how
+    # often it answers and agrees. The JSON names the candidate's base URL and, per capability, an
+    # adapter in the routing YAML's shape (domain.catalog.shadow). Empty = off; it is also the kill
+    # switch. The key is the candidate's own credential, never a team's.
+    shadow_provider: str = ""
+    shadow_provider_key: str = ""
+    # The key behind the per-team code a provider file's `client_header` asks for (relay rewrite 6):
+    # on treg's shared key the call carries HMAC(this, provider + team) so the provider can split
+    # usage per customer without learning who the customer is. Empty = the header is never sent;
+    # rotating it gives every team a new code.
+    client_id_secret: str = ""
+    shadow_salt: str = ""
+    # Candidate calls at once, per second, and the per-call time limit.
+    shadow_concurrency: int = 16
+    shadow_per_second: float = 20.0
+    shadow_timeout_s: float = 3.0
+    # Pair rows older than this are deleted by each run.
+    shadow_retention_days: int = 7
     # Per-caller share (each) of the two pure arms in `interleave` and `v2` mode; the rest is
     # interleaved, or served v2.
     search_experiment_holdout_percent: int = 10
@@ -573,6 +633,15 @@ class Settings(BaseSettings):
     archive_body_read_lookup: Literal["db", "r2-first"] = "db"
     archive_body_read_result: Literal["db", "r2-first"] = "db"
     archive_body_read_terminal: Literal["db", "r2-first"] = "db"
+    # Measured verdict quality the router reads under `X-Treg-Route-Decisive`
+    # (infra/route_quality.py): `<prefix><capability>/routing.json` in a private bucket an
+    # operator's scorer writes. Off until all five are set; the header then keeps price order.
+    route_quality_endpoint: str = ""
+    route_quality_bucket: str = ""
+    route_quality_prefix: str = ""
+    route_quality_access_key_id: str = Field(default="", repr=False)
+    route_quality_secret_access_key: str = Field(default="", repr=False)
+    route_quality_ttl_s: float = Field(default=900.0, gt=0)
     archive_object_store_endpoint: str = ""
     archive_object_store_bucket: str = ""
     archive_object_store_access_key_id: str = Field(default="", repr=False)
@@ -583,6 +652,13 @@ class Settings(BaseSettings):
     archive_r2_timeout_s: float = Field(default=10.0, gt=0, le=120)
     archive_r2_read_timeout_s: float = Field(default=2.0, gt=0, le=120)
     archive_r2_terminal_attempts: int = Field(default=3, ge=1, le=5)
+
+    # Where `treg host` bodies go (application/media.py): "db" keeps them in the media row; "r2"
+    # writes new uploads to the archive's bucket above (archive_object_store_*), and startup refuses
+    # it while that bucket is not configured. Reads follow each row's own `object_key`, so a switch
+    # either way needs no backfill. The timeout bounds a whole transfer of one file (up to 30 MB).
+    media_body_write: Literal["db", "r2"] = "db"
+    media_r2_timeout_s: float = Field(default=60.0, gt=0, le=600)
 
     # Pictures (team and user avatars, /showcase leaderboard icons and screenshots): two S3-API
     # buckets, separate from the archive's. Uploads land in the private STAGING bucket; publishing
@@ -847,8 +923,8 @@ class Settings(BaseSettings):
     # The WHOLE email-domain blocklist (TREG_BLOCKED_EMAIL_DOMAINS), comma-separated:
     # "example-one.io,example-two.net". There is no list in the code; empty (the default) blocks
     # nothing. A listed domain blocks itself AND every subdomain, case-insensitively, at every
-    # sign-up and sign-in door and at the two doors that create a promo-funded team (POST /users,
-    # POST /orgs). Configuration rather than code because bulk registration moves to a new domain in
+    # sign-up and sign-in door and at the door that creates a promo-funded team (POST /orgs).
+    # Configuration rather than code because bulk registration moves to a new domain in
     # minutes, and a defence that needs a deploy to keep up is always behind. Existing accounts on a
     # listed domain are suspended out of band, so listing one strands nobody legitimate. A blocklist,
     # deliberately: no allowlist, no table, no admin UI.

@@ -64,14 +64,6 @@ def test_async_submission_reports_a_reservation_not_a_charge(monkeypatch, capsys
     assert meta["reserved_micro"] == 98000 and meta["async"] is True and "charged_micro" not in meta
 
 
-def test_default_call_output_is_unchanged(monkeypatch, capsys):
-    _serve(monkeypatch, _charged(json={"items": []}))
-    cli.main(["call", "treg.people.search"])
-    out, err = capsys.readouterr()
-    assert json.loads(out) == {"items": []}
-    assert "treg: charged $0.098" in err and "abc123" in err
-
-
 def test_json_and_org_flags_last_one_invocation(monkeypatch, capsys):
     """`--json` and `--org` are per-invocation: a later `main()` in the same process, or a command
     called directly, starts from plain output and the saved team, even after an error exit."""

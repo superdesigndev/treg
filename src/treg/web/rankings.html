@@ -1,0 +1,1007 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tool rankings: the APIs AI agents call most | treg.to</title>
+<meta name="description" content="Live rankings of the tools and APIs AI agents call through treg: most used, trending, top by category, most reliable and fastest. Updated every day.">
+<link rel="canonical" href="{BASE}/rankings"/>
+<meta property="og:title" content="Tool rankings: the APIs AI agents call most | treg.to"/>
+<meta property="og:description" content="Live rankings of the tools and APIs AI agents call through treg: most used, trending, top by category, most reliable and fastest."/>
+<meta property="og:url" content="{BASE}/rankings"/>
+<meta property="og:type" content="website"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta property="og:image" content="{BASE}/media/og.png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta name="twitter:image" content="{BASE}/media/og.png"/>
+<link rel="icon" href="favicon.svg">
+{ITEMLIST}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #FDFCFB;
+    --card: #F5F4F1;
+    --ink: #101010;
+    --ink2: #43413E;
+    --muted: #8A8885;
+    --line: #E9E7E2;
+    --green: #118453;
+    --green-soft: rgba(17,132,83,.12);
+    --red: #B4372B;
+    --display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+    --text: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --ease: cubic-bezier(.2,.8,.2,1);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 12px; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--text); font-size: 15px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: rgba(17,132,83,.22); }
+  a { color: inherit; }
+  a:focus-visible, button:focus-visible, select:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px;
+    padding: 10px 20px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink); text-decoration: none; cursor: pointer;
+  }
+  .pill:hover { background: var(--card); }
+  .pill.dark { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .pill.dark:hover { background: #2b2b2a; }
+
+  /* ---------- nav (mirrors /showcase) ---------- */
+  .nav {
+    position: fixed; inset: 0 0 auto 0; z-index: 90; display: flex; align-items: center;
+    justify-content: space-between; padding: 14px 28px;
+    background: rgba(253,252,251,.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .wordmark { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 15px; }
+  .wordmark svg { width: 22px; height: 22px; border-radius: 6px; }
+  .nav-links { display: flex; gap: 22px; align-items: center; margin-right: 10px; }
+  .nav-links a { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none; }
+  .nav-links a:hover { color: var(--ink); }
+  @media (max-width: 900px) { .nav-links { display: none; } .nav { padding: 12px 16px; } }
+
+  /* ---------- layout: sticky sidebar + boards ---------- */
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 64px 24px 0; display: grid; grid-template-columns: 210px 1fr; gap: 48px; }
+  .side { position: sticky; top: 92px; align-self: start; display: flex; flex-direction: column; gap: 2px; }
+  .side a {
+    position: relative; z-index: 1;
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 9px;
+    font-size: 14px; font-weight: 500; color: var(--ink2); text-decoration: none;
+    transition: color .25s;
+  }
+  .side a svg { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .side a:hover { color: var(--ink); }
+  .side a.on { color: var(--green); }
+  main { min-width: 0; }
+  @media (max-width: 900px) {
+    html { scroll-padding-top: 76px; }
+    .wrap { grid-template-columns: 1fr; gap: 0; padding-top: 36px; }
+    /* a phone: the sidebar folds into the shared dropdown, pinned under the bar */
+    .side { position: sticky; top: 57px; z-index: 5; display: block; background: var(--bg);
+            padding: 10px 24px; margin: 0 -24px; border-bottom: 1px solid var(--line); }
+    .side > a, .side > .mark { display: none; }
+    .side-sm { display: block !important; width: 100%; }
+    .side-sm .sm-button { max-width: none; height: 40px; }
+    .side-sm .sm-pop { left: 0; right: 0; max-width: none; transform-origin: top center; }
+  }
+  .side .side-sm { display: none; }
+
+  /* ---------- hero (mirrors /showcase) ---------- */
+  .hero { padding: 138px 24px 0; text-align: center; }
+  .hero h1 { margin: 0 auto; max-width: 900px; font-family: var(--display); font-weight: 500; font-size: clamp(42px, 7vw, 78px); line-height: 1.04; letter-spacing: -.03em; }
+  .hero .sub { max-width: 54ch; margin: 22px auto 0; color: var(--muted); font-size: 18px; text-wrap: balance; }
+  .hero .asof { display: inline-flex; align-items: center; gap: 8px; margin-top: 26px; font-family: var(--mono); font-size: 12px; color: var(--ink2);
+                padding: 6px 13px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); }
+  .hero .asof i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  @media (max-width: 900px) { .hero { padding-top: 104px; } }
+  /* the #1 badge: it drops in big and spinning, springs to size, and the word takes the hit */
+  .hero .word { position: relative; display: inline-block; transform-origin: 50% 100%; }
+  .hero .one { position: absolute; left: 100%; top: -.46em; width: 1.08em; margin-left: -.32em; padding: 0; border: 0; background: none; cursor: pointer; font: inherit;   /* sizes in the heading's em */
+               transform-origin: 40% 60%; opacity: 0; }
+  .hero .one img { display: block; width: 100%; height: auto; filter: drop-shadow(0 .08em .12em rgba(16,16,16,.18)); user-select: none; -webkit-user-drag: none; }
+  .hero .one:focus-visible { outline: 2px solid var(--green); outline-offset: 4px; border-radius: 22%; }
+  .hero.go .one { animation: oneDrop 1.25s cubic-bezier(.2,.7,.3,1) .35s both; }
+  .hero.go .word { animation: wordHit .6s cubic-bezier(.3,.7,.3,1) .82s both; }
+  .hero.go .one.landed { animation: none; opacity: 1; }   /* done dropping: a later animation must not replay it */
+  .hero.go .one.landed.wiggle { animation: oneWiggle .6s cubic-bezier(.3,.7,.3,1); }
+  @keyframes oneDrop {
+    0%   { opacity: 0; transform: translate(-90%, -140%) scale(3.4) rotate(-38deg); filter: blur(10px); }
+    30%  { opacity: 1; filter: blur(0); }
+    38%  { transform: translate(0, 0) scale(.78) rotate(10deg); }
+    54%  { transform: scale(1.16) rotate(-5deg); }
+    68%  { transform: scale(.94) rotate(3deg); }
+    82%  { transform: scale(1.04) rotate(-1deg); }
+    100% { opacity: 1; transform: scale(1) rotate(0); filter: blur(0); }
+  }
+  @keyframes wordHit {
+    0%   { transform: none; }
+    25%  { transform: translateY(.04em) scale(1.02, .94); }
+    55%  { transform: translateY(-.02em) scale(.99, 1.02); }
+    100% { transform: none; }
+  }
+  @keyframes oneWiggle {
+    0%, 100% { transform: rotate(0) scale(1); }
+    20% { transform: rotate(-12deg) scale(1.08); }
+    45% { transform: rotate(9deg) scale(1.04); }
+    70% { transform: rotate(-4deg) scale(1.01); }
+  }
+  /* sparks: seven green bits thrown out when the badge lands */
+  .sparks { position: absolute; left: 45%; top: 55%; pointer-events: none; }
+  .sparks i { position: absolute; width: .09em; height: .09em; border-radius: 50%; background: #8BE33A; opacity: 0; }
+  .sparks i:nth-child(odd) { background: #118453; width: .07em; height: .07em; }
+  .hero.go .sparks i { animation: spark .75s cubic-bezier(.15,.7,.3,1) .82s both; }
+  .sparks i:nth-child(1) { --x: -1.1em; --y: -.5em; } .sparks i:nth-child(2) { --x: -.9em; --y: .55em; }
+  .sparks i:nth-child(3) { --x: -.2em; --y: -.95em; } .sparks i:nth-child(4) { --x: .75em; --y: -.8em; }
+  .sparks i:nth-child(5) { --x: 1.05em; --y: .05em; } .sparks i:nth-child(6) { --x: .55em; --y: .85em; }
+  .sparks i:nth-child(7) { --x: -.35em; --y: .95em; }
+  @keyframes spark {
+    0%   { opacity: 0; transform: translate(0, 0) scale(.4); }
+    15%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero .one { opacity: 1; }
+    .hero.go .one, .hero.go .word, .hero.go .one.landed.wiggle, .hero.go .sparks i { animation: none; }
+  }
+  @media (max-width: 640px) { .hero h1 { font-size: 36px; } .hero .sub { font-size: 16px; margin-top: 16px; } .hero .asof { margin-top: 20px; } }
+
+  section.board { padding-top: 64px; }
+  section.board:first-of-type { padding-top: 0; }
+  .bh { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .bh h2 { margin: 0; font-family: var(--display); font-weight: 500; font-size: 26px; letter-spacing: -.02em; }
+  .bh p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+  .ctl { display: flex; gap: 8px; flex-wrap: wrap; }
+  /* tabs with a sliding marker, as /showcase's filter tabs */
+  .seg { position: relative; display: inline-flex; padding: 4px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); }
+  .seg button { position: relative; z-index: 1; border: 0; background: none; font: 500 13px var(--text); color: #5F5D59; padding: 6px 13px; border-radius: 999px; cursor: pointer; transition: color .25s; }
+  .seg button.on { color: var(--ink); }
+  .mark { position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none;
+          transition: transform .35s var(--ease), width .35s var(--ease), height .35s var(--ease); }
+  .seg .mark { border-radius: 999px; background: #fff; box-shadow: 0 1px 2px rgba(16,16,16,.08), 0 0 0 1px var(--line); }
+  .side .mark { border-radius: 9px; background: var(--green-soft); }
+  .mark.still { transition: none; }
+  /* the dashboard's dropdown (frontend/src/components/ui/SelectMenu.vue), in this page's colours */
+  .sm { position: relative; display: inline-block; max-width: 100%; }
+  .sm-button { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 170px; max-width: 260px; height: 36px; padding: 0 12px 0 14px;
+    border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); font: 500 13.5px var(--text); cursor: pointer; transition: border-color .12s, box-shadow .12s; }
+  .sm-button:hover { border-color: #CFCCC5; }
+  .sm.open .sm-button, .sm-button:focus-visible { outline: none; border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+  .sm-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+  .sm-chevron { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: transform 250ms var(--dd-ease); }
+  .sm.open .sm-chevron { transform: rotate(180deg); }
+  .sm-pop { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; min-width: 100%; width: max-content; max-width: min(360px, calc(100vw - 32px));
+    background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 1px 2px -1px rgba(0,0,0,.04), 0 8px 24px rgba(16,16,16,.12); overflow: hidden; }
+  .sm-search { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .sm-search svg { flex: none; width: 14px; height: 14px; fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
+  .sm-search input { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: 13.5px var(--text); outline: none; padding: 4px 0; }
+  .sm-list { max-height: 300px; overflow: auto; margin: 0; padding: 5px; list-style: none; outline: none; }
+  .sm-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--ink); font-size: 13.5px; white-space: nowrap; cursor: pointer; }
+  .sm-list li.active { background: var(--card); }
+  .sm-list { overflow-x: hidden; }
+  .sm-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sm-ico:empty { display: none; }
+  .sm-ico { display: inline-flex; flex: none; color: var(--ink2); }
+  .sm-ico svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .sm-check { flex: none; width: 14px; height: 14px; margin-left: auto; fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .sm-list li.sm-none { cursor: default; color: var(--muted); }
+  /* transitions.dev menu dropdown, as the dashboard's .t-dropdown */
+  :root { --dd-ease: cubic-bezier(0.22, 1, 0.36, 1); }
+  .t-dropdown { transform-origin: top right; transform: scale(.97); opacity: 0; pointer-events: none; transition: transform 250ms var(--dd-ease), opacity 250ms var(--dd-ease); }
+  .t-dropdown.is-open { transform: scale(1); opacity: 1; pointer-events: auto; }
+  .t-dropdown.is-closing { transform: scale(.99); opacity: 0; pointer-events: none; transition: transform 150ms var(--dd-ease), opacity 150ms var(--dd-ease); }
+
+  /* a board still loading: grey rows that breathe */
+  .sk { display: grid; grid-template-columns: 26px 32px 1fr 60px; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--line); }
+  .sk i { display: block; height: 10px; border-radius: 6px; background: var(--card); animation: breathe 1.4s ease-in-out infinite; }
+  .sk i.lg { width: 32px; height: 32px; border-radius: 9px; }
+  .sk i.ln { height: 12px; width: 70%; }
+  @keyframes breathe { 50% { opacity: .45; } }
+
+  /* ---------- the daily chart ---------- */
+  .chart { position: relative; border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 18px 18px 12px; margin-bottom: 22px; }
+  /* the plot sits right of a gutter that holds the y labels; the grid lines run under the bars */
+  .plot { position: relative; margin-left: 44px; }
+  .bars { position: relative; display: flex; align-items: stretch; height: 190px; }
+  .grid { position: absolute; inset: 0; pointer-events: none; }
+  .grid span { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--line); }
+  .grid span:last-child { border-top-style: solid; }
+  .grid b { position: absolute; right: calc(100% + 8px); top: -7px; font: 500 10.5px var(--mono); color: var(--muted); white-space: nowrap; }
+  .col { flex: 1; min-width: 0; display: flex; align-items: flex-end; justify-content: center; padding: 0 3px; border-radius: 6px; }
+  .col.hover { background: var(--card); }
+  .bar { width: 100%; max-width: 44px; display: flex; flex-direction: column-reverse; border-radius: 4px 4px 0 0; overflow: hidden; }
+  .bar span { display: block; width: 100%; transition: opacity .2s, background-color .2s; }
+  /* one tool in focus (its list row hovered): its parts take their strong colour,
+     every other part steps back, as OpenRouter's charts do */
+  .chart.focus .bar span { opacity: .28; }
+  .chart.focus .bar span.hl { opacity: 1; background-color: var(--strong) !important; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
+  .chart-empty { display: none; padding: 26px 0; color: var(--muted); font-size: 14px; text-align: center; }
+  .chart.blank .chart-empty { display: block; }
+  .chart.blank .plot { display: none; }
+  /* each date sits under its own bar */
+  .axis { position: relative; height: 16px; margin: 8px 0 0 44px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .axis span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+  /* the Usage card's tooltip (frontend/src/components/SpendBars.vue): beside the hovered bar, at
+     the pointer's height inside the plot, flipped to the left near the right edge */
+  .tip { position: absolute; transform: translateX(10px); display: grid; gap: 4px; min-width: 150px; padding: 8px 10px; border: 1px solid var(--line);
+         border-radius: 8px; background: #fff; box-shadow: 0 1px 2px -1px rgba(0,0,0,.04), 0 4px 14px rgba(16,16,16,.1); font-size: 12px;
+         pointer-events: none; z-index: 2; white-space: nowrap; }
+  .tip[hidden] { display: none; }
+  .tip.flip { transform: translateX(calc(-100% - 10px)); }
+  .tip b { font-weight: 600; color: var(--ink); }
+  .tip span { display: flex; justify-content: space-between; gap: 16px; }
+  .tip span.total { border-top: 1px solid var(--line); padding-top: 4px; margin-top: 2px; }
+  .tip i { font-style: normal; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+  .tip em { font-style: normal; font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+  .tip s { display: inline-block; width: 9px; height: 9px; border-radius: 2px; text-decoration: none; }
+
+  /* ---------- rows ---------- */
+  /* ranks read down each column: 1-5 | 6-10, and 1-10 | 11-20 once opened (rows set by the script) */
+  .list { display: grid; grid-template-columns: 1fr 1fr; grid-auto-flow: column; column-gap: 40px; }
+  .list.one { grid-template-columns: 1fr; }
+  @media (max-width: 760px) { .list { grid-template-columns: 1fr; grid-auto-flow: row; grid-template-rows: none !important; } }
+  .row { display: grid; grid-template-columns: 26px 32px 1fr auto; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--line); min-width: 0; }
+  .row .rk { font-family: var(--mono); font-size: 12.5px; color: var(--muted); text-align: right; }
+  .logo { width: 32px; height: 32px; border-radius: 9px; background: #fff; box-shadow: 0 0 0 1px var(--line); display: grid; place-items: center; overflow: hidden;
+          font: 600 13px var(--display); color: var(--ink2); }
+  .logo img { width: 22px; height: 22px; object-fit: contain; }
+  .who { min-width: 0; }
+  .who a { display: block; font-weight: 500; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .who a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .who small { display: block; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .who code { font-family: var(--mono); font-size: 11.5px; }
+  .num { text-align: right; white-space: nowrap; }
+  .num b { display: block; font-family: var(--mono); font-weight: 500; font-size: 13.5px; }
+  .num small { display: block; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .up { color: var(--green); } .down { color: var(--red); }
+  .new { display: inline-block; font: 500 11px var(--mono); color: var(--green); background: var(--green-soft); padding: 1px 7px; border-radius: 999px; }
+  .more { margin-top: 16px; }
+  .more[hidden] { display: none; }
+  .more button { font: 500 13px var(--text); color: var(--ink2); background: none; border: 1px solid var(--line); border-radius: 999px; padding: 7px 16px; cursor: pointer; }
+  .more button:hover { background: var(--card); color: var(--ink); }
+  .empty { padding: 26px 18px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); font-size: 14px; text-align: center; }
+
+  /* top by category: share bars */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .chips button { font: 500 13px var(--text); color: var(--ink2); background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 6px 13px; cursor: pointer; }
+  .chips button { transition: background .25s, color .25s, border-color .25s; }
+  .chips button:hover { border-color: #CFCCC5; }
+  .chips button.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+  .share { position: relative; height: 6px; border-radius: 999px; background: var(--card); margin-top: 6px; overflow: hidden; }
+  .share i { position: absolute; inset: 0 auto 0 0; background: var(--green); border-radius: 999px; transition: width .6s var(--ease); }
+
+  /* ---------- questions (as /jev) and the setup card (as /people-search) ---------- */
+  .faq-sec, .cta-final { padding: 110px 24px 0; text-align: center; }
+  .faq-sec h2, .cta-final h2 { margin: 0 0 28px; font-family: var(--display); font-weight: 500; font-size: clamp(32px, 4.6vw, 52px); line-height: 1.05; letter-spacing: -.03em; }
+  .faq { max-width: 760px; margin: 0 auto; text-align: left; }
+  .faq details { border-top: 1px solid var(--line); padding: 4px 0; }
+  .faq details:last-child { border-bottom: 1px solid var(--line); }
+  .faq summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 4px; font-family: var(--display); font-weight: 500; font-size: 17px; letter-spacing: -.01em; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: "+"; font-family: var(--mono); color: var(--muted); font-size: 18px; transition: transform .2s; }
+  .faq details[open] summary::after { transform: rotate(45deg); }
+  .faq p { margin: 0 4px 16px; color: var(--ink2); font-size: 15px; line-height: 1.6; }
+  .faq a { color: var(--ink); text-underline-offset: 3px; }
+  .cmd { max-width: 620px; margin: 0 auto 26px; display: flex; align-items: center; gap: 14px; background: #1B1B1A; border-radius: 12px; padding: 18px 22px; text-align: left; }
+  .cmd .ps { color: #7FDCAE; font-family: var(--mono); font-size: 16px; flex: none; }
+  .cmd .cline { color: #F8F8F7; font-family: var(--mono); font-size: 16px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .cmd .cline a { color: #8FD4F2; text-decoration: none; }
+  .cmd .cline[hidden] { display: none; }
+  .cmd-tabs { display: inline-flex; gap: 4px; padding: 4px; margin: 0 auto 14px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); }
+  .cmd-tabs button { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; color: var(--muted); font: 500 14px var(--text); padding: 8px 16px; border-radius: 999px; cursor: pointer; }
+  .cmd-tabs button[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(20,18,12,.12); }
+  .ct-ico { display: inline-flex; }
+  .ct-ico img { width: 18px; height: 18px; border-radius: 5px; margin-left: -4px; border: 1.5px solid #fff; background: #fff; }
+  .ct-ico img:first-child { margin-left: 0; }
+  .cmd button { flex: none; border: 1px solid #3A3A38; background: #262624; color: #D8D8D6; font-family: var(--mono); font-size: 12px; border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+  .cmd button:hover { background: #313130; }
+  @media (max-width: 640px) { .faq-sec, .cta-final { padding: 70px 18px 0; } .faq summary { font-size: 15.5px; } .cmd .cline, .cmd .ps { font-size: 14px; } }
+
+  /* ---------- sign-in modal (mirrors /showcase) ---------- */
+  .scrim { position: fixed; inset: 0; background: rgba(26,26,26,.55); display: none; place-items: center; z-index: 200; padding: 20px; backdrop-filter: blur(6px); }
+  .scrim.open { display: grid; }
+  .smodal { width: min(400px, 94vw); background: #fff; border-radius: 20px; padding: 30px 28px; text-align: center; position: relative; box-shadow: 0 30px 90px -38px rgba(20,18,12,.4); }
+  .smodal .cls { position: absolute; top: 12px; right: 15px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+  .smodal .cls:hover { color: var(--ink); }
+  .smodal h3 { font-family: var(--display); font-weight: 600; font-size: 22px; margin: 4px 0 6px; letter-spacing: -.015em; }
+  .smodal p { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 0 0 18px; }
+  .smodal .pill { width: 100%; justify-content: center; margin-top: 9px; }
+  .smodal .div { display: flex; align-items: center; gap: 10px; margin: 16px 0 6px; color: var(--muted); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
+  .smodal .div::before, .smodal .div::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .smodal input { width: 100%; margin-top: 9px; background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 11px 13px; font-family: var(--mono); font-size: 13px; outline: none; }
+  .smodal input:focus { border-color: var(--ink); }
+  .smodal .err { color: #C0362F; font-size: 11.5px; margin-top: 10px; min-height: 14px; }
+
+  /* ---------- footer (mirrors /showcase) ---------- */
+  .bigfoot { border-top: 1px solid var(--line); margin-top: 110px; padding: 46px 24px 40px; background: #FBFAF8; }
+  .bigfoot-in { max-width: 1020px; margin: 0 auto; display: flex; gap: 44px; justify-content: space-between; flex-wrap: wrap; }
+  .bf-brand .bfb { display: inline-flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 16px; }
+  .bf-brand svg { width: 20px; height: 20px; border-radius: 6px; }
+  .bf-brand .note { color: var(--muted); font-size: 12.5px; margin-top: 8px; }
+  .bf-cols { display: flex; gap: 56px; flex-wrap: wrap; }
+  .bf-col { display: flex; flex-direction: column; gap: 7px; min-width: 108px; }
+  .bf-col .lab { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .bf-col a { text-decoration: none; font-size: 13.5px; }
+  .bf-col a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .bf-tag { max-width: 1020px; margin: 36px auto 0; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 12px); background: var(--ink); color: #fff; padding: 9px 16px; border-radius: 999px;
+           font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .25s var(--ease); z-index: 100; }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { transition-duration: 0s !important; } }
+</style>
+<script src="/captcha.js" defer></script>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <span class="wordmark"><a href="/" style="display:inline-flex;align-items:center;gap:10px;color:inherit;text-decoration:none" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</a> <span style="color:var(--muted);font-weight:400">/</span> <span style="font-weight:500">Rankings</span></span>
+  <span style="display:flex;gap:8px">
+    <span class="nav-links"><a href="/catalog">Catalog</a><a href="/blog">Blog</a><a href="/tutorial">Docs</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a><a href="https://x.com/treg_ai" target="_blank" rel="noopener" aria-label="treg on X"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a></span>
+    <a class="pill dark" href="/app" id="ctaNav">Start building</a>
+  </span>
+</nav>
+
+<header class="hero">
+  <h1>Tool <span class="word" id="heroWord">rankings<button type="button" class="one" id="heroOne" aria-label="Number one. Play it again"><img src="/media/rankings/number-one.png" alt="" width="300" height="247" fetchpriority="high"><span class="sparks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></button></span></h1>
+  <p class="sub">The tools AI agents call most through treg, ranked by successful calls. One base URL reaches every tool here, with no API key of your own.</p>
+  <span class="asof"><i></i><span id="asof">Usage data through …</span></span>
+</header>
+
+<div class="wrap">
+  <aside class="side" aria-label="Rankings">
+    <div class="sm side-sm" id="sideMenu"></div>
+    <a href="#tools" data-sec="tools"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/></svg>Most used tools</a>
+    <a href="#endpoints" data-sec="endpoints"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>Most called endpoints</a>
+    <a href="#trending" data-sec="trending"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></svg>Trending</a>
+    <a href="#categories" data-sec="categories"><svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5zM3 13l9 5 9-5"/></svg>Top by category</a>
+    <a href="#aimodels" data-sec="aimodels"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3zM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z"/></svg>Top AI models</a>
+    <a href="#reliable" data-sec="reliable"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>Most reliable</a>
+    <a href="#fastest" data-sec="fastest"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>Fastest</a>
+    <a href="#headtohead" data-sec="headtohead"><svg viewBox="0 0 24 24"><path d="M4 7h14M15 3l4 4-4 4M20 17H6M9 13l-4 4 4 4"/></svg>Head to head</a>
+  </aside>
+
+  <main>
+    <section class="board" id="tools">
+      <div class="bh">
+        <div><h2>Most used tools</h2><p id="chart-sub">Successful calls per tool, every day for the last 7 days.</p></div>
+        <div class="ctl"><div class="seg" data-win="tools"><button data-v="7d" class="on">Last 7 days</button><button data-v="30d">Last 30 days</button></div></div>
+      </div>
+      <div class="chart" id="chart"><div class="plot"><div class="grid" id="grid" aria-hidden="true"></div><div class="bars" id="bars"></div><div class="tip" id="tip" hidden></div></div><div class="axis" id="axis"></div><div class="chart-empty">The daily chart fills in as calls arrive.</div></div>
+      <div class="list" id="tools-list"></div>
+      <div class="more" data-more="tools" hidden><button>Show more</button></div>
+    </section>
+
+    <section class="board" id="endpoints">
+      <div class="bh">
+        <div><h2>Most called endpoints</h2><p>The single endpoints with the most successful calls.</p></div>
+        <div class="ctl"><div class="sm" data-cat="endpoints"></div><div class="seg" data-win="endpoints"><button data-v="7d" class="on">Last 7 days</button><button data-v="30d">Last 30 days</button></div></div>
+      </div>
+      <div class="list" id="endpoints-list"></div>
+      <div class="more" data-more="endpoints" hidden><button>Show more</button></div>
+    </section>
+
+    <section class="board" id="trending">
+      <div class="bh">
+        <div><h2>Trending</h2><p id="trending-sub">This week against the week before.</p></div>
+        <div class="ctl"><div class="seg" data-kind="trending"><button data-v="providers" class="on">Tools</button><button data-v="endpoints">Endpoints</button></div></div>
+      </div>
+      <div class="list" id="trending-list"></div>
+      <div class="more" data-more="trending" hidden><button>Show more</button></div>
+    </section>
+
+    <section class="board" id="categories">
+      <div class="bh">
+        <div><h2>Top by category</h2><p>Each tool's share of the category's successful calls this week.</p></div>
+      </div>
+      <div class="chips" id="cat-chips"></div>
+      <div class="list" id="categories-list"></div>
+    </section>
+
+    <section class="board" id="aimodels">
+      <div class="bh">
+        <div><h2>Top AI models</h2><p>AI models, each across all the vendors that serve it.</p></div>
+        <div class="ctl"><div class="sm" data-type="aimodels"></div><div class="seg" data-win="aimodels"><button data-v="7d" class="on">Last 7 days</button><button data-v="30d">Last 30 days</button></div></div>
+      </div>
+      <div class="list" id="aimodels-list"></div>
+      <div class="more" data-more="aimodels" hidden><button>Show more</button></div>
+    </section>
+
+    <section class="board" id="reliable">
+      <div class="bh">
+        <div><h2>Most reliable</h2><p id="reliable-sub">Share of each tool's calls answered without a provider error this week.</p></div>
+        <div class="ctl"><div class="sm" data-cat="reliable"></div></div>
+      </div>
+      <div class="list" id="reliable-list"></div>
+      <div class="more" data-more="reliable" hidden><button>Show more</button></div>
+    </section>
+
+    <section class="board" id="fastest">
+      <div class="bh">
+        <div><h2>Fastest</h2><p id="fastest-sub">Typical (median) answer time this week.</p></div>
+        <div class="ctl"><div class="sm" data-cat="fastest"></div></div>
+      </div>
+      <div class="list" id="fastest-list"></div>
+      <div class="more" data-more="fastest" hidden><button>Show more</button></div>
+    </section>
+
+    <section class="board" id="headtohead">
+      <div class="bh">
+        <div><h2>Head to head</h2><p>Providers that do the same job, side by side this week: the share of calls without a provider error, and the typical answer time.</p></div>
+        <div class="ctl"><div class="sm" data-job="headtohead"></div></div>
+      </div>
+      <div class="list" id="headtohead-list"></div>
+    </section>
+
+  </main>
+</div>
+
+<section class="faq-sec" id="faq">
+  <h2>Questions people ask</h2>
+  <div class="faq">
+    <details open><summary>What is measured?</summary><p>Each tool and endpoint is ranked by its successful calls through treg: calls the provider answered with a success. A call counts once, whatever it cost, so a cheap search and an expensive video weigh the same.</p></details>
+    <details><summary>Which time periods do the rankings cover?</summary><p>Last 7 days and Last 30 days end with the newest complete day in UTC. Trending compares the last seven days with the seven days before and ranks by the change, among rows with at least <span id="f-trending">1,000</span> successful calls this week. New rows with no calls the week before are listed first, at most five.</p></details>
+    <details><summary>How are reliability and speed measured?</summary><p>Most reliable ranks tools: the share of decided calls (successes and provider errors) that succeeded, across all of a tool's endpoints, for tools with at least <span id="f-reliable">100</span> decided calls this week. A 4xx is the caller's mistake and does not count against the provider. Head to head compares providers only within one job, such as finding a person's work email, on both. Fastest ranks endpoints, because speed depends on the job: it is the median time to a successful answer, for endpoints with at least <span id="f-fastest">20</span> timed calls. Jobs that finish later, such as video renders, are left out of both: their time is the time to accept the job, not to finish it.</p></details>
+    <details><summary>How fresh is the data?</summary><p>The date at the top is the newest complete day the rankings use, not the time the page was built. It moves forward every day.</p></details>
+    <details><summary>Do calls made with a team's own API key count?</summary><p>Yes. A team can bring its own key for a tool, and those calls still go through treg. They are real agent calls, so they count like any other.</p></details>
+    <details><summary>Does this page show who made the calls, or what they spent?</summary><p>No. It counts calls through treg only: no team, key or amount of money appears on it. Calls made straight to a provider's own API are not visible to us.</p></details>
+    <details><summary>How do I get my tool on these rankings?</summary><p>Get it into the treg catalog: see <a href="/vendor-listing">listing your API</a>. Once agents call it through treg, it is counted like every other tool.</p></details>
+  </div>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"What is measured?","acceptedAnswer":{"@type":"Answer","text":"Each tool and endpoint is ranked by its successful calls through treg: calls the provider answered with a success. A call counts once, whatever it cost, so a cheap search and an expensive video weigh the same."}},{"@type":"Question","name":"Which time periods do the rankings cover?","acceptedAnswer":{"@type":"Answer","text":"Last 7 days and Last 30 days end with the newest complete day in UTC. Trending compares the last seven days with the seven days before and ranks by the change, among rows with at least 1,000 successful calls this week. New rows with no calls the week before are listed first, at most five."}},{"@type":"Question","name":"How are reliability and speed measured?","acceptedAnswer":{"@type":"Answer","text":"Most reliable ranks tools: the share of decided calls (successes and provider errors) that succeeded, across all of a tool's endpoints, for tools with at least 100 decided calls this week. A 4xx is the caller's mistake and does not count against the provider. Head to head compares providers only within one job, such as finding a person's work email, on both. Fastest ranks endpoints, because speed depends on the job: it is the median time to a successful answer, for endpoints with at least 20 timed calls. Jobs that finish later, such as video renders, are left out of both: their time is the time to accept the job, not to finish it."}},{"@type":"Question","name":"How fresh is the data?","acceptedAnswer":{"@type":"Answer","text":"The date at the top is the newest complete day the rankings use, not the time the page was built. It moves forward every day."}},{"@type":"Question","name":"Do calls made with a team's own API key count?","acceptedAnswer":{"@type":"Answer","text":"Yes. A team can bring its own key for a tool, and those calls still go through treg. They are real agent calls, so they count like any other."}},{"@type":"Question","name":"Does this page show who made the calls, or what they spent?","acceptedAnswer":{"@type":"Answer","text":"No. It counts calls through treg only: no team, key or amount of money appears on it. Calls made straight to a provider's own API are not visible to us."}},{"@type":"Question","name":"How do I get my tool on these rankings?","acceptedAnswer":{"@type":"Answer","text":"Get it into the treg catalog: see listing your API. Once agents call it through treg, it is counted like every other tool."}}]}</script>
+</section>
+
+<section class="cta-final" id="setup">
+  <h2>Give your agent<br>every tool on this page.</h2>
+  <div class="cmd-tabs" role="tablist">
+    <button type="button" role="tab" aria-selected="true" data-tab="agent"><span class="ct-ico"><img src="/media/people-search/claude-code.png" alt=""><img src="/media/people-search/codex.png" alt=""><img src="/media/people-search/openclaw.png" alt=""></span>Connect to your agent</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="dev">Developers</button>
+  </div>
+  <div class="cmd">
+    <span class="ps">$</span>
+    <span class="cline" id="cmdLine">set up treg — <a href="{BASE}/llms.txt">{BASE}/llms.txt</a></span>
+    <span class="cline" id="cmdDev" hidden>Read <a href="{BASE}/integrate.md">{BASE}/integrate.md</a> and integrate treg into our product, including per-customer usage tracking and billing.</span>
+    <button id="copy" type="button">copy</button>
+  </div>
+  <div class="ctas"><a class="pill dark" href="/app" id="ctaFinal">Get started</a></div>
+</section>
+
+<footer class="bigfoot">
+  <div class="bigfoot-in">
+    <div class="bf-brand">
+      <span class="bfb"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+      <div class="note">100% open source</div>
+    </div>
+    <nav class="bf-cols" aria-label="Site">
+      <div class="bf-col"><div class="lab">Explore</div>
+        <a href="/catalog">Catalog</a><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><!--hosted--><a href="/showcase">Showcase</a><!--/hosted--><a href="/rankings">Rankings</a><!--hosted--><a href="/gtm-engineering">GTM engineering</a><!--/hosted--><a href="/agents/claude-code">Agents</a><a href="/blog">Blog</a></div>
+      <div class="bf-col"><div class="lab">Build</div>
+        <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
+      <div class="bf-col"><div class="lab">Company</div>
+        <a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </nav>
+  </div>
+  <div class="bf-tag">© 2026 treg — OpenRouter for agent tools</div>
+</footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- sign-in modal: shown when "Start building" is clicked while signed out -->
+<div class="scrim" id="signin-scrim">
+  <div class="smodal" role="dialog" aria-modal="true" aria-label="Sign in">
+    <button class="cls" id="signinClose" aria-label="Close">✕</button>
+    <h3>Sign in to treg</h3>
+    <p>first sign-in creates your account</p>
+    <a class="pill dark" href="/auth/github" style="text-decoration:none">Continue with GitHub</a>
+    <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
+    <div class="div">or email a code</div>
+    <div id="em-step1">
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
+      <button class="pill" id="em-btn1">Email me a sign-in code</button>
+    </div>
+    <div id="em-step2" style="display:none">
+      <input id="em-code" inputmode="numeric" placeholder="6-digit code"/>
+      <button class="pill dark" id="em-btn2">Sign in</button>
+    </div>
+    <div class="err" id="em-err"></div>
+  </div>
+</div>
+
+<script type="application/json" id="rk-data">{DATA}</script>
+<script>
+(() => {
+  const D = JSON.parse(document.getElementById("rk-data").textContent);
+  const $ = (id) => document.getElementById(id);
+  // Everything the boards print is escaped (text) or forced to a number (counts, rates, times).
+  const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  const num = (v) => Number(v) || 0;
+  const compact = (v) => { const n = num(v); return n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, "") + "M"
+    : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, "") + "K" : String(n); };
+  const fmtDay = (d, opts) => new Date(d + "T00:00:00Z").toLocaleDateString("en-US", Object.assign({ timeZone: "UTC", month: "short", day: "numeric" }, opts));
+  // Clear but calm fills, each with a strong twin drawn when its tool is in focus; the last pair is "Others".
+  const COLORS = ["#5BBF8E", "#6FA4EA", "#F2A167", "#A98BE6", "#EC8BA8", "#5CC3C9", "#E5C55A", "#A7BD6E", "#D99583", "#8C9BE0", "#D6D3CC"];
+  const STRONG = ["#118453", "#2F6FDB", "#D9682A", "#7C4DD6", "#D23F6B", "#16919C", "#B8901A", "#5F7030", "#B4553A", "#4A5BC4", "#9C9890"];
+  const FIRST = 10, MORE = 20;   // rows before "Show more", and after it (once), as OpenRouter does
+
+  // the #1 badge: drop it in once its picture is ready (never half-loaded); hover wiggles, click replays
+  const hero = document.querySelector(".hero"), one = $("heroOne"), oneImg = one.querySelector("img");
+  const drop = () => hero.classList.add("go");
+  if (oneImg.complete) requestAnimationFrame(drop); else { oneImg.addEventListener("load", drop, { once: true }); oneImg.addEventListener("error", drop, { once: true }); }
+  one.addEventListener("mouseenter", () => { if (one.classList.contains("landed")) one.classList.add("wiggle"); });
+  one.addEventListener("animationend", (e) => {
+    if (e.animationName === "oneDrop") one.classList.add("landed");
+    if (e.animationName === "oneWiggle") one.classList.remove("wiggle");
+  });
+  one.addEventListener("click", () => {
+    hero.classList.remove("go"); one.classList.remove("landed", "wiggle");
+    void one.offsetWidth;   // restart the animations
+    hero.classList.add("go");
+  });
+
+  $("asof").textContent = D.pending ? "Rankings are being prepared. Check back soon." : "Usage data through " + fmtDay(D.through, { year: "numeric" });
+  $("f-trending").textContent = D.floors.trending.toLocaleString("en-US");
+  $("f-reliable").textContent = D.floors.reliable.toLocaleString("en-US");
+  $("f-fastest").textContent = D.floors.fastest.toLocaleString("en-US");
+  $("trending-sub").textContent = "This week against the week before, among rows with at least " + D.floors.trending.toLocaleString("en-US") + " successful calls.";
+
+  const logo = (provider, label) => {
+    const letter = esc((label || provider || "?").trim().charAt(0).toUpperCase());
+    if (!provider) return `<span class="logo" aria-hidden="true">${letter}</span>`;
+    // A missing logo falls back to the letter, kept in a data attribute so no name can break it.
+    return `<span class="logo" aria-hidden="true" data-letter="${letter}"><img src="/logos/${encodeURIComponent(provider)}.svg" alt="" loading="lazy" onerror="this.parentNode.textContent=this.parentNode.dataset.letter"></span>`;
+  };
+  const change = (c) => {
+    if (c === "new") return `<span class="new">new</span>`;
+    if (c === null || c === undefined) return "";
+    c = num(c);
+    if (c > 999) return `<small class="up">↑ >999%</small>`;
+    if (c >= 0) return `<small class="up">↑ ${c.toFixed(c < 10 ? 1 : 0)}%</small>`;
+    return `<small class="down">↓ ${Math.abs(c).toFixed(Math.abs(c) < 10 ? 1 : 0)}%</small>`;
+  };
+  const toolLink = (provider) => "/tools/" + encodeURIComponent(provider);
+  const row = (i, r, who, right) => `<div class="row"><span class="rk">${i + 1}</span>${logo(r.provider, r.label)}<div class="who">${who}</div><div class="num">${right}</div></div>`;
+  const epWho = (r) => `<a href="${toolLink(r.provider)}" title="${esc(r.name)}">${esc(r.name)}</a><small>${esc(r.label)} · <code>${esc(r.id)}</code></small>`;
+  const toolWho = (r) => `<a href="${toolLink(r.provider)}">${esc(r.label)}</a><small>${esc(r.category || "")}${num(r.endpoints) ? " · " + num(r.endpoints) + " endpoint" + (num(r.endpoints) === 1 ? "" : "s") : ""}</small>`;
+  const empty = (msg) => `<div class="empty">${msg}</div>`;
+  const NONE = "Not enough calls yet to rank anything here.";
+  const skeleton = (n = FIRST) => Array.from({ length: n }, () => `<div class="sk"><i></i><i class="lg"></i><i class="ln"></i><i></i></div>`).join("");
+
+  // ---------- sliding marks (the /showcase tab marker): one element moves under the chosen item ----------
+  function addMark(box) { const m = document.createElement("span"); m.className = "mark still"; box.prepend(m); return m; }
+  function moveMark(box, on) {
+    const m = box.querySelector(":scope > .mark");
+    if (!m || !on) return;
+    m.style.width = on.offsetWidth + "px"; m.style.height = on.offsetHeight + "px";
+    m.style.transform = `translate(${on.offsetLeft}px, ${on.offsetTop}px)`;
+    if (m.classList.contains("still")) requestAnimationFrame(() => m.classList.remove("still"));   // first place: no slide
+  }
+  const segs = [...document.querySelectorAll(".seg")];
+  segs.forEach((seg) => addMark(seg));
+  const side = document.querySelector(".side");
+  addMark(side);
+  const placeMarks = () => {
+    segs.forEach((seg) => moveMark(seg, seg.querySelector("button.on")));
+    moveMark(side, side.querySelector("a.on"));
+  };
+  addEventListener("resize", placeMarks);
+  // A phone pins the board dropdown right under the top bar, whose height is measured, not guessed,
+  // and a jump lands each board's title just under the dropdown.
+  const phone = matchMedia("(max-width: 900px)"), navBar = document.getElementById("nav");
+  function pinSide() {
+    const html = document.documentElement;
+    if (!phone.matches) { side.style.top = ""; html.style.scrollPaddingTop = ""; return; }
+    side.style.top = navBar.offsetHeight + "px";
+    html.style.scrollPaddingTop = Math.max(navBar.offsetHeight + side.offsetHeight + 16 - 64, 0) + "px";   // 64: a board's top padding
+  }
+  addEventListener("resize", pinSide);
+  pinSide();
+  document.fonts?.ready.then(placeMarks);   // the web font changes every width
+
+  // ---------- the dashboard's dropdown (SelectMenu.vue), without Vue ----------
+  // A button that opens a listbox under it: Enter, Space or ↓ opens it; ↑/↓ move; Enter picks;
+  // Escape or a click outside closes it. Past SEARCH_AT options it gets a search box.
+  const SEARCH_AT = 8;
+  let smId = 0;
+  function selectMenu(host, label, options, onChange) {
+    const id = "sm-" + (++smId);
+    let value = options[0].value, open = false, active = 0, query = "", pop = null, closer = 0;
+    host.innerHTML = `<button type="button" class="sm-button" aria-haspopup="listbox" aria-expanded="false" aria-controls="${id}"><span class="sm-ico"></span><span class="sm-value"></span><svg class="sm-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>`;
+    const button = host.querySelector("button");
+    const current = () => options.find((o) => o.value === value) || options[0];
+    const shown = () => { const q = query.trim().toLowerCase(); return q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options; };
+    const searchable = options.length > SEARCH_AT;
+    const icon = (o) => { const box = document.createElement("span"); box.className = "sm-ico"; if (o.icon) box.append(o.icon.cloneNode(true)); return box; };
+    const paintButton = () => { button.querySelector(".sm-ico").replaceWith(icon(current())); button.querySelector(".sm-value").textContent = current().label; button.setAttribute("aria-label", label + ": " + current().label); };
+    const paintList = () => {
+      const list = pop.querySelector("ul"), rows = shown();
+      list.innerHTML = rows.length ? rows.map((o, i) => `<li id="${id}-${i}" role="option" aria-selected="${o.value === value}" class="${i === active ? "active" : ""}" data-i="${i}" title="${esc(o.label)}"><span class="sm-ico"></span><span class="sm-label">${esc(o.label)}</span>${o.value === value ? '<svg class="sm-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>' : ""}</li>`).join("")
+        : `<li class="sm-none" role="presentation">No matches</li>`;
+      list.querySelectorAll("li[data-i]").forEach((li) => li.querySelector(".sm-ico").replaceWith(icon(rows[+li.dataset.i])));
+      list.setAttribute("aria-activedescendant", rows.length ? `${id}-${active}` : "");
+      list.querySelector(".active")?.scrollIntoView({ block: "nearest" });
+    };
+    const outside = (e) => { if (!host.contains(e.target)) close(false); };
+    function show() {
+      clearTimeout(closer); pop?.remove();
+      open = true; query = ""; active = Math.max(shown().findIndex((o) => o.value === value), 0);
+      host.classList.add("open"); button.setAttribute("aria-expanded", "true");
+      pop = document.createElement("div");
+      pop.className = "sm-pop t-dropdown";
+      pop.innerHTML = (searchable ? `<div class="sm-search"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg><input type="text" placeholder="Search ${esc(label.toLowerCase())}" aria-label="Search ${esc(label.toLowerCase())}" autocomplete="off"></div>` : "")
+        + `<ul id="${id}" class="sm-list" role="listbox" tabindex="${searchable ? -1 : 0}" aria-label="${esc(label)}"></ul>`;
+      host.appendChild(pop);
+      paintList();
+      requestAnimationFrame(() => requestAnimationFrame(() => pop?.classList.add("is-open")));
+      pop.addEventListener("keydown", onListKey);
+      pop.addEventListener("mousemove", (e) => { const li = e.target.closest("li[data-i]"); if (li && +li.dataset.i !== active) { active = +li.dataset.i; paintList(); } });
+      pop.addEventListener("click", (e) => { const li = e.target.closest("li[data-i]"); if (li) pick(shown()[+li.dataset.i]); });
+      const input = pop.querySelector("input");
+      if (input) input.addEventListener("input", () => { query = input.value; active = 0; paintList(); });
+      document.addEventListener("pointerdown", outside, true);
+      (input || pop.querySelector("ul")).focus();
+    }
+    function close(refocus = true) {
+      if (!open) return;
+      open = false; host.classList.remove("open"); button.setAttribute("aria-expanded", "false");
+      document.removeEventListener("pointerdown", outside, true);
+      const gone = pop; gone.classList.remove("is-open"); gone.classList.add("is-closing");
+      closer = setTimeout(() => { gone.remove(); if (pop === gone) pop = null; }, 150);
+      if (refocus) button.focus();
+    }
+    function pick(o) {
+      if (!o) return;
+      close();
+      if (o.value === value) return;
+      value = o.value; paintButton(); onChange(value);
+    }
+    function onListKey(e) {
+      const n = shown().length;
+      if (e.key === "ArrowDown") { e.preventDefault(); if (n) active = (active + 1) % n; }
+      else if (e.key === "ArrowUp") { e.preventDefault(); if (n) active = (active - 1 + n) % n; }
+      else if (e.key === "Home" && !searchable) { e.preventDefault(); active = 0; }
+      else if (e.key === "End" && !searchable) { e.preventDefault(); active = n - 1; }
+      else if (e.key === "Enter" || (e.key === " " && !searchable)) { e.preventDefault(); pick(shown()[active]); return; }
+      else if (e.key === "Escape" || e.key === "Tab") { e.preventDefault(); close(); return; }
+      else return;
+      paintList();
+    }
+    button.addEventListener("click", () => (open ? close() : show()));
+    button.addEventListener("keydown", (e) => { if (["ArrowDown", "ArrowUp"].includes(e.key)) { e.preventDefault(); show(); } });
+    paintButton();
+    return { set(v) { if (v !== value && options.some((o) => o.value === v)) { value = v; paintButton(); } } };
+  }
+
+  // ---------- boards ----------
+  // per board: what is chosen, whether "Show more" was pressed, and whether its data is here
+  const state = { tools: { win: "7d", all: false }, endpoints: { win: "7d", cat: "", all: false },
+                  trending: { kind: "providers", all: false }, reliable: { cat: "", all: false }, fastest: { cat: "", all: false },
+                  headtohead: { job: "", all: false }, aimodels: { win: "7d", type: "", all: false } };
+  function paint(name, rows, render) {
+    const list = $(name + "-list"), more = document.querySelector(`[data-more="${name}"]`);
+    const st = state[name];
+    const shown = rows.slice(0, st.all ? MORE : FIRST);
+    list.innerHTML = shown.length ? shown.map(render).join("") : empty(NONE);
+    columns(list, shown.length);
+    list.classList.toggle("one", !rows.length);
+    if (more) more.hidden = st.all || rows.length <= FIRST;
+  }
+  // two columns filled top to bottom: the left one holds the first half of the ranks
+  const columns = (list, n) => { list.style.gridTemplateRows = n ? `repeat(${Math.ceil(n / 2)}, auto)` : ""; };
+  const byCat = (rows, cat) => cat ? rows.filter((r) => r.category === cat) : rows;
+  const ms = (raw) => { const v = num(raw); return v < 1000 ? v + " ms" : (v / 1000).toFixed(v < 10000 ? 2 : 1) + " s"; };
+
+  const draw = {
+    tools() {
+      drawChart(state.tools.win);
+      const rows = D.tools[state.tools.win] || [];
+      paint("tools", rows, (r, i) => row(i, r, toolWho(r), `<b>${dot(r.provider)}${compact(r.calls)}</b>${change(r.change)}`).replace('<div class="row">', `<div class="row" data-p="${esc(r.provider)}">`));
+    },
+    endpoints() {
+      const rows = byCat(D.endpoints[state.endpoints.win] || [], state.endpoints.cat);
+      paint("endpoints", rows, (r, i) => row(i, r, epWho(r), `<b>${compact(r.calls)}</b>${change(r.change)}`));
+    },
+    trending() {
+      const kind = state.trending.kind, rows = D.trending[kind] || [];
+      const who = kind === "providers" ? (r) => `<a href="${toolLink(r.provider)}">${esc(r.label)}</a><small>${compact(r.calls)} calls · ${r.prev ? compact(r.prev) + " the week before" : "new this week"}</small>` : epWho;
+      paint("trending", rows, (r, i) => row(i, r, who(r), r.change === "new" ? `<span class="new">new</span>` : `<b class="up">${(1 + num(r.change) / 100).toFixed(1)}×</b><small>${kind === "providers" ? "" : compact(r.calls) + " calls"}</small>`));
+    },
+    reliable() {
+      paint("reliable", byCat(D.reliable, state.reliable.cat), (r, i) => row(i, r, toolWho(r), `<b>${num(r.ok_rate).toFixed(num(r.ok_rate) === 100 ? 0 : 1)}%</b><small>${compact(r.decided)} calls</small>`));
+    },
+    aimodels() {
+      const st = state.aimodels, board = (D.ai_models || {})[st.win] || {};
+      const rows = (board.models || []).filter((r) => !st.type || r.type === st.type);
+      const who = (r) => `<a href="${toolLink(r.provider)}">${esc(r.name)}</a><small>${esc(r.type)} · via ${esc((r.vendors || []).join(", "))}</small>`;
+      paint("aimodels", rows, (r, i) => row(i, r, who(r), `<b>${compact(r.calls)}</b>${change(r.change)}`));
+    },
+    headtohead() {
+      const jobs = D.head_to_head || [];
+      const job = jobs.find((j) => j.job === state.headtohead.job) || jobs[0];
+      const pct = (v) => { v = num(v); return v === 100 ? "100%" : (v >= 99 ? v.toFixed(2) : v.toFixed(1)) + "%"; };
+      paint("headtohead", job ? job.providers : [], (r, i) => row(i, r,
+        `<a href="${toolLink(r.provider)}">${esc(r.label)}</a><small>${compact(r.calls)} calls${num(r.errors) ? " · " + compact(r.errors) + " provider errors" : ""}</small>`,
+        `<b>${pct(r.ok_rate)}</b><small>${r.p50_ms == null ? "time not measured" : ms(r.p50_ms)}</small>`));
+    },
+    fastest() {
+      paint("fastest", byCat(D.fastest, state.fastest.cat), (r, i) => row(i, r, epWho(r), `<b>${ms(r.p50_ms)}</b><small>${compact(r.timed)} timed</small>`));
+    },
+    categories() {
+      const chips = $("cat-chips"), list = $("categories-list");
+      if (!state.categories) state.categories = { on: D.by_category.length ? D.by_category[0].category : "" };
+      chips.innerHTML = D.by_category.map((c) => `<button class="${c.category === state.categories.on ? "on" : ""}" data-c="${esc(c.category)}">${esc(c.category)}</button>`).join("");
+      const c = D.by_category.find((x) => x.category === state.categories.on);
+      list.classList.toggle("one", !c);
+      columns(list, c ? c.providers.length : 0);
+      list.innerHTML = c ? c.providers.map((r, i) => row(i, r,
+        `<a href="${toolLink(r.provider)}">${esc(r.label)}</a><div class="share"><i style="width:${Math.max(r.share, 1)}%"></i></div>`,
+        `<b>${num(r.share).toFixed(1)}%</b><small>${compact(r.calls)}</small>`)).join("") : empty(NONE);
+    },
+  };
+  $("cat-chips").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { state.categories.on = b.dataset.c; draw.categories(); } });
+
+  // controls that work before a board's data is here; they only redraw once it is
+  const ready = { tools: true };
+  document.querySelectorAll(".seg").forEach((seg) => seg.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    seg.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+    moveMark(seg, b);
+    const name = seg.dataset.win || seg.dataset.kind;
+    state[name][seg.dataset.win ? "win" : "kind"] = b.dataset.v;
+    state[name].all = false;
+    if (ready[name]) draw[name]();
+  }));
+  document.querySelectorAll("[data-more]").forEach((m) => m.addEventListener("click", () => {
+    const name = m.dataset.more; state[name].all = true; draw[name]();
+  }));
+
+  // ---------- lazy boards: each loads when the reader comes near it, as OpenRouter's do ----------
+  const KEY = { endpoints: "endpoints", trending: "trending", categories: "by_category", reliable: "reliable", fastest: "fastest",
+                headtohead: "head_to_head", aimodels: "ai_models" };
+  function setUp(name) {
+    if (name === "aimodels") {   // a type menu: the types that have calls, in a fixed order
+      const have = new Set(Object.values(D.ai_models || {}).flatMap((b) => (b.models || []).map((r) => r.type)));
+      const types = ["Image", "Video", "Audio", "Decision"].filter((t) => have.has(t));
+      selectMenu(document.querySelector('.sm[data-type="aimodels"]'), "Type",
+        [{ value: "", label: "All types" }, ...types.map((t) => ({ value: t, label: t }))],
+        (v) => { state.aimodels.type = v; state.aimodels.all = false; draw.aimodels(); });
+      return;
+    }
+    if (name === "headtohead") {   // a menu of jobs, busiest first, rather than of categories
+      const jobs = D.head_to_head || [];
+      if (jobs.length) selectMenu(document.querySelector('.sm[data-job="headtohead"]'), "Job",
+        jobs.map((j) => ({ value: j.job, label: j.title })), (v) => { state.headtohead.job = v; draw.headtohead(); });
+      return;
+    }
+    const host = document.querySelector(`.sm[data-cat="${name}"]`);
+    if (!host) return;
+    const source = name === "endpoints" ? D.endpoints["30d"] : D[name];
+    const have = new Set(source.map((r) => r.category));
+    const cats = D.categories.filter((c) => have.has(c));   // busiest this week first, as the chips
+    selectMenu(host, "Category", [{ value: "", label: "All categories" }, ...cats.map((c) => ({ value: c, label: c }))],
+      (v) => { state[name].cat = v; state[name].all = false; draw[name](); });
+  }
+  async function load(name) {
+    const list = $(name + "-list");
+    try {
+      const r = await fetch("/rankings/data/" + name, { headers: { Accept: "application/json" } });
+      if (!r.ok) throw new Error(r.status);
+      D[KEY[name]] = (await r.json())[KEY[name]];
+    } catch (_) {
+      list.classList.add("one"); columns(list, 0);
+      list.innerHTML = `<div class="empty">This board did not load. <button class="pill" style="margin-left:8px;padding:5px 12px" type="button">Try again</button></div>`;
+      list.querySelector("button").addEventListener("click", () => { list.classList.remove("one"); list.innerHTML = skeleton(); columns(list, FIRST); load(name); });
+      return;
+    }
+    ready[name] = true;
+    setUp(name);
+    draw[name]();
+    // A board above the one a sidebar click is heading for may have grown: aim again.
+    if (target && target !== name) { until = performance.now() + 2000; document.getElementById(target).scrollIntoView({ behavior: "smooth" }); }
+  }
+  const lazy = new IntersectionObserver((entries) => entries.forEach((en) => {
+    if (!en.isIntersecting) return;
+    lazy.unobserve(en.target);
+    load(en.target.id);
+  }), { rootMargin: "300px 0px" });
+  Object.keys(KEY).forEach((name) => { $(name + "-list").innerHTML = skeleton(); columns($(name + "-list"), FIRST); lazy.observe($(name)); });
+
+  // ---------- the daily chart: follows the list's window, and draws that list's leaders ----------
+  // The Usage card's tooltip rule: beside the hovered bar (right of it, left near the right edge),
+  // at the pointer's height clamped inside the plot.
+  // Whether the bars stack an "Others" block (every tool past the top 10). Off: when traffic is
+  // spread over many tools that block is most of each bar and hides the race between the leaders;
+  // the tooltip still lists Others and the day's full total either way.
+  const SHOW_OTHERS_IN_BARS = false;
+  const tip = $("tip"), bars = $("bars"), chartBox = $("chart");
+  const slot = (s, k) => s.provider ? k : COLORS.length - 1;
+  const color = (s, k) => COLORS[slot(s, k)];
+  let C = null, hovered = -1;
+  function niceTop(v) {
+    const p = 10 ** Math.floor(Math.log10(v)), m = v / p;
+    return ([1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((s) => m <= s) || 10) * p;
+  }
+  function drawChart(win) {
+    const { days, series: S } = D.chart[win];
+    const blank = !days.length || !S.length;
+    chartBox.classList.toggle("blank", blank);
+    $("chart-sub").textContent = SHOW_OTHERS_IN_BARS
+      ? `Successful calls per tool, every day for the last ${win === "7d" ? 7 : 30} days.`
+      : `Successful calls of the top 10 tools, every day for the last ${win === "7d" ? 7 : 30} days.`;
+    hovered = -1; tip.hidden = true;
+    if (blank) { C = null; bars.innerHTML = $("axis").innerHTML = $("grid").innerHTML = ""; return; }
+    // the parts a bar stacks, each with its colour slot; `all` is the day's full total
+    const drawn = S.map((s, k) => ({ s, k })).filter(({ s }) => SHOW_OTHERS_IN_BARS || s.provider);
+    const totals = days.map((_, i) => drawn.reduce((a, { s }) => a + s.values[i], 0));
+    const all = days.map((_, i) => S.reduce((a, s) => a + s.values[i], 0));
+    const peak = niceTop(Math.max(...totals, 1));   // a round top, so the guides read 500K and 1M
+    C = { days, S, all };
+    $("grid").innerHTML = [1, 0.5, 0].map((f) => `<span style="top:${(1 - f) * 100}%"><b>${f ? esc(compact(peak * f)) : "0"}</b></span>`).join("");
+    bars.innerHTML = days.map((d, i) => `<div class="col" data-i="${i}"><div class="bar" style="height:${Math.max(totals[i] / peak * 100, totals[i] ? 1.5 : 0)}%">` +
+      drawn.map(({ s, k }) => s.values[i] ? `<span data-p="${esc(s.provider)}" style="height:${s.values[i] / totals[i] * 100}%;background:${color(s, k)};--strong:${STRONG[slot(s, k)]}"></span>` : "").join("") + `</div></div>`).join("");
+    // a week names every day; a month names one day a week, counted back from the newest
+    const each = days.length <= 8, n = days.length;
+    const ticks = days.map((_, i) => i).filter((i) => each || (n - 1 - i) % 7 === 0);
+    $("axis").innerHTML = ticks.map((i) => `<span style="left:${(i + 0.5) / n * 100}%">${esc(fmtDay(days[i], each ? { weekday: "short" } : undefined))}</span>`).join("");
+  }
+  bars.addEventListener("mousemove", (e) => {
+    const col = e.target.closest(".col"); if (!col || !C) return;
+    const i = +col.dataset.i, n = C.days.length;
+    if (i !== hovered) {
+      bars.children[hovered]?.classList.remove("hover"); col.classList.add("hover"); hovered = i;
+      // the named tools, biggest first, then Others (which may not be in the bar), then the full total
+      const rows = C.S.map((s, k) => ({ s, k })).filter(({ s }) => s.values[i])
+        .sort((a, b) => (!a.s.provider) - (!b.s.provider) || b.s.values[i] - a.s.values[i]);
+      tip.innerHTML = `<b>${esc(fmtDay(C.days[i], { weekday: "short" }))}</b>` +
+        rows.map(({ s, k }) => `<span><i><s style="background:${color(s, k)}"></s>${esc(s.label)}</i><em>${compact(s.values[i])}</em></span>`).join("") +
+        `<span class="total"><i>Total</i><em>${compact(C.all[i])}</em></span>`;
+      const center = (i + 0.5) / n, half = 0.5 / n, flip = center > 0.62;
+      tip.classList.toggle("flip", flip);
+      tip.style.left = ((flip ? center - half : center + half) * 100) + "%";
+      tip.hidden = false;
+    }
+    const h = bars.offsetHeight, th = tip.offsetHeight, y = e.clientY - bars.getBoundingClientRect().top;
+    tip.style.top = Math.min(Math.max(y - th / 2, 0), Math.max(h - th, 0)) + "px";
+  });
+  bars.addEventListener("mouseleave", () => { bars.children[hovered]?.classList.remove("hover"); hovered = -1; tip.hidden = true; });
+
+  // A tool's chart colour beside its row, and hovering the row brings that
+  // tool forward in the chart (only a tool the chart draws by name).
+  function dot(provider) {
+    const k = C ? C.S.findIndex((s) => s.provider && s.provider === provider) : -1;
+    return k < 0 ? "" : `<i class="dot" style="background:${COLORS[k]}" aria-hidden="true"></i>`;
+  }
+  function focus(provider) {
+    const on = !!provider && !!C && C.S.some((s) => s.provider === provider);
+    chartBox.classList.toggle("focus", on);
+    chartBox.querySelectorAll("[data-p]").forEach((el) => el.classList.toggle("hl", on && el.dataset.p === provider));
+  }
+  const hoverFocus = (box, sel) => {
+    box.addEventListener("mouseover", (e) => focus(e.target.closest(sel)?.dataset.p || ""));
+    box.addEventListener("mouseleave", () => focus(""));
+  };
+  hoverFocus($("tools-list"), ".row[data-p]");
+  draw.tools();   // the list and its chart, once the chart's pieces exist
+
+  // ---------- sidebar: mark the board being read ----------
+  // A click marks its board at once and holds it while the page scrolls there, so the mark does
+  // not run through every board on the way.
+  const links = [...document.querySelectorAll(".side a")];
+  const boards = [...document.querySelectorAll("section.board")];
+  // the phone's dropdown: the same six boards, following the scroll like the marker
+  const sideMenu = selectMenu($("sideMenu"), "Board", links.map((a) => ({ value: a.dataset.sec, label: a.textContent.trim(), icon: a.querySelector("svg") })),
+    (v) => links.find((a) => a.dataset.sec === v).click());
+  const mark = (id) => {
+    sideMenu.set(id);
+    links.forEach((a) => a.classList.toggle("on", a.dataset.sec === id));
+    const on = side.querySelector("a.on");
+    moveMark(side, on);
+    // on a phone the sidebar is one row that scrolls sideways: keep the marked item in view
+    if (on && side.scrollWidth > side.clientWidth) side.scrollTo({ left: on.offsetLeft - 24, behavior: "smooth" });
+  };
+  const landing = () => parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+  const atBottom = () => innerHeight + scrollY >= document.documentElement.scrollHeight - 4;
+  let target = "", until = 0, queued = false;
+  const current = () => {
+    if (atBottom()) return boards[boards.length - 1].id;
+    let id = boards[0].id;
+    for (const b of boards) if (b.getBoundingClientRect().top <= innerHeight * 0.35) id = b.id;
+    return id;
+  };
+  addEventListener("scroll", () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      if (target) {
+        const top = document.getElementById(target).getBoundingClientRect().top;
+        if (Math.abs(top - landing()) < 3 || atBottom() || performance.now() > until) target = "";
+        return;
+      }
+      mark(current());
+    });
+  }, { passive: true });
+  links.forEach((a) => a.addEventListener("click", () => { target = a.dataset.sec; until = performance.now() + 2000; mark(target); }));
+  mark(current());
+  placeMarks();
+  pinSide();   // again, now that the dropdown inside the bar exists
+
+  // the setup card: agent setup or product integration, as /people-search
+  document.querySelectorAll(".cmd-tabs button").forEach((b) => b.addEventListener("click", () => {
+    const dev = b.dataset.tab === "dev";
+    document.querySelectorAll(".cmd-tabs button").forEach((o) => o.setAttribute("aria-selected", String(o === b)));
+    $("cmdLine").hidden = dev; $("cmdDev").hidden = !dev;
+  }));
+  $("copy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(document.querySelector(".cmd .cline:not([hidden])").textContent.trim()); } catch (_) { return; }
+    $("copy").textContent = "copied ✓"; setTimeout(() => { $("copy").textContent = "copy"; }, 1600);
+  });
+})();
+</script>
+<script>
+/* PostHog through sitetrack.js's helper, which stamps the surface; inert when analytics is off */
+function track(event, props) { try { if (window.TregTracking) TregTracking.capture(event, props); } catch (e) { /* analytics must never break the page */ } }
+/* "Start building": signed in → the dashboard; signed out → the sign-in modal, without leaving
+   the page. Clicks are counted (showcase_cta_click) so we can see whether the page brings signups. */
+(function () {
+  var scrim = document.getElementById('signin-scrim');
+  var afterSignin = '/app';
+  function openSignin() { scrim.classList.add('open'); document.getElementById('em-input').focus(); }
+  function closeSignin() { scrim.classList.remove('open'); }
+  document.getElementById('signinClose').addEventListener('click', closeSignin);
+  scrim.addEventListener('click', function (e) { if (e.target === scrim) closeSignin(); });
+  addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSignin(); });
+  [['ctaNav', 'nav'], ['ctaFinal', 'final']].forEach(function (pair) {
+    document.getElementById(pair[0]).addEventListener('click', function (e) {
+      track('rankings_cta_click', { cta: pair[1] });
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; /* let new-tab clicks be */
+      e.preventDefault();
+      fetch('/auth/me', { credentials: 'same-origin' }).then(function (r) {
+        if (r.ok) location.href = '/app'; else openSignin();
+      }).catch(openSignin);
+    });
+  });
+  var btn1 = document.getElementById('em-btn1'), btn2 = document.getElementById('em-btn2');
+  var input = document.getElementById('em-input'), code = document.getElementById('em-code'), err = document.getElementById('em-err');
+  btn1.addEventListener('click', emailStart);
+  input.addEventListener('keyup', function (e) { if (e.key === 'Enter') emailStart(); });
+  btn2.addEventListener('click', emailVerify);
+  code.addEventListener('keyup', function (e) { if (e.key === 'Enter') emailVerify(); });
+  function emailStart() {
+    var em = input.value.trim();
+    if (!em) { err.textContent = 'Enter your email address.'; return; }
+    if (btn1.disabled) return; btn1.disabled = true; btn1.textContent = 'Sending…'; err.textContent = '';
+    (window.tregCaptcha ? tregCaptcha.token('email_start') : Promise.resolve('')).then(function (t) { return fetch('/auth/email/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: em, captcha_token: t }) }); })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (d) {
+          if (!r.ok) throw new Error(d.detail || 'could not send the code');
+          return d;
+        });
+      })
+      .then(function (d) {
+        document.getElementById('em-step1').style.display = 'none';
+        document.getElementById('em-step2').style.display = 'block';
+        if (d.dev_code) { code.value = d.dev_code; err.style.color = 'var(--green)'; err.textContent = 'dev mode — your code: ' + d.dev_code; }
+        else { err.style.color = ''; }
+        code.focus();
+      })
+      .catch(function (e2) { err.textContent = e2.message; btn1.disabled = false; btn1.textContent = 'Email me a sign-in code'; });
+  }
+  function emailVerify() {
+    if (!code.value.trim()) return;
+    btn2.textContent = 'Verifying…'; err.textContent = '';
+    fetch('/auth/email/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: input.value.trim(), code: code.value.trim() }) })
+      .then(function (r) { if (!r.ok) return r.json().catch(function () { return {}; }).then(function (d) { throw new Error(d.detail || "that code didn't work"); }); if (afterSignin === '/app') location.href = '/app'; else { location.href = afterSignin; location.reload(); } })
+      .catch(function (e2) { err.textContent = e2.message; btn2.textContent = 'Sign in'; });
+  }
+})();
+</script>
+<script src="/sitetrack.js"></script>
+<script src="/media/signin-sso.js" defer></script>
+</body>
+</html>

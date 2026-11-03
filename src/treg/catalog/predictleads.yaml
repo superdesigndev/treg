@@ -29,7 +29,6 @@ proposed_capabilities:
   companies.funding: "A company's funding rounds & financing events"
   companies.news.detail: "Get one company news event by ID"
   companies.news.feed: "Browse the latest company news events across all companies"
-  companies.jobs.detail: "Get one job posting by ID"
   companies.tech_stack.users: "Find companies that use a given technology"
   companies.tech_stack.detection: "Get the full evidence for one technology detection"
   companies.technologies.list: "Browse the catalog of tracked technologies"

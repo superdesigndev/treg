@@ -17,6 +17,35 @@
 
 adapters:
   # ---- people.email.find --------------------------------------------------------------------
+  orbisearch.people.email.find:
+    accepts: [[first_name, last_name, domain], [linkedin_url]]
+    in: {first_name: body.first_name, last_name: body.last_name,
+         domain: body.domain, linkedin_url: body.linkedin_url}
+    const: {body.timeout: 30}
+    out: {email: email, first_name: first_name, last_name: last_name,
+          verified: "status == 'safe'", confidence: "confidence / 100"}
+    miss: "email == null"
+  anymailfinder.people.email.find:
+    accepts: [[full_name, domain], [first_name, last_name, domain], [linkedin_url]]
+    in: {full_name: body.full_name, first_name: body.first_name, last_name: body.last_name,
+         domain: body.domain, linkedin_url: body.linkedin_url}
+    out: {email: valid_email, verified: "email_status == 'valid'"}
+    miss: "valid_email == null"
+  enrow.people.email.find:
+    accepts: [[full_name, domain], [first_name, last_name, domain], [linkedin_url]]
+    in: {full_name: body.fullname, domain: body.company_domain, linkedin_url: body.linkedin_url}
+    in_expr: {body.fullname: "join(first_name, last_name)"}
+    out: {email: email, first_name: info.firstname, last_name: info.lastname,
+          verified: "qualification == 'valid'"}
+    miss: "email == null"
+  filtrat.people.email.find.resolve_catchall:
+    accepts: [[first_name, last_name, domain]]
+    in: {first_name: body.first_name, last_name: body.last_name, domain: body.domain}
+    const: {body.resolve_catchall: true}
+    # On a catch-all domain the address is resolved against the mail server instead of returned as
+    # a guess; one the resolution could not settle still comes back with catchall_unverified: true.
+    out: {email: found_email, confidence: "confidence / 100", verified: "catchall_unverified != true"}
+    miss: "found_email == null"
   contactout.people.contact.work:
     accepts: [[linkedin_url]]
     in: {linkedin_url: queryParams.profile}
@@ -91,7 +120,8 @@ adapters:
     in:  {linkedin_url: queryParams.url}
     out: {email: data.email, confidence: "data.score / 100", first_name: data.first_name,
           last_name: data.last_name, verified: "data.verification.status == 'valid'"}
-    miss: "data.email == null"
+    # work-email child: a free-mail mailbox (or none) is a miss
+    miss: "email_domain(data.email) == null"
   aviato.people.email.find:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: queryParams.linkedinURL}
@@ -135,6 +165,26 @@ adapters:
     out: {email: data.email, first_name: "split_first(data.name)",
           last_name: "split_last(data.name)", verified: "data.email_status == 'valid'"}
     miss: "data.email == null"
+  dropcontact.people.email.find:
+    accepts: [[full_name, domain], [first_name, last_name, domain]]
+    test_identity: {first_name: Peter, last_name: Jackson, domain: company.com}
+    in_expr: {body.data: "list(obj('first_name', first_name, 'last_name', last_name, 'website', domain))"}
+    # Catch-all, generic, personal and invalid qualifications also return an email; only
+    # nominative@pro is a checked work address.
+    out: {email: "coalesce(data[0].email[0].email, null)", first_name: "data[0].first_name",
+          last_name: "data[0].last_name",
+          verified: "coalesce(data[0].email[0].qualification, null) == 'nominative@pro'"}
+    miss: "coalesce(data[0].email[0].email, null) == null"
+  dropcontact.people.email.find.linkedin:
+    accepts: [[linkedin_url]]
+    test_identity: {linkedin_url: "https://www.linkedin.com/in/example"}
+    in_expr: {body.data: "list(obj('linkedin', linkedin_url))"}
+    # Catch-all, generic, personal and invalid qualifications also return an email; only
+    # nominative@pro is a checked work address.
+    out: {email: "coalesce(data[0].email[0].email, null)", first_name: "data[0].first_name",
+          last_name: "data[0].last_name",
+          verified: "coalesce(data[0].email[0].qualification, null) == 'nominative@pro'"}
+    miss: "coalesce(data[0].email[0].email, null) == null"
   sixtyfour.people.email.find.work:
     accepts: [[full_name, domain], [first_name, last_name, domain], [linkedin_url]]
     in: {full_name: body.lead.name, domain: body.lead.domain, linkedin_url: body.lead.linkedin_url}
@@ -350,12 +400,18 @@ adapters:
     miss: "data.creator_info.unique_id == null"
 
   # ---- people.phone.find --------------------------------------------------------------------
+  enrow.people.phone.find:
+    accepts: [[linkedin_url], [first_name, last_name, domain]]
+    in: {linkedin_url: body.linkedin_url, first_name: body.firstname,
+         last_name: body.lastname, domain: body.company_domain}
+    out: {phone: number, country_code: country}
+    miss: "number == null"
   contactout.people.contact.phone:
     accepts: [[linkedin_url]]
     in: {linkedin_url: queryParams.profile}
     const: {queryParams.email_type: none, queryParams.include_phone: true}
     test_identity: {linkedin_url: "https://www.linkedin.com/in/routing-fixture"}
-    out: {phone: "profile.phone[0]", line_type: "'mobile'"}
+    out: {phone: "profile.phone[0]"}
     miss: "at_least(status_code != 200, coalesce(profile.phone, []) == [])"
   dropleads.people.phone.find:
     accepts: [[linkedin_url]]
@@ -374,7 +430,7 @@ adapters:
   aiark.people.phone.find:
     accepts: [[linkedin_url], [full_name, domain], [first_name, last_name, domain]]
     in: {linkedin_url: body.linkedin, full_name: body.name, domain: body.domain}
-    out: {phone: "get(data.data[0], '[0]')", line_type: "'mobile'"}
+    out: {phone: "get(data.data[0], '[0]')"}
     miss: "get(data.data[0], '[0]') == null"
   tomba.people.phone.find:
     accepts: [[email], [linkedin_url]]
@@ -462,6 +518,47 @@ adapters:
                no_coverage: unknown, inconclusive: unknown, not_applicable: unknown}
 
   # ---- people.email.verify ------------------------------------------------------------------
+  orbisearch.people.email.verify:
+    accepts: [[email]]
+    in: {email: queryParams.email}
+    const: {queryParams.timeout: 20}
+    out: {valid: "status == 'safe'", status: status, score: confidence}
+    miss: "status == null"
+    verdict: "choose(is_domain_catch_all == true, choose(status == 'risky', 'catch_all', status), status)"
+    verdicts: {safe: valid}
+  enrow.people.email.verify:
+    accepts: [[email]]
+    in: {email: body.email}
+    out: {valid: "qualification == 'valid'", status: qualification}
+    miss: "qualification == null"
+  # The general route uses the catch-all-resolving row: on a catch-all domain the address comes
+  # back verified or invalid (catchall_resolved: true) instead of catchall.
+  filtrat.people.email.verify.resolve_catchall:
+    accepts: [[email]]
+    in: {email: body.email}
+    const: {body.resolve_catchall: true}
+    out: {valid: "status == 'verified'", status: status, score: confidence}
+    # unknown is free (credits_used 0) and not an answer: a miss, so a waterfall goes on. A
+    # catch-all not resolved within the time limit stays catchall (free) and maps to catch_all.
+    miss: "coalesce(status, 'unknown') == 'unknown'"
+    verdicts: {verified: valid, catchall: catch_all}
+  anymailfinder.people.email.verify:
+    accepts: [[email]]
+    in: {email: body.email}
+    out: {valid: "email_status == 'valid'", status: email_status}
+    miss: "email_status == null"
+  dropcontact.people.email.verify:
+    accepts: [[email]]
+    test_identity: {email: support@dropcontact.com}
+    in_expr: {body.data: "list(obj('email', email))"}
+    out: {valid: "choose(starts_with(data[0].email[0].qualification, 'nominat'), true, starts_with(data[0].email[0].qualification, 'gener'))",
+          status: "coalesce(data[0].email[0].qualification, 'unknown')"}
+    miss: "success == false"
+    verdicts: {"nominative@pro": valid, "generic@pro": valid, "catch_all@pro": catch_all,
+               "invalid@pro": invalid, "invalid@invalid": invalid, "invalide@pro": invalid,
+               "invalide@perso": invalid, "invalide@invalid": invalid, "nominative@perso": valid,
+               "nominatif@pro": valid, "nominatif@perso": valid, "generique@pro": valid,
+               "generique@perso": valid}
   dropleads.people.email.verify:
     accepts: [[email]]
     in: {email: body.email}
@@ -591,7 +688,7 @@ adapters:
     in:  {email: queryParams.email, linkedin_handle: queryParams.linkedin_handle}
     out: {full_name: data.name.fullName, first_name: data.name.givenName, last_name: data.name.familyName,
           title: data.employment.title, company: data.employment.name, company_domain: data.employment.domain,
-          linkedin_url: data.linkedin.handle, location: "coalesce(data.location, data.geo.country)"}
+          linkedin_url: "linkedin_url(data.linkedin.handle)", location: "coalesce(data.location, data.geo.country)"}
     miss: "data.name.fullName == null"
   # hunter.x.combined-find: no adapter — its captured example truncates data.person.name, so `out`
   # cannot be fixture-verified; hunter.people.enrich covers the same identity.
@@ -958,6 +1055,13 @@ adapters:
           location: "results[0].location.raw"}
     miss: "results[0].error != null"
   # ---- companies.enrich (batch 5, 2026-08-28) --------------------------------------------------
+  orbisearch.companies.enrich:
+    accepts: [[domain], [linkedin_url]]
+    in: {domain: queryParams.domain, linkedin_url: queryParams.linkedin_url}
+    out: {name: name, domain: domain, website: website, description: description,
+          industry: industry, employees: company_size.label, founded: founded_year,
+          location: "join(headquarters.city, headquarters.country)", linkedin_url: linkedin_url}
+    miss: "result == 'not_found'"
   crustdata.companies.identify:
     # Identity resolution, not enrichment: evidence only, not a routed companies.enrich child.
     route: false
@@ -1036,6 +1140,12 @@ adapters:
     out: {name: "organizations[0].attributes.name", domain: "organizations[0].attributes.url",
           employees: "organizations[0].attributes.employee_count", industry: "organizations[0].attributes.industry"}
     miss: "matched_count == 0"
+  crawl4ai.companies.enrich:
+    accepts: [[domain], [linkedin_url], [linkedin_handle], [name]]
+    in:  {domain: queryParams.domain, linkedin_url: queryParams.linkedin, linkedin_handle: queryParams.linkedin, name: queryParams.name}
+    out: {name: data.name, domain: data.domain, description: data.description, industry: data.industry,
+          employees: data.people_count, linkedin_url: "fmt('https://www.linkedin.com/company/{}', data.linkedin)"}
+    miss: "data == null"
   hunter.companies.enrich:
     accepts: [[domain]]
     in:  {domain: queryParams.domain}
@@ -1153,6 +1263,18 @@ adapters:
   # coresignal.companies.enrich: no example (402 at capture, empty account).
 
   # ---- companies.search (batch 5, 2026-08-28) --------------------------------------------------
+  theirstack.companies.search:
+    accepts: [[domain], [name]]
+    in: {domain: body.company_domain_or}
+    in_expr:
+      body.company_domain_or: "list(domain)"
+      body.company_name_or: "choose(domain, null, list(name))"
+      body.company_country_code_or: "list(upper(country))"
+      body.limit: limit
+    const: {body.page: 0}
+    max: {limit: 100}
+    out: {companies: data}
+    miss: "data == []"
   dropleads.companies.search:
     accepts: [[domain], [name], [industry], [technology]]
     in: {domain: body.filters.companyDomains, name: body.filters.companyNames,
@@ -1624,6 +1746,17 @@ adapters:
     out: {results: local_results}
     miss: "local_results == []"
 
+  theirstack.jobs.search:
+    accepts: [[domain], [name]]
+    in: {domain: body.company_domain_or}
+    in_expr:
+      body.company_domain_or: "list(domain)"
+      body.company_name_or: "choose(domain, null, list(name))"
+      body.limit: limit
+    const: {body.page: 0}
+    max: {limit: 100}
+    out: {jobs: data}
+    miss: "data == []"
   crustdata.companies.jobs.search:
     accepts: [[name]]
     in:  {name: body.filters.value}
@@ -1713,7 +1846,7 @@ adapters:
     accepts: [[target]]
     in:  {target: body.targets}
     in_expr: {body.targets: "list(target)"}
-    out: {summary: "results[0]", backlinks: "results[0].pages_to_subdomain", referring_domains: "results[0].root_domains_to_subdomain"}
+    out: {summary: "results[0]", backlinks: "results[0].external_pages_to_subdomain", referring_domains: "results[0].root_domains_to_subdomain"}
     miss: "results == []"
 
   scrapecreators.reddit.subreddit.posts:
@@ -2438,6 +2571,8 @@ adapters:
 
   # ---- people.* coverage sweep (2026-08-28): the DSL / list-shaped providers ------------------
   aviato.people.search:
+    # evidence only: `fts` ORs q's words unranked, so every brief got the same rows
+    route: false
     accepts: [[q]]
     in:  {}
     in_expr: {body.dsl: "obj('filters', list(obj('headline', obj('operation', 'fts', 'value', q))), 'limit', limit, 'offset', 0, 'sort', [])"}
@@ -2589,6 +2724,17 @@ adapters:
       body.per_page: limit
     out: {people: people, count: total_entries}
     miss: "coalesce(people, []) == []"
+  crawl4ai.people.search:
+    accepts: [[title, company_domain], [company_domain], [title], [full_name], [q]]
+    in: {company_domain: body.where.company.domain, title: body.where.person.title, full_name: body.where.person.name, q: body.q}
+    in_expr:
+      body.where.person.title: "scalar(title)"
+      body.where.company.country: "country_code(country)"
+      body.where.company.city: location
+      body.limit: limit
+    max: {limit: 100}
+    out: {people: data, count: "len(data)"}
+    miss: "coalesce(data, []) == []"
   quickenrich.people.search:
     accepts: [[title, company_domain], [company_domain], [title]]
     in: {company_domain: body.company_url.include, title: body.title.include}
@@ -2720,12 +2866,10 @@ adapters:
     miss: "element.id == null"
   # Lead search is the only Harvest people search whose rows carry names and profile URLs:
   # profile-search hides out-of-network members (no name, no URL), so it stays unrouted.
-  # $0.10 buys a fixed page of 25 rows, so the router prices every request as 25 units.
   harvestapi.linkedin.leads.search:
     accepts: [[company_domain, title], [company_domain], [title]]
     in: {company_domain: queryParams.currentCompanies, title: queryParams.currentJobTitles}
     in_expr: {queryParams.locations: "coalesce(location, country_name(country))", queryParams.search: "csv(keywords)"}
-    cost_units: "25"
     out: {people: elements, count: pagination.totalElements}
     miss: "coalesce(elements, []) == []"
 
@@ -2870,6 +3014,20 @@ adapters:
     miss: "coalesce(output.data.suggestions, []) == []"
 
   # ---- open web -----------------------------------------------------------------------------
+  bravesearch.web.search:
+    accepts: [[q]]
+    max: {limit: 20}
+    in: {q: queryParams.q}
+    in_expr: {queryParams.count: limit}
+    out: {results: web.results, count: "len(coalesce(web.results, []))"}
+    miss: "coalesce(web.results, []) == []"
+  bravesearch.web.search.news:
+    accepts: [[q]]
+    max: {limit: 50}
+    in: {q: queryParams.q}
+    in_expr: {queryParams.count: limit}
+    out: {results: results, count: "len(coalesce(results, []))"}
+    miss: "coalesce(results, []) == []"
   search1api.web.news:
     accepts: [[q]]
     in: {q: body.query}
@@ -3014,7 +3172,9 @@ adapters:
   serper.web.search:
     accepts: [[q]]
     in: {q: body.q}
-    in_expr: {body.gl: "lower(country)", body.hl: language, body.num: limit}
+    # Serper rejects body.num < 10; clamp like lusha.people.search pagination.size.
+    # Caller may receive the provider minimum page when asking for fewer rows.
+    in_expr: {body.gl: "lower(country)", body.hl: language, body.num: "at_least(limit, 10)"}
     out: {results: organic, count: "len(organic)"}
     miss: "coalesce(organic, []) == []"
   spidercloud.web.search:
@@ -3066,14 +3226,15 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.formats: [markdown]}
     out: {pages: ".", count: "len(.)"}
-    miss: "coalesce([0].markdown, '') == ''"
+    miss: "coalesce([0].markdown, [0].html, '') == ''"
   tinyfish.web.fetch:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
     test_identity: {url: "https://example.com"}
     const: {body.format: markdown, body.links: true, body.ttl: 0}
     out: {pages: results, count: "len(results)"}
-    miss: "coalesce(results[0].text, '') == ''"
+    # final_url is where the page was finally read: a redirect to the home page is not the page
+    miss: "choose(lost_path(results[0].url, results[0].final_url), true, coalesce(results[0].text, '') == '')"
   exa.web.contents.get:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
@@ -3135,7 +3296,8 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.formats: [markdown], body.onlyMainContent: false}
     out: {pages: "list(output.data)", count: "len(list(output.data))"}
-    miss: "coalesce(output.data.markdown, '') == ''"
+    # output.data.statusCode is the TARGET's status: a 4xx/5xx is the site's error page, not the page
+    miss: "choose(http_error(output.data.statusCode), true, coalesce(output.data.markdown, '') == '')"
   crawl4ai.web.extract.structured:
     accepts: [[url, schema, instruction], [url, schema], [url, instruction]]
     in: {url: body.url, schema: body.schema, instruction: body.instruction}
@@ -3161,7 +3323,7 @@ adapters:
     in: {url: body.url}
     const: {body.format: md}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: "coalesce(markdown, '') == ''"
+    miss: "coalesce(text_len, markdown, 0) == 0"
   firecrawl.web.scrape:
     accepts: [[url]]
     in: {url: body.url}
@@ -3396,6 +3558,14 @@ adapters:
     in: {q: body.query}
     out: {results: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
+  exa.web.search.lite:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query}
+    in_expr: {body.numResults: limit}
+    const: {body.type: lite}
+    out: {results: results, count: "len(results)"}
+    miss: "coalesce(results, []) == []"
   scrapegraphai.web.search.extract:
     route: false
     accepts: [[q]]
@@ -3529,6 +3699,11 @@ adapters:
     out: {ads: results, page_id: "results[0].page_id", page_name: "results[0].page_name", count: "len(results)",
           next_cursor: continuation_token}
     miss: "coalesce(results, []) == []"
+  adyntel.google.ads.transparency:
+    accepts: [[company_domain]]
+    in: {company_domain: body.company_domain}
+    out: {ads: ads, count: "len(ads)", next_cursor: continuation_token}
+    miss: "coalesce(ads, []) == []"
   scrapecreators.x.v1-facebook-adlibrary-company-ads:
     accepts: [[page_id], [company_name]]
     in: {page_id: queryParams.pageId, company_name: queryParams.companyName}
@@ -3558,7 +3733,8 @@ adapters:
   blitzapi.people.email.find:
     accepts: [[linkedin_url]]
     in: {linkedin_url: body.person_linkedin_url}
-    out: {email: email, verified: "found == true"}
+    # `found` reports a hit, not a deliverability check; the body carries no verification status.
+    out: {email: email}
     miss: "found == false"
   blitzapi.people.phone.find:
     accepts: [[linkedin_url]]

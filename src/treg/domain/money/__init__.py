@@ -47,7 +47,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 
-from sqlalchemy import case, delete, func, update
+from sqlalchemy import case, delete, func, literal_column, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -67,7 +67,7 @@ from ...models import AsyncTaskRecord, CreditBlock, Hold, LedgerEntry, Org, TagS
 # kind must be added here or it silently gets the most expensive treatment available.
 # `bonus` (the tiered extra on a manual top-up, `billing.bonus_for_topup`) is the same kind of thing:
 # marketing spend keyed to a payment, never refundable, so it burns first too.
-# `earned`: a hub seller's credit (docs/HUB-DECISIONS.md) - spent after the free kinds and
+# `earned`: a hub seller's credit - spent after the free kinds and
 # before purchased money, so a maker's own dollars are used last.
 _KIND_ORDER = {"promotional": 0, "referral": 0, "bonus": 0, "earned": 1, "purchased": 2}
 
@@ -455,8 +455,8 @@ async def settle_to_in_transaction(
     meta: dict | None = None,
 ) -> int:
     """Close a hold and credit the settled amount to `payee_org_id` as an `earned` block — a hub
-    seller's price (docs/HUB-DECISIONS.md). `actual_micro` is the real price for a
-    variable-price tool (per_unit or cost_plus, docs/hub-pricing-decisions.md): that much
+    seller's price. `actual_micro` is the real price for a
+    variable-price tool (the sum of a script's ctx.charge lines): that much
     is settled, and the rest of the reserved hold is refunded to the payer. `None` settles the FULL
     reserved hold (a flat price). One transaction, two ledger entries: a `settle` on the payer (meta
     names the payee) and a `grant` on the payee (block kind `earned`, meta names the payer's run).
@@ -787,9 +787,12 @@ async def spend_since(db: AsyncSession, org_id: int, since: datetime) -> dict:
     """What this org has actually SPENT on platform keys since `since`: total micro-USD and how many
     calls it took. One aggregate over the settle entries — the ledger, not the audit table, is the
     authority on money (audit rows are allowed to be lost; ledger rows are not)."""
+    # Postgres uses the partial settle index only when the predicate is a constant in the
+    # statement; a bound `kind` would let a cached generic plan fall back to the heap walk.
     row = (await db.execute(
         select(func.coalesce(func.sum(LedgerEntry.amount_micro), 0), func.count()).where(
-            LedgerEntry.org_id == org_id, LedgerEntry.kind == "settle", LedgerEntry.created_at >= since)
+            LedgerEntry.org_id == org_id, LedgerEntry.kind == literal_column("'settle'"),
+            LedgerEntry.created_at >= since)
     )).first()
     total, calls = (row[0] or 0, row[1] or 0) if row else (0, 0)
     return {"spend_micro": int(-total), "spend_usd": usd(int(-total)), "billed_calls": int(calls)}

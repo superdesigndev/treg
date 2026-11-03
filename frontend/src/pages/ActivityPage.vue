@@ -65,6 +65,10 @@ export default {
         tick: month ? dayLabel(b.start, { month: 'short' }) : dayLabel(b.start, { month: 'short', day: 'numeric' }),
       }))
     },
+    usageCountsFrom() {
+      const u = this.usage
+      return u?.history_from && u.history_from > u.since.slice(0, 10) ? dayLabel(u.history_from, { month: 'short', day: 'numeric', year: 'numeric' }) : ''
+    },
     historyFrom() { return this.usageSpend?.history_from ? dayLabel(this.usageSpend.history_from, { month: 'short', day: 'numeric', year: 'numeric' }) : '' },
     actTabs() { return [{ key: 'feed', label: 'Calls' }, ...(this.canAdmin ? [{ key: 'usage', label: 'Usage' }] : [])] },
   },
@@ -207,7 +211,9 @@ export default {
 
   <p v-if="usageErr" class="pl-empty">{{usageErr}}</p>
   <p v-else-if="!usage" class="pl-empty">Loading counts…</p>
+  <p v-else-if="usage.ready === false" class="pl-empty">Usage counts are being prepared. Check back in a few hours.</p>
   <template v-else>
+    <p v-if="usageCountsFrom" class="pl-meta">Counted from {{usageCountsFrom}}, when usage history begins.</p>
     <div class="act-stats">
       <div v-for="[n, l] in [[usage.totals.total, 'Total events'], [usage.totals.call, 'API calls'], [usage.totals.local_run, 'Local runs'], [usage.totals.server_run, 'Server runs']]"
            :key="l" class="pl-card act-stat"><b>{{n}}</b><span>{{l}}</span></div>
@@ -265,6 +271,10 @@ export default {
           <template #cell-calls="{ row: r }"><span class="muted">{{r.calls ?? '-'}}</span></template>
           <template #cell-spend="{ row: r }"><b v-if="r.value">{{money(r.charged_micro)}}</b><span v-else class="muted">{{money(r.charged_micro)}}</span></template>
         </DataTable>
+      </section>
+      <section v-else-if="tagUsageErr[key]" class="pl-sec">
+        <h2 class="pl-h"><span>Spend by {{key}}</span><i></i></h2>
+        <p class="pl-empty">{{tagUsageErr[key]}}</p>
       </section>
     </template>
   </template>

@@ -19,19 +19,7 @@
     "responseContext": {
       "visitorData": "Cgt1LUt…",
       "serviceTrackingParams": [
-        {
-          "service": "ECATCHE…",
-          "params": [
-            {
-              "key": "client.…",
-              "value": "1.60"
-            },
-            {
-              "key": "client.…",
-              "value": "ANDROID…"
-            }
-          ]
-        }
+        "… {2 field(s) truncated}"
       ],
       "maxAgeSeconds": 0,
       "rolloutToken": "CI-s2fi…",
@@ -41,226 +29,57 @@
       "status": "OK",
       "playableInEmbed": true,
       "miniplayer": {
-        "miniplayerRenderer": {
-          "playbackMode": "PLAYBAC…"
-        }
+        "miniplayerRenderer": "… {1 field(s) truncated}"
       },
       "contextParams": "Q0FFU0F…"
     },
     "streamingData": {
       "expiresInSeconds": "21540",
       "formats": [
-        {
-          "itag": 18,
-          "url": "https:/…",
-          "mimeType": "video/m…",
-          "bitrate": 444226,
-          "width": 640,
-          "height": 360,
-          "lastModified": "1766960…",
-          "quality": "medium",
-          "fps": 25,
-          "qualityLabel": "360p",
-          "projectionType": "RECTANG…",
-          "audioQuality": "AUDIO_Q…",
-          "approxDurationMs": "213089",
-          "audioSampleRate": "44100",
-          "audioChannels": 2,
-          "qualityOrdinal": "QUALITY…"
-        }
+        "… {16 field(s) truncated}"
       ],
       "adaptiveFormats": [
-        {
-          "itag": 313,
-          "url": "https:/…",
-          "mimeType": "video/w…",
-          "bitrate": 18076636,
-          "width": 3840,
-          "height": 2160,
-          "initRange": {
-            "start": "0",
-            "end": "220"
-          },
-          "indexRange": {
-            "start": "221",
-            "end": "893"
-          },
-          "lastModified": "1766963…",
-          "contentLength": "3586084…",
-          "quality": "hd2160",
-          "fps": 25,
-          "qualityLabel": "2160p",
-          "projectionType": "RECTANG…",
-          "averageBitrate": 13466333,
-          "colorInfo": {
-            "primaries": "COLOR_P…",
-            "transferCharacteristics": "COLOR_T…",
-            "matrixCoefficients": "COLOR_M…"
-          },
-          "approxDurationMs": "213040",
-          "qualityOrdinal": "QUALITY…"
-        },
-        {
-          "itag": 401,
-          "url": "https:/…",
-          "mimeType": "video/m…",
-          "bitrate": 17400774,
-          "width": 3840,
-          "height": 2160,
-          "initRange": {
-            "start": "0",
-            "end": "700"
-          },
-          "indexRange": {
-            "start": "701",
-            "end": "1188"
-          },
-          "lastModified": "1766961…",
-          "contentLength": "2403346…",
-          "quality": "hd2160",
-          "fps": 25,
-          "qualityLabel": "2160p",
-          "projectionType": "RECTANG…",
-          "averageBitrate": 9024958,
-          "colorInfo": {
-            "primaries": "COLOR_P…",
-            "transferCharacteristics": "COLOR_T…",
-            "matrixCoefficients": "COLOR_M…"
-          },
-          "approxDurationMs": "213040",
-          "qualityOrdinal": "QUALITY…"
-        },
-        "… 24 mo…"
+        "… {18 field(s) truncated}",
+        "… 2 more item(s) truncated"
       ],
       "serverAbrStreamingUrl": "https:/…"
     },
     "playbackTracking": {
       "videostatsPlaybackUrl": {
         "baseUrl": "https:/…",
-        "headers": [
-          {
-            "headerType": "USER_AU…"
-          },
-          {
-            "headerType": "VISITOR…"
-          },
-          "… 1 mor…"
-        ]
+        "headers": "… [3 item(s) truncated]"
       },
       "videostatsDelayplayUrl": {
         "baseUrl": "https:/…",
-        "headers": [
-          {
-            "headerType": "USER_AU…"
-          },
-          {
-            "headerType": "VISITOR…"
-          },
-          "… 1 mor…"
-        ]
+        "headers": "… [3 item(s) truncated]"
       },
       "videostatsWatchtimeUrl": {
         "baseUrl": "https:/…",
-        "headers": [
-          {
-            "headerType": "USER_AU…"
-          },
-          {
-            "headerType": "VISITOR…"
-          },
-          "… 1 mor…"
-        ]
+        "headers": "… [3 item(s) truncated]"
       },
       "ptrackingUrl": {
         "baseUrl": "https:/…",
-        "headers": [
-          {
-            "headerType": "USER_AU…"
-          },
-          {
-            "headerType": "VISITOR…"
-          },
-          "… 1 mor…"
-        ]
+        "headers": "… [3 item(s) truncated]"
       },
       "qoeUrl": {
         "baseUrl": "https:/…",
-        "headers": [
-          {
-            "headerType": "USER_AU…"
-          },
-          {
-            "headerType": "VISITOR…"
-          },
-          "… 1 mor…"
-        ]
+        "headers": "… [3 item(s) truncated]"
       },
       "atrUrl": {
         "baseUrl": "https:/…",
         "elapsedMediaTimeSeconds": 3,
-        "headers": [
-          {
-            "headerType": "USER_AU…"
-          },
-          {
-            "headerType": "VISITOR…"
-          },
-          "… 1 mor…"
-        ]
+        "headers": "… [3 item(s) truncated]"
       },
       "videostatsScheduledFlushWalltimeSeconds": [
         10,
-        20,
-        "… 1 mor…"
+        "… 2 more item(s) truncated"
       ],
       "videostatsDefaultFlushIntervalSeconds": 300
     },
     "captions": {
       "playerCaptionsTracklistRenderer": {
-        "captionTracks": [
-          {
-            "baseUrl": "https:/…",
-            "name": {
-              "runs": [
-                {
-                  "text": "English"
-                }
-              ]
-            },
-            "vssId": ".en",
-            "languageCode": "en",
-            "isTranslatable": true,
-            "trackName": ""
-          },
-          {
-            "baseUrl": "https:/…",
-            "name": {
-              "runs": [
-                {
-                  "text": "English…"
-                }
-              ]
-            },
-            "vssId": "a.en",
-            "languageCode": "en",
-            "kind": "asr",
-            "isTranslatable": true,
-            "trackName": ""
-          },
-          "… 4 mor…"
-        ],
-        "audioTracks": [
-          {
-            "captionTrackIndices": [
-              0,
-              2,
-              "… 4 mor…"
-            ],
-            "defaultCaptionTrackIndex": 0,
-            "hasDefaultTrack": true,
-            "captionsInitialState": "CAPTION…"
-          }
-        ],
+        "captionTracks": "… [3 item(s) truncated]",
+        "audioTracks": "… [1 item(s) truncated]",
         "defaultAudioTrackIndex": 0
       }
     },
@@ -270,27 +89,14 @@
       "lengthSeconds": "213",
       "keywords": [
         "rick as…",
-        "Never G…",
-        "… 25 mo…"
+        "… 2 more item(s) truncated"
       ],
       "channelId": "UCuAXFk…",
       "isOwnerViewing": false,
       "shortDescription": "The off…",
       "isCrawlable": true,
       "thumbnail": {
-        "thumbnails": [
-          {
-            "url": "https:/…",
-            "width": 120,
-            "height": 90
-          },
-          {
-            "url": "https:/…",
-            "width": 320,
-            "height": 180
-          },
-          "… 2 mor…"
-        ]
+        "thumbnails": "… [3 item(s) truncated]"
       },
       "allowRatings": true,
       "viewCount": "1797315…",
@@ -298,7 +104,7 @@
       "isPrivate": false,
       "isUnpluggedCorpus": false,
       "isLiveContent": false,
-      "isTvfilmVideo": false
+      "…": "1 more field(s) truncated"
     },
     "playerConfig": {
       "audioConfig": {
@@ -322,180 +128,21 @@
         "httpConnectTimeoutMs": 16000,
         "httpReadTimeoutMs": 8000,
         "numAudioSegmentsPerFetch": 1,
-        "numVideoSegmentsPerFetch": 2,
-        "minDurationForPlaybackStartMs": 2500,
-        "enableExoplayerReuse": false,
-        "useRadioTypeForInitialQualitySelection": true,
-        "blacklistFormatOnError": false,
-        "enableBandaidHttpDataSource": true,
-        "httpLoadTimeoutMs": 18000,
-        "canPlayHdDrm": true,
-        "videoBufferSegmentCount": 389,
-        "audioBufferSegmentCount": 38,
-        "useAbruptSplicing": false,
-        "minRetryCount": 10,
-        "minChunksNeededToPreferOffline": 2,
-        "secondsToMaxAggressiveness": 0,
-        "enableSurfaceviewResizeWorkaround": true,
-        "enableVp9IfThresholdsPass": false,
-        "matchQualityToViewportOnUnfullscreen": false,
-        "lowAudioQualityConnTypes": [
-          "MOBILE_…",
-          "MOBILE_…"
-        ],
-        "useDashForLiveStreams": true,
-        "enableLibvpxVideoTrackRenderer": false,
-        "lowAudioQualityBandwidthThresholdBps": 0,
-        "enableVariableSpeedPlayback": true,
-        "preferOnesieBufferedFormat": false,
-        "minimumBandwidthSampleBytes": 0,
-        "useDashForOtfAndCompletedLiveStreams": true,
-        "disableCacheAwareVideoFormatEvaluation": false,
-        "useLiveDvrForDashLiveStreams": true,
-        "cronetResetTimeoutOnRedirects": true,
-        "emitVideoDecoderChangeEvents": false,
-        "onesieVideoBufferLoadTimeoutMs": "0",
-        "onesieVideoBufferReadTimeoutMs": "0",
-        "libvpxEnableGl": false,
-        "enableVp9EncryptedIfThresholdsPass": false,
-        "enableOpus": true,
-        "usePredictedBuffer": false,
-        "maxReadAheadMediaTimeMs": 0,
-        "useMediaTimeCappedLoadControl": false,
-        "allowCacheOverrideToLowerQualitiesWithinRange": 0,
-        "allowDroppingUndecodedFrames": true,
-        "minDurationForPlaybackRestartMs": 5000,
-        "serverProvidedBandwidthHeader": "",
-        "liveOnlyPegStrategy": "LIVE_ON…",
-        "enableRedirectorHostFallback": false,
-        "enableHighlyAvailableFormatFallbackOnPcr": false,
-        "recordTrackRendererTimingEvents": false,
-        "minErrorsForRedirectorHostFallback": 0,
-        "nonHardwareMediaCodecNames": [
-          "OMX.ffm…",
-          "OMX.goo…",
-          "… 8 mor…"
-        ],
-        "enableVp9IfInHardware": true,
-        "enableVp9EncryptedIfInHardware": true,
-        "useOpusMedAsLowQualityAudio": false,
-        "minErrorsForPcrFallback": 0,
-        "useStickyRedirectHttpDataSource": false,
-        "onlyVideoBandwidth": false,
-        "useRedirectorOnNetworkChange": false,
-        "enableMaxReadaheadAbrThreshold": true,
-        "cacheCheckDirectoryWritabilityOnce": false,
-        "predictorType": "PREDICT…",
-        "slidingPercentile": 0.5,
-        "slidingWindowSize": 12,
-        "maxFrameDropIntervalMs": 100,
-        "ignoreLoadTimeoutForFallback": false,
-        "serverBweMultiplier": 1,
-        "drmMaxKeyfetchDelayMs": 0,
-        "maxResolutionForWhiteNoise": 0,
-        "whiteNoiseRenderEffectMode": "RENDER_…",
-        "enableLibvpxHdr": false,
-        "enableCacheAwareStreamSelection": false,
-        "useExoCronetDataSource": true,
-        "whiteNoiseScale": 0,
-        "whiteNoiseOffset": 0,
-        "preventVideoFrameLaggingWithLibvpx": false,
-        "enableMediaCodecHdr": false,
-        "enableMediaCodecSwHdr": false,
-        "liveOnlyWindowChunks": 10,
-        "bearerMinDurationToRetainAfterDiscardMs": [
-          21000,
-          21000,
-          "… 6 mor…"
-        ],
-        "forceWidevineL3": false,
-        "useAverageBitrate": false,
-        "useMedialibAudioTrackRendererForLive": true,
-        "useExoPlayerV2": true,
-        "logMediaRequestEventsToCsi": false,
-        "onesieFixNonZeroStartTimeFormatSelection": false,
-        "liveOnlyReadaheadStepSizeChunks": 1,
-        "liveOnlyBufferHealthHalfLifeSeconds": 60,
-        "liveOnlyMinBufferHealthRatio": 0.75,
-        "liveOnlyMinLatencyToSeekRatio": 3,
-        "manifestlessPartialChunkStrategy": "ANDROID…",
-        "ignoreViewportSizeWhenSticky": false,
-        "enableLibvpxFallback": false,
-        "disableLibvpxLoopFilter": false,
-        "enableVpxMediaView": false,
-        "hdrMinScreenBrightness": 0,
-        "hdrMaxScreenBrightnessThreshold": 0,
-        "onesieDataSourceAboveCacheDataSource": false,
-        "httpNonplayerLoadTimeoutMs": 72000,
-        "numVideoSegmentsPerFetchStrategy": "NUM_SEG…",
-        "maxVideoDurationPerFetchMs": 12000,
-        "maxVideoEstimatedLoadDurationMs": -1,
-        "estimatedServerClockHalfLife": 5,
-        "estimatedServerClockStrictOffset": false,
-        "minReadAheadMediaTimeMs": 0,
-        "readAheadGrowthRate": 0,
-        "useDynamicReadAhead": false,
-        "useYtVodMediaSourceForV2": false,
-        "enableV2Gapless": false,
-        "useLiveHeadTimeMillis": false,
-        "allowTrackSelectionWithUpdatedVideoItagsForExoV2": true,
-        "maxAllowableTimeBeforeMediaTimeUpdateSec": 0,
-        "enableDynamicHdr": false,
-        "v2PerformEarlyStreamSelection": false,
-        "v2UsePlaybackStreamSelectionResult": false,
-        "v2MinTimeBetweenAbrReevaluationMs": 2000,
-        "avoidReusePlaybackAcrossLoadvideos": false,
-        "reportExoPlayerStateOnTransition": false,
-        "manifestlessSequenceMethod": "MANIFES…",
-        "useLiveHeadWindow": false,
-        "enableDynamicHdrInHardware": false,
-        "ultralowAudioQualityBandwidthThresholdBps": 0,
-        "retryLiveNetNocontentWithDelay": true,
-        "ignoreUnneededSeeksToLiveHead": false,
-        "drmMetricsQoeLoggingFraction": 0.01,
-        "liveNetNocontentMaximumErrors": 10,
-        "slidingPercentileScalar": 1,
-        "minAdaptiveVideoQuality": 0,
-        "retryLiveEmptyChunkWithDelay": true,
-        "platypusBackBufferDurationMs": 30000
+        "…": "125 more field(s) truncated"
       },
       "networkProtocolConfig": {
         "useQuic": true
       },
       "androidNetworkStackConfig": {
         "networkStack": "CRONET",
-        "androidMetadataNetworkConfig": {
-          "coalesceRequests": true
-        }
+        "androidMetadataNetworkConfig": "… {1 field(s) truncated}"
       },
       "androidMedialibConfig": {
         "isItag18MainProfile": true,
         "viewportSizeFraction": 0.85
       },
       "variableSpeedConfig": {
-        "availablePlaybackSpeeds": [
-          {
-            "label": {
-              "runs": [
-                {
-                  "text": "0.25x"
-                }
-              ]
-            },
-            "value": 0.25
-          },
-          {
-            "label": {
-              "runs": [
-                {
-                  "text": "0.5x"
-                }
-              ]
-            },
-            "value": 0.5
-          },
-          "… 6 mor…"
-        ],
+        "availablePlaybackSpeeds": "… [3 item(s) truncated]",
         "androidVariableSpeedTimeoutSecs": 0,
         "enableVariableSpeedOnOtf": true
       },
@@ -517,11 +164,7 @@
         "changeCpnOnFatalPlaybackError": true
       },
       "retryConfig": {
-        "retryEligibleErrors": [
-          "fmt.dec…",
-          "android…",
-          "… 4 mor…"
-        ],
+        "retryEligibleErrors": "… [3 item(s) truncated]",
         "retryUnderSameConditionAttempts": 1,
         "retryWithNewSurfaceAttempts": 1,
         "progressiveFallbackOnNonNetworkErrors": true,
@@ -537,65 +180,19 @@
         "cmsPathProbeDelayMs": 0
       },
       "mediaCommonConfig": {
-        "dynamicReadaheadConfig": {
-          "maxReadAheadMediaTimeMs": 120000,
-          "minReadAheadMediaTimeMs": 15000,
-          "readAheadGrowthRateMs": 1000,
-          "readAheadWatermarkMarginRatio": 0,
-          "minReadAheadWatermarkMarginMs": 0,
-          "maxReadAheadWatermarkMarginMs": 0,
-          "shouldIncorporateNetworkActiveState": false
-        },
-        "mediaUstreamerRequestConfig": {
-          "enableVideoPlaybackRequest": true,
-          "videoPlaybackUstreamerConfig": "CvoHCs4…",
-          "videoPlaybackPostEmptyBody": false,
-          "isVideoPlaybackRequestIdempotent": true
-        },
-        "predictedReadaheadConfig": {
-          "minReadaheadMs": 5000,
-          "maxReadaheadMs": 157000
-        },
-        "mediaFetchRetryConfig": {
-          "initialDelayMs": 1000,
-          "backoffFactor": 1.3,
-          "maximumDelayMs": 20000,
-          "jitterFactor": 0.1
-        },
+        "dynamicReadaheadConfig": "… {7 field(s) truncated}",
+        "mediaUstreamerRequestConfig": "… {4 field(s) truncated}",
+        "predictedReadaheadConfig": "… {2 field(s) truncated}",
+        "mediaFetchRetryConfig": "… {4 field(s) truncated}",
         "mediaFetchMaximumServerErrors": 10,
         "mediaFetchMaximumNetworkErrors": -1,
         "mediaFetchMaximumErrors": 10,
-        "serverReadaheadConfig": {
-          "nextRequestPolicy": {
-            "targetAudioReadaheadMs": 120000,
-            "targetVideoReadaheadMs": 120000
-          }
-        },
+        "serverReadaheadConfig": "… {1 field(s) truncated}",
         "useServerDrivenAbr": true,
-        "sabrClientConfig": {
-          "defaultBackOffTimeMs": 0,
-          "enableHostFallback": true,
-          "primaryProbingDelayMs": 5000,
-          "maxFailureAttemptsBeforeFallback": 2
-        },
-        "serverPlaybackStartConfig": {
-          "enable": true,
-          "playbackStartPolicy": {
-            "startMinReadaheadPolicy": [
-              {
-                "minReadaheadMs": 1500
-              }
-            ]
-          }
-        },
+        "sabrClientConfig": "… {4 field(s) truncated}",
+        "serverPlaybackStartConfig": "… {2 field(s) truncated}",
         "usePlatypus": true,
-        "bandwidthEstimationConfig": {
-          "nearestRankConfig": {
-            "slidingWindowSize": 12,
-            "percentile": 0.25,
-            "scalar": 0.91
-          }
-        },
+        "bandwidthEstimationConfig": "… {1 field(s) truncated}",
         "platypusUseEnvoyNetFetch": false,
         "fixLivePlaybackModelDefaultPosition": false
       },

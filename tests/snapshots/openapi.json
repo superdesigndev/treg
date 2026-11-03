@@ -220,6 +220,17 @@
         "title": "AutoTopupIn",
         "type": "object"
       },
+      "Body_auth_social_check_auth_social_check_post": {
+        "properties": {
+          "captcha_token": {
+            "default": "",
+            "title": "Captcha Token",
+            "type": "string"
+          }
+        },
+        "title": "Body_auth_social_check_auth_social_check_post",
+        "type": "object"
+      },
       "BoolIn": {
         "properties": {
           "value": {
@@ -459,6 +470,11 @@
       },
       "EmailVerifyIn": {
         "properties": {
+          "cli_pairing": {
+            "default": false,
+            "title": "Cli Pairing",
+            "type": "boolean"
+          },
           "code": {
             "title": "Code",
             "type": "string"
@@ -915,7 +931,7 @@
       },
       "PriceIn": {
         "additionalProperties": false,
-        "description": "One PATCH, three knobs of the newest live version, none bumps the version: the seller's\nprice, and the two distribution switches (docs/hub-listing-decisions.md). At least one.",
+        "description": "One PATCH, three knobs of the newest live version, none bumps the version: the seller's\nprice, and the two distribution switches. At least one.",
         "properties": {
           "listed": {
             "anyOf": [
@@ -1094,7 +1110,7 @@
       },
       "RunIn": {
         "additionalProperties": false,
-        "description": "A dry run of a folder: the four files plus the inputs. Nothing is stored; every step is\nreal and charged to the maker (HUB-DECISIONS round 4 q10 / round 5 q2: `treg hub run .`).",
+        "description": "A dry run of a folder: the four files plus the inputs. Nothing is stored; every step is\nreal and charged to the maker (`treg hub run .`).",
         "properties": {
           "check": {
             "additionalProperties": true,
@@ -1795,30 +1811,6 @@
           "decision"
         ],
         "title": "UpdateDecisionIn",
-        "type": "object"
-      },
-      "UserIn": {
-        "properties": {
-          "email": {
-            "title": "Email",
-            "type": "string"
-          },
-          "webhook_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Webhook Url"
-          }
-        },
-        "required": [
-          "email"
-        ],
-        "title": "UserIn",
         "type": "object"
       },
       "ValidationError": {
@@ -3467,6 +3459,71 @@
         "summary": "Admin Referrals"
       }
     },
+    "/admin/shadow": {
+      "get": {
+        "description": "The shadow provider report (application.shadow): per capability and served endpoint, how often\neach side answered, how often they agree, the candidate's speed and cost. Counts only.",
+        "operationId": "admin_shadow_admin_shadow_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 30,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Admin Shadow Admin Shadow Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Shadow"
+      }
+    },
     "/admin/share": {
       "get": {
         "description": "Who served each job over the last `minutes` (at most 360). `requests` counts what callers\nasked (direct calls and routed parents, never a routed attempt). `by_provider` credits the\nanswer a caller actually got: a direct call's 2xx that its adapter did not judge a miss\n(`CallRecord.hit` False), and, for a routed call, only the LAST attempt of a parent that\nsucceeded - the attempt whose answer the job returned. An earlier attempt the job moved on\nfrom is not credited, whatever its status: a free provider's body is often streamed without\na `hit` verdict, so its empty 200s would otherwise count. Two reads over an id range.\n\n`teams` counts the same answers per team, so one heavy team cannot stand for the market:\n`total` teams with an answer, `by_provider` teams a provider served, `weighted` each\nprovider's share averaged over teams (every team one vote), and `direct` / `routed` the same\nteam counts for calls that named a provider and for calls treg's job served.",
@@ -4673,6 +4730,56 @@
           }
         },
         "summary": "Auth Revoke Tokens"
+      }
+    },
+    "/auth/social/check": {
+      "get": {
+        "description": "A provider proved an address no verified user holds yet: run the browser check, then post\nits token to finish signing in. Without a waiting login (Back after signing in) go on to /app.\nA check with no token is offered once more, then the sign-in finishes without credit; without\nscript the button finishes it at once.",
+        "operationId": "auth_social_check_page_auth_social_check_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Auth Social Check Page"
+      },
+      "post": {
+        "operationId": "auth_social_check_auth_social_check_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_auth_social_check_auth_social_check_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Auth Social Check"
       }
     },
     "/auth/sso/callback": {
@@ -6168,7 +6275,7 @@
     },
     "/calls/{call_id}/result": {
       "get": {
-        "description": "What one of this team's calls asked and what came back — the archive's copy.\n\n`call_id` is either the audit row's numeric `id` or the `X-Treg-Call-Id` the call returned (a\n32-hex call ref; a short all-digit value is the row id).\n\nOnly a METERED PLATFORM 2xx call has one: those answers are recorded by the archive (see\ndocs/context/architecture/archive.md), and the audit row keeps the identities of the exact\nbytes the caller received. Own-key and own-tool calls are relayed without being stored, a\nfailed call never is, and the redacted failure evidence stays admin-only — `stored` is false\nwith a `note` saying which. The request shape is the vendor-facing one BEFORE credential\ninjection, so no secret can appear in it.",
+        "description": "What one of this team's calls asked and what came back — the archive's copy.\n\n`call_id` is either the audit row's numeric `id` or the `X-Treg-Call-Id` the call returned (a\n32-hex call ref; a short all-digit value is the row id).\n\nA 2xx answer the archive recorded has one (see docs/context/architecture/archive.md): a metered\nplatform call, or an own-key call whose answer fit the size cap while recording was on. The\naudit row keeps the identities of the exact bytes the caller received. Own-tool calls are\nrelayed without being stored, a failed call never is, and the redacted failure evidence stays admin-only — `stored` is false\nwith a `note` saying which. A routed call's answer is its children's: its row lists them in\n`children`, each readable here by its call ref. The request shape is the vendor-facing one\nBEFORE credential injection, so no secret can appear in it.",
         "operationId": "get_call_result_calls__call_id__result_get",
         "parameters": [
           {
@@ -7558,6 +7665,69 @@
         "summary": "Run Health"
       }
     },
+    "/home": {
+      "get": {
+        "description": "Bare `treg` in one round trip. A member (an agent key included) answers in full; a signed-in\nuser whose team does not resolve (none created or chosen yet, or one they have left) answers\nwith `team: null`; every other refusal (an invalid token, a suspended account or team, SSO) is\nrefused as everywhere else, so the CLI can say which.",
+        "operationId": "home_home_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Home Home Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Home"
+      }
+    },
     "/hub/run": {
       "post": {
         "operationId": "run_hub_folder_hub_run_post",
@@ -7628,7 +7798,7 @@
     },
     "/hub/runs/{run_id}": {
       "get": {
-        "description": "One finished run. The CALLER's team sees what it paid, the inputs, the trace and the\noutput. The MAKER's team sees the run of its tool: inputs (secret inputs masked), the trace,\nthe script's log lines and the failure's error body, never the caller's identity or the\noutput (docs/HUB-DECISIONS.md round 2 q7, round 5 q8, q10). Anyone else: 404.",
+        "description": "One finished run. The CALLER's team sees what it paid, the inputs, the trace and the\noutput. The MAKER's team sees the run of its tool: inputs (secret inputs masked), the trace,\nthe script's log lines and the failure's error body, never the caller's identity or the\noutput. Anyone else: 404.",
         "operationId": "hub_run_hub_runs__run_id__get",
         "parameters": [
           {
@@ -8141,7 +8311,7 @@
     },
     "/hub/tools/{tool_id}/earnings": {
       "get": {
-        "description": "The seller's view (docs/HUB-DECISIONS.md round 3 q10, round 5 q9): per day, runs,\nsuccesses, failures and what was earned, for one of the team's tools. Counts and amounts only;\nnever who called. `format=csv` for a download.",
+        "description": "The seller's view: per day, runs,\nsuccesses, failures and what was earned, for one of the team's tools. Counts and amounts only;\nnever who called. `format=csv` for a download.",
         "operationId": "hub_tool_earnings_hub_tools__tool_id__earnings_get",
         "parameters": [
           {
@@ -9645,7 +9815,7 @@
     },
     "/orgs/{org_id}/agents/observed": {
       "get": {
-        "description": "The agents ALREADY running under members' own tokens, discovered from traffic: one row per\n(member, runtime) seen in the last 30 days, e.g. \"sam@… / claude-code\". The zero-setup half\nof the agents story — nobody mints anything, the roster fills itself from `CallRecord.client`\n(and RunRecord). Self-reported attribution, not authentication, which is why this view only\ninforms; scoping one for real = mint it a token (\"Scope this agent\" in the dashboard).\n\nMachine identities are excluded — their calls are already attributed to themselves. So is a\nplain terminal (`client` in ('', 'cli')): a roster that lists every human twice teaches nothing.",
+        "description": "The agents ALREADY running under members' own tokens, discovered from traffic: one row per\n(member, runtime) seen in the last 30 days, e.g. \"sam@… / claude-code\". The zero-setup half\nof the agents story — nobody mints anything, the roster fills itself from `CallRecord.client`\n(and RunRecord). Self-reported attribution, not authentication, which is why this view only\ninforms; scoping one for real = mint it a token (\"Scope this agent\" in the dashboard).\n\nMachine identities are excluded — their calls are already attributed to themselves. So is a\nplain terminal (`client` in ('', 'cli')): a roster that lists every human twice teaches nothing.\n\nCalls come from the daily usage rollup (`application/call_usage.py`), so the window starts at a\nUTC midnight; the roster is empty while the rollup's first backfill runs, and reads the audit\ntable itself only where the rollup worker has never run.",
         "operationId": "list_observed_agents_orgs__org_id__agents_observed_get",
         "parameters": [
           {
@@ -14920,30 +15090,6 @@
         "summary": "Import Skill Folder"
       }
     },
-    "/skills/samples": {
-      "get": {
-        "description": "The hosted sample skills the landing offers — each with its files (SKILL.md/treg.json/.secret)\nand the prompt to try. Public: the landing renders these as file packages.",
-        "operationId": "skill_samples_skills_samples_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "additionalProperties": true,
-                    "type": "object"
-                  },
-                  "title": "Response Skill Samples Skills Samples Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Skill Samples"
-      }
-    },
     "/tools": {
       "get": {
         "operationId": "list_tools_tools_get",
@@ -15526,46 +15672,6 @@
           }
         },
         "summary": "My Usage"
-      }
-    },
-    "/users": {
-      "post": {
-        "operationId": "register_user_users_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UserIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Register User Users Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Register User"
       }
     }
   }

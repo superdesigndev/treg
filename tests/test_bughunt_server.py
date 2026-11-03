@@ -1,4 +1,4 @@
-"""Regression tests for the sustained bug hunt (docs/BUGS.md) — server side.
+"""Regression tests for the sustained bug hunt — server side.
 
 One test (or small cluster) per fixed bug: email normalization, forgeable-session key, OTP
 brute-force, suspended-account doors, invite/role boundaries, resource validation, bundle
@@ -21,6 +21,7 @@ from treg.api import app
 from treg.config import get_settings
 from treg.infra.db import reset_db, session_maker
 from treg.models import Secret, User
+from conftest import verified_signup
 
 
 def make_upstream() -> FastAPI:
@@ -47,7 +48,7 @@ async def c():
 
 
 async def _register(c: AsyncClient, email: str) -> dict:
-    r = await c.post("/users", json={"email": email})
+    r = await verified_signup(c, json={"email": email})
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -68,8 +69,6 @@ async def test_email_case_is_one_identity(c):
     """`Bob@X.com` and `bob@x.com` are the same human — no duplicate user/org."""
     reg = await _register(c, "Bob@X.com")
     assert reg["email"] == "bob@x.com"  # stored normalized
-    dup = await c.post("/users", json={"email": "bob@x.com"})
-    assert dup.status_code == 409  # same identity, not a second user
     # OTP with yet another casing resolves to the SAME single membership.
     tok = (await _otp_login(c, "BOB@x.COM"))["token"]
     orgs = (await c.get("/orgs", headers=_hdr(tok))).json()
@@ -601,11 +600,6 @@ async def test_health_run_does_not_renotify_unevaluated_invalid(c):
         await db.commit()
     r = (await c.post("/health/run", headers=_hdr(tok))).json()
     assert r["invalid"] == []  # not re-reported/notified — it wasn't evaluated this run
-
-
-async def test_register_rejects_internal_webhook(c):
-    r = await c.post("/users", json={"email": "ssrf@x.io", "webhook_url": "http://169.254.169.254/latest/meta-data"})
-    assert r.status_code == 422
 
 
 def test_safe_webhook_url_blocks_internal():

@@ -19,6 +19,10 @@
     {
       "exception": "sqlalchemy.exc.TimeoutError",
       "handler": "treg.api._pool_saturated"
+    },
+    {
+      "exception": "treg.infra.db.ReportBusy",
+      "handler": "treg.bootstrap_handlers._report_busy"
     }
   ],
   "middleware": [

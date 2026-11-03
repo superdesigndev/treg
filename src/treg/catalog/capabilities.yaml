@@ -124,6 +124,7 @@ platforms:
   yandex: {label: "Yandex Search Results (SERP)", category: "SEO/AEO", summary: "Organic results and rankings from Yandex."}
   duckduckgo: {label: "DuckDuckGo Search Results (SERP)", category: "SEO/AEO", summary: "Organic results from DuckDuckGo."}
   yelp: {label: "Yelp", category: "Reviews & Apps", summary: "Business listings and reviews from Yelp."}
+  places: {label: "Places (local search)", category: "Reviews & Apps", summary: "Restaurants, cafes and other local places: search, details and review-based scores."}
   # --- Sites served by ready-made scrapers (Crawl4AI recipes) ----------------------------------
   airbnb: {label: "Airbnb", category: "Reviews & Apps", summary: "Listings, prices and ratings from Airbnb."}
   booking: {label: "Booking.com", category: "Reviews & Apps", summary: "Hotels, prices and ratings from Booking.com."}
@@ -364,6 +365,8 @@ capabilities:
   companies.jobs: "A company's open job postings"
   companies.domain.find: "Find a company's website domain from its name"
   companies.jobs.search: "Search indexed job listings across companies"
+  companies.jobs.search.count: "Count job postings that match a search"
+  companies.jobs.detail: "Get one job posting by ID"
   companies.news: "Recent news & signals about a company"
   companies.reviews: "Read employee reviews of a company"
   google-play.search.apps: "Search apps by keyword"

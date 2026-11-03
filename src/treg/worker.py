@@ -9,7 +9,9 @@
     treg-worker catalog requeue-async-stats [--apply]   # preview or queue one async-window repair
     treg-worker catalog repair-status --manifest <path>  # check the saved applied target list
     treg-worker spend rollup [--max-rows 50000]      # fold new ledger settles into per-key daily spend
+    treg-worker usage rollup [--max-rows 500000]     # fold new audit rows into per-member daily call counts
     treg-worker showcase activity                    # add new calls to the /showcase activity rows (hourly)
+    treg-worker rankings refresh                     # rebuild the public /rankings boards from the day stats (hourly)
     treg-worker media sweep                          # delete public pictures nothing uses any more (daily)
     treg-worker jev xboost [--posts 60] [--min-likes 150]   # the /jev launch-radar demo: X posts <24h -> jev
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
@@ -24,7 +26,7 @@ outbound calls to third parties, so they run as Render cron jobs with the server
 dataplane lifespan work (refactor plan §2.2). The worker never originates a money movement. It may
 complete a hold opened by the request path, settling or releasing it with full call and org attribution.
 
-The two analytics commands exist so that no web process walks `callrecord` next to the money path:
+The audit-table analytics commands exist so that no web process walks `callrecord` next to the money path:
 each is a bounded incremental pass over the audit table that a cron repeats, and the request path
 reads only what they published.
 """
@@ -262,7 +264,7 @@ async def _asynctasks_settle(args) -> int:
 
 
 async def _hub_check(args) -> int:
-    """The scheduled health check (docs/HUB-DECISIONS.md round 2 q8; architecture/hub.md): every
+    """The scheduled health check (docs/context/architecture/hub.md): every
     live tool's newest version runs its check.json once as its maker. The verdict lands on the
     row; health is derived from the last three runs. Cron it every 6 hours."""
     import httpx
@@ -321,6 +323,27 @@ async def _arena_insights(args) -> int:
         result["web_arena"] = await web_arena_publications.refresh_live_if_due()
     print(json.dumps(result, sort_keys=True))
     return 1 if result["failed"] else 0
+
+
+async def _shadow_collect(args) -> int:
+    from .infra.db import verify_db
+    from .application import shadow
+    from .bootstrap import archive_object_store
+
+    async with archive_object_store():
+        await verify_db()
+        result = await shadow.collect(max_seconds=args.max_seconds)
+    print(shadow.dumps(result))
+    return 0
+
+
+async def _shadow_report(args) -> int:
+    from .infra.db import verify_db
+    from .application import shadow
+
+    await verify_db()
+    print(shadow.dumps(await shadow.report(days=args.days)))
+    return 0
 
 
 async def _web_arena_totals(args) -> int:
@@ -390,6 +413,17 @@ async def _showcase_activity(args) -> int:
     return 0
 
 
+async def _rankings_refresh(args) -> int:
+    from .infra.db import verify_db
+    from .application.rankings import refresh
+    from .bootstrap import configure_provider_labels
+
+    configure_provider_labels()   # the boards print display names ("Crawl4AI"), as the web app does
+    await verify_db()
+    print(json.dumps(await refresh(), sort_keys=True))
+    return 0
+
+
 async def _media_sweep(args) -> int:
     from .infra.db import verify_db
     from .application.images import sweep
@@ -406,6 +440,15 @@ async def _spend_rollup(args) -> int:
     await verify_db()
     result = await refresh(max_rows=args.max_rows, max_recount_seconds=args.max_recount_seconds)
     print(json.dumps(result, sort_keys=True))
+    return 0
+
+
+async def _usage_rollup(args) -> int:
+    from .infra.db import verify_db
+    from .application.call_usage_rollup import refresh
+
+    await verify_db()
+    print(json.dumps(await refresh(max_rows=args.max_rows), sort_keys=True))
     return 0
 
 
@@ -592,6 +635,10 @@ async def _run_command(args) -> int:
             finally:
                 try:
                     emit_snapshot(role="worker", shutdown=True)
+                    from .domain.capacity import rate_observe
+                    from .infra import provider_rate
+                    rate_observe.flush()
+                    await provider_rate.drain()
                 except Exception:  # noqa: BLE001 - preserve the command's result/failure
                     pass
                 finally:
@@ -647,6 +694,14 @@ def main(argv: list[str] | None = None) -> int:
     insights.add_argument("--max-seconds", type=float, default=110.0,
                           help="stop after this long even with backlog left; the next run resumes")
     insights.set_defaults(fn=_arena_insights)
+    sh = sub.add_parser("shadow", help="the shadow provider run (off unless shadow_provider is set)")
+    shsub = sh.add_subparsers(dest="cmd", required=True)
+    shc = shsub.add_parser("collect", help="pair new served calls with the shadow provider's answers")
+    shc.add_argument("--max-seconds", type=float, default=110.0)
+    shc.set_defaults(fn=_shadow_collect)
+    shr = shsub.add_parser("report", help="print the comparison report as JSON")
+    shr.add_argument("--days", type=int, default=1)
+    shr.set_defaults(fn=_shadow_report)
     web_arena = sub.add_parser("web-arena", help="Web Arena saved leaderboard totals")
     websub = web_arena.add_subparsers(dest="cmd", required=True)
     totals = websub.add_parser("totals", help="publish content-free Web provider totals")
@@ -679,6 +734,10 @@ def main(argv: list[str] | None = None) -> int:
     showcasesub = showcase.add_subparsers(dest="cmd", required=True)
     activity = showcasesub.add_parser("activity", help="add each approved app's new calls to its weekly activity rows")
     activity.set_defaults(fn=_showcase_activity)
+    ranks = sub.add_parser("rankings", help="the public /rankings page's read model")
+    rankssub = ranks.add_subparsers(dest="cmd", required=True)
+    rrefresh = rankssub.add_parser("refresh", help="rebuild every board from the per-day endpoint stats and save it")
+    rrefresh.set_defaults(fn=_rankings_refresh)
     media = sub.add_parser("media", help="picture files in the public media bucket")
     mediasub = media.add_subparsers(dest="cmd", required=True)
     media_sweep = mediasub.add_parser("sweep", help="delete public pictures no team, person or app uses any more")
@@ -691,6 +750,12 @@ def main(argv: list[str] | None = None) -> int:
     rollup.add_argument("--max-recount-seconds", type=float, default=60.0,
                         help="time one run spends on the daily recount; the next run resumes it")
     rollup.set_defaults(fn=_spend_rollup)
+    usage = sub.add_parser("usage", help="call-count read models derived from the audit table")
+    usagesub = usage.add_subparsers(dest="cmd", required=True)
+    urollup = usagesub.add_parser("rollup", help="fold new audit rows into per-member, per-tool, per-day call counts")
+    urollup.add_argument("--max-rows", type=_positive_int, default=500_000,
+                         help="audit rows to fold in one run; the next run resumes from the cursor")
+    urollup.set_defaults(fn=_usage_rollup)
     jev = sub.add_parser("jev", help="the /jev landing-page demos")
     jevsub = jev.add_subparsers(dest="cmd", required=True)
     xb = jevsub.add_parser("xboost", help="launch posts on X from the last 24h -> forensics -> jev; stores the run for /jev")

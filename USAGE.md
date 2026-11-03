@@ -52,7 +52,7 @@ present a per-org token directly.
 | `treg login` | `--email EMAIL` | email one-time-code sign-in (register-or-login); prompts for the code. A server that requires a browser check finishes the sign-in in the browser instead |
 | `treg login` | `--token TOKEN` | agents/CI: use a per-org token directly |
 | `treg logout` | — | clear your stored credentials |
-| `treg onboard` | `--mode guided\|quick` · `--name N` · `--yes` · `--reset` | colourful guided first-run — pick **guided build** (you create the team + invite a teammate, step by step) or **quick demo** (we seed a full demo team + tool + activity), ending on a no-key call. Offered `[Y/n]` after your first login; `--reset` removes demo teammates |
+| `treg onboard` | `--path catalog\|setup\|access\|demo` · `--source local\|global\|both` · `--yes` · `--reset` | guided first-run: **catalog** (find a tool and call it with no key), **setup** (share this project's or your global agent skills and keys), **access** (pull your team's shared skills, then a test call) or **demo**; asked when `--path` is omitted. Offered `[Y/n]` after your first login; `--reset` removes demo teams and example teammates |
 
 ```bash
 treg config --base-url https://treg.to
@@ -268,7 +268,7 @@ returns `{output, raw, _treg: {served_by, tried, charged_micro}}` plus `X-Treg-S
 vendor 4xx is your request's fault and stops. A **miss** tries the next provider too (the waterfall,
 on by default), cheapest first, within `X-Treg-Route-Max-Cost` (default $1 per call); every
 attempt settles at its real price and misses on per-success providers are free. `X-Treg-Route-Waterfall: 0`
-stops at the first miss. `X-Treg-Route-Prefer` / `X-Treg-Route-Exclude` name providers. A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` (and `_treg.ignored_filters`); `X-Treg-Route-Strict-Filters: 1` refuses such a call with a 422 (unbilled) instead. Vendor endpoints are still relayed verbatim; only `treg.*` rows model an API.
+stops at the first miss. `X-Treg-Route-Prefer` / `X-Treg-Route-Exclude` name providers. A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` (and `_treg.ignored_filters`); `X-Treg-Route-Strict-Filters: 1` refuses such a call with a 422 (unbilled) instead. When you sent a `domain` and the hit has an email, `X-Treg-Domain-Match` / `_treg.domain_match` says whether the mailbox domain matches — a LinkedIn-only provider often returns a former employer; the hit is still billed and the address is not altered. Vendor endpoints are still relayed verbatim; only `treg.*` rows model an API.
 
 `X-Treg-Route-Verify: true` on `treg.people.email.find` checks a hit with `treg.people.email.verify`
 in the same call: your own verifier key first, then BounceBan, then the usual order. The check is
@@ -277,6 +277,26 @@ find plus check. The answer adds `_treg.verification: {verdict, checked, served_
 (`valid` / `invalid` / `catch_all` / `risky` / `unknown`). `checked: false` and a `reason`
 (`no_hit`, `over_cost_limit`, `checker_failed`, `no_checker`, `not_allowed`, `spend_limit`) mean
 no check ran and it cost nothing. A miss is never checked: its reason is `no_hit`. Other routed tools refuse the header (422, unbilled).
+
+`X-Treg-Route-Confirm: true` on `treg.people.email.find` counts a hit only once a second provider
+returns the same address. The waterfall goes on after the first hit, each attempt at its own price
+inside `X-Treg-Route-Max-Cost`, so a confirmed answer usually costs two finds. The first address is
+returned either way, with `_treg.confirmation: {field, confirmed, confirmed_by}` and
+`X-Treg-Route-Confirmed: true|false`; when nobody agrees it comes back unconfirmed, not as a miss.
+Fewer wrong addresses get through, at a higher price and a slower answer. It needs the waterfall:
+with `X-Treg-Route-Waterfall: 0`, or on a routed tool without a confirm field, the header is
+refused (422, unbilled). Agreement is not delivery: combine it with `X-Treg-Route-Verify` to also
+check the mailbox.
+
+`X-Treg-Route-Decisive: true` on `treg.people.email.verify` counts an answer only when it decides:
+`valid` or `invalid`. An `unknown`, `catch_all` or `risky` verdict, or a failed attempt, sends the
+check on to at most two more providers, each at its own price inside `X-Treg-Route-Max-Cost`; those
+are asked in order of measured verdict quality where the deployment has it, in price order where it
+does not. A catch-all domain is usually where it pays: most cheap verifiers decline it. The answer
+carries `_treg.decision: {decided, decided_by, ordered_by}` and `X-Treg-Route-Decided: true|false`;
+when nobody decides, the first answer comes back as it was. Your own `X-Treg-Route-Prefer` order is
+kept. With `X-Treg-Route-Waterfall: 0`, or on a routed tool without deciding verdict words, the
+header is refused (422, unbilled).
 
 On `treg.people.phone.find` the same header checks the line with HLR Lookup's live network lookup
 (`hlrlookup.people.phone.verify`): your own HLR key first, `usa_status` only for `+1` numbers, no

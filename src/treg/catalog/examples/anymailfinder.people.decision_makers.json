@@ -1,0 +1,20 @@
+{
+  "credits_charged": 2,
+  "decision_maker_category": "ceo",
+  "email": "person@example.com",
+  "email_status": "valid",
+  "input": {
+    "domain": "example.com",
+    "decision_maker_category": [
+      "ceo"
+    ]
+  },
+  "mx_domain": "example.com",
+  "mx_host": "mail.example.com",
+  "person_first_name": "Example",
+  "person_full_name": "Example Person",
+  "person_job_title": "Chief Executive Officer",
+  "person_last_name": "Person",
+  "person_linkedin_url": "https://www.linkedin.com/in/example-person/",
+  "valid_email": "person@example.com"
+}

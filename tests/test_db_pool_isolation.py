@@ -54,6 +54,7 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     # Snapshot read on the request path; the collector runs in the `treg-worker` process (see
     # `worker.py` below), where the API pool is the only one in use.
     "application/arena_insights.py": {API},
+    "application/shadow.py": {API},
     "application/arena_verification_insights.py": {API},  # explicit aggregate publication, no worker
 
     # Synchronous intake, and the catalog's five-minute verdict fold; admin reads use get_admin_session.
@@ -81,6 +82,10 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/catalog_stats.py": {API},
     # Runs only inside `treg-worker spend rollup`; same reasoning as `worker.py`.
     "application/key_spend_rollup.py": {API},
+    # Runs only inside `treg-worker usage rollup`; same reasoning as `worker.py`.
+    "application/call_usage_rollup.py": {API},
+    # `refresh` runs only inside `treg-worker rankings refresh`; the page reads one saved row.
+    "application/rankings.py": {API},
     # Short reads and single writes per request, each closed before any picture storage I/O; the
     # activity fold runs only inside `treg-worker showcase activity`, same reasoning as `worker.py`.
     "application/showcase.py": {API},
@@ -200,6 +205,7 @@ BACKGROUND_SITES = {
     "archive.py:_touch_write": "archive._store/_touch",
     "archive.py:_ignored_matches": "archive._store/_touch",
     "archive.py:_read_change_body": "archive._store/_touch",
+    "archive.py:flush_stats": "archive._store/_touch",
     "archive_bodies.py:_db_fallback": "archive._store/_touch",
     "archive.py:prune_once": "archive.prune_worker",
     "archive.py:refresh_once": "archive.refresh_worker",

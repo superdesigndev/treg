@@ -82,50 +82,13 @@
             "profileThumb": "",
             "title": "zoedang"
           },
-          {
-            "coverLarger": "",
-            "coverMedium": "",
-            "coverThumb": "",
-            "desc": "",
-            "id": "3691206…",
-            "profileLarger": "",
-            "profileMedium": "",
-            "profileThumb": "",
-            "title": "kimberl…"
-          },
-          "… 3 mor…"
+          "… 2 more item(s) truncated"
         ],
         "collected": false,
         "contents": [
           {
             "desc": "The bes…",
-            "textExtra": [
-              {
-                "awemeId": "",
-                "end": 40,
-                "hashtagName": "",
-                "isCommerce": false,
-                "secUid": "MS4wLjA…",
-                "start": 31,
-                "subType": 0,
-                "type": 0,
-                "userId": "6674116…",
-                "userUniqueId": "zoedang…"
-              },
-              {
-                "awemeId": "",
-                "end": 54,
-                "hashtagName": "",
-                "isCommerce": false,
-                "secUid": "MS4wLjA…",
-                "start": 41,
-                "subType": 0,
-                "type": 0,
-                "userId": "7441393…",
-                "userUniqueId": "kimberl…"
-              },
-              "… 5 mor…"
-            ]
+            "textExtra": "… [3 item(s) truncated]"
           }
         ],
         "createTime": 1771014494,
@@ -164,23 +127,7 @@
           "shoot_duration": 60,
           "title": "La Mamá…",
           "tt2dsp": {
-            "tt_to_dsp_song_infos": [
-              {
-                "meta_song_id": "7240110…",
-                "platform": 1,
-                "song_id": "1690523…",
-                "token": {
-                  "apple_music_token": {
-                    "developer_token": "eyJhbGc…"
-                  }
-                }
-              },
-              {
-                "meta_song_id": "7240110…",
-                "platform": 3,
-                "song_id": "2BxnnDE…"
-              }
-            ]
+            "tt_to_dsp_song_infos": "… [2 item(s) truncated]"
           }
         },
         "officalItem": false,
@@ -226,8 +173,7 @@
         "stitchEnabled": true,
         "suggestedWords": [
           "kimberl…",
-          "flighth…",
-          "… 8 mor…"
+          "… 2 more item(s) truncated"
         ],
         "textExtra": [
           {
@@ -242,19 +188,7 @@
             "userId": "6674116…",
             "userUniqueId": "zoedang…"
           },
-          {
-            "awemeId": "",
-            "end": 54,
-            "hashtagName": "",
-            "isCommerce": false,
-            "secUid": "MS4wLjA…",
-            "start": 41,
-            "subType": 0,
-            "type": 0,
-            "userId": "7441393…",
-            "userUniqueId": "kimberl…"
-          },
-          "… 5 mor…"
+          "… 2 more item(s) truncated"
         ],
         "textLanguage": "en",
         "textTranslatable": true,
@@ -266,98 +200,21 @@
             "Height": 1280,
             "Uri": "v12044g…",
             "UrlKey": "v12044g…",
-            "UrlList": [
-              "https:/…",
-              "https:/…",
-              "… 1 mor…"
-            ],
+            "UrlList": "… [3 item(s) truncated]",
             "Width": 720
           },
           "VQScore": "73.61",
           "bitrate": 1254182,
           "bitrateInfo": [
-            {
-              "Bitrate": 1254182,
-              "BitrateFPS": 23,
-              "CodecType": "h264",
-              "Format": "mp4",
-              "GearName": "normal_…",
-              "MVMAF": "{\"v2.0\"…",
-              "PlayAddr": {
-                "DataSize": 3610947,
-                "FileCs": "c:0-155…",
-                "FileHash": "bb41414…",
-                "Height": 1280,
-                "Uri": "v12044g…",
-                "UrlKey": "v12044g…",
-                "UrlList": [
-                  "https:/…",
-                  "https:/…",
-                  "… 1 mor…"
-                ],
-                "Width": 720
-              },
-              "QualityType": 10,
-              "VideoExtra": "{\"PktOf…"
-            },
-            {
-              "Bitrate": 1214919,
-              "BitrateFPS": 23,
-              "CodecType": "h265_hv…",
-              "Format": "mp4",
-              "GearName": "adapt_l…",
-              "MVMAF": "{\"v2.0\"…",
-              "PlayAddr": {
-                "DataSize": 3497906,
-                "FileCs": "c:0-157…",
-                "FileHash": "72d071c…",
-                "Height": 1920,
-                "Uri": "v12044g…",
-                "UrlKey": "v12044g…",
-                "UrlList": [
-                  "https:/…",
-                  "https:/…",
-                  "… 1 mor…"
-                ],
-                "Width": 1080
-              },
-              "QualityType": 2,
-              "VideoExtra": "{\"PktOf…"
-            },
-            "… 3 mor…"
+            "… {9 field(s) truncated}",
+            "… 2 more item(s) truncated"
           ],
           "claInfo": {
-            "captionInfos": [
-              {
-                "captionFormat": "webvtt",
-                "claSubtitleID": "7606449…",
-                "expire": "1785383…",
-                "isAutoGen": true,
-                "isOriginalCaption": true,
-                "language": "eng-US",
-                "languageCode": "",
-                "languageID": "2",
-                "subID": "1204417…",
-                "subtitleType": "1",
-                "translationType": "0",
-                "url": "https:/…",
-                "urlList": [
-                  "https:/…",
-                  "https:/…",
-                  "… 1 mor…"
-                ],
-                "variant": "big_cap…"
-              }
-            ],
+            "captionInfos": "… [1 item(s) truncated]",
             "captionsType": 1,
             "enableAutoCaption": true,
             "hasOriginalAudio": true,
-            "originalLanguageInfo": {
-              "canTranslateRealTimeNoCheck": true,
-              "language": "eng-US",
-              "languageCode": "",
-              "languageID": "2"
-            }
+            "originalLanguageInfo": "… {4 field(s) truncated}"
           },
           "codecType": "h264",
           "cover": "https:/…",
@@ -375,16 +232,7 @@
           "ratio": "720p",
           "size": 3610947,
           "subtitleInfos": [
-            {
-              "Format": "webvtt",
-              "LanguageCodeName": "eng-US",
-              "LanguageID": "2",
-              "Size": 258,
-              "Source": "ASR",
-              "Url": "https:/…",
-              "UrlExpire": 1785383729,
-              "Version": "1:big_c…"
-            }
+            "… {8 field(s) truncated}"
           ],
           "videoID": "v12044g…",
           "videoQuality": "normal",

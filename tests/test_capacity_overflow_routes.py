@@ -1,4 +1,4 @@
-"""Step B′ of docs/PROVIDER-CAPACITY-PLAN.md — overflow routes, the signature table and the
+"""Provider capacity: overflow routes, the signature table and the
 aggregator envelopes. Fixtures are recorded aggregator bodies (PII hashed) from the 2026-08-26
 mapping run. No call-path involvement."""
 
@@ -349,6 +349,7 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 # Platform providers whose out-of-credit answer nobody has recorded in `_TABLE` yet. An acknowledged
 # gap, not a claim the vendor never runs dry: their 4xx trips `unrecorded` instead.
 _UNRECORDED_SIGNATURE = {
+    "dropcontact",  # Growth credits remain; no empty-balance error body was forced
     "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
     "apify", "aviato", "branddev", "brightdata", "coingecko", "coresignal", "crustdata", "dataforseo",
     "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi", "marketstack",
@@ -363,6 +364,7 @@ _UNRECORDED_SIGNATURE = {
     "olostep",  # funded credit balance remains; documented 402 was not forced
     "firecrawl",  # credit balance remains; documented 402 was not deliberately forced
     "search1api",  # funded credits remain; documented generic 402 was not deliberately forced
+    "bravesearch",  # prepaid credits remain; no empty-credit response was deliberately forced
     "linkup",  # 429 means either exhausted credit or excess concurrency; balance was not exhausted
     "scrapegraphai",  # trial credits remain; no provider-specific empty-balance body was forced
     "scrubby",  # funded account not exhausted; no provider-specific empty-balance body recorded
@@ -376,6 +378,7 @@ _UNRECORDED_SIGNATURE = {
     # Bare 402 is already the generic balance signal; the real empty-Credits body was not forced.
     "financialdatasets",
     "fetchinio",  # funded credits remain; documented generic 402 was not deliberately forced
+    "orbisearch",  # funded credits remain; documented 403 insufficient-credits body was not forced
     "fishaudio",  # shared-key serving stays disabled until the funded-account signatures are verified
     "minimax", "oceanio", "openrouter", "replicate", "scrapecreators", "seranking",
     "google-ai",  # postpaid Cloud project: 429 RESOURCE_EXHAUSTED is a tier rate/spend cap, not a wallet
@@ -393,6 +396,7 @@ _UNRECORDED_SIGNATURE = {
     "sixtyfour",  # credits remain; documented 402 insufficient credit was not forced
     "blitzapi",  # monthly records remain; an exhausted-key response was not forced
     "enrichlayer",  # PAYG auto top-up remains funded; the docs name 403 but not its response body
+    "theirstack",  # funded API credits remain; the documented 402 body was not observed
 
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "twelvedata",
 }

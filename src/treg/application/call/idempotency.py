@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 IDEMPOTENCY_WINDOW_S = 24 * 3600   # retries happen in seconds; a day is generous and easy to reason about
 IDEMPOTENCY_HEADER = "idempotency-key"
+IDEMPOTENCY_SWEEP_BATCH = 100  # expired labels one claim reclaims; the rest go with later calls
 # A pending claim is a LEASE owned by one call (`call_ref`). The owner renews it every
 # IDEMPOTENCY_LEASE_RENEW_S while it runs (`_hold_claim_lease`), so `created_at` older than
 # IDEMPOTENCY_STALE_PENDING_S means the owner stopped: its process died, or the bookkeeping that
@@ -318,11 +319,16 @@ async def _claim_idempotent(key: str, fingerprint: str, rest: str, caller: Calle
     # paid by the caller who benefits from it, and a caller who never calls again leaves rows that
     # can no longer answer anything, because a replay checks the window before it serves.
     #
-    # Freeing the label matters as much as reclaiming the space: without this, reusing a label a day
-    # later would hit the old row's unique constraint and be refused rather than starting fresh.
-    await db.execute(delete(IdempotentCall).where(
+    # The label being reused is freed by `_replay_idempotent`, which deletes that one expired row
+    # before this runs; this sweep reclaims the caller's OTHER expired labels. It deletes only rows
+    # it can lock (SKIP LOCKED, bounded): a concurrent batch from one member would otherwise queue
+    # every request on the same expired rows. A row skipped is one a concurrent request is deleting
+    # or finishing; the next call sweeps whatever is left.
+    expired = (select(IdempotentCall.id).where(
         IdempotentCall.membership_id == caller.membership.id,
-        IdempotentCall.expires_at < datetime.now(timezone.utc).replace(tzinfo=None)))
+        IdempotentCall.expires_at < datetime.now(timezone.utc).replace(tzinfo=None))
+        .limit(IDEMPOTENCY_SWEEP_BATCH).with_for_update(skip_locked=True))
+    await db.execute(delete(IdempotentCall).where(IdempotentCall.id.in_(expired)))
 
     row = IdempotentCall(
         org_id=caller.org_id, membership_id=caller.membership.id, key=key, call_ref=call_ref,
@@ -353,16 +359,26 @@ def _too_large_note(key: str, call_ref: str, charged_micro: int, size: int) -> t
     return json.dumps({"detail": detail}, separators=(",", ":")).encode(), 410, "application/json"
 
 
+def _not_retained_note(call_ref: str, charged_micro: int) -> tuple[bytes, int, str]:
+    """Keep the claim and charge when an upstream response cannot be retained."""
+    detail = {"error": "idempotency_response_not_retained", "call_id": call_ref,
+              "charged_micro": charged_micro,
+              "message": "the provider response was not retained for replay. Send a new key to call again."}
+    return json.dumps({"detail": detail}, separators=(",", ":")).encode(), 410, "application/json"
+
+
 async def _store_idempotent(key: str, caller: Caller, *, status_code: int, body: bytes,
                             media_type: str, charged_micro: int, metered: bool,
-                            call_ref: str, terminal: bool = False) -> None:
+                            call_ref: str, terminal: bool = False,
+                            response_retention_forbidden: bool = False) -> None:
     """Remember a metered success or an explicitly terminal, partially charged routed failure.
 
-    Metered only. A team calling on its OWN key is billed by the provider, not by us, so there is
-    nothing to protect and no reason for treg to hold their response. Ordinary failures are not
-    retained, because no charge landed and the caller should be free to retry. A routed waterfall
-    may already have settled paid children before its terminal failure; `terminal=True` retains that
-    exact failure so a retry cannot repeat those charges.
+    Metered calls keep their answer. A team calling on its OWN key is billed by the provider, not
+    by us, so its ordinary response is not kept. When retention is forbidden, every successful
+    call keeps a 410 receipt instead of a response body, including an own-key call. Ordinary
+    failures are not retained, because no charge landed and the caller should be free to retry.
+    A routed waterfall may already have settled paid children before its terminal failure;
+    `terminal=True` retains that exact failure so a retry cannot repeat those charges.
 
     Anything else drops the claim, which frees the label immediately rather than making the caller
     wait out the window before they can try again.
@@ -371,9 +387,11 @@ async def _store_idempotent(key: str, caller: Caller, *, status_code: int, body:
     served call into a 500. Its own session, because the request's may be mid-rollback. Fenced on
     `call_ref`: a claim another call took over is left alone.
     """
-    keep = metered and (200 <= status_code < 300 or terminal)
+    keep = (metered or response_retention_forbidden) and (200 <= status_code < 300 or terminal)
     owned = (*_owned(caller.membership.id, key, call_ref), IdempotentCall.status == "pending")
-    if keep and len(body) > get_settings().archive_max_body_bytes:
+    if keep and response_retention_forbidden:
+        body, status_code, media_type = _not_retained_note(call_ref, charged_micro)
+    elif keep and len(body) > get_settings().archive_max_body_bytes:
         body, status_code, media_type = _too_large_note(key, call_ref, charged_micro, len(body))
 
     async def _write() -> None:

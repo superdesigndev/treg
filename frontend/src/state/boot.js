@@ -67,9 +67,10 @@ export default async function boot(){
     // from the email link's POST-confirm; ?invite= is the legacy code path (prefilled login).
     const qs = new URLSearchParams(location.search);
     const linkOrg = qs.get('invite_org'), inv = qs.get('invite'), ref = qs.get('ref'), oauthSignin = qs.get('signin')==='oauth';
+    const welcomeReplay = qs.has('welcome');
     this.oauthSignin=oauthSignin;
     if(ref) storageSet('treg-ref', ref);  // survives the sign-in reload so Getting started can preselect the agent the landing was about (see maybeOnboard)
-    if(linkOrg || inv || qs.get('invite_expired') || ref || oauthSignin){ history.replaceState(null,'',location.pathname+location.hash); }  // strip one-shot params so reload/share doesn't replay them
+    if(linkOrg || inv || qs.get('invite_expired') || ref || oauthSignin || welcomeReplay){ history.replaceState(null,'',location.pathname+location.hash); }  // strip one-shot params so reload/share doesn't replay them
     if(linkOrg){ this.inviteLinkOrg=parseInt(linkOrg,10)||null; }
     // A shared detail deep link (/app/skills/<x>, /app/tools/<x>) — from the URL itself, or stashed
     // before an OAuth hop (the callback always lands on /app, which would otherwise drop the path).
@@ -99,6 +100,7 @@ export default async function boot(){
           location.replace('/auth/sso/'+encodeURIComponent(pendingSso)+'/start'); return;
         } }
       this.sessionMode=true; this.me=me.email; this.isAdmin=!!me.is_superadmin; this.onboarded=!!me.onboarded; this.icHash=me.intercom_user_hash||''; this.meAvatar=me.avatar_url||null; this.uploadsOn=!!me.uploads; await this.loadAll(); this.analyticsIdentify(); this.initIntercom();
+      if(welcomeReplay && (this.onboarded || !this.inviteFirstRun)){ this.welcome.replay=true; this.welcome.on=true; }
       // Share-born arrival (/app/skills/x?invite_org=N from the invite email): accept silently and
       // enter that team — the emailed "Sign in & accept" click was the consent. Otherwise the normal
       // first-run / invite-banner flow.

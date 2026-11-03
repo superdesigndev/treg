@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -9,6 +10,7 @@ from functools import cache
 from importlib import import_module
 
 from sqlalchemy import bindparam, event, inspect, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
@@ -377,12 +379,86 @@ async def get_admin_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+_ADMIN_READ_STATEMENT_TIMEOUT_MS = 3_000
+
+
 async def get_admin_read_session() -> AsyncIterator[AsyncSession]:
     """Opt-in admin reports: configured reader, otherwise the original admin primary pool.
 
     Never use the general reader's unconfigured API-pool fallback, or retry a failed replica on
     the primary. Authorization must finish on `get_admin_session` before this dependency runs.
+    Each statement is capped at `_ADMIN_READ_STATEMENT_TIMEOUT_MS`, answered as `ReportBusy`, so a
+    polled admin report cannot hold the read pool the dashboard reports share.
     """
     maker = read_session_maker if _read_db_url else admin_session_maker
     async with maker() as session:
-        yield session
+        if session.get_bind().dialect.name == "postgresql":
+            await session.execute(text(
+                f"SET LOCAL statement_timeout = {_ADMIN_READ_STATEMENT_TIMEOUT_MS}"))
+        try:
+            yield session
+        except DBAPIError as exc:
+            if _canceled_by_timeout(exc):
+                raise ReportBusy("timeout") from exc
+            raise
+
+
+_REPORT_SLOTS = 2
+_REPORT_WAIT_S = 1.0
+_REPORT_STATEMENT_TIMEOUT_MS = 15_000
+_REPORT_DEADLINE_S = 15.0
+_QUERY_CANCELED = "57014"
+_report_gate: tuple[object, asyncio.Semaphore] | None = None
+
+
+class ReportBusy(Exception):
+    """A dashboard report was refused before checkout, or cut off by its timeout or deadline."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _report_slots() -> asyncio.Semaphore:
+    global _report_gate
+    loop = asyncio.get_running_loop()
+    if _report_gate is None or _report_gate[0] is not loop:
+        _report_gate = (loop, asyncio.Semaphore(_REPORT_SLOTS))
+    return _report_gate[1]
+
+
+def _canceled_by_timeout(exc: BaseException) -> bool:
+    return (isinstance(exc, DBAPIError)
+            and getattr(exc.orig, "sqlstate", None) == _QUERY_CANCELED)
+
+
+async def get_report_session() -> AsyncIterator[AsyncSession]:
+    """Dashboard reports: the configured reader, otherwise the API pool, behind a per-process gate.
+
+    Authorization must finish on `get_session` first; `require_member` commits, so that session
+    holds no connection while the report runs. A full gate, a statement timeout, or the report as a
+    whole passing `_REPORT_DEADLINE_S` raises `ReportBusy` rather than waiting on, or pinning, a
+    pooled connection. The deadline covers the handler: FastAPI runs a dependency's body and the
+    endpoint in one task."""
+    slots = _report_slots()
+    try:
+        async with asyncio.timeout(_REPORT_WAIT_S):
+            await slots.acquire()
+    except TimeoutError as exc:
+        raise ReportBusy("busy") from exc
+    try:
+        async with read_session_maker() as session:
+            try:
+                async with asyncio.timeout(_REPORT_DEADLINE_S):
+                    if session.get_bind().dialect.name == "postgresql":
+                        await session.execute(text(
+                            f"SET LOCAL statement_timeout = {_REPORT_STATEMENT_TIMEOUT_MS}"))
+                    yield session
+            except TimeoutError as exc:
+                raise ReportBusy("timeout") from exc
+            except DBAPIError as exc:
+                if _canceled_by_timeout(exc):
+                    raise ReportBusy("timeout") from exc
+                raise
+    finally:
+        slots.release()

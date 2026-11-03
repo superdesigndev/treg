@@ -1,0 +1,212 @@
+provider: enrow
+source:
+  docs: https://docs.enrow.io/api-overview
+  openapi: null
+  curated: '2026-10-28'
+pricing_url: https://docs.enrow.io/credits-billing
+limits: "Enrow permits 10 submissions per second per API key. Result and account GET requests are not rate limited."
+cache: forbidden
+endpoints:
+  - id: enrow.people.email.find
+    added: '2026-10-28'
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /email/find/single
+    name: Find a verified work email
+    summary: Find and verify a work email from a name and company, or a LinkedIn profile.
+    async: &email_find_async
+      id_from: id
+      poll: {endpoint: enrow.people.email.find.get, param: {in: queryParams, name: id}}
+      status: {path: qualification, progress: [ongoing], success: [valid, invalid]}
+      result: {path: email}
+      interval: 2
+      max_age: 1800
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        fullname: {type: string, required: false, example: Satya Nadella}
+        company_domain: {type: string, required: false, example: microsoft.com}
+        company_name: {type: string, required: false}
+        linkedin_url: {type: string, required: false}
+      note: "Supply fullname with company_domain or company_name, or a person LinkedIn URL. A complete name-and-company input takes precedence over the URL."
+    test_request: {body: {fullname: Satya Nadella, company_domain: microsoft.com}}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      settle: usage
+      usage: {path: credits_used, unit: credit}
+      fallback: {value: 1, note: "One credit is the maximum for a single email find, including a LinkedIn lookup."}
+      source: observed
+      source_url: https://docs.enrow.io/api-reference/email-finder/get-single-result
+      checked: '2026-10-28'
+      confidence: verified
+      note: "The terminal credits_used settles found and missed searches. A name-and-domain hit used one credit and a miss zero; a nonexistent LinkedIn profile also used zero on this account, although the docs allow a 0.25-credit LinkedIn miss."
+    docs_url: https://docs.enrow.io/api-reference/email-finder/find-single
+    verified: '2026-10-28'
+    example_response: examples/enrow.people.email.find.submit.json
+    terminal_example_response: examples/enrow.people.email.find.result.json
+
+  - id: enrow.people.email.find.get
+    added: '2026-10-28'
+    kind: utility
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: GET
+    path: /email/find/single
+    name: Get an email search result
+    summary: Read the final email, qualification and credit charge for a submitted search.
+    strict_query: true
+    resource_ownership: {requires: {kind: 'poll:enrow.people.email.find.get', param: id}}
+    input:
+      queryParams:
+        id: {type: string, required: true}
+      note: "Returns HTTP 202 with qualification ongoing while the search runs. Result reads are free."
+    cost: &free_result
+      type: free
+      value: 0
+      currency: USD
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.enrow.io/api-reference/email-finder/get-single-result
+      checked: '2026-10-28'
+      confidence: verified
+    docs_url: https://docs.enrow.io/api-reference/email-finder/get-single-result
+    untestable: Requires a search ID created by the connected account.
+
+  - id: enrow.people.email.verify
+    added: '2026-10-28'
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: POST
+    path: /email/verify/single
+    name: Verify an email address
+    summary: Check whether an email address is deliverable, including catch-all domains.
+    async:
+      id_from: id
+      poll: {endpoint: enrow.people.email.verify.get, param: {in: queryParams, name: id}}
+      status: {path: qualification, progress: [ongoing], success: [valid, invalid]}
+      result: {path: qualification}
+      interval: 2
+      max_age: 1800
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, example: api@enrow.io}
+      note: "An invalid verdict is a completed, billable check."
+    test_request: {body: {email: api@enrow.io}}
+    cost:
+      type: per_call
+      value: 0.25
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.enrow.io/credits-billing
+      checked: '2026-10-28'
+      confidence: verified
+      note: "Both valid and invalid terminal verdicts used 0.25 credit. The submission reports credits_used; the result GET does not."
+    docs_url: https://docs.enrow.io/api-reference/email-verifier/verify-single
+    verified: '2026-10-28'
+    example_response: examples/enrow.people.email.verify.submit.json
+    terminal_example_response: examples/enrow.people.email.verify.result.json
+
+  - id: enrow.people.email.verify.get
+    added: '2026-10-28'
+    kind: utility
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: GET
+    path: /email/verify/single
+    name: Get an email verification result
+    summary: Read a submitted verification's valid or invalid qualification.
+    strict_query: true
+    resource_ownership: {requires: {kind: 'poll:enrow.people.email.verify.get', param: id}}
+    input:
+      queryParams:
+        id: {type: string, required: true}
+      note: "Returns HTTP 202 with qualification ongoing while verification runs. Result reads are free."
+    cost: *free_result
+    docs_url: https://docs.enrow.io/api-reference/email-verifier/get-single-verification
+    untestable: Requires a verification ID created by the connected account.
+
+  - id: enrow.people.phone.find
+    added: '2026-10-28'
+    domain: contacts
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /phone/single
+    name: Find a direct phone number
+    summary: Find a professional phone number from a LinkedIn profile or a person's name and company.
+    async:
+      id_from: id
+      poll: {endpoint: enrow.people.phone.find.get, param: {in: queryParams, name: id}}
+      status: {path: qualification, progress: [ongoing], success: [found, not_found]}
+      result: {path: number}
+      interval: 2
+      max_age: 1800
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false, example: 'https://www.linkedin.com/in/satyanadella/'}
+        firstname: {type: string, required: false}
+        lastname: {type: string, required: false}
+        company_domain: {type: string, required: false}
+        company_name: {type: string, required: false}
+      note: "Supply a LinkedIn person URL, or firstname, lastname and company_domain/company_name. A URL takes precedence when both are present."
+    test_request: {body: {linkedin_url: 'https://www.linkedin.com/in/satyanadella/'}}
+    cost:
+      type: per_success
+      value: 40
+      currency: credit
+      per: 1
+      unit: call
+      settle: terminal_presence
+      presence: {field: number}
+      source: observed
+      source_url: https://docs.enrow.io/api-reference/phone/find-single
+      checked: '2026-10-28'
+      confidence: verified
+      note: "The assigned account debited 40 credits for a found number and refunded all 40 on a miss. The terminal result has no credits_used field, so settlement checks whether number is present. Legacy 50-credit accounts need separate pricing."
+    docs_url: https://docs.enrow.io/api-reference/phone/find-single
+    verified: '2026-10-28'
+    example_response: examples/enrow.people.phone.find.submit.json
+    terminal_example_response: examples/enrow.people.phone.find.result.json
+
+  - id: enrow.people.phone.find.get
+    added: '2026-10-28'
+    kind: utility
+    domain: contacts
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: GET
+    path: /phone/single
+    name: Get a phone search result
+    summary: Read a submitted phone search's number, country and qualification.
+    strict_query: true
+    resource_ownership: {requires: {kind: 'poll:enrow.people.phone.find.get', param: id}}
+    input:
+      queryParams:
+        id: {type: string, required: true}
+      note: "Returns HTTP 202 with qualification ongoing while the search runs. Result reads are free."
+    cost: *free_result
+    docs_url: https://docs.enrow.io/api-reference/phone/get-single-result
+    untestable: Requires a search ID created by the connected account.

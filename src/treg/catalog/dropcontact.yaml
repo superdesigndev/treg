@@ -1,0 +1,253 @@
+provider: dropcontact
+source:
+  docs: https://developer.dropcontact.com/
+  openapi: null
+  curated: '2026-10-27'
+pricing_url: https://www.dropcontact.com/pricing
+limits: Up to 250 contacts per request, 15 kB per contact, and 60 requests per second.
+proposed_capabilities:
+  people.enrich.bulk: Start or inspect a batch of person enrichments
+  account.webhook.manage: Read or change the account's default webhook URL
+endpoints:
+  - id: dropcontact.people.email.find
+    added: '2026-10-27'
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v1/enrich/all
+    name: Find a verified work email
+    summary: Generate and verify a work email from a person's name and company; Dropcontact says it uses no contact database.
+    async: &single_async
+      id_from: request_id
+      poll: {endpoint: dropcontact.jobs.get, param: {in: pathParams, name: request_id}}
+      status: {path: success, progress: [false], success: [true], failure: []}
+      result: {path: data}
+      interval: 10
+      max_age: 1800
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        data: {type: 'array[object]', required: true, minItems: 1, maxItems: 1, item_required_any: [first_name, last_name, full_name], note: 'One person with first_name + last_name or full_name, plus company, website, or company_linkedin.'}
+        language: {type: string, required: false, enum: [en, fr]}
+        siren: {type: boolean, required: false}
+      note: Needs a name and company name, domain, or website; this is not a people search. Dropcontact says its real-time process uses no stored contact database and describes a CNIL audit (https://www.dropcontact.com/help/gdpr-compliance). A found verified email costs one credit, and no-email results are refunded. Poll dropcontact.jobs.get with the request_id.
+    test_request: {body: {data: [{first_name: Peter, last_name: Jackson, website: company.com}]}}
+    cost: &single_find_cost
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      settle: terminal_presence
+      presence: {row: data.0, field: email.0.email, request_field: data.0.email}
+      source: observed
+      source_url: https://developer.dropcontact.com/#credits-count
+      checked: '2026-10-27'
+      confidence: verified
+      note: A one-record submission holds one credit; a terminal row without email releases it.
+    docs_url: https://developer.dropcontact.com/#enrich-endpoint
+    verified: '2026-10-28'
+    example_response: examples/dropcontact.people.email.find.submit.json
+    terminal_example_response: examples/dropcontact.people.email.find.result.json
+    cache: forbidden
+
+  - id: dropcontact.people.email.find.linkedin
+    added: '2026-10-27'
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v1/enrich/all
+    name: Find a work email from LinkedIn
+    summary: Generate and verify a work email from a public LinkedIn profile URL without a LinkedIn login.
+    async: *single_async
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        data: {type: 'array[object]', required: true, minItems: 1, maxItems: 1, item_required_all: [linkedin], note: 'One object containing a public person-profile URL in linkedin.'}
+        language: {type: string, required: false, enum: [en, fr]}
+      note: A valid LinkedIn profile can find a contact without a company field; Sales Navigator URLs are not documented. Dropcontact says it does not use a stored contact database (https://www.dropcontact.com/help/gdpr-compliance).
+    test_request: {body: {data: [{linkedin: 'https://www.linkedin.com/in/example'}]}}
+    cost: *single_find_cost
+    docs_url: https://developer.dropcontact.com/#request-fields
+    verified: '2026-10-28'
+    example_response: examples/dropcontact.people.email.find.submit.json
+    terminal_example_response: examples/dropcontact.people.email.find.result.json
+    cache: forbidden
+
+  - id: dropcontact.people.email.verify
+    added: '2026-10-27'
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v1/enrich/all
+    name: Verify and qualify an email
+    summary: Verify an existing email with Dropcontact's in-house checks and qualify it as personal, business, catch-all, generic, or invalid.
+    async: *single_async
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        data: {type: 'array[object]', required: true, minItems: 1, maxItems: 1, item_required_all: [email], note: 'One object containing an email field.'}
+        language: {type: string, required: false, enum: [en, fr]}
+      note: Dropcontact says its catch-all checks may disagree with other verifiers (https://www.dropcontact.com/help/types-of-email-addresses). It may identify or correct a wrong address; inspect the returned email and qualification. A completed result can have an empty email, an invalide@pro qualification, or no qualification. A supplied email costs one credit even when invalid or unknown.
+    test_request: {body: {data: [{email: support@dropcontact.com}]}}
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://developer.dropcontact.com/#credits-count
+      checked: '2026-10-27'
+      confidence: verified
+      note: One supplied email used one credit and returned a generic professional verdict; the hold settles on a finished task.
+    verified: '2026-10-28'
+    example_response: examples/dropcontact.people.email.verify.submit.json
+    terminal_example_response: examples/dropcontact.people.email.verify.result.json
+    docs_url: https://developer.dropcontact.com/#credits-count
+    cache: forbidden
+
+  - id: dropcontact.people.enrich
+    added: '2026-10-27'
+    domain: contacts
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v1/enrich/all
+    name: Enrich a contact and company
+    summary: Enrich a B2B contact with a verified work email, cleaned job, LinkedIn, and company data using Dropcontact's real-time process.
+    async: *single_async
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        data: {type: 'array[object]', required: true, minItems: 1, maxItems: 1, item_required_any: [first_name, last_name, full_name, linkedin, email], note: 'One person with a documented contact and company identifier, or a LinkedIn profile URL.'}
+        language: {type: string, required: false, enum: [en, fr]}
+        siren: {type: boolean, required: false}
+      note: Growth may return job, job_level, job_function, industry, employee_count, website, and legal fields; fields depend on the input and match. Supplied emails are verified; Dropcontact may correct an invalid one. Dropcontact says it uses no stored contact database and describes a CNIL audit (https://www.dropcontact.com/help/gdpr-compliance).
+    cost: *single_find_cost
+    docs_url: https://developer.dropcontact.com/#response-fields
+    untestable: A repeatable positive example would publish a person's contact identity.
+    cache: forbidden
+
+  - id: dropcontact.people.enrich.bulk
+    added: '2026-10-27'
+    domain: contacts
+    capability: people.enrich.bulk
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v1/enrich/all
+    name: Enrich contacts in a batch
+    summary: Submit up to 250 contacts for work-email and Growth-plan enrichment.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        data: {type: 'array[object]', required: true, minItems: 1, maxItems: 250}
+        language: {type: string, required: false, enum: [en, fr]}
+        siren: {type: boolean, required: false}
+        custom_callback_url: {type: string, required: false}
+      note: The POST returns a request_id. Read the result with dropcontact.jobs.get; each verified email consumes one credit and misses are refunded.
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      source: observed
+      source_url: https://developer.dropcontact.com/#credits-count
+      checked: '2026-10-27'
+      confidence: verified
+      note: A two-row batch held two credits, then refunded the no-email row.
+    platform_blocked: Per-row terminal charges are not bounded by the current single-result settlement rule; use your own key.
+    docs_url: https://developer.dropcontact.com/#enrich-endpoint
+    untestable: A repeatable positive batch would publish contact identities.
+    cache: forbidden
+
+  - id: dropcontact.jobs.get
+    added: '2026-10-27'
+    kind: utility
+    domain: contacts
+    capability: people.enrich.bulk
+    platform: people
+    scope: any_account
+    method: GET
+    path: /v1/enrich/all/{request_id}
+    name: Get an enrichment result
+    summary: Read the status and eventual results of a Dropcontact request.
+    strict_query: true
+    resource_ownership: {requires: {kind: 'poll:dropcontact.jobs.get', param: request_id}}
+    input:
+      pathParams:
+        request_id: {type: string, required: true}
+      note: A pending response has success=false. Wait for success=true and data; early forceResults is excluded because it can affect refunds.
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://developer.dropcontact.com/#get-request, checked: '2026-10-27', confidence: verified}
+    docs_url: https://developer.dropcontact.com/#get-request
+    untestable: Requires a request_id from a submitted job.
+    cache: forbidden
+
+  - id: dropcontact.webhook.get
+    added: '2026-10-27'
+    kind: utility
+    domain: account
+    capability: account.webhook.manage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/enrich/webhook
+    name: Get your default webhook URL
+    summary: Read the default callback URL on your own Dropcontact account.
+    input: {note: No parameters.}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://developer.dropcontact.com/#default-webhook-url, checked: '2026-10-27', confidence: verified}
+    platform_blocked: The default callback belongs to the shared account; use your own key.
+    docs_url: https://developer.dropcontact.com/#default-webhook-url
+    cache: forbidden
+
+  - id: dropcontact.webhook.set
+    added: '2026-10-27'
+    kind: utility
+    domain: account
+    capability: account.webhook.manage
+    platform: account
+    scope: own_account
+    method: PUT
+    path: /v1/enrich/webhook
+    name: Set your default webhook URL
+    summary: Set the default callback URL on your own Dropcontact account.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        callback_url: {type: string, required: true}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://developer.dropcontact.com/#default-webhook-url, checked: '2026-10-27', confidence: verified}
+    platform_blocked: The default callback belongs to the shared account; use your own key.
+    docs_url: https://developer.dropcontact.com/#default-webhook-url
+    cache: forbidden
+
+  - id: dropcontact.webhook.delete
+    added: '2026-10-27'
+    kind: utility
+    domain: account
+    capability: account.webhook.manage
+    platform: account
+    scope: own_account
+    method: DELETE
+    path: /v1/enrich/webhook
+    name: Delete your default webhook URL
+    summary: Remove the default callback URL from your own Dropcontact account.
+    input: {note: No parameters.}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://developer.dropcontact.com/#default-webhook-url, checked: '2026-10-27', confidence: verified}
+    platform_blocked: The default callback belongs to the shared account; use your own key.
+    docs_url: https://developer.dropcontact.com/#default-webhook-url
+    cache: forbidden

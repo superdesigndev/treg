@@ -1,6 +1,6 @@
 ---
-title: Call events — one pseudonymous event per call, to an Iceberg table outside Postgres
-status: building
+title: Call events - one pseudonymous event per call, to an Iceberg table outside Postgres
+status: shipped
 sources:
   - src/treg/call_events.py
   - src/treg/application/call_events.py
@@ -11,13 +11,11 @@ sources:
 # Call events
 
 Benchmarks of catalog endpoints (how often a finder finds, whether what it found later verifies,
-how two providers compare on the same question) are batch reads over months of calls. They do not
-belong in the production database: `callrecord` is large, a routed parent has no outcome columns,
-`params_hash` is per endpoint, and joining a find's answer to a later verify meant re-parsing
-archived requests and reading bodies from object storage. Call events carry, per call, exactly
-what those reads need, to an HTTP stream that writes an Apache Iceberg table (a Cloudflare
-Pipelines stream with an R2 Data Catalog sink). Postgres is not touched: no table, no column, no
-query on the call path.
+how two providers compare on the same question) are batch reads over months of calls, so they stay
+out of the production database. Call events carry, per call, exactly what those reads need, to an
+HTTP stream that writes an Apache Iceberg table (a Cloudflare Pipelines stream with an R2 Data
+Catalog sink). Postgres is not touched: no table, no column, no query on the call path. Nothing in
+treg reads the table back.
 
 ## Guarantees
 
@@ -34,17 +32,16 @@ query on the call path.
   builder (`call_events.counters`, logged at ERROR on the first drop and every thousandth).
   Losing an event costs a sample, never money, a response or a hold.
 - **Retried, then dropped.** A transient POST failure (timeout, transport error, 429, 5xx) is
-  retried twice with backoff; a refusal (other 4xx) is not. Once a batch exhausts its retries,
+  retried with backoff (`_RETRY_DELAYS_S`); a refusal (other 4xx) is not. Once a batch exhausts its retries,
   later batches get one attempt each until one lands, so a stream outage never stalls the
   flusher on backoffs. Shutdown drains with one attempt per batch.
 - **Duplicates are possible; deduplicate on `event_id`.** A timed-out attempt may still have been
   accepted by the stream, so its retry can land the same batch twice. Every event carries a unique
   `event_id`; readers count distinct ids.
-- **Loss is measurable.** Each process logs its cumulative counters every five minutes
-  (`call events stats: pid=… pending=… queued=… sent=… retried=… dropped_failed=…`), and once at
-  shutdown. The loss rate per process is `dropped_* / queued` from its latest line.
+- **Loss is measurable.** Each process periodically logs its cumulative counters, and once at
+  shutdown; its loss rate is `dropped_* / queued` from its latest line.
 - **Pseudonymous.** No raw email, name, domain, phone or URL is emitted. Identifiers are
-  HMAC-SHA256 under the server-side secret (32 hex characters), so a reader of the table cannot
+  HMAC-SHA256 under the server-side secret, so a reader of the table cannot
   test a guessed address without the secret. A team that opted out of the archive
   (`Org.archive_opt_out_at`) gets no answer columns; its input keys remain, since they are needed
   to count its calls per question and carry nothing readable.
@@ -63,7 +60,7 @@ not keyed), carried so a sample can be traced to its stored body.
 | `asynctasks._finish_terminal`, and the worker's timed-out / retired-account releases | `async_terminal` | answer from the terminal poll body |
 
 Own tools and hub runs emit nothing of their own (a hub step is an ordinary catalog call and
-emits as one). Overflow children are not yet emitted. An own-key call whose answer streams
+emits as one). Overflow children are not emitted. An own-key call whose answer streams
 through unbuffered has no answer columns, as it has no `hit` in `callrecord`.
 
 ## Linking
@@ -81,15 +78,10 @@ only that transition emits, so a late reread emits nothing.
 
 ## Columns
 
-One table for every capability. Generic columns: `schema_version`, `event_id`, `event_time`,
-`event_kind`, `org_id`, `client`, `capability`, `endpoint_id`, `provider`, `credential_tier`,
-`call_ref`, `parent_ref`, `step`, `waterfall_position`, `is_eval` (team listed in
-`TREG_CALL_EVENTS_EVAL_ORGS`), `status_code`, `refused_by`, `hit`, `verdict`, `cached`,
-`cost_estimated_micro`, `cost_charged_micro`, `upstream_ms`, `duration_ms`, `served_by`,
-`tried_count`, `check_verdict`, `async_outcome`, `archive_key_hash`, `archive_content_hash`,
-`adapter_fingerprint` (12 hex of the adapter definition, so a change of mapping shows in the data).
+One table for every capability; the generic columns are built in `application/call_events.py`.
 A column with no value is omitted from the event rather than sent as null, so it reads as SQL
 NULL (a JSON null in a `json` column would be stored as the string `'null'`).
+`adapter_fingerprint` hashes the adapter definition so a change of mapping shows in the data.
 
 Capability-specific data rides in string-keyed maps, so a new capability needs no table change.
 The stream has no map type; they travel as JSON objects (`json` columns):
@@ -103,13 +95,17 @@ The stream has no map type; they travel as JSON objects (`json` columns):
   `first_name`+`last_name` derives `full_name`, so `{full_name, domain}` and
   `{first_name, last_name, domain}` asked of a direct finder, a routed child or the routed parent
   give one `input_id`.
-- `input_keys` — `{field: hmac}` for every identity field present after derivation.
-- `input_meta` — non-sensitive segments: `domain_class` (`company`, `webmail`, `edu`, `gov`) and
+- `input_keys`: `{field: hmac}` for every identity field present after derivation.
+- `input_meta`: non-sensitive segments: `domain_class` (`company`, `webmail`, `edu`, `gov`) and
   `tld` of the input domain (or the email's), plus any filter declared `analytics: value`.
-- `answer_keys` — `{field: hmac}` for output fields declared `analytics: key`.
-- `answer_values` — `{field: value}` for output fields declared `analytics: value`, as strings.
-- `answer_flags` — derived from email-shaped keys: `is_role`, `free_mail`, and `domain_match`
-  when the input named a domain (prefixed `<field>_` for a field other than `email`).
+- `answer_keys`: `{field: hmac}` for output fields declared `analytics: key`.
+- `answer_values`: `{field: value}` for output fields declared `analytics: value`, as strings
+  (capped length), exactly as the adapter produced them.
+- `answer_flags`: derived from email-shaped keys: `is_role`, `free_mail`, and `domain_match`
+  when the input named a domain (prefixed `<field>_` for a field other than `email`). The same
+  `domain_match` comparison is disclosed to callers on a routed email-find hit as
+  `_treg.domain_match` / `X-Treg-Domain-Match` (see [catalog.md](catalog.md)); this event flag
+  stays the analytics form.
 
 Where an output field goes is declared on the contract (`contracts.yaml`), default `skip`:
 
@@ -122,11 +118,14 @@ output:
 The parser refuses any other word, and a filter can never be a `key`. The public catalog contract
 does not show the annotation.
 
+Values are stored as the provider wrote them and not parsed here: country, region and size buckets
+are derived at analysis time, so a better parser can re-read old events.
+
+**Privacy.** Identifiers (email, name, domain, phone, URL, LinkedIn handle) leave only as HMAC
+keys. `answer_values` is not identifier-free: a person's `location` can name a city, and next to
+that person's keys it is personal data. It is kept on purpose for analysis. Never annotated as a
+value: names, company names, descriptions, `about` text, follower counts, lists.
+
 Normalization before hashing: emails lower-cased; domains without scheme, path or `www.`;
 LinkedIn URLs and handles reduced to the lower-cased handle; other text case-folded with spaces
 collapsed. So a find's `answer_keys['email']` equals a later verify's `input_keys['email']`.
-
-## Not built
-
-Per-capability benchmark tables are derived from this one later, in batch. Nothing here reads the
-table back.

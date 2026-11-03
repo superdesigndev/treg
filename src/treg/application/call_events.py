@@ -15,9 +15,14 @@ serves every capability, so the capability-specific part is contract-driven maps
   table change. A team that opted out of the archive gets no answer columns.
 
 Every identifier is HMAC-SHA256 under `call_events_hmac_secret`, after one normalization
-(emails lower-cased, domains without scheme or `www.`, LinkedIn URLs reduced to the handle), so
-a find's `answer_keys['email']` equals a later verify's `input_keys['email']`. No raw email,
-name, domain, phone or URL is ever emitted.
+(emails lower-cased, domains without scheme or `www.`, LinkedIn URLs reduced to the handle, phone
+numbers to their E.164 digits), so a find's `answer_keys['email']` equals a later verify's
+`input_keys['email']`. A phone written without its country code gets no key: its digits alone
+could be another country's number. No raw email,
+name, domain, phone or URL is ever emitted. `answer_values` does carry raw segment text as the
+provider wrote it (at most 256 characters): a company's industry, size and HQ location, and a
+person's `location`, which can name a city. That is personal data next to the person's keys, kept
+on purpose so analysis can derive country and region later; Iceberg retention bounds it.
 
 The expensive part (reading bodies, hashing) is a builder the sink runs in its flusher; what is
 computed on the call path is a handful of attribute reads.
@@ -61,7 +66,7 @@ _ROLE_LOCALS = frozenset({
     "inquiries", "jobs", "mail", "marketing", "no-reply", "noreply", "office", "press", "sales",
     "support", "team", "webmaster",
 })
-_VALUE_MAX = 64
+_VALUE_MAX = 256
 _fingerprints: dict[int, tuple[Adapter, str]] = {}
 
 
@@ -93,6 +98,8 @@ def normalize(field: str, value: Any) -> str | None:
         return v.lower()
     if field in _DOMAIN_KEYS:
         return _host(v) or None
+    if field == "phone" or field.endswith("_phone"):
+        return P.e164_digits(v)
     if field in ("linkedin_url", "linkedin_handle"):
         handle = P.linkedin_handle(v) if field == "linkedin_url" else v.strip("/")
         return handle.lower().strip("/") if handle else _host(v) or None
@@ -171,6 +178,13 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
             v = v[0]
         if v not in (None, ""):
             given[field_name] = v
+    # An expression that is just an identity field (`body.url: linkedin_url`, used where the
+    # body is an array) reads back like a plain `in` entry; computed ones cannot be inverted.
+    for target, expr in (adapter.in_expr or {}).items():
+        if isinstance(expr, str) and expr in contract.identity_types and expr not in given:
+            v = P.get_path(doc, target)
+            if isinstance(v, (str, int)) and not isinstance(v, bool) and v != "":
+                given[expr] = v
     # A provider often takes more shapes than the adapter sends: the router sends `full_name`,
     # while a direct caller of the same finder may send `first_name` + `last_name`. A request
     # parameter named exactly like an identity field means that field; derivation then joins

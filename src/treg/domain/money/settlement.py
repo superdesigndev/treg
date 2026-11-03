@@ -131,6 +131,16 @@ def derive_basis(
 
     `usage_unit_micro` is the micro-USD worth of one unit of the provider's `usage.path` meter,
     frozen here so a later fx edit cannot re-price a task already in flight. `usd` needs none."""
+    if cost.get("settle") == "terminal_presence":
+        estimate = max(0, int(response_estimate_micro))
+        presence = cost["presence"]
+        request_field = presence.get("request_field")
+        request_billed = bool(request_field and _path(request.get("body"), request_field))
+        return {
+            "when": "terminal", "amount": {"kind": "terminal_presence", **presence,
+                                             "request_billed": request_billed},
+            "fallback_micro": estimate, "reserve_micro": estimate,
+        }
     if cost.get("table") or cost.get("settle") == "usage":
         fallback = _micro(float(cost["fallback"]["value"]), unit_micro)
         if cost.get("settle") == "usage":
@@ -231,6 +241,16 @@ def settle(basis: dict, evidence: dict[str, Any]) -> int:
     """Resolve one frozen basis to raw integer micro-USD without moving ledger money."""
     amount = basis.get("amount") or {}
     kind = amount.get("kind")
+    if kind == "terminal_presence":
+        if amount.get("request_billed"):
+            return max(0, int(basis.get("reserve_micro") or 0))
+        terminal = evidence.get("terminal")
+        row = _path(terminal, amount["row"]) if amount.get("row") else terminal
+        if isinstance(row, dict):
+            found = _path(row, amount["field"])
+            if found is None or found == "" or found == []:
+                return 0
+        return max(0, int(basis.get("reserve_micro") or 0))
     if kind == "table":
         return table_amount_micro(
             amount["cost"], amount["request"], amount["input"], int(amount["unit_micro"]))

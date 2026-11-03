@@ -64,6 +64,7 @@ def test_real_cli_sdk_delivery_and_opt_out(tmp_path, ingestion):
     assert props['exit_code'] == 0
     assert props['duration_ms'] >= 0
     assert props['cli_version'] and props['os']
+    assert len(props['session']) == 16 and props['agent']
     identifier = (tmp_path / 'analytics-id').read_text()
     assert event.get('distinct_id', props.get('distinct_id')) == identifier
 
@@ -79,6 +80,11 @@ def test_real_cli_sdk_delivery_and_opt_out(tmp_path, ingestion):
     assert 'private-name' not in json.dumps(events)
     assert run('--help').returncode == 0
     assert len(events) == 2
+    result = run('balance', '--bogus=private-value')
+    assert result.returncode == 2 and 'unrecognized arguments: --bogus=private-value' in result.stderr
+    usage = events[-1]['batch'][0]['properties']
+    assert usage['command'] == 'usage_error' and usage['options'] == ['--bogus']
+    assert 'private-value' not in json.dumps(events)
     assert 'secret-token' not in json.dumps(events)
     env['TREG_TELEMETRY'] = '0'
     count = len(events)

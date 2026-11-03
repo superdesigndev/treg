@@ -1,11 +1,12 @@
 ---
-title: The proxy — faithful credential-injecting relay + tool resolution
+title: The proxy - faithful credential-injecting relay + tool resolution
 status: shipped
 sources:
   - src/treg/infra/upstream/relay.py
   - src/treg/jsontext.py
   - src/treg/infra/upstream/ssrf.py
   - src/treg/api.py
+  - src/treg/bootstrap_http.py
   - src/treg/application/call/authorize.py
   - src/treg/application/call/idempotency.py
   - src/treg/application/call/intake.py
@@ -45,317 +46,276 @@ related:
   - architecture/auth-secrets.md
   - architecture/ads-conversions.md
   - architecture/hub.md
-  - foundation/charter.md
+  - architecture/org-flow-control.md
+  - architecture/org-endpoint-quota.md
 ---
 
 # Proxy and call execution
 
 `application.call.service` orchestrates resolution, authorization, reservation, relay and
 finalization. `application.call.resolve` selects the target and credential;
-`infra.upstream.relay.relay` only injects credentials and forwards bytes.
+`infra.upstream.relay.relay` only injects credentials and forwards bytes; treg never models an
+upstream API. The contract itself is AGENTS.md non-negotiable 4; this fragment maps it to code.
 
-The shared HTTP ingress can apply default-disabled [published Org admission](org-flow-control.md)
-before `execute_call`. Configured Orgs share rate tokens and Redis slots across keys and workers;
-when rate is configured, one Redis operation checks both limits before consuming either.
-Streaming retains the root slot through response cleanup. Routing children do not acquire
-additional root slots or rate tokens. Published null disables its limit; legacy environment
-maps have no effect.
+Two operator admissions sit on this road and are specified elsewhere:
+[published Org flow control](org-flow-control.md) runs in `run_call_surface` after identity and
+before money admission (root calls only; routing children take no extra slot or token), and the
+[exact org/endpoint allowance](org-endpoint-quota.md) runs inside the call application after
+canonical resolution and money admission, immediately before a cache hit is returned or a
+direct/overflow request is sent.
 
 Named catalog calls with authorization metadata select the provider and grant method before
-comparing hosts. This separates Facebook and Instagram tools sharing `graph.facebook.com`;
-the resulting tool enters the same relay without provider-specific relay logic.
+comparing hosts, so two providers sharing one API host (Facebook and Instagram on
+`graph.facebook.com`) resolve to different tools; the relay stays provider-agnostic.
 
-A live-verified free `GET` catalog row can declare `platform_auth: anonymous`. The normal team tool
-and team credential still win. If neither exists, `_anonymous_offer` requires the deployment's
-provider allow-list and creates an unmetered virtual tool with no bindings. `relay()` therefore
-forwards the request without injecting any provider credential. The field is generic catalog
-metadata; the resolver and relay contain no provider-specific anonymous path rules.
+A live-verified free `GET` catalog row can declare `platform_auth: anonymous`. A team tool or team
+credential still wins. Otherwise `_anonymous_offer` requires the deployment's provider allow-list
+and creates an unmetered virtual tool with no bindings; `relay()` then injects nothing and strips or
+rewrites no caller header. The catalog price is free only when the caller supplies no provider
+credential header. No provider-specific anonymous path rules exist in the resolver or relay.
 
-Cache experiment metadata is attached to the existing `tool_called` event by the call-service
-capture funnel: outcome/reason, comparison and TTL policy, rollout percentage, lookup duration,
-and candidate age/window, plus `cache_price` (`full` | `repeat` | `free`) on a hit, and, like
-every server event, the `build` and `archive_config` fingerprints from `analytics.py`. It contains
-no response/request content or cache key. The stable team/endpoint rollout runs before archive
-DB lookup (open to every endpoint and team by default); unselected calls retain
-the normal relay and money path. Own-key catalog calls take part too: a storable own-key 2xx is
-read whole when it fits the archive's cap and is asked for identity encoding, otherwise it
-streams untouched; own-tool calls never touch the archive. See
-[archive](archive.md#own-key-answers) and its pricing section for controls and metric
-denominators. This does not remove authorization/reserve/settle DB work.
+Archive participation (own-key recording, rollout, `tool_called` cache fields) is
+[archive](archive.md)'s subject; own-tool calls never touch the archive.
 
 ## The faithful-relay contract
-`relay()` alters **only three things**; everything else is verbatim (method, path, all query params
-incl. duplicates, headers, cookies, body bytes):
-1. **hop-by-hop transport headers** - `_HOP_BY_HOP` (host, content-length, connection, keep-alive, te,
-   trailers, transfer-encoding, upgrade, proxy-*); re-derived per hop or the stream corrupts.
-   One value is carried, not re-derived: when the caller declared a `Content-Length` for a body,
-   the relay sets the same value on the upstream request. The bytes are the caller's, unaltered, so
-   the length is exact, and without it httpx frames the streamed body `Transfer-Encoding: chunked`,
-   which Meta's Graph API edge does not read (every POST body vanished; an ad creative failed
-   "Ad incomplete" until the spec was moved into the query string). A caller who streamed chunked
-   stays chunked.
-2. **treg's control/infra + edge forwarding headers** - `_CONTROL` (`x-treg-token`, `x-treg-org`,
-   `ngrok-skip-browser-warning`, `x-forwarded-*`, `x-real-ip`, `forwarded`, `via`, Cloudflare's
-   `cf-connecting-ip` family, `true-client-ip`, `cdn-loop`), dropped via
-   `_DROP_REQUEST = _HOP_BY_HOP | _CONTROL`, plus whatever `TREG_CLIENT_IP_HEADER` names, so none
-   leaks upstream. The MCP layer re-sends the caller's address in that header on its in-process
-   calls; a Cloudflare-fronted provider answers any request still carrying it with 403 error 1000. `_scrub_treg_cookies` also strips
-   treg's own cookies (`treg_session`, `treg_oauth_state`) from the Cookie header - the dashboard's
-   `credentials:'include'` Try-it would otherwise leak our session token - while keeping other cookies.
-3. **the injected credential(s)** - each binding overwrites only its target header, query parameter,
-   or top-level JSON field. A JSON binding is an explicit provider contract and is the only case
-   that buffers and reserializes the caller body; all other bodies retain the streamed byte path.
-   This is semantic JSON relay, not byte-faithful relay: formatting changes, non-ASCII text is
-   emitted as UTF-8, and duplicate keys fail closed. Never use a JSON binding where the upstream
-   signs or hashes the caller's raw body bytes.
-   On a connection to treg's own Meta app the credential includes an `appsecret_proof` query
-   parameter (HMAC of the injected token with the app secret) that replaces any caller value; see
-   auth-secrets.md for when one is owed.
 
-   **Every JSON re-encode goes through `treg/jsontext.py`.** `json.loads` accepts an escaped lone
-   UTF-16 surrogate (`"\ud835"`, a JavaScript scraper cutting a LinkedIn post mid-pair) and a plain
-   `ensure_ascii=False` dump of it raises after the upstream answered. `dumps`/`dumps_bytes` keep
-   non-ASCII readable and fall back to ASCII escapes only for such a value, so the routed body, the
-   hub's child bodies and `treg --json call` relay the upstream's own escape. MCP is the one lossy
-   surface: the SDK's pydantic serializer cannot write the escape, so `mcp._body` replaces each
-   unpaired surrogate with U+FFFD (paired text is unchanged) rather than lose the paid answer.
+Everything not listed here is relayed verbatim: method, path, every query pair including
+duplicates, caller headers, caller cookies, body bytes.
 
-A catalog `ceiling_param` is appended by the call application onto `UpstreamRequest.query_items`
-before `relay()`, and only when the call carries a caller ceiling the caller did not already send
-under that name. `relay()` forwards that list verbatim. The pair is absent from the inbound query,
-so it does not enter `params_hash` or the archive key.
+Inside `relay()`:
 
-> **What treg keeps from a call.** Successes retain no content: the relay forwards bytes and the audit
-> row records status, size and timing. A **failed relayed call** - platform, own-key, or plain own-tool
-> - is the exception: `CallRecord.error_request` / `error_response` retain a redacted, truncated copy
-> of what the caller sent and what the provider (or treg-side 502) answered. Without it a failure is a
-> bare status code: `path` holds the catalog URL rather than the caller's parameters and `params_hash`
-> is one-way. `application.call.settle` buffers metered responses with `_buffer_response`, while a
-> failed unmetered response is read whole (`_read_whole_if_small`, up to 8 MiB) so the caller-facing
-> masking below sees every byte; one too large is replaced on a credentialed call and streamed
-> untouched (`_peek_stream_head`, 8 KiB of evidence) only when nothing was injected.
+1. **Hop-by-hop headers** (`_HOP_BY_HOP`, plus any header the caller's `Connection` header names,
+   RFC 7230) are dropped and re-derived per hop. One value is carried, not re-derived: when the
+   caller declared a `Content-Length` for a body, the same value is set upstream. Without it httpx
+   frames a streamed body `Transfer-Encoding: chunked`, which Meta's Graph API edge does not read
+   (the body arrives empty). A caller who streamed chunked stays chunked. A request body is carried
+   only when the caller sent one, so a GET gets no chunked frame.
+2. **treg's control and edge headers** are dropped: every `x-treg-*` header by prefix (so a future
+   control header is covered without being listed), `_CONTROL` (ngrok, `x-forwarded-*`,
+   `x-real-ip`, `forwarded`, `via`, Cloudflare's `cf-*` family, `true-client-ip`, `cdn-loop`) and
+   whatever `TREG_CLIENT_IP_HEADER` names. The MCP layer re-sends the caller's address in that
+   header on in-process calls; a Cloudflare-fronted provider answers any request still carrying it
+   with 403 error 1000. `_scrub_treg_cookies` removes treg's own cookies (`treg_session`,
+   `treg_oauth_state`) from `Cookie`, keeping the rest: the dashboard's `credentials:'include'`
+   Try-it would otherwise leak the session.
+3. **`Accept-Encoding`** becomes `identity` when the caller sent none (the body is relayed raw with
+   `aiter_raw`, and httpx would otherwise add its own `gzip`). With `force_identity` it is
+   overridden to `identity` wherever the application will read the body: metered settlement, an
+   owned free poll, and an archivable own-key answer.
+4. **Query pairs consumed into catalog path placeholders** (`drop_params`) are not also sent as
+   query.
+5. **The injected credential(s).** Each binding overwrites only its target header, query parameter
+   or top-level JSON field. A JSON binding is the only case that buffers and reserializes the body:
+   formatting changes, non-ASCII is emitted as UTF-8, duplicate keys fail closed, and it must never
+   be used where the upstream signs or hashes the raw body. On a connection to treg's own Meta app
+   the credential also carries `appsecret_proof`, replacing any caller value
+   ([auth-secrets](auth-secrets.md)).
 
-> **Credentials echoed in error bodies.** Providers quote the request back in failures (TikHub's 402
-> returns every request header, `Authorization` included). Before a 4xx/5xx body reaches the caller,
-> an idempotent replay or the evidence row, `evidence.redact_error_response` decodes it (gzip/deflate,
-> bounded; own-key calls mirror the caller's `Accept-Encoding`) and replaces every spelling of every
-> injected credential (`_secret_renderings`) with `***`. Masking is exact only: the admin-log pattern
-> nets would rewrite ordinary fields like `"key": "uniqueId"`. A normalised re-check that still finds
-> a credential, credentials that cannot be rendered, or a body that cannot be decoded replaces the
-> whole body with a `response_redacted` JSON error. An unchanged body keeps its bytes and encoding; a
-> masked one is re-sent identity-encoded with a fresh `Content-Length`. 2xx bodies are untouched.
-> Caller bodies on unmetered paths are cached only when `Content-Length` is declared and at most 64
-> KiB; large/chunked uploads stay streaming and retain only their query-param half. See
-> [data-model](data-model.md) for the redaction order, admin-only access, and retention.
+Before `relay()`, on the platform tier only (`service`):
 
-Faithfulness mechanics inside `relay()`:
-- request headers rebuilt from `UpstreamRequest.raw_headers` into an `httpx.Headers` multidict (preserves
-  duplicate headers / cookies); injection (`headers[name] = v`) overwrites only the named one.
-- on the platform tier only, `service` first passes the raw headers through
-  `relay.scope_shared_idempotency_key`, which replaces the caller's `Idempotency-Key` with a digest of
-  (org, label). Every org shares one provider account on treg's key, and a provider that honors the
-  header (LeadsForge does) would otherwise return org A's job to org B under the same label — and
-  `resource_ownership.produces` would then record A's job id as B's. Treg's own idempotency table
-  already replays a caller's answer for the same label, so the caller loses nothing. A team's own key
-  relays the header verbatim: that account is theirs.
-- on the platform tier only, `relay.identify_as_treg` then replaces the caller's `User-Agent` with
-  `config.TREG_USER_AGENT`. The provider sees treg's account there, and library defaults read as bot
-  traffic: LimaData's Cloudflare answered 403 (error 1010) to every `Python-urllib` call, and Wiza's
-  to its phone reveals for a day. A team's own key relays the caller's header verbatim. The
-  shared client (`app.state.http`), the async-task poller and the capacity collectors send the same
-  header by default, so treg's own requests never go out as `python-httpx`.
-- query as the router-captured ordered pairs in `UpstreamRequest.query_items` (keeps duplicate keys
-  like `?tag=a&tag=b`), merged onto the upstream URL with `copy_add_param` rather than passed as
-  `params=`: httpx replaces a URL's existing query whenever `params` is given, even empty, which
-  silently stripped a catalog path's own query (`/rest/images?action=initializeUpload`) until
-  2026-09-19. `tests/test_relay_path_query.py` pins it.
-- path rebuilt from `request.scope["raw_path"]` (in `call_tool`), not Starlette's URL-decoded path
-  param - percent-encoding survives to the upstream (npm's scoped publish `PUT /@scope%2fname` 404s
-  if `%2f` is decoded to a literal slash).
-- body streamed via `content=request.stream()` (stream, never buffer). The caller's `Content-Length`, when declared, rides along so the stream is not re-framed chunked (see the contract above). Exception: a caller may
-  base64/gzip-encode the body with `X-Treg-Body-Encoding` to slip SQL/HTML past a hosting-edge WAF;
-  `_BodyDecodeMiddleware` (in api.py) then buffers + decodes it *before* `relay()` runs, so the relay
-  still forwards the real plaintext bytes verbatim upstream. See [api](../interface/api.md).
-- upstream call uses the **shared** `client` (the long-lived `httpx.AsyncClient` at `app.state.http`,
-  created in `lifespan` - keepalive is the biggest latency win).
-- the infra relay returns framework-neutral `UpstreamResponse(status, raw_headers, body_stream, close)`.
-  The router wraps it in `StreamingResponse` and copies every upstream response header (incl. multiple
-  `Set-Cookie`) minus `_DROP_RESPONSE`. Its body wrapper and background task share the same idempotent
-  close operation, so full reads, partial disconnects, stream errors, and cancellation close the upstream
-  response exactly once.
+6. `relay.scope_shared_idempotency_key` replaces the caller's `Idempotency-Key` with a digest of
+   (org, label, and the full enforced pin for a pinned agent). Every org shares one provider account
+   on treg's key; a provider honoring the header would otherwise return org A's job to org B, and
+   `resource_ownership.produces` would record it as B's. treg's own idempotency table already
+   replays the caller's answer, so nothing is lost.
+7. `relay.identify_as_treg` replaces the caller's `User-Agent` with `config.TREG_USER_AGENT`.
+   Providers' Cloudflare rules answer library defaults (`Python-urllib`) with 403 error 1010, and
+   the account seen there is treg's. The shared client, the async-task poller and the capacity
+   collectors send the same header by default.
+8. `relay.tag_shared_client` sets the header the provider file names in `client_header` to
+   `relay.shared_client_code`: `t_` + the first 24 hex characters of
+   HMAC-SHA256(`TREG_CLIENT_ID_SECRET`, provider + team id), replacing a caller value under that
+   name. The provider can split usage per customer on treg's account without learning the team, and
+   two providers' codes for one team differ. Unset secret or no declaration: nothing changes.
+9. A catalog `ceiling_param` is appended to `UpstreamRequest.query_items` (see non-negotiable 4);
+   `relay()` forwards it like any other pair.
 
-A request may carry several credentials: `relay()` loops `tool.bindings` and calls
-`injectors.inject(headers, params, binding, crypto.decrypt(secret.value), json_body=...)` per binding.
-Bindings can also stamp provider protocol constants: a format with no `{secret}` renders literally
-(Crustdata's required API-version header is the first registry use). It still carries the same secret
-reference for binding validation and lifecycle, and the assignment overwrites a caller-supplied value.
-This is generic binding behavior, not an upstream-specific branch in the relay.
-An anonymous catalog fallback uses the same relay with an empty binding list. It does not strip
-caller headers or rewrite the request; it only omits a credential that treg would otherwise inject.
-The catalog price is free only when the caller does not supply a provider credential header.
+A team's own key relays `Idempotency-Key`, `User-Agent` and the client header verbatim.
 
-**Platform bindings - injecting treg's OWN credential.** A binding with a `platform_setting` key (instead
-of a `secret_id`) injects one of treg's own credentials read from `get_settings()` - the Google Ads
-developer token is the case that exists. The value never lives in the org's secret store, so a tenant
-can't read it or extract it through a local run; a missing setting is a clean `502`
-(`this server has no <setting> configured`). Used by the OAuth-marketplace auto-provisioner for a provider
-that needs a second credential treg holds centrally, and by tier-4 catalog calls. Tier 4 also copies
-the provider's constant `required_headers` bindings, so Crustdata's `x-api-version: 2025-11-01` pin is
-identical on BYOK and platform-key calls (see [api](../interface/api.md)).
+On the response, `relay()` drops hop-by-hop headers (keeping `Content-Length` on HEAD/204/304) and
+any `Set-Cookie` for treg's own cookie names (fixation), and adds `X-Content-Type-Options: nosniff`
+and `Content-Security-Policy: sandbox` so a browser navigating to `/call/...` never runs upstream
+HTML under treg's origin. Every other upstream header, including repeated `Set-Cookie`, is relayed.
 
-A separate case that looks similar but is NOT a platform binding: the Google Ads **conversion**
-uploader (`adsconv.py`) also spends treg's own platform connection, but it is not a caller-issued
-`/call/` request at all, so it never reaches `relay()` or `infra/upstream/injectors.py` - it reads the platform org's
-stored OAuth secret directly and builds its own headers. See [ads-conversions](ads-conversions.md).
+### Mechanics a refactor must keep
 
-**Accept-Encoding is normalized to `identity`** when the caller sent none. `relay()` streams the upstream
-body raw (`aiter_raw`), so if the caller doesn't ask for compression httpx would otherwise add its own
-`Accept-Encoding: gzip` and hand a plain HTTP client / agent compressed bytes it never requested. Asking
-for `identity` keeps what the caller receives matching what the caller requested.
+- Request headers are rebuilt into an `httpx.Headers` multidict from the raw pairs, preserving
+  duplicates; injection assigns only the named header.
+- The query is merged onto the URL with `copy_add_param`, never passed as `params=`: httpx replaces
+  a URL's existing query whenever `params` is given, even empty, stripping a catalog path's own
+  query. `tests/test_relay_path_query.py` pins it.
+- The path comes from `request.scope["raw_path"]`, not Starlette's decoded path param, so
+  percent-encoding survives (npm's scoped publish `PUT /@scope%2fname` 404s if `%2f` is decoded).
+- The body streams (`content=request.stream()`), never buffered, except for a JSON binding and for
+  `X-Treg-Body-Encoding`: `_BodyDecodeMiddleware` (`bootstrap_http.py`) decodes a base64/gzip body
+  before `relay()`, so the upstream still receives plaintext ([api](../interface/api.md)).
+- The upstream call uses the shared long-lived `httpx.AsyncClient` (`app.state.http`); keepalive is
+  the biggest latency win.
+- `relay()` returns a framework-neutral `UpstreamResponse`. The router's body wrapper and
+  background task share one idempotent close, so full reads, disconnects, stream errors and
+  cancellation close the upstream exactly once.
+- Every JSON re-encode goes through `treg/jsontext.py`: `json.loads` accepts an escaped lone UTF-16
+  surrogate that a plain `ensure_ascii=False` dump then refuses after the upstream answered.
+  `dumps`/`dumps_bytes` fall back to ASCII escapes only for such a value. MCP is the one lossy
+  surface: its pydantic serializer cannot write the escape, so `mcp._body` replaces an unpaired
+  surrogate with U+FFFD rather than lose a paid answer.
+
+### Bindings
+
+`relay()` loops `tool.bindings` and calls `injectors.inject(...)` per binding, so one request may
+carry several credentials. A `format` with no `{secret}` renders literally, which lets a binding
+stamp a provider protocol constant (a required API-version header); it still references a secret
+for validation and lifecycle and overwrites a caller value. A binding with `platform_setting`
+instead of `secret_id` injects one of treg's own credentials from settings (the Google Ads developer
+token), never stored in the org's secret store so a tenant cannot read or extract it; a missing
+setting is a `502` (`this server has no <setting> configured`). Tier 4 copies the provider's
+constant `required_headers` bindings, so a version pin is identical on own-key and platform calls.
+
+Binding validity is checked at registration (`_validate_bindings`, also run by `register_skill`):
+known injector, same-org secret, a `format` that renders with only `{secret}`, non-empty names, and
+no duplicate target within one location. A call-time injector `ValueError` or an
+`httpx.RequestError` becomes an audited `502`.
+
+The Google Ads conversion uploader (`adsconv.py`) spends treg's platform connection but never
+reaches `relay()`; see [ads-conversions](ads-conversions.md).
+
+### Error bodies and evidence
+
+Before a 4xx/5xx body reaches the caller, an idempotent replay or the evidence row,
+`evidence.redact_error_response` decodes it (gzip/deflate, bounded; own-key calls mirror the
+caller's `Accept-Encoding`) and replaces every spelling of every injected credential
+(`_secret_renderings`, every account's value of a platform setting) with `***`. Masking is exact
+only: the admin-log pattern nets would rewrite ordinary fields like `"key": "uniqueId"`. A
+normalized re-check that still finds a credential, a credential that cannot be rendered, or a body
+that cannot be decoded replaces the whole body with a `response_redacted` error. An unchanged body
+keeps its bytes and encoding; a masked one is re-sent identity-encoded with a fresh
+`Content-Length`. 2xx bodies are untouched.
+
+A failed unmetered response is read whole (`_read_whole_if_small`, up to 8 MiB) so masking sees
+every byte; one too large is replaced on a credentialed call and streamed untouched
+(`_peek_stream_head` keeps a head for evidence) only when nothing was injected. Caller request
+bodies on unmetered paths are kept for evidence only when `Content-Length` is declared and within
+`evidence._ERROR_CALLER_BODY_MAX`; larger or chunked uploads keep streaming. Redaction order,
+access and retention: [data-model](data-model.md#audit-writer-auditpy).
 
 ## Connection discipline: a call in flight holds no DB connection
 
-Resolution, authorization and reservation own short sessions. `service._execute_call` commits
-the request's secret-loading session before opening reservation, and again before relay or the
-live demo's network call. The invariant is **zero checked-out request connections during upstream
-I/O**, including rate-smoothing waits.
-
-Settlement, first-call recording and idempotency storage use their own sessions. A commit does not
-invalidate loaded objects because the session makers use `expire_on_commit=False`.
-OAuth refresh likewise separates DB reads/writes from token-endpoint network I/O.
-
-Keeping the request transaction open through relay can deadlock a saturated pool: each request
-holds a slot while its settlement waits for another. `tests/test_call_pool_discipline.py` checks
-pool occupancy at the network boundary and covers concurrent calls. Pool sizing, timeouts and
-the separate API/admin/background pools are specified in [deploy](../ops/deploy.md).
+Resolution, authorization and reservation own short sessions. `service._execute_call` commits the
+request's secret-loading session before reservation and again before relay or the live demo's
+network call: **zero checked-out request connections during upstream I/O**, including
+rate-smoothing waits. Settlement, first-call recording and idempotency storage use their own
+sessions; `expire_on_commit=False` keeps loaded objects usable. OAuth refresh separates DB work
+from token-endpoint I/O. Holding the request transaction through relay deadlocks a saturated pool
+(each request holds a slot while its settlement waits for another);
+`tests/test_call_pool_discipline.py` checks occupancy at the network boundary. Pool sizing:
+[deploy](../ops/deploy.md).
 
 ## Tool resolution (`application.call.resolve`)
-`* /call/{rest:path}` → `routers.call.call_tool()` → `routers.call.run_call_surface()` (shared with
-`/catalog/call/` and `/table/`, which differ only in the `finish` that turns the answer into the
-response: see [table](table.md)) → `application.call.service.execute_call()`
-→ `resolve_call_target(...)` returns a framework-neutral
-`ResolvedTarget(tool, upstream)`. Each resolution use case owns and closes its read session.
 
-A named miss that is not an org tool falls through, in order: a catalog endpoint, then — only for
-a top-level call (`request.context.input.child_of is None`) — a hub tool (`<team-slug>.<name>`,
-`hub_app.tool_for`). An own tool or a catalog id always wins; a hub tool never shadows either. See
-[hub](hub.md) for what a hub run is; `service._execute_call` runs it under a per-team
-`hub_limits.slot()`, refusing a new run with `429 hub_busy` (naming the active count and a
-`retry_after_s`) rather than queuing past `hub_limits.MAX_RUNS_PER_TEAM`.
-**Both shapes are scoped to the caller's org** (`Tool.org_id == org_id`), so two
-orgs resolve independently and may reuse a tool name or upstream host; the use case then loads only
-same-org secrets. After resolution `application.call.authorize` runs tool/project ACL, deny, member-cap,
-and public-demo gates in that order, with no money hold or upstream access. Its short session closes before
-the reserve stage; `-1`/default member caps add no query. Two resolution shapes:
+`* /call/{rest:path}` -> `routers.call.call_tool()` -> `routers.call.run_call_surface()` (shared
+with `/catalog/call/` and `/table/`, which differ only in `finish`: see [table](table.md)) ->
+`service.execute_call()` -> `resolve_call_target(...)` -> `ResolvedTarget(tool, upstream)`. Each
+resolution use case owns and closes its read session.
 
-`* /catalog/call/{rest:path}` is the narrower entrance used by catalog-only MCP surfaces.
-`routers.call.call_catalog_endpoint` sets `request.state.catalog_only` (gated on
-`claude_connector_enabled`) and then enters the same `call_tool` handler; the flag travels on
-`CallInput` into `execute_call`. Resolution accepts only an exact catalog endpoint id and never calls
-`resolve_call_target`, so a private team tool or arbitrary passthrough path cannot shadow the catalog
-entry. Everything after catalog resolution stays shared: credentials, ACLs, deny rules, caps,
-cancellation cleanup, metering, audit, idempotency, and faithful relay.
+Resolution is scoped to the caller's org (`Tool.org_id == org_id`), so orgs may reuse tool names and
+hosts, and only same-org secrets load. Two shapes:
 
-- **URL-passthrough (agent-native):** `rest` is the real upstream URL (`/call/https://api.intercom.io/me`).
-  `_normalize_scheme()` restores the `https://` a path param collapses to `https:/`. The tool is resolved
-  by **host** (`_host_of()` = `urlsplit(...).netloc`, matched against the indexed `Tool.host`) then the
-  **longest `base_url` prefix**; a tie → `409`, no match → `404` (or `403` when the caller's ACL is the
-  only thing that removed the match - see below).
-- **Named:** `rest = "<tool>/<path>"` (`rest.partition("/")`), looked up by `Tool.name`; upstream URL =
-  `base_url + path`. **No path → the base URL itself, without a trailing slash** - a tool pinned to a
-  full resource (`.../v1/charges`) must relay as-is, since Stripe `404`s `/v1/charges/`.
+- **URL-passthrough:** `rest` is the real upstream URL. `_normalize_scheme()` restores the `https://`
+  a path param collapses to `https:/`. The tool is matched by host (`Tool.host`), then the longest
+  `base_url` prefix at a **path-segment boundary** (`.../v1` must not match `.../v10/...` and inject
+  the wrong credential). Lengths compare rstripped, so a trailing-slash duplicate is a real `409`.
+  On a tie, a registry-provider-backed tool (binding to a `Secret` with a `provider`) beats a
+  hand-registered one; only a genuine ambiguity `409`s, naming every caller-usable colliding tool
+  and pointing at `/call/<name>/<path>`. No match is `404`.
+- **Named:** `rest = "<tool>/<path>"`, looked up by `Tool.name`; upstream = `base_url + path`. No path
+  relays the base URL itself without a trailing slash (Stripe `404`s `/v1/charges/`).
 
-A named miss whose `<tool>` is an exact catalog id with a path behind it (`reapi.tasks.get/tasks/1`)
-is the own-tool shape applied to the catalog half: it answers `400` naming the endpoint's parameter
-slots and the `--query` form, before any hint below runs. Named misses also inspect the org's caller-usable own tools on the error path. When a dotted operation
-name shares its provider/first segment with one (for example `google-analytics.report` beside the
-connected `google-analytics` tool), the 404 carries `hint` plus `did_you_mean` and points at
-`/call/google-analytics/<path>`. If that dotted name is a real catalog endpoint, the hint follows the
-catalog fall-through and is attached only if the marketplace credential ladder also dead-ends. Catalog
-near-id matching remains provider-local and takes precedence for genuine misspellings.
+Passthrough candidates are filtered by the caller's ACL (`_tool_usable`) **before** the tiebreak, so
+a tool the caller cannot see can neither cause a `409` nor win; this only narrows, and whatever
+resolves still passes `_require_tool_use`. When ACL alone removed every match the answer is `403`
+naming only the host the caller supplied, never the hidden tool.
 
-If both shapes miss with 404, a dotted target gets one final lookup in the endpoint catalog. A live
-row enters `_resolve_marketplace_call` and its credential ladder. `_marketplace_upstream` fills catalog
-path placeholders by percent-encoding raw values, but preserves a value containing a valid `%HH`
-escape. This prevents an already encoded Search Console property id such as
-`sc-domain%3Aexample.com` becoming double-encoded as `%253A`. Raw `@` remains literal because it is
-a legal path-segment character. This also supports email-path APIs such as Tomba's verifier, which
-rejects `%40` before decoding. Slashes, query/fragment delimiters and invalid percent signs remain
-escaped; URL-passthrough bytes are unchanged. Before building that URL, an optional catalog `host`
-on a provider that opted in to `catalog_targets` must resolve through
-`OAuthProvider.profile_for_catalog_host` to an exact approved HTTPS base URL. Providers without
-that opt-in keep resolving catalog paths against their primary base URL.
-The approved root keeps its path prefix when `_marketplace_upstream` appends the endpoint path, and
-the selected provider profile supplies the correct credential binding. An unapproved or malformed
-target fails as a treg-owned 502 before reserve and relay; catalog data cannot redirect an injected
-credential to a host of its choice. A `retired`/`broken` tombstone is
-instead refused with 410, its `status_note`, and its optional `superseded_by`, before credentials are
-selected or the relay can run; the refusal is audited as `refused_by=retired`. This ordering is
-deliberate: an org's own tool named exactly like the old catalog id already resolved above and is not
-shadowed, while URL passthrough has no catalog-id shape to catch accidentally.
+A named miss falls through, in order: an exact catalog endpoint, then, only for a top-level call
+(`child_of is None`), a hub tool (`<team-slug>.<name>`). An own tool or catalog id always wins; a
+hub tool never shadows either. Hub runs take a per-team `hub_limits.slot()` and refuse with
+`429 hub_busy` past `MAX_RUNS_PER_TEAM` rather than queue ([hub](hub.md)).
 
-**Capability alternatives.** A 410 tombstone without `superseded_by`, or a credential-ladder
-404, includes `_capability_alternatives(ep)`: curated same-capability endpoints, cheapest first,
-marked as callable on treg's key or requiring an own credential. Marked catalog rows are excluded.
-The helper is synchronous and performs no DB reads; measured reliability belongs to catalog
-inspection. It suggests alternatives without substituting one. Endpoints with no capability
-cannot participate.
+Named-miss diagnostics, all on the error path:
 
-**ACL-filtered candidates.** `_resolve_call` takes the **caller** and filters passthrough candidates by
-`_tool_usable` (project scope AND the per-tool list) **before** the longest-prefix tiebreak. A same-host
-tool the caller cannot use must not be able to cause a `409` - or win the tiebreak - for someone who
-cannot even see it in `list_tools`. This only NARROWS the candidate set, so it can never grant access:
-whatever resolves still passes `_require_tool_use`. The named shape needs no filter (it resolves one
-tool, then the gate runs).
+- `<catalog-id>/<path>` (the own-tool shape on a catalog id) answers `400` naming the endpoint's
+  parameter slots and the `--query` form.
+- A dotted name sharing its first segment with a caller-usable own tool gets `hint` and
+  `did_you_mean` pointing at `/call/<tool>/<path>`; for a real catalog id this is attached only if
+  the credential ladder also dead-ends. Provider-local catalog near-id matching takes precedence.
+- A credential-ladder 404, or a 410 tombstone without `superseded_by`, includes
+  `_capability_alternatives(ep)`: same-capability endpoints, cheapest first, marked callable on
+  treg's key or own-credential-only. Synchronous, no DB reads; it suggests, never substitutes.
 
-**ACL-only misses return 403.** Resolution retains unfiltered host matches to distinguish
-an absent tool (404) from candidates removed solely by ACL (403). The latter names only the host
-the caller supplied, never an inaccessible tool.
+`* /catalog/call/{rest:path}` (catalog-only MCP surfaces, gated on `claude_connector_enabled`) sets
+`catalog_only` and accepts only an exact catalog endpoint id, never calling `resolve_call_target`,
+so a private team tool or passthrough path cannot shadow the catalog entry. Everything after
+resolution is shared.
 
-**Policy deny (`_enforce_deny`, `_deny_match`).** After resolution and the tool ACL, the resolved
-upstream is matched against the org's `DenyRule` rows (org-wide + the ones aimed at this caller) →
-`403` naming the rule. Evaluating the **resolved** upstream is what makes both call shapes equally
-gated - a caller cannot dodge a rule by switching to URL-passthrough - and the relay does not follow
-redirects, so a blocked host is not reachable via a 3xx bounce. When a provider moves its
-`base_url`, the old one stays in `legacy_base_urls`: the call is also checked as if sent there, so a
-rule written against the old host keeps blocking, and catalog tier 1 still finds a team tool
-registered on it. The path match is anchored at a
-segment boundary (`/v1/charges` must not match `/v1/chargesX`), the same trap `_resolve_call` guards.
-It applies to **every role including owner** (a guardrail, not a permission tier) and to both run
-tiers, where the tool's own `base_url` host stands in for the request path. `_deny_match` is pure, so
-it unit-tests without a DB - mirroring `localrun.check_deny`, which is the same idea one layer down
-(argv instead of URL). Zero rules = one indexed query and no behavior change. A rule may also carry a
-`project_id`: it then fires only on calls through that project's tools (every enforcement point has a
-resolved Tool by then, so `_enforce_deny` takes `tool.project_id`); an org-wide-tool call is never
-caught by a project rule. The three scope axes - host/path/method, member, project - are ANDed and
-each is NULL-means-any.
+### Catalog targets
+
+A live catalog row enters `_resolve_marketplace_call` and its credential ladder.
+`_marketplace_upstream` percent-encodes placeholder values but preserves a value already containing
+a valid `%HH` escape (an encoded Search Console property id must not become `%253A`). Raw `@` stays
+literal: it is legal in a path segment and some email-path APIs reject `%40`. Slashes, query and
+fragment delimiters and invalid `%` stay escaped. A catalog `host` on a provider that opted into
+`catalog_targets` must resolve through `OAuthProvider.profile_for_catalog_host` to an exact
+approved HTTPS base URL, which keeps its path prefix and supplies the binding; anything else is a
+treg 502 before reserve, so catalog data cannot redirect an injected credential.
+
+A `retired`/`broken` tombstone is refused with 410, its `status_note` and optional
+`superseded_by`, before credentials are selected (audited `refused_by=retired`). An org's own tool
+named like the old id already resolved above and is not shadowed.
+
+`strict_query` rows (`_enforce_catalog_query`) reject bodies, undeclared or duplicate query
+parameters, missing required inputs and unsupported enum values; declared path placeholders pass
+and are consumed. `body_allowlist` rows (`_enforce_catalog_body`) reject undeclared top-level JSON
+fields, missing required fields, invalid declared scalars and arrays outside their declared
+cardinality or item enum (an array of objects may require all or any named item fields; an omitted
+optional array is allowed). Both apply on every tier and never to raw own-tool relays.
+
+### Authorization and deny rules
+
+After resolution `application.call.authorize` runs tool/project ACL, deny, member cap and
+public-demo gates in that order, with no hold and no upstream access, and closes its session before
+reserve.
+
+`_enforce_deny` matches the **resolved** upstream against the org's `DenyRule` rows, so both call
+shapes are equally gated, and the relay never follows redirects, so a blocked host is not reachable
+through a 3xx. A provider's old `base_url` stays in `legacy_base_urls`: the call is also checked as
+if sent there, and catalog tier 1 still finds a team tool registered on it. Path matching is
+anchored at a segment boundary. Rules apply to every role including owner (a guardrail, not a
+permission tier). A rule with `project_id` fires only on that project's tools; host/path/method,
+member and project are ANDed, each NULL-means-any. `_deny_match` is pure and mirrors
+`localrun.check_deny` (argv instead of URL).
+
+### Call-time SSRF guard
+
+Just before `send`, `relay()` re-resolves the upstream host (`host_is_public`, gated by
+`proxy_ssrf_check`) and refuses with `502` if any address is non-public: a `base_url` public at
+registration can later resolve to `169.254.169.254` or localhost. Registration
+(`ssrf.safe_webhook_url`) also normalizes numeric IP encodings (`2130706433`, `0x7f000001`,
+`127.1`) through `inet_aton` before the literal-IP block. Targets must be globally routable
+unicast. CGNAT `100.64.0.0/10` is internal service space (Tailscale, WireGuard overlays, Fly.io,
+some Kubernetes pod CIDRs, Alibaba Cloud's metadata endpoint `100.100.100.200`). NAT64 prefixes
+mapping non-global IPv4 do not make a target public; `64:ff9b::/96` stays blocked. A narrow
+resolve-vs-connect race remains; closing it needs a custom transport pinning the resolved IP.
 
 ## Responses and diagnostic evidence
 
-Treg refusals on both call surfaces carry `X-Treg-Error: 1`. Mechanism-keyed application
-failures map to `caller | treg | upstream | org_connection` blame; the HTTP adapter preserves
-status and detail. Provider failures remain response data. Header contracts are documented in
-[the API fragment](../interface/api.md).
+Treg refusals carry `X-Treg-Error: 1`. Application failures map to
+`caller | treg | upstream | org_connection` blame; provider failures remain response data. Header
+contracts: [api](../interface/api.md).
 
-After credential refresh and relay, `_audit` records the attempt and mirrors it through
-`_tool_called_props` / `analytics.capture`. Provider identity is the catalog provider or the
-own tool's upstream host. Analytics includes outcome, status, timing, cost, call reference,
-capacity/cache/smoothing signals and user-agent attribution, never params or bodies.
-
-`domain.catalog.results.classify` shares verified hit/miss rules between business-hit telemetry
-and cache admission. Found means `hit=true`, explicit empty means false, and errors/unknown
-results mean null. Hunter company emails, LeadMagic employee finder, and SE Ranking keyword
-volume have additional field checks; other verified adapters retain their miss expressions.
-Only endpoints with enabled hit/miss rules adopt result-aware cache behavior; unconfigured or
-unverified endpoints keep original cache learning and serving. Classification inspects only
-already-buffered bodies and does not change relay bytes or settlement. Existing `tool_called`
-events expose `result_state`, `result_reason`, `cache_admission` and `cache_result_policy`.
-See [archive result admission](archive.md#result-admission).
-
-Overflow retains both attempt rows under the same call reference, but emits one product event for
-the final answer. `defer_analytics` holds the parent's event until the child succeeds or the
-parent's answer stands. Failed-request redaction and retention belong to
-[data-model](data-model.md#audit-writer-auditpy).
+`_audit` records each attempt and mirrors it through `_tool_called_props` / `analytics.capture`
+(never params or bodies). `domain.catalog.results.classify` shares hit/miss rules between telemetry
+and cache admission and inspects only already-buffered bodies
+([archive result admission](archive.md#result-admission)). Overflow keeps both attempt rows under
+one call reference but emits one product event (`defer_analytics`).
 
 Exceptional exits are recorded once, guarded by the audit marker:
 
@@ -365,424 +325,270 @@ Exceptional exits are recorded once, guarded by the audit marker:
 | Pool timeout after identity | `tool_called`, `outcome=gateway_failed`, `failure_kind=db_pool` |
 | Unexpected exception while awaiting `execute_call` | `tool_called`, `failure_kind=unexpected_exception`; Starlette still returns the bare 500 |
 
-Before target resolution, target/provider identity remains null. Exceptions outside `execute_call`
-and body-stream failures after the handler returns are outside this compensation contract.
-Never relabel a stream failure as a new 500 after response headers have already been sent.
+Exceptions outside `execute_call` and body-stream failures after the handler returns are outside
+this contract. Never relabel a stream failure as a new 500 after headers were sent.
 
 ## Resolution and relay guards
 
-**Resolution + error hardening:** the URL-passthrough prefix match respects a **path-segment boundary**
-(`norm == base` or `base + "/"`), so `.../v1` no longer matches `.../v10/...` and inject the wrong
-credential; the longest-prefix tiebreak compares rstripped lengths (a trailing-slash duplicate is a real
-`409`, not a silent winner). When two same-host tools still tie on prefix length, `_resolve_call`
-**prefers the registry-provider-backed tool** (one whose binding points at a `Secret` with a `provider`)
-over a hand-registered one that often holds a stale credential - a `409` there would break exactly the
-agent-facing URL-passthrough callers who never typed a tool name; only a genuine ambiguity (neither or
-both provider-owned) still `409`s. That 409 names every caller-usable colliding tool and directs the
-caller to the unambiguous `/call/<name>/<path>` form. Binding validity is checked at **registration** (`_validate_bindings` rejects
-an unknown `injector` and a cross-org/dangling `secret_id`; `register_skill` runs the same gate), and
-`call_tool` translates a call-time injector `ValueError` and an upstream `httpx.RequestError` into a
-`502` instead of an unhandled 500 (and audits the failed attempt, not just successes). A binding
-`format` is validated to render with only `{secret}` and `name`/`secret_field` to be non-empty strings;
-duplicate target names are rejected independently for `location:"header"`, `"query"`, and `"json"`
-(they would silently overwrite each other).
-`health._probe` skips a dangling binding rather than `KeyError`-ing the whole run.
-
-**Relay security + faithfulness (bug-hunt):** the response side strips a `Set-Cookie` for treg's own
-cookie names (an upstream must not overwrite `treg_session`/`treg_oauth_state` - fixation) and adds
-`X-Content-Type-Options: nosniff` + `Content-Security-Policy: sandbox` (a browser navigating to `/call/…`
-must not execute upstream HTML/JS under treg's authenticated origin). It keeps `Content-Length` on a
-bodyless reply (HEAD/204/304), only carries a request body when the caller sent one (no bogus chunked
-frame on a GET), and honors headers a peer marks hop-by-hop via its `Connection` header (RFC 7230).
-`injectors._token_from_json` rejects a non-string field value instead of injecting garbage.
-
-**Call-time SSRF guard (DNS-rebinding defence).** Just before the upstream `send`, `relay()`
-re-resolves the upstream host (`infra.upstream.ssrf.host_is_public`, gated by the `proxy_ssrf_check` setting) and
-refuses with a `502` if any resolved address is internal (loopback/private/link-local/reserved/multicast).
-This catches the case where a `base_url` was public at **registration** but its DNS now points at an
-internal target like `169.254.169.254` or localhost - the registration-time check alone can't stop a name
-that resolves differently later. Registration itself (`infra.upstream.ssrf.safe_webhook_url`, re-exported
-by `health` and reused for `base_url`)
-also rejects numeric IP encodings - decimal/hex/octal/short forms like `2130706433` / `0x7f000001` /
-`127.1` are normalized via `inet_aton` and re-checked, so they can't sneak past the literal-IP block.
-Targets must be globally routable unicast addresses. CGNAT `100.64.0.0/10` is internal
-service space: Tailscale, WireGuard overlay deployments, Fly.io, some Kubernetes pod CIDRs,
-and Alibaba Cloud's metadata endpoint `100.100.100.200` use addresses in this range. These are
-precisely the services a caller-controlled upstream must not reach. NAT64 translation prefixes
-mapping non-global IPv4 addresses do not make those targets public; `64:ff9b::/96` remains blocked.
-
-(A narrow resolve-vs-connect race remains; pinning the resolved IP would need a custom transport.)
-
-> Why relay instead of modeling the upstream: [foundation/charter.md](../foundation/charter.md).
+The guards against a caller-controlled upstream are the path-segment-boundary prefix match and ACL
+filtering in [Tool resolution](#tool-resolution-applicationcallresolve), deny rules evaluated on
+the resolved upstream, the response headers in the [contract](#the-faithful-relay-contract), and
+the [call-time SSRF guard](#call-time-ssrf-guard) with its address-space list.
+`injectors._token_from_json` rejects a non-string field rather than inject garbage, and
+`health._probe` skips a dangling binding.
 
 ## Routed endpoints - the resolve stage short-circuit
 
-A catalog row with `kind: routed` (`treg.<capability>`, generated - `architecture/catalog.md`
-§ Routing) never reaches the credential ladder itself. `service._execute_call` hands it to
-`application/call/route.py`, which builds the plan and runs each child endpoint through **this same
-use case** as a child `CallContext` (`call_ref` `{parent}:r{n}`), so every rule below - ladder,
-reserve, relay faithfulness, capacity, overflow, audit, cancellation - applies per child
-unchanged. **Settle does not** apply straight: each child's `MarketplaceCall.deferred` points at
-the parent's `CallContext.deferred_settles` list, so `_platform_settle` appends a `DeferredSettle`
-(call id, billable, the amount it would have charged, its archive-use marker) and leaves the hold
-open instead of closing it. Only a child that would charge something defers: one that is not
-billable or settles at a provider-reported zero releases at once, so its hold never blocks the next
-child's reserve. The parent - not each child - decides whether the caller pays, and
-closes every child's hold exactly once with `settle.close_deferred(charge=…)`: `charge=True` settles
-each billable child as its own settle would have, `charge=False` releases all of them, because a
-routed call that fails charges the caller nothing. A crash before `close_deferred` runs leaves the
-holds to the reaper, which releases in the caller's favour. The parent only assembles
-`{output, raw, _treg}` and owns the idempotency label.
-
-A routed call whose outcome is still pending (`202` with `X-Treg-Route-Outcome: pending`) leaves
-`request.state.call_cost_micro` as `None` and skips the `X-Treg-Cost-Micro` response header rather
-than reporting a charge that has not happened yet.
+A `kind: routed` row (`treg.<capability>`, [catalog](catalog.md) § Routing) never reaches the
+credential ladder itself. `service._execute_call` hands it to `application/call/route.py`, which
+runs each child endpoint through this same use case as a child `CallContext` (`call_ref`
+`{parent}:r{n}`), so ladder, reserve, relay, capacity, overflow, audit and cancellation apply per
+child. Settlement does not: a child that would charge appends a `DeferredSettle` to the parent's
+`deferred_settles` and leaves its hold open; a child that is not billable or settles at a
+provider-reported zero releases at once so it never blocks the next child's reserve. The parent
+closes every child hold exactly once with `settle.close_deferred(charge=...)`: settle each billable
+child as its own settle would have, or release all because a failed routed call charges nothing.
+A crash before that leaves holds to the reaper, which releases in the caller's favor.
+`route.child_outcome` reads each child's answer and is shared with
+[replay](replay.md). The parent assembles `{output, raw, _treg}` and owns the idempotency label.
+A pending outcome (`202`, `X-Treg-Route-Outcome: pending`) sends no `X-Treg-Cost-Micro`.
 
 ## Several treg-owned accounts behind one provider
 
-`TREG_PLATFORM_ACCOUNTS` adds accounts behind a provider, as JSON from provider to labelled
+`TREG_PLATFORM_ACCOUNTS` adds accounts behind a provider as JSON from provider to labelled
 accounts: `{"contactout": {"b": {"platform_key_contactout": "..."}}}`. The deployment's own
 `platform_key_<provider>` is the account labelled `primary`, and every reader outside the call path
-(balance collectors, archive refresh, overflow verification) keeps using only it. An account names
-every credential that differs per account. `keyslots.check_accounts` refuses to start the API or
-`treg-worker asynctasks settle` / `hub check` on an account the call path cannot use: one behind a provider whose primary key is
-unset (the primary is the serving switch), a provider without a pasted platform key, or an account
-that omits its provider's paired setting (Tomba's secret, Adyntel's account email). A label,
-never a credential, is what rows, buckets and telemetry (`tool_called.key_slot`) name, so reordering
-the accounts or regenerating one's key changes nothing.
+(balance collectors, archive refresh, overflow verification) uses only it. An account names every
+credential that differs per account. `keyslots.check_accounts` refuses to start the API or the
+workers that call providers on an account the call path cannot use (primary key unset, no pasted
+platform key, or a missing paired setting). Rows, buckets and telemetry (`tool_called.key_slot`)
+name the label, never a credential, so reordering accounts or regenerating a key changes nothing.
 
 `application/call/keyslots.py` picks the account:
 
-1. A call acting on a task, result or managed resource uses the account that created it.
-   `AsyncTaskRecord`, `AsyncResourceRecord` and `ProviderResource` carry `key_slot`; NULL is a row
-   from before accounts existed and means `primary`. A row whose account is no longer configured is
-   refused with 410 `platform_account_retired` before reserve; the async worker releases such a
-   task's hold at once (the platform absorbs any upstream charge, flagged for reconciliation).
-   Retired means the provider's accounts are configured in this process and that label is not
-   among them; a process holding no further accounts for the provider (or not its primary) answers
-   503 `platform_account_unavailable`, which the worker backs off on, so a worker that lost its
-   environment never releases a task it could poll once restored. A call whose objects live on
-   different accounts is refused with 409 `platform_account_split`.
-2. A call carrying `Idempotency-Key` uses the account the org-scoped key hashes to, so a retry that
-   reaches the provider again lands where the provider can recognise it. Adding or removing an
-   account can move a key. The idempotency claim is no place to remember the account: a failed
-   call deletes its claim, and that is exactly the retry that reaches the provider.
-3. Otherwise an account not out of capacity whose smoothing bucket would wait least; ties rotate
-   per provider. Rules 1 and 2 run during resolution (`pinned`); this one runs right before the
-   relay (`assign`), and the
-   chosen bucket's token is taken with no await between, so a burst that resolved together still
-   spreads over the accounts instead of all reading the same idle one.
+1. A call acting on a task, result or managed resource uses the account that created it
+   (`key_slot` on `AsyncTaskRecord`, `AsyncResourceRecord`, `ProviderResource`; NULL means
+   `primary`). A label configured for the provider in this process but no longer listed is refused
+   with 410 `platform_account_retired` before reserve, and the async worker releases that task's
+   hold. A process holding none of the provider's further accounts answers 503
+   `platform_account_unavailable`, which the worker backs off on, so a worker that lost its
+   environment never releases a task it could poll once restored. Objects on different accounts:
+   409 `platform_account_split`.
+2. A call carrying `Idempotency-Key` uses the account the org-scoped key hashes to, so a retry
+   reaching the provider lands where it can be recognized. The idempotency claim cannot remember the
+   account: a failed call deletes its claim, and that is exactly the retry that reaches the
+   provider.
+3. Otherwise an account not out of capacity whose smoothing bucket would wait least, ties rotating.
+   Rules 1-2 run during resolution (`pinned`); rule 3 runs right before relay (`assign`) and takes
+   the bucket's token with no await between, so a burst that resolved together still spreads.
 
-A call on any account but the primary carries `account: <provider>/<label>` on its platform
-binding, and the relay injects that account's values or fails `injection_failed` when the account
-is not configured; it never substitutes another account's credential. The primary's credentials are
-the deployment's own fields, so a call on it carries no `account` and smooths in the provider's own
-bucket: a provider with one account behaves exactly as before. Error-body masking covers every
-account's value of the setting.
+A non-primary call carries `account: <provider>/<label>` on its platform binding; the relay injects
+that account's values or fails `injection_failed`, never substituting another account. The primary
+carries no `account` and uses the provider's own bucket, so a one-account provider is unchanged.
 
-Capacity is per account. A balance or quota signature strikes and locks only the account that
-answered (`marks.lock_key(..., slot)`: the primary keeps the provider's own key, a further account
-`<key>#<label>`), a 2xx clears only its own account's strikes, and a probe through a lock goes to
-the locked account. A call is refused before reserve only when its pinned account, or every account
-of an open call, is out; `assign` skips accounts that are. The sweep still reads only the primary,
-so a further account's lock lifts at its expiry or through its own probe, and the burst-429 re-send
-stays on the same account.
+Capacity is per account: a signature strikes and locks only the account that answered
+(`marks.lock_key(..., slot)`, `<key>#<label>` for non-primary), a 2xx clears only its own strikes,
+and a probe goes to the locked account. A call is refused before reserve only when its pinned
+account, or every account of an open call, is out. The sweep reads only the primary, so another
+account's lock lifts at expiry or through its own probe.
 
-## Platform capacity: refuse before reserve (plan step D)
+## Platform capacity: refuse before reserve
 
-Catalog `platform_request` checks and provider-specific request guards run only after a platform
-offer is selected and before reserve. Exact selectors require evidence such as Tavily Search's
-caller-supplied `include_usage: true`. Openmart requires its explicit bounded record count; Tavily
-Map and Crawl require an integer `limit` from 1 to 20. Missing, Boolean and out-of-range values are
-caller errors. A request option whose result or charge arrives later at a caller's webhook, outside
-the response settlement reads, is refused outright: Ocean.io's contact reveals, and Apollo person
-enrichment's phone reveal, waterfalls, `webhook_url` and `poll_only`. BYOK is unchanged because the
-provider, not treg, bears that account's exposure.
+Platform-tier request guards (`_enforce_platform_request`, catalog `platform_request`) run after a
+platform offer is selected and before reserve. They bound treg's exposure on its shared accounts:
+explicit bounded record counts, exact pricing selectors (a singleton-enum body field that picks a
+table price row must equal its value; duplicate JSON keys are rejected so validation and upstream
+cannot disagree), and outright refusal of options whose charge or result arrives later at a
+caller's webhook, outside settlement's reads. Own keys are unaffected: the provider, not treg,
+bears that account's exposure.
 
-Tier 4 spends treg's own vendor account, and that account can be empty. `_resolve_marketplace_call`
-asks, after `_platform_offer` says yes: is this call **exhausted** in the in-process capacity view
-(`domain.capacity.view`, loaded from ratestore on a 60 s TTL by `resolve_marketplace_target` before
-its session opens)? Two sources say so: the sweep's `capacity:state:<provider>` (a balance API that
-read zero) and the call path's own lock `capacity:lock:<key>` (below). If so it raises
-`CallFailure("provider_capacity", 503, blame="treg")` - **before any hold exists** - whose body carries
-`resets_at` when known and the same-capability alternatives from `_capability_alternatives`. treg still
-does not choose for the caller (charter): it names the options. The audit row is `refused_by="capacity"`,
-`X-Treg-Error: 1`, cost 0. A stale, empty or "ok" view never refuses; only a confirmed signal does.
-A route whose catalog cost is `free` (`marks.spends_balance`) spends no balance, so for it only its
-endpoint's own lock (a quota) counts: the sweep's reading and the provider's balance lock neither
-refuse it, nor admit it as a probe, nor take its 2xx as recovery (`metered=False` through
-`view`, `keyslots`, the router and `_note_capacity_recovery`). A vendor that answers free routes
-at zero credits would otherwise erase every paid route's strike and lift every zero reading.
+Tier 4 spends treg's own vendor account, which can be empty. After `_platform_offer` says yes,
+`_resolve_marketplace_call` consults the in-process capacity view (`domain.capacity.view`, loaded
+from ratestore before the session opens). Two sources mark a call exhausted: the sweep's
+`capacity:state:<provider>` and the call path's lock `capacity:lock:<key>`. Then it raises
+`CallFailure("provider_capacity", 503, blame="treg")` **before any hold exists**, with `resets_at`
+when known and `_capability_alternatives`; treg names options, never chooses (AGENTS.md). Audit
+`refused_by="capacity"`, cost 0. A stale, empty or "ok" view never refuses. A free route
+(`marks.spends_balance` false) counts only its endpoint's own quota lock: balance readings and
+locks neither refuse it, admit it as a probe, nor take its 2xx as recovery (`metered=False`), since
+a vendor answering free routes would otherwise erase every paid route's strike.
 
-The call path's breaker (`domain.capacity.marks`) opens slowly and closes fast. After a tier-4
-answer ≥ 400, `settle._note_capacity_signal` runs `domain.capacity.signatures.classify` on the
-vendor's status/headers/body. A `balance` or `quota` signature is a **strike**; the second strike
-within 10 min, at least 15 s after the first (a burst of concurrent calls hitting the same empty
-instant is one strike), with no 2xx in between, **locks** - the provider for a balance signature, only the
-endpoint for a quota one (allowances are per operation). While locked, `resolve` admits one real
-call per process per minute as a **probe** (`MarketplaceCall.probe_lock_id`, `probe` on the
-`tool_called` event); its 2xx clears exactly that lock (`settle._note_capacity_recovery`, conditional
-on the lock id), any other answer leaves it. A sweep's `exhausted` reading admits the same probe
-from one minute after the reading, and its 2xx lifts that reading until the next sweep
-(`marks.clear_sweep_state`, conditional on the reading's `observed_at`), so a top-up is noticed
-within a minute instead of at the next sweep. A guessed hold lasts 1 h, a vendor-stated reset at
-most 6 h whatever `retry-after` said, and
-the sweep never writes this namespace. These writes run on their own short session **after** the
-settle closed the hold, never during flight, and are the dataplane writes this feature adds
-(`capacity_exhausted_mark` in `tests/test_call_architecture.py`). A burst 429 (`retry-after ≤ 60 s`)
-or an unknown one only logs; step D′ smooths those. An `edge_block` (the vendor's CDN answered, not
-the vendor: `cf-mitigated`, its HTML block page, or its 1xxx problem-JSON) strikes nothing: one caller's request shape must not take the provider away from every
-other team. The kind rides the `tool_called` event as `capacity_signal`. Tiers 1/2 resolve earlier
-and never consult the view: an org's own key running dry is the org's own answer, relayed
-unchanged. The vendor's 402 on THIS call is also relayed unchanged - the protection is for the
-next caller.
-An `unrecorded` signal - a 4xx no row matched whose body still names credits/quota/balance -
-is neither a strike nor a mark: it emits a `capacity` `unrecorded` event with the phrase
-(`ops/capacity.md`) and rides
-`tool_called` as `capacity_signal=unrecorded`, the tripwire for a vendor whose out-of-credit answer is
-not in the table yet (how Apollo's 422 went unseen on 2026-09-01).
+The breaker (`domain.capacity.marks`) opens slowly and closes fast. After a tier-4 answer >= 400,
+`settle._note_capacity_signal` classifies it (`domain.capacity.signatures.classify`). A `balance` or
+`quota` signature is a strike; a second strike inside the window, far enough after the first that a
+concurrent burst counts once, with no 2xx between, locks the provider (balance) or only the
+endpoint (quota; allowances are per operation). While locked, resolve admits one real call per
+process per interval as a probe (`MarketplaceCall.probe_lock_id`); its 2xx clears exactly that lock.
+A sweep `exhausted` reading admits the same probe, and its 2xx lifts the reading until the next
+sweep (`marks.clear_sweep_state`, conditional on `observed_at`). Hold lengths are capped whatever
+`retry-after` says; the sweep never writes this namespace. These writes run on their own short
+session after settle closed the hold (`capacity_exhausted_mark` in
+`tests/test_call_architecture.py`).
 
-## Burst smoothing on treg's own keys (plan step D′)
+A burst or unknown 429 only logs (smoothing handles it). An `edge_block` (the vendor's CDN
+answered: `cf-mitigated`, an HTML block page, 1xxx problem-JSON) strikes nothing, because one
+caller's request shape must not take the provider away from every team. An `unrecorded` signal (a
+4xx matching no row whose body still names credits/quota/balance) emits a `capacity` `unrecorded`
+event ([capacity](../ops/capacity.md)): the tripwire for a vendor dialect missing from the table.
+Tiers 1/2 never consult the view; an org's own key running dry is relayed unchanged, as is the
+vendor's 402 on this call. The protection is for the next caller.
 
-Many callers share one platform key, so tier 4 makes its own bursts: leadsforge 429'd 27% of its
-calls, crustdata 34%, with `retry-after` headers nobody downstream could act on. Two bounded
-mechanisms in `service._execute_call`, both **after the DB phase ended and before the relay** (the
-pool-discipline rule holds through the wait; proven by test), both platform-tier only, neither ever a
-refusal:
+## Burst smoothing on treg's own keys
 
-1. **Spacer** - `infra/upstream/limiter.py`: one call per `window_s / limit` per provider (a token
-   bucket of capacity one - a burst of `limit` at t=0 is legal for a classic bucket and exactly what a
-   sliding-window provider 429s). A call that would exceed the rate waits ≤ 2 s (`DEFAULT_MAX_WAIT_MS`),
-   then proceeds regardless; the hold is already placed, so the org pays latency, never money. The
-   limit comes from the capacity view (`view.rate_limit`: published by the sweep from
-   `CapacityPolicy.rate_limit`, with the verified defaults - leadsforge 120/min, leadmagic 300/min,
-   crustdata 30/min, tikhub 30/s - before the first sweep). An endpoint whose upstream allowance
-   differs from its provider's is its own bucket (`policy._ENDPOINT_RATE_LIMITS`, read through
-   `view.rate_bucket`); it replaces the provider's limit for that route and does not draw from the
-   provider's bucket. Each account other than the primary has its own allowance, so its own
-   bucket (`<key>#<label>`). In-process on purpose: a second replica
-   doubles the effective rate, and the `rate_pressure` alert (step C) is the answer to that, not a
-   shared counter on the request path.
-2. **One bounded `retry-after` re-send** - on a tier-4 **429** classified `burst` with
-   `retry-after ≤ 5 s` (`SMOOTHING_RETRY_MAX_S`), for a **body-less GET/HEAD only**: close the first
-   response, sleep, send the identical `UpstreamRequest` once more on the same hold, settle on the
-   second answer. A quota-429 (lusha "Daily", hunter "per billing period", any `retry-after` > 60 s), an
-   unknown 429, a POST, or a second 429 are relayed as is. The "no retries" rule for 401/402/5xx stands.
+Many callers share one platform key, so tier 4 makes its own bursts. Two bounded mechanisms in
+`service._execute_call` run after the DB phase and before relay, platform tier only, never a
+refusal (the shared rate window in [capacity](../ops/capacity.md) is the refusing gate):
 
-Both are visible: `X-Treg-Smoothed: wait=<ms>` and/or `retry=1` on the response (metered exit only).
-No audit column yet - `smoothed_ms` would be an ALTER on the hot `callrecord` table, a migration-class
-change kept out of this behaviour PR.
+1. **Spacer** (`infra/upstream/limiter.py`): one call per `window_s / limit` per bucket, a token
+   bucket of capacity one, because a burst of `limit` at t=0 is legal for a classic bucket and
+   exactly what a sliding-window provider 429s. A call waits at most `DEFAULT_MAX_WAIT_MS`, then
+   proceeds; the hold is placed, so the org pays latency, never money. The limit comes from
+   `view.rate_limit` (`CapacityPolicy.rate_limit`); an endpoint with its own upstream allowance
+   (`policy._ENDPOINT_RATE_LIMITS`, `view.rate_bucket`) is its own bucket, as is each non-primary
+   account. In-process because its wait needs no round trip, so each replica adds its own
+   allowance; the shared window holds the declared rate across replicas and refuses, with the typed
+   `provider_rate_limited` 429, only on buckets listed in `TREG_PROVIDER_RATE_ENFORCE`.
+2. **One `retry-after` re-send** on a tier-4 429 classified `burst` with `retry-after <=
+   SMOOTHING_RETRY_MAX_S`, for a body-less GET/HEAD only: close, sleep, resend the identical
+   request once on the same hold, settle on the second answer. The re-send asks the shared window
+   after the sleep; on a full enforced bucket it is not sent and the first 429 stands. A quota 429, an unknown 429, a POST
+   or a second 429 is relayed as is. No other retries (401/402/5xx).
 
-## Overflow - the child cycle (plan step E; off by default)
+Both show as `X-Treg-Smoothed: wait=<ms>` and/or `retry=1` on the metered response.
 
-**Overflow = the same vendor endpoint, another account of ours.** When a tier-4 call fails on treg's
-own key for a treg-side reason - a balance/quota signature, a burst-429 smoothing could not absorb -
-and the worker has an enabled `OverflowRoute` for the endpoint, `application.call.overflow.
-maybe_overflow` runs a **child cycle** after the primary's settle released its hold:
+## Overflow - the child cycle (off by default)
 
-1. Route from the in-process route view (`domain.capacity.routes_view`, Orthogonal first), skipping
-   an aggregator marked unhealthy (`overflow:<name>` in the capacity view) or without a key; budget
-   check against `OverflowSpend` (`overflow_daily_budget_usd` per aggregator per day) on a short
-   session. A deployment's live value belongs in its private operational configuration.
-2. **Child hold**, own id `{call_ref}:overflow`, through the ordinary `_platform_reserve` (tag
-   budgets, daily cap, trial allowance apply; an empty balance is the normal 402). Never the parent's
-   id: release-by-id is a conditional claim and `_finish_cancelled_call` releases both ids exactly once.
+**Overflow = the same vendor endpoint, another account of ours.** When a tier-4 call fails on
+treg's key for a treg-side reason (a balance/quota signature, a burst 429 smoothing could not
+absorb, or treg's own rate window refusing it before it was sent, forced trigger `burst`) and the worker has an enabled `OverflowRoute`, `application.call.overflow.maybe_overflow`
+runs a child cycle after the primary's settle released its hold:
+
+1. Pick a route from `domain.capacity.routes_view`, skipping an aggregator marked unhealthy or
+   without a key; check `OverflowSpend` against `overflow_daily_budget_usd` on a short session.
+2. **Child hold**, own id `{call_ref}:overflow`, through the ordinary `_platform_reserve`. Never the
+   parent's id: release-by-id is a conditional claim, and `_finish_cancelled_call` releases both ids
+   exactly once.
 3. One aggregator run with **no DB open**: `infra.upstream.aggregators.<name>.build` wraps the
-   caller's original query + buffered body; the key comes from `Settings.overflow_key_<name>` and is
-   never logged. Monid's async runs are polled (bounded).
-4. `parse` → vendor status + body + the real in-band cost. `_platform_settle(child,
-   observed_override=cost, overflow_spend=(aggregator, cost − treg's direct price))` charges **exactly
-   the aggregator's price, 0% markup**, and folds the day's spend delta into the same transaction -
-   the one allowlisted overflow write (`overflow_spend_in_settle`).
-5. The vendor's body goes back as the answer, `X-Treg-Served-Via: overflow:<name>`, `X-Treg-Cost-Micro`
-   the child's charge, `X-Treg-Call-Id` the parent's. Two audit rows share the `call_ref`: the primary
-   attempt with its real status and the child with `credential_tier="platform-overflow"`. The MCP
-   `call` result carries the same disclosure as `served_via` plus a hint (an MCP client never sees
-   headers), and `/catalog/endpoints/{id}` / `catalog_get` show the route's price up front as
-   `overflow_price_usd` - see `architecture/money.md` § Overflow money.
+   caller's original query and buffered body; the key (`Settings.overflow_key_<name>`) is never
+   logged.
+4. `parse` yields vendor status, body and the real in-band cost; `_platform_settle(child,
+   observed_override=cost, overflow_spend=...)` charges exactly the aggregator's price and folds the
+   day's spend into the same transaction (`overflow_spend_in_settle`, the one allowlisted overflow
+   write).
+5. The vendor's body is the answer, with `X-Treg-Served-Via: overflow:<name>`, the child's
+   `X-Treg-Cost-Micro` and the parent's `X-Treg-Call-Id`; the child's audit row has
+   `credential_tier="platform-overflow"`. MCP carries the same disclosure as `served_via` (an MCP
+   client never sees headers). Money: [money](money.md) § Overflow money.
 
-When the resolver already knows the account is out (the exhausted view) **and** a route is on, the
-ladder skips the direct attempt entirely (`MarketplaceCall.skip_direct`): no parent hold, no vendor
-402, straight to the child - the plan's tier 4b. That parent does not gain a `payer_org_id`.
-Cancellation requires the authenticated caller's org before the refund and releases the child
-hold with it.
+When the resolver already knows the account is out and a route is on, the ladder skips the direct
+attempt (`MarketplaceCall.skip_direct`): no parent hold, straight to the child. Cancellation checks
+the authenticated caller's org before releasing the child hold.
 
-Influencers Club discovery/search and similar-creators routes, and Icypeas people search, have a
-verified flat Orthogonal price against our per-row direct price. They are admitted by an absolute
-fee ceiling (`routes.request_priced`, `$0.03`) instead of the price ratio, and `route_for` applies
-no per-request check, so even a one-row request can overflow. The original paging/filter body is
-relayed unchanged and the child settles once at the aggregator's reported price, even if the page
-is empty. See `ops/capacity.md` for verification.
+Routes are normally admitted by the aggregator-to-direct price ratio; routes in
+`routes.request_priced` (a flat aggregator fee against a per-row direct price) are admitted by an
+absolute fee ceiling instead, with no per-request check, and settle once at the aggregator's price
+even for an empty page.
 
 **An aggregator failure is data.** Its own 401/402/403 or a malformed envelope releases the child
-hold and marks `overflow:<name>` unhealthy for everyone; a relayed vendor answer the signature table
-reads as that vendor's own out-of-credit or quota dialect (`VENDOR_DRY`: a 402, Apollo's 422 through
-Orthogonal's dry Apollo account, a period 429) releases the child hold and marks
-`overflow:<name>:<provider>` only - one vendor's cap never takes the others offline. Either mark
-lasts 15 minutes, and the caller gets the typed `provider_capacity` 503 with alternatives; a second aggregator is never tried on the same call.
-The aggregator's own per-request refusal (`contract`: its stricter schema, or Orthogonal's bare
-400/422/404 with no vendor data) is request-scoped - it releases the child, charges nothing and marks
-nothing; the vendor's own answer stands, and on the skip-direct ladder, where there is none, the caller
-gets the typed 503 naming the refusal rather than the aggregator's envelope dressed as the vendor's
-answer. `malformed` is reserved for what is not an envelope at all (non-JSON, a 5xx, a transport
-error); one validation 400 read as `malformed` once took Orthogonal offline for every org for 15 minutes.
+and marks `overflow:<name>` unhealthy for everyone. A relayed vendor answer the signature table
+reads as that vendor's own out-of-credit or quota dialect (`VENDOR_DRY`) marks only
+`overflow:<name>:<provider>`, so one vendor's cap never takes the others offline. Both are
+temporary marks, and the caller gets the typed `provider_capacity` 503; a second aggregator is never
+tried on the same call. The aggregator's per-request refusal (`contract`: its stricter schema, or a
+bare 400/422/404 with no vendor data) is request-scoped: release, charge nothing, mark nothing; the
+vendor's own answer stands, and on the skip-direct ladder the caller gets the 503 naming the
+refusal, never the aggregator's envelope dressed as the vendor's. `malformed` is only for what is
+not an envelope at all (non-JSON, 5xx, transport error): reading a validation 400 as `malformed`
+takes the aggregator offline for every org.
 
-**Shadow mode** (`TREG_OVERFLOW_MODE=shadow`): the aggregator is called, status / shape / cost logged
-and the probe's cost recorded in `OverflowSpend` (treg pays, budget-bounded) - the caller still gets
-the vendor's own error and is charged nothing. This is the week the plan requires before routes serve.
+**Shadow mode** (`TREG_OVERFLOW_MODE=shadow`) calls the aggregator, logs status, shape and cost and
+records the cost in `OverflowSpend` (treg pays, budget-bounded); the caller still gets the vendor's
+error and pays nothing.
 
 Never on tiers 1/2, a caller-caused 4xx, a 401, a timeout, PUT/PATCH/DELETE, a route the worker has
-not enabled, or a team that opted out (`Org.platform_overflow_disabled`, `treg org overflow off`) -
-checked before any aggregator is contacted, on both entry points.
-
-## Control-header isolation
-
-`proxy._is_dropped_request_header` strips every request header beginning with `x-treg-`,
-including future control headers. `_CONTROL` lists the non-prefixed infrastructure headers.
-This prevents caller metadata, runtime identity and routing controls from reaching providers;
-tests include an invented prefix-matching header so the guarantee cannot regress to an enumeration.
+not enabled, or a team that opted out (`Org.platform_overflow_disabled`) - checked before any
+aggregator is contacted, on both entry points.
 
 ## Asynchronous submissions on the call path
 
-A catalog endpoint carrying an `async` descriptor resolves like any other (`resolve.py` freezes a
-`settlement_basis`, `when: terminal` for a table, `usage` or `per_call` price, and the descriptor on
-the `MarketplaceCall`). In `service._execute_call`, a metered 2xx from such an endpoint is
-**deferred** (`application.asynctasks.defer_submission` writes the pending row and leaves the hold
-open) unless `_submission_rejected` says the body is not an accepted submission (not JSON, `expect`
-rule failed, no task id), in which case it settles at once at the provider's reported charge, else
-zero, or the descriptor's
-`terminal_on_submission` finds a success word in the submission itself, in which case it settles on
-the response like a synchronous call; a persistence failure releases the hold with an alert. The
-body the caller receives is the provider's either way. On such a row a "still working" submission
-is a task id, not an answer, so the archive records nothing for it. `routers/call._attach_async_descriptor` adds `X-Treg-Async` (the effective descriptor) to
-the response, also on an idempotent replay, so a retried `--await` polls the task already running.
-The settlement itself is the money fragment's subject.
+A catalog endpoint with an `async` descriptor resolves like any other (`resolve.py` freezes a
+`settlement_basis` and the descriptor on the `MarketplaceCall`). A metered 2xx from it is
+**deferred** (`application.asynctasks.defer_submission` writes the pending row, hold left open)
+unless `_submission_rejected` finds no accepted submission (not JSON, `expect` failed, no task id),
+which settles at once at the provider's reported charge else zero, or `terminal_on_submission`
+finds a success word in the submission, which settles like a synchronous call. A persistence
+failure releases the hold with an alert. The caller receives the provider's body either way; a
+"still working" submission is not archived. `routers/call._attach_async_descriptor` adds
+`X-Treg-Async`, also on an idempotent replay, so a retried `--await` polls the running task.
+Settlement: [money](money.md).
 
-Tier-4 calls add two checks before reserve and relay that deliberately do not apply to BYOK. First,
-a body field used as a table-pricing discriminator and declared as a singleton catalog enum (for
-example OpenRouter's `model`) must equal that fixed value; strict JSON parsing rejects duplicate keys
-that could make validation and upstream interpretation disagree. Second, endpoints referenced as an
-async descriptor's poll or fetch utility accept only task/result ids present in an
-`AsyncTaskRecord` for the caller's org and provider, with the same frozen endpoint/parameter rule.
-Legacy async pairs use catalog `resource_ownership` metadata and `AsyncResourceRecord` for the same
-check without changing their existing settlement behavior. Formal submissions mirror their
-poll/fetch ids into that table too, so removing a live descriptor reference cannot make its utility
-fail open; pre-migration pending rows still authorize through their frozen descriptor.
-Extended task consumers whose producer provenance is not modeled are catalogued as BYOK-only via
-`platform_blocked`, rather than accepting an unverifiable task id on the shared account.
-Unknown and cross-org ids receive the same 403 without contacting the provider. Fetch-mode result ids
-are learned from an authorized successful poll or from the worker's terminal response. BYOK keeps its
-faithful-relay semantics because those ids belong to the caller's own provider account.
+Tier 4 only: endpoints used as an async descriptor's poll or fetch utility accept only task/result
+ids present in an `AsyncTaskRecord` for the caller's org and provider, with the frozen
+endpoint/parameter rule. Legacy pairs use catalog `resource_ownership` and `AsyncResourceRecord`
+(`requires` may name a body parameter, so a POST status utility can authorize an opaque id). Formal
+submissions mirror their ids into that table too, so removing a live descriptor reference cannot
+make its utility fail open. Consumers whose producer provenance is not modeled are `platform_blocked`
+(own key only). Unknown and cross-org ids get the same 403 with no provider contact. Fetch-mode
+result ids are learned from an authorized successful poll or the worker's terminal response. With a
+pin, `_enforce_platform_async_ownership` adds `pinned_tag_predicates`; every pin must match the
+submission snapshot and an unknown or foreign id is 404 before relay
+([multi-tenancy](multi-tenancy.md#caller-tags-and-pinned-read-scopes)). Own keys keep the
+faithful relay: those ids belong to the caller's own account.
 
-Durable shared-account objects use the separate catalog `managed_resource` contract and
-`ProviderResource` table. Create relays with no DB connection held, then commits ownership before the
-provider id is returned; persistence failure triggers best-effort provider deletion and returns a
-treg 502 without exposing the id. Update changes local display state only after upstream success.
-Delete authorizes active or tombstoned ownership, treats an owned upstream 404 as deleted, then
-tombstones locally, making retries safe. These rules run only on the platform-key tier; own keys keep
-the ordinary faithful relay. A managed `use` declaration may permit provider-public ids through a
-bounded GET predicate. The local ownership check runs first; cross-org and tombstoned ids are denied
-without upstream I/O, while wholly unassigned ids are verified only after the DB phase closes and
-before money is reserved. Managed responses remain under the same 8 MiB complete-body limit.
+Durable shared-account objects use the catalog `managed_resource` contract and `ProviderResource`.
+Create relays with no DB connection, then commits ownership before the provider id is returned; a
+persistence failure triggers best-effort provider deletion and a treg 502 without the id. Update
+changes local state only after upstream success. Delete authorizes active or tombstoned ownership,
+treats an owned upstream 404 as deleted, then tombstones, so retries are safe. A managed `use`
+declaration may admit provider-public ids through a bounded GET predicate: cross-org and tombstoned
+ids are denied without upstream I/O, and wholly unassigned ids are verified after the DB phase and
+before reserve. Platform tier only.
 
-An owned platform status poll with an explicit free price and zero estimate takes the
-`MarketplaceCall.free_owned_poll` branch. It bypasses a new poll reservation and settlement while
-buffering the response for `observe_owned_poll`, which learns fetch ownership and finalizes the
-original task on terminal 2xx evidence. Missing required usage leaves the hold pending; settlement
-errors preserve the provider response for cron recovery. Polls read the live provider, do not use or
-populate replayable cache, and release any caller-supplied idempotency label so the next poll
-can observe a changed status. Successful and failed polls retain diagnostic audit rows with
-`kind=async_poll` and zero charged cost; `/calls` excludes them before pagination. The original
-submission shows the shared finalizer's settlement state and result in Activity. Terminal evidence
-is archived under that submission's call id, not the poll's id.
+An owned platform status poll with an explicit free price and zero estimate
+(`MarketplaceCall.free_owned_poll`) takes no reservation or settlement of its own; its buffered
+response feeds `observe_owned_poll`, which learns fetch ownership and finalizes the original task on
+terminal 2xx evidence. Missing required usage leaves the hold pending; settlement errors keep the
+provider response for cron recovery. Polls never use or populate the archive and release any
+caller idempotency label so the next poll sees a changed status. They are audited as
+`kind=async_poll` at zero cost and excluded from `/calls` before pagination; terminal evidence is
+archived under the submission's call id.
 
 ## Complete downloads and bounded response evidence
 
-`MarketplaceCall.streamable_free_result` identifies platform fetch utilities with an explicit free
-price, zero estimate, a required fetch ownership rule, and no async submission, owned poll or produced
-resource evidence. Only successful GET responses bypass `_buffer_response`; the normal ownership
-check still runs before relay. Their existing zero-amount reserve/settle gates stay in place, while
-the full upstream stream and headers (including Range metadata) pass to the router's close-once
-lifecycle. The original generation task is not observed or finalized by the download. Audit byte
-size is unknown, not a fabricated zero. No body is archived or retained for idempotent replay:
-these free reads release the claim, so a retry fetches the provider again.
+`MarketplaceCall.streamable_free_result` marks platform fetch utilities with an explicit free price,
+zero estimate, a required fetch ownership rule and no submission, owned poll or produced-resource
+evidence. Their successful GETs bypass `_buffer_response` (ownership is still checked before relay)
+and stream in full with headers (including Range) through the router's close-once lifecycle. Audit
+size is unknown, not zero; nothing is archived or kept for replay, and the claim is released.
 
-Other responses needing settlement or ownership evidence have a hard 8 MiB complete-body budget.
+Other responses needing settlement or ownership evidence have a hard 8 MiB complete-body budget:
 `_buffer_response` raises `GatewayFailed(response_buffer_limit)` on the first overflowing chunk,
-before any success headers, and closes the upstream in `finally` on EOF, exception or cancellation.
-The application releases the hold/claim and returns 502 with zero cost; no partial response reaches
-settlement, archive or replay. This is an explicit size limitation, not support for arbitrarily large
-metered JSON. The fault is attributed to treg's buffer limit, not to the provider. Own-key streams
-remain outside this limit. `tests/test_call_response_limits.py` exercises both real HTTP hops,
-CLI output, boundaries, Range, disconnects, settlement evidence, archive and replay behavior.
+before any success headers, and closes the upstream in `finally`. The hold and claim are released,
+the caller gets a 502 at zero cost blamed on treg, and no prefix reaches settlement, archive or
+replay. Own-key streams are outside this limit. `tests/test_call_response_limits.py` covers both
+HTTP hops.
 
 ### Spooled evidence for inline media
 
-Some providers return generated media inside their JSON answer: Gemini's `generateContent` puts
-a base64 image and a multi-megabyte `thoughtSignature` in the body, about 9 MB at 2K and 23 MB at
-4K, with its token meters (`usageMetadata`) after them. Streaming that answer would mean settling
-after the response is sent (no exact `X-Treg-Cost-Micro`, a second close-once path for disconnects,
-routed children and overflow rebuilt); raising the buffer would put tens of megabytes per call in
-a web process. The endpoint instead declares `spooled_response: true` and
-`_read_evidence` hands its metered 2xx to `_spool_response`:
+Some providers return generated media inside JSON with the usage meters after it (Gemini
+`generateContent`: base64 image and `thoughtSignature`, tens of MB at high resolution). Streaming
+would mean settling after the response starts; a larger buffer would hold that per call in a web
+process. Such an endpoint declares `spooled_response: true`, and `_read_evidence` hands its metered
+2xx to `_spool_response`:
 
-- The body streams into `tempfile.TemporaryFile` (unlinked from creation, so a crashed worker
-  leaves nothing on disk) under `spool_max_bytes` (64 MiB) and a per-process
-  `spool_budget_bytes` (512 MiB) shared by concurrent spools. A declared `Content-Length` is
-  claimed whole before the first read, so concurrent answers are admitted or refused whole rather
-  than all stalling half-read; without one, the claim grows chunk by chunk. Crossing either limit
-  raises the same `response_buffer_limit` before headers (the budget refusal says it is temporary);
-  the upstream closes in `finally` as in `_buffer_response`, temp-file creation included.
-- The file is parsed once with the stdlib `json` (measured on a 23 MB Gemini answer: ~30 ms and
-  ~45 MB peak; about three times the body at worst) in a worker thread, at most
-  `spool_parse_concurrency` (2) per process. Only the paths the row's settlement reads survive
-  (`_spool_evidence_paths`: each usage term's top-level object and the `expect` leaf, kept at its
-  original place, e.g. `{"candidates": [{"finishReason": "STOP"}]}`), re-serialized as the `body`
-  every later consumer sees: usage
-  settlement, result classification and capacity signatures. A body that is not a JSON object
-  yields empty evidence; a `usage` basis then settles at its reserve.
-- Settlement then runs exactly as for a buffered body, before the response starts, and the router
-  relays the file in 256 KiB reads with the provider's headers and a recomputed `content-length`.
-  The replay's close returns the budget; `weakref.finalize` does so too for a response dropped
-  without closing.
-- A spooled body is not archived and not stored for idempotent replay; its audit row records the
-  full size. Non-2xx answers, own-key calls and routed children (whose parent reads the child's
-  body) keep their existing paths. `tests/test_call_spool.py` covers the lifecycle (oversize,
-  budget, reset, cancellation, garbage collection, parse gate) and `test_call_response_limits.py`
-  a 20 MB Gemini-shaped answer over two real HTTP hops.
-
-
-## HarvestAPI integration
-
-Catalog entries can opt into `strict_query`: `_enforce_catalog_query` rejects bodies,
-undeclared/duplicate query parameters, missing required inputs and unsupported enum values before
-credential selection. They can separately opt into `body_allowlist`: `_enforce_catalog_body`
-rejects undeclared top-level JSON fields, missing required fields, invalid declared scalar values,
-and arrays outside their declared cardinality or item enum. An omitted optional array is allowed;
-its cardinality applies only when the caller supplies it. Both checks apply to catalog calls on every
-tier, leave unmarked entries unchanged and do not constrain arbitrary raw own-tool relays. Legacy
-`resource_ownership.requires` accepts a declared body
-parameter as well as path/query parameters, allowing a POST status utility to authorize an opaque
-shared-account task id.
-
-## Pinned shared-provider reads
-
-`_enforce_platform_async_ownership` adds `pinned_tag_predicates` to its org-scoped task and resource
-queries. All pins must match the submission snapshot; a pinned unknown/foreign id returns 404 before
-relay. BYOK and raw own-tool access keep their existing credential ACLs. The shared-provider
-`Idempotency-Key` rewrite additionally includes the complete enforced pin, so different customers
-cannot receive one upstream job through provider deduplication. Unpinned digests are unchanged.
-`intake.prepare_call_intake` includes the same full pin in Treg's membership replay namespace. See
-[multi-tenancy](multi-tenancy.md#caller-tags-and-pinned-read-scopes) for the history and ledger scopes.
-
-## Optional published root admission
-
-The shared `run_call_surface` checks [published Org flow control](org-flow-control.md) after identity
-and context creation, before financial admission. One effective snapshot supplies pause, rate and
-concurrency checks. It can refuse new root calls with 429 for an active valid pause, an exhausted
-rate bucket or a full published concurrency limit. Rate and concurrency refusals consume neither
-token nor slot; tokens already spent on admission are not refunded after later failure or
-cancellation. Redis failures allow calls; missing keys clear cached rules, and
-malformed or conflicting publications retain the previous valid snapshot and original pause expiry.
-Existing accepted work and its financial cleanup continue. This optional default-off check does
-not cover direct hub, provider-resource or background execution outside the shared surface.
+- The body streams into an unlinked `tempfile.TemporaryFile` under `spool_max_bytes` and the
+  per-process `spool_budget_bytes`. A declared `Content-Length` is claimed whole before the first
+  read, so concurrent answers are admitted or refused whole rather than all stalling half-read;
+  otherwise the claim grows per chunk. Crossing either limit raises `response_buffer_limit` before
+  headers (the budget refusal says it is temporary), closing the upstream in `finally`.
+- The file is parsed once in a worker thread, at most `spool_parse_concurrency` at a time. Only the
+  paths settlement reads survive (`_spool_evidence_paths`: each usage term's top-level object and
+  the `expect` leaf at its original place) and become the `body` for usage settlement, result
+  classification and capacity signatures. A non-object body yields empty evidence; a `usage` basis
+  then settles at its reserve.
+- Settlement runs before the response starts; the router relays the file in chunks with the
+  provider's headers and a recomputed `content-length`. Close returns the budget, and
+  `weakref.finalize` does so for a response dropped unclosed.
+- A spooled body is never archived or stored for replay; the audit row records the full size.
+  Non-2xx answers, own-key calls and routed children keep their existing paths.
+  `tests/test_call_spool.py` covers the lifecycle.

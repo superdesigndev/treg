@@ -158,11 +158,13 @@ endpoints:
       currency: credit
       per: 1
       unit: keyword
+      reserve: {rows: {param: queryParams.limit, default: {value: 100, source: docs}, max: 1000}}
+      settle: {count: {path: keywords}}
       source: docs
       source_url: https://seranking.com/pricing.html
-      checked: '2026-07-28'
+      checked: '2026-10-28'
       confidence: documented
-      note: 10 credits per keyword RETURNED, 0 per request — so `limit` is the entire cost. The default limit of 100 spends 1,000 credits; always set it explicitly.
+      note: 10 credits per keyword RETURNED, 0 per request — so `limit` is the entire cost. The default limit of 100 spends 1,000 credits; always set it explicitly. The docs state no maximum `limit`; the hold caps it at 1,000.
     verified: 2026-07-31
     added: '2026-07-28'
     example_response: examples/seranking.google.keywords.ideas.json
@@ -366,9 +368,11 @@ endpoints:
       currency: credit
       per: 1
       unit: domain
+      reserve: {rows: {param: queryParams.limit, default: {value: 100, source: docs}, max: 10000}}
+      settle: {count: {path: refdomains}}
       source: docs
       source_url: https://seranking.com/pricing.html
-      checked: '2026-07-28'
+      checked: '2026-10-28'
       confidence: documented
       note: 1 credit per REFERRING DOMAIN returned, 0 per request — `limit` is the entire cost.
     verified: 2026-07-31

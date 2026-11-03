@@ -11,7 +11,7 @@ The transport is exercised as a real MCP client would: JSON-RPC over the mounted
 
 from __future__ import annotations
 
-from conftest import verified_signup, funded_user
+from conftest import verified_signup, funded_user, mcp_text_result
 
 import json
 from contextlib import asynccontextmanager
@@ -53,6 +53,7 @@ async def _modern_rpc(client: AsyncClient, method: str, params=None, token: str 
         "Authorization": f"Bearer {token}",
         "MCP-Protocol-Version": "2026-07-28",
         "MCP-Method": method,
+        **({"MCP-Name": body_params["name"]} if "name" in body_params else {}),
     })
 
 
@@ -61,14 +62,8 @@ async def _call_tool(client: AsyncClient, name: str, args: dict, token: str | No
         "protocolVersion": "2025-06-18", "capabilities": {},
         "clientInfo": {"name": "test", "version": "1"}}, token)
     r = await _rpc(client, "tools/call", {"name": name, "arguments": args}, token)
-    payload = r.json()
-    content = (payload.get("result") or {}).get("content") or []
-    if content and content[0].get("type") == "text":
-        try:
-            return json.loads(content[0]["text"])
-        except ValueError:
-            return {"_text": content[0]["text"]}
-    return payload
+    return mcp_text_result(name, r.json())
+
 
 
 @asynccontextmanager
@@ -113,7 +108,7 @@ async def mcp_session(client: AsyncClient):
 async def test_the_server_lists_the_shared_tools(clients):
     """The catalog is data reached through a tool, never a tool per endpoint -
     2,600 schemas would bury the model's context and make the catalog unusable."""
-    token = (await clients.post("/users", json={"email": "lister@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "lister@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         await _rpc(c, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
                                      "clientInfo": {"name": "t", "version": "1"}}, token)
@@ -163,7 +158,7 @@ async def test_hub_tools_are_listed_only_to_a_team_that_may_use_the_hub(clients,
     hub = {"hub_create", "hub_update", "hub_mine"}
     token = clients.headers["X-Treg-Token"]
     me = (await clients.get("/orgs")).json()[0]["slug"]
-    other = (await clients.post("/users", json={"email": "hub-outsider@superdesign.dev"})).json()["token"]
+    other = (await verified_signup(clients, json={"email": "hub-outsider@superdesign.dev"})).json()["token"]
     try:
         monkeypatch.setenv("TREG_HUB_ENABLED", "1")
         get_settings.cache_clear()
@@ -305,7 +300,7 @@ async def test_resources_list_uses_and_normalizes_fish_byok_voices(clients, monk
 async def test_catalog_search_returns_priced_results(clients):
     """Search is the entry point: an agent asks for a task and gets endpoints with prices. Needs a
     credential now, like every tool - see test_a_protected_tool_answers_401_with_WWW_Authenticate."""
-    token = (await clients.post("/users", json={"email": "searcher@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "searcher@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "catalog_search", {"query": "backlinks", "limit": 3}, token=token)
     assert out["results"], out
@@ -318,7 +313,7 @@ async def test_no_key_needed_is_false_when_the_deploy_holds_no_key(clients):
     """`no_key_needed` must mean "THIS deploy will serve it on treg's key", not "the row is priced".
     The test env configures no platform keys at all, so every result — however eligible its price —
     must say False; anything else re-opens the advertise-then-refuse gap this field had."""
-    token = (await clients.post("/users", json={"email": "keyless@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "keyless@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "catalog_search", {"query": "backlinks", "limit": 5}, token=token)
     assert out["results"]
@@ -326,7 +321,7 @@ async def test_no_key_needed_is_false_when_the_deploy_holds_no_key(clients):
 
 
 async def test_search_says_so_when_nothing_matches(clients):
-    token = (await clients.post("/users", json={"email": "nomatch@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "nomatch@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "catalog_search", {"query": "zzzz-no-such-capability"}, token=token)
     assert out["count"] == 0
@@ -355,7 +350,7 @@ async def test_catalog_request_files_the_gap_with_attribution(clients):
     from treg.infra.db import session_maker
     from treg.models import ToolRequest
 
-    token = (await clients.post("/users", json={"email": "wisher@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "wisher@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "catalog_request",
                                {"capability": "Ahrefs backlinks", "note": "for SEO audits"}, token=token)
@@ -372,7 +367,7 @@ async def test_catalog_request_files_the_gap_with_attribution(clients):
 async def test_a_team_default_token_resolves_its_team(clients):
     """A CLI login with a chosen team receives that team's Default key, so MCP can resolve billing
     without a second X-Treg-Org header."""
-    r = await clients.post("/users", json={"email": "identity-user@superdesign.dev"})
+    r = await verified_signup(clients, json={"email": "identity-user@superdesign.dev"})
     per_org = r.json()["token"]
     clients.headers["X-Treg-Token"] = per_org
     slug = (await clients.get("/orgs")).json()[0]["slug"]
@@ -390,8 +385,8 @@ async def test_a_team_default_token_resolves_its_team(clients):
 async def test_one_team_cannot_read_another_teams_tools(clients):
     """Tenant isolation, asserted rather than assumed. Two orgs, two tokens: each sees only its own
     registered tools. This is the property a second front door is most likely to lose."""
-    a = (await clients.post("/users", json={"email": "org-a@superdesign.dev"})).json()["token"]
-    b = (await clients.post("/users", json={"email": "org-b@superdesign.dev"})).json()["token"]
+    a = (await verified_signup(clients, json={"email": "org-a@superdesign.dev"})).json()["token"]
+    b = (await verified_signup(clients, json={"email": "org-b@superdesign.dev"})).json()["token"]
     clients.headers["X-Treg-Token"] = a
     made = await clients.post("/tools", json={"name": "a-only-tool", "base_url": "http://upstream"})
     assert made.status_code == 200, made.text
@@ -424,7 +419,7 @@ async def test_an_unknown_host_is_refused(clients):
     first tool call. `mcp._allowed_hosts()` builds the list from this deployment's `public_url` plus
     the loopback names, so this asserts both directions: a known host works (every other test) and an
     unknown one does not."""
-    token = (await clients.post("/users", json={"email": "host@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "host@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         r = await c.post("http://evil.example.com/mcp/", json={"jsonrpc": "2.0", "id": 1,
                          "method": "tools/list"},
@@ -503,7 +498,7 @@ async def test_a_BROWSER_origin_is_accepted(clients):
     from treg.config import get_settings
 
     origin = get_settings().public_url.rstrip("/")
-    token = (await clients.post("/users", json={"email": "browser@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "browser@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         r = await c.post("http://localhost/mcp/", json={
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
@@ -515,7 +510,7 @@ async def test_a_BROWSER_origin_is_accepted(clients):
 
 async def test_an_UNKNOWN_origin_is_still_refused(clients):
     """The protection has to remain real — the fix widens the list, it does not remove the check."""
-    token = (await clients.post("/users", json={"email": "origin@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "origin@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         r = await c.post("http://localhost/mcp/", json={
             "jsonrpc": "2.0", "id": 1, "method": "tools/list"},
@@ -591,7 +586,7 @@ async def test_structured_content_VALIDATES_against_the_advertised_schema(client
     from treg.mcp import mcp as server
 
     schemas = {t.name: t.output_schema for t in await server.list_tools()}
-    token = (await clients.post("/users", json={"email": "strict@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "strict@superdesign.dev"})).json()["token"]
 
     async with mcp_session(clients) as c:
         # The exact failing calls from the reports: a search (next set, hint absent) and the two
@@ -624,7 +619,7 @@ async def test_large_mcp_responses_are_gzipped_AT_THE_ORIGIN(clients):
     Brotli) and not br."""
     import json as _json
 
-    token = (await clients.post("/users", json={"email": "gz@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "gz@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         await _rpc(c, "initialize", {
             "protocolVersion": "2025-06-18", "capabilities": {},
@@ -667,7 +662,7 @@ async def test_mcp_responses_forbid_edge_TRANSFORMS(clients):
 
     Asserted on both an authenticated answer and the 401 challenge — the header wrapper is outermost
     precisely so the challenge path carries it too."""
-    token = (await clients.post("/users", json={"email": "edge@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "edge@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         challenged = await c.post("http://localhost/mcp/", json={
             "jsonrpc": "2.0", "id": 1, "method": "tools/list"}, headers=MCP_HEADERS)
@@ -876,7 +871,7 @@ async def test_call_accepts_an_ARRAY_body(clients):
     express that".
 
     Found by trying a real call for the demo, not by reading the signature."""
-    token = (await clients.post("/users", json={"email": "arraybody@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "arraybody@superdesign.dev"})).json()["token"]
     # register the tool AS THAT TOKEN's org — a tool created in another org is correctly invisible
     prev = clients.headers.get("X-Treg-Token")
     clients.headers["X-Treg-Token"] = token
@@ -896,7 +891,7 @@ async def test_call_accepts_an_ARRAY_body(clients):
 async def test_a_list_is_refused_for_a_GET_with_a_clear_reason(clients):
     """A query string is key/value pairs, so a list has no meaning there. Saying so beats a pydantic
     trace that blames the caller for the tool's own limitation."""
-    token = (await clients.post("/users", json={"email": "listget@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "listget@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "call", {
             "endpoint_id": "hunter.people.email.find", "params": [{"x": 1}]}, token=token)
@@ -950,7 +945,7 @@ async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch)
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tikhub")
     get_settings.cache_clear()
 
-    token = (await clients.post("/users", json={"email": "broke402@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "broke402@superdesign.dev"})).json()["token"]
     prev = clients.headers.get("X-Treg-Token")
     clients.headers["X-Treg-Token"] = token
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
@@ -1175,7 +1170,7 @@ async def test_an_id_that_misses_by_one_segment_names_the_real_one(clients):
     """`lusha.companies-signals` for `lusha.x.companies-signals` — what a model produces relaying an
     id through a summary. It broke search → get → call at its FIRST step, and "use catalog_search"
     sends the agent back to the step that produced the wrong id in the first place."""
-    token = (await clients.post("/users", json={"email": "nearmiss@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "nearmiss@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         got = await _call_tool(c, "catalog_get", {"endpoint_id": "lusha.companies-signals"}, token=token)
         called = await _call_tool(c, "call", {"endpoint_id": "lusha.companies-signals"}, token=token)
@@ -1188,8 +1183,10 @@ async def test_catalog_query_arrays_use_the_endpoints_declared_wire_encoding(mon
     """A structured MCP list is not synonymous with repeated query keys.
 
     Meta declares one compact JSON array value for every array on the endpoint, while an unmodelled
-    team tool keeps the longstanding repeated-key default. This goes through `call`, not only
-    `_query_values`: the first version stayed green if the MCP call site stopped using the helper.
+    team tool keeps the longstanding repeated-key default. Comma encoding is covered with a
+    synthetic endpoint declaration so the mechanism stays tested without coupling to a shipped row.
+    This goes through `call`, not only `_query_values`: the first version stayed green if the MCP
+    call site stopped using the helper.
     """
     from treg.domain.catalog import store as cs
     from treg import mcp as _mcp
@@ -1197,6 +1194,10 @@ async def test_catalog_query_arrays_use_the_endpoints_declared_wire_encoding(mon
     cat = cs.load()
     meta = cat.by_id["meta-ad-library.meta-ads.library.search"]
     assert _mcp._query_values(meta, "ad_reached_countries", ["US"]) == ['["US"]']
+    comma_ep = {"input": {"queryArrayEncoding": "comma"}}
+    assert _mcp._query_values(
+        comma_ep, "include_domains", ["docs.python.org", "realpython.com"],
+    ) == ["docs.python.org,realpython.com"]
     assert _mcp._query_values(None, "tag", ["a", "b"]) == ["a", "b"]
 
     captured = {}
@@ -1386,7 +1387,7 @@ async def test_balance_says_WHOSE_grant_and_which_team_by_name(clients):
     """A slug alone cannot be sanity-checked: `superdesign-7` looks plausible to the agent and to
     the human reading over its shoulder. The display name and the account that authorised the
     connection are what make a wrong team legible before the spending is noticed."""
-    token = (await clients.post("/users", json={"email": "whose@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "whose@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "balance", {}, token=token)
     assert out["team"] and out["team_name"]
@@ -1426,7 +1427,7 @@ async def test_the_tie_band_covers_the_WHOLE_equal_scoring_group(clients, monkey
     wide, wide_total, wide_trunc = cs.rank_band("tiktok", cat, 8)
     assert wide_total > cs.RERANK_BAND and wide_trunc
     assert len(wide) <= cs.RERANK_BAND
-    token = (await clients.post("/users", json={"email": "wide@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "wide@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "catalog_search", {"query": "tiktok", "limit": 8}, token=token)
     assert "narrow" in (out.get("ranking_note") or ""), out.get("ranking_note")
@@ -1479,7 +1480,7 @@ async def test_the_SEARCH_TOOL_itself_ranks_on_evidence_not_just_the_helper(clie
     assert endpoint_stats.MIN_SAMPLES <= 5
     assert (await catalog_stats.refresh(session_maker, now=utcnow_naive() + timedelta(minutes=2)))["caught_up"]
 
-    token = (await clients.post("/users", json={"email": "ranker@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "ranker@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         await _call_tool(c, "catalog_search", {"query": "tiktok ads", "limit": 25}, token=token)
         await app.state.endpoint_observation_reader.wait_for_idle()
@@ -1661,9 +1662,72 @@ async def test_catalog_get_gives_the_caller_its_own_team_values(clients, monkeyp
     cat = catalog_store.load()
     ep = dict(cat.by_id["crawl4ai.watch.list"])
     monkeypatch.setitem(cat.by_id, "crawl4ai.watch.list", ep)
-    token = (await clients.post("/users", json={"email": "watcher@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "watcher@superdesign.dev"})).json()["token"]
     clients.headers["X-Treg-Token"] = token
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "catalog_get", {"endpoint_id": "crawl4ai.watch.list"}, token=token)
     assert out["endpoint"]["your_values"] == {"queryParams.agent": call_resolution.team_label(org_id)}
+
+
+async def test_catalog_get_stays_within_an_mcp_client_output_limit(clients):
+    """Hosts cap a tool result (Claude Code at about 25k tokens) and read `structuredContent`; a job
+    with dozens of providers returned 150k+ characters, and a routed row lost its plan to the schema."""
+    token = (await verified_signup(clients, json={"email": "size@superdesign.dev"})).json()["token"]
+    results = {}
+    async with mcp_session(clients) as c:
+        await _rpc(c, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                     "clientInfo": {"name": "test", "version": "1"}}, token)
+        for endpoint_id in ("treg.people.search", "aiark.people.search"):
+            r = await _rpc(c, "tools/call", {"name": "catalog_get", "arguments": {"endpoint_id": endpoint_id}}, token)
+            results[endpoint_id] = r.json()["result"]
+    routed = results["treg.people.search"]["structuredContent"]
+    crowded = results["aiark.people.search"]["structuredContent"]
+    assert routed["routing"]["plan"] and routed["related_capabilities"] and not routed["siblings"]
+    assert len(crowded["siblings"]) > 20
+    for result in results.values():
+        assert len(json.dumps(result)) < 100_000
+
+
+async def test_tool_called_names_the_mcp_host(clients, monkeypatch, posthog_events):
+    """An MCP call's `tool_called` names its host: the inbound User-Agent always, and `clientInfo.name`
+    when the request carries it (2026-07-28+; an older client reports it at `initialize` alone, which
+    the stateless transport does not keep)."""
+    from treg.application.call import service as call_service
+    from treg.application.call.types import UpstreamResponse
+    from treg.config import get_settings
+
+    monkeypatch.setenv("TREG_PLATFORM_KEY_HARVESTAPI", "PLATFORM-HARVESTAPI")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "harvestapi")
+    get_settings.cache_clear()
+    monkeypatch.setattr(get_settings(), "posthog_key", "phc_test_suite", raising=False)
+
+    async def relay(*args, **kwargs):
+        async def stream():
+            yield b'{"elements":[]}'
+
+        async def close():
+            return None
+
+        return UpstreamResponse(200, ((b"content-type", b"application/json"),), stream(), close)
+
+    monkeypatch.setattr(call_service, "relay", relay)
+    token = clients.headers["X-Treg-Token"]
+    args = {"name": "call", "arguments": {
+        "endpoint_id": "harvestapi.linkedin.post.search", "params": {"search": "film"}}}
+    try:
+        async with mcp_session(clients) as c:
+            c.headers["User-Agent"] = "claude-code/2.1.0 (cli)"
+            await _rpc(c, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                         "clientInfo": {"name": "claude-code", "version": "2.1.0"}}, token)
+            legacy = await _rpc(c, "tools/call", args, token)
+            modern = await _modern_rpc(c, "tools/call", args, token)
+        events = await posthog_events()
+    finally:
+        get_settings.cache_clear()
+    assert legacy.json()["result"]["isError"] is False, legacy.json()
+    assert modern.json()["result"]["isError"] is False, modern.json()
+    old, new = [e["properties"] for e in events]
+    assert old["client"] == "mcp" and old["user_agent"].startswith("python-httpx/")
+    assert old["mcp_user_agent"] == "claude-code/2.1.0 (cli)" and old["mcp_client"] is None
+    assert new["mcp_user_agent"] == "claude-code/2.1.0 (cli)" and new["mcp_client"] == "test"

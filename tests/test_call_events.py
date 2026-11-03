@@ -232,6 +232,7 @@ def test_one_spelling_per_subject():
     assert (ev.normalize("linkedin_url", "https://www.linkedin.com/in/APerson/")
             == ev.normalize("linkedin_handle", "aperson") == "aperson")
     assert ev.normalize("full_name", "  A   Person ") == "a person"
+    assert ev.normalize("phone", "+44 7700 900123") == ev.normalize("phone", "0044 7700-900123") == "447700900123"
     assert ev.domain_class("gmail.com") == "webmail"
     assert ev.domain_class("cs.mit.edu") == "edu" and ev.domain_class("ox.ac.uk") == "edu"
     assert ev.domain_class("nasa.gov") == "gov" and ev.domain_class("sample.example") == "company"
@@ -250,6 +251,20 @@ def test_derived_names_give_one_input_id():
     assert a["input_meta"] == {"domain_class": "company", "tld": "example"}
 
 
+def test_an_array_body_identity_reads_back_through_a_bare_expression():
+    cat = catalog_store.load()
+    adapter = cat.adapters["brightdata.linkedin.user.profile"]
+    contract = cat.contracts[cat.by_id["brightdata.linkedin.user.profile"]["capability"]]
+    assert adapter.in_expr == {"body.url": "linkedin_url"} and not adapter.in_map
+    body = json.dumps([{"url": "https://www.linkedin.com/in/aperson/"}]).encode()
+    given = ev.vendor_identity(adapter, contract, [("dataset_id", "x"), ("format", "json")], body)
+    assert given == {"linkedin_url": "https://www.linkedin.com/in/aperson/"}
+    # A computed expression (`e164_digits(phone)`) is not inverted.
+    hlr = cat.adapters["hlrlookup.people.phone.verify"]
+    body = json.dumps({"telephone_number": "15550100"}).encode()
+    assert ev.vendor_identity(hlr, cat.contracts["people.phone.live"], [], body) == {}
+
+
 def test_ref_parts():
     assert ev.ref_parts("abc") == (None, None, None)
     assert ev.ref_parts("abc:r2") == ("abc", "r2", 2)
@@ -265,6 +280,96 @@ def test_an_unknown_analytics_mode_fails_the_contract():
         C.parse_contracts({"contracts": {"x.find": {
             "identity": [{"email": "str"}], "filters": {"q": {"type": "str", "analytics": "key"}},
             "output": {"email": {"type": "str"}}}}})
+
+
+def test_the_shipped_catalog_uses_only_known_modes_and_keeps_its_routes():
+    # An unknown mode raises at load and every `treg.*` capability disappears, so the shipped
+    # file is checked here, not only the parser.
+    cat = catalog_store.load()
+    used = {(s or {}).get("analytics", "skip") for c in cat.contracts.values()
+            for s in [*(c.output or {}).values(), *(c.filters or {}).values()]}
+    assert used <= {"key", "value", "skip"}
+    for cap in ("people.email.find", "companies.enrich", "linkedin.company.profile", "people.enrich",
+                "linkedin.user.profile", "people.phone.find", "people.search", "companies.search"):
+        assert f"treg.{cap}" in cat.by_id, cap
+
+
+@pytest.mark.parametrize("endpoint_id,location", [
+    ("apollo.people.enrich", "San Francisco United States"),
+    ("fetchinio.linkedin.user.profile", "Seattle, Washington, United States"),
+    ("apollo.companies.enrich", "South San Francisco United States"),
+    ("wiza.companies.enrich", "Toronto, Ontario, Canada"),
+])
+def test_a_shipped_adapter_answer_lands_its_location_as_written(endpoint_id, location):
+    # The adapter's own fixture through `from_upstream`, as the builder reads a live answer:
+    # the place is kept as the provider wrote it, for analysis to parse.
+    cat = catalog_store.load()
+    adapter, ep = cat.adapters[endpoint_id], cat.by_id[endpoint_id]
+    assert adapter.verified, adapter.verify_note
+    output = adapter.from_upstream(json.loads(catalog_store.example_path(endpoint_id).read_text()))
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        cols = ev.answer_columns(cat.contracts[ep["capability"]], output)
+    get_settings.cache_clear()
+    assert cols["answer_values"]["location"] == location
+
+
+def test_company_segments_land_as_values_and_the_domain_joins_the_find():
+    cat = catalog_store.load()
+    output = {"name": "Acme Example Corp", "domain": "www.acme.example", "website": "https://acme.example",
+              "description": "A long free-text description of what the company does.",
+              "industry": "Software", "employees": "51-200", "founded": 2010,
+              "location": "San Francisco, CA, United States", "linkedin_url": "https://linkedin.com/company/acme"}
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        cols = ev.answer_columns(cat.contracts["companies.enrich"], output)
+        page = ev.answer_columns(cat.contracts["linkedin.company.profile"],
+                                 {"name": "Acme Example Corp", "website": "acme.example", "employees": "51-200",
+                                  "location": "San Francisco, California, United States", "followers": 1200})
+        find, _ = ev.input_columns(cat.contracts["people.email.find"],
+                                   {"full_name": "A Person", "domain": "acme.example"})
+        search, _ = ev.input_columns(cat.contracts["companies.search"], {"q": "robots", "country": "DE"})
+        person = ev.answer_columns(cat.contracts["people.enrich"], {
+            "full_name": "A Person", "title": "Head of Sales", "location": "Berlin, Germany",
+            "company_domain": "acme.example"})
+    get_settings.cache_clear()
+    assert cols["answer_values"] == {"industry": "Software", "employees": "51-200", "founded": "2010",
+                                     "location": "San Francisco, CA, United States"}
+    # the company's name, description and URLs never leave; its domain only as the shared key
+    assert set(cols["answer_keys"]) == {"domain"}
+    assert cols["answer_keys"]["domain"] == page["answer_keys"]["website"] == find["input_keys"]["domain"]
+    assert page["answer_values"] == {"employees": "51-200",
+                                     "location": "San Francisco, California, United States"}
+    assert search["input_meta"]["country"] == "DE"
+    # a person's place as written; the person's name and title never leave
+    assert person["answer_values"] == {"location": "Berlin, Germany"}
+    assert person["answer_keys"] == {"company_domain": find["input_keys"]["domain"]}
+
+
+def test_a_found_phone_joins_its_live_check_in_one_spelling():
+    cat = catalog_store.load()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("TREG_CALL_EVENTS_HMAC_SECRET", SECRET)
+        get_settings.cache_clear()
+        found = ev.answer_columns(cat.contracts["people.phone.find"],
+                                  {"phone": "+1 (617) 555-0142", "line_type": "mobile", "country_code": "US"})
+        other = ev.answer_columns(cat.contracts["people.phone.find"], {"phone": "0016175550142"})
+        national = ev.answer_columns(cat.contracts["people.phone.find"], {"phone": "(617) 555-0142"})
+        live, _ = ev.input_columns(cat.contracts["people.phone.live"], {"phone": "+16175550142"})
+    get_settings.cache_clear()
+    assert found["answer_keys"]["phone"] == other["answer_keys"]["phone"] == live["input_keys"]["phone"]
+    assert found["answer_values"] == {"line_type": "mobile", "country_code": "US"}
+    # without a country code the digits could be another country's number, so no key
+    assert national["answer_keys"] is None
+    assert ev.normalize("phone", "6175550142") is None
+
+
+def test_a_long_value_is_capped():
+    contract = catalog_store.load().contracts["companies.enrich"]
+    cols = ev.answer_columns(contract, {"name": "Acme", "location": "x" * 1000})
+    assert cols["answer_values"]["location"] == "x" * 256
 
 
 def test_the_public_contract_does_not_carry_the_event_mapping():

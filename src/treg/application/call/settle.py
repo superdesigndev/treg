@@ -531,6 +531,16 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         doc = json.loads(body)
     except (ValueError, UnicodeDecodeError):
         return 0 if provider == "contactout" else None
+    if provider == "theirstack" and mk.endpoint_id in {
+        "theirstack.jobs.search", "theirstack.companies.search",
+        "theirstack.companies.technologies", "theirstack.companies.buying_intents",
+    }:
+        rows = doc.get("data") if isinstance(doc, dict) else None
+        if not isinstance(rows, list):
+            return None
+        if mk.endpoint_id in {"theirstack.jobs.search", "theirstack.companies.search"}:
+            return _rows_billed_micro(mk, ep, len(rows))
+        return mk.estimate_micro if rows else 0
     if (provider == "valyu" and mk.endpoint_id.endswith(".search")
             and isinstance(doc, dict)
             and ("results" not in doc or doc["results"] == [])
@@ -642,6 +652,10 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
             # HarvestAPI answers a full queue (429) or no backend (503) as a 200 without `cost`.
             return 0
         # Missing or invalid charge evidence leaves the normal miss/base rules in force.
+    counted = (ep.get("cost") or {}).get("settle") if ep else None
+    if isinstance(counted, dict) and mk.unit_micro > 0:
+        rows = _dig(doc, counted["count"]["path"])
+        return _rows_billed_micro(mk, ep, len(rows) if isinstance(rows, list) else None)
     if provider == "sumble":
         credits = doc.get("credits_used")
         # The request-time credit freezes the rate, including legitimate zero usage. Not
@@ -709,9 +723,8 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         n = len(data) if isinstance(data, list) else (1 if data else 0)
         return n * mk.unit_micro
     if provider == "influencersclub" and mk.cost_type == "per_result" and mk.unit_micro > 0:
-        # Discovery bills per creator RETURNED (cost.value credits each, e.g. 0.01 for search/similar,
-        # 0.03 for search with return_filter_values=true). The `accounts` array is invisible to the
-        # generic counters. An envelope without `accounts` (an error shape) costs nothing.
+        # Discovery bills per creator RETURNED. The `accounts` array is invisible to the generic
+        # counters. An envelope without `accounts` (an error shape) costs nothing.
         rows = doc.get("accounts")
         row_count = sum(item is not None for item in rows) if isinstance(rows, list) else 0
         return _rows_billed_micro(mk, ep, row_count)
@@ -1128,32 +1141,25 @@ async def _read_whole_if_small(
     return UpstreamResponse(response.status, response.raw_headers, replay(), response.close), None
 
 
-async def _platform_settle(
+@dataclass(frozen=True)
+class SettleDecision:
+    """What closing one metered hold decides, before any ledger write. Amounts are RAW micro-USD
+    except `charged_micro`, the margined amount the ledger takes from the balance."""
+
+    billable: bool
+    reason: str
+    observed_micro: int | None
+    actual_micro: int | None
+    charged_micro: int
+    repeat_percent: int
+
+
+def decide_settle(
     mk: MarketplaceCall, status_code: int | None, body: bytes = b"", *, headers=None,
-    reason: str = "", finalized: Callable[[], None] | None = None,
-    observed_override: int | None = None, overflow_spend: tuple[str, int, int] | None = None,
-    archive_use: tuple[int, str] | None = None, cached_hit: bool = False,
-    cached_repeat: bool = False,
-) -> tuple[int, int | None]:
-    """Close the hold for a metered call → (charged_micro, observed_micro). `charged_micro` is what
-    actually hit the org's balance (0 on a release) — the number the Activity feed must show, because
-    the estimate alone over-reports a released call as spend.
-
-    `archive_use` = (org_id, key_hash) of the archived question this call was billed for, live or
-    hit: the settle transaction also marks the team as having paid for it. `cached_hit` says the
-    archive answered instead of the vendor; `cached_repeat` adds that the team had already paid
-    for this question - the one pricing difference a hit has: it settles at
-    `archive_hit_repeat_price_percent` of what the live call would cost.
-
-    `status_code=None` means the provider never answered us (our own 4xx, an injection error, a network
-    failure) — always a release, never a charge, whatever the endpoint's billing type says.
-
-    Never raises: the caller already has their answer (or their error), and a ledger hiccup must not
-    turn a served call into a 500. A hold that fails to close is not lost money either — the reaper
-    releases it, which errs in the org's favour. Runs on its OWN session because the request's session
-    may be mid-rollback from the very error we are releasing for."""
-    if not mk.metered or not mk.call_id:
-        return 0, None
+    reason: str = "", observed_override: int | None = None, cached_repeat: bool = False,
+) -> SettleDecision:
+    """The decision half of `_platform_settle`: charge or release, and how much. Pure: no session,
+    no network; reads the catalog and settings of this checkout."""
     billable = status_code is not None and _platform_billable(status_code, mk.cost_type)
     if billable and mk.tier == "platform":
         # A 4xx the status set calls the caller's fault, or even a 2xx (Icypeas' 200 "insufficient
@@ -1167,10 +1173,6 @@ async def _platform_settle(
             billable, reason = False, f"capacity_{signal.kind}"
     # `observed_override`: the overflow child cycle knows its cost from the aggregator's envelope, not
     # from the vendor body - the caller pays exactly that, whatever the vendor's own billing shape.
-    # `overflow_spend` = (aggregator, adjustment from the budget reservation, delta vs treg's direct
-    # price): folded into the SAME settle transaction, the one allowlisted overflow write
-    # (`overflow_spend_in_settle`). It is recorded even when the vendor response is not billable to
-    # the caller because the aggregator's prepaid account still incurred the cost.
     observed = ((observed_override if observed_override is not None
                  else _observed_cost_micro(mk, body, headers)) if billable else None)
     if billable and status_code >= 400 and not observed:
@@ -1198,12 +1200,53 @@ async def _platform_settle(
         # hit); this stored answer costs the configured share. Applied to the RAW amount so the
         # margin rule stays the ledger's alone. Floor division, never rounding up a discount.
         actual = actual * repeat_percent // 100
-    call_id, mk.call_id = mk.call_id, None  # closing is once-only, even if two paths try
-    charged = 0
     if mk.deferred is not None and billable and actual == 0:
         # A routed child the provider reported free (a miss on a per-success rate card): there is
         # nothing for the parent to decide, so it is released below like any unbilled child.
         billable, reason = False, reason or "free_answer"
+    charged = (ledger.with_margin(actual) if actual is not None
+               else ledger.with_margin(mk.estimate_micro)) if billable else 0
+    return SettleDecision(billable=billable, reason=reason, observed_micro=observed,
+                          actual_micro=actual, charged_micro=charged, repeat_percent=repeat_percent)
+
+
+async def _platform_settle(
+    mk: MarketplaceCall, status_code: int | None, body: bytes = b"", *, headers=None,
+    reason: str = "", finalized: Callable[[], None] | None = None,
+    observed_override: int | None = None, overflow_spend: tuple[str, int, int] | None = None,
+    archive_use: tuple[int, str] | None = None, cached_hit: bool = False,
+    cached_repeat: bool = False,
+) -> tuple[int, int | None]:
+    """Close the hold for a metered call → (charged_micro, observed_micro). `charged_micro` is what
+    actually hit the org's balance (0 on a release) — the number the Activity feed must show, because
+    the estimate alone over-reports a released call as spend.
+
+    `archive_use` = (org_id, key_hash) of the archived question this call was billed for, live or
+    hit: the settle transaction also marks the team as having paid for it. `cached_hit` says the
+    archive answered instead of the vendor; `cached_repeat` adds that the team had already paid
+    for this question - the one pricing difference a hit has: it settles at
+    `archive_hit_repeat_price_percent` of what the live call would cost.
+
+    `status_code=None` means the provider never answered us (our own 4xx, an injection error, a network
+    failure) — always a release, never a charge, whatever the endpoint's billing type says.
+
+    Never raises: the caller already has their answer (or their error), and a ledger hiccup must not
+    turn a served call into a 500. A hold that fails to close is not lost money either — the reaper
+    releases it, which errs in the org's favour. Runs on its OWN session because the request's session
+    may be mid-rollback from the very error we are releasing for."""
+    if not mk.metered or not mk.call_id:
+        return 0, None
+    decision = decide_settle(mk, status_code, body, headers=headers, reason=reason,
+                             observed_override=observed_override, cached_repeat=cached_repeat)
+    billable, reason, observed, actual = (
+        decision.billable, decision.reason, decision.observed_micro, decision.actual_micro)
+    repeat_percent = decision.repeat_percent
+    # `overflow_spend` = (aggregator, adjustment from the budget reservation, delta vs treg's direct
+    # price): folded into the SAME settle transaction, the one allowlisted overflow write
+    # (`overflow_spend_in_settle`). It is recorded even when the vendor response is not billable to
+    # the caller because the aggregator's prepaid account still incurred the cost.
+    call_id, mk.call_id = mk.call_id, None  # closing is once-only, even if two paths try
+    charged = 0
     if (mk.deferred is not None and billable and overflow_spend is None and observed_override is None
             and status_code is not None):
         # A routed child: the parent decides whether the caller pays (a routed call that fails
@@ -1224,9 +1267,7 @@ async def _platform_settle(
                      if cached_hit else {})}))
         if finalized is not None:
             finalized()
-        would = (ledger.with_margin(actual) if actual is not None
-                 else ledger.with_margin(mk.estimate_micro)) if billable else 0
-        return would, observed
+        return decision.charged_micro, observed
 
     # A block draw keeps the close lease. A release or a full refund still updates the balance
     # row, so it takes the release lease instead of an empty admit. One admit, around this session.

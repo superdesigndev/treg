@@ -9,6 +9,10 @@ pricing_url: https://www.adyntel.com/pricing
 # Adyntel authenticates inside the JSON body. The provider registry injects api_key and email;
 # callers never supply either field. body_allowlist makes this reviewed catalog surface smaller
 # than the raw API while a team's own raw tool remains a faithful relay.
+# Not catalogued: Google Shopping submission and status polling, and TikTok keyword search and ad
+# detail (the documented requests, sample ad id included, answered only 204). Adyntel exposes no
+# balance endpoint, response charge field or remaining-capacity header, so shared-account capacity
+# is replenished by hand, not observed.
 endpoints:
   - id: adyntel.meta-ads.library.advertiser
     capability: meta-ads.library.advertiser
@@ -150,7 +154,7 @@ endpoints:
       settle: modifiers
       modifiers:
         extract_text: {location: body, when: truthy, add_credits: 1}
-      note: "One credit for a result page; extract_text=true costs one extra credit. HTTP 204 misses are free."
+      note: "One credit for a page that returns ads; an empty ads list (HTTP 200, total_ad_count 0) and HTTP 204 are free. extract_text=true costs one extra credit when ads are returned."
     verified: '2026-09-22'
     added: '2026-09-23'
     docs_url: https://docs.adyntel.com/ad-libraries/google

@@ -516,6 +516,23 @@
       "GET",
       "HEAD"
     ],
+    "name": "auth_social_check_page",
+    "path": "/auth/social/check"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "auth_social_check",
+    "path": "/auth/social/check"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "auth_google",
     "path": "/auth/google"
   },
@@ -735,6 +752,23 @@
       "GET",
       "HEAD"
     ],
+    "name": "install_sh_linked",
+    "path": "/i/{code}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "ad_link_mint",
+    "path": "/i"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "selfhost_sh",
     "path": "/selfhost.sh"
   },
@@ -854,6 +888,15 @@
     ],
     "name": "jev_memory_skill_md",
     "path": "/skills/jev-memory/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_growth_skill_md",
+    "path": "/skills/rea-growth/SKILL.md"
   },
   {
     "kind": "APIRoute",
@@ -1034,6 +1077,24 @@
     ],
     "name": "aeo_page",
     "path": "/aeo"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_growth_page",
+    "path": "/rea-growth"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_growth_md",
+    "path": "/rea-growth.md"
   },
   {
     "kind": "APIRoute",
@@ -1445,14 +1506,6 @@
     "methods": [
       "POST"
     ],
-    "name": "register_user",
-    "path": "/users"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "POST"
-    ],
     "name": "create_org",
     "path": "/orgs"
   },
@@ -1481,6 +1534,15 @@
     ],
     "name": "list_orgs",
     "path": "/orgs"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "home",
+    "path": "/home"
   },
   {
     "kind": "APIRoute",
@@ -1559,46 +1621,11 @@
   {
     "kind": "APIRoute",
     "methods": [
-      "POST"
-    ],
-    "name": "stripe_webhook",
-    "path": "/stripe/webhook"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "landing_stripe_feed",
-    "path": "/landing/stripe-feed"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
       "GET",
       "HEAD"
     ],
     "name": "demo_sandbox_skill",
     "path": "/demo/sandbox/skill"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "skill_samples",
-    "path": "/skills/samples"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
-    "name": "skill_install",
-    "path": "/skills/{name}/install.sh"
   },
   {
     "kind": "APIRoute",
@@ -2593,6 +2620,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "admin_shadow",
+    "path": "/admin/shadow"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "admin_calls",
     "path": "/admin/calls"
   },
@@ -3270,6 +3306,24 @@
     ],
     "name": "staff_staged_image",
     "path": "/admin/images/staging/{key:path}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rankings_page",
+    "path": "/rankings"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rankings_board",
+    "path": "/rankings/data/{board}"
   },
   {
     "kind": "APIRoute",

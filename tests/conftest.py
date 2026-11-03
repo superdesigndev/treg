@@ -7,13 +7,16 @@ The `clients` fixture also registers a user and authes the client by default.
 
 from __future__ import annotations
 
+import asyncio
 import atexit
 import glob
 import hashlib
 import hmac
+import json
 import os
 import socket
 import tempfile
+import time
 from pathlib import Path
 
 # Tests and their CLI subprocesses must never emit production analytics.
@@ -72,6 +75,8 @@ os.environ["TREG_WORKOS_CLIENT_ID"] = ""
 os.environ["TREG_WORKOS_WEBHOOK_SECRET"] = ""
 os.environ["TREG_PUBLIC_URL"] = "https://treg.to"
 os.environ["TREG_OVERFLOW_MODE"] = "off"
+os.environ["TREG_PROVIDER_RATE_MODE"] = "off"
+os.environ["TREG_PROVIDER_RATE_ENFORCE"] = ""
 os.environ["TREG_OVERFLOW_KEY_ORTHOGONAL"] = ""
 os.environ["TREG_OVERFLOW_KEY_MONID"] = ""
 # A merged local .env can carry newly added funded platform keys that the fixed list below has not
@@ -85,6 +90,8 @@ for _platform_name in _platform_names:
     os.environ[_platform_name] = ""
 # Never let a developer's Redis URL or rollout settings turn tests into shared-store traffic.
 os.environ["TREG_KV_URL"] = ""
+os.environ["TREG_ORG_ENDPOINT_QUOTA_ENABLED"] = "false"
+os.environ["TREG_ORG_ENDPOINT_QUOTA_REDIS_URL"] = ""
 os.environ["TREG_MONEY_ADMISSION_ENABLED"] = "false"
 os.environ["TREG_MONEY_ADMISSION_ORG_IDS"] = "[]"
 os.environ["TREG_ORG_FLOW_CONTROL_ENABLED"] = "false"
@@ -115,11 +122,11 @@ for _k in (
     "PLATFORM_KEY_QUICKENRICH", "PLATFORM_KEY_PROSPEO", "PLATFORM_KEY_AIARK", "PLATFORM_KEY_WIZA",
     "PLATFORM_KEY_SCRUBBY", "PLATFORM_KEY_ZEROBOUNCE", "PLATFORM_KEY_SUMBLE", "PLATFORM_KEY_MOLTSETS",
     "PLATFORM_KEY_OPENMART", "PLATFORM_KEY_LIMADATA", "PLATFORM_KEY_HARVESTAPI", "PLATFORM_KEY_FETCHINIO",
-    "PLATFORM_KEY_DROPLEADS", "PLATFORM_KEY_BLITZAPI",
+    "PLATFORM_KEY_DROPLEADS", "PLATFORM_KEY_BLITZAPI", "PLATFORM_KEY_ANYMAILFINDER",
     "PLATFORM_KEY_FINANCIALDATASETS",
     "PLATFORM_KEY_ADYNTEL", "PLATFORM_EMAIL_ADYNTEL",
     "PLATFORM_KEY_KEENABLE", "PLATFORM_KEY_OLOSTEP",
-    "PLATFORM_KEY_SEARCH1API",
+    "PLATFORM_KEY_SEARCH1API", "PLATFORM_KEY_BRAVESEARCH",
 ):
     os.environ[f"TREG_{_k}"] = ""  # the test upstream is an in-process ASGI transport, not real DNS
 
@@ -134,6 +141,7 @@ from treg import archive  # noqa: E402
 from treg.config import get_settings  # noqa: E402
 from treg.infra.db import reset_db  # noqa: E402
 from treg.domain.identity import api_keys as managed_keys  # noqa: E402
+from treg.application import media as media_app  # noqa: E402
 
 
 # The OTP-start + sandbox throttles (and the OTP codes) now live in the DB's `ephemeral` table, not in
@@ -164,6 +172,25 @@ def fake_getaddrinfo(monkeypatch):
         monkeypatch.setattr(socket, "getaddrinfo", resolve)
 
     return install
+
+
+STALL_PROOF_TIMEOUT_S = 30.0
+
+
+def pause_loop_once_in_flight(stores, calls: int, seconds: float) -> None:
+    """Block the event loop, as a GC pause does, once every Redis call is in flight."""
+    entered = 0
+    for store in stores:
+        evaluate = store._client.eval
+
+        async def paused(*args, evaluate=evaluate):
+            nonlocal entered
+            entered += 1
+            if entered == calls:
+                asyncio.get_running_loop().call_soon(time.sleep, seconds)
+            return await evaluate(*args)
+
+        store._client.eval = paused
 
 
 def make_upstream(hook_hits: list | None = None) -> FastAPI:
@@ -442,17 +469,18 @@ async def verified_identity(client, email):
         client.cookies = previous_cookies
 
 
-async def verified_signup(client, *, json, headers=None):
-    """Funded test identity through OTP and team creation, with fixture identity fields."""
+async def verified_signup(client, *, json, headers=None, cookies=None):
+    """Funded test identity through OTP and team creation, with fixture identity fields. `cookies`
+    reach the team creation, where attribution is read."""
     import httpx
     from sqlmodel import select
     from treg.infra.db import session_maker
     from treg.models import User
 
-    email = json["email"]
-    token = await verified_identity(client, email)
+    token = await verified_identity(client, json["email"])
+    email = json["email"].strip().lower()
     response = await client.post("/orgs", json={"name": email},
-        headers={**(headers or {}), "X-Treg-Token": token})
+        headers={**(headers or {}), "X-Treg-Token": token}, cookies=cookies)
     if response.status_code != 200:
         return response
     async with session_maker() as db:
@@ -462,22 +490,44 @@ async def verified_signup(client, *, json, headers=None):
         json={**response.json(), "id": user_id, "email": email}, request=response.request)
 
 
-async def funded_user(client, email, *, micro=1_000_000):
-    """A per-org token whose team holds money.
+async def invite_code_member(client, email):
+    """A user the invite-code door made for the fixture's team: a member token, no inbox proof."""
+    org_id = (await client.get("/auth/me")).json()["org_id"]
+    code = (await client.post(f"/orgs/{org_id}/invites", json={"email": email, "role": "member"})).json()["code"]
+    accepted = await client.post("/invites/accept", json={"email": email, "code": code})
+    assert accepted.status_code == 200, accepted.text
+    return accepted.json()
 
-    `POST /users` is legacy registration: the user it mints is UNVERIFIED, and the signup credit is
-    now verified-only (`claim_signup_promo`), so that team starts at zero. A test that has to PAY
-    for something funds the team here instead of leaning on a promo that no longer arrives.
+
+async def funded_user(client, email, *, micro=1_000_000):
+    """A per-org token whose team holds `micro` on top of any signup credit.
     Returns the whole registration body, so `["token"]` and `["org_id"]` both work.
     """
     from treg.domain import money
     from treg.infra.db import session_maker
 
-    body = (await client.post("/users", json={"email": email})).json()
+    body = (await verified_signup(client, json={"email": email})).json()
     async with session_maker() as db:
         await money.grant(db, body["org_id"], amount_micro=micro, kind="promotional")
         await db.commit()
     return body
+
+
+def mcp_text_result(name: str, payload: dict) -> dict:
+    """The text block a host shows, after checking that `structuredContent` (what a host may read
+    instead) carries every key it does: the output schema silently drops an undeclared one."""
+    result = payload.get("result") or {}
+    content = result.get("content") or []
+    if not (content and content[0].get("type") == "text"):
+        return payload
+    try:
+        text = json.loads(content[0]["text"])
+    except ValueError:
+        return {"_text": content[0]["text"]}
+    if isinstance(text, dict) and isinstance(result.get("structuredContent"), dict):
+        dropped = {k for k, v in text.items() if v is not None} - set(result["structuredContent"])
+        assert not dropped, f"{name}: structuredContent drops {sorted(dropped)}"
+    return text
 
 
 async def drain_background_writes():
@@ -494,6 +544,8 @@ async def drain_background_writes():
     # throttle claim left over from one test would land on, or suppress, the next test's key.
     await managed_keys.drain_last_used()
     managed_keys._last_used_claims.clear()
+    # And `treg host`'s background object deleter.
+    await media_app.drain()
 
 
 @pytest.fixture(autouse=True)

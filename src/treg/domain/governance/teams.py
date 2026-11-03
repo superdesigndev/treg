@@ -20,6 +20,7 @@ from ...models import (
     ApiKey,
     ApiKeyEvent,
     ApiKeySpendDay,
+    CallUsageDay,
     ArchiveEndpointStat,
     ArchiveKey,
     ArchiveKeyOrg,
@@ -263,6 +264,7 @@ ORG_SCOPED_MODELS = (
     Tool, Secret, Bundle, PendingOAuth, CallRecord, RunRecord, Invite, DenyRule, Project,
     ApiKeyEvent, ApiKey,
     ApiKeySpendDay,  # the spend rollup: a deleted team's history goes with it
+    CallUsageDay,  # the call usage rollup, likewise
     ShowcaseWeek, ShowcaseCursor,  # the /showcase activity rows: a deleted team's go with it
     CapabilityPin,
     OrgFlowControlVersion,  # configuration history belongs to the deleted team

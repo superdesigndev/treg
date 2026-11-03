@@ -58,6 +58,11 @@ jobs:
       - name: Install dependencies
         if: steps.docs.outputs.only != 'true'
         run: uv sync --locked
+      - name: Install disposable Redis test dependency
+        if: steps.docs.outputs.only != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server
       - name: Verify pause context documentation
         if: steps.docs.outputs.only != 'true'
         run: |
@@ -142,6 +147,7 @@ jobs:
           tests/test_money_admission_application.py
           tests/test_money_admission_postgres.py
           tests/test_money_admission_reporting.py
+          tests/test_money_bigint.py
           tests/test_kv.py
           tests/test_kv_release_retry.py
           tests/test_kv_lease_diagnostics.py
@@ -151,6 +157,8 @@ jobs:
           tests/test_org_flow_control_reader.py
           tests/test_org_flow_control_redis.py
           tests/test_org_rate_limit_redis.py
+          tests/test_provider_concurrency_redis.py
+          tests/test_capacity_rate_observe.py
           tests/test_money_trace.py
           tests/test_money_trace_postgres.py
           tests/test_money_trace_runner.py

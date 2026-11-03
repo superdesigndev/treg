@@ -3,10 +3,13 @@ title: The CLI (treg) + skill scaffolding
 status: shipped
 sources:
   - src/treg/cli.py
+  - src/treg/cli_view.py
+  - src/treg/application/home.py
   - tests/test_released_cli_compat.py
   - tests/test_cli_key_compatibility.py
   - src/treg/routers/auth_helpers.py
   - src/treg/cli_analytics.py
+  - src/treg/cli_session.py
   - src/treg/convert.py
   - src/treg/agents.py
   - src/treg/routers/api_keys.py
@@ -18,664 +21,188 @@ related:
 
 # The `treg` CLI
 
-## Feedback
+A thin client over the API in `src/treg/cli.py` (stdlib `argparse` plus `httpx`): every command is
+HTTP calls with no business logic of its own. `USAGE.md` and `treg <cmd> -h` are the command
+reference; every command carries a description, per-argument help and an Examples epilog, so help
+is self-teaching. This fragment holds only what the code and help cannot say.
 
-`cmd_feedback` implements `treg feedback submit <category> <message> [--call-id ID] [--endpoint-id ID]`.
-The category choices and help description come from the lightweight `feedback_contract` module.
-Both parent and submit help explain fields, category meanings, optional call-reference mapping,
-privacy and receipt semantics; a reference mentioned only in prose is not automatically linked.
-`--call-id` repeats; message `-` reads stdin. `_client` applies the configured registry and team,
-and `_feedback_request` prints JSON or exits nonzero with an actionable error without echoing
-rejected input. `cmd_feedback_get` implements `treg feedback get <feedback_id>`. Submission transport
-failures report an unconfirmed outcome, not a definite failure. Bare `treg feedback` shows help;
-`main` still accepts the original category-first submission shorthand. See [feedback](../architecture/feedback.md).
+## Front page and routing
 
-## Managed key compatibility
+- **Bare `treg` is the home view.** Nearly every caller is an agent, so `treg` with no arguments
+  answers with live state (`GET /home`, `application/home.py`) instead of a usage error that costs a
+  turn on `--help`. Each read stands alone: one that fails leaves out its own line and the command
+  always exits 0. A blocker (no registry at that URL, a 5xx, not signed in, a stale active team, no
+  team, an empty balance) leads the `help` list. A registry older than `/home` (404) gets separate
+  reads (`_home_state_by_parts`).
+- **`treg --help`** renders the curated `HELP_GROUPS` table, not argparse's alphabetical list. A
+  command absent from every group still parses; that is how back-compat aliases (`treg add`,
+  `oauth connect`, `run`, `runs`, `calls`, `import`, `setup-local-run`, ...) survive hidden. Never
+  remove an alias: old scripts and cached agent instructions use them. The top-level
+  `add_subparsers` pins `parser_class=argparse.ArgumentParser`; otherwise argparse clones the grouped
+  parser into every subparser and `treg call -h` prints the front page.
+- **`treg <program>`** (`cmd_with`) runs one command with the team's credentials. `main()` routes a
+  bare word there only when it is not a treg subcommand and exists on `PATH`
+  (`_looks_like_a_program`), so a typo stays an argparse error and a stray `call` binary cannot
+  shadow `treg call`.
+- **`catalog search|get|request`** are positional verbs inside `cmd_catalog`, not argparse
+  subcommands, so `treg catalog <platform>` keeps working and a multi-word query needs no quoting.
+  The catalog commands are unauthenticated: the catalog is public and worth reading before signing
+  up. The CLI never parses catalog YAML (pyyaml is a server extra).
+- **`serve start`** detaches a child via `sys.executable`, never the `treg` on `PATH`, which may be an
+  older build.
 
-`treg login --token <key>` accepts an active managed human or agent key because the CLI verifies it
-through `/auth/me` and uses the same bearer on later requests. Disable or revoke makes that check
-fail before the CLI saves a new value. Complete credentials returned by login and key-minting
-responses use `Cache-Control: no-store`. The CLI stores no key-management state. Its team selection,
-org override, permissions, caps, and billing behavior still come from the live membership.
-The MCP installer refuses a seven-day bootstrap credential before writing any client configuration;
-the user must first choose/create/join a team and install its Default or Agent key.
+## Output for agents
 
-## Call review
+- **TOON views.** The home view and `catalog` print through `cli_view.render` (the reference
+  `toon-format` encoder, pinned to one release because `cli_view` overrides its private table
+  decisions). The whole output decodes as TOON, which is how tests read it. Commands and request
+  values print unquoted so they copy without unescaping. Nothing is clipped except a list row's
+  `name`; ids, prices and notes print whole. A refusal is data too: `_fail` prints `error`, `message`
+  and `help` on stdout and exits 1.
+- **`--json`** prints the server's JSON as received. On `call` (not `--await`) it prints one envelope,
+  `{"result": <body>, "_treg": {...}}` (`_call_envelope`), and suppresses the charge, hint and
+  diagnostic stderr lines: a script that merged the streams once discarded every result it had paid
+  for. Exit status is unchanged (1 on HTTP >= 400). `--json` and `--org` are stripped in `main` and
+  last for one `main()` call.
+- **stdout is the exact body.** Everything treg adds goes to stderr: on HTTP >= 400 one diagnostic
+  line (`_show_failure_diagnostics`) with the status, whose answer it is (`X-Treg-Error: 1` = treg
+  refused, absent = relayed provider answer), the call id and any charge. treg's saturation 503
+  carries no `X-Treg-Error` (`api.md`), so the CLI reads its typed `treg_saturated` body; a client
+  that checks only the header blames the provider. `X-Treg-Capacity: exhausted` swaps in the shared
+  notice from `capacity_notice.py`. With `TREG_TOKEN` set, treg's own 401 adds that the variable
+  overrides `treg login`. A metered 2xx gets a charge line (an async submission says "reserved up to",
+  since its header is the hold ceiling). A large 2xx sent to a terminal or pipe gets a size line
+  before the body, so an agent's output cut keeps it; the line names no JSON path, because a guessed
+  one can be wrong.
+- **Hints.** `X-Treg-Hint: review|feedback` (older `X-Treg-Review: requested`) prints one stderr line
+  per kind. `X-Treg-Routed-Tool` on a provider endpoint's success prints a pointer to the routed
+  `treg.<capability>` tool (`_treg.routed_tool` under `--json`).
+- **Headers sent.** `_client` sends `X-Treg-Client-Version` (recorded as `client_version` on
+  `tool_called`, so output changes compare across releases) and, with telemetry on, `X-Treg-Session`
+  and `X-Treg-Agent`. Like every `x-treg-*` header, none reaches the upstream.
+- **Edge WAF.** `_RegistryClient` re-sends a request once, base64-encoded with
+  `X-Treg-Body-Encoding: base64`, when an edge 403s it with an HTML block page (never treg's own JSON
+  403). That is what lets SQL- or HTML-bearing bodies through a CDN.
+- **`mcp grants`** prints the grant id whole while clipping every other column: it is the argument
+  `mcp use-team` takes. See [mcp-oauth](../architecture/mcp-oauth.md#but-the-choice-must-stay-visible-and-reversible-afterwards).
 
-`cmd_review` implements `treg review <call_id> <usefulness> [--reason TEXT]`, sharing the light
-contract's enum and description with MCP. It validates the reference and trimmed reason locally,
-posts to `/reviews`, prints a receipt, and emits structured errors without echoing rejected input.
-A transport failure explicitly leaves the outcome unconfirmed. `_show_hint_line`, beside the
-charge line, prints the server's invitation (`X-Treg-Hint: review|feedback`; the older
-`X-Treg-Review: requested` still means review) as one stderr line per kind. When a successful
-call to one provider's endpoint carries `X-Treg-Routed-Tool` (set by `routers/call.py`
-`_routed_alternative`: the routed `treg.<capability>` tool for the same job), it prints one more
-line pointing to that tool; `--json` puts it in `_treg.routed_tool`, and MCP returns `routed_tool`
-with a `suggestion` sentence beside the result, leaving the invitation `hint` slot alone. Call responses
-retain the existing `_show` formatting on stdout, including pretty-printed JSON.
+## Identity and config
 
-## Bare `treg`: the home view
+- `~/.treg/config.json` (or `TREG_CONFIG`) holds one bearer token and an active org slug.
+  `_save_config` writes atomically with mode `0600`; a corrupt file reads as empty so it cannot brick
+  every command. `login` persists the token before the best-effort active-org lookup, so a transient
+  `/orgs` failure cannot discard a fresh token.
+- **`TREG_TOKEN`** (+ optional `TREG_ORG`) beats the config file and never writes it, so each coding
+  agent on one machine can run as its own scoped agent while the file stays the human's.
+- `_active_org` resolves `/orgs`, falling back to `/auth/me` when `/orgs` refuses an agent key.
+  `strict=False` is for callers that only enrich output: `sys.exit` raises `SystemExit`, which
+  `except Exception` does not catch, so a call-site try/except would not save the page.
+- **Browser login.** `POST /auth/cli/start` returns a `login_id` and a short pairing code; the
+  `/login?cli=<id>#code=<code>` page shows the code from the URL fragment (never sent to the server,
+  so never in request logs) so the user confirms it matches the terminal. The server still validates
+  the code at approve time: a login you did not start cannot be approved into a token.
+- **Team Default key, not bootstrap.** An org-less login yields a signed `scp=bootstrap` credential
+  that identifies the account for onboarding, expires after seven days and cannot call team
+  resources. Selecting, creating, joining or accepting a team replaces the stored token with that
+  membership's Default key (the same deterministic key the dashboard shows, so disable and rotation
+  apply to CLI use). The email-code login uses the response's HttpOnly browser session for that
+  exchange, never the bootstrap credential. `org use` writes the new team and token only after the
+  exchange succeeds; an Additional or Agent key cannot switch memberships. The token is what people
+  copy out of the CLI (curl, an MCP client, an agent env), so it must carry its team: unpinned, it
+  fails there with `choose an org`. A typed key's signed team is authoritative; a conflicting
+  `X-Treg-Org` does not override it. The MCP installer refuses a bootstrap credential before writing
+  any client configuration. `login --token` verifies through `/auth/me` before saving.
+- **Released-CLI compatibility.** Old PyPI CLIs would save a bootstrap token from email login and
+  keep the previous token after team create or invite. `routers.auth_helpers.require_managed_cli`
+  stops those known requests with HTTP 426 (`X-Treg-Error: 1`, "run `treg update`") before issuing
+  email credentials, creating a team or consuming an invite. Current CLIs send
+  `X-Treg-Key-Protocol: 1`; the legacy hint is the released CLI's `python-httpx/` User-Agent plus
+  `ngrok-skip-browser-warning: 1` without that marker. It is a compatibility check, not an
+  authorization boundary: omitting or forging it never relaxes token restrictions.
+  `test_released_cli_compat` checks that refusal preserves config bytes and the prior team.
 
-Nearly every caller is an agent, so `treg` with no arguments answers with live state instead of a
-usage error that costs it a turn on `--help`. The top-level subparsers are not required and the
-parser's default `fn` is `cmd_home`, so `--org` and `--json` apply as everywhere else. `_home_state`
-reads `/auth/me` for the account, then resolves the team the way `balance` and `whoami` do: `/orgs`
-(`_org_rows`, picked by `_pick_org`: the effective org, else the active one), falling back to the
-team `/auth/me` names when `/orgs` refuses an agent key. `_active_org` (and `_active_org_id` on top
-of it) is that same order for every other command. Then `/orgs/{id}/balance?limit=1` and `/tools`,
-each under a short timeout. Each read stands alone (`_quietly`): one that fails or answers in an
-unexpected shape leaves out its own line, and the command always exits 0. The output is plain
-`key: value` lines (`bin`, `version`, `description`, `registry`, `account`, `team`, `balance`,
-`own_tools[N]`) ending in `help[N]`, runnable next commands with runtime values as `<placeholders>`
-(`_home_help`). A blocker leads the help: no treg registry at that URL (`treg config`), a registry
-5xx (run `treg` again), not signed in, a stale active team (`treg org ls` / `org use`), no team at
-all, or an empty balance (`treg topup`).
-`--json` prints the same state as one object with `balance_micro` and a `help` list.
+## Calls
 
-`catalog search` says how routed rows work once, as a `hint:` line below the table (only when a
-routed row printed); inside the table an indented sentence read like one more row. The last line,
-`next:`, names `treg catalog get <id>` with the first row as the example.
-Every `▸` row keeps its provider count (`ROUTED (26 providers)`): only a few children print, so the
-count is where an agent learns how many the routed id draws on.
+- **`call`** has three shapes (`call <tool> <path>`, a full URL, a catalog endpoint id), all to
+  `/call/`. The endpoint-id shape walks the credential ladder server-side
+  (`_resolve_marketplace_call` in `application/call/resolve.py`; see
+  [proxy-model](../architecture/proxy-model.md)). `--header` adds a header the binding cannot know;
+  an injected credential always wins. `--query` is relayed as a list of pairs (duplicates survive)
+  and fills `{placeholder}` path params. `treg call <catalog-id> <path>` answers 400 naming the
+  endpoint's parameter slots.
+- **`--await [--timeout]`** reads `X-Treg-Async` (a no-op without it), using descriptor semantics from
+  `treg.domain.asynctasks`, never a CLI-side copy. It prints the task id and a resumable command to
+  stderr, polls every descriptor `interval` and never past `max_age`, skips polling on
+  `terminal_on_submission`, retries network/5xx failures with backoff, and keeps waiting through
+  unknown statuses after one warning. Stdout holds only the terminal response bytes; a fetch-mode
+  result prints a retrieval command instead of downloading, and running it writes non-text bytes
+  untouched (the upstream `Content-Type` stays authoritative). **Exit codes are a contract:** 0
+  success, 2 provider terminal failure, 3 timeout, interruption or recoverable polling failure, 1
+  malformed usage or metadata.
+- **Pasted-key connect.** `connections connect --provider` reads `GET /oauth/providers`; a `key` or
+  `token` provider reads the key with `getpass` or, with `--key-stdin`, all of stdin, keeping it off
+  the command line. Without a terminal and without `--key-stdin` it exits with that instruction
+  rather than reading stdin, because an agent's idle pipe would hang the read. A pair-signed
+  provider (`needs_extra_credential`) reads both halves before posting either, so a half-built
+  connection is never the outcome. Instagram grant selection is in
+  [instagram-oauth](../architecture/instagram-oauth.md).
+- **`audit`** merges `/calls` and `/runs` and drops `kind == "local_run"` call records, because
+  `/runs` already lists those grants as `where: "local"`.
 
-## Pasted-key connect
+## Local runs
 
-`treg connections connect --provider <service>` (and the hidden `oauth connect`) first reads
-`GET /oauth/providers`. A provider whose `auth_kind` is `key` or `token` has no consent screen, so
-`_connect_pasted_key` reads the key with `getpass` at a terminal, or all of stdin with
-`--key-stdin`, which keeps it off the command line and out of shell history, and posts it to
-`POST /connections/token`; the server verifies it against the provider before storing it. A
-provider that signs with a pair (`needs_extra_credential`, e.g. Tomba's key + secret) reads both
-halves first (a second hidden prompt, or the second piped line) and then posts the other half to
-`POST /connections/{id}/extra-credential`, so a half-built connection is never the outcome. Without
-a terminal and without `--key-stdin` it exits with that instruction rather than reading stdin: an
-agent's idle pipe would otherwise hang the read, the same intent rule `upload` follows for
-credentials. A `name`, `--capability`, `--client-secret` or `--scopes` is refused locally, because a
-pasted key is one per team. An unreadable listing (an older server, an error, a proxy page) falls
-back to `POST /oauth/start`, which itself refuses a pasted-key provider and names this path; every
-other provider takes the consent flow there.
+- **`cli run` guard.** `args` is an `argparse.REMAINDER`, which silently swallows a treg flag typed
+  after the tool name. `cmd_run` reads the real `sys.argv` and refuses a tier flag (`--server`,
+  `--local`, `--timeout`, `--fs-jail`) after the tool but before `--`, while a flag after `--` still
+  reaches the vendor CLI (`treg run db -- --timeout 30`).
+- **Runner proof gate.** `cli setup --run-proof` installs `/etc/treg-run/proof` (root-owned, 0400,
+  readable only by `treg-run`); the runner exports it as `TREG_RUN_PROOF` and `_run_helper` sends it
+  as `X-Treg-Run-Proof` on the grant call. That is how the server releases a shared (non-owned) key
+  to the isolated runner but refuses a direct member call; without it only owned-key tools run
+  locally. On a shared-key run (`redact_output`), `_StreamRedactor` scrubs the injected value from
+  the CLI's output. See [local-run](../architecture/local-run.md).
+- **`--server`** sends `POST /run`, which is disabled for every caller and answers 503; `cli shell
+  --server-for` therefore never routes a tool to the server.
 
-## Instagram grants
+## Skill scaffolding and the `treg.json` contract (`convert.py`)
 
-`TREG_OAUTH_REVIEW_PENDING` and provider-registry metadata control the CLI's effective default and
-guidance. With both Instagram keys pending, `treg connections connect --provider instagram` starts
-the approved Facebook Page core flow. Direct Instagram Login remains explicit with `--capability
-manage`, and Page messaging remains explicit with `--capability page-messages`. Removing the Page
-message key makes the full Page grant the default. Removing the direct key restores direct Instagram
-Login as the default. Before consent starts, `POST /oauth/start` returns the effective guidance and
-the CLI prints it. The CLI contains no provider-specific review logic.
+`treg.json` lets a skill self-describe its registration; `skill init --dir` writes it and `skill add
+--dir` registers it, loading the named secret files at push time so no secret value lives in the
+file. `resolve_secret_path` swaps `.secret` and `.secrets` when the exact spelling is absent, so a
+shared contract survives per-machine spelling drift. `secret add --dir` syncs back into an existing
+`treg.json` so CLI changes stay authoritative. `auto_bindings` (shared with the dashboard) gives each
+additional credential its own header so bindings never collide. `skill install` keeps a folder that
+already exists unless `--force` and ends with a summary of kept skills; the Access agent instruction
+defers to that output. Bundle file paths are re-checked to stay inside the skill dir, and secrets are
+never shipped.
 
-For a catalog endpoint that supports both grants, `treg call <endpoint>
---authorization-method <method>` selects the grant, upstream host, route, and method-specific
-required inputs. The CLI accepts any method name; the API validates it against endpoint metadata.
-Omitting it uses the endpoint's first declared method.
-For a dual-method endpoint, omitting it first uses the sole connected grant when there is one;
-otherwise the ordered default is Instagram Login. Static catalog templates therefore omit the flag
-for dual-method endpoints, while dashboard-generated commands include the user's resolved choice.
+## Caller tags and budgets
 
-A thin client over the API in `src/treg/cli.py` — every command is one HTTP call, no logic of its own
-(stdlib `argparse`, reuses `httpx`). Entry point `main()` → `build_parser()` → dispatch to a `cmd_*`.
-Every command/subcommand carries a `description` + `help` on each argument + a copy-paste **Examples**
-epilog (a `mk()` helper + `_ex()` + `RawDescriptionHelpFormatter`), so `treg <cmd> -h` is self-teaching.
-`treg --version` / `treg version` print `cli_version()` (package metadata); `treg update` (`cmd_update`)
-re-runs the server's `install.sh` to upgrade the CLI in place. A global **`--json`** flag (stripped in
-`main` like `--org`; both last one `main()` call, reset on entry and exit) makes the human-table commands (`org ls`, `agents ls`, `catalog` in all its forms)
-emit raw JSON instead — one stable contract for agents. On `call` (not `--await`) it prints one
-compact envelope, `{"result": <body>, "_treg": {http_status, call_id, charged_micro | reserved_micro,
-replay?, async?, hint?, treg_saturated?, retry_after_seconds?}}` (`_call_envelope`; text as a
-string, binary as base64), and suppresses the charge, hint and failure-diagnostic stderr lines: a
-script that merged the streams once discarded every result it had paid for. Exit status is
-unchanged (1 on HTTP >= 400).
-The failure-diagnostic line names whose answer a 4xx/5xx is from `X-Treg-Error`. treg's
-saturation 503 carries no `X-Treg-Error` (see [api](api.md)), so the CLI reads its typed
-`treg_saturated` body instead; a client that only checks the header blames the provider.
-Output and the CLI's own text files are UTF-8 on every console.
-**`TREG_CONFIG`** points the CLI at an alternate config file (CI/agents/tests; default
-`~/.treg/config.json`). `org use` validates the slug against `/orgs`, then gets that membership's
-active Default key before it saves either value. If that exchange fails, the previous team and token
-stay active. An Additional or Agent key cannot switch memberships; the user must first run `treg
-login` as a human. `org rename --name/--slug` sends `PATCH /orgs/{id}` (admin+); on a slug change it
-rewrites `active_org` and leaves the token alone, since the server keeps the old slug as an alias. The server's "choose an org" 400 is followed by a stderr line naming the bad
-`--org`/active-org value.
-
-Every command builds its client via `_client(cfg)`, which returns a `_RegistryClient` (an
-`httpx.Client` subclass). It survives an upstream WAF: when a request's body is 403'd by an edge (a
-403 whose response body is an HTML block page, never treg's own JSON 403s), it re-sends the request
-once, base64-encoded with `X-Treg-Body-Encoding: base64`, which the server decodes (see
-[api](api.md)). This is what lets `treg upload` push SQL-bearing recipes and `treg call` proxy
-SQL/HTML bodies through Cloudflare/Render. Transparent — no effect on any request that isn't blocked.
-
-`_active_org_id(cfg, c, strict=True)` resolves the active org's numeric id via `GET /orgs`, falling
-back to `/auth/me` when that 403s — which is what a MACHINE identity gets, since the server refuses it
-there on purpose. An invalid token now exits naming the real problem instead of the bare "no active
-org" that 21 commands used to print. `strict=False` is for callers that only ENRICH output (the pin
-marker on `catalog get`): the catalog is public, and `sys.exit` raises `SystemExit`, which
-`except Exception` does NOT catch — so a try/except at the call site would not have saved that page.
-
-## Config + client (identity-first)
-`~/.treg/config.json` (`CONFIG_PATH`) is v2: `{base_url, token, email, active_org, identity, admin_token}`
-— **one bearer token + an active org slug** (`_load_config` migrates a legacy multi-org or flat config on
-read, and tolerates a corrupt file as empty so a half-written config can't brick every command).
-`_save_config` writes atomically (temp + `os.replace`) and forces the credential file to owner-only
-mode (`0600`); `login` persists the token **before** the
-best-effort `_pick_active_org` lookup, so a transient `/orgs` failure can't discard a freshly-minted
-token. `_pick_active_org` prefers the server's `active` flag, then the org a team-pinned identity token
-bakes into its claim (`_token_org_claim` decodes it locally, unverified — covers older servers that mark
-nothing active for such a token), and only then the first membership — an arbitrary team for a
-multi-team user, so it is the last resort, not the default. `call --query` is relayed as a list of pairs (duplicate keys survive) and rejects a value with no
-`=`; `contract_to_skill_payload`/`load_contract` raise clear errors (naming the entry/file) for a
-stale/malformed `treg.json` instead of a bare traceback. Every "read a file / parse inline JSON the
-user pointed at" path (`oauth connect`, `tool add/update --binding|--health`, `skill push|scaffold|init`,
-`secret add --dir`) exits cleanly instead of tracebacking (`_load_json_arg` + guards); `_parse_bind`
-rejects a non-int `secret=`; a one-shot `--org <slug>` override no longer wipes the stored active org on
-`leave`/`delete` (`_clear_active_if_targeted`); `oauth connect` exits non-zero on a failed/timed-out
-connect. `_client(cfg)` sends `X-Treg-Token: token` plus `X-Treg-Org: <active_org>` (the header is ignored
-for a per-org token, and picks the org for an identity token). `_effective_org` applies the global
-`--org` override; `_active_org_id` resolves the active org's numeric id via `GET /orgs` (for
-`/orgs/{id}/...` endpoints). `_admin_client` uses `admin_token` else the bearer. `_show` pretty-prints +
-exits non-zero on HTTP >= 400, and on >= 400 first prints one stderr line (`_show_failure_diagnostics`,
-2026-09-05): the HTTP status, whose answer it is (`X-Treg-Error: 1` = treg refused; absent = the
-provider answered and treg relayed it unchanged), the `X-Treg-Call-Id` to quote to support, and the
-`X-Treg-Cost-Micro` charge when the header is present. When `TREG_TOKEN` is set, treg's own 401
-(never a relayed one) adds that the variable overrides `treg login` and needs a current key: the
-body's `hint` cannot know that. stdout stays the exact body — a runner that saved only stdout
-filed 115 relayed Moz quota 403s as a bare "cli_error" with no status or id. A
-metered 2xx gets the matching line (`_show_charge_line`: `treg: charged $0.006667 · call id …`,
-replay-aware), plus a provider-failure line for `X-Treg-Upstream-Failed` ([api](api.md)). `X-Treg-Capacity:
-exhausted` (treg's own account is out) replaces the failure line's "whose answer" with the shared
-notice, or follows the charge line on a 2xx. An async submission instead says `reserved up to $… for async settlement`, because
-its header is the open hold ceiling rather than the final charge. No cost header (own key,
-non-call response) → nothing extra.
-
-**Per-process identity:** `TREG_TOKEN` (+ optional `TREG_ORG`) in the environment beat
-`~/.treg/config.json`, so each coding agent on one machine can run as its own scoped agent —
-set them in the runtime's env (Claude Code settings env, Codex config, a project `.env`) and the
-config file stays the human's. This is what makes the dashboard's "Scope this agent" promotion
-real on a shared machine (the same per-process pattern other agent credential gateways use).
-The override never touches the config file, so `treg login` can't accidentally persist it.
-
-## The top-level IA (`treg --help`)
-`build_parser()` returns a `_GroupedHelpParser` whose `format_help` renders the front page from the
-`HELP_GROUPS` table (five groups, fixed order) instead of argparse's flat alphabetical wall — so the
-listing is curated copy, not registration order. Anything **not** in `HELP_GROUPS` still parses; it is
-simply absent from every listing, which is how the back-compat aliases survive. A subparser is hidden
-by the `alias()` helper, which just omits `help=` (argparse only lists a subparser that has one);
-`mk()` is the visible form. Subcommand `-h` is untouched — the top-level `add_subparsers` pins
-`parser_class=argparse.ArgumentParser`, because argparse otherwise clones the *parent's* class into
-every subparser and `treg call -h` would print the grouped front page instead of its own help.
-
-```
-THE CATALOG — tools you don't have a key for     catalog · call · balance · topup
-YOUR OWN TOOLS — what your team already has      tool · skill · secret · connections · hub
-ON YOUR MACHINE — team credentials, locally      cli · with · serve
-BULK UPLOAD                                      scan · upload
-TEAM MANAGEMENT                                  audit · org · invites · accept · agents · admin
-CONFIG                                           config · login · logout · onboard · update · version
-```
-
-The order **is** the pitch: what you can do with no setup comes before what you have to register
-yourself, and `balance`/`topup` sit next to the thing that spends them rather than under team
-management.
-
-**Old → new.** Every one of these still parses and routes exactly as before — hidden, not removed:
-
-| old spelling | canonical now | note |
-|---|---|---|
-| `treg add …` | `treg tool add …` | one spelling for registering a tool; `cmd_add`'s name-or-id `--secret` sugar is unchanged |
-| `treg oauth connect …` | `treg connections connect …` | same flags (`name`, `--provider`, `--capability`, `--client-secret`, `--scopes`) |
-| `treg oauth providers` | `treg connections providers` | |
-| `treg run …` | `treg cli run …` | |
-| `treg runs` | `treg cli runs` (or `treg audit --runs`) | |
-| `treg calls` | `treg audit --calls` | |
-| `treg shell start\|stop` | `treg cli shell start\|stop` | |
-| `sudo treg setup-local-run` | `sudo treg cli setup` | |
-| `treg import` | `treg upload` | pre-existing alias |
-| `treg health` | — | still works; dropped from the front page, `connections` carries the health story |
-
-Bare **`treg connections`** now lists (the subparser is `required=False` with a parent
-`set_defaults(fn=cmd_connections_ls)`); every other namespace still requires a subcommand.
-
-## Commands
-- **Team policy + scoping (all under `org`, all admin+):**
-  - **`org agent-new <name>`** (`--role`, `--cap`, `--tools`, `--all-tools`, `--local-run`,
-    `--projects a,b` / `--all-projects` — only sent when given, so a rotate never widens scope) mints or
-    **rotates** an agent's token — a member identity for a machine caller (`POST /orgs/{id}/agents`).
-    Re-running the same name rotates: the previous token dies there. **`org agents`** lists them with
-    today's usage; **`org agent-rm <user_id>`** revokes. Nested under `org` on purpose — the top-level
-    **`treg agents`** already means "which coding agents can I install skills for", an unrelated concept
-    (`agents.py`). See [multi-tenancy](../architecture/multi-tenancy.md).
-  - **`org pin <capability> --provider <p>`** / **`org pins`** / **`org unpin <capability>`** —
-    the team's provider choice per job, enforced server-side (a gate, not a hint). `catalog get`
-    shows the pin and lists only that provider's endpoints, so an agent does not learn the policy by
-    being refused. See [catalog](../architecture/catalog.md).
-  - **`org deny`** (`--host`, `--path`, `--method`, `--user`, `--project <slug|id>`, `--note`) blocks
-    calls for the whole team, one member/agent, and/or one project's tools;
-    **`org deny-ls`** / **`org deny-rm <id>`**. An empty field means *any*, so
-    `--method DELETE` alone blocks every delete. Enforced on the proxy AND both run tiers — see
-    [proxy-model](../architecture/proxy-model.md).
-  - **`org project-new <name>`** / **`org projects`** / **`org project-rm <id>`** manage the optional
-    sub-scope inside a team. `org access` and `org invite` additionally take **`--projects a,b`** /
-    **`--all-projects`**, which ride alongside the existing `--tools` flags (the two ACL axes compose as
-    AND). Deleting a project frees its tools back to team-wide rather than hiding them.
-- **`config`** (`--base-url`; shows email + active org + logged-in) · **`login`** — three doors in one
-  `cmd_login`: default browser handshake — `POST /auth/cli/start` mints the `login_id` **and a short
-  pairing code**, opens the universal `/login?cli=<id>#code=<code>` page — the code rides in the URL
-  **fragment** (a fragment is never sent to the server, so it stays out of request logs) and the `/login`
-  page **displays** it so the user just confirms it matches the terminal instead of typing it (the
-  anti-phishing guard: a login you didn't start can't be approved into a token, and the server still
-  validates the code at approve time — the guard itself is unchanged). The page reuses an
-  existing dashboard session via a **team picker**, else offers GitHub / Google / email-code, then polls
-  `/auth/cli/poll` **with no
-  code**; the poll result may carry `active_org` = the team picked in the browser, which `cmd_login` adopts
-  directly, falling back to `_pick_active_org` only against an older server (where `/start` 404s → a
-  locally-minted `login_id`, no code)),
-  `login --email you@x.com` (email OTP from the terminal: `POST /auth/email/start` →
-  prompts for the 6-digit code → `/auth/email/verify`, storing the identity token; a server that
-  requires a browser check answers 400 with `X-Treg-Captcha: required`, and the CLI says so and
-  continues with the browser handshake instead), or `login --token <t>`
-  for agents/CI — which now **verifies the token via `/auth/me` before saving** (a rejected token exits
-  loudly instead of the old misleading "Token saved"; a valid token whose user has no team yet prints a
-  "create a team first" hint rather than a silent `Active org: None`). First login by
-  any door also registers you (the user only — no auto personal org) · **`logout`** (clears creds).
-  After a first human login, `_maybe_offer_onboarding` prompts `[Y/n]` then shows the 3-path menu (TTY-only).
-- **`onboard`** (`cmd_onboard`, `--path setup|access|demo`/`--source local|global|both`/`--name`/`--yes`/
-  `--reset`; `--mode` hidden, back-compat `quick`→demo) — a TTY run opens with a one-second `_splash`
-  decrypt animation (the wordmark reveals behind a ░▒▓ wavefront; any key skips; off-TTY/`NO_COLOR`/dumb
-  terminals never see it), then `_pick_path` presents an **arrow-key menu** (`_menu` — ↑↓/jk move, ↵
-  confirm, 1-9 jump-pick; falls back to questionary where raw-key mode is unavailable). The interactive
-  default is **Set up**; the smart org-based default (team-with-tools → Access, empty admin team → Set up,
-  else Demo) applies only non-interactively. **Set up** (`_run_setup`) asks "Import skill/secret from
-  where?" — this project / global agent folders `~/.claude/skills` etc. / both / an **other project repo**
-  typed inline (a `_menu` type-in row with fish-style folder autosuggestion; "this project" is hidden from
-  a root-ish folder via `_is_rootish` so it can't sweep `$HOME`), unless `--source` pins it — then imports
-  the chosen `.env` + skills and runs a batched `health --run`. **Access** (`_run_access`, list tools+skills
-  → multi-select `skill install` → a no-key test call). **Demo** (`_run_demo`) is now purely
-  **illustrative** — no team is created, nothing is uploaded — showing the loop across four beats (scan
-  preview → roles → a real no-key call if the active team has a callable tool → the audit log). See
-  [onboarding](onboarding.md).
-- **`invites`** (`cmd_invites` → `GET /invites/mine`) lists invites addressed to your proven email;
-  **`accept <org-slug>`** (`cmd_accept`) accepts one code-free (finds it in `/invites/mine`, `POST
-  /invites/{id}/accept`, sets it active). The code path stays as `org join <code>`.
-- **`org`** — `create "<name>"` (become owner), `ls` (marks the active one), `use <slug>` (switch active),
-  `invite <email> [--role viewer|member|admin] [--expires-days N] [--tools a,b | --all-tools]
-  [--local-run on|off]` (admin+; prints the one-time code; `_resolve_tool_access` offers an all-or-customise
-  checklist prompt when neither flag is given on a TTY), `access <user_id> [--tools a,b | --all-tools]
-  [--local-run on|off]` (`cmd_org_access`, admin+; sets which tools a member may use + the local-run toggle,
-  keeping the unspecified field's current value → `PATCH /orgs/{id}/members/{user}/access`),
-  `invites` (admin+; lists live pending, purges expired), `revoke <invite_id>` (admin+), `members` (admin+;
-  each row now carries `tool_access` + `local_run_enabled`),
-  `set-role <user_id> <role>` (owner-only), `join <code> --email you@…`, `leave`, `delete <slug>`
-  (owner-only; must name the org — confirm-by-name). A global **`--org <slug>`** flag (stripped in
-  `main` via `_pop_org_flag`, applied through `_ORG_OVERRIDE`/`_effective_org`) runs **any** command in
-  that org instead of the active one. See [multi-tenancy](../architecture/multi-tenancy.md).
-- **`secret add`** (`name`; `--value` | **`--env-var VAR [--env-file PATH]`** | `--file` | `--dir`; `--kind`) ·
-  **`secret ls`** · **`secret rm`** · **`secret update ID`** (`--name`/`--value`/`--kind` → `PATCH /secrets/{id}`;
-  only the given fields). `--dir` auto-discovers the file via `convert.find_secret_file`; a file-sourced value (`--dir`/`--file`,
-  and the `treg.json` contract secret read in `contract_to_skill_payload`) is now `.strip()`ed, so a
-  trailing newline can't become an illegal header/env value downstream. **`--env-var`** reads
-  ONE named var from an `.env` (default `./.env`) via `providers.env_values` — the correct, value-internal way
-  to register an **unmatched** key: it strips a balanced quote pair (so `KEY="v"` stores `v`, not `"v"` — the
-  malformation agents hit hand-extracting with grep/cut) and the value never lands on the command line.
-- **`add`** (hidden alias) — the old friendly shortcut for `tool add`: `treg add <name> --base-url URL
-  [--secret <name|id>]` (`cmd_add`). `--secret` accepts a secret **name** (resolved to its id via
-  `_resolve_secret_ref`) or an id; default injection is a Bearer token in the `Authorization` header.
-  `--header`/`--format` override it; `--base` aliases `--base-url`. Kept for old scripts and cached
-  agent instructions; `tool add` is what we teach.
-- **`tool add`** (`name`; `--base-url`; single-binding `--secret`/`--injector`/`--auth-*`/`--secret-field`;
-  friendly multi-binding `--bind 'secret=ID,injector=oauth,name=...,format=...'` parsed by `_parse_bind`;
-  raw `--binding '<json>'`; `--health '<json>'`) · **`tool ls`** · **`tool rm`** · **`tool update ID`**
-  (`--base-url`/`--bind`/`--binding`/`--health` → `PATCH /tools/{id}`).
-- **`import [env|skills|clis]`** (`--dir`/`--env-file`/`--skills-dir`; `--select a,b` | `--all` |
-  `--dry-run`; `--status`; `--replace`; `--no-oauth`; `--llm` …) — scan a directory/machine and register
-  what it finds; bare = **all three** (env + skills + clis).
-  **env:** detect provider keys → secrets + tools (bearer/api-key/query/basic auto, OAuth pairs a
-  per-provider connect, `--llm` for unknowns). **skills:** each skill subdir → a tool (from `treg.json`
-  or generated from its script/secret) or a recipe-only bundle. **clis:** scan the machine for INSTALLED
-  catalog CLIs (`shutil.which`), classify each (`providers.classify_cli`), auto-register the ready ones on
-  the right tier (server-injected key / local **secret-less**, stored as an explicit `inject: []` so the
-  catalog's inject can't merge back at grant time), and print an actionable, **plain-text** gap report (no
-  emoji/colour, one CLI per line) — every missing piece names the fix (`set STRIPE_API_KEY` / `run gcloud
-  auth login`); fix + re-run (idempotent; `--status`/`--dry-run` report only). **`--add BIN`** registers an
-  INSTALLED cli that's NOT in the
-  catalog (prompts for its key env var + API base_url) and prints a catalog-entry snippet to share; an
-  unknown bin isn't server-allow-listed, so it runs locally until an admin allow-lists it. Brains in
-  `providers.py` + `skills.py`; see [env-import](env-import.md).
-- **`call`** (`target`, optional `path`; `--method`, `--query K=V` repeatable, `--data` (also
-  `@PATH`, `@-`; body rules in USAGE.md), `--file`, `--content-type`, `--header 'K: V'`
-  repeatable) → three shapes: named `call <tool> <path>`, agent-native
-  single URL `call https://host/full/path` (path omitted), or a **catalog endpoint id**
-  `call tikhub.tiktok.video.comments` — all hit `/call/<rest>`. **`--header`** adds an
-  extra request header the binding can't know (e.g. Google Ads' per-call `login-customer-id`); an
-  **injected credential always wins**, so a `--header` can never overwrite the secret the proxy injects.
-  The **endpoint-id shape** (dotted, slash-free; an org tool with the same name always wins) walks the
-  marketplace credential ladder server-side (`_resolve_marketplace_call` in api.py): ① an org tool for
-  the provider (via passthrough resolution, so ACLs apply unchanged), ② an org secret tagged with or
-  NAMED for the provider, injected through a **virtual, never-persisted tool named after the endpoint**
-  (audit records the endpoint id; `tool ls` stays clean), ③ an actionable 404 naming the
-  `connections connect` / `secret add` fix — reached only after ④ **treg's own key**, which serves any
-  `platform_eligible` endpoint (priced + provenanced + live-verified) of an allow-listed provider
-  (`TREG_PLATFORM_PROVIDERS`, the kill switch) with **no credential at all**, metering it against the
-  team's prepaid balance: reserve before the request, settle on a billable answer (a provider-reported
-  cost wins over our estimate), release on a 5xx/network failure, per-org daily ceiling, and a 402
-  carrying `balance_micro` / `estimated_cost_micro` / `topup_url` when the balance is short. Tier ④ is
-  shadowed by ① and ② (an org that brought its own key is billed by the provider, not by us) and never
-  resolves for a demo org. `treg catalog get` prints which tier would serve you. The server
-  validates method + required params BEFORE money is spent, and fills `{placeholder}` path params from
-  `--query` (consumed — dropped from the relayed query via `relay(drop_params=…)`). Members restricted
-  via `--tools` get no marketplace calls; a bare provider name (`call tikhub /path`) still 404s but
-  points at the endpoint-id form. See [cli-audit-2026-07-28](cli-audit-2026-07-28.md) (design section).
-  `-p` is a short alias for `--query`. `catalog get` prints the whole contract an agent needs to
-  build the cheapest valid request: the PARAMS table flattens nested objects to dotted names and
-  its NOTE column carries the prose rule, the enum (`one of:`), the default, the numeric range and
-  the example; a `cost.table` endpoint gets a PRICE TABLE section (`_print_price_table`: the rows,
-  `× field (from times_min)` for linear rows, the fallback ceiling, and whether the row or the
-  provider's usage settles); an async endpoint gets an ASYNC TASK section (`_print_async`: id
-  field, poll command and interval, terminal values, result location or retrieval command,
-  lifetime) and its RUN IT template ends in `--await --timeout 900`. `--await [--timeout 900]`
-  reads `X-Treg-Async`; without the header it is a no-op. Descriptor semantics come from `treg.domain.asynctasks` (stdlib-only, see
-  the import-boundaries fragment), not a CLI-side copy. With the header it prints the task id and a resumable `treg call` command to
-  stderr, polls static catalog ids or allow-listed dynamic URLs through `/call/` every descriptor
-  `interval` and never past its `max_age`, prints a submission that is already finished
-  (`terminal_on_submission`) without polling, retries network/5xx
-  failures with backoff up to five consecutive failures, and keeps waiting on unknown status values
-  after one warning. Stdout contains only the terminal polling response bytes. Exit codes are 0 for
-  success, 2 for a provider terminal failure, 3 for timeout/interruption/recoverable polling failure,
-  and 1 for malformed usage or metadata. Fetch-mode results print a retrieval command rather than
-  downloading binary content; result URLs, reservations, progress, and TTL reminders stay on stderr.
-  Running that command preserves a non-text response byte-for-byte on stdout (for example,
-  `treg call openrouter.video-gen.result.retrieve -p video_id=... > result.mp4`); the upstream
-  `Content-Type` remains authoritative, so the async descriptor does not duplicate a result format.
-- **`audit`** (`cmd_audit`, `--limit`, `--calls` | `--runs`) — the single "who did what" view. `--calls`
-  and `--runs` delegate to `cmd_calls` / `cmd_runs` verbatim (the old `treg calls` / `treg runs` output,
-  byte for byte). The **default merged view** is the only new behaviour in the consolidation: it fetches
-  both `GET /calls` and `GET /runs` (no new endpoint), normalises each row to
-  `{kind, id, user_email, tool, detail, result, where, created_at}` (plus `task` - `status`,
-  `settled_micro`, `result_url`, `fetch_command`, `ttl_note` - when `/calls` reports an `async_task`
-  for the row, i.e. a metered generation), sorts by `created_at` descending and truncates to `--limit`. It **drops the `kind == "local_run"` CallRecords**, because `/runs` already
-  surfaces those same grants as its `where: "local"` rows — otherwise every local run would be listed
-  twice. Call ids are prefixed `c…`; run ids keep `/runs`' own `s…`/`l…` prefixes, so nothing collides.
-- **`cli run`** (`treg cli run <tool> [--local|--server] [--] <cli args…>`, `cmd_run`) — a **dispatcher** that picks
-  a tier by flag: `_run_local` (default) or `_run_server`. `args` is an `argparse.REMAINDER`, which silently
-  swallows a treg flag typed AFTER the tool name; `cmd_run` guards against that by reading the **real**
-  `sys.argv` and refusing a tier flag (`--server`/`--local`/`--timeout`) placed after the tool but before the
-  `--` separator — while still letting a flag after `--` reach the vendor CLI (so `treg run db -- --timeout
-  30` works and passes `--timeout` to the CLI). Two execution tiers (see [CLI-RUN-PLAN](../../CLI-RUN-PLAN.md)):
-  - **`--local`** (default, `_run_local`) — run the vendor CLI on THIS machine as a dedicated `treg-run`
-    user so the credential is unreadable by the member (see [local-run](../architecture/local-run.md)). On
-    Linux with local-run set up, the member hands off via `sudo -u treg-run <runner>`, passing its own
-    token through the environment; the **runner** (`cmd_run_helper`, the hidden `__run-helper`, running as
-    treg-run) fetches the grant (`POST /tools/{name}/grant`), runs the CLI with the credential, tees stderr
-    to match the profile's `errors` → a translated message + `run-report` (verdict enum only), and passes
-    the exit code through. Shared core `_run_helper` — which, on a **shared-key** run (grant sets
-    `redact_output`), scrubs the injected value out of the CLI's stdout/stderr via `_StreamRedactor`
-    (boundary-safe streaming). Without setup it runs as the member, **best-effort**, with a warning.
-    **`cli setup`** (`cmd_setup_local_run`, run once with sudo — now **Linux AND macOS**; macOS creates
-    the treg-run user via `dscl`/`_create_run_user`) creates the treg-run user, installs the runner
-    (root-owned, can only invoke `__run-helper`), writes a narrow sudoers rule, and installs the **egress
-    allow-list** (`_install_egress` → [local-run](../architecture/local-run.md); `--no-egress` skips it,
-    `--refresh-egress` re-resolves drifting IPs, `--registry` sets the host to allow). Its **`--run-proof`**
-    flag installs the runner proof at `/etc/treg-run/proof` (root-owned, mode 0400, readable only by
-    treg-run); the runner script exports it as `TREG_RUN_PROOF` and `_run_helper` sends it as
-    `X-Treg-Run-Proof` on the grant call — which is how the server releases a SHARED (non-owned) key to the
-    isolated runner but refuses a direct member call (without `--run-proof`, only owned-key tools run
-    locally). `treg tool update <id> --local-run on|off` flips `cli.enabled`. **`--fs-jail`** (opt-in, macOS)
-    confines the CLI's file writes to a private scratch (`fsjail.macos_profile` + `sandbox-exec`, forwarded
-    via `TREG_RUN_FSJAIL`) so it can't drop the key in a member-readable file — see [local-run](../architecture/local-run.md).
-  - **`--server`** (`_run_server`) — sends `POST /run`, which is disabled globally and returns 503.
-    **`cli runs`** (`cmd_runs`, `--limit`) shows the run audit log — now **BOTH tiers**: `GET /runs` merges
-    server runs and local grants, each tagged `where` (`server`|`local`; a local success has a null exit
-    code, since only failures report back).
-  `treg audit --calls` shows the local `GRANT`/`DENY`/`REPORT` audit rows.
-- **`cli shell`** (`cmd_shell_start`/`cmd_shell_stop`) — **`cli shell start`** opens a subshell where the team's
-  registered CLIs run with the credential injected transparently (a shim dir first on `PATH` routes each to
-  `treg run`); **`cli shell stop`** (or `exit`) leaves. `--server-for a,b` routes named tools to the server
-  only when `server_runnable` is true; the server now reports false for all tools. `--ttl MIN`
-  auto-closes. **`--proxy`** (opt-in, with
-  `--proxy-port` / `--renew-ca`) additionally catches HTTPS calls the AGENT makes on its own to a
-  registered host — `_start_local_proxy` seeds the allow-list from the tool listing already fetched for
-  the shims and hands `start_session` the environment + a stop callback. See [shell](shell.md) and
-  [local-proxy](../architecture/local-proxy.md).
-- **`treg <command>`** (`cmd_with`, reachable as `treg with` or bare) — run ONE command with the team's
-  credentials: `treg claude`, `treg node app.js`, `treg with -- npm test`. treg is the parent, so only
-  that process and its children are affected and nothing is written to any config file. `main()` routes
-  a bare word here via `_looks_like_a_program()` — the word must not be a treg subcommand AND must exist
-  on `PATH`, so `treg toool ls` stays an argparse error and a stray `call` binary cannot shadow
-  `treg call`. See [local-proxy](../architecture/local-proxy.md).
-- **`serve`** (`cmd_serve_start`/`_stop`/`_status`/`_env`) — the same local proxy as a **background
-  service**, for a member who wants their own shell rather than a subshell. `start` detaches a child
-  running `serve start --foreground` (via `sys.executable -c`, never the `treg` on `PATH`, which may be
-  an older build); `eval "$(treg serve env)"` points a terminal at it and `--unset` reverses it (and
-  works after `stop`, which is exactly when it is needed); `status` reads `~/.treg/proxy/proxy.json` and
-  says whether THIS terminal is using the proxy. `_start_proxy_handle` is the one code path all three
-  front doors share.
-- **`admin`** (super-admin, cross-tenant): `login --token`, `stats`, `orgs`, `org <id>`, `users`,
-  `tools`, `calls`, `health`, `grant`/`revoke <user_id>`, `suspend-user`/`rm-user <user_id>`,
-  `suspend-org`/`rm-org <org_id>`. Reconciliation (price drift, provider spend, repeat-query
-  rate) is deliberately NOT a CLI command — query `GET /admin/reconcile/*` directly or run
-  `scripts/provider_balances.py`; see `src/treg/reconcile.py`.
-  `_admin_client` sends the saved `admin_token` (`treg admin login`)
-  or falls back to the active org token (works for an `is_superadmin` user). See
-  [super-admin](../architecture/super-admin.md).
-- **`skill`** (`init --dir`, `add --dir`, `scaffold <dir> [--out]`, `push <file>`, `ls`, `rm`) — see below.
-- **`health`** (`--run`) — still parses; off the front page since the consolidation.
-- **`connections`** (`cmd_connections_ls`/`_resources`/`_use`/`_rm`, plus `cmd_oauth_connect` +
-  `cmd_oauth_providers`, which kept their names when the namespace moved) — your
-  connected accounts, and where you connect a new one. Bare **`treg connections`** (or **`ls`**) →
-  `GET /connections` (health + expiry). **`connect`** (`cmd_oauth_connect`, ex-`oauth connect`) has two
-  modes: **registry** — `--provider <service>` (e.g. `google-search-console`), optional `--capability` to
-  pick a scope set (default read) and optional `name`, so treg's app supplies the client credentials; or
-  **bring-your-own** — `name --client-secret <file> --scopes …` reads your own Google OAuth client JSON
-  (`_byo_body`). Either posts `/oauth/start`, prints the consent URL, and polls `/oauth/status` ~5 min.
-  **`providers`** (`cmd_oauth_providers` → `GET /oauth/providers`, ex-`oauth providers`) lists the services
-  treg holds its **own** approved OAuth app for. **`resources <id>`** (`GET /connections/{id}/resources` —
-  the sites/properties/accounts it can act on), **`use <id> <resource_ref>`**
-  (`POST /connections/{id}/resource` — select which one), **`rm <id>`** (`DELETE /connections/{id}` —
-  disconnect). The old **`oauth`** namespace stays as a hidden alias of `connect` + `providers`.
-- **`hub`** (`cmd_hub_init`/`_run`/`_publish`/`_ls`/`_earnings`/`_price`/`_retire`/`_list`/`_unlist`/`_log`)
-  — publish a tool made of tools. See [hub](../architecture/hub.md).
-- **`whoami`** (`cmd_whoami`, visible but outside every `HELP_GROUPS` row) — the account, active team
-  + role, and server this CLI talks to (`GET /auth/me` + `/orgs`); added after an agent ran the
-  system `whoami` through `treg with` and printed the machine's user name, which reads like the
-  treg identity.
-- **`catalog [platform]`** (`cmd_catalog`) — the **endpoint** catalog: what you can CALL, as opposed to
-  `connections providers`, which is what you can CONNECT. No arg → `GET /catalog/platforms`, one aligned row
-  per platform (endpoints / verified / capabilities / the providers serving it), busiest first. With a
-  slug → `GET /catalog/platforms/{slug}`, grouped **by capability** so the same job across providers sits
-  under one heading (`provider  METHOD  path  cost  verified-date|unverified  tier`), with any unmapped
-  extended endpoints last. `_cost_label` renders the catalog's cost block as a scannable
-  `$0.001/success`. Unauthenticated (`_client(cfg, auth=False)`) — the catalog is public, and it's the
-  one thing worth reading *before* signing up. The CLI never parses the YAML itself (that needs pyyaml,
-  a server extra); see [catalog](../architecture/catalog.md).
-- **`catalog search <query…> [--limit]`** (`_catalog_search`) — find an endpoint by what it DOES when you
-  don't know which shelf it sits on (`GET /catalog/search?engine=agent`: the search an agent's
-  `catalog_search` gets, judged where the judge runs, else the keyword page; the login token, when
-  there is one, says who is searching for the per-caller judge cap; an older server ignores
-  `engine` and answers by keyword). A `none` verdict prints "the catalog has no tool for" and the
-  request line, `closest` and a judge-less `keyword` page say so under the table. A compact ranked table: endpoint id,
-  platform, provider, cost, `✓`/`·` verified, tier, clipped summary — footer hint `treg catalog get <id>`.
-  Cost prints in **USD** (`_cost_usd`, 3 significant digits) rather than `_cost_label`'s source currency:
-  the column is only worth reading if CNY and USD rows compare. The no-match message names
-  `treg catalog request "<query>"` — the empty search is the moment the filer exists. An ADDED
-  column shows each tool's `added` day (`-` on a routed row). `--new [DAYS]` (30 when bare, capped
-  at 365 with one line saying so) keeps tools added in the last DAYS days and `--sort newest` lists
-  newest first; with either, the words are optional (`treg catalog search --new`). `--new` takes a
-  number, so search words go before it. An older server that ignores both options gets "this
-  server does not support --new yet", not plain results labelled as new. `catalog get` prints `added`.
-- **`catalog request <what's missing…>`** (`_catalog_request`) — file a "the catalog doesn't have X"
-  report (`POST /tool-requests`, `source: cli`). Open endpoint, rate-limited server-side; a configured
-  token rides along as attribution only, never a requirement.
-- **`catalog get <endpoint-id>`** (`_catalog_get`) — the last stop before `treg call`
-  (`GET /catalog/endpoints/{id}`): summary, provider + limits/pricing_url, cost in USD *and* the original
-  currency with its note, verified date, the capability with a **siblings** table (same job, other
-  providers — price and verification side by side), a `PARAMS` table by location with required first
-  (`_print_params`), the paste-ready `RUN IT` command, and the example response pretty-printed, clipped at
-  40 lines with a pointer to the full JSON. `search`/`get` are matched as positional **verbs** inside
-  `cmd_catalog`, not argparse subcommands, so `treg catalog <platform>` keeps working and a multi-word
-  query needs no quoting. An id that misses prints the server's `did_you_mean` ids and the exact
-  command for the first one; the old "find one with: treg catalog search …" is the fallback for a
-  miss that resembles nothing, since it sends the reader back to the step that produced the wrong id.
-  The siblings table's `WORKS` cell shows a measured `0%` for an endpoint whose decided calls all
-  failed; below the sample floor it stays the neutral `— (n)`, because the floor publishes volume and
-  never outcome.
-- **`mcp grants`** / **`mcp use-team <grant> <team>`** (`cmd_mcp_grants`, `cmd_mcp_use_team`) — which
-  MCP connections this account has authorised, and which team's balance each one spends from; and
-  moving one, without reconnecting the client. The grant id prints **whole** while every other column
-  is clipped — it is the argument `use-team` takes, and clipping it made the one command this table
-  exists to feed answer 404 for anything copied off the screen. The team was chosen once at a consent screen and then
-  appeared nowhere: an agent reports a slug, `treg org ls` lists the teams of whoever is signed in
-  *here*, and those can be two different accounts. See
-  [mcp-oauth](../architecture/mcp-oauth.md#but-the-choice-must-stay-visible-and-reversible-afterwards).
-
-`_parse_bind` defaults every field to a bearer `Authorization` header; only `secret=` is required, so a
-multi-credential tool needs no JSON.
-
-## Skill scaffolding + the `treg.json` contract (`convert.py`)
-`scaffold_skill(dir)` walks a skill directory (`_SECRET_DIRS` = `.secret`/`.secrets`, `_RECIPE_FILES` =
-SKILL.md/README.md) and emits a `/skills` manifest **stub**: the recipe + every credential file as a
-secret (kind guessed by `_guess_kind` — JSON with `refresh_token` → `oauth`, other JSON → `secret_file`,
-plain → `env`), and a tool with `base_url` and per-binding placement left as `FILL` for the agent to
-complete. `find_secret_file(dir, kind)` (used by `secret add --dir`) matches by `_matches_kind` and
-returns exactly one file or raises (none / ambiguous).
-
-**The `treg.json` sidecar contract** (`CONTRACT_FILE`) lets a skill self-describe its registration so
-treg is one command. `generate_contract(dir)` is the *semi-automation helper*: it auto-discovers secrets
-(+ kinds), `_guess_base_url(dir)` scans SKILL.md + `*.py` for the upstream host (skipping doc hosts via
-`_DOC_HOST_HINTS`), and emits **non-colliding** bindings via `auto_bindings` (shared with the dashboard's
-`_classify`): the primary oauth/bearer token → `Authorization: Bearer`, each additional credential → its
-own filename-derived header (`developer_token` → `developer-token`), and OAuth app config
-(`client_secret.json`, `_is_app_config`) is skipped. `_oauth_secret_field` detects Google's `token` vs
-`access_token`. base_url: a skill-name catalog match (`providers.match_skill`, e.g. google-ads/gsc) wins
-over the `_guess_base_url` heuristic; whatever it still can't resolve confidently is listed in `_fill` for
-the user. `treg skill init --dir` writes it; `treg skill add --dir` registers it
-(`load_contract` + `contract_to_skill_payload` load the named secret files → `POST /skills`, so no secret
-values live in the file; a `file:` path is resolved via `resolve_secret_path`, which swaps `.secret`↔`.secrets`
-when the exact spelling is absent, so a shared contract survives the per-machine secret-dir spelling drift). `secret add --dir` **syncs back** into an existing `treg.json`
-(`_sync_contract_secret`) so CLI-driven changes stay authoritative. **`treg skill install <name>`**
-(or `--all`, `--dir`) does the reverse — pulls a bundle from the registry (`GET /bundles/{id}`) and
-writes `<dir>/<name>/SKILL.md` PLUS its **companion files** (`_write_bundle_files` reconstructs the whole
-folder from `bundle.files` — reference docs, scripts, nested subdirs; each path re-checked to stay inside
-the skill dir, secrets never shipped), so a teammate installs a complete shared skill with one command;
-a tool-backed skill notes its registered tools to call via `treg call`. A skill folder that **already
-exists on disk is kept, not overwritten** (unless `--force`); the run ends with an **actionable summary
-of the kept skills** + the `--force` hint, so a caller (agent or human) decides whether to overwrite —
-the Access agent-instruction defers to this output rather than restating the rule. The push side (`build_payload` /
-`contract_to_skill_payload`) collects those files via `skills.collect_files` (excludes `.secret*`,
-`SKILL.md`, `treg.json`, VCS/build junk, binaries, oversized files).
-
-## Caller tags and per-tag budgets
-
-For a builder reselling treg to their own users (see [api](api.md) and
-[money](../architecture/money.md)).
-
-```bash
-# a token pinned to one customer — the pin beats whatever X-Treg-Meta the holder sends
-treg org agent-new cust-a-bot --pin customer=cust_A
-```
-
-`--pin` is repeatable and survives a rotate: re-minting the same name replaces the token and keeps the
-pin, because a rotate must never silently unpin a scoped token.
-
-Two commands for a team reselling treg:
-
-```bash
-treg org budgets                                   # every per-tag limit you've set
-treg org budget-set customer cust_8123 --daily 5   # cap one of your users at $5/day
-treg org budget-set workspace ws_9 --daily 50      # budgets STACK — both apply to a call
-treg org budget-set customer cust_8123 --block     # cut one off; the caps survive
-treg usage --by customer --days 30                 # what each one consumed, from the ledger
-```
-
-`budget-set` only writes the limits you name, so `--block` never wipes a cap someone set last week.
-Caps are **advisory** — concurrent calls can overshoot slightly — and the prepaid balance is the hard
-limit; don't resell them to your users as exact.
-
-## `treg login` replaces bootstrap with the active team's Default key
-
-An org-less login result is a signed `scp=bootstrap` credential: it identifies the account for
-onboarding, expires after seven days, and cannot call team resources. When browser login includes a
-team selection, the poll result is already that membership's signed, non-expiring Default key. The
-direct email-code CLI uses the response's HttpOnly browser session to request the selected team's
-Default key; it does not let the bootstrap credential perform that exchange itself.
-
-Creating a team, joining by invite, accepting a pending invite, or selecting a team replaces the
-single token in `~/.treg/config.json` with the returned/selected team Default key. That key is the
-same deterministic credential shown for that human membership in the dashboard API Keys page, so
-disable and rotation apply to CLI use and Activity attributes the real key. `treg org use` performs
-the same authenticated Default-key exchange on every switch and writes the new team and token only
-after the exchange succeeds. Old untyped login tokens remain usable during rollout; newly typed team
-keys treat their signed team as authoritative for resource calls.
-
-This matters because the token is the thing people copy *out* of the CLI: into curl, into an MCP
-client's `Authorization`, into an agent's environment. Unpinned it fails there with
-`choose an org (send X-Treg-Org)` — accurate, and useless, because the CLI had been supplying that
-header invisibly all along.
-
-For a typed Default key, a conflicting `X-Treg-Org` does not override the claim. The CLI replaces its
-stored token when a deliberate team switch succeeds.
-
-`treg org overflow [on|off]` shows or sets the team's overflow-relay opt-out (`PATCH /orgs/{id}/settings`
-`platform_overflow`); see `ops/capacity.md`.
-
-`treg catalog get <routed id>` prints the ROUTING PLAN (order, accepted identity, price, HIT, expected
-cost per hit) above the sibling table; the sibling table itself gained a HIT column (`stats.observed`
-`hit_rate`). `treg catalog <platform>` rows lead with the endpoint id and show the unified USD price.
+`org agent-new --pin key=value` pins a tag the holder cannot override, and the pin survives a rotate:
+a rotate must never silently unpin a scoped token. Re-running `org agent-new` with the same name
+rotates and kills the previous token; scope flags are sent only when given, so a rotate never widens
+scope. `org budget-set` writes only the limits named, so `--block` never wipes a cap. Caps are
+advisory (concurrent calls can overshoot); the prepaid balance is the hard limit
+([money](../architecture/money.md)).
 
 ## Anonymous CLI analytics
 
-`main` calls `cli_analytics.track_command` after dispatch, including failures and interrupts.
-The PostHog Python SDK sends `cli_command_completed` with the handler's fixed command name,
-exit code, success, duration in milliseconds, package version and OS. Help/version flags and
-argument parsing failures exit before dispatch and emit nothing. No arguments, request/response
-bodies, paths, tokens, emails or team identifiers are collected. A random UUID in `analytics-id`
-beside `TREG_CONFIG` identifies an installation; it is independent of login/logout.
+`main` calls `cli_analytics.track_command` after dispatch (failures and interrupts included), sending
+`cli_command_completed` with the command name (`catalog` records its form), exit code, success,
+duration, package version, OS, `session`, `agent` and fixed-vocabulary `_note` fields (`error`,
+`status_class`, `tool` only when it has an endpoint id's shape). A usage error sends the unrecognized
+option names without values. **No other argument, query, body, path, token, email or team identifier
+is collected**; keep it that way. An installation is a random UUID in `analytics-id` beside
+`TREG_CONFIG`, independent of login.
 
-The public treg.to ingestion token is the default only for the hosted registry and its legacy
-alias. Self-hosted URLs send nothing unless `TREG_CLI_POSTHOG_KEY` is set; the host override is
-`TREG_CLI_POSTHOG_HOST` (default EU ingestion). `TREG_TELEMETRY=0` or `DO_NOT_TRACK=1` disables
-all analytics and ID creation. SDK import and synchronous capture run in a daemon thread with
-no retries, a 0.2-second request timeout and a 1-second caller wait budget. Slow delivery may
-be dropped at exit; telemetry failures are silent and preserve command output and exit status.
+`cli_session.current` resolves the session once per invocation: `TREG_SESSION_ID`, else the nearest
+agent on the process tree (agent variables are inherited by nested agents, so the tree decides which
+agent is nearest before its own variable is read: `CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`, else
+the agent's pid and start time), else a reused `session-id` file with an idle timeout; a terminal or
+tmux ancestor would join unrelated commands. Machine-derived ids are sent hashed, never raw.
 
-## Catalog price display
-
-`_cost_label` and `_cost_usd` consume the same computed display USD/unit/suffix fields as the web
-pages. Grouped prices show the full block amount, and variable prices show a plus sign. The source
-is provider-neutral `cost.display` catalog metadata. Missing metadata retains the existing format.
-CLI call billing still uses the shared server call path.
-
-
-## Released CLI compatibility
-
-`resources list [--provider] [--kind] [--include-deleted]` resolves the active organization and
-calls `GET /orgs/{id}/provider-resources`. This is the platform-created resource inventory, distinct
-from `connections resources`, which discovers accounts behind an OAuth connection. Binary `treg
-call` responses still write untouched bytes to stdout; Fish TTS examples redirect that stream to an
-audio file. Existing `--header` and repeated `--upload` multipart behavior is unchanged.
-
-The unmodified PyPI CLIs 0.16.0 and 0.19.0 can use existing saved tokens, complete browser login,
-and exchange Default keys with `org use`. Their email flow discards the browser cookie and would
-save a restricted bootstrap token. Their team-create and identity-mode invite flows keep the
-previous token after selecting the new team. A scoped Default key must still reject that mismatch.
-
-`routers.auth_helpers.require_managed_cli` stops these known old-client requests with HTTP 426
-before issuing email credentials, creating a team, or consuming an invite. The response tells the
-user to run `treg update` and retry. It sets `X-Treg-Error: 1` so the released CLIs correctly
-identify treg as the source of the refusal. Current CLI requests send `X-Treg-Key-Protocol: 1` and save the
-returned team's key. The legacy-client hint is the released CLI's `python-httpx/` User-Agent plus
-`ngrok-skip-browser-warning: 1`, without that protocol marker. It is a compatibility check, not an
-authorization boundary or a universal client-version detector. Browsers and generic API clients
-retain their API behavior; omitting or forging the hint never relaxes token restrictions.
-
-Existing unscoped tokens retain their old team-create behavior. Fresh email login and team changes
-with typed credentials require the updated CLI on the affected paths. This is a controlled upgrade
-requirement, not full support for all fresh-login flows in old clients. The released-wheel test in
-`test_released_cli_compat` checks that refusal preserves config bytes and the prior usable team.
-
-## `treg host` - reference files for AIGC endpoints
-
-`cmd_host` implements `treg host <file> [--content-type TYPE] [--json]`: one `POST /media` with the
-file's bytes and a type guessed from the extension, printing the public URL alone on stdout (size
-and expiry go to stderr) so `$(treg host face.jpg)` drops straight into a `--data` body. 30 MB per
-file, 7-day TTL, image / audio / video only, free. See
-[media](../architecture/media.md). `treg call <catalog-id> <path>` (the own-tool shape applied to a
-catalog id) now answers 400 naming the endpoint's parameter slots instead of "no tool in this org".
+The hosted registry's public ingestion token is the default only for that registry; self-hosted URLs
+send nothing unless `TREG_CLI_POSTHOG_KEY` is set. `TREG_TELEMETRY=0|false|off` or `DO_NOT_TRACK=1`
+disables analytics, id creation, the process walk and both session headers. Capture runs in a daemon
+thread with a short timeout and wait budget; telemetry failures are silent and never change output or
+exit status.

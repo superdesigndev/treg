@@ -1,6 +1,6 @@
 
 export default {
-openRecipeCopy(r){ this.copyRecipe=r; this.recipeTab='cURL'; this.copied=false; },
+openRecipeCopy(r){ this.copyRecipe=r; this.recipeTab='CLI'; this.copied=false; },
 async openRecipeView(r){ this.err='';
       try{ const b=await this.api('/bundles/'+r.id); const rec=b.recipe||''; this.viewRecipe={id:r.id, name:r.name, recipe:rec, orig:rec}; this.copied=false; this.recipeSaved=false; }
       catch(e){ this.err='Could not load recipe: '+(e.detail||e.status); } },
@@ -9,15 +9,10 @@ async saveRecipe(){ if(!this.viewRecipe) return; this.err='';
         this.viewRecipe.orig=this.viewRecipe.recipe; this.recipeSaved=true; setTimeout(()=>{ this.recipeSaved=false; },1400); await this.loadAll(); }
       catch(e){ this.err='Save failed: '+(e.detail||e.status); } },
 recipeSnippet(tab){ const r=this.copyRecipe; if(!r) return {text:'',html:''};
-      const proxy=(this.proxy||location.origin).replace(/\/$/,'');
-      const tok=this.myToken||'$TREG_TOKEN', tokS=tok;  // full token in the preview — matches the copied text
       const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
       const P=s=>`<span class="s-proxy">${esc(s)}</span>`, A=s=>`<span class="s-path">${esc(s)}</span>`,
-            T=s=>`<span class="s-token">${esc(s)}</span>`, C=s=>`<span class="s-cmt">${esc(s)}</span>`, K=s=>`<span class="s-kw">${esc(s)}</span>`;
+            C=s=>`<span class="s-cmt">${esc(s)}</span>`;
       switch(tab){
-        case 'cURL': return {
-          text:`TREG_API_TOKEN=${tok}\ncurl -fsSL "${proxy}/skills/${r.name}/install.sh?token=$TREG_API_TOKEN" | sh`,
-          html:`TREG_API_TOKEN=${T(tokS)}\n${K('curl')} -fsSL "${P(proxy)}${C('/skills/')}${A(r.name)}${C('/install.sh?token=')}${T('$TREG_API_TOKEN')}" | sh` };
         case 'CLI': return { text:`treg skill install ${r.name}`, html:`${P('treg skill install')} ${A(r.name)}` };
         case 'Claude Code': return {
           text:`# Install once - Claude Code then loads it from .claude/skills/ automatically.\ntreg skill install ${r.name}\n# ...then just ask Claude to use the "${r.name}" skill.`,

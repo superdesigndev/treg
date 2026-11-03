@@ -1,277 +1,260 @@
 {
- "success": true,
- "credits_remaining": 0,
- "credits_charged": 1,
- "results": [
-  {
-   "ad_archive_id": "1837076116930801",
-   "collation_count": 1,
-   "collation_id": "1306280041427029",
-   "is_active": true,
-   "page_id": "367152833370567",
-   "page_is_deleted": false,
-   "snapshot": {
-    "branded_content": null,
-    "page_id": "367152833370567",
-    "page_is_deleted": false,
-    "page_profile_uri": "https://www.facebook.com/instagram/",
-    "root_reshared_post": null,
-    "byline": null,
-    "disclaimer_label": null,
-    "page_name": "Instagram",
-    "page_profile_picture_url": "https://scontent-phl2-1.xx.fbcdn.net/v/t39.35426-6/649279650_1584639882812698_9184201419315336055_n.jpg?stp=dst-jpg_s60x60_tt6&_nc_cat=103&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=iCuwS1IHt-YQ7kNvwGyfuZq&_nc_oc=AdpsTR81MiC9lQkba4uCaF8pI-EmkaXpF9qIDGHOTL_AgeUx7FGaoIbMCQi5-wm1hQw&_nc_zt=14&_nc_ht=scontent-phl2-1.xx&_nc_gid=lE4Ei7MRsbetNfCEOgrh4w&_nc_ss=78289&oh=00_AQMl3_EehAMBP281M7xJCO2q01QPc52n3IW5zXbnz6rupw&oe=6ADCDC3D",
-    "event": null,
-    "caption": "play.google.com",
-    "cta_text": "Download",
-    "cards": [
-     {
-      "body": "Har din ke palon ke liye Storiz bani thin. Instagram apni jingi ke hisson ko share karein.",
-      "cta_type": "DOWNLOAD",
-      "caption": "",
-      "link_description": null,
-      "link_url": "http://play.google.com/store/apps/details?id=com.instagram.android",
-      "title": "Bina Edit ke",
-      "cta_text": "Download",
-      "video_hd_url": null,
-      "video_preview_image_url": null,
-      "video_sd_url": null,
-      "watermarked_video_hd_url": null,
-      "watermarked_video_sd_url": null,
-      "image_crops": [],
-      "original_image_url": "https://scontent-phl2-1.xx.fbcdn.net/v/t39.35426-6/649760504_2774121912941839_6735984067651232036_n.jpg?_nc_cat=102&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=nU2-J4hUH9YQ7kNvwFmVLJp&_nc_oc=AdrPIpvmiiRdCdlyrHIkcq_PS7p9HXhbDHy2_mIJXPfh3sk7dVdwYe9MeMKNA8FzG0M&_nc_zt=14&_nc_ht=scontent-phl2-1.xx&_nc_gid=lE4Ei7MRsbetNfCEOgrh4w&_nc_ss=78289&oh=00_AQOUKUzApfcITz-awgzuucoyZhedd33Cla9YtCMV7-jtnQ&oe=6ADCD753",
-      "resized_image_url": "https://scontent-phl2-1.xx.fbcdn.net/v/t39.35426-6/649318090_1287901246547305_1653449107416871729_n.jpg?stp=dst-jpg_s600x600_tt6&_nc_cat=109&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=LlLKP9e6NucQ7kNvwG9qmH2&_nc_oc=AdqxtSTq_Dwc5ipjtg7M2duwqTrXem_Kg2JPpMXeKc7g4YfqIb7nTou2doc7WLvs8Tc&_nc_zt=14&_nc_ht=scontent-phl2-1.xx&_nc_gid=lE4Ei7MRsbetNfCEOgrh4w&_nc_ss=78289&oh=00_AQOYnZNtKTLP3M7Ieg51WC_3nB_1E5OIBI7XwIi6fQqo5A&oe=6ADCD772",
-      "watermarked_resized_image_url": ""
-     },
-     {
-      "body": "Har din ke palon ke liye Storiz bani thin. Instagram apni jingi ke hisson ko share karein.",
-      "cta_type": "DOWNLOAD",
-      "caption": "",
-      "link_description": null,
-      "link_url": "http://play.google.com/store/apps/details?id=com.instagram.android",
-      "title": "Chote-Chote Plao se na Chukein",
-      "cta_text": "Download",
-      "video_hd_url": null,
-      "video_preview_image_url": null,
-      "video_sd_url": null,
-      "watermarked_video_hd_url": null,
-      "watermarked_video_sd_url": null,
-      "image_crops": [],
-      "original_image_url": "https://scontent-phl2-1.xx.fbcdn.net/v/t39.35426-6/650177936_1861388757899358_1916186472848244909_n.jpg?_nc_cat=100&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=obCK-AbJ6k0Q7kNvwGUnAt7&_nc_oc=Adr5WPavRS7zS-6zRueuavdbHI4sruHTmPxJyDIZn8M5KPtJlGj2DpqBRhV3mvsMXgo&_nc_zt=14&_nc_ht=scontent-phl2-1.xx&_nc_gid=lE4Ei7MRsbetNfCEOgrh4w&_nc_ss=78289&oh=00_AQN6JsmXwOS1vTz0R69s55CilC4Zt9VF0bYZaDx2I0SQcw&oe=6ADCBFBB",
-      "resized_image_url": "https://scontent-phl2-1.xx.fbcdn.net/v/t39.35426-6/649275150_2282703902138600_3992271746502544722_n.jpg?stp=dst-jpg_s600x600_tt6&_nc_cat=104&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=g_sfQDQPNZcQ7kNvwGqlCu3&_nc_oc=Ado037GRISHw4axNf6YUKy4CxbRQgsRsP20TRf4ou7HUFySvEnrjpYCz8tgcvENrvfQ&_nc_zt=14&_nc_ht=scontent-phl2-1.xx&_nc_gid=lE4Ei7MRsbetNfCEOgrh4w&_nc_ss=78289&oh=00_AQPtNZRXCfyfw_gz70cIg6aGMTgSLYqC1HrMwo_LWvkirA&oe=6ADCF14D",
-      "watermarked_resized_image_url": ""
-     },
-     {
-      "body": "Har din ke palon ke liye Storiz bani thin. Instagram apni jingi ke hisson ko share karein.",
-      "cta_type": "DOWNLOAD",
-      "caption": "",
-      "link_description": null,
-      "link_url": "http://play.google.com/store/apps/details?id=com.instagram.android",
-      "title": "Chote-Chote Plao se na Chukein",
-      "cta_text": "Download",
-      "video_hd_url": null,
-      "video_preview_image_url": null,
-      "video_sd_url": null,
-      "watermarked_video_hd_url": null,
-      "watermarked_video_sd_url": null,
-      "image_crops": [],
-      "original_image_url": "https://scontent-phl2-1.xx.fbcdn.net/v/t39.35426-6/650177936_1861388757899358_1916186472848244909_n.jpg?_nc_cat=100&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=obCK-AbJ6k0Q7kNvwGUnAt7&_nc_oc=Adr5WPavRS7zS-6zRueuavdbHI4sruHTmPxJyDIZn8M5KPtJlGj2DpqBRhV3mvsMXgo&_nc_zt=14&_nc_ht=scontent-phl2-1.xx&_nc_gid=lE4Ei7MRsbetNfCEOgrh4w&_nc_ss=78289&oh=00_AQN6JsmXwOS1vTz0R69s55CilC4Zt9VF0bYZaDx2I0SQcw&oe=6ADCBFBB",
-      "resized_image_url": "https://scontent-phl2-1.xx.fbcdn.net/v/t39.35426-6/649275150_2282703902138600_3992271746502544722_n.jpg?stp=dst-jpg_s600x600_tt6&_nc_cat=104&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=g_sfQDQPNZcQ7kNvwGqlCu3&_nc_oc=Ado037GRISHw4axNf6YUKy4CxbRQgsRsP20TRf4ou7HUFySvEnrjpYCz8tgcvENrvfQ&_nc_zt=14&_nc_ht=scontent-phl2-1.xx&_nc_gid=lE4Ei7MRsbetNfCEOgrh4w&_nc_ss=78289&oh=00_AQPtNZRXCfyfw_gz70cIg6aGMTgSLYqC1HrMwo_LWvkirA&oe=6ADCF14D",
-      "watermarked_resized_image_url": ""
-     }
-    ],
-    "body": {
-     "text": "Har din ke palon ke liye Storiz bani thin. Instagram apni jingi ke hisson ko share karein."
+  "success": true,
+  "credits_remaining": 0,
+  "credits_charged": 1,
+  "results": [
+    {
+      "ad_archive_id": "1837076116930801",
+      "collation_count": 1,
+      "collation_id": "1306280041427029",
+      "is_active": true,
+      "page_id": "367152833370567",
+      "page_is_deleted": false,
+      "snapshot": {
+        "branded_content": null,
+        "page_id": "367152833370567",
+        "page_is_deleted": false,
+        "page_profile_uri": "https://www.facebook.com/instag…",
+        "root_reshared_post": null,
+        "byline": null,
+        "disclaimer_label": null,
+        "page_name": "Instagram",
+        "page_profile_picture_url": "https://scontent-phl2-1.xx.fbcd…",
+        "event": null,
+        "caption": "play.google.com",
+        "cta_text": "Download",
+        "cards": [
+          {
+            "body": "Har din ke palon ke liye Storiz…",
+            "cta_type": "DOWNLOAD",
+            "caption": "",
+            "link_description": null,
+            "link_url": "http://play.google.com/store/ap…",
+            "title": "Bina Edit ke",
+            "cta_text": "Download",
+            "video_hd_url": null,
+            "video_preview_image_url": null,
+            "video_sd_url": null,
+            "watermarked_video_hd_url": null,
+            "watermarked_video_sd_url": null,
+            "image_crops": [],
+            "original_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "resized_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "watermarked_resized_image_url": ""
+          },
+          {
+            "body": "Har din ke palon ke liye Storiz…",
+            "cta_type": "DOWNLOAD",
+            "caption": "",
+            "link_description": null,
+            "link_url": "http://play.google.com/store/ap…",
+            "title": "Chote-Chote Plao se na Chukein",
+            "cta_text": "Download",
+            "video_hd_url": null,
+            "video_preview_image_url": null,
+            "video_sd_url": null,
+            "watermarked_video_hd_url": null,
+            "watermarked_video_sd_url": null,
+            "image_crops": [],
+            "original_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "resized_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "watermarked_resized_image_url": ""
+          },
+          "… 1 more item(s) truncated"
+        ],
+        "body": {
+          "text": "Har din ke palon ke liye Storiz…"
+        },
+        "cta_type": "DOWNLOAD",
+        "display_format": "DCO",
+        "link_description": null,
+        "link_url": "http://play.google.com/store/ap…",
+        "images": [],
+        "page_categories": [
+          "App page"
+        ],
+        "page_like_count": 68201268,
+        "title": "Bina Edit ke",
+        "videos": [],
+        "is_reshared": false,
+        "extra_links": [],
+        "extra_texts": [],
+        "extra_images": [],
+        "extra_videos": [],
+        "country_iso_code": null,
+        "brazil_tax_id": null,
+        "additional_info": null,
+        "ec_certificates": []
+      },
+      "has_user_reported": false,
+      "report_count": null,
+      "menu_items": [],
+      "state_media_run_label": null,
+      "page_name": "Instagram",
+      "impressions_with_index": {
+        "impressions_text": null,
+        "impressions_index": -1
+      },
+      "gated_type": "ELIGIBLE",
+      "categories": [
+        "UNKNOWN"
+      ],
+      "is_aaa_eligible": false,
+      "contains_digital_created_media": false,
+      "reach_estimate": null,
+      "currency": "",
+      "spend": null,
+      "end_date": 1792393200,
+      "publisher_platform": [
+        "FACEBOOK",
+        "MESSENGER"
+      ],
+      "start_date": 1776754800,
+      "contains_sensitive_content": false,
+      "total_active_time": null,
+      "regional_regulation_data": {
+        "finserv": {
+          "is_deemed_finserv": false,
+          "is_limited_delivery": false
+        },
+        "tw_anti_scam": {
+          "is_limited_delivery": false
+        }
+      },
+      "hide_data_status": "NONE",
+      "fev_info": null,
+      "ad_id": null,
+      "targeted_or_reached_countries": [],
+      "url": "https://www.facebook.com/ads/li…",
+      "start_date_string": "2026-04-21T07:00:00.000Z",
+      "end_date_string": "2026-10-19T07:00:00.000Z"
     },
-    "cta_type": "DOWNLOAD",
-    "display_format": "DCO",
-    "link_description": null,
-    "link_url": "http://play.google.com/store/apps/details?id=com.instagram.android",
-    "images": [],
-    "page_categories": [
-     "App page"
-    ],
-    "page_like_count": 68201268,
-    "title": "Bina Edit ke",
-    "videos": [],
-    "is_reshared": false,
-    "extra_links": [],
-    "extra_texts": [],
-    "extra_images": [],
-    "extra_videos": [],
-    "country_iso_code": null,
-    "brazil_tax_id": null,
-    "additional_info": null,
-    "ec_certificates": []
-   },
-   "has_user_reported": false,
-   "report_count": null,
-   "menu_items": [],
-   "state_media_run_label": null,
-   "page_name": "Instagram",
-   "impressions_with_index": {
-    "impressions_text": null,
-    "impressions_index": -1
-   },
-   "gated_type": "ELIGIBLE",
-   "categories": [
-    "UNKNOWN"
-   ],
-   "is_aaa_eligible": false,
-   "contains_digital_created_media": false,
-   "reach_estimate": null,
-   "currency": "",
-   "spend": null,
-   "end_date": 1792393200,
-   "publisher_platform": [
-    "FACEBOOK",
-    "MESSENGER"
-   ],
-   "start_date": 1776754800,
-   "contains_sensitive_content": false,
-   "total_active_time": null,
-   "regional_regulation_data": {
-    "finserv": {
-     "is_deemed_finserv": false,
-     "is_limited_delivery": false
-    },
-    "tw_anti_scam": {
-     "is_limited_delivery": false
+    {
+      "ad_archive_id": "2014137892782073",
+      "collation_count": 1,
+      "collation_id": "620763980948640",
+      "is_active": true,
+      "page_id": "367152833370567",
+      "page_is_deleted": false,
+      "snapshot": {
+        "branded_content": null,
+        "page_id": "367152833370567",
+        "page_is_deleted": false,
+        "page_profile_uri": "https://www.facebook.com/instag…",
+        "root_reshared_post": null,
+        "byline": null,
+        "disclaimer_label": null,
+        "page_name": "Instagram",
+        "page_profile_picture_url": "https://scontent-phl2-1.xx.fbcd…",
+        "event": null,
+        "caption": "play.google.com",
+        "cta_text": "Download",
+        "cards": [
+          {
+            "body": "स्टोरीज दैनंदिन क्षणांसाठीच बनव…",
+            "cta_type": "DOWNLOAD",
+            "caption": "",
+            "link_description": null,
+            "link_url": "http://play.google.com/store/ap…",
+            "title": "Instagram डाउनलोड करा",
+            "cta_text": "Download",
+            "video_hd_url": null,
+            "video_preview_image_url": null,
+            "video_sd_url": null,
+            "watermarked_video_hd_url": null,
+            "watermarked_video_sd_url": null,
+            "image_crops": [],
+            "original_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "resized_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "watermarked_resized_image_url": ""
+          },
+          {
+            "body": "स्टोरीज दैनंदिन क्षणांसाठीच बनव…",
+            "cta_type": "DOWNLOAD",
+            "caption": "",
+            "link_description": null,
+            "link_url": "http://play.google.com/store/ap…",
+            "title": "Instagram डाउनलोड करा",
+            "cta_text": "Download",
+            "video_hd_url": null,
+            "video_preview_image_url": null,
+            "video_sd_url": null,
+            "watermarked_video_hd_url": null,
+            "watermarked_video_sd_url": null,
+            "image_crops": [],
+            "original_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "resized_image_url": "https://scontent-phl2-1.xx.fbcd…",
+            "watermarked_resized_image_url": ""
+          }
+        ],
+        "body": {
+          "text": "स्टोरीज दैनंदिन क्षणांसाठीच बनव…"
+        },
+        "cta_type": "DOWNLOAD",
+        "display_format": "DCO",
+        "link_description": null,
+        "link_url": "http://play.google.com/store/ap…",
+        "images": [],
+        "page_categories": [
+          "App page"
+        ],
+        "page_like_count": 68201268,
+        "title": "Instagram डाउनलोड करा",
+        "videos": [],
+        "is_reshared": false,
+        "extra_links": [],
+        "extra_texts": [],
+        "extra_images": [],
+        "extra_videos": [],
+        "country_iso_code": null,
+        "brazil_tax_id": null,
+        "additional_info": null,
+        "ec_certificates": []
+      },
+      "has_user_reported": false,
+      "report_count": null,
+      "menu_items": [],
+      "state_media_run_label": null,
+      "page_name": "Instagram",
+      "impressions_with_index": {
+        "impressions_text": null,
+        "impressions_index": -1
+      },
+      "gated_type": "ELIGIBLE",
+      "categories": [
+        "UNKNOWN"
+      ],
+      "is_aaa_eligible": false,
+      "contains_digital_created_media": false,
+      "reach_estimate": null,
+      "currency": "",
+      "spend": null,
+      "end_date": 1792393200,
+      "publisher_platform": [
+        "FACEBOOK",
+        "MESSENGER"
+      ],
+      "start_date": 1776754800,
+      "contains_sensitive_content": false,
+      "total_active_time": null,
+      "regional_regulation_data": {
+        "finserv": {
+          "is_deemed_finserv": false,
+          "is_limited_delivery": false
+        },
+        "tw_anti_scam": {
+          "is_limited_delivery": false
+        }
+      },
+      "hide_data_status": "NONE",
+      "fev_info": null,
+      "ad_id": null,
+      "targeted_or_reached_countries": [],
+      "url": "https://www.facebook.com/ads/li…",
+      "start_date_string": "2026-04-21T07:00:00.000Z",
+      "end_date_string": "2026-10-19T07:00:00.000Z"
     }
-   },
-   "hide_data_status": "NONE",
-   "fev_info": null,
-   "ad_id": null,
-   "targeted_or_reached_countries": [],
-   "url": "https://www.facebook.com/ads/library?id=1837076116930801",
-   "start_date_string": "2026-04-21T07:00:00.000Z",
-   "end_date_string": "2026-10-19T07:00:00.000Z"
-  },
-  {
-   "ad_archive_id": "2014137892782073",
-   "collation_count": 1,
-   "collation_id": "620763980948640",
-   "is_active": true,
-   "page_id": "367152833370567",
-   "page_is_deleted": false,
-   "snapshot": {
-    "branded_content": null,
-    "page_id": "367152833370567",
-    "page_is_deleted": false,
-    "page_profile_uri": "https://www.facebook.com/instagram/",
-    "root_reshared_post": null,
-    "byline": null,
-    "disclaimer_label": null,
-    "page_name": "Instagram",
-    "page_profile_picture_url": "https://scontent-phl2-1.xx.fbcdn.net/v/t39.35426-6/571236940_1235029611768151_6719860976500279725_n.jpg?stp=dst-jpg_s60x60_tt6&_nc_cat=107&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=HkVgZZcUN40Q7kNvwEd65Zn&_nc_oc=AdrsASWLS4JXDiRIvPYyCAsdvVX50rBnVTrSqXqxMfXIhS8qvVEybJRAgvFNWMCVZNI&_nc_zt=14&_nc_ht=scontent-phl2-1.xx&_nc_gid=lE4Ei7MRsbetNfCEOgrh4w&_nc_ss=78289&oh=00_AQNbhIjbe7N0I_TwQPQZoZOn_UfNCObIfdXoKM9lpUQetw&oe=6ADCD319",
-    "event": null,
-    "caption": "play.google.com",
-    "cta_text": "Download",
-    "cards": [
-     {
-      "body": "\u0938\u094d\u091f\u094b\u0930\u0940\u091c \u0926\u0948\u0928\u0902\u0926\u093f\u0928 \u0915\u094d\u0937\u0923\u093e\u0902\u0938\u093e\u0920\u0940\u091a \u092c\u0928\u0935\u0932\u094d\u092f\u093e \u091c\u093e\u0924\u093e\u0924. \u0906\u092a\u0932\u094d\u092f\u093e \u0906\u092f\u0941\u0937\u094d\u092f\u093e\u0924\u0940\u0932 \u0917\u094b\u0937\u094d\u091f\u0940 Instagram \u0935\u0930 \u0936\u0947\u0905\u0930 \u0915\u0930\u093e.",
-      "cta_type": "DOWNLOAD",
-      "caption": "",
-      "link_description": null,
-      "link_url": "http://play.google.com/store/apps/details?id=com.instagram.android",
-      "title": "Instagram \u0921\u093e\u0909\u0928\u0932\u094b\u0921 \u0915\u0930\u093e",
-      "cta_text": "Download",
-      "video_hd_url": null,
-      "video_preview_image_url": null,
-      "video_sd_url": null,
-      "watermarked_video_hd_url": null,
-      "watermarked_video_sd_url": null,
-      "image_crops": [],
-      "original_image_url": "https://scontent-phl2-1.xx.fbcdn.net/v/t39.35426-6/573060676_1083014590419122_826776560487534508_n.jpg?_nc_cat=111&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=xya7xsLjqUUQ7kNvwF8GhG2&_nc_oc=AdpaDHhWIxar5KqIGkNQuoHoWiDr7rohjqzTw80o4c63t44MmQco4sfAkltTsTxxt2M&_nc_zt=14&_nc_ht=scontent-phl2-1.xx&_nc_gid=lE4Ei7MRsbetNfCEOgrh4w&_nc_ss=78289&oh=00_AQOSzi2M9rXym_YUdxRsgP_tt5Le3cZKBjy4J5F0Eo1NLw&oe=6ADCDDCE",
-      "resized_image_url": "https://scontent-phl2-1.xx.fbcdn.net/v/t39.35426-6/573617257_1155236326055661_68279336051454145_n.jpg?stp=dst-jpg_s600x600_tt6&_nc_cat=105&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=ez3X_fbRVb4Q7kNvwE_0gOD&_nc_oc=AdoSIvHXPfIR9LswHdDDykt5JyS0Orok7GYDn9n2K4N0DZRZxrn0AUm6Qe2ajxQlh8A&_nc_zt=14&_nc_ht=scontent-phl2-1.xx&_nc_gid=lE4Ei7MRsbetNfCEOgrh4w&_nc_ss=78289&oh=00_AQMuSBK3b9mbWcQW6WZXMm8NuKGTGsf8OPS4l8KYIN4BQA&oe=6ADCCCA5",
-      "watermarked_resized_image_url": ""
-     },
-     {
-      "body": "\u0938\u094d\u091f\u094b\u0930\u0940\u091c \u0926\u0948\u0928\u0902\u0926\u093f\u0928 \u0915\u094d\u0937\u0923\u093e\u0902\u0938\u093e\u0920\u0940\u091a \u092c\u0928\u0935\u0932\u094d\u092f\u093e \u091c\u093e\u0924\u093e\u0924. \u0906\u092a\u0932\u094d\u092f\u093e \u0906\u092f\u0941\u0937\u094d\u092f\u093e\u0924\u0940\u0932 \u0917\u094b\u0937\u094d\u091f\u0940 Instagram \u0935\u0930 \u0936\u0947\u0905\u0930 \u0915\u0930\u093e.",
-      "cta_type": "DOWNLOAD",
-      "caption": "",
-      "link_description": null,
-      "link_url": "http://play.google.com/store/apps/details?id=com.instagram.android",
-      "title": "Instagram \u0921\u093e\u0909\u0928\u0932\u094b\u0921 \u0915\u0930\u093e",
-      "cta_text": "Download",
-      "video_hd_url": null,
-      "video_preview_image_url": null,
-      "video_sd_url": null,
-      "watermarked_video_hd_url": null,
-      "watermarked_video_sd_url": null,
-      "image_crops": [],
-      "original_image_url": "https://scontent-phl2-1.xx.fbcdn.net/v/t39.35426-6/574026231_1954037538502312_1699149921695920519_n.jpg?_nc_cat=102&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=dyy5zJMHTDoQ7kNvwHHvbEP&_nc_oc=AdqZVPyKQ49FDAmkc6-4k2IQybHHzT8tQiGkZQDxY6A4AyeOVqPu4zvXSMkDd0J4Cjc&_nc_zt=14&_nc_ht=scontent-phl2-1.xx&_nc_gid=lE4Ei7MRsbetNfCEOgrh4w&_nc_ss=78289&oh=00_AQNnBGb0xrnesceB832FVsT4xJDpb4pEAIElCa74wkhBZA&oe=6ADCD8F3",
-      "resized_image_url": "https://scontent-phl2-1.xx.fbcdn.net/v/t39.35426-6/572985875_1790873481551562_1750481583869612298_n.jpg?stp=dst-jpg_s600x600_tt6&_nc_cat=107&ccb=1-7&_nc_sid=c53f8f&_nc_ohc=DrazihdgitUQ7kNvwE744Vv&_nc_oc=AdrRs8wy0UALHG6-0mrvd_HomvjsOSITRkuhFrTGF7FWXo39YIuMGOSB9F4hkmw-Q20&_nc_zt=14&_nc_ht=scontent-phl2-1.xx&_nc_gid=lE4Ei7MRsbetNfCEOgrh4w&_nc_ss=78289&oh=00_AQN5qtWdC3p-0MLup_6Lf3A4YksnzPWBc2gpn2nZVBlKvA&oe=6ADCD9C3",
-      "watermarked_resized_image_url": ""
-     }
-    ],
-    "body": {
-     "text": "\u0938\u094d\u091f\u094b\u0930\u0940\u091c \u0926\u0948\u0928\u0902\u0926\u093f\u0928 \u0915\u094d\u0937\u0923\u093e\u0902\u0938\u093e\u0920\u0940\u091a \u092c\u0928\u0935\u0932\u094d\u092f\u093e \u091c\u093e\u0924\u093e\u0924. \u0906\u092a\u0932\u094d\u092f\u093e \u0906\u092f\u0941\u0937\u094d\u092f\u093e\u0924\u0940\u0932 \u0917\u094b\u0937\u094d\u091f\u0940 Instagram \u0935\u0930 \u0936\u0947\u0905\u0930 \u0915\u0930\u093e."
-    },
-    "cta_type": "DOWNLOAD",
-    "display_format": "DCO",
-    "link_description": null,
-    "link_url": "http://play.google.com/store/apps/details?id=com.instagram.android",
-    "images": [],
-    "page_categories": [
-     "App page"
-    ],
-    "page_like_count": 68201268,
-    "title": "Instagram \u0921\u093e\u0909\u0928\u0932\u094b\u0921 \u0915\u0930\u093e",
-    "videos": [],
-    "is_reshared": false,
-    "extra_links": [],
-    "extra_texts": [],
-    "extra_images": [],
-    "extra_videos": [],
-    "country_iso_code": null,
-    "brazil_tax_id": null,
-    "additional_info": null,
-    "ec_certificates": []
-   },
-   "has_user_reported": false,
-   "report_count": null,
-   "menu_items": [],
-   "state_media_run_label": null,
-   "page_name": "Instagram",
-   "impressions_with_index": {
-    "impressions_text": null,
-    "impressions_index": -1
-   },
-   "gated_type": "ELIGIBLE",
-   "categories": [
-    "UNKNOWN"
-   ],
-   "is_aaa_eligible": false,
-   "contains_digital_created_media": false,
-   "reach_estimate": null,
-   "currency": "",
-   "spend": null,
-   "end_date": 1792393200,
-   "publisher_platform": [
-    "FACEBOOK",
-    "MESSENGER"
-   ],
-   "start_date": 1776754800,
-   "contains_sensitive_content": false,
-   "total_active_time": null,
-   "regional_regulation_data": {
-    "finserv": {
-     "is_deemed_finserv": false,
-     "is_limited_delivery": false
-    },
-    "tw_anti_scam": {
-     "is_limited_delivery": false
-    }
-   },
-   "hide_data_status": "NONE",
-   "fev_info": null,
-   "ad_id": null,
-   "targeted_or_reached_countries": [],
-   "url": "https://www.facebook.com/ads/library?id=2014137892782073",
-   "start_date_string": "2026-04-21T07:00:00.000Z",
-   "end_date_string": "2026-10-19T07:00:00.000Z"
-  }
- ],
- "searchResultsCount": 1920,
- "cursor": "AQHT29776fWHPjctmwSm-JqRDWI53Ow1lt-ACih_M5g8RqLETnYw7Gz4iy1HyuiMc9Bw"
+  ],
+  "searchResultsCount": 1920,
+  "cursor": "AQHT29776fWHPjctmwSm-JqRDWI53Ow…"
 }

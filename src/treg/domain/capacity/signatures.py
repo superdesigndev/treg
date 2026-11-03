@@ -53,8 +53,13 @@ class Signature:
 
 
 _TABLE: list[Signature] = [
+    Signature("enrow", 402, r"insufficient credits", "balance", tripwire=True),
+    Signature("filtrat", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),
+    Signature("anymailfinder", 402, r"not have enough credits", "balance", tripwire=True),
     Signature("findymail", 402, r"not enough credits", "balance", tripwire=True),
     Signature("leadsforge", 402, r"insufficient_credits", "balance"),
+    # MobiusEngine.ai Jobs Data: an empty prepaid balance is a 402 {"error": {"code": "insufficient_balance", ...}}.
+    Signature("mobiusengine-jobs", 402, r"insufficient_balance", "balance", tripwire=True),
     Signature("leadmagic", 402, r"insufficient_credits", "balance"),
     Signature("thecompaniesapi", 403, r"noCreditsRemaining", "balance", tripwire=True),
     Signature("companyenrich", 402, r"payment required", "balance", tripwire=True),

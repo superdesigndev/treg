@@ -40,7 +40,7 @@ export default function data(){
       denyRules:[], denyForm:{host:'',path_prefix:'',method:'',user_id:null,project_id:null,note:''}, denyBusy:false, confirmDeny:null, cliDeny:[],
       bootVersion:'', newVersion:false,
       usage:null, usageErr:'', usageToolPage:0, usageDayPage:0, usageDays:30, usageSpend:null, usageSpendBusy:false, usageSpendErr:'', spendRange:{preset:30, from:'', to:''}, spendFilter:{group:'day', key:'', provider:'', stack:'key'}, spendRankPage:0, spendRankOpen:false, myUsage:null, actTab:'feed', buildTab:'vendor',  // Activity page: 'feed' | 'usage'
-      tagUsage:{}, tagKeys:[],   // spend per X-Treg-Meta key: {customer:{…}, workspace:{…}}
+      tagUsage:{}, tagUsageErr:{}, tagKeys:[],   // spend per X-Treg-Meta key: {customer:{…}, workspace:{…}}
   // usage-metering: rollups + the member's own used/cap
       // Billing (Stripe top-ups). `billing` null = not loaded / not an admin; billing.configured
       // false = this deployment sells no balance, so the whole block stays hidden.
@@ -111,7 +111,7 @@ export default function data(){
       skillFiles:[], detected:null, skillSel:{}, skillVals:{}, skillResults:null,
       sessionMode:false, activeSlug: storageGet('treg-active')||null, meta:{github:false, public_url:location.origin},
       view:'tools', q:'', err:'', loading:false, toolTab:'all', bundles:[], confirmDelBundle:null, installCopied:null,
-      copyRecipe:null, recipeTab:'cURL', viewRecipe:null, recipeSaved:false,
+      copyRecipe:null, recipeTab:'CLI', viewRecipe:null, recipeSaved:false,
       // detail pages (shareable /app/skills/<name> + /app/tools/<name> deep links)
       detail:null, detailData:null, detailErr:'', detailLoading:false, detailFile:'SKILL.md', detailCopied:'', detailNote:'',
       shareGate:null,  // logged-out arrival at a shared detail link: {kind,name} → focused sign-in page (no sandbox/tour)
@@ -119,7 +119,7 @@ export default function data(){
       me:'', icHash:'', myOrgs:[], isAdmin:false,
       meAvatar:null, uploadsOn:false, avatarDialog:false,  // /auth/me: your avatar, whether this registry takes uploads; the Your avatar dialog
       onboarded:true,  // first-run onboarding done (server flag; gates autoTeam)
-      welcome:{on:false, step:1, agent:'claude-code'},  // first-run modal: pick your agent → setup line → try it; agent is also what Getting started shows
+      welcome:{on:false, step:1, agent:'claude-code', replay:false},  // first-run modal: pick your agent → setup line → try it; agent is also what Getting started shows
       firstTeam:{busy:false, name:'', err:''},  // first-run: the team the server made (named on Getting started) or why it could not
       emptyTab:'agent',
       tools:[], health:{}, calls:[], runs:[], callsLoaded:false, activityNext:null, activityOlderBusy:false, adminStats:null, adminOrgs:[], adminUsers:[],

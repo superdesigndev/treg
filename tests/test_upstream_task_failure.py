@@ -47,6 +47,16 @@ def test_a_failed_expect_rule_is_never_a_found_answer():
     assert fails_expect(EP, b"not json") is None, "an unreadable body is not judged"
 
 
+
+def test_a_value_the_expect_rule_lists_as_a_miss_is_an_answer(monkeypatch):
+    ep = catalog_store.load().by_id[EP]
+    monkeypatch.setitem(ep, "expect", {**ep["expect"], "misses": [40101]})
+    failed = json.dumps(FAILED).encode()
+    assert fails_expect(EP, failed) is None
+    assert classify(EP, 200, failed).reason != "expect_failed", "the adapter judges a declared miss"
+    other = json.dumps(_task_failed(FOUND, code=50000)).encode()
+    assert fails_expect(EP, other) == "tasks.0.status_code=50000", "an unlisted value still fails"
+
 @pytest.fixture
 def dfs_platform(monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_DATAFORSEO", "login:password")

@@ -1,9 +1,7 @@
 """First-run onboarding journeys and their transaction boundaries."""
 
-import json
 import logging
 import sys
-from collections.abc import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -135,32 +133,6 @@ def sandbox_live_facts(org: Org) -> dict:
             "visitor": visitor_name(org.slug)}
 
 
-async def accept_stripe_event(
-    *, payload_factory: Callable[[], Awaitable[bytes]], signature: str,
-) -> dict:
-    from . import pubfeed
-
-    secret = get_settings().demo_stripe_webhook_secret
-    if not secret:
-        raise SandboxError("webhook_unconfigured")
-    payload = await payload_factory()
-    if not pubfeed.verify_signature(payload, signature, secret):
-        raise SandboxError("bad_signature")
-    try:
-        event = json.loads(payload)
-    except ValueError as exc:
-        raise SandboxError("bad_payload") from exc
-    if event.get("type") == "charge.succeeded":
-        pubfeed.push_charge(event.get("data", {}).get("object", {}) or {})
-    return {"received": True}
-
-
-def stripe_feed():
-    from . import pubfeed
-
-    return pubfeed.stream()
-
-
 async def export_sandbox_skill(*, org_id: int, sandbox: bool) -> dict:
     from . import sandbox as landing_sandbox
 
@@ -171,17 +143,3 @@ async def export_sandbox_skill(*, org_id: int, sandbox: bool) -> dict:
         if org is None:
             raise RuntimeError("sandbox organization disappeared")
         return await landing_sandbox.export_skill(db, org)
-
-
-def sample_skills(*, base: str) -> list[dict]:
-    from . import sandbox as landing_sandbox
-
-    return [{"name": n, "label": s["label"], "key": s["key"], "prompt": s["prompt"],
-             "files": landing_sandbox.skill_files(n, base, None)}
-            for n, s in landing_sandbox.SAMPLE_SKILLS.items()]
-
-
-def sandbox_install_script(*, name: str, base: str, token: str | None) -> str:
-    from . import sandbox as landing_sandbox
-
-    return landing_sandbox.install_script(name, base, token)
