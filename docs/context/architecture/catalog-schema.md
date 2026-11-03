@@ -97,7 +97,9 @@ behavior, not a wished one: a per_result or per_call row bills misses and errors
 row gets today's error envelope as an `error` rule, an adapter's `miss` moves to the row. Dry-run
 (the default) prints each rewrite, warns where it reads an answer shape differently, and lists the
 rows it cannot rewrite with the reason (a provider decided in Python, a single-provider cost key, a
-guessed hold); every rewrite it prints parses. `--apply` edits the files in place and keeps every
+guessed hold, a per_success row whose failed `expect` is free while its error envelope is charged,
+which one `bill.error` cannot say, a replaced key that defines a YAML anchor another row aliases);
+every rewritten row it prints parses whole. `--apply` edits the files in place and keeps every
 comment outside the replaced keys. The fixture replay is the proof that a rewrite changes nothing.
 
 ## Provider defaults and the one merge rule
