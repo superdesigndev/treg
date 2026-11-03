@@ -102,6 +102,12 @@ which one `bill.error` cannot say, a replaced key that defines a YAML anchor ano
 every rewritten row it prints parses whole. `--apply` edits the files in place and keeps every
 comment outside the replaced keys. The fixture replay is the proof that a rewrite changes nothing.
 
+The validator checks a v2 row's cost beyond its model: `price.currency`, `settle.reported.unit`
+and `settle.usage.unit` resolve to a rate in `fx.yaml`, usage `terms` are in USD, and the request
+paths of `reserve.rows.param`, `reserve.entities.from` and `price.table` (`when` and `times`) name
+declared input fields; an equality-only table also meets today's table checks (required or
+defaulted fields, enum and range, a bounded `times`, a fallback at least every row's maximum).
+
 ## Provider defaults and the one merge rule
 
 An endpoint file header may carry `defaults:`, any endpoint-level key its provider's rows inherit,
