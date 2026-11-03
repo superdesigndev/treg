@@ -1323,7 +1323,7 @@ NANSEN = OAuthProvider(
     auth_uri="", token_uri="", scopes={},
     client_id_setting="", client_secret_setting="",
     category="Market data",
-    summary="Search tokens and entities, inspect wallet balances and track Smart Money flows.",
+    summary="Analyze tokens, holders and flows, inspect wallet portfolios and track Smart Money.",
     base_url="https://api.nansen.ai",
     docs_url="https://docs.nansen.ai",
     probe_path="/api/v1/account",
