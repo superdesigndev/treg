@@ -3233,7 +3233,8 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.format: markdown, body.links: true, body.ttl: 0}
     out: {pages: results, count: "len(results)"}
-    miss: "coalesce(results[0].text, '') == ''"
+    # final_url is where the page was finally read: a redirect to the home page is not the page
+    miss: "choose(lost_path(results[0].url, results[0].final_url), true, coalesce(results[0].text, '') == '')"
   exa.web.contents.get:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
