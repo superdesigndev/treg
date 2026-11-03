@@ -276,9 +276,7 @@ def _uncapped(terms: dict, doc: object, request: plugins.Request | None,
         path = settle["count"]["path"]
         found = select(path, {"response": doc})
         if parse_path(path).many:
-            prefix = _answer_path(path)
-            listed = select(f"response.{prefix}" if prefix else "response", {"response": doc})
-            if not listed or not isinstance(listed[0], list):
+            if not _lists_readable(path, doc):
                 return None
         elif not found or not isinstance(found[0], list):
             return None
@@ -288,6 +286,28 @@ def _uncapped(terms: dict, doc: object, request: plugins.Request | None,
     if "plugin" in settle:
         return _priced(terms, plugins.call(settle["plugin"], terms["provider"], request, answer))
     return None
+
+
+def _lists_readable(path: str, doc: object) -> bool:
+    """Whether every list a many-valued path iterates is there and is a list."""
+    parsed, values, gap = parse_path(path), [doc], False
+    steps = [(None, parsed.filter)] if parsed.filter is not None else []
+    steps += [(step, step.filter) for step in parsed.steps]
+    for step, keep in steps:
+        if step is not None and not step.every:
+            if step.index is not None:
+                found = [v[step.index] for v in values if isinstance(v, list) and step.index < len(v)]
+            else:
+                found = [v[step.name] for v in values if isinstance(v, dict) and step.name in v]
+            gap, values = gap or len(found) < len(values), found
+        if step is not None and step.every or keep is not None:
+            if gap or not all(isinstance(v, list) for v in values):
+                return False
+            values = [item for v in values for item in v]
+            if keep is not None:
+                key, value = keep
+                values = [item for item in values if isinstance(item, dict) and str(item.get(key)) == value]
+    return True
 
 
 def _usage(basis_: dict, doc: object) -> int | None:

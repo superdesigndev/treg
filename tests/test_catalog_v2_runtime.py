@@ -334,6 +334,9 @@ def test_free_when_compares_with_null_as_written():
     ("response.items[kind=a]", {"items": [{"kind": "b"}]}, 0),
     ("response[kind=a]", {"kind": "a"}, 200000),
     ("response[kind=a]", [{"kind": "a"}, {"kind": "a"}], 40000),
+    ("response.data.*.items.*", {"data": [{"x": 1}]}, 200000),
+    ("response.data.*.items.*", {"data": [{"items": []}]}, 0),
+    ("response.data.*.items.*", {"data": [{"items": [1, 2]}]}, 40000),
 ])
 def test_a_many_valued_count_settles_at_the_hold_when_its_list_is_unreadable(path, answer, actual):
     ep = row(settle={"count": {"path": path}},
