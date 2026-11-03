@@ -13,6 +13,9 @@ import pytest
 
 from treg.infra import org_flow_control as flow
 
+PRODUCTION_READ_TIMEOUT_S = flow._READ_TIMEOUT_S
+STALL_PROOF_READ_TIMEOUT_S = 30.0
+
 
 @pytest.fixture(autouse=True)
 def capture_flow_logs(caplog):
@@ -35,6 +38,7 @@ def env(monkeypatch):
     now = [datetime(2030, 1, 1, tzinfo=timezone.utc)]
     store = SimpleNamespace(read_org_flow_control=AsyncMock(return_value=None))
     monkeypatch.setattr(flow, "_clock", lambda: clock[0])
+    monkeypatch.setattr(flow, "_READ_TIMEOUT_S", STALL_PROOF_READ_TIMEOUT_S)
     monkeypatch.setattr(flow, "_utcnow", lambda: now[0])
     monkeypatch.setattr(flow.kv, "store", lambda: store)
     return flow.Reader(max_entries=3), store, clock, now
@@ -337,8 +341,9 @@ async def test_cache_cannot_evict_a_read_owner_or_waiter(env):
 
 
 @pytest.mark.parametrize("blocked_on_semaphore", [True, False])
-async def test_read_and_semaphore_wait_have_a_total_deadline(env, blocked_on_semaphore):
+async def test_read_and_semaphore_wait_have_a_total_deadline(env, monkeypatch, blocked_on_semaphore):
     reader, store, _, _ = env
+    monkeypatch.setattr(flow, "_READ_TIMEOUT_S", PRODUCTION_READ_TIMEOUT_S)
     if blocked_on_semaphore:
         reader.reads = asyncio.Semaphore(0)
     else:
