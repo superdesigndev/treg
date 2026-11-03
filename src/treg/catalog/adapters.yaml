@@ -2729,7 +2729,7 @@ adapters:
     in: {company_domain: body.where.company.domain, title: body.where.person.title, full_name: body.where.person.name, q: body.q}
     in_expr:
       body.where.person.title: "scalar(title)"
-      body.where.company.country: "upper(country)"
+      body.where.company.country: "country_code(country)"
       body.where.company.city: location
       body.limit: limit
     max: {limit: 100}
