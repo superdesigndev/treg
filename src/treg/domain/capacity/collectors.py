@@ -865,6 +865,11 @@ async def _fiber_ai(c, key):
             "note": f"{len(pools)} pool(s) available/max: {detail}"}
 
 
+async def _nansen(c, key):
+    d = await _get(c, "https://api.nansen.ai/api/v1/account", headers={"apikey": key})
+    return {"value": d.get("credits_remaining"), "unit": "credits", "note": ""}
+
+
 async def _coingecko(c, key):
     # /key is the Pro API's free usage route (Basic plan and up); the quota is calls per billing month.
     d = await _get(c, "https://pro-api.coingecko.com/api/v3/key", headers={"x-cg-pro-api-key": key})
@@ -1072,6 +1077,7 @@ BALANCE_ROUTES = {
     "spyfu": _spyfu,
     "icypeas": _icypeas,
     "pdl": _pdl,
+    "nansen": _nansen,
     "coingecko": _coingecko,
     "twelvedata": _twelvedata,
     "influencersclub": _influencersclub,
