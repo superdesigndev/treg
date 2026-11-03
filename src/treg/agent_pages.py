@@ -3436,14 +3436,15 @@ USE_CASE_PAGES["news-for-a-ticker"] = {
 
 USE_CASE_PAGES["live-crypto-prices-and-history"] = {
     "label": "Live crypto prices and history",
-    "sentence": "CoinGecko API and Tiingo through one key: a crypto price API for live prices and history, per call",
+    "sentence": "CoinGecko API on your own key and Tiingo on treg.to's: a crypto price API for live prices and history, per call",
     "title": "CoinGecko API for {agent}: crypto prices and history | treg.to",
     "lede": (
         "Give your agent a coin and get its price back as data: the current price in any quote "
         "currency for a whole watchlist in one call, or the price, market cap and volume series "
-        "over a day, a month or the coin's whole life. CoinGecko and Tiingo answer through one "
-        "treg.to key, from {cheapest} at the provider's own rate with no markup, and there is no "
-        "CoinGecko key to paste into a spreadsheet, a dashboard or a device. What comes back is "
+        "over a day, a month or the coin's whole life. CoinGecko answers on your own CoinGecko "
+        "key, connected once to treg.to and never metered; Tiingo answers {cheapest}. "
+        "Either way there is no key to paste into a spreadsheet, a dashboard or a "
+        "device. What comes back is "
         "an aggregate price, not an order book, and it is polled, not streamed."),
     "prompt": "Using treg, get the current price and 24h change for bitcoin, ethereum and solana in "
               "USD in one call, then pull the last 30 days of daily prices for each and tell me "
@@ -3473,14 +3474,14 @@ USE_CASE_PAGES["live-crypto-prices-and-history"] = {
         "The rate is per request, not per coin. CoinGecko bills one credit for a successful "
         "call whatever the endpoint, and the current-price call takes a list of coin ids and a "
         "list of quote currencies, so the forum's \"it only returns 28 of my 131 coins\" is a "
-        "pagination problem on a different endpoint, not a ceiling here. On treg.to's own key "
-        "that credit is metered from your team's balance at the provider's rate; on your own "
-        "CoinGecko key nothing is metered and the plan's limits are between you and CoinGecko.",
+        "pagination problem on a different endpoint, not a ceiling here. treg.to serves "
+        "CoinGecko on your own key only: nothing is metered and the plan's limits are between "
+        "you and CoinGecko.",
         "History depth is CoinGecko's, and the page will not stretch it. The series call "
         "returns per-coin prices over 1, 7, 30, 365 or max days with granularity set by the "
         "window, and the snapshot call returns one coin's price, market cap and volume on a "
         "date. Neither is a total-market-cap history and neither is a top-N-by-day table; an "
-        "agent builds that by looping coins, one metered call each. Tiingo's bars are the "
+        "agent builds that by looping coins, one call each. Tiingo's bars are the "
         "exchange-style alternative, served free on treg.to's key at 20 calls a day per team, "
         "then on your own Tiingo key.",
         "The price is an aggregate and it passes through unchanged. CoinGecko's market cap and "
@@ -3492,10 +3493,9 @@ USE_CASE_PAGES["live-crypto-prices-and-history"] = {
     ],
     "faq": [
         ("Is the CoinGecko API free through treg.to?",
-         "Not free, cheap: one CoinGecko credit per successful call, metered from your team's "
-         "prepaid balance at CoinGecko's own rate with $0.000 added. Each new team gets $1.00 to "
-         "start, which is a lot of price calls. Register your own CoinGecko key and the calls "
-         "are never metered."),
+         "treg.to adds nothing to pay: CoinGecko is served on your own CoinGecko key only, and "
+         "those calls are never metered. Each successful call spends one credit of your own "
+         "CoinGecko plan. Tiingo's bars are free on treg.to's key up to a daily allowance."),
         ("How far back does the history go?",
          "As far as CoinGecko's series for that coin goes, with days set to max, at daily "
          "granularity. Sub-daily points come only inside the recent windows: five-minute under "
@@ -3520,19 +3520,19 @@ USE_CASE_PAGES["live-crypto-prices-and-history"] = {
          "There I ran into a problem with Rate limit from the Coingecko api itself.",
          "r/coingecko", "https://www.reddit.com/r/coingecko/comments/1cibixi/google_sheet_not_working_rate_limits/",
          "That poster was calling from Google Sheets, where every request leaves a shared "
-         "Google IP. Through treg.to the call is one metered request on a paid key, a whole "
+         "Google IP. Through treg.to the call is one request on your own paid key, a whole "
          "watchlist per call, and the sheet, the dashboard or the device holds no key at all."),
         ("Twelve months is where the free history stops",
          "CoinGecko only goes back 12 months, but I was hoping to go back further",
          "r/CryptoCurrency", "https://www.reddit.com/r/CryptoCurrency/comments/1kq99z1/historic_market_cap_data/",
          "Per coin, the series call with days set to max returns the daily history CoinGecko "
-         "holds, on the paid key treg.to serves it from. That poster wanted total market cap "
+         "holds, on the paid key you connect. That poster wanted total market cap "
          "history, which is not this endpoint, and the page will not pretend it is."),
         ("Free is for testing; what happens at scale is the question",
          "Free APIs are fine for testing but I want something that scales.",
          "r/ethdev, 6 points", "https://www.reddit.com/r/ethdev/comments/1rf4ehy/best_crypto_market_data_api_for_real_time/",
-         "Scale here means one credit a call, metered, with no plan tier to jump when the "
-         "dashboard grows. What it does not mean is streaming: the feed is polled, and a "
+         "Scale here means one credit of your own CoinGecko plan a call, a whole watchlist "
+         "per call. What it does not mean is streaming: the feed is polled, and a "
          "bot that needs every tick is on a different product."),
         ("Nobody's number agrees with anybody else's",
          "CoinGecko API shows wrongs market capital data for 700M !",
@@ -3543,8 +3543,8 @@ USE_CASE_PAGES["live-crypto-prices-and-history"] = {
         ("The agent wrote the rate limiter",
          "until I had ChatGPT incorporate rate-limiting given the 500 rate limit/min",
          "r/api_connector", "https://www.reddit.com/r/api_connector/comments/1dg1of5/coingecko_api_x_mixed_analytics_crypto_tracker/",
-         "The agent already does the plumbing. What it lacks is the key and the price, and one "
-         "setup line gives it both: the call, the rate shown before it spends, and no "
+         "The agent already does the plumbing. What it lacks is a safe place for the key, and "
+         "one setup line gives it that: your CoinGecko key connected once to treg.to, and no "
          "CoinGecko token in its context."),
     ],
     "related": ("Current quote for a ticker", "Daily price history",
