@@ -1,0 +1,117 @@
+# SpecStream: live web data as structured rows, every value linked to the page it came from.
+# A find is asked in plain words (or as rows to enrich) with a price ceiling, runs in the
+# background, and bills only the rows that match. The rows are read from a second, free route. This
+# file lists the API-key route; the no-account routes (POST /v1/agent/lists, 402 with MPP or x402)
+# need a payment header that treg's key injection cannot send, so they are not listed here.
+proposed_capabilities:
+  web.rows.find: Find structured rows on the live web from a request in plain words, each value linked to its source page
+  web.rows.read: Read the rows a plain-words web find has returned so far
+
+provider: specstream
+source:
+  docs: https://specstream.ai/docs/api
+  openapi: https://api.specstream.ai/openapi.json
+  curated: '2026-11-03'
+pricing_url: https://specstream.ai/pricing
+limits: "An API key carries its own spending limits (total, per run, monthly, and the operations it allows); a find above the ceiling in confirm_max_cents does not start."
+
+endpoints:
+  - id: specstream.web.rows.find
+    added: '2026-11-03'
+    domain: rows
+    capability: web.rows.find
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/capacity/requests
+    body_allowlist: true
+    name: Find rows on the live web
+    summary: Ask for rows in plain words, or send companies to enrich. Each value comes back with the page it was read from. Billed per matching row, never above the ceiling you set.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: false, example: "coffee shops in Narbonne, France", note: "What to find, in plain words, up to 2000 characters. With rows, what to bring back for each row. Send q, rows or both."}
+        rows: {type: "array[object]", required: false, minItems: 1, maxItems: 1000, note: "Companies to enrich, one object per row: the company name, website or domain, and any other columns that identify it. Each row is one result."}
+        fields: {type: "array[string]", required: false, minItems: 1, maxItems: 25, note: "What to bring back for each row, in plain words, such as \"headcount\". q can ask the same in one sentence."}
+        requested_units: {type: integer, required: false, default: 25, min: 1, max: 10000, example: 1, note: "How many matching rows to look for. THIS IS THE PRICE DIAL: the run stops at this count."}
+        confirm_max_cents: {type: integer, required: true, min: 0, example: 100, note: "The most this find may cost, in cents. The find starts only if its price is within this figure; whatever the run does not use is not billed."}
+        idempotency_key: {type: string, required: true, example: "treg-listing-check-0001", note: "Your own key for this find, 8 to 128 characters. Sending it again returns the find already started, and nothing is bought twice. It is also the request_key that the two read routes take."}
+        locale: {type: string, required: false, default: en-US}
+      note: "Answers 202 with state reading, started, needs_edit, above_maximum or failed, the read-back of the request, maximum_cents and find_id. The find runs after the answer: read specstream.web.rows.read with the idempotency_key until done is true. state needs_edit means the request was read as ambiguous or unsupported and nothing ran; above_maximum means the price is over confirm_max_cents and nothing ran."
+    test_request: {body: {q: "coffee shops in Narbonne, France", requested_units: 1, confirm_max_cents: 100, idempotency_key: "treg-listing-check-0001"}}
+    cost:
+      type: per_result
+      value: 1.00
+      currency: USD
+      per: 1
+      unit: result
+      reserve: {rows: {param: body.requested_units, default: {value: 25, source: docs}, max: 10000}}
+      source: docs
+      source_url: https://specstream.ai/pricing
+      checked: '2026-11-03'
+      confidence: inferred
+      note: "Each matching row costs 5 cents, 15 cents or $1 depending on how much the row needs, plus 5 cents for a person's email and 15 cents for a phone. $1 is the top of that range, so it is the hold per requested row; the real charge is lower for most rows. A row left out costs nothing, a find that finds nothing costs nothing, and the run's unused part is never charged. Rows the account already owns are never charged again."
+    note: "not live-tested: every run spends SpecStream balance"
+    docs_url: https://specstream.ai/docs/api
+
+  - id: specstream.web.rows.read
+    added: '2026-11-03'
+    domain: rows
+    kind: utility
+    capability: web.rows.read
+    platform: web
+    scope: any_account
+    method: GET
+    path: /v1/capacity/requests/{request_key}/rows
+    name: Read the rows of a web find
+    summary: Read where a find stands and the rows it has returned so far, each value with its source page. Free.
+    input:
+      pathParams:
+        request_key: {type: string, required: true, example: "treg-listing-check-0001", note: "The idempotency_key sent to specstream.web.rows.find."}
+      queryParams:
+        limit: {type: integer, required: false, default: 100, min: 1, max: 100, example: 5}
+        cursor: {type: string, required: false, note: "Follow next_cursor for the next page, even when a page comes back empty."}
+        one_row_per: {type: string, required: false, note: "One flat row per item of this list field, such as \"people\" for one person per row."}
+      note: "The answer carries done, status, accepted_count and rows. Rows are present as the run finds them; done is true when the run has ended."
+    test_request: {pathParams: {request_key: "treg-listing-check-0001"}, queryParams: {limit: 5}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading rows never spends balance."}
+    note: "not live-tested: needs a find started with the same key"
+    docs_url: https://specstream.ai/docs/api
+
+  - id: specstream.web.rows.status
+    added: '2026-11-03'
+    domain: rows
+    kind: utility
+    capability: web.rows.read
+    platform: web
+    scope: any_account
+    method: GET
+    path: /v1/capacity/requests/{request_key}
+    name: Recover a started web find
+    summary: Return the find already started with this request key, without starting anything. Free.
+    input:
+      pathParams:
+        request_key: {type: string, required: true, example: "treg-listing-check-0001", note: "The idempotency_key sent to specstream.web.rows.find."}
+    test_request: {pathParams: {request_key: "treg-listing-check-0001"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Recovering a find never spends balance."}
+    note: "not live-tested: needs a find started with the same key"
+    docs_url: https://specstream.ai/docs/api
+
+  - id: specstream.account.balance
+    added: '2026-11-03'
+    domain: account
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/capacity/balance
+    name: Read the SpecStream balance
+    summary: Read the available balance without approving new work. This is also the free check that the key is real.
+    input:
+      queryParams:
+        project_id: {type: string, required: false}
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading the balance never spends it."}
+    note: "not live-tested: needs a SpecStream API key"
+    docs_url: https://specstream.ai/docs/api
