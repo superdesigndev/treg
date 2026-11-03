@@ -1232,6 +1232,19 @@ def test_a_provider_that_cannot_express_a_supplied_filter_ranks_last_among_equal
     assert "country" not in simple.to_upstream({**by_name, "country": None}, ("full_name",))[0]
 
 
+def test_a_title_search_drops_a_child_that_cannot_send_the_title():
+    """`{company_domain, title}` answered by a domain-only child returns random employees of the
+    company, billed as a hit: the title scopes the question, so such a child is not a candidate."""
+    from treg.domain.catalog.routing.plan import unscoped
+    cat = catalog_store.load()
+    contract = cat.contracts["people.search"]
+    asked, _ = canonical_identity(contract, {"company_domain": "swegon.com", "title": "Head of Procurement"})
+    assert unscoped(cat.adapters["leadsforge.people.search"], contract, asked) == ("title",)
+    assert unscoped(cat.adapters["crawl4ai.people.search"], contract, asked) == ()
+    domain_only, _ = canonical_identity(contract, {"company_domain": "swegon.com"})
+    assert unscoped(cat.adapters["leadsforge.people.search"], contract, domain_only) == ()
+
+
 @pytest.mark.parametrize("country, sent", [
     ("United Kingdom", "gb"), ("GB", "gb"), ("uk", "gb"), ("spain", "es"), ("Narnia", "Narnia"), (None, None)])
 def test_country_code_turns_a_name_or_code_into_the_iso_code(country, sent):
@@ -1436,16 +1449,17 @@ async def test_a_thin_hit_does_not_end_the_waterfall_when_the_caller_set_min_res
     single behaviour the routed path could not express)."""
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS-KEY")
     monkeypatch.setenv("TREG_PLATFORM_KEY_EXA", "PLATFORM-EXA-KEY")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,exa,fiber-ai,icypeas")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_QUICKENRICH", "PLATFORM-QUICKENRICH-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,exa,fiber-ai,icypeas,quickenrich")
     get_settings.cache_clear()
     thin = {"leads": [{"firstname": "Solo", "lastname": "Row", "profileUrl": "https://linkedin.com/in/s"}]}
     full = {"results": [{"name": f"P{i}", "url": f"https://linkedin.com/in/p{i}"} for i in range(9)]}
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"icypeas": [(200, thin)], "*": [(200, full)] * 12}, seen))
+        {"icypeas": [(200, thin)], "quickenrich": [(200, {"data": full["results"]})], "*": [(200, full)] * 12}, seen))
     body = {"q": "backend engineer", "title": "Backend Engineer",
             "location": "London, United Kingdom", "country": "GB", "limit": 15}
-    r = await clients.post("/call/treg.people.search", json=body, headers={"X-Treg-Route-Min-Results": "3"})
+    r = await clients.post("/call/treg.people.search", json=body, headers={"X-Treg-Route-Min-Results": "3", "X-Treg-Route-Prefer": "icypeas"})
     assert r.status_code == 200, r.text
     d = r.json()
     assert [t["outcome"] for t in d["_treg"]["tried"]][0] == "weak", "1 row < 3 is not an answer"
@@ -1454,15 +1468,16 @@ async def test_a_thin_hit_does_not_end_the_waterfall_when_the_caller_set_min_res
     # default (min_results 1): the same thin answer ends the search, as before
     seen2 = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"icypeas": [(200, thin)], "*": [(200, full)] * 12}, seen2))
-    r2 = await clients.post("/call/treg.people.search", json=body)
+        {"icypeas": [(200, thin)], "quickenrich": [(200, {"data": full["results"]})], "*": [(200, full)] * 12}, seen2))
+    r2 = await clients.post("/call/treg.people.search", json=body, headers={"X-Treg-Route-Prefer": "icypeas"})
     assert r2.json()["_treg"]["served_by"] == "icypeas.people.search" and len(seen2) == 1
 
     # and when NOBODY clears the bar, the fullest weak answer is still returned, not a miss
     seen3 = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"icypeas": [(200, thin)], "*": [(200, {"results": [{"name": "Two"}, {"name": "Rows"}]})] * 12}, seen3))
-    r3 = await clients.post("/call/treg.people.search", json=body, headers={"X-Treg-Route-Min-Results": "5"})
+        {"icypeas": [(200, thin)], "quickenrich": [(200, {"data": [{"name": "Two"}, {"name": "Rows"}]})],
+         "*": [(200, {"results": [{"name": "Two"}, {"name": "Rows"}]})] * 12}, seen3))
+    r3 = await clients.post("/call/treg.people.search", json=body, headers={"X-Treg-Route-Min-Results": "5", "X-Treg-Route-Prefer": "icypeas"})
     assert r3.status_code == 200 and len(r3.json()["output"]["people"]) == 2, "best effort beats nothing"
 
 
@@ -1507,7 +1522,8 @@ async def test_merge_unions_the_rows_the_caller_already_paid_for(
     through returned the fullest single provider's rows, never icypeas' 5 plus exa's 10."""
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS-KEY")
     monkeypatch.setenv("TREG_PLATFORM_KEY_EXA", "PLATFORM-EXA-KEY")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,exa,fiber-ai,icypeas")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_QUICKENRICH", "PLATFORM-QUICKENRICH-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,exa,fiber-ai,icypeas,quickenrich")
     get_settings.cache_clear()
     icy = {"leads": [{"firstname": "Ada", "lastname": "L", "profileUrl": "https://linkedin.com/in/ada"},
                      {"firstname": "Bo", "lastname": "M", "profileUrl": "https://linkedin.com/in/bo"}], "total": 2}
@@ -1518,7 +1534,7 @@ async def test_merge_unions_the_rows_the_caller_already_paid_for(
 
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"icypeas": [(200, icy)], "*": [(200, other)] * 8}, seen))
+        {"icypeas": [(200, icy)], "quickenrich": [(200, {"data": other["results"]})], "*": [(200, other)] * 8}, seen))
     r = await clients.post("/call/treg.people.search", json=body,
                            headers={"X-Treg-Route-Min-Results": "5", "X-Treg-Route-Merge": "1"})
     assert r.status_code == 200, r.text
