@@ -970,6 +970,32 @@ def test_orthogonal_parse_reserves_malformed_for_what_is_not_an_envelope():
     assert relayed.failure is None and relayed.upstream_status == 422
 
 
+def test_orthogonal_build_preserves_repeated_query_keys_as_arrays():
+    """Repeated query-string params like `organization_naics_codes[]=22&organization_naics_codes[]=62`
+    must be preserved as arrays, not collapsed to a single value (issue #1392)."""
+    from types import SimpleNamespace
+    from treg.infra.upstream.aggregators import orthogonal
+    route = SimpleNamespace(agg_slug="apollo", agg_path="/mixed_companies/search")
+    query = [
+        ("organization_naics_codes[]", "22"),
+        ("organization_naics_codes[]", "62"),
+        ("per_page", "10"),
+    ]
+    req = orthogonal.build(route, "KEY", query, None)
+    assert req.json["query"] == {
+        "organization_naics_codes[]": ["22", "62"],
+        "per_page": "10",
+    }, "repeated keys should become arrays; single keys stay strings"
+    # Also verify single-value is a string, not a list
+    single_query = [("q", "search term")]
+    req2 = orthogonal.build(route, "KEY", single_query, None)
+    assert req2.json["query"]["q"] == "search term"
+    # And verify numbers are stringified
+    number_query = [("limit", 5)]
+    req3 = orthogonal.build(route, "KEY", number_query, None)
+    assert req3.json["query"]["limit"] == "5"
+
+
 async def _orthogonal_lock():
     async with session_maker() as db:
         raw = await ratestore.kv_get(db, LOCK_NS, "overflow:orthogonal")
