@@ -744,6 +744,30 @@ class Settings(BaseSettings):
     # Sign-in emails who may use the hub in ANY team they work in, beside `hub_teams`. Either list
     # lets a reader in; both empty means every team.
     hub_users: str = ""
+    # Which engine runs a hub script. quickjs is the in-process child (`python -m treg.hub_sandbox`).
+    # workers sends the script to the loader at hub_workers_url; ctx.call comes back to this process.
+    hub_sandbox: Literal["quickjs", "workers"] = "quickjs"
+    hub_workers_url: str = ""
+    hub_workers_auth_secret: str = Field(default="", repr=False)
+    # Full URL the loader POSTs ctx.call to. Empty: the bridge listener's own loopback URL, which a
+    # loader on this machine can reach and a loader on Cloudflare's network cannot.
+    hub_workers_callback_url: str = ""
+    hub_workers_callback_host: str = "127.0.0.1"
+    hub_workers_callback_port: int = Field(default=0, ge=0, le=65535)
+
+    @field_validator("hub_sandbox", mode="before")
+    @classmethod
+    def _hub_sandbox_name(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+    @model_validator(mode="after")
+    def _hub_workers_configured(self):
+        if self.hub_sandbox == "workers" and not (self.hub_workers_url and self.hub_workers_auth_secret):
+            raise ValueError("workers sandbox requires hub_workers_url and hub_workers_auth_secret")
+        return self
+
     # `/table/<tool id>`: the same call as `/call/`, answered as rows and columns (for the Google
     # Sheets add-on). Off by default; with it on, `table_teams` / `table_users` limit it the same
     # way `hub_teams` / `hub_users` limit the hub, and both empty means every team.

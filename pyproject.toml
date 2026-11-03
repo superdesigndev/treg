@@ -333,6 +333,7 @@ exclude = [
   ".codegraph",
   ".lavish",                # local visual review artifacts, not distributable product assets
   "frontend/node_modules", "frontend/test-results", "frontend/playwright-report",
+  "workers/**/node_modules", "workers/**/.wrangler",
   "videos",                 # git-excluded marketing renders
   "/src/treg/web/media/**/*.mp4",  # hosted-page demos stay in Git deployments, not PyPI
   "*.db", "*.sqlite3", "scratch*", "body.json",   # stray local artifacts
