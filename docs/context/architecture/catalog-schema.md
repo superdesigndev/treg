@@ -13,12 +13,16 @@ sources:
   - src/treg/domain/catalog/schema/violations.py
   - src/treg/domain/catalog/schema/violations.yaml
   - src/treg/domain/catalog/schema/export.py
+  - src/treg/domain/catalog/outcome.py
   - src/treg/domain/plugins/__init__.py
   - scripts/catalog_schema.py
   - scripts/catalog_shrink_only.py
+  - scripts/catalog_v2.py
   - tests/test_catalog_schema.py
+  - tests/test_catalog_v2_codemod.py
 related:
   - architecture/catalog.md
+  - architecture/money.md
   - architecture/replay.md
 ---
 
@@ -36,7 +40,8 @@ endpoint file through them, so the two can no longer disagree about a key, a typ
   endpoint id, and a `contracts.yaml` or `adapters.yaml` with an unknown key or an expression that
   does not parse. A missing catalog directory is still an empty catalog.
 - **The models own keys, types and shapes.** Completeness rules that depend on the tier (a core row
-  needs a capability and a cost, a file cites its sources) stay validator rules with their messages.
+  needs a capability and a cost, or a price in v2; a file cites its sources) stay validator rules
+  with their messages.
 - **One YAML reading.** Dates stay the strings they were written as, for the loader and the
   validator alike.
 
@@ -47,22 +52,53 @@ A row is in the **v2 spelling** when it declares `price`, `provenance`, `reserve
 other row is in **today's spelling**. Mixing `cost` with a v2 key is refused.
 
 - A row in today's spelling resolves exactly as before: the loaded catalog is byte-identical.
-- A row in v2 resolves to typed v2 keys (`price`, `provenance`, `reserve`, `settle`, `bill`,
-  `expect`, `error`, `miss`, `not_found`, `ceiling_param`), money as `Decimal`, `bill` always
-  present with its defaults, `tier` from the filename, and `cost: None`. `schema.is_v2(endpoint)`
-  tells them apart. Nothing in the call runtime reads the v2 keys yet, so the validator refuses
-  any v2 row until the v2 settlement order ships; until then the catalog stays in today's spelling.
-
-A resolved v2 row still carries pydantic objects (`Price`, `Bill`, predicate leaves) where served
-readers expect plain dicts (`.get` on `expect` and `miss`, `json.dumps` of the row), so v2 rows need
-a plain-dict served representation before the validator's guard is lifted.
+- A row in v2 resolves to its v2 keys as plain JSON values (`price`, `provenance`, `reserve`,
+  `settle`, `bill`, `expect`, `error`, `miss`, `not_found`, `ceiling_param`): every key present,
+  `None` where absent, `bill` with its defaults filled in, money as the quoted decimal strings it
+  was written as, predicates as written, and `tier` from the filename. `schema.is_v2(endpoint)`
+  tells them apart. The validator refuses a row's own `ceiling_param` until non-negotiable 4 names
+  that key; the file header's applies to v2 rows as to today's.
+- A v2 row also serves `cost` in today's shape, derived from its price, provenance, reserve and
+  settle: a `type` label (free; per_result when a reserve, count or plugin decides the bill;
+  per_call when a miss is charged; else per_success), a price table as today's equality maps
+  (omitted when a condition is not one equality), `reserve.rows` with its parameter back in
+  `queryParams`/`pathParams`, `reserve.entities` as `{entities: {}}`, `settle.count` and a
+  `settle.reported` path (`reported_charge`) with answer-relative paths, and `settle: usage` with its
+  meters; `round` is not shown. Every view, eligibility check and price display that reads `cost`
+  reads a v2 row unchanged; billing never reads it
+  ([money](money.md#rows-in-the-v2-spelling)).
 
 The byte-identical claim is checked by the catalog dump in [replay](replay.md).
 
 v2 paths are one syntax (`response.tasks.0.status_code`, `body.limit`, `query.q`, `*`, `[k=v]`)
-and one predicate (`{path, op, value}`, a list for all, `{any: [...]}`), parsed by
+and one predicate (`{path, op, value}`, a list for all, `{any: [...]}`), parsed and evaluated by
 `schema/paths.py`. A path's location must be one its reader allows: request paths in price tables
-and holds, answer paths in outcome rules and settles, both only in `bill.free_when`.
+and holds, answer paths in outcome rules and settles, both only in `bill.free_when`. A path with
+`*` or a filter selects many values and a single-value reader takes the first; a missing path makes
+every op false except `absent`; answer equality is exact, request equality compares after input
+defaults and type coercion. A usage meter is one value: no `*` and no root filter.
+
+## The outcome classification
+
+`domain/catalog/outcome.py` judges one answer to a v2 row from its one declaration: a non-2xx is a
+miss when a `miss` rule lists its status and its `when` or `plugin` holds, else an error; a 2xx is
+an error when `expect` does not hold or `error` holds, a miss when it is a 204 or a status-less
+`miss` rule holds, else a hit. Billing reads it in the settlement order; `results.classify` (stats,
+cache admission) reads it for a row that declares a 2xx miss, in today's result reasons; routing's
+`child_outcome` reads it too, keeping its own checks (declared miss, `not_found`, non-JSON body,
+empty required output) on top: a 2xx it judges an error is a miss with reason `provider_error`, a
+204 a miss with `adapter_miss`. A v2 row's adapter only maps fields: `Adapter.is_miss`
+reads the row's rule, so every reader of an adapter's miss reads the one declaration.
+
+## Rewriting rows: `scripts/catalog_v2.py`
+
+The codemod rewrites rows in today's spelling by the section 4.4 table and writes today's
+behavior, not a wished one: a per_result or per_call row bills misses and errors, a result-aware
+row gets today's error envelope as an `error` rule, an adapter's `miss` moves to the row. Dry-run
+(the default) prints each rewrite, warns where it reads an answer shape differently, and lists the
+rows it cannot rewrite with the reason (a provider decided in Python, a single-provider cost key, a
+guessed hold); every rewrite it prints parses. `--apply` edits the files in place and keeps every
+comment outside the replaced keys. The fixture replay is the proof that a rewrite changes nothing.
 
 ## Provider defaults and the one merge rule
 
@@ -86,8 +122,9 @@ pull request that adds an entry the base branch lacks. Fix the data; never grow 
 - `schema.Manifest` models a provider manifest (`src/treg/catalog/providers/<slug>.yaml`). The
   validator checks any that exist; the loader reads none yet.
 - A v2 row names a plugin as `<module>.<function>`; `domain/plugins` resolves it by import from the
-  row's own provider module (the slug with `-` as `_`); it may do no I/O
-  ([import-boundaries](import-boundaries.md)).
+  row's own provider module (the slug with `-` as `_`) and calls it with read-only views of the
+  request and the answer; it may do no I/O ([import-boundaries](import-boundaries.md)). One that
+  raises is missing evidence for its hook, and only the exception's type is logged.
 - In the editor JSON Schemas (`scripts/catalog_schema.py`) every field carries `x-kind` (provider
   fact, account term, deployment switch, catalog curation) and credential placement carries
   `x-gated`.

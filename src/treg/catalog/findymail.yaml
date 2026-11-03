@@ -116,19 +116,22 @@ endpoints:
       note: "returns {contacts: [...]}. DEPRECATED in Findymail's own docs in favour of /search/employees, which takes explicit job titles and a result count — prefer that one for new work"
     test_request:
       body: {domain: "stripe.com", roles: ["ceo"]}
-    cost:
-      type: per_result
-      value: 1
+    price:
+      value: '1'
       currency: credit
       per: 1
       unit: result
-      reserve: {entities: {}}
-      settle: {count: {path: contacts}}
+      note: 1 finder credit per email found; free when none. The hold is one email per request.
+    provenance:
       source: docs
       source_url: https://app.findymail.com/docs/
       checked: '2026-10-28'
       confidence: documented
-      note: "1 finder credit per email found; free when none. The hold is one email per request."
+    reserve: {entities: {from: body.domain}}
+    settle: {count: {path: response.contacts}}
+    bill: {miss: charged, error: charged}
+    error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
+    miss: {when: {path: response.contacts, op: empty}}
     note: "not live-tested to preserve trial credits; also marked deprecated upstream, so /search/employees is the route to verify first when credits allow"
     docs_url: https://app.findymail.com/docs/
 

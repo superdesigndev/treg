@@ -678,7 +678,9 @@ def check_usage_block(cost: dict, settle: object, where: str, errors: list[str],
 def check_async_descriptor(descriptor: object, where: str, provider: str,
                            endpoint_index: dict[str, dict], cost: object,
                            errors: list[str]) -> None:
-    """Validate the effective (provider defaults + endpoint overrides) async descriptor."""
+    """Validate the effective (provider defaults + endpoint overrides) async descriptor. `cost` is
+    a row's cost in today's spelling; a v2 row passes None, since its terminal answer settles by
+    any `settle` form."""
     if not isinstance(descriptor, dict):
         fail(errors, where, "async must be a mapping")
         return
@@ -816,12 +818,12 @@ def check_async_descriptor(descriptor: object, where: str, provider: str,
     if "terminal_on_submission" in descriptor and descriptor["terminal_on_submission"] is not True:
         fail(errors, where, "async.terminal_on_submission must be true when present")
     # per_call: the provider bills every finished answer, so treg settles one on each.
-    if not isinstance(cost, dict) or cost.get("type") not in ("per_success", "per_call"):
+    if cost is not None and (not isinstance(cost, dict) or cost.get("type") not in ("per_success", "per_call")):
         fail(errors, where, "an endpoint with async must have cost.type per_success or per_call")
 
 
 def check_spooled_response(ep: dict, effective_async: object, where: str,
-                           errors: list[str]) -> None:
+                           errors: list[str], *, v2: bool = False) -> None:
     """`spooled_response: true` - a synchronous metered answer too large to buffer (inline media),
     read to disk and settled from what the row declares it reads: its usage meters (`settle:
     usage`) or, for a fixed price, its `expect` success rule. Nothing else may need the body: no
@@ -832,7 +834,11 @@ def check_spooled_response(ep: dict, effective_async: object, where: str,
     if effective_async is not None or ep.get("resource_ownership") or ep.get("managed_resource"):
         fail(errors, where, "spooled_response cannot be combined with async, resource_ownership "
                             "or managed_resource: those read the whole body")
-    if (ep.get("cost") or {}).get("settle") != "usage" and not (ep.get("expect") or {}).get("json_path"):
+    if v2:
+        usage, expect = (ep.get("settle") or {}).get("usage"), ep.get("expect")
+    else:
+        usage, expect = (ep.get("cost") or {}).get("settle") == "usage", (ep.get("expect") or {}).get("json_path")
+    if not usage and not expect:
         fail(errors, where, "spooled_response keeps only the evidence the row declares: it needs "
                             "settle: usage or an expect success rule")
 
@@ -1347,9 +1353,19 @@ def check_proposed_capabilities(taxonomy: dict[str, str], docs: list[tuple[str, 
 PLUGIN_TESTS = ROOT / "tests" / "plugins"
 
 
-def check_v2_row(ep: dict, provider: str, where: str, errors: list[str]) -> None:
-    """A v2 row's plugins import from its own provider's module, each function has a unit test
+def check_v2_row(ep: dict, provider: str, tier: str, adapters: dict, where: str,
+                 errors: list[str]) -> None:
+    """A core v2 row is priced, its miss lives on the row (its adapter only maps fields), its
+    plugins import from its own provider's module, each function has a unit test
     (`tests/plugins/test_<module>.py` names it), and the row has an example response."""
+    if tier == "core" and ep.get("price") is None:
+        fail(errors, where, "a core row needs a price")
+    if ep.get("ceiling_param") is not None:
+        fail(errors, where, "ceiling_param is read from the file header until the row key replaces "
+                            "it there (non-negotiable 4); declare it in the header")
+    if (adapters.get(ep.get("id")) or {}).get("miss"):
+        fail(errors, where, "a v2 row's miss is its own `miss` rule: remove the adapter's miss "
+                            "from adapters.yaml")
     names = [ep[k]["plugin"] for k in ("reserve", "settle", "error", "miss")
              if isinstance(ep.get(k), dict) and ep[k].get("plugin")]
     for name in names:
@@ -1434,6 +1450,8 @@ def main(argv: list[str]) -> int:
                 endpoint_index[endpoint_id] = {**schema.merge(ep, defaults.get(doc.provider)),
                                                "provider": doc.provider}
     check_proposed_capabilities(taxonomy, docs, errors, warnings)
+    adapter_rows = ((schema.read_yaml(CATALOG / "adapters.yaml") or {}).get("adapters") or {}
+                    if (CATALOG / "adapters.yaml").is_file() else {})
     files = [p for p in all_files if p in parsed]
     uses: list[violations.Use] = []
     # "tikhub" selects tikhub.yaml AND tikhub.extended.yaml — a service is both its tiers
@@ -1488,11 +1506,9 @@ def main(argv: list[str]) -> int:
                 continue
             uses.append(violations.Use(str(eid), str(service), ep))
             legacy = not isinstance(row, schema.V2Row)
-            if not legacy:
-                fail(errors, where, "the v2 spelling is loaded but not yet billed or judged by the call "
-                                    "runtime; it ships with the v2 settlement order")
-                check_v2_row(ep, service, where, errors)
             tier = ep.get("tier", "extended" if extended_file else "core")
+            if not legacy:
+                check_v2_row(ep, service, tier, adapter_rows, where, errors)
             if extended_file != (tier == "extended"):
                 fail(errors, where, f"tier '{tier}' does not belong in {name}")
             route_tiers.setdefault((service, ep.get("method"), ep.get("path")), {}) \
@@ -1600,9 +1616,8 @@ def main(argv: list[str]) -> int:
             if effective_async is not None:
                 # The price the call settles on: a declared cost, or the provider-reported charge a
                 # verification observed (a DataForSEO extended row carries `observed_cost` only).
-                if legacy:
-                    check_async_descriptor(effective_async, where, str(service), endpoint_index,
-                                           _effective_cost(ep), errors)
+                check_async_descriptor(effective_async, where, str(service), endpoint_index,
+                                       _effective_cost(ep) if legacy else None, errors)
                 if isinstance(cost, dict) and cost.get("settle") == "terminal_presence":
                     body_fields = inp.get("body") or {}
                     bounded = any(isinstance(spec, dict) and str(spec.get("type", "")).startswith("array")
@@ -1624,8 +1639,8 @@ def main(argv: list[str]) -> int:
                 check_resource_ownership(ep["resource_ownership"], where, inp, errors)
             if ep.get("managed_resource") is not None:
                 check_managed_resource(ep["managed_resource"], where, inp, errors)
-            if legacy and "spooled_response" in ep:
-                check_spooled_response(ep, effective_async, where, errors)
+            if "spooled_response" in ep:
+                check_spooled_response(ep, effective_async, where, errors, v2=not legacy)
             if ep.get("example_response"):
                 check_example_file(CATALOG / str(ep["example_response"]), where, errors)
             if ep.get("verified"):

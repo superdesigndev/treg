@@ -16,6 +16,7 @@ from sqlmodel import select
 
 from treg import audit
 from treg.domain import money as ledger
+from treg.domain.catalog.schema import is_v2
 from treg.application.call import overflow as call_overflow
 from treg.application.call import resolve as call_resolve
 from treg.application.call import route as call_route
@@ -1758,7 +1759,7 @@ def test_every_declared_miss_status_names_its_meaning():
     agent (tikhub answers 200 with a null body for an unknown id) and the adapter's own predicate
     decides that case, so `_miss_status` must never turn a success into a miss."""
     cat = catalog_store.load()
-    declared = {e["id"]: e["miss"] for e in cat.by_id.values() if e.get("miss")}
+    declared = {e["id"]: e["miss"] for e in cat.by_id.values() if e.get("miss") and not is_v2(e)}
     assert "aviato.people.phone.find" in declared and "hunter.people.enrich" in declared
     for eid, m in declared.items():
         assert isinstance(m, dict) and m.get("status") is not None and m.get("means"), eid

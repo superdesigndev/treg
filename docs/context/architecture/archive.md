@@ -244,8 +244,9 @@ branch, and a fault anywhere in lookup degrades to a live call.
 `domain.catalog.results.classify` reads the buffered bytes, never rewriting them, into `found`,
 `empty`, `error` or `unknown` with bounded reason codes. Result-aware behavior applies only to
 endpoints with a verified adapter and a nonempty hit/miss expression (`has_result_rules`), reusing
-`Adapter.is_miss`; a capability that must never be routed can opt in through a `routed: false`
-contract ([catalog](catalog.md)). A 2xx failing the `expect` success rule is `error` /
+`Adapter.is_miss`, and to a v2 row that declares a 2xx miss, judged by its outcome declaration
+([catalog-schema](catalog-schema.md)); a capability that must never be routed can opt in through a
+`routed: false` contract ([catalog](catalog.md)). A 2xx failing the `expect` success rule is `error` /
 `expect_failed` before any adapter reads it, but a value listed in the rule's `misses` is judged by
 the adapter. Strict per-endpoint validators live in `results.py`.
 
