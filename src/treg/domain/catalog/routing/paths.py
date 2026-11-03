@@ -425,6 +425,42 @@ def no_result_on_site(q: Any, rows: Any) -> bool:
     return not any(on(s, ln) for s in sites for ln in links)
 
 
+_QUOTED = re.compile(r'"([^"]{2,})"|\u201c([^\u201d]{2,})\u201d')
+
+
+def _fold(text: str) -> str:
+    """Lowercase, accents stripped, punctuation to spaces: `Café-Société` and `cafe societe` meet."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", t).split())
+
+
+def _strings(v: Any) -> list[str]:
+    if isinstance(v, str):
+        return [v]
+    if isinstance(v, dict):
+        return [s for x in v.values() for s in _strings(x)]
+    if isinstance(v, list):
+        return [s for x in v for s in _strings(x)]
+    return []
+
+
+def quoted_absent(q: Any, rows: Any) -> bool:
+    """True when the question quotes phrases (`"Dolby Family Ventures"`) and not one row mentions any of
+    them in any of its text (title, snippet, link: every string the row carries), compared without
+    case, accents or punctuation. A question with no quoted phrase, or no rows, is never judged."""
+    if not isinstance(q, str) or not isinstance(rows, list) or not rows:
+        return False
+    phrases = [_fold(a or b) for a, b in _QUOTED.findall(q)]
+    phrases = [p for p in phrases if p]
+    if not phrases:
+        return False
+    texts = [" " + _fold(" ".join(_strings(r))) + " " for r in rows if isinstance(r, dict)]
+    if not texts:
+        return False
+    return not any(" " + p + " " in t for p in phrases for t in texts)
+
+
 _LOCALE_SEGMENT = re.compile(r"[a-z]{2}(?:[-_][a-z]{2})?")
 
 
@@ -463,7 +499,7 @@ TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": c
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
-              "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "with_country_code": with_country_code,
+              "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "quoted_absent": quoted_absent, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
               "scalar": scalar}
 

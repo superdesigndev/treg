@@ -1263,6 +1263,21 @@ def test_no_result_on_site_is_true_only_when_every_row_is_off_the_requested_site
     assert P.evaluate("no_result_on_site(q, results)", {"q": q, "results": rows}) is off
 
 
+@pytest.mark.parametrize("q, rows, absent", [
+    ('"Dolby Family Ventures" digital health', [{"title": "Family - dictionary"}, {"title": "The Family (film)"}], True),
+    ('"Dolby Family Ventures" digital health', [{"title": "x"}, {"snippet": "Dolby Family Ventures backs ..."}], False),
+    ('"Café Société" menu', [{"title": "Cafe Societe, Paris"}], False),
+    ('"4006381333931"', [{"title": "Generic pens"}], True),
+    ('"4006381333931"', [{"url": "https://shop.example/p/4006381333931"}], False),
+    ('"Acme" OR "Globex" ceo', [{"title": "Globex Corporation leadership"}], False),
+    ("\u201cTeleClinic\u201d youtube", [{"title": "Miami Dolphins forum"}], True),
+    ("teleclinic youtube", [{"title": "Miami Dolphins forum"}], False),
+    ('"ab" x', [], False),
+])
+def test_quoted_absent_is_true_only_when_no_row_mentions_a_quoted_phrase(q, rows, absent):
+    assert P.evaluate("quoted_absent(q, results)", {"q": q, "results": rows}) is absent
+
+
 def test_a_question_miss_turns_an_off_site_hit_into_a_miss_and_only_with_the_question():
     """A child's rows can only be judged off target against the question: a site: search answered
     from other sites is a miss the route moves on from; the same rows for a plain search stay a hit."""
