@@ -372,21 +372,19 @@ endpoints:
       note: "returns {companies: [{domain, name, linkedin_url, company_size, country}], total, credits_used} — `credits_used` reports the actual charge back to you"
     test_request:
       body: {seed: "stripe.com", limit: 10}
-    price:
-      value: '1'
+    cost:
+      type: per_result
+      value: 1
       currency: credit
       per: 10
-      round: up
       unit: result
-      note: 1 finder credit per 10 companies returned, rounded up; free when none. The response reports `credits_used`.
-    provenance:
+      reserve: {rows: {param: body.limit, default: {value: 100, source: docs}, max: 10000}}
+      reported_charge: {path: credits_used, unit: credit}
       source: docs
       source_url: https://app.findymail.com/docs/
       checked: '2026-10-28'
       confidence: documented
-    reserve: {rows: {param: body.limit, default: {value: 100, source: docs}, max: 10000}}
-    settle: {reported: {path: response.credits_used, unit: credit}}
-    bill: {miss: charged, error: charged}
+      note: "1 finder credit per 10 companies returned, rounded up; free when none. The response reports `credits_used`."
     note: "not live-tested to preserve trial credits"
     docs_url: https://app.findymail.com/docs/
 
