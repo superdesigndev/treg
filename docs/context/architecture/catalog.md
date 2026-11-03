@@ -762,6 +762,13 @@ requests and sometimes ask a different question (a domain and a name vs. a Linke
 caller knows which inputs it holds.** treg chooses only when the caller calls a routed endpoint,
 whose contract is a canonical schema ("Routing" below).
 
+`TREG_ROUTE_PROVIDER_SAMPLE_PCT` optionally maps provider slugs to integer percentages from 0 to
+100. In `application.call.route.build_plan`, a shared-key candidate joins a routed plan only for
+that percentage of provider, org, capability and canonical-question hashes; a retry of the same question
+gets the same decision. A missing or empty setting leaves all providers eligible. Unlisted
+providers, direct calls and a team's own credential are unaffected. This gates eligibility, not
+the eventual share of served calls or the provider's direct-call volume.
+
 What treg supplies is what only it sees: **success rate, p50/p95 latency, last success and sample
 size** per endpoint from folded `CallRecord` evidence, on `/catalog/endpoints/{id}` for the endpoint
 **and every sibling**, because the choice is made on that page. The same page discloses the overflow

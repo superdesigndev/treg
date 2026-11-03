@@ -1,0 +1,264 @@
+provider: leadocean
+source:
+  docs: https://leadocean.io/docs
+  openapi: https://api.leadocean.io/openapi.json
+  curated: '2026-11-03'
+pricing_url: https://leadocean.io/pricing
+limits: "25 requests per second; search and enrichment also have account-specific rolling record allowances."
+cache: forbidden
+endpoints:
+  - id: leadocean.people.enrich
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /v1/people/enrich
+    name: Enrich a person
+    summary: Retrieve a person's profile and contact record by LinkedIn URL, email, phone, or person ID.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false}
+        email: {type: string, required: false}
+        phone: {type: string, required: false}
+        person_id: {type: string, required: false}
+        reveal_email: {type: boolean, required: false}
+      note: Supply one identifier. A known profile without contact data can still use one record.
+    test_request: {body: {linkedin_url: 'https://www.linkedin.com/in/routing-fixture'}}
+    example_response: examples/leadocean.people.enrich.json
+    miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
+    cost: &free {type: free, value: 0, currency: USD, unit: call, source: observed, checked: '2026-11-03', confidence: verified, note: 'Treg charges zero; LeadOcean meters matched search/enrichment records on its account. Count requests used no records in live verification.'}
+    verified: '2026-11-03'
+    added: '2026-11-03'
+    docs_url: https://leadocean.io/docs/enrich
+  - id: leadocean.companies.enrich
+    capability: companies.enrich
+    platform: companies
+    domain: companies
+    scope: any_account
+    method: POST
+    path: /v1/companies/enrich
+    name: Enrich a company
+    summary: Retrieve company details by domain or LinkedIn URL.
+    body_allowlist: true
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: false}
+        linkedin_url: {type: string, required: false}
+      note: Supply one identifier.
+    test_request: {body: {domain: stripe.com}}
+    example_response: examples/leadocean.companies.enrich.json
+    miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
+    cost: *free
+    verified: '2026-11-03'
+    added: '2026-11-03'
+    docs_url: https://leadocean.io/docs/company
+  - id: leadocean.people.search
+    capability: people.search
+    platform: people
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/people/search
+    name: Search people
+    summary: Search people by role, employer and location, with cursor pagination.
+    input:
+      queryParams:
+        q: {type: string, required: false}
+        title: {type: string, required: false}
+        domain: {type: string, required: false}
+        companyName: {type: string, required: false}
+        country: {type: string, required: false}
+        emailStatus: {type: string, required: false}
+        emailType: {type: string, required: false}
+        cursor: {type: string, required: false}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100}
+      note: Each returned record consumes search allowance; an empty result consumed none in live verification.
+    test_request: {queryParams: {domain: stripe.com, limit: 1}}
+    example_response: examples/leadocean.people.search.json
+    cost: *free
+    verified: '2026-11-03'
+    added: '2026-11-03'
+    docs_url: https://leadocean.io/docs/search
+  - id: leadocean.companies.search
+    capability: companies.search
+    platform: companies
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/companies/search
+    name: Search companies
+    summary: Search companies by name, domain, industry or headquarters, with cursor pagination.
+    input:
+      queryParams:
+        q: {type: string, required: false}
+        name: {type: string, required: false}
+        domain: {type: string, required: false}
+        industry: {type: string, required: false}
+        hqCountry: {type: string, required: false}
+        cursor: {type: string, required: false}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100}
+    test_request: {queryParams: {domain: stripe.com, limit: 1}}
+    example_response: examples/leadocean.companies.search.json
+    cost: *free
+    verified: '2026-11-03'
+    added: '2026-11-03'
+    docs_url: https://leadocean.io/docs/search
+  - id: leadocean.people.search.count
+    capability: people.search.count
+    platform: people
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/people/search
+    name: Count matching people
+    summary: Count people matching search filters without returning records.
+    input:
+      queryParams:
+        count: {type: boolean, required: true, enum: [true]}
+        q: {type: string, required: false}
+        title: {type: string, required: false}
+        domain: {type: string, required: false}
+        companyName: {type: string, required: false}
+        country: {type: string, required: false}
+        limit: {type: integer, required: false, default: 1, min: 1, max: 1}
+      note: Pass count=true; the count is in meta.total.
+    test_request: {queryParams: {domain: stripe.com, count: true, limit: 1}}
+    example_response: examples/leadocean.people.search.count.json
+    cost: *free
+    verified: '2026-11-03'
+    added: '2026-11-03'
+    docs_url: https://leadocean.io/docs/search
+  - id: leadocean.companies.count
+    capability: companies.search.count
+    platform: companies
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/companies/count
+    name: Count matching companies
+    summary: Count matching companies and return facets without revealing records.
+    input:
+      queryParams:
+        q: {type: string, required: false}
+        name: {type: string, required: false}
+        domain: {type: string, required: false}
+        industry: {type: string, required: false}
+        hqCountry: {type: string, required: false}
+    test_request: {queryParams: {domain: stripe.com}}
+    example_response: examples/leadocean.companies.count.json
+    cost: *free
+    verified: '2026-11-03'
+    added: '2026-11-03'
+    docs_url: https://leadocean.io/docs/search
+  - id: leadocean.people.email.find.work
+    capability: people.email.find
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: GET
+    path: /v2/people/email/work
+    name: Find a work email
+    summary: Find a person's work email from a LinkedIn URL or LeadOcean person ID.
+    input:
+      queryParams:
+        linkedin_url: {type: string, required: false}
+        person_id: {type: string, required: false}
+        contact_id: {type: string, required: false}
+      note: Supply exactly one identifier. Only status=verified is a decisive routed hit; direct calls relay every status.
+    test_request: {queryParams: {linkedin_url: 'https://www.linkedin.com/in/routing-fixture'}}
+    example_response: examples/leadocean.people.email.find.work.json
+    miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
+    cost: *free
+    verified: '2026-11-03'
+    added: '2026-11-03'
+    docs_url: https://leadocean.io/docs/contact
+  - id: leadocean.people.email.find.personal
+    capability: people.email.find.personal
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: GET
+    path: /v2/people/email/personal
+    name: Find personal emails
+    summary: Find a person's personal emails from a LinkedIn URL or LeadOcean person ID.
+    input:
+      queryParams:
+        linkedin_url: {type: string, required: false}
+        person_id: {type: string, required: false}
+        contact_id: {type: string, required: false}
+      note: A known person with no personal email can return an empty array after using a record.
+    test_request: {queryParams: {linkedin_url: 'https://www.linkedin.com/in/routing-fixture'}}
+    example_response: examples/leadocean.people.email.find.personal.json
+    miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
+    cost: *free
+    verified: '2026-11-03'
+    added: '2026-11-03'
+    docs_url: https://leadocean.io/docs/contact
+  - id: leadocean.people.phone.find
+    capability: people.phone.find
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: GET
+    path: /v2/people/phone
+    name: Find phone numbers
+    summary: Find a person's phone numbers from a LinkedIn URL or LeadOcean person ID.
+    input:
+      queryParams:
+        linkedin_url: {type: string, required: false}
+        person_id: {type: string, required: false}
+        contact_id: {type: string, required: false}
+    test_request: {queryParams: {linkedin_url: 'https://www.linkedin.com/in/routing-fixture'}}
+    example_response: examples/leadocean.people.phone.find.json
+    miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
+    cost: *free
+    verified: '2026-11-03'
+    added: '2026-11-03'
+    docs_url: https://leadocean.io/docs/contact
+  - id: leadocean.people.reverse
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: GET
+    path: /v2/people/reverse
+    name: Identify a person from a contact
+    summary: Resolve an email address or phone number to a person.
+    input:
+      queryParams:
+        email: {type: string, required: false}
+        phone: {type: string, required: false}
+      note: Supply an email or phone, not both. This direct tool returns identity matching rather than a full enrichment profile.
+    test_request: {queryParams: {email: jane@example.com}}
+    example_response: examples/leadocean.people.reverse.json
+    miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
+    cost: *free
+    verified: '2026-11-03'
+    added: '2026-11-03'
+    docs_url: https://leadocean.io/docs/contact
+  - id: leadocean.companies.people
+    capability: people.search
+    platform: people
+    domain: search
+    scope: any_account
+    method: GET
+    path: /v1/companies/{domain}/people
+    name: List a company's people
+    summary: List people attached to a company domain, with cursor pagination.
+    input:
+      pathParams:
+        domain: {type: string, required: true}
+      queryParams:
+        cursor: {type: string, required: false}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100}
+    test_request: {pathParams: {domain: stripe.com}, queryParams: {limit: 1}}
+    example_response: examples/leadocean.companies.people.json
+    miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
+    cost: *free
+    verified: '2026-11-03'
+    added: '2026-11-03'
+    docs_url: https://leadocean.io/docs/company
