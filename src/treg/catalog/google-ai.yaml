@@ -224,7 +224,7 @@ endpoints:
           type: array
           required: true
           example: [{parts: [{text: "Welcome to treg.", speechMetadata: {style: cheerful}}]}]
-          note: "One user turn: {parts: [{text: script}]}. Gemini 3.8 TTS reads `text` as a verbatim transcript: a direction written into it (\"Say cheerfully: ...\") is spoken aloud and billed as audio. Put delivery directions in the part's `speechMetadata.style` ({text: \"Welcome to treg.\", speechMetadata: {style: cheerful}}) and keep `text` to the words to be spoken; live 2026-11-04 a \"Say cheerfully:\" prefix nearly doubled the audio tokens of the same line, while `speechMetadata.style` did not. For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
+          note: "One user turn: {parts: [{text: script}]}. Gemini 3.8 TTS reads `text` as a verbatim transcript: a direction written into it (\"Say cheerfully: ...\") is spoken aloud and billed as audio. Put delivery directions in the part's `speechMetadata.style` ({text: \"Welcome to treg.\", speechMetadata: {style: cheerful}}) and keep `text` to the words to be spoken. For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
         generationConfig:
           type: object
           required: true
@@ -281,7 +281,7 @@ endpoints:
           type: array
           required: true
           example: [{parts: [{text: "Welcome to treg.", speechMetadata: {style: cheerful}}]}]
-          note: "One user turn: {parts: [{text: script}]}. Gemini 3.8 TTS reads `text` as a verbatim transcript: a direction written into it (\"Say cheerfully: ...\") is spoken aloud and billed as audio. Put delivery directions in the part's `speechMetadata.style` ({text: \"Welcome to treg.\", speechMetadata: {style: cheerful}}) and keep `text` to the words to be spoken; live 2026-11-04 a \"Say cheerfully:\" prefix nearly doubled the audio tokens of the same line, while `speechMetadata.style` did not. For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
+          note: "One user turn: {parts: [{text: script}]}. Gemini 3.8 TTS reads `text` as a verbatim transcript: a direction written into it (\"Say cheerfully: ...\") is spoken aloud and billed as audio. Put delivery directions in the part's `speechMetadata.style` ({text: \"Welcome to treg.\", speechMetadata: {style: cheerful}}) and keep `text` to the words to be spoken. For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
         generationConfig:
           type: object
           required: true
