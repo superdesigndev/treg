@@ -1246,6 +1246,42 @@ def test_http_error_is_true_only_for_a_4xx_or_5xx_status(status, error):
     assert P.evaluate("http_error(code)", {"code": status}) is error
 
 
+@pytest.mark.parametrize("q, links, off", [
+    ("site:ovhcloud.com vps price", ["https://www.reddit.com/r/x", "https://en.wiktionary.org/wiki/vps"], True),
+    ("site:ovhcloud.com vps price", ["https://www.reddit.com/r/x", "https://www.ovhcloud.com/en/vps/"], False),
+    ("site:ovhcloud.com vps price", ["https://us.ovhcloud.com/vps"], False),
+    ("site:samsung.com/cz/support washer", ["https://www.samsung.com/uk/support/x"], True),
+    ("site:samsung.com/cz/support washer", ["https://www.samsung.com/cz/support/washers/"], False),
+    ("site:a.com OR site:b.org pricing", ["https://b.org/pricing"], False),
+    ("pricing -site:reddit.com", ["https://reddit.com/x"], False),
+    ("stripe radar rules", ["https://reddit.com/x"], False),
+    ("site:ovhcloud.com vps", [], False),
+    ("site:ovhcloud.com vps", [None], False),
+])
+def test_no_result_on_site_is_true_only_when_every_row_is_off_the_requested_site(q, links, off):
+    rows = [{"title": "t"} if u is None else {"url": u} for u in links]
+    assert P.evaluate("no_result_on_site(q, results)", {"q": q, "results": rows}) is off
+
+
+def test_a_question_miss_turns_an_off_site_hit_into_a_miss_and_only_with_the_question():
+    """A child's rows can only be judged off target against the question: a site: search answered
+    from other sites is a miss the route moves on from; the same rows for a plain search stay a hit."""
+    from dataclasses import replace
+    cat = catalog_store.load()
+    contract = replace(cat.contracts["web.search"], question_miss="no_result_on_site(q, results)")
+    ep = cat.by_id["crawl4ai.web.search"]
+    adapter = cat.adapters["crawl4ai.web.search"]
+    raw = json.dumps({"results": [{"url": "https://www.reddit.com/r/vps", "title": "VPS"}]}).encode()
+    off_site = call_route.child_outcome(ep, contract, adapter, 200, raw, tier="platform",
+                                        identity={"q": "site:ovhcloud.com vps price"})
+    assert off_site.kind == "miss" and "question_miss" in off_site.why
+    plain = call_route.child_outcome(ep, contract, adapter, 200, raw, tier="platform",
+                                     identity={"q": "vps price"})
+    assert plain.kind == "hit"
+    assert call_route.child_outcome(ep, contract, adapter, 200, raw, tier="platform").kind == "hit", \
+        "without the question (a replay record) nothing is judged"
+
+
 @pytest.mark.parametrize("asked, ended, lost", [
     ("https://shop.fr/fr/idees-cadeaux/251-vernis", "https://shop.fr/", True),
     ("https://shop.fr/fr/idees-cadeaux/251-vernis", "https://shop.fr/en-us/", True),

@@ -389,6 +389,42 @@ def count_with(items: Any, path: Any) -> int | None:
     return sum(1 for item in items if get_path(item, path) not in (None, "", [], {}))
 
 
+_SITE = re.compile(r"(?:^|[\s(])site:([^\s()]+)", re.I)
+
+
+def _host_path(url: str) -> tuple[str, str]:
+    from urllib.parse import urlsplit
+    u = url.strip()
+    parts = urlsplit(u if "//" in u else "//" + u)
+    host = (parts.hostname or "").lower().removeprefix("www.")
+    return host, parts.path.rstrip("/").lower()
+
+
+def no_result_on_site(q: Any, rows: Any) -> bool:
+    """True when the question restricts results to sites (`site:stripe.com`, `site:a.com/blog`, several
+    joined by OR) and not one row's link is on any of them: a subdomain counts, and a path in the
+    restriction must prefix the row's path. A question with no `site:` (a negated `-site:` is not a
+    restriction), no rows, or no row with a readable link is never judged."""
+    if not isinstance(q, str) or not isinstance(rows, list) or not rows:
+        return False
+    sites = [_host_path(s) for s in _SITE.findall(q)]
+    sites = [(h, p) for h, p in sites if h]
+    if not sites:
+        return False
+    links = []
+    for row in rows:
+        if isinstance(row, dict):
+            link = next((row[k] for k in ("url", "link", "href") if isinstance(row.get(k), str) and row[k]), None)
+            if link:
+                links.append(_host_path(link))
+    if not links:
+        return False
+    def on(site, link):
+        (sh, sp), (lh, lp) = site, link
+        return (lh == sh or lh.endswith("." + sh)) and (not sp or lp == sp or lp.startswith(sp + "/"))
+    return not any(on(s, ln) for s in sites for ln in links)
+
+
 _LOCALE_SEGMENT = re.compile(r"[a-z]{2}(?:[-_][a-z]{2})?")
 
 
@@ -427,7 +463,7 @@ TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": c
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
-              "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "with_country_code": with_country_code,
+              "e164_digits": e164_digits, "starts_with": starts_with, "http_error": http_error, "lost_path": lost_path, "no_result_on_site": no_result_on_site, "with_country_code": with_country_code,
               "count_with": count_with, "role_seniority": role_seniority, "role_department": role_department,
               "scalar": scalar}
 

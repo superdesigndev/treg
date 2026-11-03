@@ -940,6 +940,11 @@ returned and never documented as stable. An output field may say where it lands 
 - `routed: false` declares an admission-only contract: its adapters verify (the archive's
   `has_result_rules` reads them) but no `treg.<capability>` row is generated. For a capability whose
   "children" are one provider's price tiers.
+- `question_miss` is a miss rule that also sees the question: `child_outcome` evaluates it on the
+  caller's identity merged with the child's core output, after the adapter's own `miss`, and a hit it
+  marks true becomes a miss (`why: question_miss`) the route moves on from. It names no provider;
+  `no_result_on_site(q, results)` judges a `site:` question whose rows are all on other sites. A
+  call without an identity (a replay record) is not judged by it.
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
   never sends a supplied one is dropped from the plan, not ranked down, because a title-only search
   asked for one company's CEO bills title-matched strangers as a hit.
