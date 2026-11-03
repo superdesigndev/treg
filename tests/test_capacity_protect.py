@@ -417,3 +417,33 @@ async def test_a_free_route_neither_lifts_nor_is_held_by_a_balance_mark(clients:
         assert (await _dl(clients, DL_PHONE)).status_code == 503
     finally:
         get_settings.cache_clear()
+
+
+WIZA_ENRICH, WIZA_EMAIL = "wiza.companies.enrich", "wiza.people.email.find"
+WIZA_OUT = b'{"status":{"code":400,"message":"Insufficient API credits. You need 2 credits for company enrichment."}}'
+WIZA_EMAIL_BODY = {"individual_reveal": {"profile_url": "https://www.linkedin.com/in/example"},
+                   "enrichment_level": "partial",
+                   "email_options": {"accept_work": True, "accept_personal": False, "accept_generic": False}}
+
+
+async def test_a_wiza_200_between_two_credit_errors_keeps_the_lock_closed(clients: AsyncClient, monkeypatch):
+    """Wiza's email and phone finds still answer 200 while its credit pool is empty, and a 2xx
+    erases the pending strike. So 400, 200, 400 never opens the lock: the breaker misses an empty
+    Wiza account whenever a find lands between two enrichments."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_WIZA", "PLATFORM-WIZA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "wiza")
+    get_settings.cache_clear()
+    monkeypatch.setattr(capacity_marks, "STRIKE_MIN_GAP", timedelta(0))
+    monkeypatch.setattr(call_service, "relay", _by_path({
+        "/company_enrichments": (400, WIZA_OUT),
+        "/individual_reveals": (200, b'{"data":{"id":910001,"status":"queued"}}')}))
+    try:
+        assert (await clients.post(f"/call/{WIZA_ENRICH}", json={"company_domain": "example.com"})).status_code == 400
+        assert (await _lock("wiza")).strikes == 1, "the credit error is a strike"
+        assert (await clients.post(f"/call/{WIZA_EMAIL}", json=WIZA_EMAIL_BODY)).status_code == 200
+        assert await _lock("wiza") is None, "the find's 200 erases the strike"
+        assert (await clients.post(f"/call/{WIZA_ENRICH}", json={"company_domain": "example.com"})).status_code == 400
+        lock = await _lock("wiza")
+        assert lock.strikes == 1 and not lock.is_active(), "400, 200, 400 does not lock"
+    finally:
+        get_settings.cache_clear()
