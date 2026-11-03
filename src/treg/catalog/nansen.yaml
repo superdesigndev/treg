@@ -1,0 +1,467 @@
+provider: nansen
+source:
+  docs: https://docs.nansen.ai
+  openapi: https://api.nansen.ai/openapi.json
+  curated: '2026-11-03'
+pricing_url: https://docs.nansen.ai/getting-started/credits
+limits: 'Free: 15 requests/second and 300/minute. Pro: 75 requests/second and 1,500/minute.
+  Account-specific limits may apply.'
+proposed_capabilities:
+  crypto.entities.search: Search labelled blockchain entities by name
+  crypto.wallet.balances: Current token balances and USD values for a blockchain wallet
+  crypto.wallet.first_funder: Find the first wallet that funded a blockchain address
+  crypto.smart_money.holdings: Aggregated token holdings of Smart Money wallets
+  crypto.smart_money.netflows: Token inflows and outflows of Smart Money wallets
+endpoints:
+- id: nansen.search.general
+  capability: crypto.search
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/search/general
+  name: Search tokens and entities
+  summary: Search across all categories
+  input:
+    bodyType: json
+    body:
+      search_query:
+        type: string
+        required: true
+        note: Search query - token name, symbol, contract address, or entity name.
+        example: AAVE
+      result_type:
+        type: string
+        required: false
+        note: 'Type filter - ''token'' for tokens only, ''entity'' for entities only,
+          ''any'' for both. Allowed: token, entity, any'
+        example: token
+      chain:
+        type: string
+        required: false
+        note: Optional chain filter to narrow down token results (e.g., 'ethereum',
+          'solana', 'base').
+        example: ethereum
+      limit:
+        type: integer
+        required: false
+        note: 'Maximum number of results to return (default: 25, max: 50).'
+        example: 1
+  test_request:
+    body:
+      search_query: AAVE
+      result_type: token
+      chain: ethereum
+      limit: 1
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: observed
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: verified
+  added: '2026-11-03'
+  docs_url: https://docs.nansen.ai/api/search
+- id: nansen.search.entity-name
+  capability: crypto.entities.search
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/search/entity-name
+  name: Search blockchain entities
+  summary: Search for entity names by query
+  input:
+    bodyType: json
+    body:
+      search_query:
+        type: string
+        required: true
+        note: Search query for entity names (minimum 2 characters). Search is case-insensitive
+          and matches anywhere in the entity name.
+        example: Binance
+  test_request:
+    body:
+      search_query: Binance
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: observed
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: verified
+  added: '2026-11-03'
+  docs_url: https://docs.nansen.ai/api/search
+- id: nansen.tgm.token-information
+  capability: crypto.coin.profile
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/tgm/token-information
+  name: Token metadata and trading metrics
+  summary: Get "Token God Mode" (TGM) token information data
+  input:
+    bodyType: json
+    body:
+      chain:
+        type: string
+        required: true
+        note: 'Blockchain chain Allowed: arbitrum, arc, avalanche, base, bnb, ethereum,
+          hyperevm, hyperliquid, injective, iotaevm, linea, mantle, mantra, monad,
+          near, optimism, plasma, polygon, robinhood, sei, solana, sonic, starknet,
+          sui, ton, tron'
+        example: ethereum
+      token_address:
+        type: string
+        required: true
+        note: Token address
+        example: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      timeframe:
+        type: string
+        required: true
+        note: 'Timeframe for the token information query Allowed: 5m, 1h, 6h, 12h,
+          1d, 7d'
+        example: 1d
+  test_request:
+    body:
+      chain: ethereum
+      token_address: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      timeframe: 1d
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Published standard tariff. Self-test account reported zero cost and usage
+      for all calls; standard-account billing remains unobserved. Errors are not charged.
+  added: '2026-11-03'
+  docs_url: https://docs.nansen.ai/api/token-god-mode/token-information
+- id: nansen.tgm.token-ohlcv
+  capability: crypto.price.ohlc
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/tgm/token-ohlcv
+  name: Token OHLCV candles
+  summary: Retrieve token OHLCV candle data
+  input:
+    bodyType: json
+    body:
+      chain:
+        type: string
+        required: true
+        note: 'Blockchain chain Allowed: algorand, aptos, arbitrum, arc, avalanche,
+          base, bitcoin, bitlayer, bnb, chiliz, ethereum, gravity, hyperevm, hyperliquid,
+          injective, iotaevm, linea, mantle, mantra, monad, near, optimism, plasma,
+          polygon, robinhood, sei, solana, sonic, stacks, starknet, stellar, sui,
+          ton, tron, viction'
+        example: ethereum
+      token_address:
+        type: string
+        required: false
+        note: Token contract address
+        example: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      token_addresses:
+        type: array
+        required: false
+        note: Array of token contract addresses for batch queries (max 10, or max
+          5 for Hyperliquid, mutually exclusive with token_address)
+        example:
+        - '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+        - '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984'
+      date:
+        type: object
+        required: false
+        note: Date range for the data (defaults to last 30 days if not specified)
+        example: &id001
+          from: '2026-11-01T00:00:00Z'
+          to: '2026-11-01T01:00:00Z'
+      timeframe:
+        type: string
+        required: true
+        note: 'Time resolution for OHLCV data Allowed: 1m, 5m, 15m, 30m, 1h, 4h, 1d,
+          1w, 1M'
+        example: 1h
+  test_request:
+    body:
+      chain: ethereum
+      token_address: '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9'
+      timeframe: 1h
+      date: *id001
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Published standard tariff. Self-test account reported zero cost and usage
+      for all calls; standard-account billing remains unobserved. Errors are not charged.
+  added: '2026-11-03'
+  docs_url: https://docs.nansen.ai/api/token-god-mode/price-ohlcv
+- id: nansen.profiler.address.current-balance
+  capability: crypto.wallet.balances
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/profiler/address/current-balance
+  name: Current wallet token balances
+  summary: Get Address Current Balance Data
+  input:
+    bodyType: json
+    body:
+      address:
+        type: string
+        required: false
+        note: Address to get balances for
+        example: '0x28c6c06298d514db089934071355e5743bf21d60'
+      entity_name:
+        type: string
+        required: false
+        note: Entity name to get balances for
+        example: Vitalik Buterin
+      chain:
+        type: string
+        required: true
+        note: 'Blockchain chain for the balances Allowed: all, arbitrum, arc, avalanche,
+          base, bitcoin, bnb, ethereum, hyperevm, injective, iotaevm, linea, mantle,
+          mantra, monad, near, optimism, plasma, polygon, robinhood, sei, solana,
+          sonic, starknet, sui, ton, tron'
+        example: ethereum
+      hide_spam_token:
+        type: boolean
+        required: false
+        note: Removes suspicious tokens from the balance list
+        example: true
+      filters:
+        type: object
+        required: false
+        note: Additional filters to apply. Only filters for columns that are being
+          selected will be applied.
+        example:
+          token_symbol: USDC
+          value_usd:
+            min: 10
+      pagination:
+        type: object
+        required: false
+        note: Pagination parameters
+        example: &id002
+          page: 1
+          per_page: 1
+      order_by:
+        type: array
+        required: false
+        note: Custom sort order to override the endpoint's default ordering
+  test_request:
+    body:
+      chain: ethereum
+      address: '0x28c6c06298d514db089934071355e5743bf21d60'
+      pagination: *id002
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Published standard tariff. Self-test account reported zero cost and usage
+      for all calls; standard-account billing remains unobserved. Errors are not charged.
+  added: '2026-11-03'
+  docs_url: https://docs.nansen.ai/api/profiler/address-current-balances
+- id: nansen.profiler.address.first-funder
+  capability: crypto.wallet.first_funder
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/profiler/address/first-funder
+  name: Find a wallet first funder
+  summary: Get Address First Funder Data
+  input:
+    bodyType: json
+    body:
+      address:
+        type: string
+        required: true
+        note: EVM address to look up the first funder for
+        example: '0x28c6c06298d514db089934071355e5743bf21d60'
+      chain:
+        type: string
+        required: false
+        note: 'Fixed to ''all''; the first funder is resolved across chains Allowed:
+          all'
+        example: all
+  test_request:
+    body:
+      chain: all
+      address: '0x28c6c06298d514db089934071355e5743bf21d60'
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Published standard tariff. Self-test account reported zero cost and usage
+      for all calls; standard-account billing remains unobserved. Errors are not charged.
+  added: '2026-11-03'
+  docs_url: https://docs.nansen.ai/api/profiler/address-first-funder
+- id: nansen.smart-money.holdings
+  capability: crypto.smart_money.holdings
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/smart-money/holdings
+  name: Smart Money token holdings
+  summary: Get Smart Money Holdings Data
+  input:
+    bodyType: json
+    body:
+      chains:
+        type: array
+        required: true
+        note: Chains to include in the analysis (only smart money supported chains).
+          Use 'all' to include all available chains.
+        example: &id003
+        - ethereum
+      filters:
+        type: object
+        required: false
+        note: Additional filters to apply. Only filters for columns that are being
+          selected will be applied.
+        example:
+          balance_24h_percent_change:
+            max: 0.1
+            min: -0.1
+          exclude_smart_money_labels:
+          - 30D Smart Trader
+          include_native_tokens: false
+          include_smart_money_labels:
+          - Smart Trader
+          include_stablecoins: false
+          token_age_days:
+            max: 30
+          value_usd:
+            max: 100000
+            min: 1000
+      pagination:
+        type: object
+        required: false
+        note: Pagination parameters
+        example: *id002
+      order_by:
+        type: array
+        required: false
+        note: 'Custom sort order to override the endpoint''s default ordering.
+
+
+          Examples:
+
+          - [{"field": "value_usd", "direction": "DESC"}] - Sort by value USD descending
+
+          - [{"field": "holders_count", "direction": "ASC"}] - Sort by number of holders
+          ascending
+
+          - [{"field": "value_usd", "direction": "DESC"}, {"field": "holders_count",
+          "direction": "ASC"}] - Sort by value USD descending, then number of holders
+          ascending'
+  test_request:
+    body:
+      chains: *id003
+      pagination: *id002
+  cost:
+    type: per_success
+    value: 5
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Published standard tariff. Self-test account reported zero cost and usage
+      for all calls; standard-account billing remains unobserved. Errors are not charged.
+  added: '2026-11-03'
+  docs_url: https://docs.nansen.ai/api/smart-money/holdings
+- id: nansen.smart-money.netflow
+  capability: crypto.smart_money.netflows
+  platform: crypto
+  scope: any_account
+  method: POST
+  path: /api/v1/smart-money/netflow
+  name: Smart Money token netflows
+  summary: Get Smart Money Netflow Data
+  input:
+    bodyType: json
+    body:
+      chains:
+        type: array
+        required: true
+        note: Chains to include in the analysis (only smart money supported chains).
+          Use 'all' to include all available chains.
+        example: &id004
+        - ethereum
+      filters:
+        type: object
+        required: false
+        note: Additional filters to apply. Only filters for columns that are being
+          selected will be applied.
+        example:
+          exclude_smart_money_labels:
+          - 30D Smart Trader
+          include_native_tokens: false
+          include_smart_money_labels:
+          - Smart Trader
+          include_stablecoins: false
+      pagination:
+        type: object
+        required: false
+        note: Pagination parameters
+        example: *id002
+      order_by:
+        type: array
+        required: false
+        note: 'Custom sort order to override the endpoint''s default ordering.
+
+
+          Examples:
+
+          - [{"field": "market_cap_usd", "direction": "DESC"}] - Sort by market cap
+          descending
+
+          - [{"field": "net_flow_24h_usd", "direction": "ASC"}] - Sort by 24h flow
+          ascending
+
+          - [{"field": "market_cap_usd", "direction": "DESC"}, {"field": "net_flow_24h_usd",
+          "direction": "ASC"}] - Sort by market cap descending, then 24h flow ascending'
+        example:
+        - direction: DESC
+          field: net_flow_24h_usd
+  test_request:
+    body:
+      chains: *id004
+      pagination: *id002
+  cost:
+    type: per_success
+    value: 5
+    currency: credit
+    unit: call
+    source: docs
+    source_url: https://docs.nansen.ai/getting-started/credits
+    checked: '2026-11-03'
+    confidence: documented
+    note: Published standard tariff. Self-test account reported zero cost and usage
+      for all calls; standard-account billing remains unobserved. Errors are not charged.
+  added: '2026-11-03'
+  docs_url: https://docs.nansen.ai/api/smart-money/netflows
