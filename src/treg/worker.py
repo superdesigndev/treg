@@ -264,7 +264,7 @@ async def _asynctasks_settle(args) -> int:
 
 
 async def _hub_check(args) -> int:
-    """The scheduled health check (docs/HUB-DECISIONS.md round 2 q8; architecture/hub.md): every
+    """The scheduled health check (docs/context/architecture/hub.md): every
     live tool's newest version runs its check.json once as its maker. The verdict lands on the
     row; health is derived from the last three runs. Cron it every 6 hours."""
     import httpx
@@ -635,6 +635,10 @@ async def _run_command(args) -> int:
             finally:
                 try:
                     emit_snapshot(role="worker", shutdown=True)
+                    from .domain.capacity import rate_observe
+                    from .infra import provider_rate
+                    rate_observe.flush()
+                    await provider_rate.drain()
                 except Exception:  # noqa: BLE001 - preserve the command's result/failure
                     pass
                 finally:

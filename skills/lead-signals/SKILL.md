@@ -1,6 +1,8 @@
 ---
 name: lead-signals
 description: Use when the user wants to find buyers, warm or hot leads, or in-market accounts; asks about buying signals, intent signals or trigger events; wants to know who is complaining about a problem, engaging with a post, hiring for a role, changing jobs, raising money or adopting a tool; or wants to monitor a topic, a competitor or a list of accounts for people ready to buy.
+metadata:
+  summary: Finds people ready to buy. It searches public signals such as complaints, job changes, hiring and funding, qualifies who fits and finds how to reach them.
 ---
 
 # Lead signals

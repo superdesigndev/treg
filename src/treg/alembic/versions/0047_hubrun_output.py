@@ -1,4 +1,4 @@
-"""hubrun.output — the run's answer, for the caller's run page (docs/HUB-DECISIONS.md round 5 q8)
+"""hubrun.output — the run's answer, for the caller's run page
 
 Revision ID: 0044
 Revises: 0043

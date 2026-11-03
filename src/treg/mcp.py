@@ -340,7 +340,7 @@ mcp = MCPServer(
 # NULLABLE as well: the SDK dumps every ABSENT key as `null` in `structuredContent`.
 class SearchResult(TypedDict, total=False):
     endpoint_id: str | None
-    kind: str | None             # "hub" for a listed hub tool (docs/hub-listing-decisions.md); absent otherwise
+    kind: str | None             # "hub" for a listed hub tool; absent otherwise
     name: str | None
     provider: str | None
     routed: str | None           # a routed row: what treg picks among, and where the rest are

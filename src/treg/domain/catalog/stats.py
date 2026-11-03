@@ -8,8 +8,7 @@ it was always being written and never read.
 
 This is the half of "compare providers" that only treg can do. Anyone can read a rate card; only the
 party that sees every call, across every tenant, can say which of nine email-lookup providers
-answered 400 times without failing. It is what makes an agent's choice factual instead of a guess —
-see `docs/CAPABILITY-CHOICE-PLAN.md`.
+answered 400 times without failing. It is what makes an agent's choice factual instead of a guess.
 
 **Aggregate only, and never below a floor.** Rows are pooled across every org, so the output must
 carry nothing that could identify a caller: counts, rates and percentiles only — never who, never

@@ -2,7 +2,6 @@
 
 These pin the judgement calls, not the arithmetic: which failures count against a provider, when we
 refuse to publish a rate at all, and that nothing identifying a caller leaks into an aggregate.
-See docs/CAPABILITY-CHOICE-PLAN.md.
 """
 
 from __future__ import annotations

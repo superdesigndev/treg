@@ -1,4 +1,4 @@
-"""Routed endpoints — `POST /call/treg.<capability>` (docs/CAPABILITY-ROUTING-PLAN.md §3–§5).
+"""Routed endpoints — `POST /call/treg.<capability>`.
 
 The router PICKS a child endpoint and runs it through the SAME call use case as any `/call/`:
 each attempt is a full `execute_call` on a child `CallContext` whose `call_ref` is
@@ -72,7 +72,8 @@ from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import paths as P
 from ...domain.catalog.routing import quality as route_quality
-from ...domain.catalog.routing.contracts import canonical_identity, declared_miss, declared_not_found, miss_status
+from ...domain.catalog.routing.contracts import (canonical_identity, declared_miss, declared_not_found,
+                                                 invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
     MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank, unscoped,
 )
@@ -198,10 +199,11 @@ def _can_answer_fully(contract, adapter) -> bool:
 
 
 def _subject(key: str, value) -> str:
-    """A comparable form of an identity value: the profile handle for a LinkedIn URL, else the text."""
+    """A comparable form of an identity value: the profile handle for a LinkedIn URL, else the text
+    without a URL's scheme, `www.` and trailing slash (the identity's URL is normalised, a provider's echo is not)."""
     if key == "linkedin_url" or key.endswith("_handle"):
         return (P.linkedin_handle(value) or str(value)).strip("/").lower()
-    return str(value).strip().lower()
+    return re.sub(r"^(?:https?://)?(?:www\.)?", "", str(value).strip().lower()).rstrip("/")
 
 
 def _other_subject(contract, identity: dict, core: dict) -> str | None:
@@ -703,6 +705,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             "error": "route_upgrade_unsupported", "endpoint_id": ep["id"],
             "message": f"{UPGRADE_HEADER} names an identity key the answer carries and {ep['id']} accepts on its own; "
                        f"{options.upgrade!r} is not one. Nothing was charged."})
+    if contract and (invalid := invalid_identity(contract, given)):
+        raise ResolutionFailed("route_no_candidate", status_code=422, detail={
+            "error": "invalid_identity", "endpoint_id": ep["id"], "invalid": invalid,
+            "message": "; ".join(f"{i['field']} must be a {i['type']}" for i in invalid)
+                       + ". Omit a field you don't have rather than sending a placeholder. Nothing was charged."})
     await capacity_view.load()
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
@@ -738,6 +745,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     best: tuple[int, tuple[Candidate, dict, dict, bytes]] | None = None   # best WEAK answer seen
     other_subject: list[tuple[str, tuple]] = []   # X-Treg-Route-Complete: answers about another identifier, never returned unconfirmed
     cost_capped = False            # true when any candidate was skipped due to max-cost ceiling
+    rate_waits: list[int] = []     # retry_after_s of candidates skipped by treg's own rate window
     unconfirmed: list[tuple[str, tuple]] = []   # X-Treg-Route-Confirm: hits waiting for a second provider
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
@@ -810,6 +818,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     raise
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
                                      exc.status_code, 0, "endpoint call allowance exhausted"))
+                continue
+            if exc.kind == "provider_rate_limited":
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                     exc.status_code, 0, "treg's account is at its rate limit"))
+                rate_waits.append(exc.retry_after_s or 1)
                 continue
             if exc.kind in _GLOBAL_REFUSALS or (
                 exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
@@ -1064,6 +1077,15 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if winner is None and best is not None:
         winner = best[1]          # nobody cleared min_results — the fullest answer we paid for wins
     if winner is None:
+        if tried and len(rate_waits) == len(tried):
+            wait = min(rate_waits)
+            _summarize(parent, tried_count=len(tried))
+            _audit_parent(parent, ep, 429, 0, audit_client)
+            raise GatewayFailed("provider_rate_limited", status_code=429, detail={
+                "error": "provider_rate_limited", "endpoint_id": ep["id"], "retry_after_s": wait,
+                "tried": [t.view() for t in tried],
+                "message": f"every candidate for {ep['id']} is at treg's rate limit; nothing was "
+                           f"charged, try again in {wait} s"}, retry_after_s=wait)
         if tried and all(t.outcome == "skipped" for t in tried):
             raise ResolutionFailed("route_max_cost", status_code=402, detail={
                 "error": "route_max_cost", "endpoint_id": ep["id"],
