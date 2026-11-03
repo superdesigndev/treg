@@ -13,7 +13,7 @@ from httpx import ASGITransport, AsyncClient
 
 from sqlalchemy import text
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 
 from treg.api import app
 from treg.infra.db import reset_db, session_maker
@@ -33,7 +33,7 @@ async def c():
 
 
 async def _register(c: AsyncClient, email: str) -> str:
-    return (await c.post("/users", json={"email": email})).json()["token"]
+    return (await verified_signup(c, json={"email": email})).json()["token"]
 
 
 async def _team_with_member(c: AsyncClient):

@@ -96,10 +96,7 @@ async def test_agent_can_call_but_cannot_act_as_a_user(env):
 async def test_no_login_door_can_resolve_an_agent_address(env):
     """The address is unroutable, but the block is explicit so no door can hand a human the identity."""
     email = (await _agent(env))["email"]
-    # open registration must not squat/reuse the address
-    r = await env.c.post("/users", json={"email": email})
-    assert r.status_code == 403 and "cannot be used to sign in" in r.text
-    # nor the email one-time-code door: refused up front, so no code is ever minted for it
+    # the email one-time-code door refuses it up front, so no code is ever minted for it
     r = await env.c.post("/auth/email/start", json={"email": email})
     assert r.status_code == 403 and "cannot be used to sign in" in r.text
 

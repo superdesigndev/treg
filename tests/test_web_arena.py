@@ -18,6 +18,7 @@ from treg.infra.db import session_maker
 from treg.models import Hold, LedgerEntry
 from test_marketplace_call import _balance
 from test_routing import _relay_by_provider
+from conftest import verified_signup
 
 
 def test_web_input_enforces_task_limits_and_public_urls():
@@ -383,7 +384,7 @@ async def test_web_arena_run_is_private_to_its_creator(clients, monkeypatch):
         run_id = quote.json()["id"]
         path = f"/web-arena/api/runs/{run_id}"
         attempt_id = (await clients.get(path)).json()["attempts"][0]["id"]
-        other = (await clients.post("/users", json={"email": "other-web-arena@example.com"})).json()["token"]
+        other = (await verified_signup(clients, json={"email": "other-web-arena@example.com"})).json()["token"]
         headers = {"X-Treg-Token": other}
         assert (await clients.get(path, headers=headers)).status_code == 404
         assert (await clients.post(path + "/start", headers=headers)).status_code == 404
