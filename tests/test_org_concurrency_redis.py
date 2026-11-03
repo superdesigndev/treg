@@ -2,21 +2,25 @@
 import asyncio
 import os
 import sys
+import time
 from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
+from conftest import STALL_PROOF_TIMEOUT_S, pause_loop_once_in_flight
 
 from treg.infra import kv
 from treg.infra import org_concurrency as guard
 
 
 @pytest.fixture
-async def stores():
+async def stores(monkeypatch):
     url = os.environ.get("TREG_TEST_KV_URL")
     if not url:
         pytest.skip("requires disposable loopback Redis via TREG_TEST_KV_URL")
     assert urlsplit(url).hostname in {"127.0.0.1", "localhost", "::1"}, "local Redis only"
+    monkeypatch.setattr(kv, "_TIMEOUT_S", STALL_PROOF_TIMEOUT_S)
+    monkeypatch.setattr(kv, "_OPTIONAL_TIMEOUT_S", STALL_PROOF_TIMEOUT_S)
     first, second = kv.RedisStore(url), kv.RedisStore(url)
     key = f"treg-test:org-slots:{uuid4().hex}"
     try:
@@ -29,6 +33,7 @@ async def stores():
 
 async def test_atomic_n_slots_across_independent_clients_and_process(stores):
     first, second, key = stores
+    pause_loop_once_in_flight((first, second), 20, 1.2)
     results = await asyncio.gather(*(
         (first if n % 2 else second).acquire_slot(key, f"owner-{n}", 5000, 3)
         for n in range(20)
@@ -37,9 +42,10 @@ async def test_atomic_n_slots_across_independent_clients_and_process(stores):
     assert results.count("busy") == 17
     script = """
 import asyncio, sys
-from treg.infra.kv import RedisStore
+from treg.infra import kv
 async def main():
-    store = RedisStore(sys.argv[1])
+    kv._TIMEOUT_S = kv._OPTIONAL_TIMEOUT_S = float(sys.argv[3])
+    store = kv.RedisStore(sys.argv[1])
     try:
         print(await store.acquire_slot(sys.argv[2], 'other-process', 5000, 3))
     finally:
@@ -47,7 +53,7 @@ async def main():
 asyncio.run(main())
 """
     process = await asyncio.create_subprocess_exec(
-        sys.executable, "-c", script, os.environ["TREG_TEST_KV_URL"], key,
+        sys.executable, "-c", script, os.environ["TREG_TEST_KV_URL"], key, str(STALL_PROOF_TIMEOUT_S),
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     stdout, stderr = await asyncio.wait_for(process.communicate(), 10)
     assert process.returncode == 0, stderr.decode()
@@ -69,12 +75,13 @@ async def test_expired_owner_cannot_renew_or_release_replacement(stores):
 
 async def test_renewal_outlives_original_lease_and_shorter_owner_does_not_shorten_key(stores):
     first, second, key = stores
-    assert await first.acquire_slot(key, "long", 2000, 2) == "acquired"
-    assert await second.acquire_slot(key, "short", 150, 2) == "acquired"
-    assert await first._client.pttl(key) > 1500
-    for _ in range(4):
-        await asyncio.sleep(0.06)
-        assert await second.renew_slot(key, "short", 150) == "renewed"
+    assert await first.acquire_slot(key, "long", 30_000, 2) == "acquired"
+    assert await second.acquire_slot(key, "short", 5_000, 2) == "acquired"
+    assert await first._client.pttl(key) > 25_000
+    original_deadline = await first._client.zscore(key, "short")
+    time.sleep(0.2)
+    assert await second.renew_slot(key, "short", 20_000) == "renewed"
+    assert await first._client.zscore(key, "short") >= original_deadline + 15_000
     assert await first.acquire_slot(key, "third", 1000, 2) == "busy"
     assert await second.release_slot(key, "short") == "released"
     assert await second.release_slot(key, "short") == "not_owned"

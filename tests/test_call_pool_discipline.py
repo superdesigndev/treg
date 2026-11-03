@@ -67,6 +67,8 @@ async def test_a_metered_call_holds_no_db_connection_while_upstream_is_called(
     clients: AsyncClient, platform_on, monkeypatch,
 ):
     await audit.drain()  # an earlier test's fire-and-forget audit row must not be counted
+    # This call's auth would schedule a last-used write on SQLite's shared pool.
+    monkeypatch.setattr(managed_keys, "touch", lambda *args, **kwargs: None)
     seen: list[int] = []
     monkeypatch.setattr(call_service, "relay", _relay_that_checks_the_pool(seen))
     r = await clients.get(f"/call/{EP}?aweme_id=7")

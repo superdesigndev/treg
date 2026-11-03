@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 
 from treg import reconcile
 from treg.api import app
@@ -212,7 +212,7 @@ async def test_repeat_rate_top_repeated_only_lists_actual_repeats(c: AsyncClient
 # ---- the endpoints + their gate ----------------------------------------------------------------
 @pytest.mark.parametrize("report", ["drift", "spend", "repeats"])
 async def test_reconcile_endpoints_require_superadmin(c: AsyncClient, report: str):
-    u = (await c.post("/users", json={"email": "orgadmin@x.dev"})).json()  # owner of their own org
+    u = (await verified_signup(c, json={"email": "orgadmin@x.dev"})).json()  # owner of their own org
     assert (await c.get(f"/admin/reconcile/{report}", headers=_h(u["token"]))).status_code == 403
     assert (await c.get(f"/admin/reconcile/{report}")).status_code == 401
     r = await c.get(f"/admin/reconcile/{report}", headers=_a())

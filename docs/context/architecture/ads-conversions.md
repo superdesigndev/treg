@@ -58,13 +58,13 @@ developer-token header; that setting serves only the read-side Ads catalog calls
 
 ## Store
 
-`signup._ad_attribution_from` runs at both signup doors (`POST /users`, `POST /orgs`) and writes
+`signup._ad_attribution_from` runs at team creation (`POST /orgs`) and writes
 `ad_gclid` (historical name, any click id), `ad_click_id_type`, `ad_landing`, `ad_click_at` onto the
 new `Org`. Never overwritten: attribution is the first click that led to a signup.
 
 `stash_ad_click` records the cookie against an email only after the email is proven (email-verify,
 Google or GitHub callback), never at email-start, where anyone can type any address. `_ad_cookie_for`
-falls back to the stash at both doors only when the request cookie is empty and the row is under 90
+falls back to the stash only when the request cookie is empty and the row is under 90
 days old. The signup that stores a click deletes that email's stash row in the same transaction, and
 `treg-worker admin purge-ad-clicks` (schedule it daily) deletes rows past 90 days. The stash goes
 through neither audit nor analytics, and a stash failure never fails sign-in; its log line omits the

@@ -169,7 +169,7 @@ agents then built against a constitution that was wrong.
   (hub.md "The surfaces"). See `docs/context/architecture/hub.md`.
 - **Signup credit.** Once per new verified user and once per inbox (Gmail dots and `+tag` aliases
   share one), enforced by a user-level atomic claim plus a `SignupPromoClaim` row committed with
-  the grant. Team deletion never restores eligibility; legacy registration is not email proof.
+  the grant. Team deletion never restores eligibility; an invitation code is not email proof.
   An installed policy extension may defer it through the `signup_credit` decision point
   (`src/treg/policy.py`, docs/context/architecture/policy-extensions.md); extensions only restrict.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives

@@ -365,8 +365,6 @@ async def test_every_token_bearing_response_is_no_store(clients, sent_otps):
     assert default.json()["token"] and default.headers["cache-control"] == "no-store"
     legacy = await clients.post("/orgs", json={"name": "No store legacy"})
     assert legacy.json()["token"] and legacy.headers["cache-control"] == "no-store"
-    registered = await clients.post("/users", json={"email": "no-store-signup@example.dev"})
-    assert registered.json()["token"] and registered.headers["cache-control"] == "no-store"
     invite = await clients.post(f"/orgs/{org_id}/invites", json={
         "email": "no-store-invite@example.dev", "role": "member",
     })

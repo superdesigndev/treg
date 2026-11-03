@@ -3556,6 +3556,14 @@ adapters:
     in: {q: body.query}
     out: {results: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
+  exa.web.search.lite:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query}
+    in_expr: {body.numResults: limit}
+    const: {body.type: lite}
+    out: {results: results, count: "len(results)"}
+    miss: "coalesce(results, []) == []"
   scrapegraphai.web.search.extract:
     route: false
     accepts: [[q]]

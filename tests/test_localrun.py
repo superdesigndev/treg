@@ -17,6 +17,7 @@ from httpx import AsyncClient
 from treg import cli as _cli
 from treg import localrun
 from treg.models import Tool
+from conftest import verified_signup
 
 
 @pytest.fixture(autouse=True)
@@ -399,7 +400,7 @@ async def test_delete_secret_blocked_when_used_by_cli_inject(clients: AsyncClien
 
 async def test_grant_cross_org_isolation(clients: AsyncClient):
     await _mk_tool(clients, cli=_ENV_CLI)
-    other = (await clients.post("/users", json={"email": "eve@other.dev"})).json()["token"]
+    other = (await verified_signup(clients, json={"email": "eve@other.dev"})).json()["token"]
     r = await clients.post("/tools/stripe/grant", json={"argv": []},
                            headers={"X-Treg-Token": other})
     assert r.status_code == 404                                     # her org has no such tool
