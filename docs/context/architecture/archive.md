@@ -410,6 +410,8 @@ one body; then versions older than `archive_prune_min_age_days` beyond the newes
 `archive_prune_keep_versions` on keys undemanded for 14 days. `archive`-policy endpoints are
 exempt. Batch 0 disables. Stripped `both` rows become `r2` and keep their logical counts; only
 erasure deletes objects.
+Versions whose `content_hash` an unexpired trimmed `IdempotentCall` row names are protected too
+(read once per pass over Alembic 0095's partial index): that row replays from them.
 
 ## Change observation
 

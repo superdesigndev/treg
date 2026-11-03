@@ -29,6 +29,8 @@ sources:
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
+  - src/treg/alembic/versions/0094_idempotentcall_archive_link.py
+  - src/treg/alembic/versions/0095_idempotentcall_archive_live_index.py
   - src/treg/alembic/versions/0054_callrecord_org_id_id.py
   - src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py
   - src/treg/alembic/versions/0091_remove_prefix_covered_indexes.py
@@ -272,6 +274,11 @@ explicitly and the FK cascades as a backstop, so token revocation never 500s on 
   `idempotency_response_too_large` is kept instead.
 - The per-call expired-label sweep deletes at most `IDEMPOTENCY_SWEEP_BATCH` rows with
   `FOR UPDATE SKIP LOCKED`, so a member's concurrent calls never queue on each other.
+- `treg-worker idempotency prune` (hourly) deletes expired completed rows for every team, then
+  `trim_archived_answers` drops `response_body` from a live `done` 2xx row whose call's archive answer
+  `archive.bytes_on_file` confirms and whose own sha256 matches. The row keeps `archive_key_hash` /
+  `archive_content_hash`; a replay reads the bytes with `archive.answer_bytes` after its session
+  closes, hash-checked, and answers 410 `idempotency_response_lost` if they are gone, never a new run.
 
 ## Caller tags (`X-Treg-Meta`)
 

@@ -330,6 +330,9 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   off until `TREG_MEDIA_STORE_ENDPOINT`, its keys, `TREG_MEDIA_STAGING_BUCKET` and
   `TREG_MEDIA_PUBLIC_BUCKET` are set (SECURITY.md, "Picture storage"); `TREG_MEDIA_BASE_URL` empty
   means treg serves the bucket at `/media-files/`.
+- **`idempotency prune`**: hourly. Deletes expired retry answers for every team and drops a live
+  row's copy of an answer the archive holds (`--skip-trim` keeps copies). Exits nonzero on an
+  incomplete run; run one instance at a time.
 - **`admin purge-evidence`** and **`admin purge-ad-clicks`**: daily. Without them expired rows stop
   being shown or read but stay in the database.
 - **`hub check`** runs each live [hub](../architecture/hub.md) tool's `check.json` as its maker
