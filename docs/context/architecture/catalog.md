@@ -1057,6 +1057,12 @@ an invalid extra never disables the primary.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a
   503 stays reserved for capacity/key drops.
+- **More rows than `limit` are kept and disclosed**: when the caller sent `limit` and the serving
+  child (one that does not accept `limit`, or floors it) or a merge returns more list rows, every
+  row and an honest `count` stay, and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` name
+  `{asked, returned, why}`. The extra rows are already billed and a routed answer is never altered;
+  a contract default is not a question anyone asked, so it does not trigger the note. `limit`
+  stays out of `ignored_filters` (a page size, not a narrowing filter).
 - **Free text is a filter, not identity**: a brief's requirements ride in `keywords` (always sent),
   never in `q` alone, or a provider matching the `{title}` variant never sees them. Hard filters
   that broaden or over-constrain measured worse; add one opt-in, and measure it first.
