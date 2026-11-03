@@ -225,7 +225,11 @@ Tools reach the rest of treg through `httpx.ASGITransport` against our own app â
 through the real routes, without a socket. That matters because the enforcement rules (deny rules,
 capability pins, per-member tool access, the credential ladder, metering) live in those routes. A
 second path that "just read the database" would be a second implementation of every one of them,
-drifting quietly. The in-process client stamps `X-Treg-Client: mcp` for the team MCP and
+drifting quietly. Because those requests carry the caller's credential (for an OAuth bearer, the
+identity it is exchanged for), the call tools refuse an `endpoint_id` with an empty, `.` or `..`
+segment at any depth of percent-encoding (a trailing slash excepted): httpx collapses dot segments
+before the request, so `../orgs/...` would otherwise reach a management route. `_call_url` checks
+the final path is still under `/call/` or `/catalog/call/` as a second guard. The in-process client stamps `X-Treg-Client: mcp` for the team MCP and
 `X-Treg-Client: claude-connector` for V2 (attribution, never a gate), so each MCP surface is
 distinguishable from unreported CLI traffic and from the other MCP surface. It also forwards the
 host behind the tool call, as `_bearer` read it: `X-Treg-Mcp-Client` (`clientInfo.name`) and
