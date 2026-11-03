@@ -8,6 +8,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 
@@ -431,6 +432,21 @@ def _as_url(v: Any) -> str | None:
 
 
 _TYPE_NORMALISERS = {"url": _as_url}
+_LINKEDIN_HOST = re.compile(r"(?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com", re.I)
+
+
+def _linkedin_profile_ok(url: str) -> bool:
+    """False for a LinkedIn `/in/` URL whose handle LinkedIn could not have issued: shorter than its
+    3-character minimum or without a letter or digit. `/in/N/A` is a placeholder joined onto the
+    profile path, not a profile. Other LinkedIn paths and other hosts are not judged here."""
+    parts = urlsplit(url)
+    if not _LINKEDIN_HOST.fullmatch((parts.hostname or "").strip(".")):
+        return True
+    segments = parts.path.split("/")
+    if len(segments) < 2 or segments[1].lower() != "in":
+        return True
+    handle = unquote(segments[2]) if len(segments) > 2 else ""
+    return len(handle) >= 3 and bool(re.search(r"[^\W_]", handle))
 
 
 def _sent(v: Any) -> bool:
@@ -442,10 +458,16 @@ def invalid_identity(contract: Contract, given: dict[str, Any]) -> list[dict[str
     bad = []
     for k, t in contract.identity_types.items():
         v = given.get(k)
-        if _sent(v) and (norm := _TYPE_NORMALISERS.get(t)) and norm(v) is None:
-            shown = v if isinstance(v, str) else json.dumps(v, default=str)
-            bad.append({"field": k, "type": t,
-                        "value": shown[:200].encode("utf-8", "backslashreplace").decode("utf-8")})
+        if not _sent(v) or not (norm := _TYPE_NORMALISERS.get(t)):
+            continue
+        normalised = norm(v)
+        if normalised is not None and k == "linkedin_url" and not _linkedin_profile_ok(normalised):
+            t = "LinkedIn profile URL"
+        elif normalised is not None:
+            continue
+        shown = v if isinstance(v, str) else json.dumps(v, default=str)
+        bad.append({"field": k, "type": t,
+                    "value": shown[:200].encode("utf-8", "backslashreplace").decode("utf-8")})
     return bad
 
 

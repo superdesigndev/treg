@@ -1010,8 +1010,10 @@ an invalid extra never disables the primary.
     refusals are terminal.
   - Before planning, each identity field is type-checked (`invalid_identity`, 422, even when another
     complete variant was sent). A `url` must parse as an HTTP URL with a dotted host and no userinfo;
-    a scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped
-    value.
+    a scheme-less one gets `https://`. A `linkedin_url` on a linkedin.com host whose `/in/` handle is
+    shorter than LinkedIn's 3-character minimum or has no letter or digit (`/in/N/A`, `/in/-`) is
+    refused the same way: it names no profile, and one provider answers it with the same unrelated
+    person every time. A derived `linkedin_url` is built only from a handle-shaped value.
   - A 2xx lacking a REQUIRED core field is a MISS. The waterfall is on by default;
     `X-Treg-Route-Waterfall: 0` stops at the first miss. `X-Treg-Route-Min-Results: N` marks a thin
     answer `weak` and continues at most `MAX_WEAK_FALLBACKS` times, returning the fullest answer:
