@@ -332,7 +332,7 @@ contracts:
       results: {type: list, required: true, note: "the provider's own organic result rows (title, link/url, snippet…) — shapes differ per provider"}
       count: {type: int}
     miss: "results == []"
-    question_miss: "no_result_on_site(q, results)"   # a site: question answered only from other sites
+    question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
     prefer: [crawl4ai]
@@ -1294,7 +1294,7 @@ contracts:
       results: {type: list, required: true, note: "the provider's own ranked result objects; raw is the same body"}
       count: {type: int}
     miss: "results == []"
-    question_miss: "no_result_on_site(q, results)"   # a site: question answered only from other sites
+    question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
     prefer: [crawl4ai]
