@@ -11,6 +11,10 @@ same reserve-and-settle, under `{run}:s{n}`.
 What this file enforces that the engine cannot: `uses` (a call to a tool outside the manifest's
 list is refused and the run stops), the 20-call cap, the run ceiling, the output's declared
 fields, and the log caps.
+
+`TREG_HUB_SANDBOX` selects the engine. `quickjs` (the default) is the process above. `workers`
+is the loader in `sandbox_workers`: same host rules, the script in another isolate, `ctx.call`
+back here. The runner does not choose.
 """
 
 from __future__ import annotations
@@ -24,6 +28,8 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
+
+from ...config import get_settings
 
 try:
     import resource
@@ -100,6 +106,97 @@ def _kill_group(pgid: int) -> None:
         pass
 
 
+class _Host:
+    """The rules both engines obey: call cap, charge cap, log cap, per-call timeout, wall clock.
+
+    The engine delivers messages. A refusal is remembered on `failure` and is also returned to the
+    script; the driver raises `failure` so a script that catches the error still does not finish.
+    """
+
+    def __init__(self, execute: CallExecutor, log: list[str], charges: list[dict[str, Any]] | None,
+                 max_charge_micro: int, wall_s: int) -> None:
+        self.execute, self.log, self.charges = execute, log, charges
+        self.max_charge_micro, self.wall_s = max_charge_micro, wall_s
+        self.deadline = asyncio.get_running_loop().time() + wall_s + 2
+        self.calls = 0
+        self.failure: SandboxError | None = None
+        self.sem = asyncio.Semaphore(MAX_PARALLEL)
+
+    def left(self) -> float:
+        return self.deadline - asyncio.get_running_loop().time()
+
+    def add_log(self, text: object) -> None:
+        if len(self.log) < MAX_LOG_LINES:
+            self.log.append(str(text)[:MAX_LOG_CHARS])
+
+    def add_logs(self, lines: object) -> None:
+        if not isinstance(lines, list):
+            raise SandboxError("protocol", "logs must be a list")
+        for line in lines:
+            self.add_log(line)
+
+    def on_charge(self, usd: object, label: object) -> None:
+        # One line at a time. Refused, and the run stops, when the manifest declares no cap, the sum
+        # passes the cap, or the run has already charged 20 times: every line the caller pays is
+        # bounded by the `max_price_usd` they saw before the run.
+        if self.charges is None or self.max_charge_micro <= 0:
+            raise SandboxError("refused", "ctx.charge needs `pricing.max_price_usd` in the manifest")
+        if not isinstance(usd, (int, float)) or isinstance(usd, bool) or not (usd >= 0) or usd != usd:
+            raise SandboxError("refused", "ctx.charge: the amount must be a number of dollars, 0 or more")
+        micro = int(round(float(usd) * 1_000_000))
+        if sum(c["micro"] for c in self.charges) + micro > self.max_charge_micro:
+            raise SandboxError(
+                "refused",
+                f"ctx.charge: {usd} would take this run's charges past pricing.max_price_usd ({self.max_charge_micro / 1_000_000})",
+            )
+        if len(self.charges) >= MAX_CHARGES:
+            raise SandboxError("refused", f"the run passed its cap of {MAX_CHARGES} charges")
+        if micro > 0:
+            self.charges.append({"micro": micro, "label": str(label)[:80]})
+
+    def admit_call(self, msg: dict) -> None:
+        self.calls += 1
+        if self.calls > MAX_CALLS:
+            exc = SandboxError("refused", f"the run passed its cap of {MAX_CALLS} calls")
+            self.failure = self.failure or exc
+            raise exc
+
+    async def perform_call(self, msg: dict) -> dict:
+        cid = msg.get("id")
+        async with self.sem:
+            try:
+                opts = msg.get("opts") or {}
+                if not isinstance(opts, dict):
+                    raise SandboxError("refused", "ctx.call's second argument must be an object")
+                left = self.left()
+                if left <= 0:
+                    raise SandboxError("timeout", f"the run passed its {self.wall_s} s wall clock")
+                # `timeout_s` on ctx.call: the script's own limit for THIS call. Passing it is not a
+                # run failure: the call answers status 0 with `timed_out: true` and the script
+                # decides. The cancelled child releases its hold.
+                own = opts.get("timeout_s")
+                own = float(own) if isinstance(own, (int, float)) and not isinstance(own, bool) and own > 0 else None
+                budget = min(left, own) if own is not None else left
+                try:
+                    result = await asyncio.wait_for(
+                        self.execute(CallRequest(target=str(msg.get("target", "")), opts=opts)), timeout=budget)
+                except asyncio.TimeoutError:
+                    if own is not None and budget < left:
+                        result = {"status": 0, "headers": {}, "json": None, "text": "",
+                                  "timed_out": True, "cost_usd": 0}
+                    else:
+                        raise SandboxError("timeout", f"the run passed its {self.wall_s} s wall clock during a call") from None
+                return {"op": "result", "id": cid, **result}
+            except SandboxError as exc:
+                self.failure = self.failure or exc
+                return {"op": "refused", "id": cid, "error": exc.message}
+
+    def take_output(self, out: object) -> dict:
+        if not isinstance(out, dict):
+            raise SandboxError("output", "run(ctx) must return one JSON object")
+        return out
+
+
 async def run_script(
     script: str, inputs: dict[str, Any], *, wall_s: int, execute: CallExecutor,
     log: list[str], data: list[dict[str, Any]] | None = None,
@@ -107,6 +204,15 @@ async def run_script(
 ) -> dict[str, Any]:
     """Run one script to its output. `execute` runs each ctx.call; `log` receives the script's
     lines. Raises SandboxError when the run cannot produce an output."""
+    host = _Host(execute, log, charges, max_charge_micro, wall_s)
+    if get_settings().hub_sandbox == "workers":
+        from . import sandbox_workers
+        return await sandbox_workers.run(host, script, inputs, data)
+    return await _run_quickjs(host, script, inputs, data)
+
+
+async def _run_quickjs(host: _Host, script: str, inputs: dict[str, Any],
+                       data: list[dict[str, Any]] | None) -> dict[str, Any]:
     home = tempfile.mkdtemp(prefix="treg-hub-")
     proc = await asyncio.create_subprocess_exec(
         sys.executable, "-m", "treg.hub_sandbox",
@@ -116,74 +222,45 @@ async def run_script(
     )
     pgid = proc.pid
     assert proc.stdin and proc.stdout and proc.stderr
-    calls = 0
     try:
         proc.stdin.write((json.dumps({"op": "run", "script": script, "inputs": inputs, "data": data,
-                                      "memory_mb": MEMORY_MB, "wall_s": wall_s})
+                                      "memory_mb": MEMORY_MB, "wall_s": host.wall_s})
                           + "\n").encode())
         await proc.stdin.drain()
-        deadline = asyncio.get_running_loop().time() + wall_s + 2
+        # The child's startup is not part of the script's wall. The host was built before the spawn.
+        host.deadline = asyncio.get_running_loop().time() + host.wall_s + 2
         # Calls run as tasks, MAX_PARALLEL at a time (the JSON road's width), and each reply goes
         # back to the child by id the moment its task finishes: five calls in one Promise.all are
         # five in flight. The child's stdout is read by one reader task so a reply write and a
         # pending readline never contend. A refused call still ends the run.
-        sem = asyncio.Semaphore(MAX_PARALLEL)
         in_flight: set[asyncio.Task] = set()
-        failure: SandboxError | None = None
 
         async def write(reply: dict) -> None:
             proc.stdin.write((json.dumps(reply) + "\n").encode())
             await proc.stdin.drain()
 
         async def one_call(msg: dict) -> None:
-            nonlocal failure
-            cid = msg.get("id")
-            async with sem:
-                try:
-                    opts = msg.get("opts") or {}
-                    if not isinstance(opts, dict):
-                        raise SandboxError("refused", "ctx.call's second argument must be an object")
-                    left = deadline - asyncio.get_running_loop().time()
-                    if left <= 0:
-                        raise SandboxError("timeout", f"the run passed its {wall_s} s wall clock")
-                    # `timeout_s` on ctx.call: the script's own limit for THIS call. Passing it is
-                    # not a run failure: the call answers status 0 with `timed_out: true` and the
-                    # script decides (an engine that did not answer in 60 s is "did not answer",
-                    # the other four still count). The cancelled child releases its hold.
-                    own = opts.get("timeout_s")
-                    own = float(own) if isinstance(own, (int, float)) and not isinstance(own, bool) and own > 0 else None
-                    budget = min(left, own) if own is not None else left
-                    try:
-                        result = await asyncio.wait_for(
-                            execute(CallRequest(target=str(msg.get("target", "")), opts=opts)), timeout=budget)
-                    except asyncio.TimeoutError:
-                        if own is not None and budget < left:
-                            result = {"status": 0, "headers": {}, "json": None, "text": "",
-                                      "timed_out": True, "cost_usd": 0}
-                        else:
-                            raise SandboxError("timeout", f"the run passed its {wall_s} s wall clock during a call") from None
-                    await write({"op": "result", "id": cid, **result})
-                except SandboxError as exc:
-                    failure = failure or exc
-                    try:
-                        await write({"op": "refused", "id": cid, "error": exc.message})
-                    except (BrokenPipeError, ConnectionResetError, RuntimeError):
-                        pass
+            reply = await host.perform_call(msg)
+            try:
+                await write(reply)
+            except (BrokenPipeError, ConnectionResetError, RuntimeError):
+                if reply.get("op") != "refused":
+                    raise
 
         reader = asyncio.ensure_future(proc.stdout.readline())
         while True:
-            left = deadline - asyncio.get_running_loop().time()
+            left = host.left()
             if left <= 0:
-                raise SandboxError("timeout", f"the run passed its {wall_s} s wall clock")
-            if failure is not None:
-                raise failure
+                raise SandboxError("timeout", f"the run passed its {host.wall_s} s wall clock")
+            if host.failure is not None:
+                raise host.failure
             done, _ = await asyncio.wait({reader, *in_flight}, timeout=left, return_when=asyncio.FIRST_COMPLETED)
             if not done:
-                raise SandboxError("timeout", f"the run passed its {wall_s} s wall clock")
+                raise SandboxError("timeout", f"the run passed its {host.wall_s} s wall clock")
             for task in list(in_flight):
                 if task in done:
                     in_flight.discard(task)
-                    task.result()          # SandboxError was captured into `failure`; anything else is a bug
+                    task.result()          # a bug in the call task; a refusal sits on host.failure
             if reader not in done:
                 continue
             try:
@@ -205,37 +282,20 @@ async def run_script(
                 raise SandboxError("protocol", "the sandbox wrote a line that is not JSON") from None
             op = msg.get("op")
             if op == "log":
-                if len(log) < MAX_LOG_LINES:
-                    log.append(str(msg.get("text", ""))[:MAX_LOG_CHARS])
+                host.add_log(msg.get("text", ""))
             elif op == "charge":
-                # ctx.charge: the script's price, one line at a time (a fee, per result, a margin, a
-                # vendor's cost). Refused, and the run stops, when the manifest declares no cap, the
-                # sum passes the cap, or the run has already charged 20 times: every line the caller
-                # pays is bounded by the `max_price_usd` they saw before the run.
-                usd = msg.get("usd")
-                if charges is None or max_charge_micro <= 0:
-                    raise SandboxError("refused", "ctx.charge needs `pricing.max_price_usd` in the manifest")
-                if not isinstance(usd, (int, float)) or isinstance(usd, bool) or not (usd >= 0) or usd != usd:
-                    raise SandboxError("refused", "ctx.charge: the amount must be a number of dollars, 0 or more")
-                micro = int(round(float(usd) * 1_000_000))
-                if sum(c["micro"] for c in charges) + micro > max_charge_micro:
-                    raise SandboxError("refused", f"ctx.charge: {usd} would take this run's charges past pricing.max_price_usd ({max_charge_micro / 1_000_000})")
-                if len(charges) >= MAX_CHARGES:
-                    raise SandboxError("refused", f"the run passed its cap of {MAX_CHARGES} charges")
-                if micro > 0:
-                    charges.append({"micro": micro, "label": str(msg.get("label", ""))[:80]})
+                host.on_charge(msg.get("usd"), msg.get("label", ""))
             elif op == "call":
-                calls += 1
-                if calls > MAX_CALLS:
-                    exc = SandboxError("refused", f"the run passed its cap of {MAX_CALLS} calls")
+                try:
+                    host.admit_call(msg)
+                except SandboxError as exc:
                     await write({"op": "refused", "id": msg.get("id"), "error": exc.message})
-                    raise exc
+                    raise
                 in_flight.add(asyncio.ensure_future(one_call(msg)))
             elif op == "done":
-                out = msg.get("output")
-                if not isinstance(out, dict):
-                    raise SandboxError("output", "run(ctx) must return one JSON object")
-                return out
+                if host.failure is not None:
+                    raise host.failure
+                return host.take_output(msg.get("output"))
             elif op == "error":
                 raise SandboxError(str(msg.get("kind", "script")), str(msg.get("message", ""))[:600])
             else:
