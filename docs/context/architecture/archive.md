@@ -176,12 +176,15 @@ archive no longer names the team; `callrecord` still keeps the team's `params_ha
 On request (`erase-archive --include-sole-public`), erasure also takes the public keys only this
 team paid for (`teams.sole_public_archive_key_ids`: marked by it and by no other team). A question
 another team also paid for stays. These keys are found through the team's marks, so this phase
-runs first, before the private phase deletes the marks. It reads every candidate once, in one
-capped statement, because an erasure of the same team running alongside (an owner delete, a second
-worker) can delete the marks at any moment. Each batch then re-checks only that no other team has
-paid for the key since; it does not require the team's own mark. A plain erasure that finishes
-before the public phase starts still leaves nothing for it to find, so the run order matters.
-Candidates are held in memory, so a team whose marks cannot be read within the cap fails loud. It deletes keys and snapshots through
+runs first, before the private phase deletes the marks. It reads every candidate before anything
+is deleted, a page of marks (`teams.archive_mark_hashes`, by `key_hash` from a cursor) per capped
+statement, so the read fits the cap however many questions the team paid for. An erasure of the
+same team running alongside (an owner delete, a second worker) can delete the marks at any moment,
+so the mark count is read before and after; fewer after means pages were read against vanishing
+marks, and the job raises before deleting anything. Each batch then re-checks only that no other
+team has paid for the key since; it does not require the team's own mark. A plain erasure that
+finishes before the public phase starts still leaves nothing for it to find, so the run order
+matters. Candidates are held in memory. It deletes keys and snapshots through
 `teams.erase_archive_keys`, which leaves marks alone. Unlike a private key, a public key can gain
 a snapshot from another team's call between the orphan judgment and the delete. That snapshot
 goes with the key, and its object, if new, is left unreferenced in the store. The cost of the
@@ -208,7 +211,9 @@ the whole table, and no batch fit the cap. `erase-archive --dry-run`
 passes and deletes nothing. It reports keys, snapshots, marks and distinct bodies; the bodies
 count is an upper bound, because a shared body stays.
 
-Endpoint running totals subtract what each DELETE returned, so two erasers subtract once. Because
+Endpoint running totals subtract what each DELETE returned, so two erasers subtract once, and
+move in endpoint order, the order `archive.flush_stats` locks the same rows in, so the two cannot
+deadlock. The worker prints the running totals to stderr after every committed batch. Because
 another process's upload cache cannot be told, `archive_bodies.prepare` trusts a remembered
 upload only after one `head` confirms the object still exists. Accepted race (documented in the
 module): another team records identical bytes between the orphan judgment and the delete; its

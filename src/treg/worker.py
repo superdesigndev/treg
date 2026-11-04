@@ -498,7 +498,8 @@ async def _admin_purge_ad_clicks(args) -> int:
 async def _admin_erase_archive(args) -> int:
     """Erase what one opted-out team stored in the archive (application/archive_erasure): the
     answer to an erasure request. Refuses a team still in the archive; opt it out first.
-    `--dry-run` counts what would go, opted out or not, and touches neither rows nor objects."""
+    `--dry-run` counts what would go, opted out or not, and touches neither rows nor objects.
+    Progress after each committed batch goes to stderr as one JSON line; the result to stdout."""
     from . import bootstrap
     from .application import archive_erasure
     from .infra.db import verify_db
@@ -509,9 +510,13 @@ async def _admin_erase_archive(args) -> int:
         print(json.dumps(await archive_erasure.count_org(args.org, include_sole_public=sole_public),
                          sort_keys=True))
         return 0
+    def progress(totals: dict) -> None:
+        print(json.dumps({"progress": totals}, sort_keys=True), file=sys.stderr, flush=True)
+
     try:
         async with bootstrap.archive_object_store():
-            result = await archive_erasure.erase_org(args.org, include_sole_public=sole_public)
+            result = await archive_erasure.erase_org(args.org, include_sole_public=sole_public,
+                                                     progress=progress)
     except archive_erasure.NotOptedOut as exc:
         print(json.dumps({"error": str(exc)}, sort_keys=True))
         return 1
