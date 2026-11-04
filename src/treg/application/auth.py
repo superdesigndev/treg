@@ -400,14 +400,21 @@ async def poll_cli_login(login_id: str, verifier: str = "") -> dict:
             return {"status": "pending"}  # no writes or commit for the ordinary waiting poll
         # DELETE RETURNING arbitrates competing consumers in the database. A pending entry must
         # survive polling, and no credential leaves this function before deletion is committed.
+        # PostgreSQL re-evaluates this predicate against an approval committed after the read
+        # above, so the verifier is enforced here rather than only on the row read.
+        challenge = Ephemeral.v["poll_challenge"].as_string()
+        held_for_poller = challenge.is_(None)
+        if verifier and verifier.isascii():
+            held_for_poller |= challenge == mcp_oauth.pkce_challenge(verifier)
         entry = (await db.execute(delete(Ephemeral).where(
             Ephemeral.ns == CLI_LOGIN_NS, Ephemeral.k == key,
-            (Ephemeral.v["result"].as_string().is_not(None))
+            (Ephemeral.v["result"].as_string().is_not(None) & held_for_poller)
             | (Ephemeral.expires_at <= _utcnow_naive()),
         ).returning(Ephemeral.v, Ephemeral.expires_at)
           .execution_options(synchronize_session=False))).one_or_none()
         result = {"status": "expired"}
-        if entry is not None and entry.expires_at > _utcnow_naive() and "result" in entry.v:
+        if (entry is not None and entry.expires_at > _utcnow_naive() and "result" in entry.v
+                and _poll_verifier_matches(entry.v, verifier)):
             result = json.loads(crypto.decrypt(entry.v["result"]))
         await db.commit()
         return result

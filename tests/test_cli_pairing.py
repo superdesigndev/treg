@@ -579,3 +579,28 @@ async def test_expired_challenge_handshake_reports_expired(workers, worker_clien
     response = await worker_clients[1].get("/auth/cli/poll", params={"login_id": started["login_id"]})
     assert response.json() == {"status": "expired"}
     assert await _row(started) is None
+
+
+@pytest.mark.parametrize("verifier", ["", "synthetic-wrong-verifier"])
+async def test_approval_racing_an_expired_looking_poll_keeps_the_token_reserved(workers, verifier):
+    secret = "synthetic-verifier-" + "r" * 30
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest()).rstrip(b"=").decode()
+    started = await workers.modules[0].start_cli_login(challenge)
+    await _expire(started["login_id"])
+    approved = {"token": "synthetic-protected-token", "email": "pairing@example.test"}
+    engine, approvals = workers.engines[1].sync_engine, []
+    def approve_before_delete(conn, cursor, statement, parameters, context, executemany):
+        if statement.lstrip().upper().startswith("DELETE") and not approvals:
+            approvals.append(True)
+            conn.execute(update(Ephemeral).where(
+                Ephemeral.ns == auth.CLI_LOGIN_NS, Ephemeral.k == crypto.hash_token(started["login_id"]),
+            ).values(v={"result": crypto.encrypt(json.dumps(approved)), "poll_challenge": challenge},
+                     expires_at=utcnow_naive() + timedelta(seconds=auth.HANDSHAKE_TTL)))
+    event.listen(engine, "before_cursor_execute", approve_before_delete)
+    try:
+        raced = await workers.modules[1].poll_cli_login(started["login_id"], verifier)
+    finally:
+        event.remove(engine, "before_cursor_execute", approve_before_delete)
+    assert approvals and "token" not in raced
+    assert "result" in (await _row(started)).v
+    assert await workers.modules[2].poll_cli_login(started["login_id"], secret) == approved
