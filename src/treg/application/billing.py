@@ -39,7 +39,7 @@ import json
 import logging
 import time
 from uuid import uuid4
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1428,9 +1428,9 @@ async def handle_webhook_event(db: AsyncSession, event: dict) -> dict:
     if (obj.get("metadata") or {}).get("treg_kind") == "enterprise_sso":
         return await handle_event(db, event)
     if kind == "checkout.session.completed":
-        return await _on_checkout_completed(db, obj)
+        return _settled(await _on_checkout_completed(db, obj))
     if kind == "payment_intent.succeeded":
-        return await _on_payment_succeeded(db, obj)
+        return _settled(await _on_payment_succeeded(db, obj))
     if kind == "payment_intent.payment_failed":
         return await _on_payment_failed(db, obj)
     if kind == "setup_intent.succeeded":
@@ -1442,6 +1442,16 @@ async def handle_webhook_event(db: AsyncSession, event: dict) -> dict:
     # crediting on those too would be a second door onto the same money. The invoice is a document; the
     # PaymentIntent is the payment.
     return {"handled": False, "type": kind}
+
+
+class BonusPending(RuntimeError):
+    """The top-up credited but its bonus did not; failing the delivery makes Stripe redeliver it."""
+
+
+def _settled(result: dict) -> dict:
+    if result.get("bonus_pending"):
+        raise BonusPending("top-up credited, bonus grant pending")
+    return result
 
 
 def _capture_topup_completed(to: str | None, org_id: int, org_slug: str, props: dict) -> None:
@@ -1481,24 +1491,14 @@ async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, 
     # sweep) rolls back to here.
     await db.commit()
     fresh = not already
-    bonus_micro, bonus_pct = 0, 0
-    if fresh and not auto:
-        # The tiered bonus on a MANUAL top-up, as its own promotional block: it burns first and is
-        # never refundable, so it must not inflate the purchased (refundable) block above. `fresh` is
-        # the idempotency guard — a webhook redelivery finds `already` and grants nothing. Swallowed
-        # like the referral qualification below: a failure here must not 500 the handler and make
-        # Stripe retry a payment that has already credited.
-        bonus_micro, bonus_pct = bonus_for_topup(amount_micro)
-        if bonus_micro > 0:
-            try:
-                await ledger.grant(db, org_id, amount_micro=bonus_micro, kind="bonus", once=False,
-                                   meta={"source": "topup_bonus", "payment_intent": pi_id,
-                                         "pct": bonus_pct, "topup_block_id": block_id})
-                await db.commit()
-            except Exception as e:  # noqa: BLE001
-                await db.rollback()
-                bonus_micro, bonus_pct = 0, 0
-                log.warning("billing: bonus grant failed for org %s on %s: %s", org_id, pi_id, e)
+    bonus_micro, bonus_pct, bonus_pending = 0, 0, False
+    if not auto:
+        try:
+            bonus_micro, bonus_pct = await _grant_topup_bonus(db, org_id, pi_id, block_id, amount_micro)
+        except Exception as e:  # noqa: BLE001 - reported through `bonus_pending`, see handle_webhook_event
+            await db.rollback()
+            bonus_pending = True
+            log.warning("billing: bonus grant failed for org %s on %s: %s", org_id, pi_id, e)
     after = await ledger.balance_of(db, org_id)
     if fresh:
         org = await db.get(Org, org_id)
@@ -1558,7 +1558,45 @@ async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, 
         await db.rollback()
         log.warning("billing: referral sweep failed: %s", e)
     return {"handled": True, "credited": fresh, "block_id": block_id,
-            "amount_micro": amount_micro, "balance_micro": after}
+            "amount_micro": amount_micro, "balance_micro": after, "bonus_pending": bonus_pending}
+
+
+# Stripe retries a live-mode event for up to three days.
+BONUS_HEAL_WINDOW = timedelta(days=3)
+
+
+async def _grant_topup_bonus(db: AsyncSession, org_id: int, pi_id: str, block_id: str,
+                             amount_micro: int) -> tuple[int, int]:
+    """Grant a manual top-up's tiered bonus unless this payment already has one; commits.
+
+    Returns what THIS call granted, `(0, 0)` when nothing was owed or it was already granted. Keyed on
+    the payment rather than on "first delivery", so a delivery after a failed grant completes it. The
+    purchased block's row lock serializes the concurrent `checkout.session.completed` and
+    `payment_intent.succeeded` deliveries of one payment, so the check and the grant cannot interleave.
+    """
+    bonus_micro, bonus_pct = bonus_for_topup(amount_micro)
+    if bonus_micro <= 0:
+        return 0, 0
+    created_at = (await db.execute(
+        select(CreditBlock.created_at).where(CreditBlock.id == block_id).with_for_update()
+    )).scalar_one()
+    if _now() - created_at > BONUS_HEAL_WINDOW or pi_id in await _bonused_payments(db, org_id):
+        await db.rollback()
+        return 0, 0
+    await ledger.grant(db, org_id, amount_micro=bonus_micro, kind="bonus", once=False,
+                       meta={"source": "topup_bonus", "payment_intent": pi_id,
+                             "pct": bonus_pct, "topup_block_id": block_id})
+    await db.commit()
+    return bonus_micro, bonus_pct
+
+
+async def _bonused_payments(db: AsyncSession, org_id: int) -> set[str]:
+    """PaymentIntents that already earned this org a top-up bonus (the grant entry's meta)."""
+    metas = (await db.execute(
+        select(LedgerEntry.meta).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "grant")
+    )).scalars().all()
+    return {str(m["payment_intent"]) for m in metas
+            if isinstance(m, dict) and m.get("source") == "topup_bonus" and m.get("payment_intent")}
 
 
 async def _on_checkout_completed(db: AsyncSession, session: dict) -> dict:

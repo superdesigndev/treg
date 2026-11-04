@@ -12,6 +12,7 @@ sources:
   - src/treg/models.py
   - src/treg/application/billing.py
   - src/treg/routers/billing.py
+  - tests/test_topup_reconcile.py
   - frontend/src/state/billing.js
   - frontend/src/state/data.js
   - frontend/src/pages/TeamPage.vue
@@ -450,8 +451,14 @@ never a Stripe coupon.
 
 **The top-up bonus is a separate `grant`, manual only.** `topup_bonus_tiers` (`{min_usd: percent}`)
 gives a manual top-up a `bonus` block at the highest tier at or below the amount (`bonus_for_topup`,
-integer arithmetic), granted inside `_credit`'s `fresh` branch so a redelivery grants nothing. It is
-its own block that burns with promo credit, so the purchased block stays exactly what the card paid:
+integer arithmetic). `_credit` grants it per payment, not per first delivery: under a row lock on the
+purchased block (so the two deliveries of one Checkout cannot both grant), it grants only when no
+`topup_bonus` entry names the PaymentIntent. When the grant fails, the delivery still credits and then
+fails (`BonusPending`, a 500), so Stripe redelivers and the redelivery grants it. A redelivery grants
+a missing bonus only while the purchased block is younger than Stripe's three-day retry window
+(`BONUS_HEAL_WINDOW`); an older gap is left to a human, who may already have paid it by hand
+outside the `topup_bonus` entries. It is its own block that burns with promo credit, so the purchased
+block stays exactly what the card paid:
 purchased credit is a refundable liability, the bonus is marketing spend. Automatic refills earn
 nothing (a bonus there would be a permanent margin cut on every refill). A refund or dispute does not
 reverse it; it is logged for a human (`bonus_blocks_flagged`), because the ledger has no path that
