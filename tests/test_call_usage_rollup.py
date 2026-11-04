@@ -14,7 +14,7 @@ from datetime import timedelta
 
 from sqlalchemy import event, func, select
 
-from treg.application import call_usage_rollup as rollup
+from treg.application import call_usage, call_usage_rollup as rollup
 from treg.routers import orgs
 from treg.infra.db import _engine as engine, session_maker
 from treg.models import CallRecord, CallUsageCursor, CallUsageDay, Org, RunRecord
@@ -212,3 +212,17 @@ async def test_todays_roster_counts_read_the_rollup_and_its_tail_once_caught_up(
     assert got == live + 1
     grouped = [sql for sql in statements if "group by" in sql]
     assert grouped and all("callusagecursor" in sql for sql in grouped), statements
+
+
+async def test_the_tail_after_the_cursor_counts_only_from_the_first_day_on(clients):
+    org_id, _ = await _team(clients)
+    midnight = utcnow_naive().replace(hour=0, minute=0, second=0, microsecond=0)
+    now = midnight + timedelta(hours=12)
+    await _add(_call(org_id, "a@example.dev", "t", now - timedelta(hours=1)))
+    await rollup.refresh(now=now)
+    await _add(_call(org_id, "a@example.dev", "t", now - timedelta(minutes=1)),
+               _call(org_id, "a@example.dev", "t", midnight - timedelta(minutes=1)))   # after the cursor, yesterday
+    async with session_maker() as db:
+        got = await call_usage.rows(db, org_id, midnight)
+    assert sum(n for *_, n, _ in got) == 2
+    assert {day for day, *_ in got} == {midnight.strftime("%Y-%m-%d")}

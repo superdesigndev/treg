@@ -125,7 +125,61 @@ def test_a_row_with_no_zero_diff_rewrite_stays_as_it_is(row, reason):
 
 def test_a_provider_decided_in_python_waits_for_its_batch():
     with pytest.raises(codemod.Refused, match="settle.py"):
-        codemod.rewrite({"id": "tikhub.x", "cost": {"type": "per_success", "value": 1}}, provider="tikhub")
+        codemod.rewrite({"id": "apollo.x", "cost": {"type": "per_success", "value": 1}}, provider="apollo")
+
+
+DEFAULTS = {"bill": {"miss": "charged", "error": "charged"}, "provenance": PROVENANCE}
+
+
+def test_a_row_is_written_against_its_providers_defaults():
+    adapter = {"miss": "data == null", "verified": True}
+    priced = codemod.rewrite({"id": "demo.x", "cost": {"type": "per_success", "value": 0.001, **PROVENANCE}},
+                             provider="demo", adapter=adapter, check_branches=False, defaults=DEFAULTS)
+    assert priced.keys == {"price": {"value": "0.001"},
+                           "error": {"when": codemod.ENVELOPE},
+                           "miss": {"when": {"path": "response.data", "op": "absent"}}}
+    free = codemod.rewrite({"id": "demo.y", "cost": {"type": "free"}}, provider="demo",
+                           check_branches=False, defaults=DEFAULTS)
+    assert free.keys == {"price": {"value": "0"}, "provenance": None}
+    unpriced = codemod.rewrite({"id": "demo.z", "tier": "extended"}, provider="demo",
+                               check_branches=False, defaults=DEFAULTS)
+    assert unpriced.keys == {"provenance": None} and unpriced.replaced == ("tier",)
+    ruled = codemod.rewrite({"id": "demo.w", "tier": "extended", "expect": {"path": "response.ok", "op": "present"}},
+                            provider="demo", check_branches=False, defaults=DEFAULTS)
+    assert ruled.keys == {"provenance": None} and ruled.replaced == ("tier",)
+
+
+def test_an_unpriced_row_moves_its_outcome_keys_to_v2_with_its_opt_out():
+    expected = codemod.rewrite({"id": "demo.z", "tier": "extended", "expect": {"json_path": "code", "equals": 0}},
+                               provider="demo", check_branches=False, defaults=DEFAULTS)
+    assert expected.keys == {"provenance": None, "expect": {"path": "response.code", "op": "equals", "value": 0}}
+    assert expected.replaced == ("tier", "expect") and _v2(expected)
+    missed = codemod.rewrite({"id": "demo.z", "miss": {"status": 404, "means": "No such user."}}, provider="demo",
+                             check_branches=False, defaults=DEFAULTS)
+    assert missed.keys == {"provenance": None, "miss": {"status": [404], "means": "No such user."}}
+    assert missed.replaced == ("miss",) and _v2(missed)
+    adapted = codemod.rewrite({"id": "demo.z"}, provider="demo", adapter={"miss": "data == null", "verified": True},
+                              check_branches=False, defaults=DEFAULTS)
+    assert adapted.keys == {"provenance": None, "error": {"when": codemod.ENVELOPE},
+                            "miss": {"when": {"path": "response.data", "op": "absent"}}} and adapted.adapter_miss
+
+
+@pytest.mark.parametrize("row,adapter,reason", [
+    ({"miss": {"status": 404, "means": "x"}}, {"miss": "a == null", "verified": True}, "one `miss` rule"),
+    ({"expect": {"status": 200}}, None, "does not parse: expect"),
+])
+def test_an_unpriced_row_whose_outcome_keys_have_no_v2_rewrite_stays_as_it_is(row, adapter, reason):
+    with pytest.raises(codemod.Refused, match=reason):
+        codemod.rewrite({"id": "demo.z", "tier": "extended", **row}, provider="demo", adapter=adapter,
+                        check_branches=False, defaults=DEFAULTS)
+
+
+def test_an_inert_2xx_miss_status_leaves_its_means_in_the_note():
+    change = codemod.rewrite({"id": "demo.x", "note": "Pass a fullname.", "miss": {"status": 200, "means": "Billed."},
+                              "cost": {"type": "per_success", "value": 1, **PROVENANCE}},
+                             provider="demo", check_branches=False)
+    assert change.keys["note"] == "Pass a fullname. Billed." and "miss" not in change.keys
+    assert change.replaced == ("cost", "miss", "note")
 
 
 FILE = """provider: demo
@@ -184,3 +238,18 @@ def test_a_rewrite_whose_kept_keys_do_not_parse_as_a_v2_row_is_refused():
     with pytest.raises(codemod.Refused, match="the rewritten row does not parse: async"):
         codemod.rewrite({"id": "demo.x", "async": False, "cost": {"type": "free"}}, provider="demo",
                         check_branches=False)
+
+
+@pytest.mark.parametrize("provider", ["hunter", "tikhub"])
+def test_the_codemod_runs_on_the_real_catalog(provider, capsys):
+    assert codemod.main(["--provider", provider]) == 0
+    assert f"cannot rewrite {provider}." in capsys.readouterr().out
+
+
+def test_only_a_provider_with_a_row_in_todays_spelling_has_its_defaults_withheld(tmp_path):
+    header = "defaults:\n  provenance: {source: docs, checked: '2026-10-01', confidence: documented}\n"
+    (tmp_path / "demo.yaml").write_text(f"provider: demo\n{header}endpoints:\n  - id: demo.x\n    price: {{value: '1'}}\n")
+    (tmp_path / "demox.yaml").write_text("provider: demox\nendpoints:\n  - id: demox.x\n    cost: {type: free}\n")
+    (tmp_path / "mid.yaml").write_text(f"provider: mid\n{header}endpoints:\n  - id: mid.x\n    price: {{value: '1'}}\n")
+    (tmp_path / "mid.extended.yaml").write_text("provider: mid\nendpoints:\n  - id: mid.y\n    cost: {type: free}\n")
+    assert codemod.withheld(tmp_path) == {tmp_path / "mid.yaml"}
