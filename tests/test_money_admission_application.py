@@ -1343,3 +1343,76 @@ async def test_free_platform_call_still_honours_an_exhausted_daily_cap(
     response = await clients.post(f"/call/{FREE_EP}", json=FREE_BODY)
     assert response.status_code == 429, response.text
     assert "platform_daily_cap_reached" in response.text
+
+
+async def test_cancelled_untagged_free_call_does_not_return_to_the_money_queue(
+        clients, icypeas_platform_on, monkeypatch):
+    from treg.application.call import service as call_service
+
+    entered, never = asyncio.Event(), asyncio.Event()
+
+    async def blocked_relay(*_args, **_kwargs):
+        entered.set()
+        await never.wait()
+
+    monkeypatch.setattr(call_service, "relay", blocked_relay)
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    try:
+        task = asyncio.create_task(clients.post(f"/call/{FREE_EP}", json=FREE_BODY))
+        await asyncio.wait_for(entered.wait(), 5)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert probe.calls == []
+    finally:
+        probe.close()
+    async with session_maker() as db:
+        assert not (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.call_id.is_not(None)))).scalars().all()
+
+
+def _holdless_parent(org_id: int) -> MarketplaceCall:
+    mk = _call(org_id, "parent", reserved=0)
+    mk.cost_type, mk.estimate_micro, mk.call_id = "free", 0, None
+    mk.settlement_basis = {}
+    mk.holdless = True
+    return mk
+
+
+async def test_cancelled_holdless_parent_releases_only_its_started_overflow_child(money_db, monkeypatch):
+    org_id = await _fund("holdless-overflow")
+    await _reserve(org_id, "parent:overflow")
+    mk = _holdless_parent(org_id)
+    mk.overflow_hold_possible = True
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    try:
+        await call_settle._finish_cancelled_call(None, mk, "parent")
+        assert probe.calls == [("release", [org_id])]
+    finally:
+        probe.close()
+    async with session_maker() as db:
+        assert await db.get(Hold, "parent:overflow") is None
+        assert await ledger.balance_of(db, org_id) == 1_000
+
+
+async def test_cancelled_holdless_parent_without_overflow_opens_no_money_session(money_db, monkeypatch):
+    org_id = await _fund("holdless-cancel")
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    try:
+        await call_settle._finish_cancelled_call(None, _holdless_parent(org_id), "parent")
+        assert probe.calls == []
+        assert probe.checkouts == 0
+    finally:
+        probe.close()
+
+
+def test_overflow_child_never_inherits_the_parent_holdless_flags():
+    from treg.application.call import overflow
+
+    parent = _holdless_parent(1)
+    parent.overflow_hold_possible = True
+    child = overflow._child(parent, SimpleNamespace(agg_price_micro=50, agg_unit="call"))
+    assert (child.holdless, child.overflow_hold_possible) == (False, False)

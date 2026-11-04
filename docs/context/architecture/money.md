@@ -348,7 +348,9 @@ LedgerEntry or TagSpend, no money admission, no balance-row lock. Only the platf
 runs, so a team past its cap is still refused. `_platform_settle` then writes nothing; a computed
 charge is logged and absorbed. A tagged call keeps its $0 hold because its settled tag rows count
 toward `calls_per_day`. Overflow children always reserve, since their aggregator spend is recorded
-in the settle transaction.
+in the settle transaction; `_child` never inherits the parent's flags. Cancellation of a holdless
+parent releases nothing unless `mk.overflow_hold_possible` (set before the child reserve starts),
+in which case it releases only `{call_ref}:overflow`.
 
 The audit row froze the reserve as `cost_charged_micro` at submission, so displays must not read it
 alone. `application.asynctasks.views_for` joins the org's tasks, loads archived terminal JSON and

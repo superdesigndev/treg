@@ -244,13 +244,13 @@ async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
 
 async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
     """Admit a $0 call without a hold: the daily-cap read, no balance row, no money admission."""
+    mk.holdless = True  # before any await: a cancel during the cap read has no hold to release
     mk.payer_org_id = caller.org_id
     mk.reserved_micro = 0
     mk.reserved_at = time.monotonic()
     if budget_policy._effective_daily_cap(caller.org) > 0:
         async with session_maker() as db:
             await _enforce_platform_daily_cap(caller, 0, db)
-    mk.holdless = True
 
 
 async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta = _NO_META,
@@ -269,6 +269,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     if allow_holdless and mk.holdless_eligible and not meta.tags:
         await _holdless_reserve(mk, caller)
         return
+    mk.holdless = False
     charged = ledger.with_margin(mk.estimate_micro)
     mk.payer_org_id = caller.org_id
     mk.reserved_micro = max(0, charged)

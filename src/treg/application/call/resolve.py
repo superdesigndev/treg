@@ -334,6 +334,8 @@ class MarketplaceCall:
     async_owner_call_id: str | None = None
     # Reserved with no hold (`holdless_eligible` and an untagged caller): settle has nothing to close.
     holdless: bool = False
+    # An overflow child reserve started for this parent: its `{call_ref}:overflow` hold may exist.
+    overflow_hold_possible: bool = False
     # Admitted through an active capacity lock as its probe (domain.capacity.marks): a 2xx clears
     # exactly that lock.
     probe_lock_id: str | None = None
