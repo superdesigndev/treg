@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Sfondo crema -->
+  <rect width="512" height="512" rx="32" fill="#faf8ec"/>
+  
+  <!-- "m" geometrica nera -->
+  <path d="M64 192h320v192h-64V256h-64v128h-64V256h-64v128H64V192z" fill="#111111"/>
+  
+  <!-- Quadratino azzurro MailDignity -->
+  <rect x="384" y="320" width="64" height="64" fill="#5aaae6"/>
+</svg>
