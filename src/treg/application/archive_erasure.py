@@ -25,13 +25,15 @@ already tolerates.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from sqlalchemy import select, text
 
 from .. import archive_bodies
 from ..domain.governance.teams import (
-    archive_bodies_only_under, archive_mark_count, archive_snapshots_under, erase_archive_keys,
-    erase_archive_rows, private_archive_key_ids, sole_public_archive_key_ids, still_sole_public,
+    archive_bodies_only_under, archive_mark_count, archive_mark_hashes, archive_snapshots_under,
+    erase_archive_keys, erase_archive_rows, private_archive_key_ids, sole_public_archive_key_ids,
+    still_sole_public,
 )
 from ..infra.db import session_maker
 from ..models import Org
@@ -39,7 +41,11 @@ from ..models import Org
 _log = logging.getLogger("treg.archive.erasure")
 
 _KEY_BATCH = 200          # keys per pass: bounded lock footprint, resumable
+_MARK_PAGE = 1000         # marks per candidate read: one bounded statement each
 _STATEMENT_TIMEOUT_MS = 30_000
+
+
+Progress = Callable[[dict], None]
 
 
 class NotOptedOut(ValueError):
@@ -74,7 +80,7 @@ async def _delete_objects(hashes: set[str]) -> int:
 
 
 async def erase_org(org_id: int, *, include_sole_public: bool = False,
-                    session_factory=session_maker) -> dict:
+                    session_factory=session_maker, progress: Progress | None = None) -> dict:
     """Erase everything the team stored: objects first, then rows, in bounded passes.
 
     Each pass finds a batch of the team's keys and the bodies only they point at, closes the
@@ -86,18 +92,23 @@ async def erase_org(org_id: int, *, include_sole_public: bool = False,
 
     `include_sole_public` also erases the public answers only this team paid for, first. They are
     found through the team's marks, which the private phase (or a concurrent erasure of the same
-    team) deletes, so the candidates are read once, in one capped statement, and each batch only
-    re-checks that no other team has paid for them since. Unlike the private keys, a public key
+    team) deletes, so every candidate is read before anything is deleted, a page of marks per
+    capped statement, and each batch only re-checks that no other team has paid for them since.
+    Marks that vanish during that read mean a concurrent erasure: the job raises before deleting
+    anything rather than miss the candidates those marks named. Unlike the private keys, a public key
     can gain a snapshot from another team's call between the orphan judgment and the row delete;
-    that snapshot goes with the key and its object, if new, stays behind unreferenced."""
+    that snapshot goes with the key and its object, if new, stays behind unreferenced.
+
+    `progress`, when given, receives the running totals after every committed batch."""
     if not await _opted_out(org_id, session_factory):
         raise NotOptedOut(f"org {org_id} is still in the archive; opt it out first")
     result: dict = {"org_id": org_id}
     if include_sole_public:
-        result["public_keys"], public_objects = await _erase_sole_public(org_id, session_factory)
+        result["public_keys"], public_objects = await _erase_sole_public(
+            org_id, session_factory, progress)
     result["keys"], result["objects"] = await _erase_passes(
         org_id, private_archive_key_ids, lambda db, ids: erase_archive_rows(db, org_id, ids),
-        session_factory)
+        session_factory, progress)
     async with session_factory() as db:
         await _bounded(db)
         await erase_archive_rows(db, org_id, [])      # the marks alone, when no key was left
@@ -108,7 +119,8 @@ async def erase_org(org_id: int, *, include_sole_public: bool = False,
     return result
 
 
-async def _erase_passes(org_id: int, find, erase, session_factory) -> tuple[int, int]:
+async def _erase_passes(org_id: int, find, erase, session_factory,
+                        progress: Progress | None = None) -> tuple[int, int]:
     """Run `find` -> objects -> `erase` passes until `find` returns nothing -> (keys, objects)."""
     keys = objects = 0
     after = 0
@@ -128,15 +140,37 @@ async def _erase_passes(org_id: int, find, erase, session_factory) -> tuple[int,
             keys += await erase(db, key_ids)
             await db.commit()
         after = key_ids[-1]
+        if progress:
+            progress({"phase": "private", "keys": keys, "objects": objects})
 
 
 async def _sole_public_candidates(org_id: int, session_factory) -> list[int]:
+    """Every public key only this team paid for, read through its marks a page at a time. Raises
+    if marks disappeared meanwhile: a concurrent erasure deleted them, and the pages read after
+    that would have missed the candidates they named."""
     async with session_factory() as db:
         await _bounded(db)
-        return await sole_public_archive_key_ids(db, org_id)
+        marks = await archive_mark_count(db, org_id)
+    candidates: list[int] = []
+    after = ""
+    while True:
+        async with session_factory() as db:
+            await _bounded(db)
+            hashes = await archive_mark_hashes(db, org_id, limit=_MARK_PAGE, after=after)
+            candidates += await sole_public_archive_key_ids(db, org_id, hashes)
+        if len(hashes) < _MARK_PAGE:
+            break
+        after = hashes[-1]
+    async with session_factory() as db:
+        await _bounded(db)
+        if await archive_mark_count(db, org_id) < marks:
+            raise RuntimeError(f"org {org_id}'s archive marks changed while candidates were read; "
+                               "another erasure is running")
+    return sorted(set(candidates))
 
 
-async def _erase_sole_public(org_id: int, session_factory) -> tuple[int, int]:
+async def _erase_sole_public(org_id: int, session_factory,
+                             progress: Progress | None = None) -> tuple[int, int]:
     """The public phase: candidates read once, then objects -> rows per batch -> (keys, objects)."""
     candidates = await _sole_public_candidates(org_id, session_factory)
     keys = objects = 0
@@ -155,6 +189,9 @@ async def _erase_sole_public(org_id: int, session_factory) -> tuple[int, int]:
             await _bounded(db)
             keys += await erase_archive_keys(db, key_ids)
             await db.commit()
+        if progress:
+            progress({"phase": "public", "keys": keys, "objects": objects,
+                      "candidates_left": max(len(candidates) - start - _KEY_BATCH, 0)})
     return keys, objects
 
 
