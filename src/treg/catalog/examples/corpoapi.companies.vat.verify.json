@@ -1,0 +1,27 @@
+{
+  "vat_number": "SE556029519701",
+  "country": "SE",
+  "valid": true,
+  "name": "VOLVO BUSINESS SERVICES AKTIEBOLAG",
+  "address": "ARSC, DC24000 \n405 08 GÖTEBORG",
+  "consultation_number": null,
+  "checked_at": "2026-11-04T15:21:30.463000Z",
+  "company": {
+    "id": "co_sea81b5ad3d15a050b79a96d8b",
+    "jurisdiction": "se",
+    "company_number": "5560295197",
+    "legal_name": "Volvo Business Services Aktiebolag",
+    "status": "active",
+    "registration_date": "1930-11-24",
+    "address": {
+      "line1": "ARSC, DC24000",
+      "city": "GÖTEBORG",
+      "postcode": "40508",
+      "region": null,
+      "country": "SE",
+      "raw": "ARSC, DC24000  GÖTEBORG 40508 SE-LAND"
+    },
+    "match_score": null,
+    "matched_on": null
+  }
+}

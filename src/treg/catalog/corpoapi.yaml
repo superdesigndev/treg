@@ -38,6 +38,8 @@ pricing_url: https://corpoapi.com/pricing
 endpoints:
   - id: corpoapi.companies.registry.search
     added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.registry.search.json
     domain: companies
     capability: companies.registry.search
     platform: companies
@@ -67,6 +69,8 @@ endpoints:
 
   - id: corpoapi.companies.registry.profile
     added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.registry.profile.json
     domain: companies
     capability: companies.registry.profile
     miss:
@@ -102,6 +106,8 @@ endpoints:
 
   - id: corpoapi.companies.officers
     added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.officers.json
     domain: companies
     capability: companies.officers
     miss:
@@ -140,6 +146,8 @@ endpoints:
 
   - id: corpoapi.companies.owners
     added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.owners.json
     domain: companies
     capability: companies.owners
     miss:
@@ -173,6 +181,8 @@ endpoints:
 
   - id: corpoapi.companies.ownership.graph
     added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.ownership.graph.json
     domain: companies
     capability: companies.ownership.graph
     miss:
@@ -210,6 +220,8 @@ endpoints:
 
   - id: corpoapi.companies.filings
     added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.filings.json
     domain: companies
     capability: companies.filings
     miss:
@@ -247,6 +259,8 @@ endpoints:
 
   - id: corpoapi.companies.financials
     added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.financials.json
     domain: companies
     capability: companies.financials
     miss:
@@ -284,6 +298,8 @@ endpoints:
 
   - id: corpoapi.companies.verify
     added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.verify.json
     domain: companies
     capability: companies.verify
     platform: companies
@@ -317,6 +333,8 @@ endpoints:
 
   - id: corpoapi.companies.vat.verify
     added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.vat.verify.json
     domain: companies
     capability: companies.vat.verify
     platform: companies
@@ -347,6 +365,8 @@ endpoints:
 
   - id: corpoapi.companies.registry.coverage
     added: '2026-11-04'
+    verified: '2026-11-04'
+    example_response: examples/corpoapi.companies.registry.coverage.json
     domain: companies
     capability: companies.registry.coverage
     platform: companies
@@ -357,7 +377,7 @@ endpoints:
     summary: "Every served location, with the status of each kind of company data"
     input:
       note: "keyed by jurisdiction code; companies, directors, ownership, documents, financials, lei and activity are each complete, partial or absent. Check it before a paid call to skip registers that publish nothing for the job"
-    test_request: {}
+    test_request: {queryParams: {}}
     cost:
       type: free
       value: 0
