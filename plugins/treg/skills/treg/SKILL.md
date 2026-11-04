@@ -141,7 +141,7 @@ re-send the same find: every hit is billed, repeats included.
   `_treg.advice`. A live phone line does not prove the number is this person's.
 - **Verify every address before it is sent to**, including rows from a company or domain search
   (`treg.people.search` and the like): those are directory listings, unconfirmed
-  unless the row's own verification field says otherwise. `invalid` is dead, `accept_all` is risky,
+  unless the row's `email_status` says the provider verified it. `invalid` is dead, `accept_all` is risky,
   and an address the provider did not return (`info@` after an empty domain search) is a guess, not
   a result.
 

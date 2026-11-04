@@ -1045,7 +1045,7 @@ async def test_people_search_executes_a_bounded_direct_query(clients, enrichment
     monkeypatch.setenv('TREG_PLATFORM_PROVIDERS','hunter,tomba,leadmagic,leadsforge,findymail,aviato,fiber-ai,exa')
     get_settings.cache_clear()
     seen=[]
-    monkeypatch.setattr(service,'relay',_relay_by_provider({'exa':[(200,{'results':[{'name':'Example Person','title':'Engineer','url':'https://www.linkedin.com/in/example'}]})]},seen))
+    monkeypatch.setattr(service,'relay',_relay_by_provider({'exa':[(200,{'results':[{'title':'Example Person','url':'https://www.linkedin.com/in/example','entities':[{'properties':{'name':'Example Person','workHistory':[{'title':'Engineer'}]}}]}]})]},seen))
     response=await clients.post('/arena/plans',json={'capability':'people.search','identity':{'q':'software engineer'},'providers':['exa'],'mode':'compare','max_cost_micro':1_000_000})
     assert response.status_code==200,response.text
     result=await finish(clients,response.json())

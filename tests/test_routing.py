@@ -153,6 +153,38 @@ def test_a_route_false_adapter_is_never_routed():
     assert C.parse_adapters({"adapters": {"c.find": {"route": False}}})["c.find"].route is False
 
 
+def test_a_row_map_puts_every_provider_row_in_the_contract_shape():
+    """`row:` reads each provider row into the contract's keys, so an agent reads the same fields
+    whoever answered; a row the map cannot read stays the provider's own, never dropped."""
+    from treg.domain.catalog.routing import contracts as C
+
+    doc = {"contracts": {"x.search": {
+        "identity": [{"q": "str"}], "output": {"people": {"type": "list", "required": True}},
+        "miss": "people == []",
+        "row": {"of": "people", "needs": ["name"], "fields": {"name": "str", "location": "str", "summary": "str"}}}}}
+    contract = C.parse_contracts(doc)["x.search"]
+    ad = C.parse_adapters({"adapters": {"p.search": {
+        "accepts": [["q"]], "in": {"q": "body.q"}, "out": {"people": "items"}, "miss": "items == []",
+        "row": {"name": "join(first, last)", "location": "place(city, country, country)", "summary": "texts(lines)"}}}})["p.search"]
+    ad = C.Adapter(**{**ad.__dict__, "_row_of": contract.row_of, "_row_needs": contract.row_needs})
+    long = "word " * 200
+    rows = ad.from_upstream({"items": [
+        {"first": "Ada", "last": "Lovelace", "city": "London", "country": "UK", "lines": ["one", long], "id": 7},
+        {"handle": "@someone"}, "not a row"]})["people"]
+    assert rows[0]["name"] == "Ada Lovelace" and rows[0]["location"] == "London, UK" and "id" not in rows[0]
+    assert len(rows[0]["summary"]) == C.ROW_TEXT_MAX, "text is capped"
+    assert rows[1] == {"handle": "@someone"}, "unreadable row kept as the provider's"
+    assert len(rows) == 2
+    with pytest.raises(ValueError, match="row"):
+        C.parse_contracts({"contracts": {"y": {**doc["contracts"]["x.search"], "row": {"of": "nope", "needs": ["name"], "fields": {"name": "str"}}}}})
+    with pytest.raises(ValueError, match="needs"):
+        C.parse_contracts({"contracts": {"y": {**doc["contracts"]["x.search"], "row": {"of": "people", "needs": ["age"], "fields": {"name": "str"}}}}})
+    stray = C.Adapter(**{**ad.__dict__, "row_map": {**ad.row_map, "age": "age"}})
+    endpoint = {"test_request": {"body": {"q": "x"}}}
+    assert C.verify(stray, contract, endpoint, {"items": [{"first": "A"}]}) == (False, "row: fields outside the contract's row: ['age']")
+    assert C.verify(ad, contract, endpoint, {"items": [{"first": "A"}]})[0] is True
+
+
 def test_every_shipped_adapter_round_trips_its_fixture():
     cat = catalog_store.load()
     bad = {eid: a.verify_note for eid, a in cat.adapters.items() if not a.verified}
@@ -784,7 +816,9 @@ async def test_a_people_search_hit_always_carries_verify_advice(clients: AsyncCl
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["_treg"]["served_by"] == "hunter.companies.emails" and d["_treg"]["outcome"] == "hit"
-    assert d["output"]["people"][0]["verification"]["status"] is None, "the row's own field, untouched"
+    row = d["output"]["people"][0]
+    assert row["email"] == "info@royalfarms.com" and "email_status" not in row, "no verdict from the provider, none claimed"
+    assert d["raw"]["data"]["emails"][0]["verification"]["status"] is None, "the provider's row, untouched in raw"
     assert "treg.people.email.verify" in d["_treg"]["advice"] and "directory" in d["_treg"]["advice"]
     assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]), "the find, nothing chained"
 

@@ -74,6 +74,22 @@ def join(*parts: Any) -> str | None:
     return " ".join(words) if words else None
 
 
+def place(*parts: Any) -> str | None:
+    """`place(city, state, country)` → "Berlin, Germany": the non-empty parts, in order, each once."""
+    seen: list[str] = []
+    for p in parts:
+        if isinstance(p, str) and p.strip() and p.strip() not in seen:
+            seen.append(p.strip())
+    return ", ".join(seen) or None
+
+
+def texts(v: Any) -> str | None:
+    """`texts(highlights)` — a list of passages as one text; a string passes through."""
+    if isinstance(v, list):
+        v = " ".join(str(x).strip() for x in v if isinstance(x, str) and x.strip())
+    return v if isinstance(v, str) and v.strip() else None
+
+
 def has_type(items: Any, kind: Any) -> bool:
     return isinstance(items, list) and any(isinstance(i, dict) and i.get("type") == kind for i in items)
 
@@ -497,7 +513,7 @@ def starts_with(v: Any, prefix: Any) -> bool:
     return isinstance(v, str) and prefix is not None and v.startswith(str(prefix))
 
 
-TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "has_type": has_type, "len": length,
+TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "place": place, "texts": texts, "has_type": has_type, "len": length,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "at_most": at_most, "ceil_to": ceil_to, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name, "country_code": country_code,
