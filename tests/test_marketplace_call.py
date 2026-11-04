@@ -959,7 +959,10 @@ async def test_leadocean_direct_search_requires_a_bounded_shared_key_page(client
 
     def upstream(request):
         seen.append((request.headers["x-api-key"], request.url.params.multi_items()))
-        return _dropleads_response(200, {"success": True, "data": [], "meta": {"credits": 0}})
+        data = [] if request.url.params.get("domain") == "missing.example" else [
+            {"id": "a"}, {"id": "b"}, {"id": "c"}]
+        return _dropleads_response(200, {"success": True, "data": data,
+                                         "meta": {"credits": len(data)}})
 
     try:
         async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
@@ -975,8 +978,13 @@ async def test_leadocean_direct_search_requires_a_bounded_shared_key_page(client
             allowed = await clients.get("/call/leadocean.people.search", params={
                 "domain": "stripe.com", "limit": "10"})
             assert allowed.status_code == 200, allowed.text
-            assert allowed.headers["x-treg-cost-micro"] == "0"
-            assert seen == [("PLATFORM-LEADOCEAN", [("domain", "stripe.com"), ("limit", "10")])]
+            assert allowed.headers["x-treg-cost-micro"] == "3000"
+            empty = await clients.get("/call/leadocean.people.search", params={
+                "domain": "missing.example", "limit": "10"})
+            assert empty.status_code == 200, empty.text
+            assert empty.headers["x-treg-cost-micro"] == "0"
+            assert seen == [("PLATFORM-LEADOCEAN", [("domain", "stripe.com"), ("limit", "10")]),
+                            ("PLATFORM-LEADOCEAN", [("domain", "missing.example"), ("limit", "10")])]
 
             own = await clients.post("/secrets", json={"name": "leadocean", "value": "OWN-LEADOCEAN"})
             assert own.status_code == 200, own.text
@@ -984,8 +992,9 @@ async def test_leadocean_direct_search_requires_a_bounded_shared_key_page(client
                 served = await clients.get("/call/leadocean.people.search", params=params)
                 assert served.status_code == 200, served.text
                 assert "x-treg-cost-micro" not in served.headers
-            assert [key for key, _ in seen] == ["PLATFORM-LEADOCEAN", "OWN-LEADOCEAN", "OWN-LEADOCEAN"]
-            assert [query for _, query in seen[1:]] == [[("domain", "stripe.com")],
+            assert [key for key, _ in seen] == ["PLATFORM-LEADOCEAN", "PLATFORM-LEADOCEAN",
+                                                 "OWN-LEADOCEAN", "OWN-LEADOCEAN"]
+            assert [query for _, query in seen[2:]] == [[("domain", "stripe.com")],
                                                         [("domain", "stripe.com"), ("limit", "25")]]
     finally:
         get_settings.cache_clear()
