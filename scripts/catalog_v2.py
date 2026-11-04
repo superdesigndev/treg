@@ -179,7 +179,7 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
     if cost is None and defaults and not any(k in row for k in (*COST_KEYS, "observed_cost")):
         # An unpriced row stays unpriced; it only opts out of the defaults that describe a price.
         out.keys = {k: None for k in COST_KEYS if k in defaults and k != "bill"}
-        out.replaced = tuple(k for k in ("tier", *OUTCOME_KEYS) if k in row)
+        out.replaced = ("tier",) if "tier" in row else ()
         return out
     if not isinstance(cost, dict):
         raise Refused("the row has no cost to rewrite")

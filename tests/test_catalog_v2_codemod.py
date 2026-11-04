@@ -144,6 +144,9 @@ def test_a_row_is_written_against_its_providers_defaults():
     unpriced = codemod.rewrite({"id": "demo.z", "tier": "extended"}, provider="demo",
                                check_branches=False, defaults=DEFAULTS)
     assert unpriced.keys == {"provenance": None} and unpriced.replaced == ("tier",)
+    ruled = codemod.rewrite({"id": "demo.w", "tier": "extended", "expect": {"status": 200}}, provider="demo",
+                            check_branches=False, defaults=DEFAULTS)
+    assert ruled.keys == {"provenance": None} and ruled.replaced == ("tier",)
 
 
 def test_an_inert_2xx_miss_status_leaves_its_means_in_the_note():

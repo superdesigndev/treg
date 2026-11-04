@@ -143,7 +143,7 @@ def cost_of(ep: dict) -> float:
     So fall back to `observed_cost`, what the provider charged last time. It is the better number
     anyway — measured rather than transcribed — and it makes the cap bind from the second run on.
     """
-    c = ep.get("cost") or {}
+    c = ep.get("cost") or ep.get("price") or {}
     try:
         listed = float(c.get("value") or 0.0)
     except (TypeError, ValueError):
