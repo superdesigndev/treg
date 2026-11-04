@@ -957,6 +957,11 @@ def test_body_allowlist_contract_validation(patch, valid):
     ({'scope': 'own_account'}, False),
     ({'authorization_method': 'oauth'}, False),
     ({'async': {'poll': {}}}, False),
+    ({'cost': None, 'price': {'value': '0'}}, True),
+    ({'cost': None, 'price': {'value': '0.0'}}, True),
+    ({'cost': None, 'price': {'value': '0.00'}}, True),
+    ({'cost': None, 'price': {'value': '0.02'}}, False),
+    ({'cost': None, 'price': {'value': 'free'}}, False),
 ])
 def test_anonymous_platform_auth_is_a_verified_free_read_only_contract(patch, valid):
     ep = {
@@ -970,6 +975,14 @@ def test_anonymous_platform_auth_is_a_verified_free_read_only_contract(patch, va
     errors = []
     validator.check_platform_auth(ep | patch, 'example', errors)
     assert (not errors) is valid
+
+
+def test_anonymous_platform_auth_refuses_a_priced_v2_row_naming_the_free_price():
+    ep = {'id': 'example.public.values', 'platform_auth': 'anonymous', 'method': 'GET',
+          'scope': 'any_account', 'price': {'value': '0.02'}, 'verified': '2026-09-15'}
+    errors = []
+    validator.check_platform_auth(ep, 'example', errors)
+    assert errors == ["example: platform_auth anonymous requires cost.type free (in v2, price.value '0')"]
 
 
 def test_missing_platform_auth_normalizes_as_absent():
@@ -1311,3 +1324,48 @@ def test_a_v2_row_ships_priced_on_core_with_its_miss_on_the_row(tmp_path, monkey
     out = capsys.readouterr().out
     assert "a core row needs a price" in out and "remove the adapter's miss" in out
     assert "ceiling_param is read from the file header" in out
+
+def _v2_cost_errors(endpoint_id: str, **keys) -> list[str]:
+    from treg.domain.catalog.schema import parse_row
+    provider = endpoint_id.split(".")[0]
+    raw = next(ep for ep in validator.schema.read_yaml(validator.CATALOG / f"{provider}.yaml")["endpoints"]
+               if ep["id"] == endpoint_id)
+    ep = {**raw, **keys}
+    errors: list[str] = []
+    validator.check_v2_cost(parse_row(ep, "test"), ep, provider, "test", errors)
+    return errors
+
+
+GEMINI = "google-ai.image-gen.gemini-3-1-flash-image"
+
+
+def test_the_pilot_v2_rows_pass_the_v2_cost_checks():
+    assert _v2_cost_errors(GEMINI) == [] and _v2_cost_errors("findymail.search.domain") == []
+
+
+@pytest.mark.parametrize("endpoint_id,keys,message", [
+    ("findymail.search.domain", {"settle": {"reported": {"path": "response.credits_used", "unit": "credits"}}},
+     "settle.reported.unit 'credits' is not usd, credit"),
+    ("findymail.search.domain", {"price": {"value": "1", "currency": "unit", "unit": "page"}},
+     "price.currency unit (unit page) has no fx.yaml rate"),
+    ("findymail.search.domain", {"reserve": {"rows": {"param": "body.limit", "max": 10}}},
+     "reserve.rows.param 'body.limit' must name a declared integer"),
+    ("findymail.search.domain", {"reserve": {"entities": {"from": "body.domains"}}},
+     "reserve.entities.from 'body.domains' must name a declared input field"),
+    (GEMINI, {"settle": {"usage": {"path": "response.usageMetadata.totalTokenCount", "unit": "tokens"}}},
+     "settle.usage.unit 'tokens' is not usd, credit"),
+    (GEMINI, {"price": {"table": [
+        {"when": [{"path": "body.generationConfig.imageConfig.imagesize", "op": "equals", "value": "512"}],
+         "value": "0.05"}], "fallback": {"value": "0.165", "note": "4K"}}},
+     "'body.generationConfig.imageConfig.imagesize' is not declared in input"),
+    (GEMINI, {"price": {"table": [
+        {"when": [{"path": "body.generationConfig.imageConfig.imagesize", "op": "in", "value": ["512"]}],
+         "value": "0.05"}], "fallback": {"value": "0.165", "note": "4K"}}},
+     "'body.generationConfig.imageConfig.imagesize' is not a declared input field"),
+    (GEMINI, {"price": {"table": [
+        {"when": [{"path": "body.generationConfig.imageConfig.imageSize", "op": "equals", "value": "512"}],
+         "value": "0.05", "times": "body.contents"}], "fallback": {"value": "0.165", "note": "4K"}}},
+     "times field 'body.contents' must be numeric"),
+])
+def test_the_v2_cost_checks_refuse_a_unit_without_a_rate_and_a_path_to_no_declared_field(endpoint_id, keys, message):
+    assert any(message in error for error in _v2_cost_errors(endpoint_id, **keys))

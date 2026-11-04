@@ -226,6 +226,17 @@ so parallel runs and side-by-side runs never share one.
 - **Schema.** Alembic owns it (`src/treg/alembic/versions/`); every schema change is a revision.
   Startup only verifies the revision and refuses to boot when behind; migrations run only via
   `python -m treg upgrade`.
+- **No new foreign keys.** Keep referential rules in domain and application code, where a reader
+  sees them, not in database triggers that fire on every write. A foreign key adds a share lock on
+  the parent row to every child insert, and a lookup of every referencing table to every parent
+  delete; on an unindexed referencing column that lookup is a scan of the whole child table, per
+  deleted row. Do not drop existing ones in passing, but a delete path over a table that is still
+  referenced must have every referencing column indexed.
+- **Count the rows a query scans before it runs on the primary.** Run `EXPLAIN` against the replica
+  and read the plan, not the size of the result: a query returning a few thousand rows can scan
+  a whole large table once per candidate row. Write `NOT EXISTS`, never `NOT IN (subquery)`, against
+  a large table; past `work_mem` the latter cannot be hashed and rescans the subquery per row. A
+  statement that runs long on the primary holds back vacuum for every table, the hottest included.
 
 ## Working agreement
 

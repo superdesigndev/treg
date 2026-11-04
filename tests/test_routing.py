@@ -1064,6 +1064,36 @@ async def test_idempotent_replay_of_a_routed_call_never_calls_a_provider_twice(c
     assert r2.json() == r1.json() and len(seen) == 1
 
 
+async def test_treg_accounts_used_up_allowance_is_skipped_not_the_routes_error(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    """Live 2026-11-04: every title-capable provider answered "nobody" but one, whose answer on
+    treg's account was LeadOcean's 429 "Fair-use pace reached"; that one error turned the caller's
+    honest no-match into a 502 `route_failed`. treg's own account being used up says nothing about
+    the question: the attempt is skipped, and the call ends as the 200 miss the others answered."""
+    cat = catalog_store.load()
+    provs = sorted({cat.by_id[e]["provider"] for e in cat.adapters
+                    if cat.by_id.get(e, {}).get("capability") == "people.search"})
+    for p in provs:
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p.upper().replace('-', '_')}", "PLATFORM-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", ",".join(provs))
+    get_settings.cache_clear()
+    pace = (429, {"success": False, "error": {"message": "Fair-use pace reached — this account has received "
+                                                          "50,000 search records in the current period"}})
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"leadocean": [pace] * 4, "*": [(200, {})] * 40}, seen))
+    r = await clients.post("/call/treg.people.search",
+                           json={"company_domain": "stjosephacademy.com", "title": "librarian", "limit": 2},
+                           headers={"X-Treg-Route-Prefer": "leadocean"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["outcome"] == "miss"
+    lead = [t for t in d["_treg"]["tried"] if t["provider"] == "leadocean"]
+    assert lead and lead[0]["outcome"] == "skipped" and "used up" in lead[0].get("detail", "")
+    assert all(t["outcome"] in ("miss", "skipped") for t in d["_treg"]["tried"])
+    get_settings.cache_clear()
+
+
 async def test_a_routed_call_that_fails_charges_nothing_and_a_retry_tries_again(
     clients: AsyncClient, enrichment_on, monkeypatch,
 ):

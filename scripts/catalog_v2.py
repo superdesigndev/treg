@@ -23,10 +23,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import yaml
-from pydantic import ValidationError
-
-from treg.domain.catalog.schema import V2Row
-from treg.domain.catalog.schema.files import describe
+from treg.domain.catalog.schema import CatalogSchemaError, parse_row
 from treg.domain.catalog.schema.v2 import cost_type
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -274,7 +271,13 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
         keys["error"] = {"when": ENVELOPE}
         out.warnings.append("the error envelope is `present`; today it is any truthy `error` or `errors`")
         if kind == "per_success" and not adapter_miss.strip().startswith("coalesce("):
+            if expect is not None:
+                raise Refused("today a failed `expect` is free and a 2xx error envelope is charged; "
+                              "v2 bills both as the one error outcome")
             bill["error"] = "charged"
+        elif kind == "per_success":
+            out.warnings.append("an error envelope that also carries results is charged today; v2 judges "
+                                "it an error, which is free")
     nf = row.get("not_found")
     if isinstance(nf, dict):
         rule = {"status": nf["status"] if isinstance(nf["status"], list) else [nf["status"]]}
@@ -289,11 +292,11 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
         out.warnings.append(f"the views will label it {label}; today they say {kind}")
     order = ("price", "provenance", "reserve", "settle", "bill", "expect", "error", "miss", "not_found")
     out.keys = {k: keys[k] for k in order if k in keys}
-    try:
-        V2Row.model_validate({"id": endpoint_id, **out.keys})
-    except ValidationError as exc:
-        raise Refused(f"the rewrite does not parse: {describe(exc.errors())}") from None
     out.replaced = tuple(k for k in ("cost", "tier", *OUTCOME_KEYS) if k in row)
+    try:
+        parse_row({**{k: v for k, v in row.items() if k not in out.replaced}, **out.keys}, endpoint_id)
+    except CatalogSchemaError as exc:
+        raise Refused(f"the rewritten row does not parse: {str(exc).removeprefix(f'{endpoint_id}: ')}") from None
     return out
 
 
@@ -348,6 +351,34 @@ def _extent(lines: list[str], key: yaml.Node) -> tuple[int, int]:
     while end > start + 1 and (not lines[end - 1].strip() or lines[end - 1].lstrip().startswith("#")):
         end -= 1
     return start, end
+
+
+def _nodes(node: yaml.Node) -> list[yaml.Node]:
+    """Every node under `node`, an aliased one each time an alias names it."""
+    children = (node.value if isinstance(node, yaml.SequenceNode)
+                else [n for pair in node.value for n in pair] if isinstance(node, yaml.MappingNode) else [])
+    return [node, *(n for child in children for n in _nodes(child))]
+
+
+def anchored(text: str, rewrites: dict[str, Rewrite]) -> dict[str, str]:
+    """The rewritten rows whose replaced keys define a YAML anchor that an alias elsewhere names:
+    rewriting such a key would leave the alias undefined. Row id to the key."""
+    lines = text.splitlines(keepends=True)
+    root = _compose(text)
+    uses: dict[int, int] = {}
+    for node in _nodes(root):
+        uses[id(node)] = uses.get(id(node), 0) + 1
+    found = {}
+    for row in _rows(root):
+        row_id = next((v.value for k, v in row.value if k.value == "id"), None)
+        change = rewrites.get(row_id)
+        for key, value in row.value if change is not None else ():
+            if key.value not in change.replaced:
+                continue
+            start, end = _extent(lines, key)
+            if any(uses[id(n)] > 1 and start <= n.start_mark.line < end for n in _nodes(value)):
+                found[row_id] = key.value
+    return found
 
 
 def apply_rows(text: str, rewrites: dict[str, Rewrite]) -> tuple[str, list[str]]:
@@ -425,6 +456,9 @@ def main(argv: list[str]) -> int:
                 continue
             rewrites.setdefault(path, {})[row["id"]] = change
     for path, changes in rewrites.items():
+        for endpoint_id, key in anchored(path.read_text(), changes).items():
+            del changes[endpoint_id]
+            refused.append((endpoint_id, f"its {key} defines a YAML anchor that another row aliases"))
         text, dropped = apply_rows(path.read_text(), changes)
         for change in changes.values():
             print(f"== {change.endpoint_id} ({path.name}): replaces {', '.join(change.replaced)}")

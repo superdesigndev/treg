@@ -182,8 +182,8 @@ def price(ep: dict, cat, request_data: dict) -> tuple[int, int, int, dict]:
         quantity = plugins.call(reserve["plugin"], provider, plugin_request(ep, request_data))
         held = _priced(terms, quantity)
         if held is None:
-            raise ResolutionFailed("catalog_price_unavailable", status_code=502, detail={
-                "error": "catalog_price_unavailable", "endpoint_id": ep["id"],
+            raise ResolutionFailed("catalog_price_invalid", status_code=503, detail={
+                "error": "catalog_price_invalid", "endpoint_id": ep["id"],
                 "message": f"{ep['id']} could not price this request"})
         hold = min(held, _micro_up(Decimal(reserve["max"]) * rate))
     else:
@@ -275,14 +275,39 @@ def _uncapped(terms: dict, doc: object, request: plugins.Request | None,
     if "count" in settle:
         path = settle["count"]["path"]
         found = select(path, {"response": doc})
-        if not parse_path(path).many:
-            if not found or not isinstance(found[0], list):
+        if parse_path(path).many:
+            if not _lists_readable(path, doc):
                 return None
+        elif not found or not isinstance(found[0], list):
+            return None
+        else:
             found = found[0]
         return amount(terms, sum(item is not None for item in found))
     if "plugin" in settle:
         return _priced(terms, plugins.call(settle["plugin"], terms["provider"], request, answer))
     return None
+
+
+def _lists_readable(path: str, doc: object) -> bool:
+    """Whether every list a many-valued path iterates is there and is a list."""
+    parsed, values, gap = parse_path(path), [doc], False
+    steps = [(None, parsed.filter)] if parsed.filter is not None else []
+    steps += [(step, step.filter) for step in parsed.steps]
+    for step, keep in steps:
+        if step is not None and not step.every:
+            if step.index is not None:
+                found = [v[step.index] for v in values if isinstance(v, list) and step.index < len(v)]
+            else:
+                found = [v[step.name] for v in values if isinstance(v, dict) and step.name in v]
+            gap, values = gap or len(found) < len(values), found
+        if step is not None and step.every or keep is not None:
+            if gap or not all(isinstance(v, list) for v in values):
+                return False
+            values = [item for v in values for item in v]
+            if keep is not None:
+                key, value = keep
+                values = [item for item in values if isinstance(item, dict) and str(item.get(key)) == value]
+    return True
 
 
 def _usage(basis_: dict, doc: object) -> int | None:
