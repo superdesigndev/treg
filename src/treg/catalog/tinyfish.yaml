@@ -147,7 +147,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 10, example: ["https://example.com"]}
+        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 10, example: ["https://example.com"], note: "Absolute http:// or https:// URLs; plain http:// is fetched (and followed to https when the site redirects). A URL that fails appears in errors[] with its own code while the others still return: target_http_error (non-2xx other than 404/410, status in errors[].status), page_not_found (404/410), target_unreachable (DNS, TLS, connection refused), timeout, proxy_error, bot_blocked, login_required, empty_content, content_too_large, invalid_redirect_url, conditional_unsupported, selector_not_matched, selector_unsupported. invalid_url means TinyFish refused the target before fetching, either a malformed URL or an address its SSRF filter blocks; it is also returned for some well-formed public URLs on both http and https, so on a parseable URL it says nothing about scheme, query string or HTTP method, and switching to https will not help."}
         purpose: {type: string, required: false}
         format: {type: string, required: false, default: markdown, enum: [html, markdown, json], note: "markdown (default) for LLM consumption; html returns cleaned semantic HTML, not the page source — head scripts (including application/ld+json), forms, mailto targets and many attributes are removed; json returns a structured document tree. TinyFish has no raw/source-HTML format on this route; for HTML as the browser received it (head and scripts intact), use anyapi.web.scrape with formats including html."}
         links: {type: boolean, required: false, default: false}
