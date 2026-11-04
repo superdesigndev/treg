@@ -14,7 +14,7 @@ proposed_capabilities:
 
 endpoints:
   - id: dansugc.ugc.clips.search
-    added: '2026-10-27'
+    added: '2026-11-04'
     verified: '2026-11-02'
     example_response: examples/dansugc.ugc.clips.search.json
     capability: ugc.clips.search
@@ -48,7 +48,7 @@ endpoints:
     docs_url: https://dansugc.com/docs#tag/b-roll/GET/broll
 
   - id: dansugc.ugc.clips.filters
-    added: '2026-10-27'
+    added: '2026-11-04'
     verified: '2026-11-02'
     example_response: examples/dansugc.ugc.clips.filters.json
     capability: ugc.clips.filters
@@ -66,7 +66,7 @@ endpoints:
     docs_url: https://dansugc.com/docs#tag/b-roll/GET/broll/filters
 
   - id: dansugc.ugc.clip.detail
-    added: '2026-10-27'
+    added: '2026-11-04'
     verified: '2026-11-02'
     example_response: examples/dansugc.ugc.clip.detail.json
     capability: ugc.clip.detail
@@ -86,7 +86,7 @@ endpoints:
     docs_url: https://dansugc.com/docs#tag/b-roll/GET/broll/{videoId}
 
   - id: dansugc.ugc.clips.purchase
-    added: '2026-10-27'
+    added: '2026-11-04'
     verified: '2026-11-04'
     example_response: examples/dansugc.ugc.clips.purchase.json
     capability: ugc.clips.purchase
@@ -121,7 +121,7 @@ endpoints:
     docs_url: https://dansugc.com/docs#tag/b-roll/POST/broll/purchase
 
   - id: dansugc.ugc.purchases.list
-    added: '2026-10-27'
+    added: '2026-11-04'
     verified: '2026-11-02'
     example_response: examples/dansugc.ugc.purchases.list.json
     capability: ugc.purchases.list
