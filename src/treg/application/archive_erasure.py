@@ -134,6 +134,7 @@ async def _erase_passes(org_id: int, find, erase, session_factory) -> tuple[int,
 async def _opted_out(org_id: int, session_factory) -> bool:
     """A team that is gone counts as out: nothing of its is being recorded."""
     async with session_factory() as db:
+        await _bounded(db)
         row = (await db.execute(select(Org.archive_opt_out_at).where(Org.id == org_id))).first()
     return row is None or row[0] is not None
 

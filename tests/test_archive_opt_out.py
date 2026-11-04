@@ -417,19 +417,26 @@ async def test_erasure_caps_every_statement_on_postgres(clients: AsyncClient, ow
     await _opt_out(clients, org_id)
     engine = session_maker.kw["bind"].sync_engine
     seen: list[str] = []
+    begins: list[int] = []
 
     def record(conn, cursor, statement, *args):
         seen.append(statement)
+
+    def began(conn):
+        begins.append(1)
     event.listen(engine, "before_cursor_execute", record)
+    event.listen(engine, "begin", began)
     try:
         assert (await archive_erasure.erase_org(org_id))["keys"] == 2
     finally:
         event.remove(engine, "before_cursor_execute", record)
+        event.remove(engine, "begin", began)
     caps = [s for s in seen if s.startswith("SET LOCAL statement_timeout")]
     if engine.dialect.name != "postgresql":
         assert caps == []
         return
-    assert len(caps) == 4            # a read per pass (the second finds nothing), the delete, the marks
+    # Every transaction the erasure opens is capped, the opt-out check included.
+    assert len(caps) == len(begins) == 5
     async with session_maker() as s:
         await archive_erasure._bounded(s)
         assert (await s.execute(text("SHOW statement_timeout"))).scalar_one() == "30s"
