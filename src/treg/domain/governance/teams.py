@@ -288,18 +288,39 @@ ORG_SCOPED_MODELS = (
 ARCHIVE_PRIVATE_SCOPES = ("org", "conn")
 
 
-async def private_archive_key_ids(db: AsyncSession, org_id: int, *, limit: int | None = None) -> list[int]:
+async def private_archive_key_ids(db: AsyncSession, org_id: int, *, limit: int | None = None,
+                                  after: int = 0) -> list[int]:
     """The archive keys that are the team's own (docs/context/architecture/archive.md, "Opting
     out"): keys under its `org:`/`conn:` scopes. A private key holds only that team's snapshots,
     because only that team ever computes its hash ("Sharing"). Platform-key answers are public
-    questions and are never the team's. Ascending by id, so a bounded pass is resumable."""
+    questions and are never the team's. Ascending by id from `after`, so a bounded pass is
+    resumable and a pass that deletes nothing (a count) still moves forward."""
     owned = select(ArchiveSnapshot.key_id).where(
-        ArchiveSnapshot.origin_org_id == org_id).distinct().scalar_subquery()
+        ArchiveSnapshot.origin_org_id == org_id, ArchiveSnapshot.key_id > after).scalar_subquery()
     rows = await db.execute(
         select(ArchiveKey.id)
-        .where(ArchiveKey.scope.in_(ARCHIVE_PRIVATE_SCOPES), ArchiveKey.id.in_(owned))
+        .where(ArchiveKey.scope.in_(ARCHIVE_PRIVATE_SCOPES), ArchiveKey.id > after,
+               ArchiveKey.id.in_(owned))
         .order_by(ArchiveKey.id).limit(limit or sys.maxsize))
     return [int(r[0]) for r in rows]
+
+
+async def archive_snapshots_under(db: AsyncSession, key_ids: list[int]) -> dict[str, int]:
+    """content hash -> how many snapshots under `key_ids` carry it. Read-only: what an erasure
+    of those keys would remove, for a dry run."""
+    if not key_ids:
+        return {}
+    rows = await db.execute(
+        select(ArchiveSnapshot.content_hash, func.count())
+        .where(ArchiveSnapshot.key_id.in_(key_ids)).group_by(ArchiveSnapshot.content_hash))
+    return {str(h): int(n) for h, n in rows}
+
+
+async def archive_mark_count(db: AsyncSession, org_id: int) -> int:
+    """How many `ArchiveKeyOrg` marks tie the team to questions it paid for."""
+    return int((await db.execute(
+        select(func.count()).select_from(ArchiveKeyOrg).where(ArchiveKeyOrg.org_id == org_id)
+    )).scalar_one())
 
 
 async def archive_bodies_only_under(db: AsyncSession, key_ids: list[int]) -> set[str]:

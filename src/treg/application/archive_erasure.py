@@ -26,20 +26,32 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from .. import archive_bodies
-from ..domain.governance.teams import archive_bodies_only_under, erase_archive_rows, private_archive_key_ids
+from ..domain.governance.teams import (
+    archive_bodies_only_under, archive_mark_count, archive_snapshots_under, erase_archive_rows,
+    private_archive_key_ids,
+)
 from ..infra.db import session_maker
 from ..models import Org
 
 _log = logging.getLogger("treg.archive.erasure")
 
 _KEY_BATCH = 200          # keys per pass: bounded lock footprint, resumable
+_STATEMENT_TIMEOUT_MS = 30_000
 
 
 class NotOptedOut(ValueError):
     """The team is still in the archive: opt it out first, so nothing is recorded meanwhile."""
+
+
+async def _bounded(db) -> None:
+    """Cap every statement of this transaction. A pass is a few indexed statements over one key
+    batch; one that runs longer is cancelled and the job fails loud, rather than holding a
+    snapshot open that keeps Postgres from cleaning up every table's old row versions."""
+    if db.get_bind().dialect.name == "postgresql":
+        await db.execute(text(f"SET LOCAL statement_timeout = {_STATEMENT_TIMEOUT_MS}"))
 
 
 async def _delete_objects(hashes: set[str]) -> int:
@@ -70,14 +82,14 @@ async def erase_org(org_id: int, *, session_factory=session_maker) -> dict:
     from. Refuses (`NotOptedOut`) for a team still in the archive. Short transactions on the
     request pool: a request-shaped job (the owner delete, the worker command), never a resident
     one."""
-    async with session_factory() as db:
-        row = (await db.execute(select(Org.archive_opt_out_at).where(Org.id == org_id))).first()
-    if row is not None and row[0] is None:
+    if not await _opted_out(org_id, session_factory):
         raise NotOptedOut(f"org {org_id} is still in the archive; opt it out first")
     keys = objects = 0
+    after = 0
     while True:
         async with session_factory() as db:
-            key_ids = await private_archive_key_ids(db, org_id, limit=_KEY_BATCH)
+            await _bounded(db)
+            key_ids = await private_archive_key_ids(db, org_id, limit=_KEY_BATCH, after=after)
             orphans = await archive_bodies_only_under(db, key_ids) if key_ids else set()
         if not key_ids:
             break
@@ -86,10 +98,47 @@ async def erase_org(org_id: int, *, session_factory=session_maker) -> dict:
             raise RuntimeError(f"{failed} archive object(s) could not be deleted")
         objects += len(orphans)
         async with session_factory() as db:
+            await _bounded(db)
             keys += await erase_archive_rows(db, org_id, key_ids)
             await db.commit()
+        after = key_ids[-1]
     async with session_factory() as db:
+        await _bounded(db)
         await erase_archive_rows(db, org_id, [])      # the marks alone, when no key was left
         await db.commit()
     _log.info("archive erasure for org %s: %d key(s), %d object(s)", org_id, keys, objects)
     return {"org_id": org_id, "keys": keys, "objects": objects}
+
+
+async def _opted_out(org_id: int, session_factory) -> bool:
+    """A team that is gone counts as out: nothing of its is being recorded."""
+    async with session_factory() as db:
+        await _bounded(db)
+        row = (await db.execute(select(Org.archive_opt_out_at).where(Org.id == org_id))).first()
+    return row is None or row[0] is not None
+
+
+async def count_org(org_id: int, *, session_factory=session_maker) -> dict:
+    """What `erase_org` would remove, read in the same bounded passes, deleting nothing.
+
+    `bodies` counts the distinct content hashes under the team's keys: an upper bound on the
+    objects the erasure deletes, since a body another key's snapshot shares stays."""
+    keys = snapshots = 0
+    hashes: set[str] = set()
+    after = 0
+    while True:
+        async with session_factory() as db:
+            await _bounded(db)
+            key_ids = await private_archive_key_ids(db, org_id, limit=_KEY_BATCH, after=after)
+            per_hash = await archive_snapshots_under(db, key_ids)
+        if not key_ids:
+            break
+        keys += len(key_ids)
+        snapshots += sum(per_hash.values())
+        hashes.update(per_hash)
+        after = key_ids[-1]
+    async with session_factory() as db:
+        await _bounded(db)
+        marks = await archive_mark_count(db, org_id)
+    return {"org_id": org_id, "opted_out": await _opted_out(org_id, session_factory),
+            "keys": keys, "snapshots": snapshots, "bodies": len(hashes), "marks": marks}
