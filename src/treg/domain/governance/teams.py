@@ -305,6 +305,23 @@ async def private_archive_key_ids(db: AsyncSession, org_id: int, *, limit: int |
     return [int(r[0]) for r in rows]
 
 
+async def sole_public_archive_key_ids(db: AsyncSession, org_id: int, *, limit: int | None = None,
+                                      after: int = 0) -> list[int]:
+    """Public keys only this team paid for: marked by it and by no other team (archive.md,
+    "Opting out"). A public answer is not the team's, so erasure takes these only on request;
+    a question another team also paid for stays. Read by the team's marks, so it must run
+    before they go. Ascending by id from `after`, like `private_archive_key_ids`."""
+    other = aliased(ArchiveKeyOrg)
+    asked_by_another = exists().where(other.key_hash == ArchiveKey.key_hash, other.org_id != org_id)
+    rows = await db.execute(
+        select(ArchiveKey.id)
+        .join(ArchiveKeyOrg, ArchiveKeyOrg.key_hash == ArchiveKey.key_hash)
+        .where(ArchiveKeyOrg.org_id == org_id, ArchiveKey.scope.is_(None), ArchiveKey.id > after,
+               ~asked_by_another)
+        .order_by(ArchiveKey.id).limit(limit or sys.maxsize))
+    return [int(r[0]) for r in rows]
+
+
 async def archive_snapshots_under(db: AsyncSession, key_ids: list[int]) -> dict[str, int]:
     """content hash -> how many snapshots under `key_ids` carry it. Read-only: what an erasure
     of those keys would remove, for a dry run."""
@@ -354,6 +371,12 @@ async def erase_archive_rows(db: AsyncSession, org_id: int, key_ids: list[int] |
     await db.execute(delete(ArchiveKeyOrg).where(ArchiveKeyOrg.org_id == org_id))
     if key_ids is None:
         key_ids = await private_archive_key_ids(db, org_id)
+    return await erase_archive_keys(db, key_ids)
+
+
+async def erase_archive_keys(db: AsyncSession, key_ids: list[int]) -> int:
+    """Delete the given keys with their snapshots in `db` (no commit), moving the endpoint
+    running totals by what the statements returned -> keys deleted. Marks are untouched."""
     if not key_ids:
         return 0
     # Snapshots first (they reference the key and, through `body_of`, each other within a key).

@@ -170,8 +170,18 @@ refuse a team still in the archive: with the gate shut nothing new is recorded w
 there is no sweep, pending state or recorder coordination. What is "the team's" is decided in
 governance (`teams.private_archive_key_ids`, `teams.erase_archive_rows`): every key under the
 team's `org:`/`conn:` scopes with its snapshots and request shape, plus every `ArchiveKeyOrg`
-mark. Platform-key answers are public questions and stay; once the marks go nothing names the
-team.
+mark. Platform-key answers are public questions and stay by default. Once the marks go, the
+archive no longer names the team; `callrecord` still keeps the team's `params_hash` per call.
+
+On request (`erase-archive --include-sole-public`), erasure also takes the public keys only this
+team paid for (`teams.sole_public_archive_key_ids`: marked by it and by no other team). A question
+another team also paid for stays. These keys are found through the team's marks, so this phase
+runs first, before the private phase deletes the marks. It deletes keys and snapshots through
+`teams.erase_archive_keys`, which leaves marks alone. Unlike a private key, a public key can gain
+a snapshot from another team's call between the orphan judgment and the delete. That snapshot
+goes with the key, and its object, if new, is left unreferenced in the store. The cost of the
+phase is that other teams lose future hits on those questions; their next call goes live and
+re-records.
 
 Order matters:
 
@@ -187,9 +197,9 @@ Passes walk the team's keys by id from a cursor, and every statement in them run
 Postgres `statement_timeout`. One long transaction holds back the cleanup of old row versions in
 every table, the hot `org` balance row included; a pass that runs over the cap fails the job
 instead, and what earlier passes committed stays erased. `erase-archive --dry-run`
-(`archive_erasure.count_org`) reads the same passes and deletes nothing. It reports keys,
-snapshots, marks and distinct bodies; the bodies count is an upper bound, because a shared body
-stays.
+(`archive_erasure.count_org`, with the same `--include-sole-public` switch) reads the same
+passes and deletes nothing. It reports keys, snapshots, marks and distinct bodies; the bodies
+count is an upper bound, because a shared body stays.
 
 Endpoint running totals subtract what each DELETE returned, so two erasers subtract once. Because
 another process's upload cache cannot be told, `archive_bodies.prepare` trusts a remembered
