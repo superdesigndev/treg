@@ -6,7 +6,9 @@
 
 The dump is what readers consume after `catalog_store.load()`: every field of the loaded `Catalog`
 (each served row by id, the discovery order as ids, provider facts, rates, taxonomy, aliases, routing
-contracts and adapters) plus each row's priced cost view, with sorted keys. It imports `treg` from
+contracts and adapters) plus each row's priced cost view, with sorted keys. A dataclass field that
+holds its default is left out, so a new field nobody sets yet leaves the dump unchanged, while a set
+value that falls back to its default still shows as a missing key. It imports `treg` from
 the running environment and reads that checkout's catalog, or the catalog directory `--catalog`
 names. When a pull request changes loader, schema or validator source, CI dumps the base checkout's
 catalog with the base and with the merge result's code, and fails on any byte difference, naming the
@@ -21,9 +23,19 @@ import sys
 from pathlib import Path
 
 
+def _default(f: dataclasses.Field) -> object:
+    if f.default is not dataclasses.MISSING:
+        return f.default
+    if f.default_factory is not dataclasses.MISSING:
+        return f.default_factory()
+    return dataclasses.MISSING
+
+
 def _plain(value: object) -> object:
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return dataclasses.asdict(value)
+        # nested dataclasses come back through this hook from json.dumps
+        return {f.name: v for f in dataclasses.fields(value)
+                if (v := getattr(value, f.name)) != _default(f)}
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="json", by_alias=True)
     raise TypeError(f"{type(value).__name__} is not JSON")
