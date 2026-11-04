@@ -1,4 +1,4 @@
-"""Routed endpoints — `POST /call/treg.<capability>` (docs/CAPABILITY-ROUTING-PLAN.md §3–§5).
+"""Routed endpoints — `POST /call/treg.<capability>`.
 
 The router PICKS a child endpoint and runs it through the SAME call use case as any `/call/`:
 each attempt is a full `execute_call` on a child `CallContext` whose `call_ref` is
@@ -26,6 +26,9 @@ descriptor (`task_id` + poll endpoint) so the caller can resume; `cost_micro` is
 When the caller sent a domain and the hit carries an email, `_treg.domain_match` (and
 `X-Treg-Domain-Match`) says whether the mailbox domain matches. A LinkedIn-only child that returns
 a former employer still counts as a hit and is billed; the flag discloses the mismatch.
+
+When the caller sent `limit` and the serving child (or a merge) returns more rows, every row stays
+and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` say so — paid rows are never trimmed.
 
 `X-Treg-Route-Confirm` makes a hit count only once a second provider returns the same value of the
 contract's `confirm` field: the waterfall goes on after an unconfirmed hit, each attempt at its own
@@ -66,16 +69,20 @@ from ...domain import asynctasks as asynctasks_rules
 from ...domain.capacity.routes_view import view as overflow_routes_view
 from ...domain.capacity.view import view as capacity_view
 from ...domain.capacity.marks import spends_balance
-from ...domain.capacity.signatures import classify as classify_capacity
+from ...domain.capacity.signatures import classify as classify_capacity, is_exhausting
+from ...domain import plugins
+from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import results as catalog_results
 from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import paths as P
 from ...domain.catalog.routing import quality as route_quality
+from ...domain.catalog.schema.v2 import is_v2
 from ...domain.catalog.routing.contracts import (canonical_identity, declared_miss, declared_not_found,
                                                  invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
-    MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank, unscoped,
+    MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank,
+    sampled_provider_allowed, unscoped,
 )
 from .. import asynctasks as async_task_app
 from . import async_bridge, keyslots
@@ -274,13 +281,17 @@ class ChildOutcome:
 
 
 def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
-                  tier: str) -> ChildOutcome:
+                  tier: str, identity: dict | None = None) -> ChildOutcome:
     """Classify one routed child's answer. Pure: reads only this checkout's catalog."""
     if _declared_miss(endpoint, status, raw):
         return ChildOutcome("declared_miss")
     if declared_not_found(endpoint, status, raw):
         return ChildOutcome("not_found")
     capacity_signal = classify_capacity(endpoint["provider"], status, body=raw)
+    if tier == "platform" and is_exhausting(capacity_signal):
+        # treg's own account is out of money or out of its period allowance: nothing about the
+        # question, so the attempt is skipped like a rate-limited one, never the route's error.
+        return ChildOutcome("account_exhausted", detail=capacity_signal.kind)
     temporary_capacity = capacity_signal is not None and capacity_signal.kind in ("burst", "unknown")
     platform_auth_failure = tier == "platform" and status in (401, 403)
     # 405 and 410 Gone say the PROVIDER cannot serve this route (a discontinued endpoint answers
@@ -309,10 +320,24 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
     # The provider's own `expect` success rule (a DataForSEO task status other than 20000 under
     # a 20000 envelope) says this request failed: not an answer, whatever the remains read as.
     upstream_failed = catalog_results.fails_expect(endpoint["id"], raw)
-    if doc is None or is_miss or empty_core or upstream_failed:
+    provider_error = False
+    if is_v2(endpoint):
+        judged = catalog_outcome.judge(endpoint, status, doc,
+                                       answer=plugins.Answer(status=status, headers={}, raw=raw, body=doc))
+        provider_error = judged.cause == "error"
+        is_miss = is_miss or judged.cause == "no_content"
+    off_question = False
+    rule = getattr(contract, "question_miss", "")
+    if rule and identity and doc is not None and not (is_miss or empty_core):
+        try:
+            off_question = bool(P.evaluate(rule, {**identity, **core}))
+        except Exception as exc:  # noqa: BLE001 — a rule that cannot read this answer judges nothing
+            log.debug("question_miss failed on %s: %s", endpoint.get("id"), exc)
+    if doc is None or is_miss or empty_core or upstream_failed or provider_error or off_question:
         why = tuple(name for name, on in (
             ("non_json", doc is None), ("adapter_miss", is_miss), ("empty_core", empty_core),
-            ("expect_failed", bool(upstream_failed))) if on)
+            ("expect_failed", bool(upstream_failed)), ("provider_error", provider_error),
+            ("question_miss", off_question)) if on)
         return ChildOutcome(
             "miss", why=why, doc=doc,
             detail=f"provider reported failure: {upstream_failed}" if upstream_failed else "")
@@ -320,6 +345,7 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
     return ChildOutcome("hit", doc=doc, core=core, rows=rows)
 
 
+CURSOR_MAX = 512  # chars of a provider cursor `output.next_cursor` carries; longer stays in `raw`
 DEFAULT_MAX_COST_MICRO = 1_000_000  # $1.00 per routed call unless the caller says otherwise — a runaway guard, not a budget
 
 
@@ -435,10 +461,43 @@ def _row_key(row) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(name).lower()) if name else ""
 
 
-def _merge_rows(field: str, answers: list[tuple], limit: int | None):
+def _adapter_uses_limit(adapter) -> bool:
+    """True when the adapter forwards `limit` (directly or through an expression). A child that
+    never sees limit answers at its own page size; that is disclosed after the fact, not ranked."""
+    used = set(adapter.in_map) | {
+        n for e in (adapter.in_expr or {}).values() for n in re.findall(r"[A-Za-z_]\w*", e)
+    }
+    return "limit" in used
+
+
+def _long_cursor(output: dict | None, adapter, merged: bool) -> tuple[dict | None, dict | None]:
+    """A `next_cursor` longer than CURSOR_MAX leaves `output` and is named on `_treg` instead.
+    A routed endpoint takes no cursor, so the token only serves a direct call to the provider,
+    and that call reads it from `raw`, where it stays whole (icypeas: an 18 KB token, twice)."""
+    cursor = (output or {}).get("next_cursor")
+    if not isinstance(cursor, str) or len(cursor) <= CURSOR_MAX:
+        return output, None
+    path = (adapter.out_map.get("next_cursor") if adapter is not None and not merged else None)
+    return {**output, "next_cursor": None}, {"chars": len(cursor), **({"in_raw": path} if path else {})}
+
+
+def _limit_exceeded_note(*, asked: int, returned: int, served_by: str, merged: bool, adapter) -> dict:
+    """Honest disclosure when a routed answer carries more rows than the caller asked for."""
+    if merged:
+        why = "merged answers exceeded the asked limit"
+    elif adapter is not None and not _adapter_uses_limit(adapter):
+        why = f"{served_by} does not accept limit"
+    else:
+        why = f"{served_by} returned more rows than asked"
+    return {"asked": asked, "returned": returned, "why": why}
+
+
+def _merge_rows(field: str, answers: list[tuple], limit: int | None = None):
     """Union in ATTEMPT order — the ranking of the provider that answered first leads, later
     providers append what they add. The caller already paid for every one of these rows
-    (`spent` sums every attempt), so discarding them is pure waste."""
+    (`spent` sums every attempt), so discarding them is pure waste. `limit` is accepted for
+    call-site clarity but never applied: excess is disclosed on `_treg.limit_exceeded` instead."""
+    del limit  # kept in the signature so call sites stay readable; never trim paid rows
     seen, out = set(), []
     for _cand, _doc, core, _raw in answers:
         for r in (core.get(field) or []):
@@ -448,7 +507,7 @@ def _merge_rows(field: str, answers: list[tuple], limit: int | None):
             if k:
                 seen.add(k)
             out.append(r)
-    return out[:limit] if limit else out
+    return out
 
 
 async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptions) -> Plan:
@@ -459,6 +518,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
     if contract is None:
         raise ResolutionFailed("target_not_found", status_code=404, detail=f"{ep['id']} has no contract")
     identity, variant = canonical_identity(contract, identity_given)
+    sample_percentages = get_settings().route_provider_sample_percentages
     if variant is None:
         raise ResolutionFailed("route_no_candidate", status_code=422, detail={
             "error": "identity_incomplete", "endpoint_id": ep["id"],
@@ -548,6 +608,11 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             # priceable, but this deployment holds no key for the provider: the child would answer
             # "no credential" (a 404 the router must not treat as the caller's fault).
             dropped.append({"endpoint_id": e["id"], "why": f"no {e['provider']} key on this deployment and no own key"})
+            continue
+        if tier == "platform" and not sampled_provider_allowed(
+                e["provider"], sample_percentages, org_id=caller.org_id,
+                capability=ep["capability"], identity=identity):
+            dropped.append({"endpoint_id": e["id"], "why": "not selected for this routed request"})
             continue
         if c.exhausted:
             dropped.append({"endpoint_id": e["id"], "why": "treg's account for this provider is exhausted right now"})
@@ -922,7 +987,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             winner = (cand, {}, {}, raw)
             break
         outcome = child_outcome(cand.endpoint, plan.contract, cand.adapter, response.status, raw,
-                                tier=cand.tier)
+                                tier=cand.tier, identity=plan.identity)
         if outcome.kind == "declared_miss":
             # The provider's declared "asked and answered: no result" status (`miss: {status, means}`
             # on the endpoint - aviato/hunter/leadmagic/... 404 a person they have no record of),
@@ -977,6 +1042,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 "message": f"{cand.endpoint['id']} rejected the request ({response.status}); "
                            + ("not retried elsewhere" if len(rejected_by) == 1 else "every free-on-failure provider rejected it too"),
                 "provider_response": raw[:600].decode("utf-8", "replace")})
+        if outcome.kind == "account_exhausted":
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", response.status, charged,
+                                 f"treg's account is used up ({outcome.detail})"))
+            continue
         if outcome.kind == "error":
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", response.status, charged, raw[:120].decode("utf-8", "replace")))
@@ -1136,6 +1205,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             rows = _merge_rows(field, answers, plan.identity.get("limit"))
             if len(rows) > len(output.get(field) or []):
                 output = {**output, field: rows}
+                if "count" in plan.contract.output:
+                    output["count"] = len(rows)
                 merged_from = [c.endpoint["id"] for c, _, core_i, _ in answers if (core_i.get(field) or [])]
                 served = merged_from[0]
     # The rows answer a LOOSER question than the caller asked when the winner could not express a
@@ -1179,9 +1250,28 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     decision = ({"decided": decided_by is not None, "decided_by": decided_by,
                  "ordered_by": "quality" if ordered_on and quality else "price"}
                 if options.decisive and winner_outcome in ("hit", "weak") else None)
+    # A child (or a merge) that answers more rows than the caller's sent `limit` still returns
+    # every billed row: routed endpoints wrap the child's answer and never alter it. Disclose the
+    # excess on `_treg` (and a header) instead of trimming. Only a limit the caller SENT counts —
+    # a contract default is not a question anyone asked.
+    limit_exceeded = None
+    asked_limit = plan.identity.get("limit")
+    if (isinstance(given, dict) and "limit" in given
+            and isinstance(asked_limit, (int, float)) and not isinstance(asked_limit, bool)):
+        list_field = _list_field(plan.contract)
+        returned_n = len((output or {}).get(list_field) or []) if list_field else 0
+        asked_n = int(asked_limit)
+        if list_field and returned_n > asked_n:
+            limit_exceeded = _limit_exceeded_note(
+                asked=asked_n, returned=returned_n, served_by=served,
+                merged=bool(merged_from), adapter=cand.adapter)
+
+    output, long_cursor = _long_cursor(output, cand.adapter, bool(merged_from))
+
     body_out = {"output": output or {k: None for k in plan.contract.output}, "raw": doc,
                 "_treg": {"served_by": served, "provider": provider, "tier": cand.tier,
                           **({"merged_from": merged_from} if merged_from else {}),
+                          **({"next_cursor": long_cursor} if long_cursor else {}),
                           **({"advice": advice} if advice else {}),
                           **({"domain_match": domain_match} if domain_match is not None else {}),
                           "outcome": winner_outcome, "tried": [t.view() for t in tried], "charged_micro": spent,
@@ -1192,6 +1282,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                           **({"ordered_by": "quality" if ordered_on and quality else "price"} if options.quality else {}),
                           **({"capped": True} if cost_capped else {}),
                           **({"ignored_filters": list(cand.ignored)} if cand.ignored else {}),
+                          **({"limit_exceeded": limit_exceeded} if limit_exceeded else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
     _summarize(parent, served_by=served, tried_count=len(tried), output=output,
                hit={"hit": True, "weak": True, "miss": False}.get(winner_outcome),
@@ -1201,6 +1292,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     return _json(body_out, 200, {"X-Treg-Served-By": served, "X-Treg-Providers-Tried": ",".join(t.provider for t in tried),
                                  **({"X-Treg-Merged-From": ",".join(merged_from)} if merged_from else {}),
                                  **({"X-Treg-Ignored-Filters": ",".join(cand.ignored)} if cand.ignored else {}),
+                                 **({"X-Treg-Limit-Exceeded":
+                                     f"asked={limit_exceeded['asked']},returned={limit_exceeded['returned']}"}
+                                    if limit_exceeded else {}),
                                  **({"X-Treg-Domain-Match": str(domain_match).lower()} if domain_match is not None else {}),
                                  **({"X-Treg-Route-Capped": "true"} if cost_capped else {}),
                                  **({"X-Treg-Route-Confirmed": str(confirmation["confirmed"]).lower()} if confirmation else {}),

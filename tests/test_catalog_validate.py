@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import pytest
-import yaml
 
 from scripts import catalog_validate as validator
 from treg.domain.catalog import store as catalog_store
@@ -958,6 +957,11 @@ def test_body_allowlist_contract_validation(patch, valid):
     ({'scope': 'own_account'}, False),
     ({'authorization_method': 'oauth'}, False),
     ({'async': {'poll': {}}}, False),
+    ({'cost': None, 'price': {'value': '0'}}, True),
+    ({'cost': None, 'price': {'value': '0.0'}}, True),
+    ({'cost': None, 'price': {'value': '0.00'}}, True),
+    ({'cost': None, 'price': {'value': '0.02'}}, False),
+    ({'cost': None, 'price': {'value': 'free'}}, False),
 ])
 def test_anonymous_platform_auth_is_a_verified_free_read_only_contract(patch, valid):
     ep = {
@@ -971,6 +975,14 @@ def test_anonymous_platform_auth_is_a_verified_free_read_only_contract(patch, va
     errors = []
     validator.check_platform_auth(ep | patch, 'example', errors)
     assert (not errors) is valid
+
+
+def test_anonymous_platform_auth_refuses_a_priced_v2_row_naming_the_free_price():
+    ep = {'id': 'example.public.values', 'platform_auth': 'anonymous', 'method': 'GET',
+          'scope': 'any_account', 'price': {'value': '0.02'}, 'verified': '2026-09-15'}
+    errors = []
+    validator.check_platform_auth(ep, 'example', errors)
+    assert errors == ["example: platform_auth anonymous requires cost.type free (in v2, price.value '0')"]
 
 
 def test_missing_platform_auth_normalizes_as_absent():
@@ -1118,21 +1130,23 @@ def test_a_fixed_price_spools_when_its_success_rule_is_declared():
 
 
 def test_the_fast_catalog_loader_reads_every_file_like_the_pure_python_one():
-    """`store._Loader` uses libyaml's C parser when it is installed; every shipped catalog file must
-    parse to the same document as with the pure-Python SafeLoader, timestamps kept as strings."""
+    """The catalog's YAML reading uses libyaml's C parser when it is installed; every shipped catalog
+    file must parse to the same document as with the pure-Python SafeLoader, timestamps kept as
+    strings."""
     import yaml
     from treg.domain.catalog import store
+    from treg.domain.catalog.schema import files
 
     class Pure(yaml.SafeLoader):
         pass
-    Pure.yaml_implicit_resolvers = store._Loader.yaml_implicit_resolvers
+    Pure.yaml_implicit_resolvers = files._Loader.yaml_implicit_resolvers
     if not getattr(yaml, "__with_libyaml__", False):
         pytest.skip("libyaml not installed")
-    assert issubclass(store._Loader, yaml.CSafeLoader)
+    assert issubclass(files._Loader, yaml.CSafeLoader)
     for path in sorted(store.CATALOG_DIR.rglob("*.yaml")):
         text = path.read_text(encoding="utf-8")
-        assert yaml.load(text, Loader=store._Loader) == yaml.load(text, Loader=Pure), path.name
-    assert yaml.load("checked: 2026-09-01", Loader=store._Loader) == {"checked": "2026-09-01"}
+        assert yaml.load(text, Loader=files._Loader) == yaml.load(text, Loader=Pure), path.name
+    assert yaml.load("checked: 2026-09-01", Loader=files._Loader) == {"checked": "2026-09-01"}
 
 
 def _per_result_cost(**extra):
@@ -1295,17 +1309,63 @@ def test_bills_miss_is_true_and_only_on_a_per_success_price():
         assert any("bills_miss" in e for e in errors), bad
 
 
-@pytest.mark.parametrize('row,message', [
-    ('{queryParams: {q: {type: string, required: true, note: "One, two."}}, note: ok}', None),
-    ('{body: {type: object, required: [q], properties: {q: {type: string, items: {type: string}}}}}', None),
-    ('{query: {q: {type: string, required: true}}}', 'input.query is not one of'),
-    ('{body: {data: {type: string, note: Email, or a domain.}}}', "input.body.data: unknown parameter-spec key 'or a domain.'"),
-    ('{body: {properties: {a: {type: object, properties: {b: {tpye: string}}}}}}', "input.body.a.b: unknown parameter-spec key 'tpye'"),
-])
-def test_input_keys_are_the_known_vocabulary(row, message):
+def test_a_v2_row_ships_priced_on_core_with_its_miss_on_the_row(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", "      reserve: {entities: {}}\n")
+    legacy = (tmp_path / "tikhub.yaml").read_text()
+    (tmp_path / "tikhub.yaml").write_text(legacy[:legacy.index("    cost:\n")] + "    price: {value: '0'}\n")
+    assert validator.main(["tikhub"]) == 0
+
+    (tmp_path / "tikhub.yaml").write_text(legacy[:legacy.index("    cost:\n")] + "    bill: {miss: charged}\n"
+                                          "    ceiling_param: {in: query, name: max_usd, unit: usd}\n")
+    (tmp_path / "adapters.yaml").write_text(
+        "adapters:\n  tikhub.google.keywords.ideas: {accepts: [[q]], out: {a: b}, miss: 'a == []'}\n")
+    assert validator.main(["tikhub"]) == 1
+    out = capsys.readouterr().out
+    assert "a core row needs a price" in out and "remove the adapter's miss" in out
+    assert "ceiling_param is read from the file header" in out
+
+def _v2_cost_errors(endpoint_id: str, **keys) -> list[str]:
+    from treg.domain.catalog.schema import parse_row
+    provider = endpoint_id.split(".")[0]
+    raw = next(ep for ep in validator.schema.read_yaml(validator.CATALOG / f"{provider}.yaml")["endpoints"]
+               if ep["id"] == endpoint_id)
+    ep = {**raw, **keys}
     errors: list[str] = []
-    validator.check_input_keys(yaml.safe_load(row), 'test', errors)
-    if message is None:
-        assert errors == []
-    else:
-        assert any(message in e for e in errors), errors
+    validator.check_v2_cost(parse_row(ep, "test"), ep, provider, "test", errors)
+    return errors
+
+
+GEMINI = "google-ai.image-gen.gemini-3-1-flash-image"
+
+
+def test_the_pilot_v2_rows_pass_the_v2_cost_checks():
+    assert _v2_cost_errors(GEMINI) == [] and _v2_cost_errors("findymail.search.domain") == []
+
+
+@pytest.mark.parametrize("endpoint_id,keys,message", [
+    ("findymail.search.domain", {"settle": {"reported": {"path": "response.credits_used", "unit": "credits"}}},
+     "settle.reported.unit 'credits' is not usd, credit"),
+    ("findymail.search.domain", {"price": {"value": "1", "currency": "unit", "unit": "page"}},
+     "price.currency unit (unit page) has no fx.yaml rate"),
+    ("findymail.search.domain", {"reserve": {"rows": {"param": "body.limit", "max": 10}}},
+     "reserve.rows.param 'body.limit' must name a declared integer"),
+    ("findymail.search.domain", {"reserve": {"entities": {"from": "body.domains"}}},
+     "reserve.entities.from 'body.domains' must name a declared input field"),
+    (GEMINI, {"settle": {"usage": {"path": "response.usageMetadata.totalTokenCount", "unit": "tokens"}}},
+     "settle.usage.unit 'tokens' is not usd, credit"),
+    (GEMINI, {"price": {"table": [
+        {"when": [{"path": "body.generationConfig.imageConfig.imagesize", "op": "equals", "value": "512"}],
+         "value": "0.05"}], "fallback": {"value": "0.165", "note": "4K"}}},
+     "'body.generationConfig.imageConfig.imagesize' is not declared in input"),
+    (GEMINI, {"price": {"table": [
+        {"when": [{"path": "body.generationConfig.imageConfig.imagesize", "op": "in", "value": ["512"]}],
+         "value": "0.05"}], "fallback": {"value": "0.165", "note": "4K"}}},
+     "'body.generationConfig.imageConfig.imagesize' is not a declared input field"),
+    (GEMINI, {"price": {"table": [
+        {"when": [{"path": "body.generationConfig.imageConfig.imageSize", "op": "equals", "value": "512"}],
+         "value": "0.05", "times": "body.contents"}], "fallback": {"value": "0.165", "note": "4K"}}},
+     "times field 'body.contents' must be numeric"),
+])
+def test_the_v2_cost_checks_refuse_a_unit_without_a_rate_and_a_path_to_no_declared_field(endpoint_id, keys, message):
+    assert any(message in error for error in _v2_cost_errors(endpoint_id, **keys))

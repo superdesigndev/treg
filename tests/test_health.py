@@ -15,6 +15,7 @@ from httpx import ASGITransport, AsyncClient
 from treg import crypto
 from treg.health import _probe
 from treg.models import Secret, Tool
+from conftest import verified_signup
 
 
 async def test_probe_marks_ok(clients: AsyncClient):
@@ -78,7 +79,7 @@ async def test_owner_webhook_alerted_on_invalid(clients: AsyncClient):
     # register a second user WITH a webhook that the upstream RECORDS; their bad cred must trigger a
     # real POST to that webhook (not merely land in the invalid list).
     from treg.api import app
-    r = await clients.post("/users", json={"email": "owner2@x.dev", "webhook_url": "http://upstream/hook"})
+    r = await _with_webhook(clients, "owner2@x.dev", "http://upstream/hook")
     tok = r.json()["token"]
     h2 = {"X-Treg-Token": tok}
     blob = json.dumps({"access_token": "X", "refresh_token": "RT", "client_id": "c", "client_secret": "s",
@@ -95,7 +96,7 @@ async def test_team_org_invalid_credential_still_alerts(clients: AsyncClient):
     # A team org's memberships carry no webhook_url (only the personal org gets one at registration);
     # an invalid team credential must still alert via the org owner's webhook fallback.
     from treg.api import app
-    owner = await clients.post("/users", json={"email": "team-owner@x.dev", "webhook_url": "http://upstream/hook"})
+    owner = await _with_webhook(clients, "team-owner@x.dev", "http://upstream/hook")
     ot = owner.json()["token"]
     team = (await clients.post("/orgs", headers={"X-Treg-Token": ot}, json={"name": "Team"})).json()
     th = {"X-Treg-Token": team["token"]}  # a team-org token — its membership has NO webhook_url
@@ -165,3 +166,16 @@ async def test_probe_preserves_a_query_string_in_the_probe_path():
         status, detail = await _probe(tool, smap, c)
     assert status == "ok", detail
     assert _seen == [{"part": "id", "mine": "true", "key": "TOKEN"}]
+
+
+async def _with_webhook(client, email, url):
+    """A verified owner whose membership carries an alert webhook (existing rows may hold one)."""
+    from sqlmodel import select
+    from treg.infra.db import session_maker
+    from treg.models import Membership
+    r = await verified_signup(client, json={"email": email})
+    async with session_maker() as db:
+        m = (await db.execute(select(Membership).where(Membership.org_id == r.json()["org_id"]))).scalar_one()
+        m.webhook_url = url
+        await db.commit()
+    return r

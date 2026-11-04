@@ -78,6 +78,7 @@ AUTH_REQUIRED_CODES = {"authentication_required", "invoice_payment_intent_requir
 # Postgres matches the partial topup index (revision 0090) only when the predicate is a constant
 # in the statement; a bound `kind` would let a cached generic plan walk all of a team's rows.
 _TOPUP = literal_column("'topup'")
+_GRANT = literal_column("'grant'")  # likewise the partial grant index (revision 0095)
 
 
 class BillingNotConfigured(Exception):
@@ -623,7 +624,7 @@ async def _load_payment_rows(
     if blocks:
         grants = (await db.execute(
             select(LedgerEntry.amount_micro, LedgerEntry.meta).where(
-                LedgerEntry.org_id == org.id, LedgerEntry.kind == "grant")
+                LedgerEntry.org_id == org.id, LedgerEntry.kind == _GRANT)
         )).all()
         for amt, meta in grants:
             if isinstance(meta, dict) and meta.get("source") == "topup_bonus" and meta.get("payment_intent"):

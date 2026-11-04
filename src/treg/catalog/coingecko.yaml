@@ -3,8 +3,9 @@ source:
   docs: https://docs.coingecko.com/reference/introduction
   openapi: null # CoinGecko publishes rendered reference pages; paths below transcribed 2026-08-15
   curated: 2026-08-15
-# The first Market data provider, and the category's flagship: the one true credit-priced vendor in
-# the sector (fx.yaml: Basic $29/mo / 100,000 credits = $0.00029/credit, license Commercial).
+# OWN-KEY-ONLY: treg serves CoinGecko on the caller's own Pro key, never on a shared one.
+# Mechanically: there is NO fx rate for coingecko, so usd stays null and platform_eligible is FALSE
+# by construction. A team pasting its own CoinGecko key gets every endpoint below, unmetered.
 # Billing: CoinGecko's usage docs state each successful API request consumes 1 call credit, uniform
 # across the endpoints below — hence every cost block is `per_call, 1 credit, documented`. Errors and
 # rate-limit rejections consume nothing.

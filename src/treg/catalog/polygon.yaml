@@ -4,8 +4,8 @@ source:
   openapi: null # paths transcribed and live-verified 2026-08-15 (Stocks Starter plan)
   curated: 2026-08-15
 # OWN-KEY-ONLY, deliberately: treg's Stocks Starter subscription is licensed "Individual Use", which
-# does not cover serving other teams (docs/MARKET-DATA-CATEGORY-RESEARCH.md, licensing table). The
-# commercial tier is Stocks Business at $2,499/mo — a purchase the usage data has to earn first.
+# does not cover serving other teams. The commercial tier is Stocks Business at $2,499/mo — a
+# purchase the usage data has to earn first.
 # Mechanically that means: cost blocks are 1 credit with NO fx rate for polygon, so usd stays null
 # and platform_eligible is FALSE by construction. A team pasting its own Polygon key gets everything.
 # Verified live 2026-08-15 on treg's Starter key (unlimited calls, 15-min delayed, 5y history).

@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from conftest import STALL_PROOF_TIMEOUT_S, pause_loop_once_in_flight
 from pydantic import ValidationError
 from redis.exceptions import ConnectionError as RedisConnectionError
 
@@ -16,7 +17,8 @@ from treg.infra import org_endpoint_quota as quota
 
 
 @pytest.fixture
-async def store():
+async def store(monkeypatch):
+    monkeypatch.setattr(quota, "_TIMEOUT_S", STALL_PROOF_TIMEOUT_S)
     executable = shutil.which("redis-server")
     if executable is None:
         pytest.skip("requires local redis-server")
@@ -68,6 +70,7 @@ async def test_concurrent_instances_never_overissue(store):
     other = quota.RedisQuotaStore(
         "unix://" + store._client.connection_pool.connection_kwargs["path"])
     await put_rule(store, limit=17)
+    pause_loop_once_in_flight((store, other), 80, 1.2)
     results = await asyncio.gather(*[
         (store if i % 2 else other).admit(42, "example.read") for i in range(80)
     ])

@@ -52,7 +52,7 @@ present a per-org token directly.
 | `treg login` | `--email EMAIL` | email one-time-code sign-in (register-or-login); prompts for the code. A server that requires a browser check finishes the sign-in in the browser instead |
 | `treg login` | `--token TOKEN` | agents/CI: use a per-org token directly |
 | `treg logout` | — | clear your stored credentials |
-| `treg onboard` | `--mode guided\|quick` · `--name N` · `--yes` · `--reset` | colourful guided first-run — pick **guided build** (you create the team + invite a teammate, step by step) or **quick demo** (we seed a full demo team + tool + activity), ending on a no-key call. Offered `[Y/n]` after your first login; `--reset` removes demo teammates |
+| `treg onboard` | `--path catalog\|setup\|access\|demo` · `--source local\|global\|both` · `--yes` · `--reset` | guided first-run: **catalog** (find a tool and call it with no key), **setup** (share this project's or your global agent skills and keys), **access** (pull your team's shared skills, then a test call) or **demo**; asked when `--path` is omitted. Offered `[Y/n]` after your first login; `--reset` removes demo teams and example teammates |
 
 ```bash
 treg config --base-url https://treg.to
@@ -247,8 +247,9 @@ then get the 503 above); `treg org overflow` shows the setting. Own keys are nev
 `treg org archive off` takes your team out of treg's archive of answers: no new call of yours is
 answered from a stored answer or recorded into one, so metered calls lose the repeat price (own keys
 stay free as always). `treg org archive` shows the setting; `treg org archive on` opts back in.
-Answers already stored for the team are erased when the team is deleted, or on request; call records
-and async-task completion evidence are kept as before.
+Answers already stored for the team are erased when the team is deleted, or on request. A request
+can include public answers to questions only your team paid for; answers other teams also paid for
+stay. Call records and async-task completion evidence are kept as before.
 
 ### Routed endpoints — let treg choose the provider
 

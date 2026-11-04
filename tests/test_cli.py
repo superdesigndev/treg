@@ -680,7 +680,7 @@ def test_secret_add_env_var_parses_and_strips_quotes(tmp_path, monkeypatch):
 
 def test_scan_upload_import_verbs():
     """`treg scan` is the read-only preview (forced dry_run, no prompts); `treg upload` is the real
-    thing; `treg import` stays a working alias of upload (old docs/scripts must not break)."""
+    thing; `treg import` stays a working alias of upload (old docs and scripts must not break)."""
     p = cli.build_parser()
     s = p.parse_args(["scan"])
     assert s.dry_run and s.as_scan and s.all and s.no_oauth and s.fn is cli.cmd_import

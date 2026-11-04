@@ -11,6 +11,9 @@ from typing import Any
 
 from pydantic import AnyHttpUrl, TypeAdapter, ValidationError
 
+from ... import plugins
+from .. import outcome
+from ..schema.v2 import is_v2
 from . import paths as P
 
 _HTTP_URL = TypeAdapter(AnyHttpUrl)
@@ -44,6 +47,11 @@ class Contract:
     output: dict[str, dict]                    # core field → {type, required?, note?}
     miss: str
     idempotent: bool = True
+    # A miss rule that also sees the question: evaluated on the caller's identity merged with the
+    # child's core output, after the adapter's own miss rule. A hit it marks true is a miss
+    # (`question_miss`), so the route moves on. Empty = none. Used where only the question can say
+    # an answer is off target (a `site:` search whose rows are all on other sites).
+    question_miss: str = ""
     default_max_cost_usd: float | None = None  # the per-call ceiling when the caller sends none
     # One sentence the router attaches as `_treg.advice` to a HIT whose `output.verified` is not
     # true — a found contact the provider did not confirm deliverable, which an agent should verify
@@ -98,6 +106,19 @@ class Contract:
     # any is weak, and an adapter that cannot map them all is asked last. Empty = more than half of
     # the output fields, the generic rule. A profile without a headline is not a profile.
     complete: tuple[str, ...] = ()
+    # One row shape for a list output whose rows otherwise differ per provider (`people.search`):
+    # `row_of` names the list field, `row_fields` the keys a row may carry, and every row an
+    # adapter maps must fill at least one of `row_needs`. An adapter that declares `row:` returns
+    # rows in this shape; one that does not keeps its provider's rows. `raw` keeps the provider's
+    # body either way. Empty `row_of` = no row shape.
+    row_of: str = ""
+    row_fields: dict[str, dict] = field(default_factory=dict)
+    row_needs: tuple[str, ...] = ()
+    # Identity key -> expression over the identity and filters, a value built for a provider that
+    # accepts NO variant the caller supplied (`q` from title + keywords + location, so a free-text
+    # people search can answer a `{title}` request). A provider that can take the caller's own
+    # fields never sees it, so its request is unchanged.
+    stand_in: dict[str, str] = field(default_factory=dict)
 
     @property
     def required_output(self) -> tuple[str, ...]:
@@ -129,6 +150,22 @@ class Adapter:
     verdicts: dict[str, str] = field(default_factory=dict)
     _verdict: tuple[str, tuple[str, ...], tuple[str, ...], dict[str, str]] | None = None
     _filter_keys: tuple[str, ...] = ()        # contract filter names, set at load (always sent)
+    # `row:` the contract's row field -> expression over ONE provider row; `_row_of` is the
+    # contract's list field those rows fill, set at load.
+    row_map: dict[str, str] = field(default_factory=dict)
+    _row_of: str = ""
+    _row_needs: tuple[str, ...] = ()
+    _stand_in: dict[str, str] = field(default_factory=dict)   # the contract's `stand_in`, set at load
+
+    def with_stand_in(self, identity: dict[str, Any], keys=None) -> dict[str, Any]:
+        """The identity plus the contract's stand-in values for keys it lacks (`keys`: only these)."""
+        extra = {}
+        for k, expr in self._stand_in.items():
+            if identity.get(k) in (None, "") and (keys is None or k in keys):
+                v = P.evaluate(expr, identity)
+                if v not in (None, ""):
+                    extra[k] = v
+        return {**identity, **extra} if extra else identity
 
     def to_upstream(self, identity: dict[str, Any], variant: tuple[str, ...] | None = None) -> tuple[dict[str, str], Any]:
         """(query params, JSON body) for this provider from a canonical request (identity + filters).
@@ -141,6 +178,8 @@ class Adapter:
         body: dict[str, Any] = {}
         doc = {"queryParams": query, "body": body}
         identity_keys = set(variant) if variant is not None else None
+        if identity_keys and self._stand_in:
+            identity = self.with_stand_in(identity, identity_keys)
         for field_name, target in self.in_map.items():
             v = identity.get(field_name)
             if v is None:
@@ -167,10 +206,42 @@ class Adapter:
         return query, ([body] if self.body_array else body)
 
     def from_upstream(self, provider_body: Any) -> dict[str, Any]:
-        return {k: P.evaluate(expr, provider_body) for k, expr in self.out_map.items()}
+        core = {k: P.evaluate(expr, provider_body) for k, expr in self.out_map.items()}
+        if self.row_map and self._row_of and isinstance(core.get(self._row_of), list):
+            core[self._row_of] = self.rows(core[self._row_of])
+        return core
 
-    def is_miss(self, provider_body: Any) -> bool:
-        return bool(P.evaluate(self.miss, provider_body))
+    def rows(self, items: list) -> list[Any]:
+        """Each provider row in the contract's row shape: empty values dropped, text cut to
+        ROW_TEXT_MAX. A row the map cannot read (none of the contract's `row_needs`: the provider
+        changed its shape) stays the provider's own row rather than vanish from a paid answer, and
+        so does an item that is not an object."""
+        out = []
+        for item in items:
+            if not isinstance(item, dict):
+                out.append(item)
+                continue
+            row = {}
+            for key, expr in self.row_map.items():
+                v = P.evaluate(expr, item)
+                if isinstance(v, str):
+                    v = " ".join(v.split())[:ROW_TEXT_MAX] or None
+                if v not in (None, [], {}):
+                    row[key] = v
+            out.append(row if any(row.get(k) for k in self._row_needs) else item)
+        return out
+
+    def is_miss(self, provider_body: Any, endpoint: dict | None = None) -> bool:
+        """The adapter's `miss` expression, or, for a v2 row (whose adapter only maps fields), the
+        row's own 2xx miss rule."""
+        if self.miss:
+            return bool(P.evaluate(self.miss, provider_body))
+        if endpoint is None:
+            from ..store import load
+            endpoint = load().by_id.get(self.endpoint_id) or {}
+        raw = json.dumps(provider_body).encode() if provider_body is not None else b""
+        return outcome.miss_holds(endpoint, provider_body,
+                                  answer=plugins.Answer(status=200, headers={}, raw=raw, body=provider_body))
 
     @property
     def records_verdict(self) -> bool:
@@ -213,13 +284,48 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
     return tuple(out)
 
 
+CONTRACT_KEYS = frozenset({
+    "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
+    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "prefer", "check", "confirm",
+    "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in"})
+ADAPTER_KEYS = frozenset({
+    "accepts", "in", "in_expr", "body_array", "test_identity", "cost_units", "max",
+    "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row"})
+# The longest text a mapped row field keeps: a row is read by an agent, and one provider's
+# multi-page bio would otherwise cost more tokens than the rest of the answer.
+ROW_TEXT_MAX = 300
+
+
+def _known_keys(what: str, raw: object, known: frozenset[str]) -> dict:
+    if not isinstance(raw, dict):
+        raise ValueError(f"{what}: a mapping")
+    if unknown := sorted(set(raw) - known):
+        raise ValueError(f"{what}: unknown key {', '.join(unknown)}")
+    return raw
+
+
+def _expressions(what: str, *exprs: object) -> None:
+    for expr in exprs:
+        try:
+            P.parse(expr)
+        except ValueError as exc:
+            raise ValueError(f"{what}: {exc}") from None
+
+
 def parse_contracts(doc: dict) -> dict[str, Contract]:
     out = {}
     for cap, c in (doc.get("contracts") or {}).items():
+        _known_keys(f"contract {cap}", c, CONTRACT_KEYS)
+        _expressions(f"contract {cap}", *(c.get("derive") or {}).values(), *(c.get("stand_in") or {}).values(),
+                     *([c["miss"]] if c.get("miss") else []),
+                     *([c["question_miss"]] if c.get("question_miss") else []),
+                     *([c["check"]["when"]] if isinstance(c.get("check"), dict) and c["check"].get("when") else []))
         types = {}
         for v in c.get("identity") or []:
             if isinstance(v, dict):
                 types.update({k: str(t) for k, t in v.items()})
+        if stray := sorted(set(c.get("stand_in") or {}) - set(types)):
+            raise ValueError(f"contract {cap}: stand_in must name identity keys, got {stray}")
         scoping = c.get("scoping") or []
         if not isinstance(scoping, list) or any(k not in types for k in scoping):
             # A typo'd key would silently scope nothing; failing the routing load instead makes
@@ -239,6 +345,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             filters={k: (v if isinstance(v, dict) else {"type": str(v)}) for k, v in (c.get("filters") or {}).items()},
             output={k: (v if isinstance(v, dict) else {"type": str(v)}) for k, v in (c.get("output") or {}).items()},
             miss=str(c.get("miss") or ""), idempotent=bool(c.get("idempotent", True)),
+            question_miss=str(c.get("question_miss") or ""),
             default_max_cost_usd=(float(c["default_max_cost_usd"]) if c.get("default_max_cost_usd") is not None else None),
             advice_unverified=str(c.get("advice_unverified") or ""),
             advice_domain_mismatch=str(c.get("advice_domain_mismatch") or ""),
@@ -250,8 +357,23 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             empty_is_failure=bool(c.get("empty_is_failure", False)),
             one_subject=bool(c.get("one_subject", False)),
             complete=_parse_complete(cap, c.get("complete"), c.get("output") or {}),
+            stand_in={str(k): str(v) for k, v in (c.get("stand_in") or {}).items()},
+            **_parse_row(cap, c.get("row"), c.get("output") or {}),
             **_parse_verdict(cap, c.get("verdict")))
     return out
+
+
+def _parse_row(cap: str, raw, output: dict) -> dict:
+    if not raw:
+        return {}
+    of, fields = raw.get("of") if isinstance(raw, dict) else None, (raw or {}).get("fields") if isinstance(raw, dict) else None
+    if of not in output or (output[of] or {}).get("type") != "list" or not isinstance(fields, dict) or not fields:
+        raise ValueError(f"contract {cap}: row needs `of` (a list field of its output) and `fields`")
+    needs = tuple(str(k) for k in raw.get("needs") or ())
+    if not needs or any(k not in fields for k in needs):
+        raise ValueError(f"contract {cap}: row `needs` must name one or more of its `fields`")
+    return {"row_of": str(of), "row_fields": {str(k): (v if isinstance(v, dict) else {"type": str(v)}) for k, v in fields.items()},
+            "row_needs": needs}
 
 
 def _parse_complete(cap: str, raw, output: dict) -> tuple[str, ...]:
@@ -304,6 +426,9 @@ def _parse_verdict(cap: str, raw) -> dict:
 def parse_adapters(doc: dict) -> dict[str, Adapter]:
     out = {}
     for eid, a in (doc.get("adapters") or {}).items():
+        _known_keys(f"adapter {eid}", a, ADAPTER_KEYS)
+        _expressions(f"adapter {eid}", *(a.get("in_expr") or {}).values(), *(a.get("out") or {}).values(),
+                     *(a.get("row") or {}).values(), *(a[k] for k in ("miss", "verdict") if a.get(k)))
         out[eid] = Adapter(
             endpoint_id=eid, accepts=_variants(a.get("accepts")), in_map=dict(a.get("in") or {}),
             in_expr=dict(a.get("in_expr") or {}), body_array=bool(a.get("body_array")),
@@ -313,6 +438,7 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
             additional_capabilities=tuple(a.get("additional_capabilities") or ()),
             route=a.get("route", True) is not False,
             const=dict(a.get("const") or {}), out_map=dict(a.get("out") or {}), miss=str(a.get("miss") or ""),
+            row_map={str(k): str(v) for k, v in (a.get("row") or {}).items()},
             verdict=str(a.get("verdict") or ""),
             verdicts={_verdict_key(k) or str(k): str(v) for k, v in (a.get("verdicts") or {}).items()})
     return out
@@ -321,8 +447,11 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
 def miss_status(endpoint: dict) -> int | None:
     """The ERROR status this endpoint's YAML declares as "no result" (`miss: {status, means}`),
     or None. Only a 4xx counts: a `status: 200` block documents a 2xx the adapter's own `miss`
-    predicate decides, and honouring it here would call every success a miss."""
+    predicate decides, and honouring it here would call every success a miss. A v2 row lists its
+    statuses; this is the first."""
     m = endpoint.get("miss")
+    if is_v2(endpoint):
+        return m["status"][0] if isinstance(m, dict) and m.get("status") else None
     if isinstance(m, dict) and m.get("status") is not None:
         try:
             status = int(m["status"])
@@ -341,6 +470,12 @@ def declared_miss(endpoint: dict, status: int, body: Any) -> bool:
     status carries both a miss and a fault (prospeo 400: NO_MATCH vs INVALID_DATAPOINTS). `body`
     is the raw bytes or the parsed document; only a JSON object can satisfy a predicate, and a
     predicate that raises reads as "not a miss"."""
+    if is_v2(endpoint):
+        doc = _document(body)
+        raw = bytes(body) if isinstance(body, (bytes, bytearray)) else body.encode() \
+            if isinstance(body, str) else json.dumps(body).encode()
+        return outcome.status_miss(endpoint, status, doc,
+                                   answer=plugins.Answer(status=status, headers={}, raw=raw, body=doc))
     if status != miss_status(endpoint):
         return False
     return _body_matches((endpoint.get("miss") or {}).get("when"), body)
@@ -352,6 +487,8 @@ def declared_not_found(endpoint: dict, status: int, body: Any) -> bool:
     provider can only find the same nothing, or answer an empty page that looks like a success.
     `status` is one status or a list (a 2xx is allowed: some providers answer 200 and name the
     target's 404 in the body); `when` narrows it with a body predicate, as for `miss:`."""
+    if is_v2(endpoint):
+        return outcome.not_found(endpoint, status, _document(body))
     nf = endpoint.get("not_found")
     if not isinstance(nf, dict) or nf.get("status") is None:
         return False
@@ -362,6 +499,15 @@ def declared_not_found(endpoint: dict, status: int, body: Any) -> bool:
     except (TypeError, ValueError):
         return False
     return _body_matches(nf.get("when"), body)
+
+
+def _document(body: Any) -> Any:
+    if isinstance(body, (bytes, bytearray, str)):
+        try:
+            return json.loads(body)
+        except ValueError:
+            return None
+    return body
 
 
 def _body_matches(when: Any, body: Any) -> bool:
@@ -440,15 +586,21 @@ def canonical_identity(contract: Contract, given: dict[str, Any]) -> tuple[dict[
 
 
 def adapter_accepts(adapter: Adapter, identity: dict[str, Any]) -> tuple[str, ...] | None:
-    """The first accepted variant fully present in the (derived) identity, or None."""
-    return next((v for v in adapter.accepts if all(identity.get(k) not in (None, "") for k in v)), None)
+    """The first accepted variant fully present in the (derived) identity, or None. Only when the
+    caller's own fields fit none does a contract stand-in (`q` built from them) get a turn."""
+    def first(ident):
+        return next((v for v in adapter.accepts if all(ident.get(k) not in (None, "") for k in v)), None)
+    found = first(identity)
+    if found is None and getattr(adapter, "_stand_in", None):
+        found = first(adapter.with_stand_in(identity))
+    return found
 
 
 def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -> tuple[bool, str]:
     """Fixture round-trip: `in` must reproduce the endpoint's own `test_request` from the contract's
     view of it, and `out` must fill every required core field from the example response (or the
     example must be a recognised miss). Anything else = not a candidate."""
-    if not adapter.accepts or not adapter.out_map or not adapter.miss:
+    if not adapter.accepts or not adapter.out_map or not (adapter.miss or outcome.declares_miss(endpoint)):
         return False, "adapter incomplete"
     tr = endpoint.get("test_request") or {}
     # Reconstruct the identity from the test request through the adapter's own `in` map.
@@ -489,12 +641,21 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
             return False, f"in: body.{k} → {b.get(k)!r}, test_request has {v!r}"
     if example is None:
         return False, "no example_response to verify `out` against"
-    if adapter.is_miss(example):
+    if adapter.is_miss(example, endpoint):
         return True, "example is a miss; out unverified on a hit"
     core = adapter.from_upstream(example)
     missing = [k for k in contract.required_output if core.get(k) in (None, "")]
     if missing:
         return False, f"out: example lacks required {missing}"
+    if adapter.row_map:
+        if not contract.row_of:
+            return False, "row: the contract has no row shape"
+        if unknown := sorted(set(adapter.row_map) - set(contract.row_fields)):
+            return False, f"row: fields outside the contract's row: {unknown}"
+        # a saved example's truncation marker ("… 8 more item(s) truncated") is not a row
+        rows = [r for r in core.get(contract.row_of) or [] if isinstance(r, dict)]
+        if not rows or any(not any(r.get(k) for k in contract.row_needs) for r in rows):
+            return False, f"row: every example row must fill one of {list(contract.row_needs)}"
     return True, ""
 
 
@@ -508,6 +669,8 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
         contract = contracts.get((ep or {}).get("capability") or "")
         if contract is not None:
             ad = Adapter(**{**ad.__dict__, "_filter_keys": tuple(contract.filters or ()),
+                            "_row_of": contract.row_of if ad.row_map else "", "_row_needs": contract.row_needs,
+                            "_stand_in": contract.stand_in,
                             "_verdict": (contract.verdict_from, contract.verdict_words,
                                          contract.required_output, contract.verdict_map)
                             if contract.verdict_words else None})

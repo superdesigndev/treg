@@ -54,10 +54,12 @@ class Signature:
 
 _TABLE: list[Signature] = [
     Signature("enrow", 402, r"insufficient credits", "balance", tripwire=True),
+    Signature("filtrat", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),
     Signature("anymailfinder", 402, r"not have enough credits", "balance", tripwire=True),
     Signature("findymail", 402, r"not enough credits", "balance", tripwire=True),
     Signature("leadsforge", 402, r"insufficient_credits", "balance"),
-    # MobiusEngine Jobs Data: an empty prepaid balance is a 402 {"error": {"code": "insufficient_balance", ...}}.
+    Signature("leadocean", 429, r"fair-use pace reached", "quota"),
+    # MobiusEngine.ai Jobs Data: an empty prepaid balance is a 402 {"error": {"code": "insufficient_balance", ...}}.
     Signature("mobiusengine-jobs", 402, r"insufficient_balance", "balance", tripwire=True),
     Signature("leadmagic", 402, r"insufficient_credits", "balance"),
     Signature("thecompaniesapi", 403, r"noCreditsRemaining", "balance", tripwire=True),
@@ -68,6 +70,21 @@ _TABLE: list[Signature] = [
     Signature("lusha", 400, r"reached your credit limit", "balance", tripwire=True),
     # Misses share the 400 status; only this error code means an empty account.
     Signature("prospeo", 400, r'"error_code"\s*:\s*"insufficient_credits"', "balance"),
+    # Wiza: an empty credit pool is a 400 {"status": {"code": 400, "message": "Insufficient API
+    # credits. You need 2 credits for company enrichment."}}; its other 400s are bad input.
+    Signature("wiza", 400, r"insufficient api credits", "balance", tripwire=True),
+    # CoinGecko: a lapsed paid plan is a 401 "API subscription deactivated. Please reactivate your
+    # account via ..."; a wrong key is a 401 without this phrase.
+    Signature("coingecko", 401, r"api subscription deactivated", "balance", tripwire=True),
+    # Dropcontact: an empty credit pool is a 403 {"error": true, "reason": "You submitted 1 valid
+    # items but only have 0 credits left"}. A batch larger than a non-zero balance is not empty.
+    Signature("dropcontact", 403, r"only have 0 credits left", "balance", tripwire=True),
+    # Aviato: a balance below one call's price is a 400 {"message": "Insufficient credits. Need 15,
+    # have 1.25."}.
+    Signature("aviato", 400, r"insufficient credits\. need [\d.]+, have [\d.]+", "balance"),
+    # OrbiSearch: a balance below one call's price is a 403 {"detail": "Insufficient credits: 0
+    # available, 0.2 needed"}.
+    Signature("orbisearch", 403, r"insufficient credits: [\d.]+ available", "balance"),
     Signature("predictleads", 402, r"exceeded the monthly request limit", "quota", tripwire=True),
     # PDL meters operations separately: person_identify can run out while enrich still works.
     Signature("pdl", 402, r"hit your account maximum for", "quota", tripwire=True),

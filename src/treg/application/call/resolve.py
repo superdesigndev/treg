@@ -22,7 +22,7 @@ from ...config import get_settings
 from ...domain.capacity import marks as capacity_marks
 from ...domain.capacity.routes_view import view as overflow_routes_view
 from ...domain.capacity.view import view as capacity_view
-from ...domain.catalog import store as catalog_store
+from ...domain.catalog import schema, store as catalog_store
 from ...domain.connections import authorization as connection_authorization
 from ...domain.connections.refresh import expiry_state
 from ...domain.governance import access as access_policy
@@ -33,6 +33,7 @@ from ...infra.db import session_maker
 from ...domain.governance.access import pinned_tag_predicates
 from ...models import AsyncResourceRecord, AsyncTaskRecord, CapabilityPin, Org, Secret, Tool
 from ..connect import _host_of, _provider_bindings
+from . import cost as call_cost
 from . import keyslots
 from .idempotency import _IDEM_SCOPE_SEP, IDEMPOTENCY_HEADER, _idempotency_key
 from .types import ResolutionFailed, ResolvedTarget
@@ -332,6 +333,10 @@ class MarketplaceCall:
     # A platform-key utility poll was authorized against this org-owned submission. The buffered
     # response may teach the same row its provider result/file id before the background worker runs.
     async_owner_call_id: str | None = None
+    # Reserved with no hold (`holdless_eligible` and an untagged caller): settle has nothing to close.
+    holdless: bool = False
+    # An overflow child reserve started for this parent: its `{call_ref}:overflow` hold may exist.
+    overflow_hold_possible: bool = False
     # Admitted through an active capacity lock as its probe (domain.capacity.marks): a 2xx clears
     # exactly that lock.
     probe_lock_id: str | None = None
@@ -340,6 +345,8 @@ class MarketplaceCall:
     key_slot: str | None = None
     # A routed child: settle into this list instead of the ledger (CallContext.deferred_settles).
     deferred: list | None = None
+    # A v2 row's frozen cost terms (`call.cost`): the settle follows the v2 settlement order.
+    cost_terms: dict | None = None
 
     @property
     def free_owned_poll(self) -> bool:
@@ -358,6 +365,16 @@ class MarketplaceCall:
                 and self.async_owner_call_id is None and not self.async_descriptor
                 and not ownership.get("produces")
                 and str(required.get("kind", "")).startswith("fetch:"))
+
+    @property
+    def holdless_eligible(self) -> bool:
+        """A $0 platform call whose settlement can write nothing: no hold to take or close."""
+        ownership = self.resource_ownership or {}
+        return (self.tier == "platform" and self.cost_type == "free"
+                and self.estimate_micro == 0 and not self.billed_oauth
+                and self.deferred is None and self.async_owner_call_id is None
+                and not self.async_descriptor and not ownership.get("produces")
+                and (self.settlement_basis.get("amount") or {}).get("kind") != "usage")
 
     @property
     def metered(self) -> bool:
@@ -863,8 +880,16 @@ def _marketplace_pricing(
 
     The catalog remains the price source. This helper only models provider rules that one fixed
     scalar cannot express: provider batch shapes and request-dependent modes.
-    `unit` is non-zero only when the response must decide the final charge.
+    `unit` is non-zero only when the response must decide the final charge. A v2 row is priced by
+    its own `price` and `reserve` (`call.cost`).
     """
+    cat = catalog_store.load()
+    ep = cat.by_id.get(endpoint_id)
+    if ep is not None and schema.is_v2(ep):
+        items = query.multi_items() if hasattr(query, "multi_items") else list((query or {}).items())
+        hold, unit, _credit, _terms = call_cost.price(
+            ep, cat, settlement_basis.request_evidence([(str(k), str(v)) for k, v in items], body))
+        return hold, unit
     if provider == "octen" and endpoint_id in _OCTEN_ENDPOINTS:
         from . import octen
         rates = _octen_rates_or_fail(endpoint_id, cost)
@@ -1180,7 +1205,7 @@ def _capability_alternatives(ep: dict, *, limit: int = 3) -> list[str]:
 
     Read from `cat.endpoints`, which `_parse` has already stripped of marked rows, so a retirement
     stops being suggested the moment it is marked and no list here needs maintaining. This
-    COMPARES, it does not route: treg never fails over on the caller's behalf (see the charter),
+    COMPARES, it does not route: treg never fails over on the caller's behalf,
     so this names the options and their prices and leaves the choice where it belongs.
 
     Deliberately synchronous and I/O-free. Measured success would need `endpoint_stats.observed`
@@ -1635,9 +1660,12 @@ def _enforce_apify_run_options(ep: dict, query) -> None:
 
 def _spool_evidence_paths(ep: dict, cost: dict) -> tuple[str, ...]:
     """What a spooled answer must keep for settlement: the top-level objects its usage terms read,
-    and the leaf its `expect` success rule compares. Everything else stays on disk."""
+    and the leaf its `expect` success rule compares; for a v2 row, every answer path its outcome
+    and settle rules read, up to the first `*` or filter. Everything else stays on disk."""
     if not ep.get("spooled_response"):
         return ()
+    if schema.is_v2(ep):
+        return call_cost.evidence_paths(ep)
     rule = (ep.get("expect") or {}).get("json_path")
     return settlement_basis.usage_roots(cost) + ((str(rule),) if rule else ())
 
@@ -2194,13 +2222,15 @@ def _preflight_authorization(ep: dict, secret: Secret, method: str, authorizatio
 
 @dataclass(frozen=True)
 class Pricing:
-    """What a catalog call reserves and how its hold will settle, in RAW micro-USD."""
+    """What a catalog call reserves and how its hold will settle, in RAW micro-USD. `terms` is a
+    v2 row's frozen cost terms (`call.cost`), None for a row in today's spelling."""
 
     estimate_micro: int
     unit_micro: int
     reported_charge_unit_micro: int
     settlement_basis: dict
     request_data: dict
+    terms: dict | None = None
 
 
 def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) -> Pricing:
@@ -2208,6 +2238,12 @@ def price_call(ep: dict, query: QueryValues, body: bytes, consumed: set[str]) ->
     and body, with the catalog of this checkout. Pure: no session, no network."""
     cat = catalog_store.load()
     service = ep["provider"]
+    if schema.is_v2(ep):
+        request_data = settlement_basis.request_evidence(query.multi_items(), body, path_names=consumed)
+        hold, unit, credit, terms = call_cost.price(ep, cat, request_data)
+        return Pricing(estimate_micro=hold, unit_micro=unit, reported_charge_unit_micro=credit,
+                       settlement_basis=call_cost.basis(cat, ep, hold, terminal=bool(ep.get("async"))),
+                       request_data=request_data, terms=terms)
     raw_cost = ep.get("cost") or {}
     cv = cat.cost_view(raw_cost, service) if raw_cost else None
     info_est, info_unit = _marketplace_pricing(service, ep["id"], cv, query, body)
@@ -2368,6 +2404,7 @@ async def _resolve_marketplace_call(
         unit_micro=pricing.unit_micro,
         reported_charge_unit_micro=pricing.reported_charge_unit_micro,
         settlement_basis=pricing.settlement_basis, request_data=pricing.request_data,
+        cost_terms=pricing.terms,
         async_descriptor=ep.get("async"), resource_ownership=ep.get("resource_ownership"),
         managed_resource=ep.get("managed_resource"),
         spooled_evidence=_spool_evidence_paths(ep, ep.get("cost") or {}),
@@ -2423,6 +2460,8 @@ async def _resolve_marketplace_call(
         _enforce_team_label(ep, caller.org_id, body, request_headers, query)
         _enforce_caller_email(ep, caller.email, body, request_headers, query)
         _enforce_request_quantity(ep, cost, body, query)
+        if schema.is_v2(ep):
+            call_cost.require_rows(ep, pricing.request_data)
         if service == "sumble":
             from . import sumble
             sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
@@ -2511,7 +2550,7 @@ def _key_affinity(caller: Caller, headers) -> str:
 def _provider_capacity_unavailable(ep: dict, service: str, resets, *,
                                    probing: bool = False) -> ResolutionFailed:
     """The typed floor (plan §4.5): no charge, `resets_at` when known, and the same-capability
-    alternatives — treg names them and leaves the choice to the caller (charter: no failover)."""
+    alternatives — treg names them and leaves the choice to the caller."""
     # Say what treg is doing about it before what the caller could do: an agent quotes the first
     # imperative line back to its user, and "use your own key" reads as "your plan lost access".
     # Nothing about the caller's plan or balance changed.
