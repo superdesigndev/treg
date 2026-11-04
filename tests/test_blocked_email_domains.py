@@ -171,18 +171,6 @@ async def test_otp_still_works_for_an_unlisted_domain_while_the_list_is_set(clie
     assert await _otp_login(client, "farm-a.example@company.dev")   # local part is never looked at
 
 
-# ---- open registration (POST /users: user + org + the $1 promo in one call) -----------------------
-
-async def test_open_registration_refuses_a_blocked_domain_and_creates_nothing(client, ops):
-    ops()
-    for email in ("farm@sub.farm-a.example", "farm@farm-b.example"):
-        r = await client.post("/users", json={"email": email})
-        assert r.status_code == 403 and r.json()["detail"] == REFUSAL
-        assert await _user_count(email) == 0
-    async with session_maker() as s:
-        assert (await s.execute(select(Org))).scalars().all() == []   # no team, so no grant
-
-
 # ---- creating a team (POST /orgs: the other promo door, for an already-registered identity) -------
 
 async def test_create_org_refuses_an_identity_registered_before_its_domain_was_listed(client, ops):

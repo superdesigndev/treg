@@ -9,6 +9,7 @@ instead.
 from __future__ import annotations
 
 from httpx import AsyncClient
+from conftest import verified_signup
 
 CAP = "tiktok.user.profile"
 PINNED = "tikhub"
@@ -72,7 +73,7 @@ async def test_a_pin_is_scoped_to_one_org(clients: AsyncClient):
     """Another team's decision must never refuse your call."""
     org = await _org_id(clients)
     await clients.post(f"/orgs/{org}/pins", json={"capability": CAP, "provider": PINNED})
-    r = await clients.post("/users", json={"email": "stranger@elsewhere.dev"})
+    r = await verified_signup(clients, json={"email": "stranger@elsewhere.dev"})
     other = {"X-Treg-Token": r.json()["token"]}
     mine = await clients.get(f"/call/{OTHER_EP}?uniqueId=tiktok")
     assert mine.json()["detail"]["error"] == "capability_pinned"

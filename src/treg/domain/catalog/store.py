@@ -503,8 +503,12 @@ def _parse(directory: Path) -> Catalog:
                                         "table_rate_unit": span[2]}}
             if v2:
                 kept = {k: v for k, v in raw.items() if k not in schema.v2.RESOLVED_KEYS}
-                ep = {**_normalize(kept, provider, directory), **schema.resolved(row),
-                      "tier": doc_tier[path]}
+                ep = {**_normalize(kept, provider, directory), "tier": doc_tier[path]}
+                ep.update(schema.served(row, ep["input"]))
+                if (floor := _table_floor(ep["cost"], ep["input"])) is not None:
+                    ep["cost"]["table_min"] = floor
+                if (span := _table_rate(ep["cost"])) is not None:
+                    ep["cost"].update(table_rate=list(span[:2]), table_rate_unit=span[2])
             else:
                 ep = _normalize(raw, provider, directory)
             if ep["id"] in by_id:
@@ -906,7 +910,8 @@ def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None) -
         "platform_eligible": cat.platform_eligible(ep) if cat else None,
         **({"platform_auth": "anonymous"} if ep.get("platform_auth") == "anonymous" else {}),
         "platform_blocked": ep.get("platform_blocked") or None,
-        "miss": ({k: v for k, v in ep["miss"].items() if k != "when"} if isinstance(ep.get("miss"), dict) else ep.get("miss")),
+        "miss": ({k: v for k, v in ep["miss"].items() if k not in ("when", "plugin")}
+                 if isinstance(ep.get("miss"), dict) and "status" in ep["miss"] else None),
         **({"not_found": {k: v for k, v in ep["not_found"].items() if k != "when"}} if isinstance(ep.get("not_found"), dict) else {}),
         # Only direct-id lookups can return a marked row; discovery surfaces never include one.
         "status": ep.get("status") or None,

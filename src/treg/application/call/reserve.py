@@ -242,15 +242,36 @@ async def _enforce_tag_budgets(caller: Caller, meta: CallMeta, db: AsyncSession,
                 })
 
 
+async def _holdless_reserve(mk: MarketplaceCall, caller: Caller) -> None:
+    """Admit a $0 call without a hold: the daily-cap read, no balance row, no money admission."""
+    mk.holdless = True  # before any await: a cancel during the cap read has no hold to release
+    mk.payer_org_id = caller.org_id
+    mk.reserved_micro = 0
+    mk.reserved_at = time.monotonic()
+    if budget_policy._effective_daily_cap(caller.org) > 0:
+        async with session_maker() as db:
+            await _enforce_platform_daily_cap(caller, 0, db)
+
+
 async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta = _NO_META,
-                            call_ref: str | None = None) -> None:
+                            call_ref: str | None = None, *, allow_holdless: bool = False) -> None:
     """Withhold this call's estimated cost BEFORE a byte goes upstream, and record the hold on `mk`.
     Insufficient balance is a 402 whose body an agent can act on without reading prose.
 
     `meta` is the caller's parsed X-Treg-Meta bag, passed explicitly rather than hung off `mk`:
     attribution decides who a reselling builder bills, and it belongs to the request, not to the
     endpoint match. The already-parsed object travels, never a bare dict — re-deriving the primary
-    dimension here would be a second place that could disagree about who pays."""
+    dimension here would be a second place that could disagree about who pays.
+
+    `allow_holdless` admits a `holdless_eligible` call from an untagged caller in an org listed in
+    `holdless_free_org_ids` without a hold: a $0 reserve and its release only queued on the org's
+    balance row. A tagged call keeps its hold,
+    because the tag rows written with it count toward `calls_per_day`."""
+    if (allow_holdless and mk.holdless_eligible and not meta.tags
+            and caller.org_id in get_settings().holdless_free_org_ids):
+        await _holdless_reserve(mk, caller)
+        return
+    mk.holdless = False
     charged = ledger.with_margin(mk.estimate_micro)
     mk.payer_org_id = caller.org_id
     mk.reserved_micro = max(0, charged)

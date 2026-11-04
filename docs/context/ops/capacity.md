@@ -245,6 +245,11 @@ Redis `TREG_KV_URL`, and an enforce list needs `observe`; `Settings` refuses to 
   its chance as for a provider's burst 429 (forced trigger `burst`); when it does not serve, the
   caller still gets the rate refusal. A routed job records the candidate `skipped` without spending
   its error budget.
+- A routed child on treg's own key whose answer the signature table marks `balance` or `quota`
+  (treg's account out of money or out of its period allowance, e.g. LeadOcean's 429 "Fair-use pace
+  reached") is likewise `skipped` (`child_outcome` kind `account_exhausted`), never an error: one
+  used-up account beside providers that answered "nobody" leaves the call a 200 miss, not a 502.
+  A provider that is down (5xx) is still an error, so a failed routed call stays free.
 - A capacity probe (`probe_lock_id`) and a team's poll of its own job (`free_owned_poll`) are
   counted but never refused. The one `retry-after` re-send asks the window after its sleep; on a
   full enforced bucket it is not sent and the provider's first 429 stands.

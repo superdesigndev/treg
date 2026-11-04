@@ -1,0 +1,33 @@
+{
+  "requestId": "a686049a712d309cfdab9454b8eb2a68",
+  "resolvedSearchType": "",
+  "results": [
+    {
+      "id": "https://github.com/qdrant/qdrant/",
+      "title": "qdrant/qdrant",
+      "url": "https://github.com/qdrant/qdrant/"
+    },
+    {
+      "id": "https://github.com/lanterndata/lantern?tab=readme-ov-file",
+      "title": "lanterndata/lantern",
+      "url": "https://github.com/lanterndata/lantern?tab=readme-ov-file",
+      "publishedDate": "2023-07-11T00:00:00.000Z"
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "effectiveFilters": {
+    "includeDomains": [],
+    "excludeDomains": [],
+    "includeUrls": [],
+    "excludeUrls": [],
+    "includeText": [],
+    "excludeText": []
+  },
+  "searchTime": 318.3,
+  "costDollars": {
+    "total": 0.004,
+    "search": {
+      "neural": 0.004
+    }
+  }
+}

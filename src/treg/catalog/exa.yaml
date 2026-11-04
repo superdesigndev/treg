@@ -7,13 +7,13 @@ limits: "Per-key concurrency limits are enforced server-side (x-exa-queued / x-e
 pricing_url: https://exa.ai/pricing
 
 # Exa is a semantic web-search index with typed sub-indexes (people, companies, news, publications),
-# page-contents extraction, similar-link discovery and cited answers. Available through BYOK and
+# page-contents extraction and cited answers. Available through BYOK and
 # treg's platform key. Prices are in DOLLARS, not credits — no fx.yaml row — and every response
 # carries `costDollars.total`, which platform billing settles from (api.py `_observed_cost_micro`),
 # so the catalog holds the BASE price and riders (results beyond 10 at $1/1k, each extra contents
 # type at $1/1k page, deep-mode uplifts) are billed exactly as Exa reports them. All nine routes
 # were live verified on 2026-08-27 against that meter; the rate-card figures matched to the cent.
-# Observed that day and worth knowing: `type: fast` / `instant` and every `category` bill the same
+# Observed that day and worth knowing: `type: fast` and every `category` bill the same
 # $0.007 base as `auto`; highlights requested INSIDE a /search call were NOT billed on top.
 #
 # There is no free account route (/v0/teams/me answers 404 on every key), so the connect probe is
@@ -22,6 +22,7 @@ pricing_url: https://exa.ai/pricing
 proposed_capabilities:
   web.search.deep: "Deep multi-query web search with reasoning"
   web.similar: "Find pages similar to a URL"
+  web.search.podcasts: "Search podcast episodes by what was said, with full transcripts"
 
 endpoints:
   - id: exa.web.search
@@ -38,7 +39,7 @@ endpoints:
       body:
         query: {type: string, required: true, note: "natural-language or keyword query; Exa's neural index understands meaning, so phrase it as a description of the page you want", example: "open source vector database written in rust"}
         numResults: {type: integer, required: false, note: "1-100, default 10. The first 10 are covered by the base price; each result beyond 10 adds $0.001", example: 5}
-        type: {type: string, required: false, note: "auto (default) | instant | fast | deep-lite | deep | deep-reasoning. auto/instant/fast bill the base; use exa.web.search.deep for the deep modes", example: "auto"}
+        type: {type: string, required: false, note: "auto (default) | fast | instant | lite | deep-lite | deep | deep-reasoning. auto/fast bill the base; instant/lite bill $0.004, see exa.web.search.lite; use exa.web.search.deep for the deep modes", example: "auto"}
         category: {type: string, required: false, note: "focus on one sub-index: company | people | news | publication | personal site | financial report. The people/company/news/publication categories have their own curated routes below"}
         includeDomains: {type: "array[string]", required: false, note: "only these hosts or host paths; use [\"exa.ai/library/podcast\"] for podcast-only results", example: ["exa.ai/library/podcast"]}
         excludeDomains: {type: "array[string]", required: false}
@@ -68,7 +69,49 @@ endpoints:
       source_url: https://exa.ai/pricing
       checked: '2026-08-27'
       confidence: verified
-      note: "$0.007 base for up to 10 results, plus $0.001 per result beyond 10 and ordinary content charges when requested (OBSERVED 2026-08-27: numResults 10 → costDollars.total 0.007; numResults 20 → 0.016, i.e. 19 returned = base + 9 riders; fast and instant billed the same base). Podcast search has no separate price. Treg settles the exact costDollars.total Exa reports, so transcript requests need not cost the same amount."
+      note: "$0.007 base for up to 10 results, plus $0.001 per result beyond 10 and ordinary content charges when requested (OBSERVED 2026-08-27: numResults 10 → costDollars.total 0.007; numResults 20 → 0.016, i.e. 19 returned = base + 9 riders). Type fast billed the $0.007 base; type instant bills the lite base, $0.004 (OBSERVED 2026-11-02). Podcast search has no separate surcharge. Treg settles the exact costDollars.total Exa reports, so transcript requests need not cost the same amount."
+    docs_url: https://docs.exa.ai/reference/search
+
+  - id: exa.web.search.lite
+    domain: search
+    capability: web.search
+    platform: web
+    scope: any_account
+    method: POST
+    path: /search
+    platform_request: {body.type: lite}
+    name: "Search the web at low cost and latency"
+    summary: "Low-cost, low-latency search served from Exa's index without fetching pages at query time."
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, note: "one natural-language query", example: "open source vector database written in rust"}
+        type: {type: string, required: true, enum: [lite], note: "must be `lite`", example: "lite"}
+        numResults: {type: integer, required: false, note: "1-100, default 10; each result beyond 10 adds $0.001", example: 5}
+        category: {type: string, required: false, note: "same values as exa.web.search"}
+        includeDomains: {type: "array[string]", required: false, note: "only these hosts or host paths"}
+        excludeDomains: {type: "array[string]", required: false}
+        startPublishedDate: {type: string, required: false, note: "ISO 8601"}
+        endPublishedDate: {type: string, required: false, note: "ISO 8601"}
+        userLocation: {type: string, required: false, note: "two-letter ISO country code"}
+        contents: {type: object, required: false, note: "{highlights: true} or {text: {maxCharacters}} only; summary and maxAgeHours answer 400"}
+      note: "same result shape as exa.web.search. Lite answers 400 for outputSchema, systemPrompt, stream, contents.summary and contents.maxAgeHours; use exa.web.search for those."
+    test_request:
+      body: {query: "open source vector database written in rust", type: "lite", numResults: 3}
+    verified: '2026-11-02'
+    added: '2026-11-03'
+    example_response: examples/exa.web.search.lite.json
+    cost:
+      type: per_call
+      value: 4
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://exa.ai/pricing
+      checked: '2026-11-02'
+      confidence: verified
+      note: "$0.004 per call for up to 10 results, plus $0.001 per result beyond 10 (OBSERVED 2026-11-02: 3 results → costDollars.total 0.004; numResults 15 → 0.009). Highlights inside the call were not billed on top. Platform billing settles the exact costDollars.total."
     docs_url: https://docs.exa.ai/reference/search
 
   - id: exa.web.search.deep
@@ -165,9 +208,8 @@ endpoints:
         category: {type: string, required: true, note: "must be `company`", example: "company"}
         numResults: {type: integer, required: false, example: 5}
         includeDomains: {type: "array[string]", required: false}
-        startPublishedDate: {type: string, required: false}
         contents: {type: object, required: false, note: "{summary: {query: \"what does this company sell\"}} adds a $0.001/page summary"}
-      note: "each result is the company's own site or profile page: url, title, and an `entities` block with the structured company record (name, description, location, industry, headcount range, founding year where known). Firmographic FILTERS (headcount, funding) belong to the structured providers under this capability; this one takes a description."
+      note: "each result is the company's own site or profile page: url, title, and an `entities` block with the structured company record (name, description, location, industry, headcount range, founding year where known). Firmographic FILTERS (headcount, funding) belong to the structured providers under this capability; this one takes a description. The company category answers 400 for publication-date and crawl-date filters."
     test_request:
       body: {query: "vector database startups", category: "company", numResults: 3}
     verified: '2026-08-27'
@@ -261,6 +303,43 @@ endpoints:
       note: "$0.007 per call for up to 10 results (OBSERVED 2026-08-27: category publication, 5 results → costDollars.total 0.007), plus $0.001 per result beyond 10. Platform billing settles the exact costDollars.total."
     docs_url: https://docs.exa.ai/reference/search
 
+  - id: exa.web.search.podcasts
+    domain: search
+    capability: web.search.podcasts
+    platform: web
+    scope: any_account
+    method: POST
+    path: /search
+    name: "Search podcast episodes and transcripts"
+    summary: "Search 3.2M podcast episodes from 119k shows by what was said, with full speaker-labelled transcripts."
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, note: "describe the episode or what was said: a show, a guest, a topic, a claim ('what Jensen Huang said about inference demand on recent podcasts', 'the newest episode of Hard Fork')", example: "what Jensen Huang said about inference demand on recent podcasts"}
+        includeDomains: {type: "array[string]", required: true, note: "must be [\"exa.ai/library/podcast\"], the podcast index's host path. Without it results drift to podcast directories (Apple Podcasts, Podbean)", example: ["exa.ai/library/podcast"]}
+        numResults: {type: integer, required: false, note: "1-100, default 10; beyond 10 adds $0.001 each", example: 3}
+        startPublishedDate: {type: string, required: false, note: "ISO 8601; filters on the episode's air date"}
+        endPublishedDate: {type: string, required: false, note: "ISO 8601"}
+        contents: {type: object, required: false, note: "{highlights: true} returns the matching transcript passages; {text: {maxCharacters}} the episode page: show, air date, duration, hosts, guests, then the transcript with a speaker and timestamps on every turn", example: {highlights: true}}
+      note: "results are episode pages (exa.ai/library/podcast/{show}/episode/{id}, publishedDate = air date) and show pages (exa.ai/library/podcast/{show}). New episodes are added soon after they air."
+    test_request:
+      body: {query: "what Jensen Huang said about inference demand on recent podcasts", includeDomains: ["exa.ai/library/podcast"], numResults: 3, contents: {highlights: true}}
+    verified: '2026-11-02'
+    added: '2026-11-03'
+    example_response: examples/exa.web.search.podcasts.json
+    cost:
+      type: per_call
+      value: 7
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://exa.ai/pricing
+      checked: '2026-11-02'
+      confidence: verified
+      note: "$0.007 per call for up to 10 results, plus $0.001 per result beyond 10; podcasts carry no surcharge (OBSERVED 2026-11-02: 3 results with highlights → costDollars.total 0.007; numResults 15 → 0.012). Platform billing settles the exact costDollars.total."
+    docs_url: https://exa.ai/blog/podcast-search
+
   - id: exa.web.contents.get
     domain: contents
     capability: web.extract
@@ -275,7 +354,7 @@ endpoints:
       body:
         urls: {type: "array[string]", required: true, note: "one or more page URLs; each page is billed per content type requested", example: ["https://en.wikipedia.org/wiki/Hierarchical_navigable_small_world"]}
         text: {type: "boolean|object", required: false, note: "true, or {maxCharacters: N} — the page as clean text. $0.001 per page", example: {maxCharacters: 2000}}
-        highlights: {type: object, required: false, note: "{query, maxCharacters, numSentences} — the passages most relevant to `query`. $0.001 per page"}
+        highlights: {type: "boolean|object", required: false, note: "true, or {query, maxCharacters} — the passages most relevant to `query`. $0.001 per page"}
         summary: {type: object, required: false, note: "{query} — an AI summary of the page focused on `query`. $0.001 per page"}
         maxAgeHours: {type: integer, required: false, note: "serve cache if younger than this, else live-crawl; omit for Exa's default freshness"}
         livecrawlTimeout: {type: integer, required: false, note: "ms, default 10000"}
@@ -300,6 +379,8 @@ endpoints:
     docs_url: https://docs.exa.ai/reference/get-contents
 
   - id: exa.web.similar
+    status: retired
+    status_note: "Find Similar is deprecated. For related-page discovery, use exa.web.search with a query describing the page; /search does not accept the old url parameter."
     domain: search
     capability: web.similar
     platform: web
@@ -322,7 +403,7 @@ endpoints:
       note: "results carry url, title, publishedDate, author and a similarity `score`"
     test_request:
       body: {url: "https://qdrant.tech", numResults: 3, excludeSourceDomain: true}
-    verified: '2026-08-27'
+    verified: '2026-11-02'
     added: '2026-08-27'
     example_response: examples/exa.web.similar.json
     cost:

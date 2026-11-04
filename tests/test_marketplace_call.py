@@ -944,6 +944,46 @@ def test_theirstack_platform_requests_bound_credits(endpoint, body, valid):
             call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
 
 
+async def test_leadocean_direct_search_requires_a_bounded_shared_key_page(clients, monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "PLATFORM-LEADOCEAN")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
+    get_settings.cache_clear()
+    seen = []
+
+    def upstream(request):
+        seen.append((request.headers["x-api-key"], request.url.params.multi_items()))
+        return _dropleads_response(200, {"success": True, "data": [], "meta": {"credits": 0}})
+
+    try:
+        async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+            monkeypatch.setattr(A.app.state, "http", vendor)
+            for params in ({"domain": "stripe.com"}, {"domain": "stripe.com", "limit": "0"},
+                           {"domain": "stripe.com", "limit": "11"},
+                           [("domain", "stripe.com"), ("limit", "10"), ("limit", "1")]):
+                refused = await clients.get("/call/leadocean.people.search", params=params)
+                assert refused.status_code == 400, refused.text
+                assert refused.json()["detail"]["parameter"] == "queryParams.limit"
+            assert seen == []
+
+            allowed = await clients.get("/call/leadocean.people.search", params={
+                "domain": "stripe.com", "limit": "10"})
+            assert allowed.status_code == 200, allowed.text
+            assert allowed.headers["x-treg-cost-micro"] == "0"
+            assert seen == [("PLATFORM-LEADOCEAN", [("domain", "stripe.com"), ("limit", "10")])]
+
+            own = await clients.post("/secrets", json={"name": "leadocean", "value": "OWN-LEADOCEAN"})
+            assert own.status_code == 200, own.text
+            for params in ({"domain": "stripe.com"}, {"domain": "stripe.com", "limit": "25"}):
+                served = await clients.get("/call/leadocean.people.search", params=params)
+                assert served.status_code == 200, served.text
+                assert "x-treg-cost-micro" not in served.headers
+            assert [key for key, _ in seen] == ["PLATFORM-LEADOCEAN", "OWN-LEADOCEAN", "OWN-LEADOCEAN"]
+            assert [query for _, query in seen[1:]] == [[("domain", "stripe.com")],
+                                                        [("domain", "stripe.com"), ("limit", "25")]]
+    finally:
+        get_settings.cache_clear()
+
+
 def test_theirstack_platform_holds_match_the_credit_prices():
     from treg.domain.catalog import store as catalog_store
 
@@ -1378,22 +1418,6 @@ def test_hunter_email_finder_miss_is_free():
     assert call_settle._observed_cost_micro(f, b'{"errors": [{"code": "wrong_params"}]}') is None, \
         "no email key at all: we never learned the outcome, settle at the estimate"
     assert call_settle._observed_cost_micro(f, b"not json") is None
-
-
-def test_tikhub_envelope_no_charge_settles_at_zero():
-    """TikHub reports billing in prose, not a number: a 2xx whose payload is an embedded error
-    still says the request will incur a charge — and TikHub really does charge us for it
-    (verified live 2026-07-30), so those settle at the estimate, faithfully. Only the explicit
-    no-charge phrasing settles at zero."""
-    t = _mk("tikhub", cost_type="per_success")
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "message": "Request successful. This request will incur a charge.", "data": {}}') is None, \
-        "a billed answer settles at the estimate — that IS what TikHub takes"
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "message": "Request successful. This request will incur a charge.", "data": {"error": "dead_page"}}') is None, \
-        "a dead page TikHub bills us for is passed through, not eaten"
-    assert call_settle._observed_cost_micro(t, b'{"code": 400, "message": "Request failed. You won\'t be charged for this request.", "data": null}') == 0
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "message": "This request will not incur charges.", "data": {}}') == 0
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "data": {}}') is None, "no message: estimate"
-    assert call_settle._observed_cost_micro(t, b"not json") is None
 
 
 async def test_daily_cap_fails_closed(clients: AsyncClient, platform_on, monkeypatch):
@@ -2562,7 +2586,7 @@ def test_influencersclub_discovery_settles_creators_returned():
     for endpoint_id in ("influencersclub.creators.search", "influencersclub.creators.similar"):
         mk = SimpleNamespace(cost_type="per_result", unit_micro=30_000, billed_oauth=False,
                              endpoint_id=endpoint_id, provider="influencersclub",
-                             estimate_micro=300_000)
+                             estimate_micro=300_000, cost_terms=None)
 
         def page(rows: int) -> bytes:
             return json.dumps({"total": 634, "limit": 10, "credits_cost": rows * 0.01,
@@ -3089,7 +3113,8 @@ def test_contactout_contact_reveals_require_recognizable_hit_evidence(body):
     from types import SimpleNamespace
     from treg.application.call.settle import _observed_cost_micro
     mk = SimpleNamespace(provider="contactout", endpoint_id="contactout.people.contact.work",
-                         cost_type="per_success", unit_micro=0, billed_oauth=False, request_data={})
+                         cost_type="per_success", unit_micro=0, billed_oauth=False, request_data={},
+                         cost_terms=None)
     assert _observed_cost_micro(mk, body) == 0
 
 

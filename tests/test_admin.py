@@ -7,7 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 
 from treg.api import app
 from treg.config import get_settings
@@ -39,11 +39,11 @@ async def c(monkeypatch):
 
 async def _seed(c: AsyncClient):
     """Two orgs owned by two users; Org One has a tool. Returns (user1, org1, user2, org2) responses."""
-    u1 = (await c.post("/users", json={"email": "a@x.dev"})).json()
+    u1 = (await verified_signup(c, json={"email": "a@x.dev"})).json()
     o1 = (await c.post("/orgs", headers=_h(u1["token"]), json={"name": "Org One"})).json()
     sid = (await c.post("/secrets", headers=_h(o1["token"]), json={"name": "k", "value": "V"})).json()["id"]
     await c.post("/tools", headers=_h(o1["token"]), json={"name": "echo", "base_url": "http://upstream", "secret_id": sid})
-    u2 = (await c.post("/users", json={"email": "b@x.dev"})).json()
+    u2 = (await verified_signup(c, json={"email": "b@x.dev"})).json()
     o2 = (await c.post("/orgs", headers=_h(u2["token"]), json={"name": "Org Two"})).json()
     return u1, o1, u2, o2
 

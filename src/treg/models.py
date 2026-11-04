@@ -201,8 +201,8 @@ class User(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
-    # Only an inbox proof or a provider-verified email can set this. Legacy /users and
-    # admin-visible invitation codes are not email proofs.
+    # Only an inbox proof or a provider-verified email can set this. Admin-visible invitation
+    # codes are not email proofs.
     email_verified_at: NaiveUTC | None = Field(default=None)
     # Consumed atomically with the signup grant; survives leaving/deleting every team.
     # The DB default is false so pre-upgrade users and old writers never gain a fresh claim.
@@ -985,7 +985,10 @@ class LedgerEntry(SQLModel, table=True):
                             sqlite_where=text("kind = 'settle'")),
                       Index("ix_ledgerentry_topup_org_id_created_at", "org_id", "created_at",
                             postgresql_where=text("kind = 'topup'"),
-                            sqlite_where=text("kind = 'topup'")))
+                            sqlite_where=text("kind = 'topup'")),
+                      Index("ix_ledgerentry_grant_org_id_created_at", "org_id", "created_at",
+                            postgresql_where=text("kind = 'grant'"),
+                            sqlite_where=text("kind = 'grant'")))
 
     id: str = Field(primary_key=True)  # uuid4 hex
     org_id: int = Field(foreign_key="org.id")
@@ -1976,7 +1979,8 @@ class ArchiveSnapshot(SQLModel, table=True):
     media_type: str = Field(default="")
     content_hash: str                              # sha256 of the RAW body (dedup identity)
     body: bytes | None = Field(default=None)       # verbatim bytes, or NULL when body_of is set
-    body_of: int | None = Field(default=None, foreign_key="archivesnapshot.id")
+    # An archivesnapshot.id in the same key, deliberately not a foreign key (alembic 0094).
+    body_of: int | None = Field(default=None)
     size_bytes: int = Field(default=0)             # of the raw body, even when deduplicated
     fetched_at: NaiveUTC = Field(default_factory=_now, index=True)
     # Who triggered the fetch: "caller" (a real request) | "refresh" (worker) | "sample" (learner).

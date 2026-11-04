@@ -172,3 +172,87 @@ def predicate_in(*locations: str):
 RequestPredicate = Annotated[Predicate, predicate_in(*REQUEST)]
 ResponsePredicate = Annotated[Predicate, predicate_in(*RESPONSE)]
 AnswerOrRequestPredicate = Annotated[Predicate, predicate_in(*REQUEST, *RESPONSE)]
+
+
+def relative(path: str) -> str:
+    """An answer path relative to the answer (`usage.in` for `response.usage.in`), as the frozen
+    usage basis and the spool read it; the root is ""."""
+    return path.removeprefix("response").removeprefix(".")
+
+
+def _matches(items: list, rule: tuple[str, str]) -> list:
+    key, value = rule
+    return [item for lst in items if isinstance(lst, list)
+            for item in lst if isinstance(item, dict) and str(item.get(key)) == value]
+
+
+def select(text: str, document: dict) -> list:
+    """Every value a path selects in `document`, which maps a location (`body`, `query`, `header`,
+    `response`) to its value. An empty list is a missing path; a selected null is kept."""
+    path = parse_path(text)
+    if path.location not in document:
+        return []
+    values = [document[path.location]]
+    if path.filter is not None:
+        values = _matches(values, path.filter)
+    for step in path.steps:
+        if step.every:
+            values = [item for value in values if isinstance(value, list) for item in value]
+        elif step.index is not None:
+            values = [value[step.index] for value in values
+                      if isinstance(value, list) and step.index < len(value)]
+        else:
+            values = [value[step.name] for value in values if isinstance(value, dict) and step.name in value]
+            if step.filter is not None:
+                values = _matches(values, step.filter)
+    return values
+
+
+_MISSING = object()
+
+
+def _same(actual: object, expected: object) -> bool:
+    """Exact equality: a boolean equals only a boolean, a number only a number."""
+    if isinstance(actual, bool) or isinstance(expected, bool):
+        return type(actual) is type(expected) and actual == expected
+    if isinstance(actual, (int, float)) and isinstance(expected, (int, float)):
+        return actual == expected
+    return type(actual) is type(expected) and actual == expected
+
+
+def _empty(value: object) -> bool:
+    return value is None or (isinstance(value, (str, list, dict)) and not value)
+
+
+def holds(predicate: object, document: dict) -> bool:
+    """Whether a predicate, as served (plain lists and mappings), holds on `document`. A leaf reads
+    the first value its path selects; a missing path makes every op false except `absent`."""
+    if isinstance(predicate, list):
+        return all(holds(item, document) for item in predicate)
+    if "any" in predicate:
+        return any(holds(item, document) for item in predicate["any"])
+    found = select(predicate["path"], document)
+    value = found[0] if found else _MISSING
+    op = predicate["op"]
+    if op == "absent":
+        return value is _MISSING or value is None
+    if value is _MISSING:
+        return False
+    if op == "present":
+        return value is not None
+    if op == "empty":
+        return _empty(value)
+    if op == "equals":
+        return _same(value, predicate["value"])
+    if op == "in":
+        return any(_same(value, item) for item in predicate["value"])
+    return isinstance(value, str) and str(predicate["value"]).lower() in value.lower()
+
+
+def leaf_paths(predicate: object) -> list[str]:
+    """Every leaf path of a served predicate, in order."""
+    if isinstance(predicate, list):
+        return [path for item in predicate for path in leaf_paths(item)]
+    if "any" in predicate:
+        return leaf_paths(predicate["any"])
+    return [predicate["path"]]
