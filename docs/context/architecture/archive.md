@@ -201,7 +201,9 @@ Order matters:
 Passes walk the team's keys by id from a cursor, and every statement in them runs under a
 Postgres `statement_timeout`. One long transaction holds back the cleanup of old row versions in
 every table, the hot `org` balance row included; a pass that runs over the cap fails the job
-instead, and what earlier passes committed stays erased. `erase-archive --dry-run`
+instead, and what earlier passes committed stays erased. That is why `body_of` is not a foreign
+key (alembic 0094): with no index on it, Postgres checked each deleted snapshot with a scan of
+the whole table, and no batch fit the cap. `erase-archive --dry-run`
 (`archive_erasure.count_org`, with the same `--include-sole-public` switch) reads the same
 passes and deletes nothing. It reports keys, snapshots, marks and distinct bodies; the bodies
 count is an upper bound, because a shared body stays.
