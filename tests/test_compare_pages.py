@@ -15,6 +15,7 @@ from httpx import ASGITransport, AsyncClient
 from treg import compare_pages as cp
 from treg.api import app
 from treg.config import get_settings
+from treg.routers.web import _fill_headline
 
 PAGES = [f"/compare/{cp.page_slug(k)}" for k in cp.COMPETITORS]
 
@@ -108,7 +109,7 @@ async def test_each_page_has_a_markdown_twin_kept_out_of_the_index(clients: Asyn
         r = await clients.get(f"/compare/{cp.page_slug(key)}.md")
         assert r.status_code == 200 and r.headers["x-robots-tag"] == "noindex"
         assert r.text.startswith(f"# treg vs {cp.short(key)}") and "{ENDPOINTS}" not in r.text
-        assert c["tldr"] in r.text
+        assert _fill_headline(c["tldr"]) in r.text
 
 
 @pytest.mark.parametrize("path", ["/compare/clay", "/compare/treg-vs-nobody", "/compare/treg-vs-clay.txt"])

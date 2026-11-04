@@ -128,14 +128,15 @@ COMPETITORS: dict[str, dict] = {
         "logo_fills": True,
         "title": "treg vs Agentik: two tool gateways for AI agents",
         "description": "treg and Agentik both give an AI agent paid tools from one prepaid balance. "
-                       "An honest look at fees, catalogs, own keys, spend caps and open source.",
-        "sub": "Both give your agent paid tools through one connection and one balance. They differ "
-               "on fees, keys and spend controls.",
+                       "Compare fees, catalogs, your own keys, spend caps and open source.",
+        "sub": "Both give your agent paid tools through one connection and one balance. treg adds no "
+               "fee, uses your own keys first and runs your team's own tools beside the catalog.",
         "their_words": "The tool gateway for your agents.",
         "tldr": "Agentik and treg do the same job: one connection, one prepaid balance, many paid "
-                "tools and no provider signup. Agentik adds a 5.5% fee to each top-up (minimum "
-                "$0.80) and has finer spending caps on each key. treg adds no fee, accepts your "
-                "own keys, and its code is on GitHub.",
+                "tools and no provider signup. treg adds no markup and no top-up fee, uses your own "
+                "keys without metering them, puts your team's own tools behind the same token, and "
+                "its code is on GitHub. Agentik offers hourly, daily, lifetime and per-tool caps on "
+                "each key, and $5 of starting credit. Both speak MCP, so one agent can use both.",
         "spec": {"billing": "Prepaid, per call, 5.5% top-up fee", "start": "$5 for 14 days",
                  "keys": "No", "code": "Hosted only"},
         "fit_them": [
@@ -147,11 +148,14 @@ COMPETITORS: dict[str, dict] = {
             "You want a run history that keeps no tool inputs or outputs.",
         ],
         "fit_treg": [
-            "You want no fee on top of provider prices, on top-ups or on calls.",
-            "You already hold keys for some providers and want those calls free, beside the shared "
-            "catalog.",
+            "You want the provider's price with 0% markup, a commitment in the terms, and no top-up "
+            "fee.",
+            "You hold keys for some providers and want treg to use them first and never meter those "
+            "calls, beside the shared catalog.",
+            "Your agent works in your Google Analytics, Search Console, Google Ads or Meta Ads "
+            "accounts, and you want those calls never metered.",
             "You want your team's own APIs, CLIs and skills behind the same token.",
-            "You want to read the code, or run your own registry for your team.",
+            "You want to read the code, or self-host treg for your own team.",
         ],
         "cells": _c(
             how_pay="A prepaid balance. Each call at the provider's price. No plan.",
@@ -182,46 +186,48 @@ COMPETITORS: dict[str, dict] = {
         ),
         "better": [
             ("Spending caps on each key.", "Agentik keys carry hourly, daily, lifetime and per-tool "
-             "caps and an allowlist of tools. treg's caps are per team, per member, per call and "
-             "per tagged customer, and the per-customer budgets are advisory."),
-            ("More credit to start.", "Eligible new accounts get $5 for 14 days. treg gives $1.00 once."),
-            ("Ad networks.", "Its Get MCP Ads flow connects Amazon Ads and Reddit, which treg does not "
-             "connect today."),
-            ("Less kept about each run.", "Agentik keeps execution and billing metadata, not the "
+             "caps and an allowlist of tools."),
+            ("More credit to start.", "Eligible new Google and GitHub accounts get $5 for 14 days, and "
+             "free public-data tools give 50 to 1,000 free runs a day."),
+            ("Amazon Ads and Reddit.", "Its Get MCP Ads flow connects Amazon Ads and Reddit beside "
+             "Meta, Google, TikTok and others, and previews each change for a person to approve."),
+            ("Run history without payloads.", "Agentik keeps execution and billing metadata, not the "
              "payloads of tool calls."),
         ],
         "different": [
-            ("No fee at all.", "treg adds no markup and no top-up fee. On Agentik the provider price "
-             "has no markup, but each top-up after the first small one carries 5.5%."),
-            ("Your own keys win.", "Register your key for a provider and treg uses it instead of its "
-             "own, without metering the call. Agentik holds every provider account."),
-            ("Your accounts are free.", "Calls on your connected Google Analytics, Search Console, Google "
-             "Ads and Meta Ads accounts are never metered by treg. Agentik prices ad-account reads at "
-             "$0.005 and heavy reports or changes at $0.05."),
-            ("Your team's own tools.", "A teammate can register an API, a CLI or a skill, and every "
-             "agent on the team calls it through the same token."),
-            ("The code is public.", "treg's code is on GitHub, and you can run your own registry for "
-             "your team."),
+            ("No fee at all.", "0% markup is a commitment in treg's terms, and top-ups carry no fee. "
+             "Agentik's tool prices carry no markup either, and its top-ups after a first small one "
+             "carry 5.5%."),
+            ("Your own keys win.", "Register your key for a provider and treg uses it in place of its "
+             "own, and never meters the call. Agentik holds every provider account."),
+            ("Your accounts, never metered.", "Calls on your connected Google Analytics, Search "
+             "Console, Google Ads and Meta Ads accounts are never metered by treg. Agentik prices "
+             "ad-account reads at $0.005 and heavy reports or changes at $0.05."),
+            ("A larger catalog, plus your own tools.", "{ENDPOINTS} tools across {PROVIDERS} "
+             "providers, and your team's own APIs, CLIs and skills behind the same token. Agentik "
+             "lists 2,436 tools from 52 providers."),
+            ("The code is on GitHub.", "Read it, or self-host treg for your own team."),
         ],
         "both": "Both speak MCP, so one agent can hold both connections. A team could keep Agentik "
-                "for capped keys and the ad networks only it connects, and use treg for its own keys, "
-                "its team's tools and the wider catalog.",
+                "for capped keys and its Amazon Ads and Reddit connections, and use treg for its own "
+                "keys, its team's tools and the wider catalog.",
         "faq": [
             ("Is treg cheaper than Agentik?",
-             "On fees, yes: treg adds no fee, and Agentik adds 5.5% to each top-up after a first top-up "
-             "of $10 or less. Both bill tools at the provider's price, but the providers and the tools "
-             "differ, so compare the tools you will call. To start, Agentik gives eligible new accounts "
-             "$5 and treg gives $1.00."),
+             "On fees, yes: treg adds no markup and no top-up fee, and Agentik adds 5.5% (minimum "
+             "$0.80) to each top-up after a first top-up of $10 or less. Both bill tools at the "
+             "provider's price, but the providers and the tools differ, so compare the tools you will "
+             "call. To start, Agentik gives eligible new accounts $5 for 14 days and treg gives $1.00 "
+             "with no card."),
             ("Can I use my own API keys with Agentik or treg?",
-             "Agentik says no: it holds the provider accounts. treg says yes: your team's key always wins "
-             "over treg's, and those calls are never metered."),
+             "Agentik says no: it holds the provider accounts. treg says yes, on every account: your "
+             "team's key always wins over treg's, and those calls are never metered."),
             ("Which one has better spending caps?",
-             "Agentik, for caps on a single key: hourly, daily, lifetime and per tool. treg has a team "
-             "daily spend cap, a per-call cost ceiling, per-member daily call caps and advisory daily "
-             "budgets per tagged customer."),
+             "Agentik, for caps on a single key: hourly, daily, lifetime and per tool, plus a tool "
+             "allowlist. treg sets limits across the team: a daily spend cap, a per-call cost ceiling, "
+             "per-member daily call caps and advisory daily budgets per tagged customer."),
             ("Can I self-host Agentik or treg?",
-             "Agentik is a hosted service. treg's code is on GitHub, and you can run your own registry "
-             "for your team."),
+             "Agentik is a hosted service. treg's code is on GitHub, and you can self-host it for your "
+             "own team."),
             ("Does Agentik compare itself with treg?",
              "Yes. Agentik publishes its own comparison with treg, linked in the sources below. We read "
              "it, and its description of treg was mostly accurate on the date it states."),
@@ -244,15 +250,18 @@ COMPETITORS: dict[str, dict] = {
         "logo": "/logos/firecrawl.svg",
         "title": "treg vs Firecrawl Alexandria: data for AI agents",
         "description": "Firecrawl Alexandria and treg both give AI agents data from many providers. "
-                       "Compare coverage, billing, own keys and access, read from public pages.",
-        "sub": "Both give your agent data from many sources through one key. Alexandria leans on "
-               "public records and its own indexes; treg leans on commercial data APIs.",
+                       "Compare coverage, billing, your own keys and accounts, and access.",
+        "sub": "Both give your agent data from many sources through one key. Alexandria centres on "
+               "public records and its own indexes; treg centres on commercial data APIs and your own "
+               "accounts.",
         "their_words": "The knowledge library for superintelligence.",
-        "tldr": "Alexandria is part of Firecrawl. One search mixes the live web, Firecrawl's own "
-                "indexes and structured tools from official providers, with deep public-records "
-                "coverage, paid in Firecrawl credits from a plan. treg is a catalog of commercial data "
-                "APIs (SEO, enrichment, social, ads, generation) billed per call from a prepaid "
-                "balance, with your own keys and accounts beside it.",
+        "tldr": "Both give an agent data from many providers through one key. treg is a catalog of "
+                "commercial data APIs (SEO, enrichment, social, ads, generation), billed per call from "
+                "a prepaid balance at 0% markup, with your own keys and connected accounts behind the "
+                "same token. Alexandria, part of Firecrawl, mixes the live web, Firecrawl's own indexes "
+                "and official providers in one search, with deep public-records coverage, paid in "
+                "Firecrawl credits from a plan. A team can use both, and Firecrawl's own tools are in "
+                "the treg catalog too.",
         "spec": {"billing": "Firecrawl credits, monthly plans", "start": "1,000 credits a month",
                  "keys": NOT_PUBLISHED, "code": "Core AGPL-3.0"},
         "fit_them": [
@@ -263,9 +272,11 @@ COMPETITORS: dict[str, dict] = {
         ],
         "fit_treg": [
             "You need SEO metrics, backlinks, people and company enrichment, social or ad-library data.",
-            "You want to pay per call from a balance, with no monthly plan.",
-            "You want your own provider keys and your own Google, Meta or LinkedIn accounts behind the "
-            "same token.",
+            "You want to pay per call from a prepaid balance at the provider's rate, with no monthly "
+            "plan.",
+            "You want your own provider keys used first, with those calls never metered.",
+            "Your agent works in your own Google Analytics, Search Console, Meta Ads or LinkedIn "
+            "accounts.",
             "You want the provider's own response, with every field it returns.",
         ],
         "cells": _c(
@@ -293,7 +304,7 @@ COMPETITORS: dict[str, dict] = {
         ),
         "better": [
             ("Public records.", "Hundreds of official regulators, registries and government sources, "
-             "plus free Research and Government indexes. treg has little of this."),
+             "plus free Research and Government indexes."),
             ("Web and tools in one query.", "A search can return web pages and provider tools together, "
              "and falls back to search and scraping when no provider fits."),
             ("Its own indexes.", "113M+ indexed papers, READMEs, issues and docs, useful for coding agents."),
@@ -303,14 +314,19 @@ COMPETITORS: dict[str, dict] = {
              "Codex plugin."),
         ],
         "different": [
-            ("No plan.", "treg bills each call from a prepaid balance at the provider's rate. Alexandria "
-             "uses Firecrawl credits from a monthly plan."),
+            ("Pay per call, with no plan.", "treg bills each call from a prepaid balance at the "
+             "provider's rate, with 0% markup in its terms and no top-up fee. Alexandria uses Firecrawl "
+             "credits from a monthly plan."),
             ("Commercial GTM and SEO data.", "Keyword volume, backlinks, SERPs, work emails and phones, "
              "social profiles and ad libraries, from many vendors."),
-            ("Your keys and accounts.", "Your own provider keys win and are never metered, and your "
-             "connected Google, Meta, LinkedIn and other accounts sit behind the same token."),
-            ("The raw answer.", "treg relays the provider's own response unchanged, so no field is lost "
-             "in translation."),
+            ("Your keys and accounts.", "Your own provider keys always win and are never metered, and "
+             "your connected Google Analytics, Search Console, Meta Ads, LinkedIn and Slack accounts "
+             "sit behind the same token, also never metered."),
+            ("The provider's own answer.", "treg relays the provider's response unchanged, so every "
+             "field it returns reaches your agent."),
+            ("Spend controls for the team.", "A team daily spend cap, a per-call cost ceiling and "
+             "per-member daily call caps, with each tool's rate, source and checked date shown before "
+             "the call."),
         ],
         "both": "Firecrawl's scrape, crawl and search tools are in the treg catalog too, billed per call "
                 "on treg's Firecrawl account. A team can use Alexandria for public records and research, "
@@ -318,19 +334,18 @@ COMPETITORS: dict[str, dict] = {
         "faq": [
             ("Does Firecrawl Alexandria cover the same data as treg?",
              "Partly. Alexandria's largest groups are public records, company, retail and finance data, "
-             "plus Firecrawl's own indexes. treg's catalog leans on SEO, people and company enrichment, "
-             "social and ad data, and generation models. Search both for the job you need."),
+             "plus Firecrawl's own indexes. treg's catalog centres on SEO, people and company "
+             "enrichment, social and ad data, and generation models. Search both for the job you need."),
             ("Do I need a Firecrawl plan to use Alexandria?",
              "You need a Firecrawl account. The free plan gives 1,000 credits a month; paid plans start "
-             "at $19 a month, and pay-as-you-go top-ups need a paid plan. treg has no plan: you top up a "
-             "balance and pay per call."),
+             "at $19 a month, and pay-as-you-go top-ups need a paid plan. On treg you top up a balance "
+             "and pay per call, with no plan."),
             ("Can I use my own provider keys with Alexandria?",
-             "Firecrawl does not publish that. With treg, your own key for a provider always wins and "
-             "those calls are never metered."),
+             "Firecrawl does not publish that. With treg, your own key for a provider always wins over "
+             "treg's, and those calls are never metered."),
             ("What happens when no provider fits my question?",
              "Alexandria falls back to web search and scraping. treg's routed tools try the next provider "
-             "when one fails or misses; when the catalog has no tool for a job, the agent can file a "
-             "request."),
+             "when one fails or misses, and when a job needs a new tool, the agent can file a request."),
             ("Is Alexandria part of open-source Firecrawl?",
              "Firecrawl's core is open source under AGPL-3.0. Firecrawl does not say whether Alexandria "
              "runs on a self-hosted install, and its README says the cloud version has more features."),
@@ -350,29 +365,32 @@ COMPETITORS: dict[str, dict] = {
         "mono": "#7C3AED",
         "logo": "/media/compare/logos/aisa.svg",
         "title": "treg vs AIsa: paid data APIs for AI agents compared",
-        "description": "AIsa and treg both sell data to AI agents per call. Compare schemas, billing, "
-                       "x402, own keys and team seats, read from each product's public pages.",
+        "description": "AIsa and treg both sell data to AI agents per call. Compare response formats, "
+                       "billing, own keys, connected accounts and team seats.",
         "sub": "Both sell data to agents per call. AIsa reshapes every answer into one schema; treg "
-               "relays each provider's answer as it is.",
+               "relays each provider's own answer, with every field it returns.",
         "their_words": "The resource layer for AI agents.",
-        "tldr": "AIsa returns data in one normalized schema, labels the source of every value, and "
-                "bills per result, with x402 for agents that have no account. treg relays each "
-                "provider's own answer unchanged and bills per call at the provider's rate, with your "
-                "own keys, your connected accounts and several team members on every account.",
+        "tldr": "Both sell data to agents per call from a prepaid balance. treg relays each provider's "
+                "own answer unchanged at the provider's rate with 0% markup, and adds your own keys, "
+                "your connected accounts and team roles on every account. AIsa returns data in one "
+                "normalized schema, labels the source of every value, and bills per result. One agent "
+                "can hold both connections and use each for its own jobs.",
         "spec": {"billing": "Prepaid, per result", "start": "$1 every month",
                  "keys": "Enterprise only", "code": "CLI and skills"},
         "fit_them": [
             "You want one response shape across platforms, so your agent never parses vendor formats.",
             "You want the source, method and time of every value, with published calibration.",
             "You want empty responses and failed prechecks to cost nothing.",
-            "Your agents pay per call with x402 or MPP, with no account.",
+            "You want $1 of free balance every month.",
             "You want language models on the same key and balance.",
         ],
         "fit_treg": [
             "You want every field the provider returns, in the provider's own format.",
-            "You want to use your own provider keys without an Enterprise contract.",
-            "Several people on your team share one account.",
-            "Your agent works in your own Google Analytics, Search Console or ad accounts.",
+            "You want your own provider keys used first and never metered, on every account.",
+            "Several people on your team share one account, with owner, admin, member and viewer roles.",
+            "Your agent works in your own Google Analytics, Search Console or ad accounts, and you want "
+            "those calls never metered.",
+            "You want the provider's own rate with 0% markup, a commitment in the terms.",
         ],
         "cells": _c(
             how_pay="A prepaid balance by card, pay per result from $0.001. Some premium endpoints need "
@@ -402,41 +420,42 @@ COMPETITORS: dict[str, dict] = {
         ),
         "better": [
             ("One schema.", "The same shape across platforms, so Amazon and Temu, or Google and Bing, read "
-             "the same way. treg passes each provider's own format through."),
+             "the same way."),
             ("Provenance on every value.", "Each value says where it came from and how, and AIsa publishes "
              "its calibration."),
             ("Pay for results.", "Empty responses and failed prechecks are free, and verified fields are "
              "billed only when verification passes."),
-            ("x402 and MPP.", "An agent with no account can pay per call. treg has no such option."),
-            ("Models on the same key.", "110+ language models on the same balance. treg's catalog has only "
-             "a few model endpoints."),
-            ("A free $1 every month.", "treg's $1.00 comes once per new account."),
+            ("x402 and MPP.", "An agent with no account can pay per call."),
+            ("Language models on the same key.", "110+ LLMs on the same balance as its data tools."),
         ],
         "different": [
-            ("The provider's own answer.", "treg relays the response unchanged, so nothing is dropped when "
-             "a vendor adds a field."),
+            ("The provider's own answer.", "treg relays the response unchanged, so every field reaches "
+             "your agent, including the ones a vendor adds later."),
             ("Your own keys on every account.", "Your team's key always wins and is never metered, with no "
              "Enterprise contract."),
+            ("Your connected accounts.", "Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn "
+             "and Slack, never metered."),
             ("Teams on every account.", "Owner, admin, member and viewer roles, and tool access per member."),
-            ("Your connected accounts.", "Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn, "
-             "Slack, never metered."),
-            ("The code is public.", "treg's code is on GitHub, and you can run your own registry."),
+            ("0% markup, in the terms.", "Each call is billed at the provider's own rate, with no top-up "
+             "fee, and the price shows with its source and checked date before the call."),
         ],
         "both": "If your agent needs one schema for commerce or social data, AIsa does that work for you. "
-                "If it needs a vendor's full response, your own keys, or your own accounts, treg fits. Both "
-                "are remote MCP servers, so one agent can use each for its own jobs.",
+                "If it needs a vendor's full response, your own keys or your own accounts, treg fits. Both "
+                "are remote MCP servers.",
         "faq": [
             ("Does AIsa return the vendor's raw response?",
              "No. AIsa returns its own normalized schema, with each value labeled by source. treg returns "
-             "the provider's own response unchanged."),
+             "the provider's own response unchanged, with every field it sends."),
             ("Can I use my own API keys with AIsa?",
              "AIsa lists your own vendor keys on its Enterprise plan. treg accepts your keys on every "
              "account, and those calls are never metered."),
             ("Can my whole team share one account?",
              "AIsa's Starter and Developer plans have 1 seat; Enterprise has unlimited seats. treg teams "
              "have owner, admin, member and viewer roles on every account."),
-            ("Can an agent pay per call with x402?",
-             "With AIsa, yes: x402 and MPP, with no account. treg does not offer x402; top-ups are by card."),
+            ("Which write actions does each one support?",
+             "AIsa posts to X and sends mail through Agent Mail, and marks publishing to more platforms "
+             "and ad campaigns as coming soon. treg writes in your connected accounts (ad changes, Slack "
+             "messages, social posts) and calls any API or CLI your team registers."),
             ("Which is cheaper?",
              "It depends on the tool. AIsa prices per result times a plan multiplier and does not charge "
              "for empty results. treg bills the provider's own rate with no markup. Compare the calls you "
@@ -458,29 +477,32 @@ COMPETITORS: dict[str, dict] = {
         "logo": "/media/compare/logos/locus.svg",
         "title": "treg vs Locus: paid APIs for AI agents compared",
         "description": "Locus and treg both give AI agents paid APIs from a prepaid balance. Compare "
-                       "plans, fees, own keys, reselling and spend controls, read from public pages.",
+                       "plans, fees, own keys, connected accounts and spend controls.",
         "sub": "Both give agents paid APIs from one balance. Locus is built to resell tools to your "
-               "customers; treg is built around your team's own keys and accounts.",
+               "customers; treg is built around your team's own keys, accounts and tools.",
         "their_words": "Agent tools, billed per user.",
-        "tldr": "Locus Pro gives agents paid APIs from a prepaid balance, with monthly plans, and it is "
-                "built to resell: per-customer balances, your own markup and an embedded billing "
-                "widget. It also offers a USDC wallet and x402. treg has no plans or fees, accepts "
-                "your own keys on every account, and adds your connected accounts and your team's "
-                "own tools.",
+        "tldr": "Both give agents paid APIs from a prepaid balance through a remote MCP server. treg "
+                "bills per call with no subscription, 0% markup and no top-up fee, uses your own keys "
+                "on every account without metering them, and adds your connected accounts and your "
+                "team's own tools. Locus Pro has monthly plans and is built to resell: per-customer "
+                "balances, your own markup and an embedded billing widget. One agent can hold both "
+                "connections.",
         "spec": {"billing": "Plans from $0 to $1,000 a month", "start": "Free plan, no credit",
                  "keys": "Enterprise only", "code": NOT_PUBLISHED},
         "fit_them": [
             "You resell tools to your own customers, with your markup, per-customer balances and a "
             "billing widget.",
-            "Your agents pay in USDC or with x402, with no account.",
             "You want each agent scoped: allowed tools, a maximum per call, a budget per run and an expiry.",
             "You want signed webhooks for every charge, top-up and low balance.",
+            "You want OpenAI, Anthropic and Gemini models on the same balance as your tools.",
         ],
         "fit_treg": [
-            "You want no subscription: top up and pay per call.",
-            "You want your own provider keys without an Enterprise plan.",
-            "Your agent works in your own Google, Meta, LinkedIn or Slack accounts.",
+            "You want no subscription: top up a balance and pay per call at the provider's rate.",
+            "You want your own provider keys used first and never metered, on every account.",
+            "Your agent works in your own Google Analytics, Search Console, Meta Ads, LinkedIn or Slack "
+            "accounts.",
             "You need SEO, enrichment, social and ad-library data.",
+            "You want your team's own APIs, CLIs and skills behind the same token.",
         ],
         "cells": _c(
             how_pay="Locus Pro: a prepaid balance with monthly plans: Free $0, Plus $20, Enterprise $200, "
@@ -508,43 +530,45 @@ COMPETITORS: dict[str, dict] = {
         ),
         "better": [
             ("Reselling.", "Per-customer balances, a configurable markup, an embedded billing widget and "
-             "payouts. treg lets you tag calls per customer and invoice from its ledger, but it has no "
-             "billing widget or markup."),
-            ("Agent payments.", "x402, MPP and a USDC wallet let an agent pay with no account."),
+             "payouts."),
+            ("Agent payments.", "x402, MPP and a USDC wallet on Base let an agent pay with no account."),
             ("Agent scoping.", "A maximum per call and a shared budget per run, set on each agent "
              "connection, checked before the provider is called."),
-            ("Webhooks.", "Signed, retried webhooks for usage events."),
+            ("Webhooks.", "Signed, retried webhooks for charges, top-ups, refunds and low balance."),
             ("Language models.", "OpenAI, Anthropic, Gemini and others on the same balance."),
         ],
         "different": [
-            ("No plans.", "treg has no subscription and no fee; Locus Pro's paid plans run from $20 to "
-             "$1,000 a month."),
+            ("No subscription, no fee.", "treg bills each call from a prepaid balance at the provider's "
+             "rate, with 0% markup in its terms and no top-up fee. Locus Pro's paid plans run from $20 "
+             "to $1,000 a month."),
             ("Your keys on every account.", "Your team's key always wins and is never metered. On Locus, "
              "your own keys need Enterprise."),
-            ("Your accounts.", "Google Analytics, Search Console, Ads, Meta Ads, LinkedIn and Slack, "
-             "connected by OAuth and never metered."),
+            ("Your accounts.", "Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn and "
+             "Slack, connected by OAuth and never metered."),
             ("GTM and SEO data.", "Keyword volume, backlinks, work emails and phones, social profiles and "
              "ad libraries."),
-            ("The code is public.", "treg's code is on GitHub, and you can run your own registry."),
+            ("The code is on GitHub.", "Read it, or self-host treg for your own team."),
         ],
         "both": "A platform that resells tools to its customers may want Locus's billing layer. A team "
                 "whose agent needs GTM data and its own accounts may want treg. Both are remote MCP "
-                "servers.",
+                "servers, so one agent can hold both connections.",
         "faq": [
             ("Do I need a subscription for Locus or treg?",
-             "Locus Pro has a free plan and paid plans from $20 a month; Pay With Locus is a USDC wallet "
-             "with no subscription. treg has no subscription: you top up a balance and pay per call."),
+             "Locus Pro has a free plan at $0 and paid plans from $20 to $1,000 a month; Pay With Locus "
+             "is a separate wallet with no subscription. treg has no subscription: you top up a balance "
+             "and pay per call."),
             ("Can my agent connect my own Google Analytics or ad accounts?",
              "Locus does not publish that. treg connects Google Analytics, Search Console, Google Ads, "
-             "Meta Ads and LinkedIn, and never meters those calls."),
+             "Meta Ads, LinkedIn and more, and never meters those calls."),
             ("Is there a markup on the provider's price?",
-             "Locus does not publish one, and charges a card processing fee on top-ups. treg adds no markup "
-             "and no top-up fee."),
+             "Locus does not publish one, and a card processing fee applies to top-ups, paid by the buyer "
+             "or the workspace. treg adds no markup, a commitment in its terms, and no top-up fee."),
             ("Can I use my own provider keys?",
-             "On Locus, with Enterprise and Custom APIs. On treg, on every account."),
+             "On Locus, with an Enterprise workspace and Custom APIs. On treg, on every account: your key "
+             "always wins and those calls are never metered."),
             ("Do I need a crypto wallet?",
-             "No, for either. Locus Pro takes cards, and Locus also offers USDC and x402. treg takes cards "
-             "only."),
+             "No, for either. Locus Pro does not require a crypto wallet. treg tops up by card, and each "
+             "call is paid from the balance."),
         ],
         "sources": [
             ("Locus home page", "https://paywithlocus.com"),
@@ -563,33 +587,37 @@ COMPETITORS: dict[str, dict] = {
         "logo": "/media/compare/logos/monid.svg",
         "logo_fills": True,
         "title": "treg vs Monid: two tool catalogs for AI agents",
-        "description": "Monid and treg both give AI agents a catalog of paid tools from a prepaid "
-                       "balance. Compare x402, open source, own keys and controls, from public pages.",
-        "sub": "Both give agents a catalog of paid tools from a prepaid balance, with $1 to start. They "
-               "differ on payments, keys and accounts.",
+        "description": "Monid and treg both give AI agents paid tools from a prepaid balance. Compare "
+                       "markup, own keys, connected accounts, spend caps and open source.",
+        "sub": "Both give agents a catalog of paid tools from a prepaid balance, with $1 to start. treg "
+               "also puts 0% markup in its terms, uses your own keys and accounts, and caps team spend.",
         "their_words": "Connect your agent to every tool it needs.",
-        "tldr": "Monid and treg are close. Both give agents a catalog of paid tools from a prepaid "
-                "balance, with $1 to start and no subscription. Monid adds x402 payments and an "
-                "MIT-licensed connector layer. treg adds your own keys, your connected accounts, your "
-                "team's own tools and spend caps.",
+        "tldr": "Monid and treg both give agents a catalog of paid tools from a prepaid balance, with $1 "
+                "to start and no subscription. treg has {ENDPOINTS} tools across {PROVIDERS} providers, "
+                "0% markup written into its terms, your own keys and connected accounts never metered, "
+                "and team spend caps. Monid publishes its connector definitions and engine under MIT, "
+                "with a large community on GitHub. treg's whole registry is on GitHub too, and you can "
+                "self-host it for your team.",
         "spec": {"billing": "Prepaid, per call or result", "start": "$1",
                  "keys": NOT_PUBLISHED, "code": "Connectors MIT"},
         "fit_them": [
             "You want to read or contribute to MIT-licensed connector definitions.",
-            "Your agents pay with x402 in USDC on Base or Monad.",
             "You want agent email and agent phone tools.",
-            "You embed it with a \"Sign in with Monid\" OAuth flow.",
+            "You embed it in your product with a \"Sign in with Monid\" OAuth flow or your own proxy.",
+            "You want discovery that ranks candidate tools by fit and price.",
         ],
         "fit_treg": [
-            "You want your own provider keys on the hosted service, never metered.",
-            "Your agent works in your own Google Analytics, Search Console or ad accounts.",
+            "You want your own provider keys on the hosted service, used first and never metered.",
+            "Your agent works in your own Google Analytics, Search Console, Google Ads or Meta Ads "
+            "accounts.",
             "You want your team's own APIs, CLIs and skills behind the same token.",
-            "You want team spend caps and roles.",
+            "You want a team daily spend cap, a per-call cost ceiling and per-member call caps.",
+            "You want 0% markup written into the terms, and code on GitHub you can self-host.",
         ],
         "cells": _c(
             how_pay="A prepaid wallet, pay as you go. No subscription.",
             free_start="$1 to start.",
-            fees="Per-call or per-result prices. A markup is not published. x402 runs have a $0.01 minimum.",
+            fees="Per-call or per-result prices. A markup is not published.",
             x402="Yes: USDC on Base or Monad.",
             catalog="2,800+ tools across 90+ providers.",
             data="Yes: sales intelligence, media generation, voice, web search and scraping, social and "
@@ -611,22 +639,29 @@ COMPETITORS: dict[str, dict] = {
         "better": [
             ("Open connectors.", "Monid's connector definitions and engine are MIT-licensed, with a large "
              "community on GitHub."),
-            ("x402.", "An agent can pay a run in USDC on Base or Monad. treg has no x402."),
+            ("x402.", "An agent can pay a run in USDC on Base or Monad, with no Monid balance needed for "
+             "that run."),
             ("Agent email and phone.", "Tools that let an agent send email or make a phone call."),
             ("Embedding.", "\"Sign in with Monid\" for your users' own workspaces, or your own proxy for "
              "billing control."),
+            ("Ranked discovery.", "Discovery returns candidate tools ranked by fit and price, with a public "
+             "rankings page."),
         ],
         "different": [
-            ("Your own keys.", "Your team's key always wins over treg's and is never metered."),
-            ("Your accounts.", "Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn and "
-             "Slack, connected by OAuth and never metered."),
-            ("Your team's tools.", "Register an API, a CLI or a skill once, and every agent on the team calls "
-             "it with the credential held on the server."),
-            ("Spend controls.", "A team daily cap, a per-call ceiling and per-member call caps."),
-            ("Published 0% markup.", "No markup on provider prices is a commitment in treg's terms."),
+            ("0% markup, in the terms.", "Each tool is billed at the provider's own rate, and no markup is "
+             "a commitment in treg's terms. No top-up fee."),
+            ("A large catalog, plus your own tools.", "{ENDPOINTS} tools across {PROVIDERS} providers "
+             "(Monid lists 2,800+ across 90+), and your team's own APIs, CLIs and skills behind the same "
+             "token."),
+            ("Your own keys, on the hosted service.", "Register your key for a provider and treg uses it "
+             "first, every time, and never meters the call."),
+            ("Your connected accounts.", "Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn, "
+             "Slack and YouTube, connected by OAuth and never metered."),
+            ("Spend controls for a team.", "A team daily spend cap, a per-call cost ceiling and per-member "
+             "daily call caps, with owner, admin, member and viewer roles."),
         ],
-        "both": "Both are remote MCP servers with similar catalogs. Search both for the tools you need, and "
-                "compare the price of the calls you will make.",
+        "both": "Both are remote MCP servers with an API, a CLI and an agent skill. Search both for the "
+                "tools you need, and compare the price of the calls you will make.",
         "faq": [
             ("Can I bring my own provider keys to Monid?",
              "Monid does not publish this for its hosted service; its open-source engine can run a connector "
@@ -640,8 +675,8 @@ COMPETITORS: dict[str, dict] = {
              "Monid does not publish spend caps. treg has a team daily spend cap, a per-call ceiling and "
              "per-member daily call caps."),
             ("Which is open source?",
-             "Both, in part. Monid's connector layer and engine are MIT. treg's whole registry is on GitHub "
-             "under Apache 2.0 with added terms."),
+             "Both publish code. Monid's connector layer and engine are MIT. treg's whole registry is on "
+             "GitHub under Apache 2.0 with added terms, and you can self-host it for your own team."),
         ],
         "sources": [
             ("Monid home page", "https://monid.ai"),
@@ -660,16 +695,17 @@ COMPETITORS: dict[str, dict] = {
         "logo": "/media/compare/logos/rapidapi.png",
         "logo_fills": False,
         "title": "treg vs RapidAPI: a RapidAPI alternative for AI agents",
-        "description": "RapidAPI lists tens of thousands of APIs, each with its own plan. treg gives an "
-                       "agent paid tools from one prepaid balance. Fees, MCP, keys and caps compared.",
+        "description": "RapidAPI lists tens of thousands of APIs, each with its own plan. treg bills paid "
+                       "tools from one prepaid balance at 0% markup. MCP, keys and caps compared.",
         "sub": "Both put many APIs behind one key. RapidAPI sells a plan for each API; treg bills "
                "each call from one balance.",
         "their_words": "Nokia API Hub is more than just a catalog for APIs.",
-        "tldr": "RapidAPI, now the Nokia API Hub, lists tens of thousands of APIs. You subscribe to "
-                "each API on a plan its provider sets, with quotas and overage, and Rapid keeps a "
-                "25% marketplace fee on payments. treg is a catalog of paid tools billed per call "
-                "from one prepaid balance, with no markup, one MCP server for the whole catalog, and "
-                "your own keys beside it.",
+        "tldr": "RapidAPI and treg both put many APIs behind one key. treg bills every call from one "
+                "prepaid balance at the provider's rate, with 0% markup, one MCP server for the whole "
+                "catalog, and your own keys used first and never metered. RapidAPI, now the Nokia API "
+                "Hub, lists tens of thousands of APIs, each on a plan its provider sets, and lets any "
+                "developer list and sell an API. A team can use both, with treg as the one balance for "
+                "the tools its agents call most.",
         "spec": {"billing": "A plan per API, set by its provider", "start": "Free BASIC plans on many APIs",
                  "keys": "Some APIs need the provider's key", "code": "Hosted only"},
         "fit_them": [
@@ -680,8 +716,9 @@ COMPETITORS: dict[str, dict] = {
         ],
         "fit_treg": [
             "Your agent uses many tools and you want one balance, not a subscription for each.",
-            "You want each call billed at the provider's rate, with no markup.",
-            "You want one MCP server for the whole catalog.",
+            "You want each call billed at the provider's rate, with 0% markup and no top-up fee.",
+            "You want one MCP server with OAuth for the whole catalog, plus an HTTP API, a CLI and a skill.",
+            "You want a team daily spend cap, a per-call cost ceiling and per-member call caps.",
             "You want your own keys to win and never be metered, and the code on GitHub.",
         ],
         "cells": _c(
@@ -716,26 +753,26 @@ COMPETITORS: dict[str, dict] = {
              "developers."),
             ("Sell your own API.", "Any developer can list an API, set plans and quotas, and get paid. "
              "It can also stay private or be shared with chosen teams."),
-            ("Free plans to test.", "Many APIs have a free BASIC plan, so you can try calls before you pay. "
-             "treg gives $1.00 of credit once."),
+            ("Free plans to test.", "Many APIs have a free BASIC plan, so you can try calls before you "
+             "pay."),
             ("Long call history.", "Up to a year of call history, with full request and response logs "
              "for recent calls and raw log export."),
             ("An internal API hub.", "Teams can publish internal APIs, and the Enterprise Hub adds SSO "
              "and connects existing API gateways."),
         ],
         "different": [
-            ("One balance, no subscriptions.", "treg bills each call from one prepaid balance. On "
-             "RapidAPI you subscribe to each API on its own plan."),
-            ("No markup.", "treg bills each tool at the provider's rate, with 0% markup. On RapidAPI "
-             "each provider sets its own price, and Rapid keeps 25% of it."),
-            ("One MCP server.", "treg's remote MCP server reaches the whole catalog with one connection. "
-             "RapidAPI's MCP host serves one API at a time, where it is enabled."),
-            ("Your own caps.", "treg has a team daily spend cap, a per-call cost ceiling and per-member "
-             "daily call caps. On RapidAPI the limits come from each provider's plan."),
-            ("Your own keys win.", "Register your key for a provider and treg uses it instead of its own, "
-             "never metered. The code is on GitHub, and you can self-host for your team."),
+            ("One balance for every tool.", "treg bills each call from one prepaid balance. No "
+             "subscription per API, and no seats."),
+            ("0% markup, in the terms.", "Each tool is billed at the provider's own rate, with no markup "
+             "and no top-up fee."),
+            ("One MCP server for the whole catalog.", "One remote MCP connection with OAuth reaches every "
+             "tool in treg's catalog, beside an HTTP API, a CLI and an agent skill."),
+            ("Spend limits you set.", "A team daily spend cap, a per-call cost ceiling and per-member "
+             "daily call caps."),
+            ("Your own keys win.", "Register your key for a provider and treg uses it first, never "
+             "metered. The code is on GitHub, and you can self-host for your team."),
         ],
-        "both": "An agent can hold both. A team could keep RapidAPI for an API that only it lists, or to "
+        "both": "An agent can hold both. A team could keep RapidAPI for an API it alone lists, or to "
                 "sell its own API, and use treg for the tools it calls often, its own keys and one balance.",
         "faq": [
             ("Is there a RapidAPI alternative for AI agents?",
@@ -778,20 +815,22 @@ COMPETITORS: dict[str, dict] = {
         "logo_fills": False,
         "title": "treg vs Apify: an Apify alternative for AI agents",
         "description": "Apify runs 109,000+ scraping and automation Actors for AI agents. treg gives agents "
-                       "paid data APIs per call. Pricing, MCP, x402, keys and caps compared.",
+                       "data APIs per call at 0% markup. Pricing, MCP, keys and caps compared.",
         "sub": "Both give your agent paid tools through one MCP server. Apify runs Actors that scrape "
                "and automate the web; treg relays calls to data APIs.",
         "their_words": "Apify is a marketplace of ready-to-run tools for AI that automate work on the web.",
-        "tldr": "Apify Store has 109,000+ Actors: cloud programs, mostly for web scraping and "
-                "automation, built by Apify and other developers. You pay from a plan's monthly usage, "
-                "per event or per compute, and agents can also pay with x402 or MPP. treg is a "
-                "catalog of commercial data APIs billed per call from a prepaid balance, at the "
-                "provider's rate, with your own keys and connected accounts beside it.",
+        "tldr": "Apify and treg both give your agent paid tools through one MCP server. treg is a catalog "
+                "of commercial data and generation APIs, billed per call from a prepaid balance at the "
+                "provider's rate with 0% markup, and each call returns the provider's own answer. Apify "
+                "Store has 109,000+ Actors, cloud programs by Apify and other developers that scrape and "
+                "automate the web, paid from a plan's monthly usage. Use Apify for a site with no API, "
+                "and treg for SEO, enrichment, ad and generation data, with your own keys and accounts "
+                "beside it.",
         "spec": {"billing": "Plans with monthly usage, then per event", "start": "$5 a month, no card",
                  "keys": NOT_PUBLISHED, "code": "MCP server and Crawlee open source"},
         "fit_them": [
             "You need data from a site that has no API: Apify has an Actor, or you can build one.",
-            "Your agent pays with x402 or MPP and has no account.",
+            "You want residential and SERP proxies for scraping hard sites.",
             "You want $5 of free usage every month, with no card.",
             "You want to build Actors and sell them in Apify Store.",
             "You want runs on a schedule, with webhooks and workflow integrations.",
@@ -799,8 +838,9 @@ COMPETITORS: dict[str, dict] = {
         "fit_treg": [
             "Your agent needs SEO, enrichment, ad or generation data from commercial APIs.",
             "You want the provider's own answer in the call, not a run and a dataset to read after.",
-            "You want a prepaid balance with no plan and no seats.",
+            "You want a prepaid balance with no plan and no seats, at 0% markup.",
             "You want your own keys to win and never be metered, and your own accounts behind one token.",
+            "You want a team daily spend cap, a per-call cost ceiling and per-member call caps.",
         ],
         "cells": _c(
             how_pay="Plans with prepaid monthly usage: Free $0 ($5), Starter $19, Scale $199, Business "
@@ -837,28 +877,27 @@ COMPETITORS: dict[str, dict] = {
              "has no API, there may be an Actor for it, or you can build one with the open-source "
              "Crawlee."),
             ("Pay with no account.", "An agent can pay with x402 or MPP and get a prepaid token with a "
-             "fixed cap. treg takes card top-ups today."),
-            ("Free usage every month.", "$5 of usage renews each month, with no card. treg gives $1.00 "
-             "of credit once."),
+             "fixed spend cap, from $1."),
+            ("Free usage every month.", "$5 of usage renews each month, with no card."),
             ("Sell your own tools.", "Developers publish Actors to Apify Store and keep 80% of the "
              "revenue."),
             ("Runs without the agent.", "Schedules, tasks, webhooks and integrations with Zapier, Make, "
-             "n8n and data stores. treg has no triggers or scheduled workflows."),
+             "n8n and data stores."),
         ],
         "different": [
-            ("The provider's own answer.", "A treg call returns the provider's answer, unchanged. An "
-             "Apify call starts a run, and you read its dataset after."),
+            ("The provider's own answer.", "A treg call returns the provider's answer, unchanged, in the "
+             "same call. An Apify call starts a run, and you read its dataset after."),
             ("Commercial data APIs.", "SEO and SERP data, backlinks, people and company enrichment, ad "
              "libraries and image, video and voice generation, on treg's accounts."),
-            ("No plan.", "A prepaid balance billed at each provider's rate, with 0% markup. On Apify "
-             "unused monthly usage expires."),
+            ("No plan, 0% markup.", "A prepaid balance billed at each provider's rate, with no markup, no "
+             "top-up fee and no seats."),
             ("Your own keys and accounts.", "Your key for a provider wins and is never metered. Your "
              "connected Google, Meta and other accounts are behind the same token."),
-            ("Self-host for your team.", "treg's code is on GitHub. Apify open-sources Crawlee, its CLI "
-             "and its MCP server; self-hosting its platform is not published."),
+            ("Self-host for your team.", "treg's code is on GitHub under Apache 2.0 with added terms, and "
+             "you can run it for your own team."),
         ],
         "both": "Both are MCP servers, so one agent can hold both. A team could use Apify to scrape a "
-                "site that has no API, and treg for SEO, enrichment and ad data, its own keys and its "
+                "site without an API, and treg for SEO, enrichment and ad data, its own keys and its "
                 "connected accounts.",
         "faq": [
             ("Is there an Apify alternative for AI agents?",
@@ -868,10 +907,6 @@ COMPETITORS: dict[str, dict] = {
             ("Does Apify have an MCP server?",
              "Yes. Apify runs a remote MCP server at mcp.apify.com with OAuth or a token, and a local "
              "stdio version. Its code is open source under MIT."),
-            ("Can an AI agent pay Apify with x402 or crypto?",
-             "Yes. Apify says an agent with a crypto wallet can pay through x402 or MPP at agi.apify.com, "
-             "from $1, and get a temporary API token with a fixed spend cap. treg takes card top-ups "
-             "today."),
             ("How much does Apify cost?",
              "Apify has a free plan with $5 of usage a month, and paid plans at $19, $199 and $999 a month "
              "that include the same amount of usage. Actors bill per event or per compute unit, and "
@@ -902,15 +937,16 @@ COMPETITORS: dict[str, dict] = {
         "logo_fills": True,
         "title": "treg vs Composio: a Composio alternative for AI agents",
         "description": "Composio connects agents to 1,000+ apps in each user's own accounts. treg gives "
-                       "agents paid data per call. An honest comparison of what each one is for.",
+                       "agents paid data per call at 0% markup, with no vendor accounts.",
         "sub": "Composio lets your agent act inside each user's apps. treg gives your agent paid data "
-               "it has no account for. They overlap only a little.",
+               "from providers you have no account with, at each provider's own rate.",
         "their_words": "Give your AI secure access to 1,500+ apps in minutes.",
-        "tldr": "Composio connects your agent to 1,000+ apps (Gmail, Slack, Salesforce, HubSpot) so it "
-                "can act inside each user's own accounts, with managed OAuth and triggers. treg is "
-                "mostly a catalog of paid data APIs on treg's own accounts, plus your connected "
-                "accounts. They overlap on a few search and scraping tools; for most teams they do "
-                "different jobs.",
+        "tldr": "Both give an agent tools through one MCP server, with your own keys welcome. treg gives "
+                "your agent paid data from {ENDPOINTS} tools across {PROVIDERS} providers with no vendor "
+                "accounts, at 0% markup, and your own keys and connected accounts are never metered. "
+                "Composio connects your agent to 1,000+ apps (Gmail, Slack, Salesforce, HubSpot) so it "
+                "acts inside each user's own accounts, with managed OAuth and triggers. Many agents use "
+                "both: Composio for the app actions, treg for the data.",
         "spec": {"billing": "Plans, then per call", "start": "100K calls a month free",
                  "keys": "Yes", "code": "SDKs MIT"},
         "fit_them": [
@@ -921,10 +957,14 @@ COMPETITORS: dict[str, dict] = {
             "You need SOC 2 Type II, BAA or zero data retention options.",
         ],
         "fit_treg": [
-            "Your agent needs data you have no account for: SEO, enrichment, social, ads or generation.",
-            "You want each call billed at the provider's rate, with no plan.",
-            "You want your own provider keys to win and never be metered.",
-            "You want to self-host for your team without an Enterprise plan.",
+            "Your agent needs keyword volume, backlinks, work emails, social profiles, ad libraries or "
+            "image and video generation, with no account at each vendor.",
+            "You want each call billed at the provider's own rate from a prepaid balance, with no plan "
+            "and no seats.",
+            "You want your own provider keys to win over treg's and never be metered.",
+            "You want Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn and Slack on the "
+            "same token, never metered.",
+            "You want to self-host for your team from the code on GitHub.",
         ],
         "cells": _c(
             how_pay="Plans: Hobby $0 with 100,000 tool calls a month, Pro $29 a month with usage after "
@@ -951,20 +991,23 @@ COMPETITORS: dict[str, dict] = {
         ),
         "better": [
             ("App actions.", "1,000+ apps where the agent sends email, updates a CRM or posts in Slack, in "
-             "each user's own account. treg connects a short list of accounts."),
-            ("Triggers.", "Realtime and polling triggers let agents react to events. treg has none."),
+             "each user's own account."),
+            ("Triggers.", "Realtime and polling triggers let agents react to events in those apps."),
             ("Multi-user products.", "Per-user connected accounts, a hosted Connect Link and white-labeled "
              "OAuth."),
             ("Cheap volume.", "100,000 free calls a month, then $0.0003 per call on your own apps."),
             ("Compliance.", "SOC 2 Type II, with BAA, zero data retention and IP allowlists as options."),
         ],
         "different": [
-            ("Paid data, no vendor accounts.", "SEO and SERP data, backlinks, people and company enrichment, "
-             "social, ad libraries and generation models, on treg's accounts."),
-            ("No plan.", "A prepaid balance billed at each provider's rate, with no markup and no seats."),
+            ("Paid data, no vendor accounts.", "{ENDPOINTS} tools across {PROVIDERS} providers: SEO and SERP "
+             "data, backlinks, people and company enrichment, social, ad libraries and image, video and "
+             "voice generation, on treg's accounts."),
+            ("0% markup, in the terms.", "Each call is billed at the provider's own rate from a prepaid "
+             "balance. No plan, no seats and no top-up fee."),
             ("Your own keys win.", "Register a key and treg uses it instead of its own, never metered."),
-            ("Self-host for your team.", "treg's code is on GitHub; Composio's platform self-host is on "
-             "Enterprise."),
+            ("Your accounts, never metered.", "Google Analytics, Search Console, Google Ads, Meta Ads, "
+             "TikTok Ads, LinkedIn, Slack, TikTok and YouTube, on the same token as the catalog."),
+            ("Self-host for your team.", "treg's code is on GitHub, and you can run it for your own team."),
         ],
         "both": "Many agents need both jobs. Composio can send the email, update the CRM and listen for "
                 "events; treg can find the keyword volume, the work email and the competitor's ads. Both "
@@ -973,7 +1016,7 @@ COMPETITORS: dict[str, dict] = {
             ("Can I get SEO or enrichment data from Composio without a vendor account?",
              "Composio's Instant Tools run some search, scraping and maps tools on Composio's own accounts. "
              "Its pages do not list SEO metrics, enrichment or ad data there. treg's catalog covers those, "
-             "billed per call."),
+             "billed per call at the provider's rate."),
             ("Can I cap spend on Composio?",
              "Composio lists spend caps on its Pro plan, but its Instant Tools docs say that spend cannot be "
              "capped by amount and calls fail with 402 when the balance runs out. treg has a team daily cap, "
@@ -1003,27 +1046,32 @@ COMPETITORS: dict[str, dict] = {
         "logo_fills": True,
         "title": "treg vs Zapier MCP: data tools or app actions for agents",
         "description": "Zapier MCP lets an agent act in 9,000+ apps you connect. treg gives an agent "
-                       "paid data per call with no vendor accounts. Which one fits, and when to use both.",
+                       "paid data per call in dollars, with no vendor accounts. When to use both.",
         "sub": "Zapier MCP lets your agent act in the apps you connect. treg gives your agent paid data "
-               "from vendors you have no account with.",
+               "from vendors you have no account with, priced in dollars per call.",
         "their_words": "Go from AI chat to AI action.",
-        "tldr": "Zapier MCP lets your agent take actions in the 9,000+ apps you connect to Zapier, with "
-                "each successful call costing 2 tasks from your plan. treg gives your agent paid data "
-                "from providers you have no account with, billed per call from a prepaid balance. "
-                "Teams that need both jobs often use both.",
+        "tldr": "Both connect an agent through a remote MCP server. treg gives your agent paid data from "
+                "{ENDPOINTS} tools across {PROVIDERS} providers with no vendor accounts, each call priced "
+                "in dollars at 0% markup, and your own keys and connected accounts are never metered. "
+                "Zapier MCP lets your agent take actions in the 9,000+ apps you connect to Zapier, with "
+                "each successful call costing 2 tasks from your plan. Teams that need both jobs often use "
+                "both.",
         "spec": {"billing": "Tasks from a plan", "start": "100 tasks a month",
                  "keys": "Your connected apps", "code": "Hosted only"},
         "fit_them": [
-            "Your agent acts in long-tail SaaS apps that only Zapier connects.",
+            "Your agent acts in long-tail SaaS apps among Zapier's 9,000+.",
             "You already use Zapier: MCP draws on the same task pool, with no new contract.",
             "You want Zaps and triggers that run without the agent.",
             "You need SAML SSO, SCIM and audit logs kept up to a year.",
         ],
         "fit_treg": [
-            "Your agent needs SEO, enrichment, social or ad data without your own vendor accounts.",
-            "You want a price in dollars for each call, not in tasks.",
-            "You want your own keys and your team's own tools behind one token.",
-            "You want to read the code or self-host.",
+            "Your agent needs keyword volume, backlinks, work emails, social profiles or ad libraries, "
+            "with no account at each vendor.",
+            "You want each call priced in dollars before it runs, at the provider's own rate.",
+            "You want Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn and Slack on the "
+            "same token, never metered.",
+            "You want your own keys and your team's own APIs, CLIs and skills behind one token.",
+            "You want to read the code on GitHub or self-host for your team.",
         ],
         "cells": _c(
             how_pay="Plans billed in tasks: Free, Pro from $19.99 a month and Team from $69 a month "
@@ -1045,22 +1093,24 @@ COMPETITORS: dict[str, dict] = {
             team="Shared MCP servers on Team and Enterprise; SAML SSO and SCIM; SOC 2 Type II.",
         ),
         "better": [
-            ("The largest app catalog.", "9,000+ apps with tens of thousands of actions. treg connects a "
-             "short list of accounts."),
-            ("Actions in your apps.", "Send the email, update the CRM, post in Slack. That is a different "
-             "job from fetching data."),
+            ("A very wide app catalog.", "9,000+ apps with tens of thousands of actions."),
+            ("Actions in your apps.", "Send the email, update the CRM, post in Slack, in the apps you "
+             "connect."),
             ("Automations that run alone.", "Zaps and triggers run without the agent."),
             ("Governance.", "SOC 2 Type II, SAML SSO, SCIM, audit logs up to a year, and access control per "
              "app and action."),
             ("One bill for Zapier customers.", "MCP uses the task pool you already pay for."),
         ],
         "different": [
-            ("Paid data with no accounts.", "Keyword volume, backlinks, SERPs, work emails, social profiles, "
-             "ad libraries and generation models, on treg's own accounts."),
-            ("Dollars, not tasks.", "Each call shows its price before it runs, and you pay only what it "
-             "costs."),
+            ("Paid data with no accounts.", "{ENDPOINTS} tools across {PROVIDERS} providers: keyword volume, "
+             "backlinks, SERPs, work emails, social profiles, ad libraries and generation models, on "
+             "treg's own accounts."),
+            ("Dollars, not tasks.", "Each tool shows its price, with its source and checked date, before the "
+             "call. 0% markup, a commitment in the terms."),
             ("Your own keys and tools.", "Your key always wins and is never metered; your team's own APIs, "
              "CLIs and skills sit behind the same token."),
+            ("Your accounts, never metered.", "Google Analytics, Search Console, Google Ads, Meta Ads, "
+             "TikTok Ads, LinkedIn, Slack, TikTok and YouTube, next to the catalog."),
             ("Public code.", "treg's code is on GitHub, and you can self-host for your team."),
         ],
         "both": "Use Zapier MCP for the actions in your apps and treg for the data. For example, treg finds "
@@ -1098,14 +1148,16 @@ COMPETITORS: dict[str, dict] = {
         "logo_fills": True,
         "title": "treg vs Pipedream Connect: tools for AI agents compared",
         "description": "Pipedream Connect gives the agents you build 10,000+ tools in your users' own "
-                       "accounts. treg gives agents paid data per call. An honest comparison.",
+                       "accounts. treg gives agents paid data per call at 0% markup.",
         "sub": "Pipedream Connect lets the agents you build act in each user's own accounts. treg gives "
-               "your agent paid data it has no account for.",
+               "your agent paid data from providers you have no account with, billed per call.",
         "their_words": "The integration layer for AI agents.",
-        "tldr": "Pipedream Connect gives the agents you build 10,000+ tools across 3,000+ APIs, acting "
-                "in each end user's own accounts with managed OAuth. Pipedream is now part of Workday. "
-                "treg gives your agent paid data from providers you have no account with, billed per "
-                "call.",
+        "tldr": "Both reach an agent through remote MCP servers and keep credentials out of the model. "
+                "treg gives your agent paid data from {ENDPOINTS} tools across {PROVIDERS} providers with "
+                "no vendor accounts, billed per call at 0% markup, and your own keys always win. Pipedream "
+                "Connect, now part of Workday, gives the agents you build 10,000+ tools across 3,000+ "
+                "APIs, acting in each end user's own accounts with managed OAuth. A product can use both: "
+                "Pipedream for its users' apps, treg for the data.",
         "note": "Pipedream Workflows and String shut down on 31 March 2027. Pipedream's docs say that "
                 "Connect, its API, its MCP servers and its API proxy are not affected.",
         "spec": {"billing": "Plan, users and credits", "start": "Free for development",
@@ -1117,10 +1169,14 @@ COMPETITORS: dict[str, dict] = {
             "You need HIPAA, SSO, SCIM or static egress IPs.",
         ],
         "fit_treg": [
-            "Your agent needs paid data with no vendor accounts: SEO, enrichment, social, ads.",
-            "You want no per-user fee and no plan.",
+            "Your agent needs keyword volume, backlinks, work emails, social profiles or ad libraries, "
+            "with no account at each vendor.",
+            "You want each call billed in dollars at the provider's own rate, with no per-user fee and no "
+            "plan.",
+            "You want Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn and Slack on the "
+            "same token, never metered.",
             "You want your team's own keys and tools behind one token.",
-            "You want open code you can self-host.",
+            "You want code on GitHub you can self-host for your team.",
         ],
         "cells": _c(
             how_pay="Free for development. Startup $99 a month (annual) with 100 external users and 10,000 "
@@ -1152,10 +1208,13 @@ COMPETITORS: dict[str, dict] = {
              "across a company."),
         ],
         "different": [
-            ("Paid data with no accounts.", "SEO and SERP data, enrichment, social, ad libraries and "
-             "generation, on treg's own accounts."),
-            ("Billed per call in dollars.", "No per-user fee and no compute credits."),
+            ("Paid data with no accounts.", "{ENDPOINTS} tools across {PROVIDERS} providers: SEO and SERP "
+             "data, enrichment, social, ad libraries and generation, on treg's own accounts."),
+            ("Billed per call in dollars.", "0% markup, a commitment in the terms. No per-user fee, no "
+             "compute credits and no top-up fee."),
             ("Your own keys win.", "Register a key and treg uses it instead of its own, never metered."),
+            ("Spend controls.", "A team daily spend cap, a per-call cost ceiling and per-member daily call "
+             "caps, with each tool's price shown before the call."),
             ("Open code.", "treg's code is on GitHub under Apache 2.0 with added terms, and you can run it "
              "for your team."),
         ],
@@ -1172,8 +1231,8 @@ COMPETITORS: dict[str, dict] = {
              "Pipedream does not publish that. Its docs describe users connecting their own accounts or keys. "
              "treg runs catalog calls on its own accounts."),
             ("Can I use Pipedream in production for free?",
-             "No. The free plan covers development; production needs Startup or Business. treg has no plan: "
-             "new accounts get $1.00 of credit, then you top up."),
+             "The free plan covers development; production needs Startup or Business. treg runs on a prepaid "
+             "balance with no plan: new accounts get $1.00 of credit, then you top up."),
         ],
         "sources": [
             ("Pipedream home page", "https://pipedream.com"),
@@ -1192,30 +1251,34 @@ COMPETITORS: dict[str, dict] = {
         "logo": "/media/compare/logos/smithery.png",
         "title": "treg vs Smithery: an MCP directory and a tool catalog",
         "description": "Smithery is now a free MCP directory; its hosted proxy shut down on 31 October "
-                       "2026. What changed, and how treg's tool catalog differs.",
+                       "2026. treg is one token for paid tools, at 0% markup.",
         "sub": "Smithery is now a free directory of MCP servers. treg is one token for a catalog of paid "
-               "tools. Here is what changed, and how they differ.",
+               "tools, with treg holding the provider accounts.",
         "their_words": "Connect agents to thousands of tools and services.",
-        "tldr": "Since 31 October 2026, Smithery is a free public directory of MCP servers, run by "
-                "Arcade.dev. Its hosted proxy, managed identity, CLI and SDKs have shut down, so each "
-                "server is now reached directly at its vendor, with your own account there. treg is a "
-                "different thing: one token for a catalog of paid tools, with treg holding the provider "
-                "accounts.",
+        "tldr": "Both help an agent reach many tools. treg is one token for {ENDPOINTS} tools across "
+                "{PROVIDERS} providers, with treg holding the provider accounts, each call billed at 0% "
+                "markup from one prepaid balance, and your own keys always winning. Since 31 October "
+                "2026, Smithery is a free public directory of MCP servers, run by Arcade.dev, where each "
+                "server is reached directly at its vendor with your own account there. Use Smithery to "
+                "find a vendor's official server, and treg for paid data through one connection.",
         "note": "Arcade.dev acquired Smithery in August 2026. Smithery's hosted URLs, proxy, managed "
                 "identity, CLI, SDKs, accounts and API keys stopped working on 31 October 2026.",
         "spec": {"billing": "Free directory", "start": "Free, no account",
                  "keys": "Your account at each vendor", "code": "No public repos"},
         "fit_them": [
             "You want to browse MCP servers for free, with no account.",
-            "You need developer and documentation tools that treg does not carry.",
+            "You want documentation search, developer tools and niche public-data servers.",
             "You want each vendor's official server, with its full set of actions.",
             "You want nothing between your agent and the vendor.",
         ],
         "fit_treg": [
-            "You want one token for many paid data APIs, not one account per vendor.",
-            "You want one prepaid balance, billed per call at each provider's rate.",
-            "You want your own keys and your team's own tools behind that token.",
-            "You used Smithery-hosted URLs and need one connection for many tools.",
+            "You want one token for keyword volume, backlinks, work emails, social profiles, ad libraries "
+            "and generation, with no account at each vendor.",
+            "You want one prepaid balance, billed per call at each provider's own rate with 0% markup.",
+            "You want your own keys and your team's own APIs, CLIs and skills behind that token.",
+            "You want Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn and Slack on the "
+            "same token, never metered.",
+            "You used Smithery-hosted URLs and want one hosted connection for many tools.",
         ],
         "cells": _c(
             how_pay="Free to browse. Paid plans ended, and paying users were refunded charges since "
@@ -1239,23 +1302,25 @@ COMPETITORS: dict[str, dict] = {
         ),
         "better": [
             ("Free discovery.", "Browsing costs nothing and needs no account."),
-            ("Breadth of kinds.", "Documentation search, developer tools and niche servers that treg does "
-             "not carry."),
+            ("Breadth of kinds.", "Documentation search, developer tools and niche public-data servers."),
             ("Official servers.", "Verified entries point to the vendor's own MCP endpoint, often with its "
              "full write surface."),
             ("No middle hop.", "Your agent talks to the vendor directly."),
         ],
         "different": [
-            ("One token, many vendors.", "treg holds the provider accounts. Your agent does not sign up at "
-             "each vendor."),
-            ("One bill.", "Each catalog call is billed at the provider's rate from one prepaid balance."),
-            ("Your keys and tools.", "Your own keys win and are never metered, and your team's own tools sit "
-             "behind the same token."),
-            ("Still running.", "treg's hosted service and CLI are live, and its code is on GitHub."),
+            ("One token, many vendors.", "{ENDPOINTS} tools across {PROVIDERS} providers on treg's accounts. "
+             "Your agent does not sign up at each vendor."),
+            ("One bill at 0% markup.", "Each catalog call is billed at the provider's own rate from one "
+             "prepaid balance, with its price, source and checked date shown before the call."),
+            ("Your keys and tools.", "Your own keys win and are never metered, and your team's own APIs, CLIs "
+             "and skills sit behind the same token."),
+            ("Spend controls.", "A team daily spend cap, a per-call cost ceiling and per-member daily call "
+             "caps."),
+            ("Hosted and running.", "One remote MCP server with OAuth, an HTTP API, a CLI and an agent "
+             "skill, with the code on GitHub."),
         ],
         "both": "Smithery's directory is a good place to find a vendor's official MCP server. When your "
-                "agent needs paid data from many vendors through one connection, treg is a different tool "
-                "for that job.",
+                "agent needs paid data from many vendors through one connection, treg does that job.",
         "faq": [
             ("Is Smithery still a hosted MCP gateway?",
              "No. Since 31 October 2026, Smithery is a public directory that does not proxy calls. Hosted "
@@ -1268,8 +1333,8 @@ COMPETITORS: dict[str, dict] = {
              "Yes, now that it does not proxy. With treg, catalog calls run on treg's accounts and are billed "
              "to your balance."),
             ("Can one token reach many paid data APIs?",
-             "Not through Smithery, which lists one server per vendor. treg gives one token for its whole "
-             "catalog."),
+             "Smithery lists one server per vendor, each with its own account. treg gives one token for its "
+             "whole catalog."),
         ],
         "sources": [
             ("Smithery directory", "https://smithery.ai/servers"),
@@ -1288,16 +1353,17 @@ COMPETITORS: dict[str, dict] = {
         "logo": "/media/compare/logos/arcade.svg",
         "logo_fills": True,
         "title": "treg vs Arcade: an Arcade.dev alternative for AI agents",
-        "description": "Arcade gives the agents you build 8,000+ tools that act in each user's own apps, "
-                       "with governance. treg gives agents paid data per call. An honest comparison.",
+        "description": "Arcade gives the agents you build 8,000+ tools that act in each user's own apps. "
+                       "treg gives agents paid data per call at 0% markup. An honest comparison.",
         "sub": "Arcade lets your agents act in each user's own apps, under your security policies. treg "
-               "gives your agent paid data it has no account for.",
+               "gives your agent paid data from many providers, with no vendor accounts and 0% markup.",
         "their_words": "Arcade is the actions runtime between your agents and every system they reach.",
-        "tldr": "Arcade gives the agents you build 8,000+ tools that act in each user's own accounts "
-                "(Gmail, Slack, Salesforce, GitHub), with sign-in through your identity provider, "
-                "policies checked before each action and a record of every run. treg is mostly a "
-                "catalog of paid data APIs on treg's own accounts, plus your connected accounts. They "
-                "do different jobs, and one agent can use both.",
+        "tldr": "Both reach an agent over MCP, and both accept your own keys. treg gives your agent "
+                "paid data from many providers (SEO, enrichment, social, ads and generation) on treg's "
+                "accounts, at 0% markup, and your own keys and connected "
+                "accounts are never metered. Arcade gives the agents you build 8,000+ tools that act in "
+                "each user's own Gmail, Slack, Salesforce or GitHub, with sign-in through your identity "
+                "provider and policies checked before each action. Many agents use both.",
         "spec": {"billing": "$25 a month, then $0.01 a call", "start": "2,000 calls a month free",
                  "keys": "Yes", "code": "Framework MIT"},
         "fit_them": [
@@ -1308,10 +1374,14 @@ COMPETITORS: dict[str, dict] = {
             "You want 2,000 free tool calls a month to start, with no card.",
         ],
         "fit_treg": [
-            "Your agent needs data you have no account for: SEO, enrichment, social, ads or generation.",
-            "You want each call billed at the provider's rate, with no monthly fee.",
-            "You want a dollar cap per team and per call.",
-            "You want your own provider keys to win and never be metered.",
+            "Your agent needs data you have no account for: SEO and SERP, people and company enrichment, "
+            "social, ad libraries, or image, video and voice generation.",
+            "You want each call billed at the provider's own rate, with 0% markup, no top-up fee and no "
+            "monthly fee.",
+            "You want dollar limits: a team daily spend cap, a per-call cost ceiling and per-member call caps.",
+            "You want your own provider keys to win, and your Google Analytics, Search Console, Google Ads "
+            "and Meta Ads calls never metered.",
+            "You want each tool's price, with its source and checked date, before the call.",
         ],
         "cells": _c(
             how_pay="Plans: Free $0, Team $25 a month plus $0.01 per tool call, Enterprise custom with "
@@ -1343,7 +1413,7 @@ COMPETITORS: dict[str, dict] = {
         ),
         "better": [
             ("App actions for each user.", "Thousands of tools that act in each user's own Gmail, Slack, "
-             "Salesforce or GitHub, with delegated access. treg connects a short list of accounts."),
+             "Salesforce or GitHub, with delegated access."),
             ("Governance before each action.", "Sign-in through your identity provider, your policies "
              "checked before a tool runs, and rate limits per tool."),
             ("Deployment choice.", "Arcade Cloud, your VPC, air-gapped, Helm on your own Kubernetes, or "
@@ -1353,14 +1423,18 @@ COMPETITORS: dict[str, dict] = {
             ("A free plan with volume.", "2,000 tool calls a month with no card."),
         ],
         "different": [
-            ("Paid data, no vendor accounts.", "SEO and SERP data, backlinks, people and company "
-             "enrichment, social, ad libraries and generation models, on treg's accounts. Arcade's "
-             "search and scraping toolkits ask for your own key."),
-            ("No plan.", "A prepaid balance billed at each provider's rate, with no monthly fee and no "
-             "markup."),
-            ("Dollar limits.", "A team daily spend cap and a per-call cost ceiling. Arcade's limits count "
-             "calls."),
-            ("Your own keys win.", "Register a key and treg uses it instead of its own, never metered."),
+            ("Paid data, no vendor accounts.", "{ENDPOINTS} tools across {PROVIDERS} providers: SEO and "
+             "SERP data, backlinks, people and company enrichment, social, ad libraries and generation "
+             "models, all on treg's accounts."),
+            ("0% markup, no plan.", "A prepaid balance billed at each provider's own rate. 0% markup is a "
+             "commitment in the terms, with no top-up fee and no monthly fee."),
+            ("Your keys and accounts, never metered.", "Your team's own key always wins over treg's. Calls "
+             "on your connected Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn, Slack "
+             "and YouTube accounts are never metered."),
+            ("Dollar limits.", "A team daily spend cap, a per-call cost ceiling and per-member daily call "
+             "caps keep an agent's spend in bounds."),
+            ("Price before the call.", "Each tool's rate, with its source and the date it was checked, "
+             "before the call runs."),
         ],
         "both": "Many agents need both jobs. Arcade can send the email, update the CRM and open the "
                 "ticket as the user; treg can find the keyword volume, the work email and the "
@@ -1409,15 +1483,16 @@ COMPETITORS: dict[str, dict] = {
         "logo_fills": True,
         "title": "treg vs Nango: a Nango alternative for AI agents",
         "description": "Nango connects your product and agents to 1,000+ APIs in each user's own "
-                       "accounts. treg gives agents paid data per call. An honest comparison.",
+                       "accounts. treg gives agents paid data per call at 0% markup. An honest comparison.",
         "sub": "Nango lets the product and agents you build act in each user's own accounts. treg gives "
-               "your agent paid data it has no account for.",
+               "your agent paid data from many providers, with no vendor accounts and no plan.",
         "their_words": "Integrations for your products & agents.",
-        "tldr": "Nango connects the product and agents you build to 1,000+ APIs in each user's own "
-                "accounts. It handles OAuth and API keys, runs your integration code as TypeScript "
-                "functions, and keeps data fresh with syncs and webhooks. treg is mostly a catalog of "
-                "paid data APIs on treg's own accounts, plus your connected accounts. For most teams "
-                "they do different jobs.",
+        "tldr": "Both reach an agent over MCP. treg gives your agent paid data from many "
+                "providers on treg's accounts, billed per call at 0% markup, and "
+                "your own keys and connected accounts are never metered. Nango connects the product and "
+                "agents you build to 1,000+ APIs in each user's own accounts, with managed OAuth, "
+                "TypeScript functions, syncs and webhooks. A product can use both: Nango for its users' "
+                "apps, treg for the data its agent needs.",
         "spec": {"billing": "Connections, compute and data", "start": "Free plan, hard-capped",
                  "keys": "Your users' accounts", "code": "Elastic License 2.0"},
         "fit_them": [
@@ -1428,10 +1503,13 @@ COMPETITORS: dict[str, dict] = {
             "You need SOC 2 Type II, HIPAA with a BAA, or Nango in your own cloud.",
         ],
         "fit_treg": [
-            "Your agent needs data you have no account for: SEO, enrichment, social, ads or generation.",
-            "You want each call billed at the provider's rate, not by connections and compute time.",
-            "You want a dollar cap per team and per call.",
-            "You want to self-host for your team without an Enterprise plan.",
+            "Your agent needs data you have no account for: SEO and SERP, people and company enrichment, "
+            "social, ad libraries, or image, video and voice generation.",
+            "You want each call billed in dollars at the provider's own rate, with 0% markup.",
+            "You want a team daily spend cap, a per-call cost ceiling and per-member call caps.",
+            "You want your own provider keys to win, and your Google Analytics, Search Console, Google Ads "
+            "and Meta Ads calls never metered.",
+            "You want to self-host for your own team, with the code on GitHub.",
         ],
         "cells": _c(
             how_pay="Plans: Free $0, Pay-as-you-go $50 a month with $50 of credit, Enterprise custom. "
@@ -1462,9 +1540,9 @@ COMPETITORS: dict[str, dict] = {
         ),
         "better": [
             ("Breadth of app integrations.", "1,000+ APIs and 10,000+ pre-built tools, triggers and syncs, "
-             "in each user's own account. treg connects a short list of accounts."),
+             "in each user's own account."),
             ("Syncs and webhooks.", "Keep external data fresh with polling or real-time syncs, and react "
-             "to provider webhooks. treg has no triggers."),
+             "to provider webhooks."),
             ("Integrations as code.", "TypeScript functions you can generate with a coding agent, test "
              "locally and deploy through CI/CD."),
             ("A raw proxy.", "Authenticated requests to any endpoint of a connected API."),
@@ -1472,13 +1550,18 @@ COMPETITORS: dict[str, dict] = {
              "or Azure account."),
         ],
         "different": [
-            ("Paid data, no vendor accounts.", "SEO and SERP data, backlinks, people and company "
-             "enrichment, social, ad libraries and generation models, on treg's accounts."),
-            ("Billed per call in dollars.", "Each call at the provider's rate, with no connection fee, no "
-             "compute time and no plan."),
-            ("Dollar limits.", "A team daily spend cap and a per-call cost ceiling."),
-            ("Self-host for your team.", "treg's code is on GitHub under Apache 2.0 with added terms. "
-             "Nango's free self-host covers auth and proxy only."),
+            ("Paid data, no vendor accounts.", "{ENDPOINTS} tools across {PROVIDERS} providers: SEO and "
+             "SERP data, backlinks, people and company enrichment, social, ad libraries and generation "
+             "models, all on treg's accounts."),
+            ("Billed per call, 0% markup.", "Each call at the provider's own rate, with no connection fee, "
+             "no compute time and no plan. 0% markup is a commitment in the terms."),
+            ("Your keys and accounts, never metered.", "Your team's own key always wins over treg's. Calls "
+             "on your connected Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn, Slack "
+             "and YouTube accounts are never metered."),
+            ("Dollar limits, prices first.", "A team daily spend cap, a per-call cost ceiling and "
+             "per-member call caps, and each tool's rate with its source and checked date before the call."),
+            ("Self-host for your team.", "treg's code is on GitHub under Apache 2.0 with added terms, and "
+             "you can run it for your own team."),
         ],
         "both": "A product can use Nango for auth, syncs and actions in its users' apps, and treg for the "
                 "data its agent needs from vendors nobody has an account with. Both reach an agent over "
@@ -1524,15 +1607,17 @@ COMPETITORS: dict[str, dict] = {
         "mono": "#5B4CF0",
         "logo": "/media/compare/logos/clay.png",
         "title": "treg vs Clay: a Clay alternative for AI agents",
-        "description": "Clay is a GTM data platform with tables and waterfalls. treg lets a coding agent "
-                       "call data APIs per call, with no plan. An honest look at which one fits.",
-        "sub": "Clay is built for GTM teams that work in tables. treg is built for agents that call data "
-               "APIs directly.",
+        "description": "Clay is a GTM data platform with tables and waterfalls. treg gives an agent "
+                       "enrichment and other data APIs per call, with no plan and no seats.",
+        "sub": "Clay is built for GTM teams that work in tables. treg gives your agent people and company "
+               "data, SEO, social and ad data by API, billed per call.",
         "their_words": "Build systems to grow revenue.",
-        "tldr": "Clay is the better tool for a GTM team that works in tables: waterfall enrichment, AI "
-                "research agents, CRM sync and a sequencer, billed in Actions and Data Credits on a "
-                "plan. treg is for a coding agent that calls data APIs itself: SEO, people and company "
-                "enrichment, social and ad data, per call at the provider's rate, with no plan.",
+        "tldr": "Both give you people and company data from many vendors under one account, and both "
+                "accept your own keys. treg gives your agent that data beside SEO, social and "
+                "ad tools, by MCP, API or CLI, billed per call at the provider's rate with 0% markup and "
+                "no seats, and a call on your own key is never metered. Clay gives a GTM team tables with "
+                "waterfall enrichment, AI research agents, CRM sync and a sequencer, billed in Actions and "
+                "Data Credits on a plan. A RevOps team can keep Clay's tables and give its agents treg.",
         "spec": {"billing": "Plans, Actions and Data Credits", "start": "500 Actions, 100 credits",
                  "keys": "Yes, still uses Actions", "code": "Hosted only"},
         "fit_them": [
@@ -1542,10 +1627,13 @@ COMPETITORS: dict[str, dict] = {
             "You want CRM and data warehouse sync, a sequencer and ad audiences in one product.",
         ],
         "fit_treg": [
-            "Your agent in Claude Code, Codex or Cursor calls the data APIs itself.",
-            "You want no plan: each call billed at the provider's rate.",
-            "You want enrichment beside SEO, social, ad and generation tools behind one token.",
-            "You want your own provider keys to cost nothing extra, not even an Action.",
+            "Your agent in Claude Code, Codex or Cursor calls enrichment and research APIs itself, by MCP, "
+            "API or CLI.",
+            "You want no plan and no seats: each call billed at the provider's rate, with 0% markup.",
+            "You want people and company data beside SEO, social, ad library and generation tools, behind "
+            "one token.",
+            "You want your own provider keys to win and cost nothing extra, not even an Action.",
+            "You want a team daily spend cap, a per-call cost ceiling and per-member call caps.",
         ],
         "cells": _c(
             how_pay="Plans billed in two meters: Actions (under $0.01 each) and Data Credits (from $0.05 "
@@ -1575,12 +1663,14 @@ COMPETITORS: dict[str, dict] = {
             ("Unlimited seats.", "Every plan includes unlimited users."),
         ],
         "different": [
-            ("Built for agents.", "Your agent searches the catalog, reads the price and calls the tool, from "
-             "Claude Code, Codex, Cursor or any MCP client."),
-            ("No plan.", "A prepaid balance billed at the provider's rate, with no markup and no seats."),
-            ("More than enrichment.", "SEO and SERP data, backlinks, social, ad libraries and generation "
-             "models sit beside the people data."),
-            ("Your keys cost nothing extra.", "A call on your own key is never metered by treg."),
+            ("Built for agents.", "Your agent searches the catalog, reads each tool's price with its source "
+             "and checked date, and calls the tool, from Claude Code, Codex, Cursor or any MCP client."),
+            ("0% markup, no plan, no seats.", "A prepaid balance billed at the provider's own rate. 0% markup "
+             "is a commitment in the terms, with no top-up fee."),
+            ("More than enrichment.", "{ENDPOINTS} tools across {PROVIDERS} providers: SEO and SERP data, "
+             "backlinks, social, ad libraries and generation models sit beside the people data."),
+            ("Your keys, never metered.", "Your team's own key always wins over treg's, and treg never "
+             "meters a call on it."),
             ("Spreadsheets too.", "The treg add-on for Google Sheets fills cells from the catalog, and shows "
              "each run's cost first."),
         ],
@@ -1588,9 +1678,9 @@ COMPETITORS: dict[str, dict] = {
                 "for ad hoc research, SEO and social data, and quick enrichment outside a table.",
         "faq": [
             ("Is treg a Clay alternative?",
-             "For some jobs. If your agent calls enrichment and research APIs itself, treg does that per call "
-             "with no plan. If your team works in tables with waterfalls, CRM sync and sequences, Clay does "
-             "far more of that work."),
+             "Yes, when your agent does the enrichment. treg gives an agent enrichment and research APIs by "
+             "MCP, API or CLI, billed per call with no plan. When your team works in tables with waterfalls, "
+             "CRM sync and sequences, Clay is built for that work."),
             ("Do I pay Clay twice, in Actions and Data Credits?",
              "Clay bills orchestration in Actions and third-party data in Data Credits. With your own provider "
              "key there is no Data Credit charge, but an Action is still used. treg bills one price per call, "
@@ -1622,15 +1712,17 @@ COMPETITORS: dict[str, dict] = {
         "logo": "/logos/apollo.svg",
         "logo_fills": True,
         "title": "treg vs Apollo.io: an Apollo alternative for AI agents",
-        "description": "Apollo is a sales platform with its own 240M+ contact database. treg lets an "
-                       "agent call Apollo and other data providers per call. Which one fits.",
-        "sub": "Apollo is a sales platform with its own database. treg lets your agent call Apollo and "
-               "many other data providers through one token.",
+        "description": "Apollo is a sales platform with its own 240M+ contact database. treg gives an "
+                       "agent Apollo and other people data providers per call, with no seats.",
+        "sub": "Apollo is a sales platform with its own database. treg gives your agent Apollo and many "
+               "other people and company data providers through one token, per call.",
         "their_words": "Grow revenue with one connected GTM system.",
-        "tldr": "Apollo is a full sales platform: its own contact database, sequences, a dialer and a "
-                "CRM, on per-seat plans with credits. treg is not a sales platform. It lets an agent call "
-                "Apollo's API and many other people and company data providers through one token, per "
-                "call, and your own Apollo key works through treg without treg metering it.",
+        "tldr": "Both give you people and company data, and Apollo's API is in the treg catalog. treg lets "
+                "your agent call Apollo beside many other people and company data providers, plus SEO, "
+                "social and ad tools, through one token, per call at the provider's rate with 0% markup "
+                "and no seats. Apollo is a full sales platform: its own contact database, sequences, a "
+                "dialer and a CRM, on per-seat plans with credits. Keep Apollo for your reps, connect your "
+                "Apollo key to treg, and treg never meters your agent's calls on it.",
         "spec": {"billing": "Per seat, with credits", "start": "Free plan, no time limit",
                  "keys": "Your Apollo account", "code": "Hosted only"},
         "fit_them": [
@@ -1640,10 +1732,12 @@ COMPETITORS: dict[str, dict] = {
             "You want a free plan with no time limit, and many API endpoints that use no credits.",
         ],
         "fit_treg": [
-            "Your agent compares several people and company data providers, not one.",
-            "You want no seats: each call billed at the provider's rate.",
-            "You want SEO, social and ad data beside the people data.",
-            "You already have an Apollo key and want your agent to use it with every other provider.",
+            "Your agent checks several people and company data providers through one token.",
+            "You want no seats: each call billed at the provider's rate, with 0% markup.",
+            "You want SEO, social, ad library and generation tools beside the people data.",
+            "You already have an Apollo key and want your agent to use it, never metered, beside every "
+            "other provider.",
+            "You want a team daily spend cap and a per-call cost ceiling on your agent's calls.",
         ],
         "cells": _c(
             how_pay="Per-seat plans with credits that reset each cycle. Apollo's own article (17 September "
@@ -1675,26 +1769,29 @@ COMPETITORS: dict[str, dict] = {
             ("Its own database.", "240M+ contacts and 30M+ companies, searchable with rich filters."),
             ("Outreach built in.", "Sequences, a dialer, call recording, tasks and deals, in the same system "
              "as the data."),
-            ("Writes by MCP.", "About 60 actions, including CRM records, lists and sequences. treg's Apollo "
-             "tools are data calls."),
+            ("Writes by MCP.", "About 60 actions, including CRM records, lists, sequences and one-off email."),
             ("Free endpoints.", "Many Apollo API endpoints use no credits."),
             ("An interface for reps.", "A polished app for people who never touch an agent."),
         ],
         "different": [
-            ("Many providers, one token.", "Apollo is one of many people and company data providers in the "
-             "catalog. Routed tools try the next provider when one misses an email or phone."),
-            ("No seats.", "A prepaid balance billed per call at the provider's rate, with no markup."),
+            ("Many providers, one token.", "Apollo is one of many people and company data providers among "
+             "{ENDPOINTS} tools across {PROVIDERS} providers. Routed tools try the next provider when one "
+             "misses an email or phone, and say so."),
+            ("No seats, 0% markup.", "A prepaid balance billed per call at the provider's rate. 0% markup is "
+             "a commitment in the terms, with no top-up fee."),
             ("More than sales data.", "SEO, social, ad libraries, web scraping and generation sit beside the "
              "people data."),
             ("Your Apollo key, never metered.", "Connect your own Apollo key, and your agent's Apollo calls use "
              "your Apollo credits, with no charge from treg."),
+            ("Dollar limits, prices first.", "A team daily spend cap, a per-call cost ceiling and per-member "
+             "call caps, and each tool's price with its source and checked date before the call."),
         ],
         "both": "Apollo's API is in the treg catalog. Keep Apollo for your reps' sequences and CRM, connect your "
                 "Apollo key to treg, and let your agent use it beside the other data providers.",
         "faq": [
             ("If treg has Apollo endpoints, why use Apollo directly?",
-             "For everything that is not a data call: sequences, the dialer, the CRM, and the app your reps use "
-             "every day. treg's Apollo tools are people search and enrichment calls for an agent."),
+             "For sequences, the dialer, the CRM and the app your reps use every day. treg's Apollo tools are "
+             "people search and enrichment calls for an agent, beside many other data providers."),
             ("Which Apollo plan do I need for API access?",
              "Apollo's sources differ. On 3 November 2026 its pricing page said API access is on Custom plans, "
              "while its docs published rate limits for Free through Organization. Check with Apollo."),
@@ -1727,9 +1824,11 @@ COMPETITORS: dict[str, dict] = {
         "sub": "OpenRouter gives one API for many language models. treg is the same idea for the tools an "
                "agent calls.",
         "their_words": "A unified API for every major LLM.",
-        "tldr": "OpenRouter routes your language-model calls to 600+ models from 80+ providers through one "
-                "API. treg does the same kind of job for tools: one token for paid data and generation "
-                "APIs. They overlap very little, so an agent can use both.",
+        "tldr": "OpenRouter and treg share one idea: one key and one balance in front of many providers. "
+                "treg applies it to the tools an agent calls: paid data and generation APIs and your own "
+                "connected accounts, with 0% markup and no top-up fee. OpenRouter applies it to language "
+                "models, with 600+ models from 80+ providers behind one OpenAI-compatible API. Use "
+                "OpenRouter for the model and treg for the tools the model calls.",
         "spec": {"billing": "Credits, 5.5% purchase fee", "start": "Free models, daily limits",
                  "keys": "Yes, free to $25K a month", "code": NOT_PUBLISHED},
         "fit_them": [
@@ -1739,9 +1838,10 @@ COMPETITORS: dict[str, dict] = {
             "You need guardrails, zero data retention, regional routing, SSO or SLAs.",
         ],
         "fit_treg": [
-            "Your agent needs data: SEO, enrichment, social, ads, web scraping.",
-            "Your agent works in your own Google, Meta or LinkedIn accounts.",
-            "You want no fee on top-ups.",
+            "Your agent needs data: SEO and SERP, enrichment, social, ad libraries, web scraping.",
+            "Your agent makes images, video or voice through the same token.",
+            "Your agent works in your own Google, Meta or LinkedIn accounts, never metered.",
+            "You want no fee on top-ups and 0% markup on every call.",
             "You want your team's own APIs and CLIs behind one token.",
         ],
         "cells": _c(
@@ -1766,8 +1866,8 @@ COMPETITORS: dict[str, dict] = {
             team="Workspaces; SSO and SAML on Enterprise.",
         ),
         "better": [
-            ("Models.", "600+ models from 80+ providers behind one OpenAI-compatible API. treg's catalog has "
-             "only a few model endpoints."),
+            ("Language models on one key.", "600+ models from 80+ providers behind one OpenAI-compatible "
+             "API."),
             ("Routing for the same model.", "It weighs price, speed and reliability, and falls back when a "
              "provider fails."),
             ("Your own model keys.", "Free up to $25,000 a month of inference, with ordering and fallback."),
@@ -1775,19 +1875,22 @@ COMPETITORS: dict[str, dict] = {
             ("Free models.", "A free tier of models for testing."),
         ],
         "different": [
-            ("Tools, not models.", "SEO and SERP data, enrichment, social, ad libraries, scraping, and image, "
-             "video and voice generation."),
-            ("No purchase fee.", "treg adds no fee on top-ups and no markup on calls."),
-            ("Your accounts.", "Google Analytics, Search Console, Ads, Meta Ads, LinkedIn and Slack, never "
-             "metered."),
+            ("The same idea, for tools.", "One token for SEO and SERP data, enrichment, social, ad "
+             "libraries, scraping, and image, video and voice generation."),
+            ("No purchase fee.", "No fee on top-ups and 0% markup on calls, a commitment in treg's terms."),
+            ("Your accounts.", "Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn and Slack, "
+             "connected by OAuth and never metered."),
+            ("Your team's own tools.", "Register an API, a CLI or a skill once, and every agent on the team "
+             "calls it with the credential held on the server."),
             ("Public code.", "treg's code is on GitHub, and you can self-host for your team."),
         ],
-        "both": "Use OpenRouter for the model and treg for the tools the model calls. treg itself reaches a "
-                "few OpenRouter endpoints, such as video generation, through its own OpenRouter account.",
+        "both": "Use OpenRouter for the model and treg for the tools the model calls. treg's catalog also "
+                "includes OpenRouter endpoints, such as video generation, through treg's own OpenRouter "
+                "account.",
         "faq": [
             ("Is treg a replacement for OpenRouter?",
-             "No. OpenRouter routes language-model calls. treg gives your agent paid tools and data. Most "
-             "agents that use one can use both."),
+             "They do different jobs. OpenRouter routes language-model calls. treg gives your agent paid "
+             "tools and data. Most agents that use one can use both."),
             ("What fees do they charge?",
              "OpenRouter charges 5.5% on credit purchases on Standard and 8% on Business, and bills inference "
              "at list price. treg charges no fee on top-ups and no markup on calls."),
