@@ -114,6 +114,11 @@ class Contract:
     row_of: str = ""
     row_fields: dict[str, dict] = field(default_factory=dict)
     row_needs: tuple[str, ...] = ()
+    # Identity key -> expression over the identity and filters, a value built for a provider that
+    # accepts NO variant the caller supplied (`q` from title + keywords + location, so a free-text
+    # people search can answer a `{title}` request). A provider that can take the caller's own
+    # fields never sees it, so its request is unchanged.
+    stand_in: dict[str, str] = field(default_factory=dict)
 
     @property
     def required_output(self) -> tuple[str, ...]:
@@ -150,6 +155,17 @@ class Adapter:
     row_map: dict[str, str] = field(default_factory=dict)
     _row_of: str = ""
     _row_needs: tuple[str, ...] = ()
+    _stand_in: dict[str, str] = field(default_factory=dict)   # the contract's `stand_in`, set at load
+
+    def with_stand_in(self, identity: dict[str, Any], keys=None) -> dict[str, Any]:
+        """The identity plus the contract's stand-in values for keys it lacks (`keys`: only these)."""
+        extra = {}
+        for k, expr in self._stand_in.items():
+            if identity.get(k) in (None, "") and (keys is None or k in keys):
+                v = P.evaluate(expr, identity)
+                if v not in (None, ""):
+                    extra[k] = v
+        return {**identity, **extra} if extra else identity
 
     def to_upstream(self, identity: dict[str, Any], variant: tuple[str, ...] | None = None) -> tuple[dict[str, str], Any]:
         """(query params, JSON body) for this provider from a canonical request (identity + filters).
@@ -162,6 +178,8 @@ class Adapter:
         body: dict[str, Any] = {}
         doc = {"queryParams": query, "body": body}
         identity_keys = set(variant) if variant is not None else None
+        if identity_keys and self._stand_in:
+            identity = self.with_stand_in(identity, identity_keys)
         for field_name, target in self.in_map.items():
             v = identity.get(field_name)
             if v is None:
@@ -269,7 +287,7 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
 CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
     "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "prefer", "check", "confirm",
-    "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row"})
+    "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in"})
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "body_array", "test_identity", "cost_units", "max",
     "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row"})
@@ -298,7 +316,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
     out = {}
     for cap, c in (doc.get("contracts") or {}).items():
         _known_keys(f"contract {cap}", c, CONTRACT_KEYS)
-        _expressions(f"contract {cap}", *(c.get("derive") or {}).values(),
+        _expressions(f"contract {cap}", *(c.get("derive") or {}).values(), *(c.get("stand_in") or {}).values(),
                      *([c["miss"]] if c.get("miss") else []),
                      *([c["question_miss"]] if c.get("question_miss") else []),
                      *([c["check"]["when"]] if isinstance(c.get("check"), dict) and c["check"].get("when") else []))
@@ -306,6 +324,8 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
         for v in c.get("identity") or []:
             if isinstance(v, dict):
                 types.update({k: str(t) for k, t in v.items()})
+        if stray := sorted(set(c.get("stand_in") or {}) - set(types)):
+            raise ValueError(f"contract {cap}: stand_in must name identity keys, got {stray}")
         scoping = c.get("scoping") or []
         if not isinstance(scoping, list) or any(k not in types for k in scoping):
             # A typo'd key would silently scope nothing; failing the routing load instead makes
@@ -337,6 +357,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             empty_is_failure=bool(c.get("empty_is_failure", False)),
             one_subject=bool(c.get("one_subject", False)),
             complete=_parse_complete(cap, c.get("complete"), c.get("output") or {}),
+            stand_in={str(k): str(v) for k, v in (c.get("stand_in") or {}).items()},
             **_parse_row(cap, c.get("row"), c.get("output") or {}),
             **_parse_verdict(cap, c.get("verdict")))
     return out
@@ -565,8 +586,14 @@ def canonical_identity(contract: Contract, given: dict[str, Any]) -> tuple[dict[
 
 
 def adapter_accepts(adapter: Adapter, identity: dict[str, Any]) -> tuple[str, ...] | None:
-    """The first accepted variant fully present in the (derived) identity, or None."""
-    return next((v for v in adapter.accepts if all(identity.get(k) not in (None, "") for k in v)), None)
+    """The first accepted variant fully present in the (derived) identity, or None. Only when the
+    caller's own fields fit none does a contract stand-in (`q` built from them) get a turn."""
+    def first(ident):
+        return next((v for v in adapter.accepts if all(ident.get(k) not in (None, "") for k in v)), None)
+    found = first(identity)
+    if found is None and getattr(adapter, "_stand_in", None):
+        found = first(adapter.with_stand_in(identity))
+    return found
 
 
 def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -> tuple[bool, str]:
@@ -643,6 +670,7 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
         if contract is not None:
             ad = Adapter(**{**ad.__dict__, "_filter_keys": tuple(contract.filters or ()),
                             "_row_of": contract.row_of if ad.row_map else "", "_row_needs": contract.row_needs,
+                            "_stand_in": contract.stand_in,
                             "_verdict": (contract.verdict_from, contract.verdict_words,
                                          contract.required_output, contract.verdict_map)
                             if contract.verdict_words else None})
