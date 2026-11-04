@@ -170,8 +170,7 @@ async def test_free_result_streams_complete_bytes_and_retries_live(wire, status,
         async with session_maker() as db:
             entries = (await db.execute(select(LedgerEntry).where(
                 LedgerEntry.call_id == response.headers['x-treg-call-id']))).scalars().all()
-            assert sorted(e.kind for e in entries) == ['reserve', 'settle']
-            assert all(e.amount_micro == 0 for e in entries)
+            assert entries == []
             row = (await db.execute(select(CallRecord).where(
                 CallRecord.call_ref == response.headers['x-treg-call-id']))).scalar_one()
             assert row.response_bytes is None

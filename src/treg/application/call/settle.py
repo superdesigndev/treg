@@ -1234,6 +1234,17 @@ async def _platform_settle(
     turn a served call into a 500. A hold that fails to close is not lost money either — the reaper
     releases it, which errs in the org's favour. Runs on its OWN session because the request's session
     may be mid-rollback from the very error we are releasing for."""
+    if mk.metered and mk.holdless:
+        decision = decide_settle(mk, status_code, body, headers=headers, reason=reason,
+                                 observed_override=observed_override, cached_repeat=cached_repeat)
+        mk.holdless = False  # once-only, like `mk.call_id` below
+        if decision.charged_micro:
+            logging.getLogger("treg.ledger").error(
+                "holdless call on %s computed a charge of %s micro; nothing was held, treg absorbs it",
+                mk.endpoint_id, decision.charged_micro)
+        if finalized is not None:
+            finalized()
+        return 0, decision.observed_micro
     if not mk.metered or not mk.call_id:
         return 0, None
     decision = decide_settle(mk, status_code, body, headers=headers, reason=reason,
