@@ -136,7 +136,7 @@ def render_example(doc) -> str:
 def cost_of(ep: dict) -> float:
     """What the next call to this endpoint should be budgeted at.
 
-    The rate card (`cost`) is preferred, but several providers publish prices per API family rather
+    The rate card (`cost`, or a v2 row's `price`) is preferred, but several providers publish prices per API family rather
     than per route and their entries carry none at all — every DataForSEO entry, for one. A missing
     price silently reads as FREE, which makes `--budget` inert: a run can queue the whole file at an
     estimated $0.000 and still spend real money, with only the balance readback noticing afterwards.
