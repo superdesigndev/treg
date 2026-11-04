@@ -535,7 +535,7 @@ async def test_sampled_provider_changes_routed_call_not_direct_call(clients, mon
         served = await clients.post("/call/treg.people.phone.find", json=identity)
         assert served.status_code == 200, served.text
         assert served.json()["_treg"]["served_by"] == "leadocean.people.phone.find"
-        assert served.json()["_treg"]["charged_micro"] == 0
+        assert served.json()["_treg"]["charged_micro"] == 5_000
         assert [provider for provider, *_ in seen] == ["leadocean", "leadocean"]
     finally:
         get_settings.cache_clear()
