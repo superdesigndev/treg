@@ -3730,9 +3730,8 @@ adapters:
     out: {companies: results, count: total_results, next_cursor: cursor}
     miss: "results == []"
 
-  # Low verified yield leaves work email out of routing; direct calls retain every status.
+  # Only vendor-verified work emails stop the routed waterfall.
   leadocean.people.email.find.work:
-    route: false
     accepts: [[linkedin_url]]
     in: {linkedin_url: queryParams.linkedin_url}
     out: {email: data.email, verified: "data.status == 'verified'"}
