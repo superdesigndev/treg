@@ -996,6 +996,14 @@ async def _invoice_metadata_for_known_customer(db: AsyncSession, pi: dict) -> di
     return meta if meta.get("treg_org_id") == str(org_id) else {}
 
 
+async def _topup_metadata(db: AsyncSession, pi: dict) -> dict:
+    """The treg metadata of a PaymentIntent: its own, or its invoice's for an automatic top-up."""
+    meta = pi.get("metadata") or {}
+    if not meta and pi.get("id"):
+        meta = await _invoice_metadata_for_known_customer(db, pi)
+    return meta
+
+
 async def _stop_failed_invoice(invoice_id: str, key: str) -> None:
     """No failed automatic invoice may be retried or dunned by Stripe."""
     if not invoice_id:
@@ -1642,9 +1650,7 @@ async def _on_payment_succeeded(db: AsyncSession, pi: dict) -> dict:
     """A PaymentIntent succeeded. Fires for the manual Checkout purchase AND the off-session
     auto-charge; `treg_kind` on the metadata is what tells our top-ups apart from anything else the
     account does (the landing-page demo charges, for one)."""
-    meta = pi.get("metadata") or {}
-    if not meta and pi.get("id"):
-        meta = await _invoice_metadata_for_known_customer(db, pi)
+    meta = await _topup_metadata(db, pi)
     if meta.get("treg_kind") != "topup":
         return {"handled": False, "reason": "not a treg top-up"}
     org_id = _org_id_from({"metadata": meta})
@@ -1711,9 +1717,7 @@ async def _on_payment_failed(db: AsyncSession, pi: dict) -> dict:
     """A top-up PaymentIntent failed. Only the AUTOMATIC ones need bookkeeping: a human who saw a
     decline on the hosted page can just try again, but an unattended charge that keeps failing has to
     stop by itself."""
-    meta = pi.get("metadata") or {}
-    if not meta and pi.get("id"):
-        meta = await _invoice_metadata_for_known_customer(db, pi)
+    meta = await _topup_metadata(db, pi)
     if meta.get("treg_kind") != "topup":
         return {"handled": False, "reason": "not a treg top-up"}
     org_id = _org_id_from({"metadata": meta})
@@ -2038,6 +2042,76 @@ async def open_billing_portal(org_id: int, *, return_base: str) -> dict:
             raise BillingJourneyError("not_configured", str(e)) from e
         except TopupRejected as e:
             raise BillingJourneyError("rejected", str(e)) from e
+
+
+GAP_NOT_CREDITED = "not_credited"
+GAP_CREDITED_DIFFERENTLY = "credited_differently"
+GAP_BONUS_MISSING = "bonus_missing"
+
+
+async def reconcile_topups(*, since: datetime, until: datetime) -> dict:
+    """Check every top-up Stripe collected in [since, until) (naive UTC) against the ledger. Read-only.
+
+    A gap is a paid top-up with no purchased block (`not_credited`), one credited to another org or
+    amount (`credited_differently`), or a manual one owed a bonus that has none (`bonus_missing`).
+    """
+    paid = await _succeeded_payment_intents(since, until)
+    topups: list[tuple[dict, int, int, bool]] = []
+    async with _db.session_maker() as db:
+        for pi in paid:
+            meta = await _topup_metadata(db, pi)
+            org_id = _org_id_from({"metadata": meta})
+            amount_micro = cents_to_micro(pi.get("amount_received") or 0)
+            if meta.get("treg_kind") == "topup" and org_id is not None and amount_micro > 0:
+                topups.append((pi, org_id, amount_micro, meta.get("treg_auto") == "1"))
+        ids = [pi["id"] for pi, _, _, _ in topups]
+        blocks = {b.stripe_payment_intent: b for b in (await db.execute(
+            select(CreditBlock).where(CreditBlock.stripe_payment_intent.in_(ids))
+        )).scalars()} if ids else {}
+        bonused: set[str] = set()
+        for org_id in {org_id for _, org_id, _, _ in topups}:
+            bonused |= await _bonused_payments(db, org_id)
+    gaps = []
+    for pi, org_id, amount_micro, auto in topups:
+        block = blocks.get(pi["id"])
+        if block is None:
+            gap = GAP_NOT_CREDITED
+        elif block.org_id != org_id or block.amount_micro != amount_micro:
+            gap = GAP_CREDITED_DIFFERENTLY
+        elif not auto and bonus_for_topup(amount_micro)[0] > 0 and pi["id"] not in bonused:
+            gap = GAP_BONUS_MISSING
+        else:
+            continue
+        gaps.append({"gap": gap, "payment_intent": pi["id"], "org_id": org_id, "amount_micro": amount_micro,
+                     "auto": auto, "paid_at": datetime.fromtimestamp(pi["created"], timezone.utc).isoformat()})
+    return {"since": since.isoformat(), "until": until.isoformat(), "topups": len(topups), "gaps": gaps}
+
+
+async def _succeeded_payment_intents(since: datetime, until: datetime) -> list[dict]:
+    window = {"gte": int(since.replace(tzinfo=timezone.utc).timestamp()),
+              "lt": int(until.replace(tzinfo=timezone.utc).timestamp())}
+    found: list[dict] = []
+    after: dict = {}
+    while True:
+        page = await _sdk(stripe_adapter.PAYMENT_INTENT_LIST, created=window, limit=100, **after)
+        data = page.get("data") or []
+        found += [pi for pi in data if pi.get("status") == "succeeded"]
+        if not page.get("has_more") or not data:
+            return found
+        after = {"starting_after": data[-1]["id"]}
+
+
+def reconcile_alert(report: dict) -> str:
+    """The operator message for a report with gaps."""
+    lines = [f"Stripe top-ups that treg's ledger does not match ({report['since'][:16]} to "
+             f"{report['until'][:16]} UTC):"]
+    for g in report["gaps"]:
+        lines.append(f"- {g['gap']}: org {g['org_id']}, ${g['amount_micro'] / 1_000_000:,.2f}"
+                     f"{' auto' if g['auto'] else ''}, {g['payment_intent']}, paid {g['paid_at'][:16]} UTC")
+    lines.append("not_credited, bonus_missing: resend the payment's Stripe event; a credit by hand pays "
+                 "twice if Stripe still delivers it later. credited_differently: investigate before any "
+                 "credit.")
+    return "\n".join(lines)
 
 
 async def process_webhook(

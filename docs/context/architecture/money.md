@@ -12,6 +12,7 @@ sources:
   - src/treg/models.py
   - src/treg/application/billing.py
   - src/treg/routers/billing.py
+  - src/treg/infra/slack.py
   - tests/test_topup_reconcile.py
   - frontend/src/state/billing.js
   - frontend/src/state/data.js
@@ -456,14 +457,26 @@ purchased block (so the two deliveries of one Checkout cannot both grant), it gr
 `topup_bonus` entry names the PaymentIntent. When the grant fails, the delivery still credits and then
 fails (`BonusPending`, a 500), so Stripe redelivers and the redelivery grants it. A redelivery grants
 a missing bonus only while the purchased block is younger than Stripe's three-day retry window
-(`BONUS_HEAL_WINDOW`); an older gap is left to a human, who may already have paid it by hand
-outside the `topup_bonus` entries. It is its own block that burns with promo credit, so the purchased
-block stays exactly what the card paid:
+(`BONUS_HEAL_WINDOW`); an older gap is left to the reconciliation below and a human, who may already
+have paid it by hand outside the `topup_bonus` entries. It is its own block that burns with promo
+credit, so the purchased block stays exactly what the card paid:
 purchased credit is a refundable liability, the bonus is marketing spend. Automatic refills earn
 nothing (a bonus there would be a permanent margin cut on every refill). A refund or dispute does not
 reverse it; it is logged for a human (`bonus_blocks_flagged`), because the ledger has no path that
 drives a balance down. The grant's meta carries `payment_intent`, `pct` and `topup_block_id`, which
 `topup_history` joins to show `bonus_micro`.
+
+**Reconciliation against Stripe** (`treg-worker billing reconcile`, `billing.reconcile_topups`). The
+webhook is the only door for a paid top-up, so a delivery that keeps failing is money paid and not
+credited, and nothing in the request path notices. The command lists every succeeded PaymentIntent
+created in `[now - grace - hours, now - grace)`, keeps the treg top-ups (the same `_topup_metadata`
+rule as the webhook, so invoice-paid automatic top-ups count) and reports each with no purchased block
+(`not_credited`), a block of another org or amount (`credited_differently`), or a manual one owed a
+bonus with no `topup_bonus` entry (`bonus_missing`). It writes nothing: the fix for a gap is a Stripe
+event resend, which goes through the webhook's idempotency; a hand credit pays twice if Stripe later
+delivers the event. It prints the report as one JSON line and exits 1 when there is a gap. With
+`TREG_OPS_SLACK_WEBHOOK_URL` set it also posts the gaps, or its own failure, to that Slack incoming
+webhook (`infra/slack.py`). Overlapping windows report an unfixed gap again on the next run.
 
 **The preselected amount** (`next_default_usd`) is the first preset above the org's last *manual*
 top-up, capped at `topup_default_cap_usd`; auto refills are skipped so the ladder cannot ratchet on

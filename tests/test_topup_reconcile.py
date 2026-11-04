@@ -1,16 +1,20 @@
-"""A paid top-up always ends up in the ledger, bonus included.
+"""A paid top-up always ends up in the ledger, bonus included, or an operator hears about it.
 
-A delivery whose bonus grant failed is failed back to Stripe and the redelivery grants the bonus once.
+Two halves: a delivery whose bonus grant failed is failed back to Stripe and the redelivery grants
+the bonus once; and `treg-worker billing reconcile` checks what Stripe collected against the ledger.
+`billing._sdk` is the single Stripe funnel, so patching it fakes every Stripe call.
 """
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import hmac
 import json
 import time
 from datetime import datetime, timedelta, timezone
 
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import update
@@ -18,10 +22,13 @@ from sqlmodel import select
 
 from conftest import make_upstream, verified_signup
 
+from treg import worker
 from treg.api import app
 from treg.application import billing
 from treg.config import get_settings
 from treg.domain import money
+from treg.infra import db as infra_db
+from treg.infra import slack
 from treg.infra.db import reset_db, session_maker
 from treg.models import CreditBlock, LedgerEntry
 
@@ -35,6 +42,7 @@ async def c(monkeypatch):
     monkeypatch.setattr(s, "stripe_secret_key", "sk_test_suite", raising=False)
     monkeypatch.setattr(s, "stripe_webhook_secret", WHSEC, raising=False)
     monkeypatch.setattr(s, "topup_bonus_tiers", {10: 0, 50: 5, 100: 10, 200: 15}, raising=False)
+    monkeypatch.setattr(s, "ops_slack_webhook_url", "", raising=False)
     monkeypatch.setattr(billing, "_sdk", _no_sdk)
     billing._locks.clear()
     billing._scheduled.clear()
@@ -90,6 +98,19 @@ def _fail_bonus_grants(monkeypatch, times: int) -> None:
     monkeypatch.setattr(money, "grant", grant)
 
 
+async def _schema_ok() -> None:
+    """The worker's startup schema check, which a test database does not need to pass."""
+
+
+def _stripe_lists(*pages: list[dict]):
+    async def sdk(fn, /, **kw):
+        assert fn == "PaymentIntent.list", fn
+        index = 0 if "starting_after" not in kw else next(
+            i + 1 for i, page in enumerate(pages) if page and page[-1]["id"] == kw["starting_after"])
+        return {"data": pages[index], "has_more": index + 1 < len(pages)}
+    return sdk
+
+
 async def test_a_failed_bonus_fails_the_delivery_and_a_redelivery_grants_it_once(c, monkeypatch):
     org_id = await _org(c)
     _fail_bonus_grants(monkeypatch, times=1)
@@ -137,3 +158,93 @@ async def test_a_redelivery_past_stripes_retry_window_leaves_the_bonus_to_a_huma
 
     assert (await _deliver(c, pi)).status_code == 200
     assert await _bonuses(org_id, "pi_old") == []
+
+
+async def test_reconcile_reports_every_paid_top_up_the_ledger_does_not_match(c, monkeypatch):
+    org_id = await _org(c)
+    ok, auto, unbonused, lost = (_pi(org_id, "pi_ok", 10_000), _pi(org_id, "pi_auto", 10_000, auto="1"),
+                                 _pi(org_id, "pi_unbonused", 200_000), _pi(org_id, "pi_lost", 92_000))
+    for pi in (ok, auto):
+        assert (await _deliver(c, pi)).status_code == 200
+    _fail_bonus_grants(monkeypatch, times=1)
+    assert (await _deliver(c, unbonused)).status_code == 500
+    stranger = {**_pi(org_id, "pi_demo", 500), "metadata": {}, "customer": "cus_not_a_team"}
+    refused = {**_pi(org_id, "pi_declined", 5_000), "status": "requires_payment_method"}
+    monkeypatch.setattr(billing, "_sdk", _stripe_lists([lost, unbonused, stranger], [refused, auto, ok]))
+
+    until = datetime.now(timezone.utc).replace(tzinfo=None)
+    report = await billing.reconcile_topups(since=until - timedelta(hours=48), until=until)
+
+    assert report["topups"] == 4
+    assert {(g["gap"], g["payment_intent"]) for g in report["gaps"]} == {
+        (billing.GAP_NOT_CREDITED, "pi_lost"), (billing.GAP_BONUS_MISSING, "pi_unbonused")}
+    lost_gap = next(g for g in report["gaps"] if g["payment_intent"] == "pi_lost")
+    assert lost_gap["org_id"] == org_id and lost_gap["amount_micro"] == 920_000_000
+
+
+async def test_reconcile_flags_a_payment_credited_for_another_amount(c, monkeypatch):
+    org_id = await _org(c)
+    assert (await _deliver(c, _pi(org_id, "pi_amount", 5_000))).status_code == 200
+    monkeypatch.setattr(billing, "_sdk", _stripe_lists([_pi(org_id, "pi_amount", 6_000)]))
+    until = datetime.now(timezone.utc).replace(tzinfo=None)
+    report = await billing.reconcile_topups(since=until - timedelta(hours=48), until=until)
+    assert [g["gap"] for g in report["gaps"]] == [billing.GAP_CREDITED_DIFFERENTLY]
+
+
+async def test_the_worker_alerts_slack_only_when_a_top_up_is_missing(c, monkeypatch, capsys):
+    org_id = await _org(c)
+    monkeypatch.setattr(get_settings(), "ops_slack_webhook_url", "https://hooks.slack.test/ops", raising=False)
+    posted: list[tuple[str, str]] = []
+
+    async def post(url, text, **kw):
+        posted.append((url, text))
+
+    monkeypatch.setattr(slack, "post", post)
+    monkeypatch.setattr(infra_db, "verify_db", _schema_ok)
+    args = argparse.Namespace(hours=48, grace_minutes=30)
+
+    monkeypatch.setattr(billing, "_sdk", _stripe_lists([]))
+    assert await worker._billing_reconcile(args) == 0
+    assert posted == []
+
+    monkeypatch.setattr(billing, "_sdk", _stripe_lists([_pi(org_id, "pi_missing", 92_000)]))
+    assert await worker._billing_reconcile(args) == 1
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["gaps"][0]["payment_intent"] == "pi_missing"
+    [(url, text)] = posted
+    assert url == "https://hooks.slack.test/ops"
+    assert f"not_credited: org {org_id}, $920.00, pi_missing" in text
+
+
+async def test_the_worker_alerts_slack_when_the_check_itself_fails(c, monkeypatch):
+    monkeypatch.setattr(get_settings(), "ops_slack_webhook_url", "https://hooks.slack.test/ops", raising=False)
+    posted: list[str] = []
+
+    async def post(url, text, **kw):
+        posted.append(text)
+
+    class StripeDown(Exception):
+        pass
+
+    async def stripe_down(fn, /, **kw):
+        raise StripeDown("Stripe is down")
+
+    monkeypatch.setattr(slack, "post", post)
+    monkeypatch.setattr(infra_db, "verify_db", _schema_ok)
+    monkeypatch.setattr(billing, "_sdk", stripe_down)
+    with pytest.raises(StripeDown):
+        await worker._billing_reconcile(argparse.Namespace(hours=48, grace_minutes=30))
+    assert posted == ["treg-worker billing reconcile failed: StripeDown: Stripe is down"]
+
+
+async def test_slack_post_sends_the_text_as_an_incoming_webhook_message():
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, text="ok")
+
+    await slack.post("https://hooks.slack.test/ops", "hello", transport=httpx.MockTransport(handler))
+    assert json.loads(seen[0].content) == {"text": "hello"}
+    with pytest.raises(httpx.HTTPStatusError):
+        await slack.post("https://hooks.slack.test/ops", "hello",
+                         transport=httpx.MockTransport(lambda r: httpx.Response(404)))
