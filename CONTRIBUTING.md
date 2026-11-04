@@ -68,3 +68,5 @@ privately, never in a public issue).
 
 Be kind and constructive. Harassment or personal attacks are not tolerated; maintainers may remove
 comments or contributors that cross that line.
+
+Thank you for contributing.
