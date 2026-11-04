@@ -16,9 +16,8 @@ without one — a guessed price is worse than an honest gap, because a gap refus
 a guess spends real money (docs/context/architecture/catalog.md, Cost).
 
 The three confidence levels it assigns, and what earns them:
-  verified   — the price came from the provider's OWN live rate card (TikHub's
-               get_all_endpoints_info, DataForSEO's /appendix/user_data) or was observed being
-               billed on a real call. Re-checkable without trusting a docs page.
+  verified   — the price came from the provider's OWN live rate card (DataForSEO's
+               /appendix/user_data) or was observed being billed on a real call. Re-checkable without trusting a docs page.
   documented — transcribed from the provider's docs or pricing page during the 2026-07-28 sweep.
   inferred   — the recorded figure is a floor or the top of a published range (base-fee-plus-per-row
                endpoints, "1-9 credits", "$0.50-$5.00 per 1,000"), so it is not the whole charge.
@@ -51,11 +50,6 @@ CANONICAL_FREE = {"type": "free", "value": 0, "currency": "USD", "unit": "call"}
 # "0.0015" is per call or per row.
 PROVIDERS: dict[str, dict] = {
     # Prices from the provider's own machine-readable rate card → verified.
-    "tikhub": {
-        "source": "rate_card_api", "confidence": "verified",
-        "url": "https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info",
-        "units": {"*": "call"},
-    },
     "dataforseo": {
         "source": "rate_card_api", "confidence": "verified",
         "url": "https://api.dataforseo.com/v3/appendix/user_data",
