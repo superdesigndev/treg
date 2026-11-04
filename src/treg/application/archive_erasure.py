@@ -31,7 +31,7 @@ from sqlalchemy import select, text
 from .. import archive_bodies
 from ..domain.governance.teams import (
     archive_bodies_only_under, archive_mark_count, archive_snapshots_under, erase_archive_keys,
-    erase_archive_rows, private_archive_key_ids, sole_public_archive_key_ids,
+    erase_archive_rows, private_archive_key_ids, sole_public_archive_key_ids, still_sole_public,
 )
 from ..infra.db import session_maker
 from ..models import Org
@@ -84,18 +84,17 @@ async def erase_org(org_id: int, *, include_sole_public: bool = False,
     request pool: a request-shaped job (the owner delete, the worker command), never a resident
     one.
 
-    `include_sole_public` also erases the public answers only this team paid for, first, because
-    they are found by the team's marks and the private phase deletes the marks. Unlike the private
-    keys, a public key can gain a snapshot from another team's call between the orphan judgment
-    and the row delete; that snapshot goes with the key and its object, if new, stays behind
-    unreferenced."""
+    `include_sole_public` also erases the public answers only this team paid for, first. They are
+    found through the team's marks, which the private phase (or a concurrent erasure of the same
+    team) deletes, so the candidates are read once, in one capped statement, and each batch only
+    re-checks that no other team has paid for them since. Unlike the private keys, a public key
+    can gain a snapshot from another team's call between the orphan judgment and the row delete;
+    that snapshot goes with the key and its object, if new, stays behind unreferenced."""
     if not await _opted_out(org_id, session_factory):
         raise NotOptedOut(f"org {org_id} is still in the archive; opt it out first")
     result: dict = {"org_id": org_id}
     if include_sole_public:
-        result["public_keys"], public_objects = await _erase_passes(
-            org_id, sole_public_archive_key_ids, erase_archive_keys,
-            session_factory)
+        result["public_keys"], public_objects = await _erase_sole_public(org_id, session_factory)
     result["keys"], result["objects"] = await _erase_passes(
         org_id, private_archive_key_ids, lambda db, ids: erase_archive_rows(db, org_id, ids),
         session_factory)
@@ -131,6 +130,34 @@ async def _erase_passes(org_id: int, find, erase, session_factory) -> tuple[int,
         after = key_ids[-1]
 
 
+async def _sole_public_candidates(org_id: int, session_factory) -> list[int]:
+    async with session_factory() as db:
+        await _bounded(db)
+        return await sole_public_archive_key_ids(db, org_id)
+
+
+async def _erase_sole_public(org_id: int, session_factory) -> tuple[int, int]:
+    """The public phase: candidates read once, then objects -> rows per batch -> (keys, objects)."""
+    candidates = await _sole_public_candidates(org_id, session_factory)
+    keys = objects = 0
+    for start in range(0, len(candidates), _KEY_BATCH):
+        async with session_factory() as db:
+            await _bounded(db)
+            key_ids = await still_sole_public(db, org_id, candidates[start:start + _KEY_BATCH])
+            orphans = await archive_bodies_only_under(db, key_ids) if key_ids else set()
+        if not key_ids:
+            continue
+        failed = await _delete_objects(orphans)
+        if failed:
+            raise RuntimeError(f"{failed} archive object(s) could not be deleted")
+        objects += len(orphans)
+        async with session_factory() as db:
+            await _bounded(db)
+            keys += await erase_archive_keys(db, key_ids)
+            await db.commit()
+    return keys, objects
+
+
 async def _opted_out(org_id: int, session_factory) -> bool:
     """A team that is gone counts as out: nothing of its is being recorded."""
     async with session_factory() as db:
@@ -147,9 +174,17 @@ async def count_org(org_id: int, *, include_sole_public: bool = False,
     objects the erasure deletes, since a body another key's snapshot shares stays."""
     result: dict = {"org_id": org_id, "opted_out": await _opted_out(org_id, session_factory)}
     if include_sole_public:
-        (result["public_keys"], result["public_snapshots"],
-         result["public_bodies"]) = await _count_passes(org_id, sole_public_archive_key_ids,
-                                                         session_factory)
+        candidates = await _sole_public_candidates(org_id, session_factory)
+        snapshots = 0
+        hashes: set[str] = set()
+        for start in range(0, len(candidates), _KEY_BATCH):
+            async with session_factory() as db:
+                await _bounded(db)
+                per_hash = await archive_snapshots_under(db, candidates[start:start + _KEY_BATCH])
+            snapshots += sum(per_hash.values())
+            hashes.update(per_hash)
+        result["public_keys"], result["public_snapshots"], result["public_bodies"] = (
+            len(candidates), snapshots, len(hashes))
     result["keys"], result["snapshots"], result["bodies"] = await _count_passes(
         org_id, private_archive_key_ids, session_factory)
     async with session_factory() as db:

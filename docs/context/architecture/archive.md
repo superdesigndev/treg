@@ -176,7 +176,12 @@ archive no longer names the team; `callrecord` still keeps the team's `params_ha
 On request (`erase-archive --include-sole-public`), erasure also takes the public keys only this
 team paid for (`teams.sole_public_archive_key_ids`: marked by it and by no other team). A question
 another team also paid for stays. These keys are found through the team's marks, so this phase
-runs first, before the private phase deletes the marks. It deletes keys and snapshots through
+runs first, before the private phase deletes the marks. It reads every candidate once, in one
+capped statement, because an erasure of the same team running alongside (an owner delete, a second
+worker) can delete the marks at any moment. Each batch then re-checks only that no other team has
+paid for the key since; it does not require the team's own mark. A plain erasure that finishes
+before the public phase starts still leaves nothing for it to find, so the run order matters.
+Candidates are held in memory, so a team whose marks cannot be read within the cap fails loud. It deletes keys and snapshots through
 `teams.erase_archive_keys`, which leaves marks alone. Unlike a private key, a public key can gain
 a snapshot from another team's call between the orphan judgment and the delete. That snapshot
 goes with the key, and its object, if new, is left unreferenced in the store. The cost of the

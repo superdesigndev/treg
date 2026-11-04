@@ -497,3 +497,60 @@ async def test_without_the_flag_public_answers_stay(clients: AsyncClient, serve)
     assert await archive_erasure.erase_org(org_a) == {"org_id": org_a, "keys": 0, "objects": 0}
     keys, _ = await _rows()
     assert len(keys) == 1 and await _marks() == []
+
+
+async def test_a_concurrent_default_erasure_cannot_hide_sole_public_answers(
+        clients: AsyncClient, serve, monkeypatch):
+    """The public phase reads its candidates once, up front: a default erasure that deletes the
+    team's marks mid-run (an owner delete, a second worker) does not leave answers behind."""
+    from treg.domain.governance.teams import erase_archive_rows
+    org_a = await _org_id(clients)
+    _vendor_says(monkeypatch, b'{"q": 7}')
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    _vendor_says(monkeypatch, b'{"q": 8}')
+    await clients.get(f"/call/{EP}?aweme_id=8")
+    await archive.drain()
+    await _opt_out(clients, org_a)
+    monkeypatch.setattr(archive_erasure, "_KEY_BATCH", 1)
+    real = archive_erasure._delete_objects
+    calls = []
+
+    async def marks_go_mid_run(hashes):
+        if not calls:
+            async with session_maker() as s:
+                await erase_archive_rows(s, org_a, [])
+                await s.commit()
+        calls.append(1)
+        return await real(hashes)
+    monkeypatch.setattr(archive_erasure, "_delete_objects", marks_go_mid_run)
+    result = await archive_erasure.erase_org(org_a, include_sole_public=True)
+    assert result["public_keys"] == 2
+    keys, snaps = await _rows()
+    assert keys == [] and snaps == []
+
+
+async def test_a_candidate_another_team_pays_for_mid_run_stays(clients: AsyncClient, serve, monkeypatch):
+    org_a = await _org_id(clients)
+    _vendor_says(monkeypatch, b'{"q": 7}')
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    _vendor_says(monkeypatch, b'{"q": 8}')
+    await clients.get(f"/call/{EP}?aweme_id=8")
+    await archive.drain()
+    await _opt_out(clients, org_a)
+    keys, _ = await _rows()
+    later = max(keys, key=lambda k: k.id)
+    monkeypatch.setattr(archive_erasure, "_KEY_BATCH", 1)
+    real = archive_erasure._delete_objects
+    calls = []
+
+    async def another_team_pays(hashes):
+        if not calls:
+            async with session_maker() as s:
+                s.add(ArchiveKeyOrg(org_id=org_a + 1000, key_hash=later.key_hash))
+                await s.commit()
+        calls.append(1)
+        return await real(hashes)
+    monkeypatch.setattr(archive_erasure, "_delete_objects", another_team_pays)
+    assert (await archive_erasure.erase_org(org_a, include_sole_public=True))["public_keys"] == 1
+    keys, _ = await _rows()
+    assert [k.id for k in keys] == [later.id]
