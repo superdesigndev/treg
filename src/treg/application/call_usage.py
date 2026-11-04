@@ -6,17 +6,17 @@ transaction, so a row is either folded or after the cursor, never both and never
 after the cursor are found over `(org_id, id)` and are only the last few minutes of a team's calls
 while the cron runs; if it stops, that tail grows until the cron resumes.
 
-The tail also carries the cursor as read just before, as a constant. The cursor only moves forward,
-so the bound never changes the rows; it is there because Postgres plans the subquery's value as
-unknown, estimates the team's whole history, and then spends far longer compiling the query (JIT)
-than running it.
+Postgres plans the cursor subquery's value as unknown and estimates the team's whole history, so
+on a busy team it spends far longer compiling the statement (JIT) than running it. JIT is off for
+the read's transaction. A constant bound taken from an earlier read cannot replace the subquery:
+rebuilding the rollup moves the cursor back, and such a bound would then drop the rows between.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import String, cast, func, select, union_all
+from sqlalchemy import String, cast, func, select, text, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import CallRecord, CallUsageCursor, CallUsageDay
@@ -34,17 +34,16 @@ async def rows(db: AsyncSession, org_id: int, since: datetime) -> list[UsageRow]
     """One team's usage from the UTC day of `since` on: folded day rows, then the unfolded tail
     grouped the same way."""
     after = select(CallUsageCursor.cursor_id).where(CallUsageCursor.id == CURSOR_ID).scalar_subquery()
-    floor = (await db.execute(select(CallUsageCursor.cursor_id)
-                              .where(CallUsageCursor.id == CURSOR_ID))).scalar_one_or_none() or 0
     day = cast(func.date(CallRecord.created_at), String)
     folded = select(CallUsageDay.day, CallUsageDay.user_email, CallUsageDay.kind, CallUsageDay.tool_name,
                     CallUsageDay.client, CallUsageDay.calls, CallUsageDay.last_at).where(
         CallUsageDay.org_id == org_id, CallUsageDay.day >= since.strftime("%Y-%m-%d"))
     tail = select(day, CallRecord.user_email, CallRecord.kind, CallRecord.tool_name, CallRecord.client,
                   func.count().label("calls"), func.max(CallRecord.created_at)).where(
-        CallRecord.org_id == org_id, CallRecord.id > after, CallRecord.id > floor,
-        CallRecord.created_at >= since,
+        CallRecord.org_id == org_id, CallRecord.id > after, CallRecord.created_at >= since,
     ).group_by(day, CallRecord.user_email, CallRecord.kind, CallRecord.tool_name, CallRecord.client)
+    if db.get_bind().dialect.name == "postgresql":
+        await db.execute(text("SET LOCAL jit = off"))
     result = await db.execute(union_all(folded, tail))
     return [(str(d), email, kind, tool, client or "", int(n), last_at)
             for d, email, kind, tool, client, n, last_at in result.all()]

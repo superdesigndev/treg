@@ -214,8 +214,9 @@ such scan queues every other query and the API pool empties into `503 treg_satur
   (`money.tag_dims`, a recursive CTE asking for the next value after the last).
 - A bound taken from a scalar subquery is unknown to the planner, which then estimates a team's
   whole history and can spend longer compiling the statement (JIT) than running it. Where the
-  subquery must stay for snapshot consistency, the value read just before is added as a redundant
-  constant bound (`call_usage.rows`).
+  subquery must stay for snapshot consistency, the read turns JIT off for its transaction
+  (`call_usage.rows`). A constant read earlier is no substitute: a rollup rebuild moves the cursor
+  back.
 - Watermark walks state the bound as `created_at >= w AND (created_at > w OR id > w_id)`, never as
   one OR: inside an OR Postgres bounds the scan only from above and walks from the oldest row.
 - A database that predates Alembic was stamped at the baseline and may lack baseline indexes
