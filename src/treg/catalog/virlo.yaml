@@ -1,0 +1,336 @@
+# Virlo is short-form video intelligence across TikTok, Instagram Reels and YouTube Shorts: a library
+# of analysed videos searchable by topic and look, ranked by Virality Score, plus trends, hooks, sounds,
+# hashtags and live platform reads. Bills in credits at a fixed 1 credit = $0.01; 2xx only, and the
+# X-Cost / X-Credits-Used response headers carry the exact charge of every call.
+provider: virlo
+source:
+  docs: https://dev.virlo.ai/docs
+  openapi: https://api.virlo.ai/openapi.json
+  curated: '2026-11-02'
+limits: "Per-key rate limits; every response carries X-RateLimit-Limit / -Remaining / -Reset."
+pricing_url: https://dev.virlo.ai/docs/credits
+
+proposed_capabilities:
+  shortform.videos.search: "Find short-form videos by topic, on-screen look, size and date across platforms"
+  shortform.videos.top: "List the top short-form videos of the last 24-48 hours across platforms"
+  shortform.trends.digest: "Get today's news and pop culture trends on short-form video"
+  shortform.trends.emerging: "List news and pop culture trends heating up right now on short-form video"
+  shortform.formats.trending: "List video formats and templates creators are copying right now"
+  shortform.hashtag.performance: "Get one hashtag's video count and views across platforms"
+  shortform.sounds.trending: "List sounds most used in recent short-form videos"
+  shortform.sounds.breakout: "List sounds accelerating against their own baseline"
+  shortform.sounds.search: "Search sounds by title across platforms"
+  shortform.hooks.trending: "List the top opening lines from recent viral short-form videos"
+  shortform.hooks.search: "Search the opening lines of short-form videos by phrase"
+
+endpoints:
+  - id: virlo.shortform.videos.search
+    added: '2026-11-02'
+    capability: shortform.videos.search
+    platform: shortform
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search/videos
+    name: "Find viral videos by topic and look"
+    summary: "Find videos by topic, look, platform, date, creator size, views, engagement, Virality Score, region, language and account type."
+    input:
+      bodyType: json
+      body:
+        scope: {type: string, required: true, note: "virlo_library searches every video Virlo has analysed", example: "virlo_library"}
+        topics: {type: "array[string]", required: true, note: "each item is one idea; alternatives for the same idea with | (\"skincare|skin care\")", example: ["meal prep"]}
+        looks_like: {type: string, required: false, note: "what is on screen, in plain words: faceless, talking head, UGC", example: "faceless"}
+        platforms: {type: "array[string]", required: false, note: "tiktok, instagram, youtube; default all three"}
+        posted_after: {type: string, required: false, note: "YYYY-MM-DD"}
+        creator_followers_max: {type: number, required: false, note: "creator size ceiling"}
+        sort: {type: string, required: false, note: "most_viral (default), most_views, newest or rising"}
+        page: {type: number, required: false, note: "25 videos a page; each page holding results is billed"}
+      note: "Returns videos with links, creator, stats and Virality Score, plus `applied` and `not_applied` so a caller sees which filters ran."
+    test_request:
+      body: {scope: "virlo_library", topics: ["meal prep"]}
+    cost: {type: per_success, value: 0.05, currency: USD, per: 1, unit: page, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "5 credits per page of up to 25 (OBSERVED 2026-11-02, X-Cost 0.05). An empty page is free."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.creators.search
+    added: '2026-11-02'
+    capability: creators.search
+    platform: creators
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search/creators
+    name: "Find short-form creators by topic, bio and size"
+    summary: "Find creators by what their videos are about, a word in their bio, platform, follower range and account type."
+    input:
+      bodyType: json
+      body:
+        topics: {type: "array[string]", required: false, note: "what their videos are about; needs topics, bio_keywords or creator_type", example: ["meal prep"]}
+        bio_keywords: {type: string, required: false, note: "a word the creator uses in their bio", example: "dietitian"}
+        platforms: {type: "array[string]", required: false, note: "tiktok, instagram, youtube; default all three"}
+        creator_followers_min: {type: number, required: false}
+        creator_followers_max: {type: number, required: false}
+        creator_type: {type: string, required: false, note: "individual or brand"}
+        sort: {type: string, required: false, note: "top_performing (default), rising or most_followers"}
+        page: {type: number, required: false, note: "25 creators a page"}
+    test_request:
+      body: {topics: ["meal prep"]}
+    cost: {type: per_success, value: 0.05, currency: USD, per: 1, unit: page, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "5 credits per page of up to 25 (OBSERVED 2026-11-02, X-Cost 0.05). An empty page is free."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.shortform.videos.top
+    added: '2026-11-02'
+    capability: shortform.videos.top
+    platform: shortform
+    domain: videos
+    scope: any_account
+    method: GET
+    path: /videos/digest
+    name: "Top short-form videos right now"
+    summary: "Top videos from the last 24-48 hours."
+    input:
+      queryParams:
+        limit: {type: number, required: false, note: "videos to return, default 50", example: 3}
+    test_request:
+      queryParams: {limit: 3}
+    cost: {type: per_success, value: 0.25, currency: USD, per: 1, unit: call, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "25 credits (OBSERVED 2026-11-02, X-Cost 0.25)."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.shortform.trends.digest
+    added: '2026-11-02'
+    capability: shortform.trends.digest
+    platform: shortform
+    domain: trends
+    scope: any_account
+    method: GET
+    path: /trends/digest
+    name: "Today's news and pop culture trends"
+    summary: "Today's Pop culture & News digest, with example videos."
+    input:
+      queryParams:
+        region: {type: string, required: false, note: "default global", example: "global"}
+        limit: {type: number, required: false, note: "trends in total, default 50", example: 3}
+        top_exemplars: {type: number, required: false, note: "example videos per trend, default 5", example: 1}
+    test_request:
+      queryParams: {region: "global", limit: 3, top_exemplars: 1}
+    cost: {type: per_success, value: 0.25, currency: USD, per: 1, unit: call, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "25 credits (OBSERVED 2026-11-02, X-Cost 0.25)."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.shortform.trends.emerging
+    added: '2026-11-02'
+    capability: shortform.trends.emerging
+    platform: shortform
+    domain: trends
+    scope: any_account
+    method: GET
+    path: /trends/emerging
+    name: "News and pop culture trends heating up"
+    summary: "Emerging Pop culture & News, ranked by momentum."
+    input:
+      queryParams:
+        region: {type: string, required: false, note: "default global", example: "global"}
+        limit: {type: number, required: false, note: "default 20", example: 3}
+        top_exemplars: {type: number, required: false, note: "example videos per trend, default 5", example: 1}
+    test_request:
+      queryParams: {region: "global", limit: 3, top_exemplars: 1}
+    cost: {type: per_success, value: 0.25, currency: USD, per: 1, unit: call, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "25 credits (OBSERVED 2026-11-02, X-Cost 0.25)."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.shortform.formats.trending
+    added: '2026-11-02'
+    capability: shortform.formats.trending
+    platform: shortform
+    domain: trends
+    scope: any_account
+    method: GET
+    path: /content-trends
+    name: "Video formats creators are copying"
+    summary: "Content Trends: formats, memes and templates spreading across creators, with lifecycle and example videos."
+    input:
+      queryParams:
+        limit: {type: number, required: false, note: "default 50, max 100", example: 3}
+        lifecycle: {type: string, required: false, note: "comma-separated: new, rising, peaking, fading"}
+        platform: {type: string, required: false, note: "tiktok, instagram or youtube"}
+        examples: {type: number, required: false, note: "example videos per trend, 0-16, default 3", example: 1}
+    test_request:
+      queryParams: {limit: 3, examples: 1}
+    cost: {type: per_success, value: 0.25, currency: USD, per: 1, unit: call, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "25 credits (OBSERVED 2026-11-02, X-Cost 0.25)."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.shortform.hashtag.performance
+    added: '2026-11-02'
+    capability: shortform.hashtag.performance
+    platform: shortform
+    domain: hashtags
+    scope: any_account
+    method: GET
+    path: /hashtags/{hashtag}/performance
+    name: "One hashtag's performance across platforms"
+    summary: "Performance metrics for a specific hashtag."
+    input:
+      pathParams:
+        hashtag: {type: string, required: true, note: "without the #", example: "skincare"}
+      queryParams:
+        start_date: {type: string, required: false, note: "YYYY-MM-DD; at most a 90-day range"}
+        end_date: {type: string, required: false, note: "YYYY-MM-DD"}
+    test_request:
+      pathParams: {hashtag: "skincare"}
+    cost: {type: per_success, value: 0.05, currency: USD, per: 1, unit: call, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "5 credits (OBSERVED 2026-11-02, X-Cost 0.05)."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.shortform.sounds.trending
+    added: '2026-11-02'
+    capability: shortform.sounds.trending
+    platform: shortform
+    domain: sounds
+    scope: any_account
+    method: GET
+    path: /sounds/trending
+    name: "Trending sounds"
+    summary: "Sounds with the most recent videos."
+    input:
+      queryParams:
+        platform: {type: string, required: false, note: "tiktok, youtube or instagram; default all"}
+        limit: {type: number, required: false, note: "1-100, default 20", example: 3}
+        page: {type: number, required: false}
+    test_request:
+      queryParams: {limit: 3}
+    cost: {type: per_success, value: 0.25, currency: USD, per: 1, unit: call, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "25 credits (OBSERVED 2026-11-02, X-Cost 0.25)."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.shortform.sounds.breakout
+    added: '2026-11-02'
+    capability: shortform.sounds.breakout
+    platform: shortform
+    domain: sounds
+    scope: any_account
+    method: GET
+    path: /sounds/breakout
+    name: "Breakout sounds"
+    summary: "Sounds accelerating against their prior 4-week baseline."
+    input:
+      queryParams:
+        platform: {type: string, required: false, note: "tiktok, youtube or instagram; default all"}
+        limit: {type: number, required: false, note: "1-100, default 20", example: 3}
+        page: {type: number, required: false}
+    test_request:
+      queryParams: {limit: 3}
+    cost: {type: per_success, value: 0.25, currency: USD, per: 1, unit: call, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "25 credits (OBSERVED 2026-11-02, X-Cost 0.25)."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.shortform.sounds.search
+    added: '2026-11-02'
+    capability: shortform.sounds.search
+    platform: shortform
+    domain: sounds
+    scope: any_account
+    method: GET
+    path: /sounds/search
+    name: "Search sounds by title"
+    summary: "Search sounds by title."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "text in the sound's title", example: "espresso"}
+        platform: {type: string, required: false, note: "tiktok, youtube or instagram; default all"}
+        limit: {type: number, required: false, note: "1-100, default 20", example: 3}
+    test_request:
+      queryParams: {q: "espresso", limit: 3}
+    cost: {type: per_success, value: 0.10, currency: USD, per: 1, unit: call, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "10 credits (OBSERVED 2026-11-02, X-Cost 0.10)."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.shortform.hooks.trending
+    added: '2026-11-02'
+    capability: shortform.hooks.trending
+    platform: shortform
+    domain: hooks
+    scope: any_account
+    method: GET
+    path: /hooks/trending
+    name: "Top opening lines of viral videos"
+    summary: "Top-performing hooks corpus-wide, ranked by Virality Score or views, each with its source video."
+    input:
+      queryParams:
+        limit: {type: number, required: false, note: "1-100, default 20", example: 3}
+        platform: {type: string, required: false, note: "tiktok, youtube or instagram"}
+        category: {type: string, required: false, note: "broad content category slug such as beauty or automotive; not a topic filter"}
+        days: {type: number, required: false, note: "7 (default), 14 or 30"}
+    test_request:
+      queryParams: {limit: 3}
+    cost: {type: per_success, value: 0.25, currency: USD, per: 1, unit: call, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "25 credits (OBSERVED 2026-11-02, X-Cost 0.25)."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.shortform.hooks.search
+    added: '2026-11-02'
+    capability: shortform.hooks.search
+    platform: shortform
+    domain: hooks
+    scope: any_account
+    method: GET
+    path: /hooks/search
+    name: "Search opening lines by phrase"
+    summary: "Search the hook corpus by a phrase in the hook text."
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "phrase in the hook text", example: "stop doing"}
+        limit: {type: number, required: false, note: "1-100, default 20", example: 3}
+        platform: {type: string, required: false, note: "tiktok, youtube or instagram"}
+    test_request:
+      queryParams: {q: "stop doing", limit: 3}
+    cost: {type: per_success, value: 0.25, currency: USD, per: 1, unit: call, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "25 credits (OBSERVED 2026-11-02, X-Cost 0.25)."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.tiktok.search.videos
+    added: '2026-11-02'
+    capability: tiktok.search.videos
+    platform: tiktok
+    domain: raw
+    scope: any_account
+    method: GET
+    path: /raw/tiktok/search
+    name: "Search TikTok videos by keyword, live"
+    summary: "Search videos by keyword, read live from the platform."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "1-200 characters", example: "meal prep"}
+        cursor: {type: string, required: false, note: "pagination.next_cursor of the previous page"}
+    test_request:
+      queryParams: {q: "meal prep"}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: page, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "1 credit a page (OBSERVED 2026-11-02, X-Cost 0.01)."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.tiktok.user.profile
+    added: '2026-11-02'
+    capability: tiktok.user.profile
+    platform: tiktok
+    domain: raw
+    scope: any_account
+    method: GET
+    path: /raw/tiktok/creator/{handle}
+    name: "A TikTok creator's public profile, live"
+    summary: "One creator profile, read live from the platform."
+    input:
+      pathParams:
+        handle: {type: string, required: true, note: "with or without the leading @", example: "charlidamelio"}
+    test_request:
+      pathParams: {handle: "charlidamelio"}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "1 credit (OBSERVED 2026-11-02, X-Cost 0.01)."}
+    docs_url: https://dev.virlo.ai/docs
+
+  - id: virlo.tiktok.video.captions
+    added: '2026-11-02'
+    capability: tiktok.video.captions
+    platform: tiktok
+    domain: raw
+    scope: any_account
+    method: GET
+    path: /raw/tiktok/video/transcript
+    name: "A TikTok video's transcript, live"
+    summary: "Transcript of a video, read live from the platform."
+    input:
+      queryParams:
+        url: {type: string, required: false, note: "video URL as shared; pass exactly one of url or id. Short vm.tiktok.com links are refused", example: "https://www.tiktok.com/@sotonyeee/video/7659102264887381279"}
+        id: {type: string, required: false, note: "TikTok numeric video id"}
+      note: "A video with no speech answers 200 with has_transcript false and is still billed."
+    test_request:
+      queryParams: {url: "https://www.tiktok.com/@sotonyeee/video/7659102264887381279"}
+    cost: {type: per_success, value: 0.01, currency: USD, per: 1, unit: call, source: observed, source_url: 'https://dev.virlo.ai/docs/credits', checked: '2026-11-02', confidence: verified, note: "1 credit (OBSERVED 2026-11-02, X-Cost 0.01)."}
+    docs_url: https://dev.virlo.ai/docs

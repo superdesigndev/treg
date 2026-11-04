@@ -35,6 +35,7 @@ platforms:
   music-gen: {label: "Music generation", category: "AI generation", summary: "Songs and short music clips from a text prompt, with prices side by side."}
 
   # --- Social: global social & video -----------------------------------------------------------
+  shortform: {label: "Short-form video", category: "Social", summary: "Viral videos, trends, hooks, sounds and hashtags across TikTok, Instagram Reels and YouTube Shorts."}
   tiktok: {label: "TikTok", category: "Social", featured: 1, summary: "Profiles, videos, comments, hashtags and search — plus your own account via OAuth."}
   instagram: {label: "Instagram", category: "Social", featured: 2, summary: "Public profiles, posts, comments, reels and hashtag data from Instagram."}
   youtube: {label: "YouTube", category: "Social", featured: 3, summary: "Video metadata, comments, captions, channel uploads and search from YouTube."}

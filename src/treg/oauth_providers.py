@@ -3704,6 +3704,32 @@ VILLAGE = OAuthProvider(
     probe_path="/v2/user/me",  # free; a bad token gets HTTP 401 (verified live 2026-10-07)
 )
 
+VIRLO = OAuthProvider(
+    service="virlo",
+    display_name="Virlo",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Virlo API key (virlo_tkn_...)",
+    # token_header / token_format default to Authorization: Bearer {secret}, Virlo's scheme.
+    setup_url="https://dev.virlo.ai/dashboard",
+    setup_action_label="Get your Virlo API key",
+    setup_steps=(
+        "Sign in to Virlo and open the dashboard.",
+        "Create an API key (it looks like virlo_tkn_...) and copy it.",
+    ),
+    setup_note="Reads are billed per successful request; the balance check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Short-form video intelligence: find viral videos by topic and look, creators, trends, "
+            "hooks, sounds and hashtags across TikTok, Instagram Reels and YouTube Shorts.",
+    base_url="https://api.virlo.ai/v1",
+    docs_url="https://dev.virlo.ai/docs",
+    # A valid key answers 200 with the balance; a missing or invalid key answers 401. Costs 0 credits.
+    probe_path="/account/balance",
+)
+
 ATLY = OAuthProvider(
     service="atly",
     display_name="Atly",
@@ -4240,7 +4266,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB, VILLAGE,
+        INFLUENCERSCLUB, VILLAGE, VIRLO,
         # Places: intent-scored local search
         ATLY,
         # Market data API-key providers

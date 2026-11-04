@@ -326,6 +326,7 @@ class Settings(BaseSettings):
     platform_key_tikhub: str = ""
     platform_key_dataforseo: str = ""
     platform_key_scrapecreators: str = ""
+    platform_key_virlo: str = ""  # Bearer virlo_tkn_...; prepaid credits, 1 credit = $0.01
     platform_key_brightdata: str = ""
     platform_key_justoneapi: str = ""
     platform_key_serpapi: str = ""
