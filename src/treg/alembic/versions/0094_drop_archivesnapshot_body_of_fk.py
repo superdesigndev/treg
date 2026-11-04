@@ -16,8 +16,9 @@ Dropping it is a catalog change with no table scan; it takes a brief ACCESS EXCL
 `env.py`'s session `lock_timeout` makes it fail fast rather than queue behind live calls. A retry after a lock timeout
 finds the constraint still present and drops it then.
 
-Not a rollback floor: older code never needed the constraint. The downgrade adds it back NOT VALID,
-which checks only new rows and scans nothing; validating the existing rows is left to an operator.
+Rollback floor: older code runs without the constraint, so a code rollback does not need the
+downgrade. The downgrade adds it back NOT VALID, which checks only new rows and scans nothing;
+validating the existing rows is left to an operator.
 """
 from collections.abc import Sequence
 
@@ -27,6 +28,7 @@ revision: str = "0094"
 down_revision: str | Sequence[str] | None = "0093"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+contract = True  # drops a constraint; see the rollback floor note
 
 _POSTGRES_FK_NAME = "archivesnapshot_body_of_fkey"
 _SQLITE_FK_NAME = "fk_archivesnapshot_body_of_archivesnapshot"
