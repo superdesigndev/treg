@@ -1093,6 +1093,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "social_search_page",
+    "path": "/social-search"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "rea_growth_md",
     "path": "/rea-growth.md"
   },
