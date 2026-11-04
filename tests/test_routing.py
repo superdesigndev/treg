@@ -1767,6 +1767,39 @@ async def test_routed_child_that_ignores_limit_keeps_every_row_and_discloses(
     get_settings.cache_clear()
 
 
+def test_a_long_cursor_leaves_output_and_is_named_on_treg():
+    ad = SimpleNamespace(out_map={"next_cursor": "pagination.token"})
+    short = {"people": [], "next_cursor": "abc"}
+    assert call_route._long_cursor(short, ad, False) == (short, None)
+    long = {"people": [{"name": "A"}], "next_cursor": "x" * (call_route.CURSOR_MAX + 1)}
+    out, note = call_route._long_cursor(long, ad, False)
+    assert out == {"people": [{"name": "A"}], "next_cursor": None} and long["next_cursor"], "a copy, not a mutation"
+    assert note == {"chars": call_route.CURSOR_MAX + 1, "in_raw": "pagination.token"}
+    assert call_route._long_cursor(long, ad, True)[1] == {"chars": call_route.CURSOR_MAX + 1}, "a merge names no one path"
+    assert call_route._long_cursor(None, ad, False) == (None, None)
+
+
+async def test_a_long_provider_cursor_stays_in_raw_only(clients: AsyncClient, enrichment_on, monkeypatch):
+    """icypeas answers a people search with a pagination token of many KB. A routed endpoint takes
+    no cursor, so the token only serves a direct icypeas call: `raw` keeps it whole, `output`
+    drops it, and `_treg.next_cursor` says where it is."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
+    get_settings.cache_clear()
+    token = "t" * 20_000
+    icy = {"success": True, "total": 1, "pagination": {"token": token, "size": 1},
+           "leads": [{"firstname": "Ada", "lastname": "L", "profileUrl": "https://linkedin.com/in/ada"}]}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"icypeas": [(200, icy)]}, []))
+    r = await clients.post("/call/treg.people.search", json={"title": "Backend Engineer", "limit": 1})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["served_by"] == "icypeas.people.search"
+    assert d["output"]["next_cursor"] is None and d["output"]["people"]
+    assert d["raw"]["pagination"]["token"] == token
+    assert d["_treg"]["next_cursor"] == {"chars": len(token), "in_raw": "pagination.token"}
+    get_settings.cache_clear()
+
+
 async def test_merge_past_limit_keeps_every_row_and_discloses(
     clients: AsyncClient, enrichment_on, monkeypatch
 ):

@@ -1080,6 +1080,10 @@ an invalid extra never disables the primary.
   `{asked, returned, why}`. The extra rows are already billed and a routed answer is never altered;
   a contract default is not a question anyone asked, so it does not trigger the note. `limit`
   stays out of `ignored_filters` (a page size, not a narrowing filter).
+- **A long provider cursor stays in `raw` only**: a routed endpoint takes no cursor, so
+  `output.next_cursor` only serves a direct call to the serving provider. One longer than
+  `CURSOR_MAX` (512 chars; icypeas returns tokens of many KB) is set to null and
+  `_treg.next_cursor` names `{chars, in_raw}`, the adapter path where `raw` keeps it whole.
 - **Free text is a filter, not identity**: a brief's requirements ride in `keywords` (always sent),
   never in `q` alone, or a provider matching the `{title}` variant never sees them. Hard filters
   that broaden or over-constrain measured worse; add one opt-in, and measure it first.
