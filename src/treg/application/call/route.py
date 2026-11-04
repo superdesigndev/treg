@@ -69,7 +69,7 @@ from ...domain import asynctasks as asynctasks_rules
 from ...domain.capacity.routes_view import view as overflow_routes_view
 from ...domain.capacity.view import view as capacity_view
 from ...domain.capacity.marks import spends_balance
-from ...domain.capacity.signatures import classify as classify_capacity
+from ...domain.capacity.signatures import classify as classify_capacity, is_exhausting
 from ...domain import plugins
 from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import results as catalog_results
@@ -288,6 +288,10 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
     if declared_not_found(endpoint, status, raw):
         return ChildOutcome("not_found")
     capacity_signal = classify_capacity(endpoint["provider"], status, body=raw)
+    if tier == "platform" and is_exhausting(capacity_signal):
+        # treg's own account is out of money or out of its period allowance: nothing about the
+        # question, so the attempt is skipped like a rate-limited one, never the route's error.
+        return ChildOutcome("account_exhausted", detail=capacity_signal.kind)
     temporary_capacity = capacity_signal is not None and capacity_signal.kind in ("burst", "unknown")
     platform_auth_failure = tier == "platform" and status in (401, 403)
     # 405 and 410 Gone say the PROVIDER cannot serve this route (a discontinued endpoint answers
@@ -1026,6 +1030,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 "message": f"{cand.endpoint['id']} rejected the request ({response.status}); "
                            + ("not retried elsewhere" if len(rejected_by) == 1 else "every free-on-failure provider rejected it too"),
                 "provider_response": raw[:600].decode("utf-8", "replace")})
+        if outcome.kind == "account_exhausted":
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", response.status, charged,
+                                 f"treg's account is used up ({outcome.detail})"))
+            continue
         if outcome.kind == "error":
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", response.status, charged, raw[:120].decode("utf-8", "replace")))
