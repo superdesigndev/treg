@@ -739,6 +739,21 @@ async def calls_by_tag(db: AsyncSession, org_id: int, dim: str, since: datetime)
     return {val: int(n) for val, n in rows}
 
 
+async def tag_dims(db: AsyncSession, org_id: int) -> list[str]:
+    """Every tag key this team has sent, in key order, one index probe per key.
+
+    A plain DISTINCT reads every tag row the team ever wrote (Postgres before 18 cannot skip
+    through an index), so the walk asks for the next key after the last one found instead."""
+    seen = select(func.min(TagSpend.dim).label("dim")).where(
+        TagSpend.org_id == org_id).cte("seen", recursive=True)
+    later = TagSpend.__table__.alias("later")
+    following = select(func.min(later.c.dim)).where(
+        later.c.org_id == org_id, later.c.dim > seen.c.dim).scalar_subquery()
+    seen = seen.union_all(select(following).where(seen.c.dim.is_not(None)))
+    rows = await db.execute(select(seen.c.dim).where(seen.c.dim.is_not(None)))
+    return [dim for (dim,) in rows.all()]
+
+
 async def tag_spent_since(db: AsyncSession, org_id: int, dim: str, val: str, since: datetime) -> int:
     """What one tag has committed since `since` — settled spend PLUS money still held for it.
 
