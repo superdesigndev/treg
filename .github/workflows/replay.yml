@@ -48,7 +48,9 @@ jobs:
           echo "compare=true" >> "$GITHUB_OUTPUT"
       - name: The loaded catalog is byte-identical
         # Only a pull request that changes loader, schema or validator source owes this check. The
-        # head's script runs in each checkout's own environment, so it dumps that checkout's catalog.
+        # head's script runs in each checkout's own environment on the base's catalog, so a pull
+        # request that also changes catalog rows is judged on its code alone; the replay judges
+        # the rows.
         if: ${{ !cancelled() }}
         run: |
           OUT="$RUNNER_TEMP/replay"
@@ -62,7 +64,8 @@ jobs:
           (cd "$BASE" && uv sync --locked \
             && uv run --locked python "$GITHUB_WORKSPACE/scripts/catalog_dump.py" "$OUT/base-catalog.json")
           uv sync --locked
-          uv run --locked python scripts/catalog_dump.py "$OUT/candidate-catalog.json"
+          uv run --locked python scripts/catalog_dump.py "$OUT/candidate-catalog.json" \
+            --catalog "$BASE/src/treg/catalog"
           status=0
           uv run --locked python scripts/catalog_dump.py --compare \
             "$OUT/base-catalog.json" "$OUT/candidate-catalog.json" > "$OUT/catalog.txt" || status=$?

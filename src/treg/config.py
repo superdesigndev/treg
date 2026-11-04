@@ -171,6 +171,9 @@ class Settings(BaseSettings):
             "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
             "money_admission_retry_after_s"))
 
+    # Orgs whose untagged free platform calls take no $0 hold (money.md "holdless"); [] = none.
+    holdless_free_org_ids: list[PositiveInt] = Field(default_factory=list)
+
     # SQLite locally, Postgres in production - same code path, just swap the URL.
     database_url: str = "sqlite+aiosqlite:///./treg.db"
     # Optional SQLite / PostgreSQL datasource for explicitly opted-in, lag-tolerant reads.
@@ -340,6 +343,7 @@ class Settings(BaseSettings):
     platform_key_harvestapi: str = ""  # X-API-Key; prepaid USD wallet
     platform_key_fetchinio: str = ""  # X-API-Key; subscription + PAYG credit balance
     platform_key_sixtyfour: str = ""  # x-api-key; monthly credits, free balance check
+    platform_key_leadocean: str = ""  # x-api-key; usage is read through the free account API
     platform_key_blitzapi: str = ""  # x-api-key; monthly record allowance, free key-info balance
     platform_key_mobiusengine_jobs: str = ""  # x-api-key; prepaid USD balance, free GET /v1/balance
     platform_key_anyapi: str = ""  # X-API-Key; prepaid USD wallet, exact charge settles from costUsd
@@ -465,6 +469,9 @@ class Settings(BaseSettings):
     # router answer well" and "should every agent be led to it by default" are separate questions,
     # and the second one is answered by traffic, not by argument.
     routed_discovery: str = "on"
+    # Optional percent of routed requests on which each shared-key provider may be considered.
+    # Empty leaves routing unchanged; direct calls and own-key candidates are unaffected.
+    route_provider_sample_pct: str = ""
     # The discovery EXPERIMENT (application.search_experiment): a relevance judge (TypeSafe's Jev)
     # scores a widened lexical recall and the result is compared with the shipped ranker on
     # behaviour — did the caller go on to `call` something from the page. `off` (default) leaves
@@ -963,6 +970,27 @@ class Settings(BaseSettings):
     def _platform_accounts_shape(cls, v: str) -> str:
         _parse_platform_pools(v)  # raises ValueError on a malformed value
         return v
+
+    @field_validator("route_provider_sample_pct")
+    @classmethod
+    def _route_provider_sample_pct_shape(cls, v: str) -> str:
+        if not v.strip():
+            return v
+        try:
+            parsed = json.loads(v)
+        except ValueError:
+            raise ValueError("route_provider_sample_pct must be a JSON object") from None
+        if not isinstance(parsed, dict) or not all(
+            isinstance(provider, str) and re.fullmatch(r"[a-z0-9][a-z0-9-]*", provider)
+            and isinstance(pct, int) and not isinstance(pct, bool) and 0 <= pct <= 100
+            for provider, pct in parsed.items()
+        ):
+            raise ValueError("route_provider_sample_pct must map lowercase providers to integer percentages from 0 to 100")
+        return v
+
+    @property
+    def route_provider_sample_percentages(self) -> dict[str, int]:
+        return json.loads(self.route_provider_sample_pct) if self.route_provider_sample_pct.strip() else {}
 
     @property
     def fixed_login_code_hashes(self) -> dict[str, str]:

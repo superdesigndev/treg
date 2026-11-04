@@ -89,6 +89,8 @@ endpoints:
     docs_url: https://filtrat.io/v1/docs
 
   - id: filtrat.people.email.find
+    status: broken
+    status_note: "Filtrat has disabled its finder for a while, so treg does not offer it until Filtrat turns it back on. Find work emails with another people.email.find tool; filtrat.people.email.verify still works."
     added: '2026-10-29'
     domain: people
     capability: people.email.find
@@ -131,6 +133,8 @@ endpoints:
     docs_url: https://filtrat.io/v1/docs
 
   - id: filtrat.people.email.find.resolve_catchall
+    status: broken
+    status_note: "Filtrat has disabled its finder for a while, so treg does not offer it until Filtrat turns it back on. Find work emails with another people.email.find tool; filtrat.people.email.verify still works."
     added: '2026-10-29'
     domain: people
     capability: people.email.find

@@ -82,7 +82,9 @@ domain edges. This fragment records only what the contracts and tests cannot say
   `bootstrap.configure_provider_labels` instead.
 - `treg.domain.plugins` holds a provider's pure functions that catalog rows name
   ([catalog-schema](catalog-schema.md)). Replay runs them, so its contract forbids every I/O path:
-  models, infra, config and the network, database and storage clients.
+  models, infra, config and the network, database and storage clients. The catalog domain calls
+  them when a row's outcome rule names one (`domain.catalog.outcome`), the one sanctioned edge into
+  this domain.
 - Domain contracts exist only for packages that exist; do not add placeholder domains to make a
   future boundary look active.
 

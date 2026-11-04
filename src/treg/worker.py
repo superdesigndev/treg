@@ -18,6 +18,8 @@
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
     treg-worker admin erase-archive --org <id>             # erase what an opted-out team stored in the archive
+    treg-worker admin erase-archive --org <id> --dry-run   # count what that would remove; delete nothing
+    treg-worker admin erase-archive --org <id> --include-sole-public  # also public answers only that team paid for
     treg-worker enterprise reconcile [--org <id>]          # repair missed Directory Sync removals
     treg-worker enterprise cleanup [--org <id>]            # remove WorkOS setup after paid SSO ends
     treg-worker enterprise purge-audit [--days 400]        # delete expired SSO audit evidence
@@ -496,15 +498,26 @@ async def _admin_purge_ad_clicks(args) -> int:
 
 async def _admin_erase_archive(args) -> int:
     """Erase what one opted-out team stored in the archive (application/archive_erasure): the
-    answer to an erasure request. Refuses a team still in the archive; opt it out first."""
+    answer to an erasure request. Refuses a team still in the archive; opt it out first.
+    `--dry-run` counts what would go, opted out or not, and touches neither rows nor objects.
+    Progress after each committed batch goes to stderr as one JSON line; the result to stdout."""
     from . import bootstrap
     from .application import archive_erasure
     from .infra.db import verify_db
 
     await verify_db()
+    sole_public = getattr(args, "include_sole_public", False)
+    if getattr(args, "dry_run", False):
+        print(json.dumps(await archive_erasure.count_org(args.org, include_sole_public=sole_public),
+                         sort_keys=True))
+        return 0
+    def progress(totals: dict) -> None:
+        print(json.dumps({"progress": totals}, sort_keys=True), file=sys.stderr, flush=True)
+
     try:
         async with bootstrap.archive_object_store():
-            result = await archive_erasure.erase_org(args.org)
+            result = await archive_erasure.erase_org(args.org, include_sole_public=sole_public,
+                                                     progress=progress)
     except archive_erasure.NotOptedOut as exc:
         print(json.dumps({"error": str(exc)}, sort_keys=True))
         return 1
@@ -798,6 +811,10 @@ def main(argv: list[str] | None = None) -> int:
     clicks.set_defaults(fn=_admin_purge_ad_clicks)
     erase = adminsub.add_parser("erase-archive", help="erase what an opted-out team stored in the archive")
     erase.add_argument("--org", type=_positive_int, required=True, help="the team's org id")
+    erase.add_argument("--dry-run", action="store_true",
+                       help="count the keys, snapshots, bodies and marks that would go; delete nothing")
+    erase.add_argument("--include-sole-public", action="store_true",
+                       help="also erase public answers only this team paid for; shared ones stay")
     erase.set_defaults(fn=_admin_erase_archive)
     enterprise = sub.add_parser("enterprise", help="enterprise identity maintenance")
     enterprisesub = enterprise.add_subparsers(dest="cmd", required=True)

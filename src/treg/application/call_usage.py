@@ -5,13 +5,18 @@ so both halves see the same snapshot: the worker moves the cursor and the counts
 transaction, so a row is either folded or after the cursor, never both and never neither. The rows
 after the cursor are found over `(org_id, id)` and are only the last few minutes of a team's calls
 while the cron runs; if it stops, that tail grows until the cron resumes.
+
+Postgres plans the cursor subquery's value as unknown and estimates the team's whole history, so
+on a busy team it spends far longer compiling the statement (JIT) than running it. JIT is off for
+the read's transaction. A constant bound taken from an earlier read cannot replace the subquery:
+rebuilding the rollup moves the cursor back, and such a bound would then drop the rows between.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import String, cast, func, select, union_all
+from sqlalchemy import String, cast, func, select, text, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import CallRecord, CallUsageCursor, CallUsageDay
@@ -37,6 +42,8 @@ async def rows(db: AsyncSession, org_id: int, since: datetime) -> list[UsageRow]
                   func.count().label("calls"), func.max(CallRecord.created_at)).where(
         CallRecord.org_id == org_id, CallRecord.id > after, CallRecord.created_at >= since,
     ).group_by(day, CallRecord.user_email, CallRecord.kind, CallRecord.tool_name, CallRecord.client)
+    if db.get_bind().dialect.name == "postgresql":
+        await db.execute(text("SET LOCAL jit = off"))
     result = await db.execute(union_all(folded, tail))
     return [(str(d), email, kind, tool, client or "", int(n), last_at)
             for d, email, kind, tool, client, n, last_at in result.all()]

@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Write the loaded catalog as canonical JSON, or compare two such dumps.
 
-    uv run python scripts/catalog_dump.py OUT.json
+    uv run python scripts/catalog_dump.py OUT.json [--catalog DIR]
     uv run python scripts/catalog_dump.py --compare BASE.json CANDIDATE.json
 
 The dump is what readers consume after `catalog_store.load()`: every field of the loaded `Catalog`
 (each served row by id, the discovery order as ids, provider facts, rates, taxonomy, aliases, routing
-contracts and adapters) plus each row's priced cost view, with sorted keys. It imports `treg` from
-the running environment, so CI runs this script on a pull request's base checkout and on its merge
-result, when the pull request changes loader, schema or validator source, and fails on any byte
-difference, naming the first differing path (.github/workflows/replay.yml).
+contracts and adapters) plus each row's priced cost view, with sorted keys. A dataclass field that
+holds its default is left out, so a new field nobody sets yet leaves the dump unchanged, while a set
+value that falls back to its default still shows as a missing key. It imports `treg` from
+the running environment and reads that checkout's catalog, or the catalog directory `--catalog`
+names. When a pull request changes loader, schema or validator source, CI dumps the base checkout's
+catalog with the base and with the merge result's code, and fails on any byte difference, naming the
+first differing path: the loader serves today's catalog unchanged (.github/workflows/replay.yml).
 """
 
 from __future__ import annotations
@@ -20,18 +23,28 @@ import sys
 from pathlib import Path
 
 
+def _default(f: dataclasses.Field) -> object:
+    if f.default is not dataclasses.MISSING:
+        return f.default
+    if f.default_factory is not dataclasses.MISSING:
+        return f.default_factory()
+    return dataclasses.MISSING
+
+
 def _plain(value: object) -> object:
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return dataclasses.asdict(value)
+        # nested dataclasses come back through this hook from json.dumps
+        return {f.name: v for f in dataclasses.fields(value)
+                if (v := getattr(value, f.name)) != _default(f)}
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="json", by_alias=True)
     raise TypeError(f"{type(value).__name__} is not JSON")
 
 
-def dump() -> str:
+def dump(directory: Path | None = None) -> str:
     from treg.domain.catalog import store
 
-    cat = store.load()
+    cat = store.load(directory=directory)
     doc = {f.name: getattr(cat, f.name) for f in dataclasses.fields(cat) if f.init}
     doc["endpoints"] = [ep["id"] for ep in cat.endpoints]
     doc["cost_views"] = {eid: cat.cost_view(ep.get("cost"), ep.get("provider")) for eid, ep in cat.by_id.items()}
@@ -80,8 +93,8 @@ def main(argv: list[str]) -> int:
         for line in compare(json.loads(base), json.loads(candidate)) or ["the dumps differ in formatting only"]:
             print(line)
         return 1
-    if len(argv) == 1:
-        Path(argv[0]).write_text(dump(), encoding="utf-8")
+    if len(argv) in (1, 3) and argv[1:2] in ([], ["--catalog"]):
+        Path(argv[0]).write_text(dump(Path(argv[2]) if len(argv) == 3 else None), encoding="utf-8")
         return 0
     print(__doc__)
     return 2

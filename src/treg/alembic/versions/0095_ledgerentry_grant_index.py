@@ -1,18 +1,18 @@
-"""partial index on idempotentcall (expires_at) WHERE archive_content_hash IS NOT NULL - the archive
-pruner reads which stored answers live retry rows still point to
+"""partial (org_id, created_at) WHERE kind = 'grant' on ledgerentry - a team's grants are found
+without walking all of its ledger rows
 
 Revision ID: 0095
 Revises: 0094
-Create Date: 2026-11-03
+Create Date: 2026-11-04
 
-A retry row that dropped its own copy (0094) names an archive answer, and `archive.prune_once` must
-not strip those bytes while the row is inside its 24-hour window. The pruner asks once per pass for
-the content hashes of unexpired trimmed rows; this partial index holds only trimmed rows, so that
-question reads about a day of them instead of the whole table.
+The payments page reads a team's grant entries (`application/billing.py`, the bonus each top-up
+earned) with `org_id = ? AND kind = 'grant'`. As with top-ups before 0090, no index leads with both,
+so Postgres intersects the `org_id` and `kind` bitmaps and reads every one of the team's ledger
+rows to find its few grants.
 
-Built with the 0053 discipline (CONCURRENTLY in an autocommit block, INVALID debris dropped first).
-The expand-safety linter counts the autocommit escape as non-additive, so this revision declares a
-rollback floor pro forma: the operation is one additive index.
+The same shape as 0090: a partial index over the grant rows only, matched because the billing read
+renders `'grant'` inline. Built the same way, including the out-of-band `CREATE INDEX CONCURRENTLY`
+route on a ledger too large to scan within `_STATEMENT_TIMEOUT`, and the pro forma rollback floor.
 """
 from collections.abc import Sequence
 
@@ -25,10 +25,12 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 contract = True  # pro forma - see the rollback floor note; the operation is one additive index
 
-_TABLE = "idempotentcall"
-_NAME = "ix_idempotentcall_archive_live"
-_WHERE = sa.text("archive_content_hash IS NOT NULL")
+_TABLE = "ledgerentry"
+_NAME = "ix_ledgerentry_grant_org_id_created_at"
+_COLUMNS = ["org_id", "created_at"]
+_GRANT = "kind = 'grant'"
 
+# Same values and reasoning as 0021; `env.py`'s values are restored before the block ends.
 _LOCK_TIMEOUT = "180s"
 _STATEMENT_TIMEOUT = "600s"
 _ENV_LOCK_TIMEOUT = "5s"
@@ -40,8 +42,8 @@ _VALIDITY = sa.text(
 
 
 def upgrade() -> None:
-    if op.get_bind().dialect.name != "postgresql":
-        op.create_index(_NAME, _TABLE, ["expires_at"], sqlite_where=_WHERE)
+    if op.get_bind().dialect.name != "postgresql":  # SQLite: no concurrent mode
+        op.create_index(_NAME, _TABLE, _COLUMNS, sqlite_where=sa.text(_GRANT))
         return
     # CONCURRENTLY cannot run inside a transaction; alembic opens one by default.
     with op.get_context().autocommit_block():
@@ -53,8 +55,8 @@ def upgrade() -> None:
             if valid is not True:
                 if valid is False:  # debris from a killed build - unusable, and never repaired
                     op.drop_index(_NAME, table_name=_TABLE, postgresql_concurrently=True)
-                op.create_index(_NAME, _TABLE, ["expires_at"], postgresql_where=_WHERE,
-                                postgresql_concurrently=True)
+                op.create_index(_NAME, _TABLE, _COLUMNS, postgresql_concurrently=True,
+                                postgresql_where=sa.text(_GRANT))
         finally:
             bind.execute(sa.text(f"SET lock_timeout = '{_ENV_LOCK_TIMEOUT}'"))
             bind.execute(sa.text(f"SET statement_timeout = '{_ENV_STATEMENT_TIMEOUT}'"))
