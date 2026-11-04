@@ -183,6 +183,14 @@ Order matters:
 3. Only then the rows. A failed object delete stops the pass before the rows, so a retry starts
    from them; deleting a row first would orphan its object for good.
 
+Passes walk the team's keys by id from a cursor, and every statement in them runs under a
+Postgres `statement_timeout`. One long transaction holds back the cleanup of old row versions in
+every table, the hot `org` balance row included; a pass that runs over the cap fails the job
+instead, and what earlier passes committed stays erased. `erase-archive --dry-run`
+(`archive_erasure.count_org`) reads the same passes and deletes nothing. It reports keys,
+snapshots, marks and distinct bodies; the bodies count is an upper bound, because a shared body
+stays.
+
 Endpoint running totals subtract what each DELETE returned, so two erasers subtract once. Because
 another process's upload cache cannot be told, `archive_bodies.prepare` trusts a remembered
 upload only after one `head` confirms the object still exists. Accepted race (documented in the

@@ -367,3 +367,69 @@ async def test_the_worker_command_erases_one_opted_out_team(clients: AsyncClient
     assert await worker._admin_erase_archive(argparse.Namespace(org=org_id)) == 0
     keys, _ = await _rows()
     assert keys == []
+
+
+# ---------------------------------------------------------------------------------------------
+# Running an erasure on a live database: count first, small passes, every statement capped
+
+async def _two_own_answers_and_a_mark(clients, monkeypatch) -> int:
+    _vendor_says(monkeypatch, OWN)
+    await _own_key(clients)
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    _vendor_says(monkeypatch, b'{"other": "bytes"}')
+    await clients.get(f"/call/{EP}?aweme_id=8")
+    await archive.drain()
+    org_id = await _org_id(clients)
+    async with session_maker() as s:
+        s.add(ArchiveKeyOrg(org_id=org_id, key_hash="a" * 64))
+        await s.commit()
+    return org_id
+
+
+async def test_a_dry_run_counts_what_would_go_and_deletes_nothing(
+        clients: AsyncClient, own_key_serve, monkeypatch, capsys):
+    org_id = await _two_own_answers_and_a_mark(clients, monkeypatch)
+    monkeypatch.setattr(archive_erasure, "_KEY_BATCH", 1)          # one key per pass: the cursor moves
+    expected = {"org_id": org_id, "opted_out": False, "keys": 2, "snapshots": 2, "bodies": 2, "marks": 1}
+    assert await archive_erasure.count_org(org_id) == expected
+    from treg import worker
+    import argparse
+    import json
+    import treg.infra.db as infra_db
+
+    async def verified():
+        return None
+    monkeypatch.setattr(infra_db, "verify_db", verified)
+    assert await worker._admin_erase_archive(argparse.Namespace(org=org_id, dry_run=True)) == 0
+    assert json.loads(capsys.readouterr().out) == expected
+    keys, _ = await _rows()
+    assert len(keys) == 2 and len(await _marks()) == 1
+
+    await _opt_out(clients, org_id)
+    assert (await archive_erasure.erase_org(org_id))["keys"] == 2
+    assert await archive_erasure.count_org(org_id) == {**expected, "opted_out": True, "keys": 0,
+                                                       "snapshots": 0, "bodies": 0, "marks": 0}
+
+
+async def test_erasure_caps_every_statement_on_postgres(clients: AsyncClient, own_key_serve, monkeypatch):
+    from sqlalchemy import event, text
+    org_id = await _two_own_answers_and_a_mark(clients, monkeypatch)
+    await _opt_out(clients, org_id)
+    engine = session_maker.kw["bind"].sync_engine
+    seen: list[str] = []
+
+    def record(conn, cursor, statement, *args):
+        seen.append(statement)
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        assert (await archive_erasure.erase_org(org_id))["keys"] == 2
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+    caps = [s for s in seen if s.startswith("SET LOCAL statement_timeout")]
+    if engine.dialect.name != "postgresql":
+        assert caps == []
+        return
+    assert len(caps) == 4            # a read per pass (the second finds nothing), the delete, the marks
+    async with session_maker() as s:
+        await archive_erasure._bounded(s)
+        assert (await s.execute(text("SHOW statement_timeout"))).scalar_one() == "30s"
