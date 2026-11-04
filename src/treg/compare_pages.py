@@ -18,8 +18,9 @@ Writing rules: their words where we quote them, "Not published" where their page
 
 from __future__ import annotations
 
-CHECKED = "2026-11-03"
-CHECKED_LABEL = "3 November 2026"
+from datetime import date
+
+CHECKED = "2026-11-03"  # the day a record was read, unless the record names its own "checked"
 CORRECTIONS = "jason@superdesign.dev"
 
 NOT_PUBLISHED = "Not published"
@@ -650,6 +651,248 @@ COMPETITORS: dict[str, dict] = {
             ("Monid on GitHub", "https://github.com/monid-ai/monid"),
         ],
     },
+    "rapidapi": {
+        "checked": "2026-11-05",
+        "name": "RapidAPI",
+        "site": "https://rapidapi.com",
+        "group": "per-call",
+        "mono": "#0055DA",
+        "logo": "/media/compare/logos/rapidapi.png",
+        "logo_fills": False,
+        "title": "treg vs RapidAPI: a RapidAPI alternative for AI agents",
+        "description": "RapidAPI lists tens of thousands of APIs, each with its own plan. treg gives an "
+                       "agent paid tools from one prepaid balance. Fees, MCP, keys and caps compared.",
+        "sub": "Both put many APIs behind one key. RapidAPI sells a plan for each API; treg bills "
+               "each call from one balance.",
+        "their_words": "Nokia API Hub is more than just a catalog for APIs.",
+        "tldr": "RapidAPI, now the Nokia API Hub, lists tens of thousands of APIs. You subscribe to "
+                "each API on a plan its provider sets, with quotas and overage, and Rapid keeps a "
+                "25% marketplace fee on payments. treg is a catalog of paid tools billed per call "
+                "from one prepaid balance, with no markup, one MCP server for the whole catalog, and "
+                "your own keys beside it.",
+        "spec": {"billing": "A plan per API, set by its provider", "start": "Free BASIC plans on many APIs",
+                 "keys": "Some APIs need the provider's key", "code": "Hosted only"},
+        "fit_them": [
+            "You need an API that only RapidAPI lists: it has tens of thousands.",
+            "You want to list and sell your own API, with plans, quotas and billing handled.",
+            "You want to try an API on its free BASIC plan before you pay.",
+            "You want a year of call history, with full request and response logs.",
+        ],
+        "fit_treg": [
+            "Your agent uses many tools and you want one balance, not a subscription for each.",
+            "You want each call billed at the provider's rate, with no markup.",
+            "You want one MCP server for the whole catalog.",
+            "You want your own keys to win and never be metered, and the code on GitHub.",
+        ],
+        "cells": _c(
+            how_pay="A subscription to each API, on plans its provider sets (monthly, pay per use or "
+                    "tiers), with quotas and overage. Billed to a card.",
+            free_start="A free account. Many APIs have a free BASIC plan with a quota. Freemium APIs "
+                       "need a card even on the free plan.",
+            fees="Each provider sets its prices. Rapid keeps a flat 25% marketplace fee on all "
+                 "payments through the hub, from the provider's payout.",
+            catalog="Tens of thousands of APIs (home page).",
+            data="Yes: APIs from thousands of providers, in many categories.",
+            own_accounts="Some APIs, such as Slack, take a token from your own account at the provider.",
+            actions="Whatever each API offers, writes included.",
+            answer="The provider's response through the Rapid Runtime, which adds rate-limit headers. "
+                   "Providers can set request and response transformations.",
+            mcp="An MCP host (mcp.rapidapi.com) that turns an API's endpoints into tools, where it is "
+                "enabled. You connect each API with your Rapid key and a subscription.",
+            api_cli="Each API's REST endpoint with one Rapid key, code snippets in many languages, and "
+                    "GraphQL and REST Platform APIs. A current SDK or CLI is not published.",
+            own_keys="Some APIs need a key or token from the provider's own site, beside your Rapid key.",
+            open_source="No. Hosted service. The Enterprise Hub is SaaS and can front your own gateways.",
+            price_before="Yes: each API's Pricing tab shows plans, quotas, rate limits and overage.",
+            caps="Quotas from the plan: the provider sets a hard limit or a soft limit with overage. "
+                 "Alerts at 85% and 100% of quota. Your own spend cap is not published.",
+            logs="Call history for up to 1 year by app, API and endpoint, raw log export, and full "
+                 "request and response logs for recent calls.",
+            team="Organizations with teams and admin or developer roles. The first 5 seats are free, "
+                 "then $10 a seat a month.",
+        ),
+        "better": [
+            ("Size.", "Tens of thousands of APIs from thousands of providers, used by millions of "
+             "developers."),
+            ("Sell your own API.", "Any developer can list an API, set plans and quotas, and get paid. "
+             "It can also stay private or be shared with chosen teams."),
+            ("Free plans to test.", "Many APIs have a free BASIC plan, so you can try calls before you pay. "
+             "treg gives $1.00 of credit once."),
+            ("Long call history.", "Up to a year of call history, with full request and response logs "
+             "for recent calls and raw log export."),
+            ("An internal API hub.", "Teams can publish internal APIs, and the Enterprise Hub adds SSO "
+             "and connects existing API gateways."),
+        ],
+        "different": [
+            ("One balance, no subscriptions.", "treg bills each call from one prepaid balance. On "
+             "RapidAPI you subscribe to each API on its own plan."),
+            ("No markup.", "treg bills each tool at the provider's rate, with 0% markup. On RapidAPI "
+             "each provider sets its own price, and Rapid keeps 25% of it."),
+            ("One MCP server.", "treg's remote MCP server reaches the whole catalog with one connection. "
+             "RapidAPI's MCP host serves one API at a time, where it is enabled."),
+            ("Your own caps.", "treg has a team daily spend cap, a per-call cost ceiling and per-member "
+             "daily call caps. On RapidAPI the limits come from each provider's plan."),
+            ("Your own keys win.", "Register your key for a provider and treg uses it instead of its own, "
+             "never metered. The code is on GitHub, and you can self-host for your team."),
+        ],
+        "both": "An agent can hold both. A team could keep RapidAPI for an API that only it lists, or to "
+                "sell its own API, and use treg for the tools it calls often, its own keys and one balance.",
+        "faq": [
+            ("Is there a RapidAPI alternative for AI agents?",
+             "treg is one. It gives an agent a catalog of paid tools through one MCP server, an HTTP API "
+             "and a CLI, billed per call from one prepaid balance at the provider's rate. RapidAPI lists "
+             "more APIs, and you subscribe to each one on its own plan."),
+            ("Does RapidAPI have an MCP server?",
+             "Yes. Its docs describe an MCP host at mcp.rapidapi.com that turns an API's endpoints into "
+             "tools, where it is enabled. You use your Rapid key, and your subscription to that API "
+             "controls access."),
+            ("What fee does RapidAPI take?",
+             "RapidAPI says it takes a flat 25% marketplace fee on all payments made through the hub, "
+             "from the provider's payout. treg adds 0% markup and no top-up fee."),
+            ("Is RapidAPI now part of Nokia?",
+             "Yes. RapidAPI's site says Nokia acquired the technology and R&D unit of Rapid at the end of "
+             "2024, and the hub is now called Nokia API Hub."),
+            ("Can I cap what I spend on RapidAPI?",
+             "RapidAPI's limits come from each API's plan: a hard limit stops calls, a soft limit bills "
+             "overage. It alerts you at 85% and 100% of quota. A spend cap you set yourself is not "
+             "published. treg has a team daily spend cap and a per-call cost ceiling."),
+        ],
+        "sources": [
+            ("RapidAPI home page", "https://rapidapi.com"),
+            ("What is rapidapi.com?", "https://docs.rapidapi.com/docs/what-is-rapidapi"),
+            ("Plans and pricing", "https://docs.rapidapi.com/docs/api-pricing"),
+            ("Payouts and finance", "https://docs.rapidapi.com/docs/payouts-and-finance"),
+            ("Consume APIs using AI (MCP)", "https://docs.rapidapi.com/docs/consume-apis-using-ai"),
+            ("API keys", "https://docs.rapidapi.com/docs/keys-and-key-rotation"),
+            ("Consumer analytics", "https://docs.rapidapi.com/docs/consumer-analytics"),
+            ("RapidAPI for Teams FAQ", "https://docs.rapidapi.com/docs/faqs-rapidapi-for-teams"),
+        ],
+    },
+    "apify": {
+        "checked": "2026-11-05",
+        "name": "Apify",
+        "site": "https://apify.com",
+        "group": "per-call",
+        "mono": "#246DFF",
+        "logo": "/media/compare/logos/apify.svg",
+        "logo_fills": False,
+        "title": "treg vs Apify: an Apify alternative for AI agents",
+        "description": "Apify runs 109,000+ scraping and automation Actors for AI agents. treg gives agents "
+                       "paid data APIs per call. Pricing, MCP, x402, keys and caps compared.",
+        "sub": "Both give your agent paid tools through one MCP server. Apify runs Actors that scrape "
+               "and automate the web; treg relays calls to data APIs.",
+        "their_words": "Apify is a marketplace of ready-to-run tools for AI that automate work on the web.",
+        "tldr": "Apify Store has 109,000+ Actors: cloud programs, mostly for web scraping and "
+                "automation, built by Apify and other developers. You pay from a plan's monthly usage, "
+                "per event or per compute, and agents can also pay with x402 or MPP. treg is a "
+                "catalog of commercial data APIs billed per call from a prepaid balance, at the "
+                "provider's rate, with your own keys and connected accounts beside it.",
+        "spec": {"billing": "Plans with monthly usage, then per event", "start": "$5 a month, no card",
+                 "keys": NOT_PUBLISHED, "code": "MCP server and Crawlee open source"},
+        "fit_them": [
+            "You need data from a site that has no API: Apify has an Actor, or you can build one.",
+            "Your agent pays with x402 or MPP and has no account.",
+            "You want $5 of free usage every month, with no card.",
+            "You want to build Actors and sell them in Apify Store.",
+            "You want runs on a schedule, with webhooks and workflow integrations.",
+        ],
+        "fit_treg": [
+            "Your agent needs SEO, enrichment, ad or generation data from commercial APIs.",
+            "You want the provider's own answer in the call, not a run and a dataset to read after.",
+            "You want a prepaid balance with no plan and no seats.",
+            "You want your own keys to win and never be metered, and your own accounts behind one token.",
+        ],
+        "cells": _c(
+            how_pay="Plans with prepaid monthly usage: Free $0 ($5), Starter $19, Scale $199, Business "
+                    "$999. Actors bill per event or per compute unit; paid plans pay overage up to a "
+                    "limit you set.",
+            free_start="$5 of usage every month, no card. Access pauses when it runs out.",
+            fees="Actor prices are set by their developers; Apify keeps 20% of an Actor's revenue. "
+                 "Compute is $0.13 to $0.20 per unit by plan. Unused monthly usage expires.",
+            x402="Yes: x402 or MPP (USDC on Base or Solana, and more) buys a prepaid token with a fixed "
+                 "spend cap, from $1. The token expires after 14 days.",
+            catalog="109,000+ ready-to-run tools called Actors (Apify Store).",
+            data="Yes, mostly web scraping: social platforms, maps, search results, e-commerce and any "
+                 "website, through Actors by Apify and other developers.",
+            own_accounts="Integrations send run results to Google Drive, Airtable, HubSpot, Snowflake, "
+                         "Zapier, Make and n8n.",
+            actions="Actors automate work on the web. Schedules, tasks and webhooks run without the agent.",
+            answer="An Actor run. Its results go to a dataset that you read with a second call, in the "
+                   "shape the Actor's developer chose.",
+            mcp="A remote MCP server (mcp.apify.com) with OAuth or a token, a local stdio server and "
+                "plugins for coding agents. The server is open source (MIT).",
+            api_cli="A REST API with OpenAPI, JavaScript and Python clients, a CLI and Agent Skills.",
+            own_keys=NOT_PUBLISHED,
+            open_source="Crawlee and the CLI under Apache 2.0, the MCP server under MIT. Self-hosting "
+                        "the platform is not published.",
+            price_before="Yes for pay-per-event Actors, on each Actor's page. Pay-per-usage cost is "
+                         "known after a test run.",
+            caps="A monthly usage limit on paid plans (at most $100 of overage on Starter) and a "
+                 "maximum charge per run.",
+            logs="A log for each run and a daily usage chart in billing.",
+            team="Organization accounts on all plans, with members, permissions and one bill.",
+        ),
+        "better": [
+            ("The size of the store.", "109,000+ Actors, built by Apify and other developers. If a site "
+             "has no API, there may be an Actor for it, or you can build one with the open-source "
+             "Crawlee."),
+            ("Pay with no account.", "An agent can pay with x402 or MPP and get a prepaid token with a "
+             "fixed cap. treg takes card top-ups today."),
+            ("Free usage every month.", "$5 of usage renews each month, with no card. treg gives $1.00 "
+             "of credit once."),
+            ("Sell your own tools.", "Developers publish Actors to Apify Store and keep 80% of the "
+             "revenue."),
+            ("Runs without the agent.", "Schedules, tasks, webhooks and integrations with Zapier, Make, "
+             "n8n and data stores. treg has no triggers or scheduled workflows."),
+        ],
+        "different": [
+            ("The provider's own answer.", "A treg call returns the provider's answer, unchanged. An "
+             "Apify call starts a run, and you read its dataset after."),
+            ("Commercial data APIs.", "SEO and SERP data, backlinks, people and company enrichment, ad "
+             "libraries and image, video and voice generation, on treg's accounts."),
+            ("No plan.", "A prepaid balance billed at each provider's rate, with 0% markup. On Apify "
+             "unused monthly usage expires."),
+            ("Your own keys and accounts.", "Your key for a provider wins and is never metered. Your "
+             "connected Google, Meta and other accounts are behind the same token."),
+            ("Self-host for your team.", "treg's code is on GitHub. Apify open-sources Crawlee, its CLI "
+             "and its MCP server; self-hosting its platform is not published."),
+        ],
+        "both": "Both are MCP servers, so one agent can hold both. A team could use Apify to scrape a "
+                "site that has no API, and treg for SEO, enrichment and ad data, its own keys and its "
+                "connected accounts.",
+        "faq": [
+            ("Is there an Apify alternative for AI agents?",
+             "treg is one for data APIs. It gives an agent commercial data and generation APIs through one "
+             "MCP server, billed per call from a prepaid balance. Apify is stronger for scraping sites "
+             "with no API, with 109,000+ Actors."),
+            ("Does Apify have an MCP server?",
+             "Yes. Apify runs a remote MCP server at mcp.apify.com with OAuth or a token, and a local "
+             "stdio version. Its code is open source under MIT."),
+            ("Can an AI agent pay Apify with x402 or crypto?",
+             "Yes. Apify says an agent with a crypto wallet can pay through x402 or MPP at agi.apify.com, "
+             "from $1, and get a temporary API token with a fixed spend cap. treg takes card top-ups "
+             "today."),
+            ("How much does Apify cost?",
+             "Apify has a free plan with $5 of usage a month, and paid plans at $19, $199 and $999 a month "
+             "that include the same amount of usage. Actors bill per event or per compute unit, and "
+             "unused usage expires each month."),
+            ("Can I self-host Apify or treg?",
+             "Apify open-sources Crawlee, its CLI and its MCP server; its pages do not say the platform "
+             "can be self-hosted. treg's code is on GitHub, and you can run it for your own team."),
+        ],
+        "sources": [
+            ("Apify home page", "https://apify.com"),
+            ("Apify pricing", "https://apify.com/pricing.md"),
+            ("Apify Store", "https://apify.com/store"),
+            ("Apify quickstart for AI agents", "https://apify.com/agents.md"),
+            ("Agentic payments (x402, MPP)", "https://agi.apify.com/AGENTS.md"),
+            ("Apify MCP server docs", "https://docs.apify.com/platform/integrations/mcp"),
+            ("Actors in Apify Store", "https://docs.apify.com/platform/actors/running/actors-in-store"),
+            ("Monetize your Actor", "https://docs.apify.com/platform/actors/publishing/monetize"),
+            ("Organization accounts", "https://docs.apify.com/platform/collaboration/organization-account"),
+            ("Apify MCP server on GitHub", "https://github.com/apify/apify-mcp-server"),
+        ],
+    },
     "composio": {
         "name": "Composio",
         "site": "https://composio.dev",
@@ -1035,6 +1278,245 @@ COMPETITORS: dict[str, dict] = {
             ("Arcade pricing", "https://www.arcade.dev/pricing"),
         ],
     },
+    "arcade": {
+        "checked": "2026-11-05",
+        "name": "Arcade.dev",
+        "short": "Arcade",
+        "site": "https://www.arcade.dev",
+        "group": "apps",
+        "mono": "#C3FF00",
+        "logo": "/media/compare/logos/arcade.svg",
+        "logo_fills": True,
+        "title": "treg vs Arcade: an Arcade.dev alternative for AI agents",
+        "description": "Arcade gives the agents you build 8,000+ tools that act in each user's own apps, "
+                       "with governance. treg gives agents paid data per call. An honest comparison.",
+        "sub": "Arcade lets your agents act in each user's own apps, under your security policies. treg "
+               "gives your agent paid data it has no account for.",
+        "their_words": "Arcade is the actions runtime between your agents and every system they reach.",
+        "tldr": "Arcade gives the agents you build 8,000+ tools that act in each user's own accounts "
+                "(Gmail, Slack, Salesforce, GitHub), with sign-in through your identity provider, "
+                "policies checked before each action and a record of every run. treg is mostly a "
+                "catalog of paid data APIs on treg's own accounts, plus your connected accounts. They "
+                "do different jobs, and one agent can use both.",
+        "spec": {"billing": "$25 a month, then $0.01 a call", "start": "2,000 calls a month free",
+                 "keys": "Yes", "code": "Framework MIT"},
+        "fit_them": [
+            "Your agents act inside your users' apps, each user with their own delegated access.",
+            "Your security team needs sign-in through your identity provider and policies on every action.",
+            "You want to run the platform in your own VPC, air-gapped, or on your own Kubernetes.",
+            "You build your own tools with an MIT framework and SDKs in Python, TypeScript, Go and Java.",
+            "You want 2,000 free tool calls a month to start, with no card.",
+        ],
+        "fit_treg": [
+            "Your agent needs data you have no account for: SEO, enrichment, social, ads or generation.",
+            "You want each call billed at the provider's rate, with no monthly fee.",
+            "You want a dollar cap per team and per call.",
+            "You want your own provider keys to win and never be metered.",
+        ],
+        "cells": _c(
+            how_pay="Plans: Free $0, Team $25 a month plus $0.01 per tool call, Enterprise custom with "
+                    "annual bundles of tool calls.",
+            free_start="Free plan, no card, with 2,000 tool calls a month.",
+            fees="One rate for every tool call on Team: $0.01. Discounted rates on Enterprise.",
+            catalog="8,000+ tools (home page); 7,500+ tools across 81 MCP servers (docs).",
+            data="Not published. Its SerpApi and Firecrawl toolkits ask for your own API key.",
+            own_accounts="Yes, the core of the product: each user's own accounts, with delegated "
+                         "authorization.",
+            actions="Yes: actions in Gmail, Slack, Salesforce, GitHub and many other apps. App "
+                    "triggers are not published.",
+            answer="Arcade's own tool results. It can also give you the user's token to call the API "
+                   "yourself.",
+            mcp="MCP gateways for ChatGPT, Claude, Claude Code, Cursor, VS Code and Copilot, plus a "
+                "hosted MCP server and agent plugins.",
+            api_cli="A REST API, clients for Python, TypeScript, Go and Java, and a CLI to build and "
+                    "deploy tools.",
+            own_keys="Yes: your own OAuth apps, which Arcade recommends for production, and your own "
+                     "API keys as secrets.",
+            open_source="The MCP framework and Python client are MIT. The platform self-hosts with "
+                        "Helm; VPC and air-gapped deployment are on Enterprise.",
+            price_before="A flat $0.01 per tool call on Team.",
+            caps="Rate limits by call count per tool, toolkit or all tools, per second up to per "
+                 "month. Dollar caps are not published.",
+            logs="A record of every tool run (inputs and outputs held to project admins) and an "
+                 "audit log of admin changes, with a REST API.",
+            team="Shared project keys; SSO and RBAC on Enterprise; SOC 2 compliant.",
+        ),
+        "better": [
+            ("App actions for each user.", "Thousands of tools that act in each user's own Gmail, Slack, "
+             "Salesforce or GitHub, with delegated access. treg connects a short list of accounts."),
+            ("Governance before each action.", "Sign-in through your identity provider, your policies "
+             "checked before a tool runs, and rate limits per tool."),
+            ("Deployment choice.", "Arcade Cloud, your VPC, air-gapped, Helm on your own Kubernetes, or "
+             "a managed app in your own Azure account."),
+            ("Building your own tools.", "An MIT framework for MCP servers and clients for Python, "
+             "TypeScript, Go and Java."),
+            ("A free plan with volume.", "2,000 tool calls a month with no card."),
+        ],
+        "different": [
+            ("Paid data, no vendor accounts.", "SEO and SERP data, backlinks, people and company "
+             "enrichment, social, ad libraries and generation models, on treg's accounts. Arcade's "
+             "search and scraping toolkits ask for your own key."),
+            ("No plan.", "A prepaid balance billed at each provider's rate, with no monthly fee and no "
+             "markup."),
+            ("Dollar limits.", "A team daily spend cap and a per-call cost ceiling. Arcade's limits count "
+             "calls."),
+            ("Your own keys win.", "Register a key and treg uses it instead of its own, never metered."),
+        ],
+        "both": "Many agents need both jobs. Arcade can send the email, update the CRM and open the "
+                "ticket as the user; treg can find the keyword volume, the work email and the "
+                "competitor's ads. Both are MCP servers, so one agent can hold both.",
+        "faq": [
+            ("How much does an Arcade tool call cost?",
+             "On the Team plan, $0.01 per tool call plus a $25 monthly platform fee. The Free plan has "
+             "2,000 tool calls a month. Enterprise has annual bundles and lower rates. treg bills each "
+             "catalog call at the provider's own rate."),
+            ("Can I self-host Arcade?",
+             "Yes. Arcade self-hosts with a Helm chart on your own Kubernetes, and runs in your cloud "
+             "account as a managed app on Azure or an AWS private offer. Its pricing lists VPC and "
+             "air-gapped deployment on Enterprise. treg's code is on GitHub, and you can run it for "
+             "your own team."),
+            ("Does Arcade need my own SerpApi or Firecrawl key?",
+             "Yes, for the toolkits read. Arcade's Google News and Firecrawl toolkits ask for your own "
+             "API key, and usage counts against your plan with that vendor. treg runs catalog calls on "
+             "its own accounts."),
+            ("Do my users see the Arcade brand when they connect an app?",
+             "With Arcade's own auth providers, yes: the consent screen shows Arcade's name and logo, "
+             "and rate limits are shared with other Arcade customers. With your own OAuth app, your "
+             "brand shows. Arcade recommends your own app for production."),
+            ("Can I cap spend on Arcade?",
+             "Arcade has rate limits that count calls per tool, toolkit or all tools. Its pages do not "
+             "publish dollar caps. treg has a team daily spend cap, a per-call cost ceiling and "
+             "per-member call caps."),
+        ],
+        "sources": [
+            ("Arcade home page", "https://www.arcade.dev"),
+            ("Arcade pricing", "https://www.arcade.dev/pricing"),
+            ("Auth providers", "https://docs.arcade.dev/en/references/auth-providers"),
+            ("Hosting options", "https://docs.arcade.dev/en/operate/deploy"),
+            ("Rate limiting", "https://docs.arcade.dev/en/operate/governance/contextual-access/rate-limiting"),
+            ("Tool executions", "https://docs.arcade.dev/en/operate/governance/tool-executions"),
+            ("Firecrawl toolkit", "https://docs.arcade.dev/en/resources/integrations/development/firecrawl"),
+            ("Arcade MCP on GitHub", "https://github.com/ArcadeAI/arcade-mcp"),
+        ],
+    },
+    "nango": {
+        "checked": "2026-11-05",
+        "name": "Nango",
+        "site": "https://www.nango.dev",
+        "group": "apps",
+        "mono": "#29ABE2",
+        "logo": "/media/compare/logos/nango.svg",
+        "logo_fills": True,
+        "title": "treg vs Nango: a Nango alternative for AI agents",
+        "description": "Nango connects your product and agents to 1,000+ APIs in each user's own "
+                       "accounts. treg gives agents paid data per call. An honest comparison.",
+        "sub": "Nango lets the product and agents you build act in each user's own accounts. treg gives "
+               "your agent paid data it has no account for.",
+        "their_words": "Integrations for your products & agents.",
+        "tldr": "Nango connects the product and agents you build to 1,000+ APIs in each user's own "
+                "accounts. It handles OAuth and API keys, runs your integration code as TypeScript "
+                "functions, and keeps data fresh with syncs and webhooks. treg is mostly a catalog of "
+                "paid data APIs on treg's own accounts, plus your connected accounts. For most teams "
+                "they do different jobs.",
+        "spec": {"billing": "Connections, compute and data", "start": "Free plan, hard-capped",
+                 "keys": "Your users' accounts", "code": "Elastic License 2.0"},
+        "fit_them": [
+            "You build a product whose users connect their own apps, and your agent acts in them.",
+            "You want integrations as code you can generate, review, test and deploy.",
+            "You need syncs, webhooks and triggers, not only on-demand calls.",
+            "You want a raw proxy to any endpoint of a connected API.",
+            "You need SOC 2 Type II, HIPAA with a BAA, or Nango in your own cloud.",
+        ],
+        "fit_treg": [
+            "Your agent needs data you have no account for: SEO, enrichment, social, ads or generation.",
+            "You want each call billed at the provider's rate, not by connections and compute time.",
+            "You want a dollar cap per team and per call.",
+            "You want to self-host for your team without an Enterprise plan.",
+        ],
+        "cells": _c(
+            how_pay="Plans: Free $0, Pay-as-you-go $50 a month with $50 of credit, Enterprise custom. "
+                    "Usage is $0.29 per connection a month, $0.72 per compute hour and $0.50 per GB.",
+            free_start="Free plan with hard caps each month: 10 connections, 10 compute hours and 10 GB.",
+            fees="Billed by connection, compute time (each run rounded up to 1 second) and data sent. "
+                 "No per-call fee.",
+            catalog="1,000+ APIs, with 10,000+ pre-built tools, triggers and syncs.",
+            data="Not published. Calls run on the accounts your users connect.",
+            own_accounts="Yes, the core of the product: each end user's own accounts, through "
+                         "Nango-managed OAuth apps or your own.",
+            actions="Yes: action functions, plus syncs, webhooks and triggers.",
+            answer="Your action function's output (2 MB at most), or the provider's response through "
+                   "the proxy.",
+            mcp="An MCP server per agent session, scoped to chosen connections and actions, plus a "
+                "management MCP.",
+            api_cli="A REST API with a proxy, backend SDKs for Node, Python, Java, Ruby, Go, Rust and "
+                    "PHP, and a CLI to build and deploy functions.",
+            own_keys="Your users connect their own keys or OAuth accounts. You can use your own OAuth "
+                     "app instead of Nango's.",
+            open_source="Code on GitHub under the Elastic License 2.0. Free self-host is limited to auth "
+                        "and proxy; full self-host and BYOC are on Enterprise.",
+            price_before="Rates are published. A call's cost depends on how long it runs.",
+            caps="The Free plan is hard-capped. Spend alerts on paid plans. Dollar caps are not "
+                 "published.",
+            logs="Built-in logs, metrics and alerts, kept 15 days, with OpenTelemetry export.",
+            team="RBAC, SAML SSO, SCIM and an audit trail; SOC 2 Type II; HIPAA with a BAA.",
+        ),
+        "better": [
+            ("Breadth of app integrations.", "1,000+ APIs and 10,000+ pre-built tools, triggers and syncs, "
+             "in each user's own account. treg connects a short list of accounts."),
+            ("Syncs and webhooks.", "Keep external data fresh with polling or real-time syncs, and react "
+             "to provider webhooks. treg has no triggers."),
+            ("Integrations as code.", "TypeScript functions you can generate with a coding agent, test "
+             "locally and deploy through CI/CD."),
+            ("A raw proxy.", "Authenticated requests to any endpoint of a connected API."),
+            ("Compliance.", "SOC 2 Type II, HIPAA with a BAA, SSO and SCIM, and BYOC in your own AWS, GCP "
+             "or Azure account."),
+        ],
+        "different": [
+            ("Paid data, no vendor accounts.", "SEO and SERP data, backlinks, people and company "
+             "enrichment, social, ad libraries and generation models, on treg's accounts."),
+            ("Billed per call in dollars.", "Each call at the provider's rate, with no connection fee, no "
+             "compute time and no plan."),
+            ("Dollar limits.", "A team daily spend cap and a per-call cost ceiling."),
+            ("Self-host for your team.", "treg's code is on GitHub under Apache 2.0 with added terms. "
+             "Nango's free self-host covers auth and proxy only."),
+        ],
+        "both": "A product can use Nango for auth, syncs and actions in its users' apps, and treg for the "
+                "data its agent needs from vendors nobody has an account with. Both reach an agent over "
+                "MCP.",
+        "faq": [
+            ("How much does Nango cost?",
+             "Nango bills by connection ($0.29 a month each), compute time ($0.72 an hour, each run "
+             "rounded up to one second) and data sent ($0.50 per GB). Pay-as-you-go is $50 a month with "
+             "$50 of credit. The Free plan is hard-capped at 10 connections, 10 compute hours and 10 GB "
+             "a month. treg bills each catalog call at the provider's own rate."),
+            ("Is Nango open source, and can I self-host it for free?",
+             "Nango's code is on GitHub under the Elastic License 2.0. The free self-hosted version is "
+             "for hobby projects and covers auth and proxy only. Full self-hosting and BYOC are on the "
+             "Enterprise plan. treg's code is on GitHub under Apache 2.0 with added terms, and you can "
+             "run it for your own team."),
+            ("Does Nango have an MCP server for agents?",
+             "Yes. Your backend creates an agent session that names the connections and actions the "
+             "agent may use, and the session returns an MCP URL and token. Sessions expire. treg is a "
+             "remote MCP server with OAuth or a token header."),
+            ("Can Nango give my agent paid data without my own vendor account?",
+             "Nango does not publish that. Its calls run on the accounts your users connect. treg runs "
+             "catalog calls on its own accounts."),
+            ("Can I use Nango-managed OAuth apps in production?",
+             "Nango says yes. Its docs list the trade-offs: the consent screen shows Nango, scopes are "
+             "fixed, and only your own app lets you export tokens and move off Nango without users "
+             "connecting again."),
+        ],
+        "sources": [
+            ("Nango home page", "https://www.nango.dev"),
+            ("Nango pricing", "https://www.nango.dev/pricing"),
+            ("Introduction", "https://nango.dev/docs/getting-started/intro-to-nango"),
+            ("Auth guide", "https://nango.dev/docs/guides/auth/auth-guide"),
+            ("Agent sessions", "https://nango.dev/docs/guides/agent-sessions"),
+            ("Self-host Nango", "https://nango.dev/docs/guides/platform/self-hosting/self-hosting"),
+            ("Limits", "https://nango.dev/docs/guides/platform/limits"),
+            ("Nango on GitHub", "https://github.com/NangoHQ/nango"),
+        ],
+    },
     "clay": {
         "name": "Clay",
         "site": "https://www.clay.com",
@@ -1325,6 +1807,18 @@ COMPETITORS: dict[str, dict] = {
         ],
     },
 }
+
+
+def checked(key: str | None = None) -> str:
+    """The day a page's facts were read; for the hub, the latest of them."""
+    if key is None:
+        return max(checked(k) for k in COMPETITORS)
+    return COMPETITORS[key].get("checked", CHECKED)
+
+
+def checked_label(key: str | None = None) -> str:
+    d = date.fromisoformat(checked(key))
+    return f"{d.day} {d:%B %Y}"
 
 
 def rows_for(key: str) -> tuple[tuple[str, tuple[tuple[str, str], ...]], ...]:

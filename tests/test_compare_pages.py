@@ -65,8 +65,9 @@ async def test_each_page_answers_with_its_own_head(clients: AsyncClient):
         base = get_settings().public_url.rstrip("/")
         assert f'<link rel="canonical" href="{base}{path}"/>' in html
         assert f'property="og:url" content="{base}{path}"' in html
+        assert '<meta name="robots" content="index, follow' in html
         assert html.count("<h1>") == 1 and f"vs</span> {_html.escape(cp.short(key))}</h1>" in html
-        assert cp.CHECKED_LABEL in html
+        assert cp.checked_label(key) in html
         assert "/adtrack.js" in html and "/sitetrack.js" in html
 
 
@@ -89,7 +90,7 @@ async def test_structured_data_matches_the_visible_page(clients: AsyncClient):
         assert [(q["name"], q["acceptedAnswer"]["text"]) for q in faq] == c["faq"]
         for q, a in c["faq"]:
             assert q in text and a in text, (key, q)
-        assert blocks["WebPage"]["dateModified"] == cp.CHECKED
+        assert blocks["WebPage"]["dateModified"] == cp.checked(key)
 
 
 async def test_the_hub_links_every_comparison(clients: AsyncClient):

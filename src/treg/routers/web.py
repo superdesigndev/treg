@@ -21,7 +21,7 @@ from sqlmodel import select
 import yaml
 
 from ..timeutil import utcnow_naive as _utcnow_naive
-from .. import adsconv, agent_pages, client_ip, compare_pages, oauth_providers
+from .. import adsconv, agent_pages, client_ip, oauth_providers
 from ..domain import referrals
 from ..domain.catalog import store as catalog_store
 from ..domain.identity import session as sess
@@ -3529,9 +3529,8 @@ async def sitemap_xml():
         add("/gtm-engineering", _iso_day(hub.stat().st_mtime) if hub.exists() else "", "0.8")
         add("/showcase", _iso_day((_WEB_DIR / "showcase.html").stat().st_mtime), "0.8")
         from . import compare  # imports this module; a top-level import would be circular
-        compare_day = _iso_day(Path(compare_pages.__file__).stat().st_mtime)
-        for path in compare.sitemap_paths():
-            add(path, compare_day, "0.7")
+        for path, day in compare.sitemap_paths():
+            add(path, day, "0.7")
     out.append("</urlset>")
     return Response("\n".join(out), media_type="application/xml; charset=utf-8",
                     headers={"Cache-Control": "max-age=3600"})

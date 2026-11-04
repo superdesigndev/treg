@@ -68,7 +68,7 @@ def _ld(blocks: list[dict]) -> str:
 
 
 def _shell(*, title: str, description: str, path: str, here: str, body: str, ld: list[dict],
-           ref: str, them_color: str = "#6366F1", nav: str = "") -> str:
+           ref: str, modified: str, them_color: str = "#6366F1", nav: str = "") -> str:
     base = get_settings().public_url.rstrip("/")
     url = _e(base + path)
     t, d = _e(title), _e(description)
@@ -80,10 +80,12 @@ def _shell(*, title: str, description: str, path: str, here: str, body: str, ld:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{t}</title>
 <meta name="description" content="{d}">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1"/>
 <link rel="canonical" href="{url}"/>
 <link rel="alternate" type="text/markdown" href="{url}.md"/>
 <meta property="og:type" content="article"/>
 <meta property="og:site_name" content="treg"/>
+<meta property="og:locale" content="en_US"/>
 <meta property="og:url" content="{url}"/>
 <meta property="og:title" content="{t}"/>
 <meta property="og:description" content="{d}"/>
@@ -91,7 +93,7 @@ def _shell(*, title: str, description: str, path: str, here: str, body: str, ld:
 <meta property="og:image:width" content="1200"/>
 <meta property="og:image:height" content="630"/>
 <meta property="og:image:alt" content="treg.to: one key for the whole tool catalog, priced per call"/>
-<meta property="article:modified_time" content="{cp.CHECKED}"/>
+<meta property="article:modified_time" content="{modified}"/>
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:site" content="@treg_ai"/>
 <meta name="twitter:title" content="{t}"/>
@@ -225,7 +227,7 @@ def _page_body(key: str, base: str) -> str:
   <div class="crumbs"><a href="/">treg</a> / <a href="/compare">Compare</a> / treg vs {_e(short)}</div>
   <h1>treg <span class="vs">vs</span> {_e(short)}</h1>
   <p class="sub">{_e(c["sub"])}</p>
-  <div class="checked"><i></i>Read from {_e(name)}'s public pages on {cp.CHECKED_LABEL}</div>
+  <div class="checked"><i></i>Read from {_e(name)}'s public pages on {cp.checked_label(key)}</div>
   <div class="duel">
     <div class="spec us"><div class="who">{_treg_mono()}treg<small>treg.to</small></div><dl>{spec_rows_us}</dl></div>
     <div class="medal" aria-hidden="true">vs</div>
@@ -253,7 +255,7 @@ def _page_body(key: str, base: str) -> str:
 
 <section class="sec" id="side-by-side"><div class="wrap">
   <h2 class="rv">Side by side</h2>
-  <p class="lede rv">Each {_e(short)} cell restates {_e(name)}'s own public pages on {cp.CHECKED_LABEL}. "Not published" means those pages say nothing about it, not that the feature does not exist.</p>
+  <p class="lede rv">Each {_e(short)} cell restates {_e(name)}'s own public pages on {cp.checked_label(key)}. "Not published" means those pages say nothing about it, not that the feature does not exist.</p>
   <div class="tablewrap rv"><table class="vs-table">
     <thead><tr><th scope="col"><span class="sr">Feature</span></th><th scope="col" class="us"><span>{_treg_mono()}treg</span></th><th scope="col"><span>{_mono(key)}{_e(short)}</span></th></tr></thead>
     <tbody>{"".join(rows)}</tbody>
@@ -310,7 +312,7 @@ def _page_body(key: str, base: str) -> str:
   <div class="sources rv">
     <p class="eyebrow">Sources and method</p>
     <ol>{sources}</ol>
-    <p>We read these pages on {cp.CHECKED_LABEL}. treg's own facts come from its <a href="/pricing">pricing</a>, <a href="/terms">terms</a> and <a href="{_GH}" target="_blank" rel="noopener">code</a>. We left out what we could not check, and we do not guess why a product works the way it does.</p>
+    <p>We read these pages on {cp.checked_label(key)}. treg's own facts come from its <a href="/pricing">pricing</a>, <a href="/terms">terms</a> and <a href="{_GH}" target="_blank" rel="noopener">code</a>. We left out what we could not check, and we do not guess why a product works the way it does.</p>
     <p>Something wrong or out of date? Write to <a href="mailto:{cp.CORRECTIONS}?subject=Correction%3A%20treg%20vs%20{_e(short)}">{cp.CORRECTIONS}</a> and we will fix it. The same page as text: <a href="/compare/{cp.page_slug(key)}.md">markdown</a>.</p>
   </div>
 </div></section>
@@ -334,7 +336,7 @@ def _page_ld(key: str, base: str) -> list[dict]:
     url = f"{base}/compare/{cp.page_slug(key)}"
     return [
         {"@context": "https://schema.org", "@type": "WebPage", "name": c["title"], "url": url,
-         "description": c["description"], "inLanguage": "en", "dateModified": cp.CHECKED,
+         "description": c["description"], "inLanguage": "en", "dateModified": cp.checked(key),
          "isPartOf": {"@type": "WebSite", "name": "treg", "url": base + "/"},
          "about": [{"@type": "Thing", "name": "treg", "url": base + "/"},
                    {"@type": "Thing", "name": c["name"], "url": c["site"]}]},
@@ -350,7 +352,7 @@ def _page_md(key: str, base: str) -> str:
     c = cp.COMPETITORS[key]
     short = cp.short(key)
     out = [f"# treg vs {short}", "", c["sub"], "",
-           f"Read from {c['name']}'s public pages on {cp.CHECKED_LABEL}. HTML page: "
+           f"Read from {c['name']}'s public pages on {cp.checked_label(key)}. HTML page: "
            f"{base}/compare/{cp.page_slug(key)}", "", "## The short answer", "", c["tldr"], ""]
     if c.get("note"):
         out += [f"Recent change: {c['note']}", ""]
@@ -370,7 +372,7 @@ def _page_md(key: str, base: str) -> str:
         out += [f"### {q}", "", a, ""]
     out += ["## Sources and method", ""]
     out += [f"{i}. [{lab}]({u})" for i, (lab, u) in enumerate(c["sources"], 1)]
-    out += ["", f"Read on {cp.CHECKED_LABEL}. Corrections: {cp.CORRECTIONS}.", "",
+    out += ["", f"Read on {cp.checked_label(key)}. Corrections: {cp.CORRECTIONS}.", "",
             f"All comparisons: {base}/compare", ""]
     return "\n".join(out)
 
@@ -386,7 +388,7 @@ def _hub_body() -> str:
   <div class="crumbs"><a href="/">treg</a> / Compare</div>
   <h1>How treg compares</h1>
   <p class="sub">Honest, side-by-side comparisons of treg with the other ways an AI agent gets tools and data. Each one says where the other product is the better choice.</p>
-  <div class="checked"><i></i>Every page read from public pages on {cp.CHECKED_LABEL}</div>
+  <div class="checked"><i></i>Each page says the day its facts were read, most recently {cp.checked_label()}</div>
   <div class="ctas"><a class="pill dark" href="/app?ref=compare">Start free — $1.00 credit</a><a class="pill" href="/catalog">Browse the catalog</a></div>
 </header>
 <main class="wrap">
@@ -405,8 +407,8 @@ def _hub_body() -> str:
 
 
 HUB_TITLE = "Compare treg: tool gateways and APIs for AI agents"
-HUB_DESC = ("Honest comparisons of treg with Agentik, Firecrawl Alexandria, Composio, Zapier, Clay, "
-            "Apollo, OpenRouter and more: billing, keys, access and limits.")
+HUB_DESC = ("Honest comparisons of treg with Agentik, Composio, Zapier, Apify, RapidAPI, Clay, Apollo, "
+            "OpenRouter and more: billing, keys, access and limits.")
 
 
 @router.get("/compare", include_in_schema=False)
@@ -417,7 +419,7 @@ async def compare_hub(request: Request):
     base = get_settings().public_url.rstrip("/")
     ld = [
         {"@context": "https://schema.org", "@type": "CollectionPage", "name": HUB_TITLE,
-         "url": base + "/compare", "description": HUB_DESC, "dateModified": cp.CHECKED,
+         "url": base + "/compare", "description": HUB_DESC, "dateModified": cp.checked(),
          "mainEntity": {"@type": "ItemList", "itemListElement": [
              {"@type": "ListItem", "position": i, "name": f"treg vs {cp.short(k)}",
               "url": f"{base}/compare/{cp.page_slug(k)}"}
@@ -425,7 +427,7 @@ async def compare_hub(request: Request):
         _crumbs_ld(base, [("treg", "/"), ("Compare", "/compare")]),
     ]
     html = _shell(title=HUB_TITLE, description=HUB_DESC, path="/compare", here="", body=_hub_body(),
-                  ld=ld, ref="compare", them_color="#118453",
+                  ld=ld, ref="compare", modified=cp.checked(), them_color="#118453",
                   nav='<a href="#per-call">Paid tools</a><a href="#apps">App actions</a>')
     return _respond(html, request)
 
@@ -447,10 +449,12 @@ async def compare_page(slug: str, request: Request):
     html = _shell(title=c["title"], description=c["description"], path=f"/compare/{cp.page_slug(key)}",
                   here=f' <span class="sl">/</span> <span class="here">vs {_e(cp.short(key))}</span>',
                   body=_page_body(key, base), ld=_page_ld(key, base),
-                  ref=f"compare-{cp.page_slug(key)}", them_color=c["mono"],
+                  ref=f"compare-{cp.page_slug(key)}", modified=cp.checked(key), them_color=c["mono"],
                   nav='<a href="#side-by-side">Side by side</a><a href="#faq">Questions</a>')
     return _respond(html, request)
 
 
-def sitemap_paths() -> list[str]:
-    return ["/compare"] + [f"/compare/{cp.page_slug(k)}" for k in cp.COMPETITORS]
+def sitemap_paths() -> list[tuple[str, str]]:
+    """Each page with the day its facts were read, for the sitemap's lastmod."""
+    return [("/compare", cp.checked())] + [(f"/compare/{cp.page_slug(k)}", cp.checked(k))
+                                           for k in cp.COMPETITORS]
