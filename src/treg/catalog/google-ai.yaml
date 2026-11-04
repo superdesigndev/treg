@@ -223,8 +223,8 @@ endpoints:
         contents:
           type: array
           required: true
-          example: [{parts: [{text: "Say cheerfully: Welcome to treg."}]}]
-          note: "One user turn: {parts: [{text: script}]}. Style is steered in the text itself (\"Say cheerfully: ...\"). For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
+          example: [{parts: [{text: "Welcome to treg.", speechMetadata: {style: cheerful}}]}]
+          note: "One user turn: {parts: [{text: script}]}. Gemini 3.8 TTS reads `text` as a verbatim transcript: a direction written into it (\"Say cheerfully: ...\") is spoken aloud and billed as audio. Put delivery directions in the part's `speechMetadata.style` ({text: \"Welcome to treg.\", speechMetadata: {style: cheerful}}) and keep `text` to the words to be spoken. For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
         generationConfig:
           type: object
           required: true
@@ -238,7 +238,7 @@ endpoints:
       bodyType: json
     test_request:
       pathParams: {model: gemini-3.8-flash-tts}
-      body: {contents: [{parts: [{text: "Say cheerfully: Welcome to treg, the tool catalog for your agents."}]}], generationConfig: {responseModalities: [AUDIO], speechConfig: {voiceConfig: {prebuiltVoiceConfig: {voiceName: Kore}}}}}
+      body: {contents: [{parts: [{text: "Welcome to treg, the tool catalog for your agents.", speechMetadata: {style: cheerful}}]}], generationConfig: {responseModalities: [AUDIO], speechConfig: {voiceConfig: {prebuiltVoiceConfig: {voiceName: Kore}}}}}
     cost:
       type: per_success
       value: 0.05
@@ -280,8 +280,8 @@ endpoints:
         contents:
           type: array
           required: true
-          example: [{parts: [{text: "Say cheerfully: Welcome to treg."}]}]
-          note: "One user turn: {parts: [{text: script}]}. Style is steered in the text itself (\"Say cheerfully: ...\"). For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
+          example: [{parts: [{text: "Welcome to treg.", speechMetadata: {style: cheerful}}]}]
+          note: "One user turn: {parts: [{text: script}]}. Gemini 3.8 TTS reads `text` as a verbatim transcript: a direction written into it (\"Say cheerfully: ...\") is spoken aloud and billed as audio. Put delivery directions in the part's `speechMetadata.style` ({text: \"Welcome to treg.\", speechMetadata: {style: cheerful}}) and keep `text` to the words to be spoken. For two speakers, give each line its own part with its speaker: [{text: \"Did it finish?\", speechMetadata: {speaker: Joe}}, {text: \"Yes.\", speechMetadata: {speaker: Jane}}], and name both in multiSpeakerVoiceConfig; a single \"Joe: ... Jane: ...\" text answers 400."
         generationConfig:
           type: object
           required: true
@@ -295,7 +295,7 @@ endpoints:
       bodyType: json
     test_request:
       pathParams: {model: gemini-3.8-flash-lite-tts}
-      body: {contents: [{parts: [{text: "Say cheerfully: Welcome to treg, the tool catalog for your agents."}]}], generationConfig: {responseModalities: [AUDIO], speechConfig: {voiceConfig: {prebuiltVoiceConfig: {voiceName: Kore}}}}}
+      body: {contents: [{parts: [{text: "Welcome to treg, the tool catalog for your agents.", speechMetadata: {style: cheerful}}]}], generationConfig: {responseModalities: [AUDIO], speechConfig: {voiceConfig: {prebuiltVoiceConfig: {voiceName: Kore}}}}}
     cost:
       type: per_success
       value: 0.035
