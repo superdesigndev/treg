@@ -554,3 +554,81 @@ async def test_a_candidate_another_team_pays_for_mid_run_stays(clients: AsyncCli
     assert (await archive_erasure.erase_org(org_a, include_sole_public=True))["public_keys"] == 1
     keys, _ = await _rows()
     assert [k.id for k in keys] == [later.id]
+
+
+async def test_sole_public_candidates_are_read_a_page_of_marks_at_a_time(
+        clients: AsyncClient, serve, monkeypatch):
+    org_a = await _org_id(clients)
+    for n in (7, 8, 9):
+        _vendor_says(monkeypatch, b'{"q": %d}' % n)
+        await clients.get(f"/call/{EP}?aweme_id={n}")
+    await archive.drain()
+    await _opt_out(clients, org_a)
+    monkeypatch.setattr(archive_erasure, "_MARK_PAGE", 2)
+    monkeypatch.setattr(archive_erasure, "_KEY_BATCH", 2)
+    assert (await archive_erasure.count_org(org_a, include_sole_public=True))["public_keys"] == 3
+    seen: list[dict] = []
+    result = await archive_erasure.erase_org(org_a, include_sole_public=True, progress=seen.append)
+    assert result["public_keys"] == 3
+    assert [(p["phase"], p["keys"], p["candidates_left"]) for p in seen] == [
+        ("public", 2, 1), ("public", 3, 0)]
+    keys, snaps = await _rows()
+    assert keys == [] and snaps == [] and await _marks() == []
+
+
+async def test_marks_that_vanish_while_candidates_are_read_stop_the_job(
+        clients: AsyncClient, serve, monkeypatch):
+    from treg.domain.governance.teams import erase_archive_rows
+    org_a = await _org_id(clients)
+    for n in (7, 8):
+        _vendor_says(monkeypatch, b'{"q": %d}' % n)
+        await clients.get(f"/call/{EP}?aweme_id={n}")
+    await archive.drain()
+    await _opt_out(clients, org_a)
+    monkeypatch.setattr(archive_erasure, "_MARK_PAGE", 1)
+    real = archive_erasure.archive_mark_hashes
+
+    async def a_concurrent_erasure(db, org_id, **kw):
+        page = await real(db, org_id, **kw)
+        async with session_maker() as s:
+            await erase_archive_rows(s, org_a, [])
+            await s.commit()
+        return page
+    monkeypatch.setattr(archive_erasure, "archive_mark_hashes", a_concurrent_erasure)
+    with pytest.raises(RuntimeError, match="another erasure is running"):
+        await archive_erasure.erase_org(org_a, include_sole_public=True)
+    keys, snaps = await _rows()
+    assert len(keys) == 2 and len(snaps) == 2
+
+
+async def test_erasure_moves_endpoint_totals_in_endpoint_order(monkeypatch):
+    """`archive.flush_stats` locks the same rows in endpoint order; erasure must too, or the two
+    deadlock."""
+    from sqlalchemy import event
+    from treg.domain.governance.teams import erase_archive_keys
+    from treg.models import ArchiveKey, ArchiveSnapshot
+    async with session_maker() as s:
+        ids = []
+        for ep in ("zz.order", "aa.order", "mm.order"):
+            s.add(ArchiveEndpointStat(endpoint_id=ep, keys=1, snapshots=1))
+            key = ArchiveKey(key_hash=f"h-{ep}", endpoint_id=ep)
+            s.add(key)
+            await s.flush()
+            s.add(ArchiveSnapshot(key_id=key.id, content_hash=f"c-{ep}"))
+            ids.append(key.id)
+        await s.commit()
+    engine = session_maker.kw["bind"].sync_engine
+    order: list[str] = []
+
+    def record(conn, cursor, statement, params, *args):
+        if statement.startswith("UPDATE archiveendpointstat"):
+            order.append(next(p for p in (params.values() if isinstance(params, dict) else params)
+                              if isinstance(p, str) and p.endswith(".order")))
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        async with session_maker() as s:
+            assert await erase_archive_keys(s, ids) == 3
+            await s.commit()
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+    assert order == ["aa.order", "mm.order", "zz.order"]
