@@ -229,7 +229,15 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
         if spelling(prev) == "v2":
             # A row in the v2 spelling carries its reviewed cost and its outcome rules, which hold
             # the miss its adapter no longer does.
-            carried_fields += ["price", "provenance", "reserve", "settle", "bill", "error", "miss", "not_found"]
+            carried_fields += ["reserve", "settle", "bill", "error", "miss", "not_found"]
+            if prev.get("price") is not None:
+                # A price and its provenance are one reviewed fact: an absent provenance inherits the
+                # provider's default and a null one opts the row out, whatever the fresh entry says.
+                ep["price"] = prev["price"]
+                if "provenance" in prev:
+                    ep["provenance"] = prev["provenance"]
+                else:
+                    ep.pop("provenance", None)
         if carry_input:
             carried_fields.append("input")
         if carry_capability:
