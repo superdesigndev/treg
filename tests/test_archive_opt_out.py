@@ -440,3 +440,117 @@ async def test_erasure_caps_every_statement_on_postgres(clients: AsyncClient, ow
     async with session_maker() as s:
         await archive_erasure._bounded(s)
         assert (await s.execute(text("SHOW statement_timeout"))).scalar_one() == "30s"
+
+
+async def test_sole_public_answers_go_on_request_and_shared_ones_stay(
+        clients: AsyncClient, serve, monkeypatch, capsys):
+    """A platform-key answer only this team paid for is erased with `include_sole_public`; one
+    another team also paid for stays, with that team's mark."""
+    import hashlib
+    store = MemoryObjectStore()
+    bootstrap.configure_archive_object_store(store)
+    monkeypatch.setattr(archive.get_settings(), "archive_body_write", "both")
+    try:
+        org_a = await _org_id(clients)
+        _vendor_says(monkeypatch, b'{"only": "a"}')
+        await clients.get(f"/call/{EP}?aweme_id=7")                     # A alone asks this
+        _vendor_says(monkeypatch, b'{"shared": 1}')
+        await clients.get(f"/call/{EP}?aweme_id=8")                     # A and, below, B
+        await archive.drain()
+        other = await verified_signup(clients, json={"email": "public-sharer@example.com"})
+        hb = {"X-Treg-Token": other.json()["token"]}
+        assert (await clients.get(f"/call/{EP}?aweme_id=8", headers=hb)).headers["X-Treg-Cache"] == "hit"
+        await archive.drain()
+        only_a = hashlib.sha256(b'{"only": "a"}').hexdigest()
+        shared = hashlib.sha256(b'{"shared": 1}').hexdigest()
+        assert {only_a, shared} <= set(store.objects)
+        await _opt_out(clients, org_a)
+
+        counted = await archive_erasure.count_org(org_a, include_sole_public=True)
+        assert (counted["public_keys"], counted["public_snapshots"], counted["keys"],
+                counted["marks"]) == (1, 1, 0, 2)
+        result = await archive_erasure.erase_org(org_a, include_sole_public=True)
+        assert (result["public_keys"], result["keys"], result["objects"]) == (1, 0, 1)
+
+        keys, snaps = await _rows()
+        assert len(keys) == 1 and [s.content_hash for s in snaps] == [shared]
+        assert only_a not in store.objects and shared in store.objects
+        assert [m.org_id for m in await _marks()] == [(await _org_id(clients, hb))]
+        async with session_maker() as s:
+            stat = (await s.execute(select(ArchiveEndpointStat).where(
+                ArchiveEndpointStat.endpoint_id == EP))).scalar_one()
+        assert (stat.keys, stat.snapshots) == (1, 1)
+        # B is still served the shared answer.
+        assert (await clients.get(f"/call/{EP}?aweme_id=8", headers=hb)).headers["X-Treg-Cache"] == "hit"
+    finally:
+        await archive.drain()
+        bootstrap.configure_archive_object_store(None)
+
+
+async def test_without_the_flag_public_answers_stay(clients: AsyncClient, serve):
+    org_a = await _org_id(clients)
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    await archive.drain()
+    await _opt_out(clients, org_a)
+    counted = await archive_erasure.count_org(org_a)
+    assert "public_keys" not in counted and counted["marks"] == 1
+    assert await archive_erasure.erase_org(org_a) == {"org_id": org_a, "keys": 0, "objects": 0}
+    keys, _ = await _rows()
+    assert len(keys) == 1 and await _marks() == []
+
+
+async def test_a_concurrent_default_erasure_cannot_hide_sole_public_answers(
+        clients: AsyncClient, serve, monkeypatch):
+    """The public phase reads its candidates once, up front: a default erasure that deletes the
+    team's marks mid-run (an owner delete, a second worker) does not leave answers behind."""
+    from treg.domain.governance.teams import erase_archive_rows
+    org_a = await _org_id(clients)
+    _vendor_says(monkeypatch, b'{"q": 7}')
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    _vendor_says(monkeypatch, b'{"q": 8}')
+    await clients.get(f"/call/{EP}?aweme_id=8")
+    await archive.drain()
+    await _opt_out(clients, org_a)
+    monkeypatch.setattr(archive_erasure, "_KEY_BATCH", 1)
+    real = archive_erasure._delete_objects
+    calls = []
+
+    async def marks_go_mid_run(hashes):
+        if not calls:
+            async with session_maker() as s:
+                await erase_archive_rows(s, org_a, [])
+                await s.commit()
+        calls.append(1)
+        return await real(hashes)
+    monkeypatch.setattr(archive_erasure, "_delete_objects", marks_go_mid_run)
+    result = await archive_erasure.erase_org(org_a, include_sole_public=True)
+    assert result["public_keys"] == 2
+    keys, snaps = await _rows()
+    assert keys == [] and snaps == []
+
+
+async def test_a_candidate_another_team_pays_for_mid_run_stays(clients: AsyncClient, serve, monkeypatch):
+    org_a = await _org_id(clients)
+    _vendor_says(monkeypatch, b'{"q": 7}')
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    _vendor_says(monkeypatch, b'{"q": 8}')
+    await clients.get(f"/call/{EP}?aweme_id=8")
+    await archive.drain()
+    await _opt_out(clients, org_a)
+    keys, _ = await _rows()
+    later = max(keys, key=lambda k: k.id)
+    monkeypatch.setattr(archive_erasure, "_KEY_BATCH", 1)
+    real = archive_erasure._delete_objects
+    calls = []
+
+    async def another_team_pays(hashes):
+        if not calls:
+            async with session_maker() as s:
+                s.add(ArchiveKeyOrg(org_id=org_a + 1000, key_hash=later.key_hash))
+                await s.commit()
+        calls.append(1)
+        return await real(hashes)
+    monkeypatch.setattr(archive_erasure, "_delete_objects", another_team_pays)
+    assert (await archive_erasure.erase_org(org_a, include_sole_public=True))["public_keys"] == 1
+    keys, _ = await _rows()
+    assert [k.id for k in keys] == [later.id]

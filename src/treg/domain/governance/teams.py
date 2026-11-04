@@ -305,6 +305,35 @@ async def private_archive_key_ids(db: AsyncSession, org_id: int, *, limit: int |
     return [int(r[0]) for r in rows]
 
 
+async def sole_public_archive_key_ids(db: AsyncSession, org_id: int) -> list[int]:
+    """Public keys only this team paid for: marked by it and by no other team (archive.md,
+    "Opting out"). A public answer is not the team's, so erasure takes these only on request;
+    a question another team also paid for stays. Found through the team's marks, so it is read
+    once, in one statement, before anything deletes them. Ascending by id."""
+    other = aliased(ArchiveKeyOrg)
+    asked_by_another = exists().where(other.key_hash == ArchiveKey.key_hash, other.org_id != org_id)
+    rows = await db.execute(
+        select(ArchiveKey.id)
+        .join(ArchiveKeyOrg, ArchiveKeyOrg.key_hash == ArchiveKey.key_hash)
+        .where(ArchiveKeyOrg.org_id == org_id, ArchiveKey.scope.is_(None), ~asked_by_another)
+        .order_by(ArchiveKey.id))
+    return [int(r[0]) for r in rows]
+
+
+async def still_sole_public(db: AsyncSession, org_id: int, key_ids: list[int]) -> list[int]:
+    """The `key_ids` that are still public and that no other team has paid for since they were
+    found. The team's own mark is not required: another erasure may already have deleted it."""
+    if not key_ids:
+        return []
+    other = aliased(ArchiveKeyOrg)
+    asked_by_another = exists().where(other.key_hash == ArchiveKey.key_hash, other.org_id != org_id)
+    rows = await db.execute(
+        select(ArchiveKey.id)
+        .where(ArchiveKey.id.in_(key_ids), ArchiveKey.scope.is_(None), ~asked_by_another)
+        .order_by(ArchiveKey.id))
+    return [int(r[0]) for r in rows]
+
+
 async def archive_snapshots_under(db: AsyncSession, key_ids: list[int]) -> dict[str, int]:
     """content hash -> how many snapshots under `key_ids` carry it. Read-only: what an erasure
     of those keys would remove, for a dry run."""
@@ -354,6 +383,12 @@ async def erase_archive_rows(db: AsyncSession, org_id: int, key_ids: list[int] |
     await db.execute(delete(ArchiveKeyOrg).where(ArchiveKeyOrg.org_id == org_id))
     if key_ids is None:
         key_ids = await private_archive_key_ids(db, org_id)
+    return await erase_archive_keys(db, key_ids)
+
+
+async def erase_archive_keys(db: AsyncSession, key_ids: list[int]) -> int:
+    """Delete the given keys with their snapshots in `db` (no commit), moving the endpoint
+    running totals by what the statements returned -> keys deleted. Marks are untouched."""
     if not key_ids:
         return 0
     # Snapshots first (they reference the key and, through `body_of`, each other within a key).
