@@ -217,6 +217,10 @@ such scan queues every other query and the API pool empties into `503 treg_satur
   subquery must stay for snapshot consistency, the read turns JIT off for its transaction
   (`call_usage.rows`). A constant read earlier is no substitute: a rollup rebuild moves the cursor
   back.
+- Statistics end before today, so a `created_at >= today` bound is estimated at one row and picks
+  the `(org_id, created_at)` index even for a team with a full day behind it. The usage tail
+  (`call_usage.rows`) bounds itself by its UTC day expression instead, leaving `(org_id, id)` to
+  find the rows after the cursor.
 - Watermark walks state the bound as `created_at >= w AND (created_at > w OR id > w_id)`, never as
   one OR: inside an OR Postgres bounds the scan only from above and walks from the oldest row.
 - A database that predates Alembic was stamped at the baseline and may lack baseline indexes
