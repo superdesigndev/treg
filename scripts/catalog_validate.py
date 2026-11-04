@@ -1212,8 +1212,13 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
                             "distinct from `verified`, which is the date the ROUTE was called)")
     elif (day := _as_date(checked)) is None:
         fail(errors, where, f"cost.checked '{checked}' is not an ISO date (YYYY-MM-DD)")
-    elif (age := (dt.date.today() - day).days) > STALE_DAYS:
-        warnings.append(f"{where}: cost.checked is {age} days old (> {STALE_DAYS}) — re-check the price")
+    else:
+        check_fresh(day, "cost.checked", where, warnings)
+
+
+def check_fresh(day: dt.date, key: str, where: str, warnings: list[str]) -> None:
+    if (age := (dt.date.today() - day).days) > STALE_DAYS:
+        warnings.append(f"{where}: {key} is {age} days old (> {STALE_DAYS}) — re-check the price")
 
 
 SHARED_PLAN_KIND = "treg_shared_plan"
@@ -1578,6 +1583,8 @@ def main(argv: list[str]) -> int:
             if not legacy:
                 check_v2_row(ep, service, tier, adapter_rows, where, errors)
                 check_v2_cost(row, ep, service, where, errors)
+                if row.provenance is not None and (day := _as_date(row.provenance.checked)) is not None:
+                    check_fresh(day, "provenance.checked", where, warnings)
             if extended_file != (tier == "extended"):
                 fail(errors, where, f"tier '{tier}' does not belong in {name}")
             route_tiers.setdefault((service, ep.get("method"), ep.get("path")), {}) \
