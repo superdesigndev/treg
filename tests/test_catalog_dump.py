@@ -23,8 +23,31 @@ def test_compare_names_what_differs_and_fails(tmp_path, capsys):
     assert "byte-identical" in capsys.readouterr().out
 
 
+def test_a_dataclass_field_at_its_default_is_left_out():
+    import dataclasses
+
+    @dataclasses.dataclass
+    class Row:
+        id: str
+        note: str = ""
+        tags: list = dataclasses.field(default_factory=list)
+
+    assert catalog_dump._plain(Row("a")) == {"id": "a"}
+    assert catalog_dump._plain(Row("a", note="n", tags=["t"])) == {"id": "a", "note": "n", "tags": ["t"]}
+    # a set value that falls back to its default is a missing key, so compare still names it
+    old, new = (json.loads(json.dumps({"r": r}, default=catalog_dump._plain)) for r in (Row("a", note="n"), Row("a")))
+    assert catalog_dump.first_difference(old, new) == "r.note"
+
+
 def test_first_difference_walks_lists_and_names_a_missing_key():
     assert catalog_dump.first_difference({"a": [1, {"b": 2}]}, {"a": [1, {"b": 3}]}) == "a.1.b"
     assert catalog_dump.first_difference({"a": {"x": 1}}, {"a": {"x": 1, "y": 2}}) == "a.y"
     assert catalog_dump.first_difference({"a": [1]}, {"a": [1, 2]}) == "a"
     assert catalog_dump.first_difference({"a": 1}, {"a": 1}) is None
+
+
+def test_the_dump_reads_another_catalog_directory(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text("platforms: {web: Web}\ncapabilities: {}\n")
+    (tmp_path / "demo.yaml").write_text("provider: demo\nendpoints:\n  - {id: demo.x, platform: web}\n")
+    assert catalog_dump.main([str(tmp_path / "out.json"), "--catalog", str(tmp_path)]) == 0
+    assert list(json.loads((tmp_path / "out.json").read_text())["by_id"]) == ["demo.x"]

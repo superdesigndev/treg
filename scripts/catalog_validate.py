@@ -51,6 +51,7 @@ import json
 import math
 import re
 import sys
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import yaml
@@ -72,6 +73,8 @@ from treg.domain.catalog.routing import paths as _paths  # noqa: E402
 from treg.domain import plugins  # noqa: E402
 from treg.domain.catalog import schema  # noqa: E402
 from treg.domain.catalog.schema import violations  # noqa: E402
+from treg.domain.catalog.schema.paths import leaves, parse_path  # noqa: E402
+from treg.domain.catalog.schema.v2 import _legacy_location  # noqa: E402
 
 COST_TYPES = {"per_call", "per_result", "per_success", "free", "quota_rows"}
 # What the price is denominated in. `credit` and `unit` are PROVIDER-scoped meters, not currencies,
@@ -502,6 +505,15 @@ def check_enrichlayer_rule(cost: dict, input_schema: dict, where: str,
         fail(errors, where, "cost.enrichlayer.extra_per_result needs declared options with positive credit rates")
 
 
+def _v2_price_is_free(price: object) -> bool:
+    if not isinstance(price, dict) or price.get("value") is None:
+        return False
+    try:
+        return Decimal(str(price["value"])) == 0
+    except InvalidOperation:
+        return False
+
+
 def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
     """Anonymous platform fallback is intentionally narrow: proven public GETs that cost zero."""
     mode = ep.get("platform_auth")
@@ -512,9 +524,9 @@ def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
         return
     if ep.get("method") != "GET":
         fail(errors, where, "platform_auth anonymous requires GET")
-    cost = ep.get("cost")
-    if not isinstance(cost, dict) or cost.get("type") != "free":
-        fail(errors, where, "platform_auth anonymous requires cost.type free")
+    cost, price = ep.get("cost"), ep.get("price")
+    if not (isinstance(cost, dict) and cost.get("type") == "free") and not _v2_price_is_free(price):
+        fail(errors, where, "platform_auth anonymous requires cost.type free (in v2, price.value '0')")
     if not ep.get("verified"):
         fail(errors, where, "platform_auth anonymous requires live verification")
     if ep.get("scope", "any_account") != "any_account" or ep.get("kind") == "account":
@@ -678,7 +690,9 @@ def check_usage_block(cost: dict, settle: object, where: str, errors: list[str],
 def check_async_descriptor(descriptor: object, where: str, provider: str,
                            endpoint_index: dict[str, dict], cost: object,
                            errors: list[str]) -> None:
-    """Validate the effective (provider defaults + endpoint overrides) async descriptor."""
+    """Validate the effective (provider defaults + endpoint overrides) async descriptor. `cost` is
+    a row's cost in today's spelling; a v2 row passes None, since its terminal answer settles by
+    any `settle` form."""
     if not isinstance(descriptor, dict):
         fail(errors, where, "async must be a mapping")
         return
@@ -816,12 +830,12 @@ def check_async_descriptor(descriptor: object, where: str, provider: str,
     if "terminal_on_submission" in descriptor and descriptor["terminal_on_submission"] is not True:
         fail(errors, where, "async.terminal_on_submission must be true when present")
     # per_call: the provider bills every finished answer, so treg settles one on each.
-    if not isinstance(cost, dict) or cost.get("type") not in ("per_success", "per_call"):
+    if cost is not None and (not isinstance(cost, dict) or cost.get("type") not in ("per_success", "per_call")):
         fail(errors, where, "an endpoint with async must have cost.type per_success or per_call")
 
 
 def check_spooled_response(ep: dict, effective_async: object, where: str,
-                           errors: list[str]) -> None:
+                           errors: list[str], *, v2: bool = False) -> None:
     """`spooled_response: true` - a synchronous metered answer too large to buffer (inline media),
     read to disk and settled from what the row declares it reads: its usage meters (`settle:
     usage`) or, for a fixed price, its `expect` success rule. Nothing else may need the body: no
@@ -832,7 +846,11 @@ def check_spooled_response(ep: dict, effective_async: object, where: str,
     if effective_async is not None or ep.get("resource_ownership") or ep.get("managed_resource"):
         fail(errors, where, "spooled_response cannot be combined with async, resource_ownership "
                             "or managed_resource: those read the whole body")
-    if (ep.get("cost") or {}).get("settle") != "usage" and not (ep.get("expect") or {}).get("json_path"):
+    if v2:
+        usage, expect = (ep.get("settle") or {}).get("usage"), ep.get("expect")
+    else:
+        usage, expect = (ep.get("cost") or {}).get("settle") == "usage", (ep.get("expect") or {}).get("json_path")
+    if not usage and not expect:
         fail(errors, where, "spooled_response keeps only the evidence the row declares: it needs "
                             "settle: usage or an expect success rule")
 
@@ -1347,9 +1365,19 @@ def check_proposed_capabilities(taxonomy: dict[str, str], docs: list[tuple[str, 
 PLUGIN_TESTS = ROOT / "tests" / "plugins"
 
 
-def check_v2_row(ep: dict, provider: str, where: str, errors: list[str]) -> None:
-    """A v2 row's plugins import from its own provider's module, each function has a unit test
+def check_v2_row(ep: dict, provider: str, tier: str, adapters: dict, where: str,
+                 errors: list[str]) -> None:
+    """A core v2 row is priced, its miss lives on the row (its adapter only maps fields), its
+    plugins import from its own provider's module, each function has a unit test
     (`tests/plugins/test_<module>.py` names it), and the row has an example response."""
+    if tier == "core" and ep.get("price") is None:
+        fail(errors, where, "a core row needs a price")
+    if ep.get("ceiling_param") is not None:
+        fail(errors, where, "ceiling_param is read from the file header until the row key replaces "
+                            "it there (non-negotiable 4); declare it in the header")
+    if (adapters.get(ep.get("id")) or {}).get("miss"):
+        fail(errors, where, "a v2 row's miss is its own `miss` rule: remove the adapter's miss "
+                            "from adapters.yaml")
     names = [ep[k]["plugin"] for k in ("reserve", "settle", "error", "miss")
              if isinstance(ep.get(k), dict) and ep[k].get("plugin")]
     for name in names:
@@ -1364,6 +1392,62 @@ def check_v2_row(ep: dict, provider: str, where: str, errors: list[str]) -> None
             fail(errors, where, f"plugin {name} has no unit test in tests/plugins/test_{module}.py")
     if names and not (ep.get("example_response") and (CATALOG / str(ep["example_response"])).is_file()):
         fail(errors, where, "a row that names a plugin needs an example_response")
+
+
+def _v2_rated(provider: str, currency: str, unit: object = None) -> bool:
+    """A v2 money unit resolves to a USD rate: usd itself, the provider's credit, its meter `unit`,
+    or a currency's fx rate."""
+    if currency in ("usd", "USD"):
+        return True
+    if currency == "credit":
+        return _finite_number(_credit_rate(provider))
+    if currency == "unit":
+        return _finite_number(_unit_rate(provider, unit))
+    fx = yaml.safe_load((CATALOG / "fx.yaml").read_text()) or {}
+    return _finite_number((fx.get("rates_to_usd") or {}).get(currency))
+
+
+def _v2_field(path: str, input_schema: object) -> str:
+    """A v2 request path (`body.x`, `query.x`) as the declared input field it names."""
+    return _legacy_location(path, input_schema if isinstance(input_schema, dict) else {})
+
+
+def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors: list[str]) -> None:
+    """What the strict model cannot see alone: every money unit resolves to a rate, and every
+    request path a price or a hold reads names a declared input field of the right kind."""
+    inp = ep.get("input") or {}
+    fields = _input_fields(inp)
+    price, settle, reserve = row.price, row.settle, row.reserve
+    if price is not None and not _v2_rated(provider, price.currency, price.unit):
+        fail(errors, where, f"price.currency {price.currency}"
+                            f"{f' (unit {price.unit})' if price.currency == 'unit' else ''} has no "
+                            f"fx.yaml rate for '{provider}'")
+    for name, rule in (("settle.reported", settle and settle.reported), ("settle.usage", settle and settle.usage)):
+        if rule is not None and not _v2_rated(provider, rule.unit if rule.unit in ("usd", "credit") else "unit",
+                                              rule.unit):
+            fail(errors, where, f"{name}.unit '{rule.unit}' is not usd, credit or an fx.yaml "
+                                f"unit_rates_usd meter of '{provider}'")
+    if settle is not None and settle.usage is not None and settle.usage.terms and settle.usage.unit != "usd":
+        fail(errors, where, "settle.usage.terms rates are USD per unit; its unit must be usd")
+    if reserve is not None and reserve.rows is not None and reserve.rows.param is not None:
+        spec = fields.get(_v2_field(reserve.rows.param, inp))
+        if spec is None or spec.get("type") != "integer":
+            fail(errors, where, f"reserve.rows.param '{reserve.rows.param}' must name a declared integer input field")
+    if reserve is not None and reserve.entities is not None:
+        sources = reserve.entities.from_ if isinstance(reserve.entities.from_, list) else [reserve.entities.from_]
+        for path in sources:
+            if not parse_path(path).many and fields.get(_v2_field(path, inp)) is None:
+                fail(errors, where, f"reserve.entities.from '{path}' must name a declared input field")
+    if price is None or price.table is None:
+        return
+    view = schema.served(row, inp)["cost"]
+    if "table" in view:
+        check_cost_table({"table": view["table"], "fallback": view["fallback"]}, inp, where, errors, provider)
+        return
+    for index, entry in enumerate(price.table):
+        for path in [leaf.path for leaf in leaves(entry.when)] + [entry.times] * bool(entry.times):
+            if fields.get(_v2_field(path, inp)) is None:
+                fail(errors, f"{where}:price.table[{index}]", f"'{path}' is not a declared input field")
 
 
 def check_routing(errors: list[str]) -> None:
@@ -1434,6 +1518,8 @@ def main(argv: list[str]) -> int:
                 endpoint_index[endpoint_id] = {**schema.merge(ep, defaults.get(doc.provider)),
                                                "provider": doc.provider}
     check_proposed_capabilities(taxonomy, docs, errors, warnings)
+    adapter_rows = ((schema.read_yaml(CATALOG / "adapters.yaml") or {}).get("adapters") or {}
+                    if (CATALOG / "adapters.yaml").is_file() else {})
     files = [p for p in all_files if p in parsed]
     uses: list[violations.Use] = []
     # "tikhub" selects tikhub.yaml AND tikhub.extended.yaml — a service is both its tiers
@@ -1488,11 +1574,10 @@ def main(argv: list[str]) -> int:
                 continue
             uses.append(violations.Use(str(eid), str(service), ep))
             legacy = not isinstance(row, schema.V2Row)
-            if not legacy:
-                fail(errors, where, "the v2 spelling is loaded but not yet billed or judged by the call "
-                                    "runtime; it ships with the v2 settlement order")
-                check_v2_row(ep, service, where, errors)
             tier = ep.get("tier", "extended" if extended_file else "core")
+            if not legacy:
+                check_v2_row(ep, service, tier, adapter_rows, where, errors)
+                check_v2_cost(row, ep, service, where, errors)
             if extended_file != (tier == "extended"):
                 fail(errors, where, f"tier '{tier}' does not belong in {name}")
             route_tiers.setdefault((service, ep.get("method"), ep.get("path")), {}) \
@@ -1600,9 +1685,8 @@ def main(argv: list[str]) -> int:
             if effective_async is not None:
                 # The price the call settles on: a declared cost, or the provider-reported charge a
                 # verification observed (a DataForSEO extended row carries `observed_cost` only).
-                if legacy:
-                    check_async_descriptor(effective_async, where, str(service), endpoint_index,
-                                           _effective_cost(ep), errors)
+                check_async_descriptor(effective_async, where, str(service), endpoint_index,
+                                       _effective_cost(ep) if legacy else None, errors)
                 if isinstance(cost, dict) and cost.get("settle") == "terminal_presence":
                     body_fields = inp.get("body") or {}
                     bounded = any(isinstance(spec, dict) and str(spec.get("type", "")).startswith("array")
@@ -1624,8 +1708,8 @@ def main(argv: list[str]) -> int:
                 check_resource_ownership(ep["resource_ownership"], where, inp, errors)
             if ep.get("managed_resource") is not None:
                 check_managed_resource(ep["managed_resource"], where, inp, errors)
-            if legacy and "spooled_response" in ep:
-                check_spooled_response(ep, effective_async, where, errors)
+            if "spooled_response" in ep:
+                check_spooled_response(ep, effective_async, where, errors, v2=not legacy)
             if ep.get("example_response"):
                 check_example_file(CATALOG / str(ep["example_response"]), where, errors)
             if ep.get("verified"):

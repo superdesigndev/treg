@@ -276,7 +276,10 @@ dot (`user.fields`) stay as written.
 A `cost` block stays in the unit the PROVIDER bills in, because that number stays correct when a
 rate moves. `Catalog.cost_view` adds `usd` at serve time from `fx.yaml`, so a rate refresh re-prices
 the catalog without touching provider files. Clients lead with `usd` and fall back to the native
-amount when it is null.
+amount when it is null. A row in the v2 spelling writes `price`, `provenance`, `reserve`, `settle`
+and `bill` instead and serves a `cost` derived from them ([catalog-schema](catalog-schema.md)), so
+what follows about reading `cost` holds for it; how it bills is
+[money](money.md#rows-in-the-v2-spelling).
 
 ```yaml
 cost:
@@ -759,6 +762,13 @@ requests and sometimes ask a different question (a domain and a name vs. a Linke
 caller knows which inputs it holds.** treg chooses only when the caller calls a routed endpoint,
 whose contract is a canonical schema ("Routing" below).
 
+`TREG_ROUTE_PROVIDER_SAMPLE_PCT` optionally maps provider slugs to integer percentages from 0 to
+100. In `application.call.route.build_plan`, a shared-key candidate joins a routed plan only for
+that percentage of provider, org, capability and canonical-question hashes; a retry of the same question
+gets the same decision. A missing or empty setting leaves all providers eligible. Unlisted
+providers, direct calls and a team's own credential are unaffected. This gates eligibility, not
+the eventual share of served calls or the provider's direct-call volume.
+
 What treg supplies is what only it sees: **success rate, p50/p95 latency, last success and sample
 size** per endpoint from folded `CallRecord` evidence, on `/catalog/endpoints/{id}` for the endpoint
 **and every sibling**, because the choice is made on that page. The same page discloses the overflow
@@ -940,6 +950,11 @@ returned and never documented as stable. An output field may say where it lands 
 - `routed: false` declares an admission-only contract: its adapters verify (the archive's
   `has_result_rules` reads them) but no `treg.<capability>` row is generated. For a capability whose
   "children" are one provider's price tiers.
+- `question_miss` is a miss rule that also sees the question: `child_outcome` evaluates it on the
+  caller's identity merged with the child's core output, after the adapter's own `miss`, and a hit it
+  marks true becomes a miss (`why: question_miss`) the route moves on from. It names no provider;
+  `no_result_on_site(q, results)` judges a `site:` question whose rows are all on other sites. A
+  call without an identity (a replay record) is not judged by it.
 - `scoping` names identity keys that scope the answer (`company_domain`): a candidate whose adapter
   never sends a supplied one is dropped from the plan, not ranked down, because a title-only search
   asked for one company's CEO bills title-matched strangers as a hit.
@@ -947,14 +962,20 @@ returned and never documented as stable. An output field may say where it lands 
   hit ignores time, so a contract may prefer a dearer but faster, more reliable provider.
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
   per hit ranks before specificity.
+- `row` gives a list output one row shape whatever provider answered (`people.search`): `of` names
+  the list field, `fields` the keys a row may carry, `needs` the keys of which a row must fill one.
+  Each adapter's `row:` maps one provider row into it; a row it cannot read stays the provider's own
+  rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.
+  Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads.
 - List the most complete identity variant first: the first variant a caller fills is the one every
   field rides on.
 
 ### Adapters (`adapters.yaml`)
 
 One per endpoint: `accepts` (identity variants), `in` (contract field to `queryParams.x` /
-`body.x`), `in_expr`, `const`, `filters` (always sent), `out` (core field to expression), `miss`,
-`test_identity`, and `route: false` for a judge-only adapter (results, stats, cache admission;
+`body.x`), `in_expr`, `const`, `filters` (always sent), `out` (core field to expression), `miss`
+(none on a v2 row's adapter: the row's own `miss` rule judges), `test_identity`, `row` (row field to
+expression over one provider row, for a contract with a `row`), and `route: false` for a judge-only adapter (results, stats, cache admission;
 never routing or arena). `verdicts` maps provider words (lower case, spaces and hyphens to `_`) to
 the contract's; `verdict` is an expression for a provider that reports the word elsewhere. An
 unmapped word is stored NULL and logged; `tests/test_call_verdict.py` holds every verifier's example
@@ -971,7 +992,8 @@ that names no country, and a one-argument transform with no value counts the fil
 
 **Verified at load, or absent** (`routing/contracts.py::verify`): `in` must reproduce the endpoint's
 own `test_request` and `out` must fill every required core field from its example (an example that
-is a miss passes with the hit half unverified). A failing adapter is not a candidate; the endpoint
+is a miss passes with the hit half unverified). A `row:` may name only the contract's row fields, and
+every example row must fill one of its `needs`. A failing adapter is not a candidate; the endpoint
 stays callable via `/call/`. `tests/test_routing.py` pins every shipped adapter. An adapter's
 `additional_capabilities` are admitted through `verified_capabilities` only when the primary passes;
 an invalid extra never disables the primary.
@@ -1052,6 +1074,24 @@ an invalid extra never disables the primary.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a
   503 stays reserved for capacity/key drops.
+- **More rows than `limit` are kept and disclosed**: when the caller sent `limit` and the serving
+  child (one that does not accept `limit`, or floors it) or a merge returns more list rows, every
+  row and an honest `count` stay, and `_treg.limit_exceeded` / `X-Treg-Limit-Exceeded` name
+  `{asked, returned, why}`. The extra rows are already billed and a routed answer is never altered;
+  a contract default is not a question anyone asked, so it does not trigger the note. `limit`
+  stays out of `ignored_filters` (a page size, not a narrowing filter).
+- **A long provider cursor stays in `raw` only**: a routed endpoint takes no cursor, so
+  `output.next_cursor` only serves a direct call to the serving provider. One longer than
+  `CURSOR_MAX` (512 chars; icypeas returns tokens of many KB) is set to null and
+  `_treg.next_cursor` names `{chars, in_raw}`, the adapter path where `raw` keeps it whole.
+- **A stand-in reaches a provider the caller's fields cannot**: a contract's `stand_in` maps an
+  identity key to an expression over the identity and filters (people.search:
+  `q = join(full_name, title, location)`). `adapter_accepts` tries the caller's own fields first and
+  builds the stand-in only when an adapter accepts none of them, so exa and parallel (`{q}` only)
+  can answer a `{title}` request while every other provider's request is unchanged. The stand-in
+  never enters the plan's identity; `to_upstream` fills it for the matched variant, and `unscoped`
+  counts the keys inside it as sent. A key left out of the expression keeps its scoping guard
+  (`company_domain`: a text match cannot scope by company).
 - **Free text is a filter, not identity**: a brief's requirements ride in `keywords` (always sent),
   never in `q` alone, or a provider matching the `{title}` variant never sees them. Hard filters
   that broaden or over-constrain measured worse; add one opt-in, and measure it first.

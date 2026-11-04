@@ -919,6 +919,7 @@ adapters:
     const: {body.pagination.page: 1}
     out: {people: data.leads, count: data.total}
     miss: "data.leads == []"
+    row: {name: "join(first_name, last_name)", title: title, company: organization_name, location: "place(city, state, country)", profile_url: linkedin_url, email: email}
   prospeo.people.search:
     accepts: [[q], [company_domain], [title, company_domain], [title]]
     in: {q: body.filters.person_name_or_job_title,
@@ -933,6 +934,7 @@ adapters:
     # Prospeo fixes pages at 25, so there is no honest `limit` input to forward. Return its total.
     out: {people: results, count: pagination.total_count}
     miss: "results == []"
+    row: {name: person.full_name, title: person.current_job_title, company: company.name, company_domain: company.domain, location: "place(person.location.city, person.location.country)", profile_url: person.linkedin_url, email: person.email.email, email_status: person.email.status}
   wiza.people.search:
     accepts: [[title]]
     in: {title: body.filters.job_title}
@@ -941,6 +943,7 @@ adapters:
     test_identity: {title: Founder}
     out: {people: data.profiles, count: data.total, next_cursor: data.next_page_token}
     miss: "data.profiles == []"
+    row: {name: full_name, title: job_title, company: job_company_name, company_domain: "host(job_company_website)", location: location_name, profile_url: "linkedin_url(linkedin_url)"}
   aiark.people.search:
     accepts: [[company_domain]]
     in: {company_domain: body.account.domain.any.include}
@@ -949,13 +952,18 @@ adapters:
     test_identity: {company_domain: example.com}
     out: {people: content, count: totalElements}
     miss: "content == []"
+    row: {name: profile.full_name, title: profile.title, company: company.name, company_domain: company.domain, location: "place(location.city, location.country)", profile_url: link.linkedin}
   exa.people.search:
     accepts: [[q]]
     in:  {q: body.query}
-    in_expr: {body.query: "join(q, csv(keywords))", body.numResults: limit}
-    const: {body.category: people}
+    # The passages that match the brief come back with each row (not billed on top of the search):
+    # an agent checks the brief against them instead of fetching every profile. Capped short to keep tokens down.
+    in_expr: {body.query: "join(q, csv(keywords))", body.numResults: limit,
+              body.contents.highlights.query: "join(q, csv(keywords))"}
+    const: {body.category: people, body.contents.highlights.maxCharacters: 300}
     out: {people: results, count: "len(results)"}
     miss: "results == []"
+    row: {name: "coalesce(entities[0].properties.name, title)", title: "entities[0].properties.workHistory[0].title", company: "entities[0].properties.workHistory[0].company.name", location: "entities[0].properties.location", profile_url: url, summary: "texts(highlights)"}
   parallel.people.search:
     accepts: [[q]]
     in: {q: body.objective}
@@ -963,6 +971,7 @@ adapters:
     const: {body.entity_type: people}
     out: {people: entities, count: "len(entities)"}
     miss: "coalesce(entities, []) == []"
+    row: {name: name, profile_url: url, summary: description}
   icypeas.people.search:
     accepts: [[company_domain, title], [company_domain], [title]]
     in:  {company_domain: body.query.currentCompanyWebsite.include, title: body.query.currentJobTitle.include}
@@ -971,30 +980,35 @@ adapters:
               body.query.keyword.include: "list(keywords)"}
     out: {people: leads, count: total, next_cursor: pagination.token}
     miss: "leads == []"
+    row: {name: "join(firstname, lastname)", title: "coalesce(lastJobTitle, headline)", company: lastCompanyName, company_domain: "host(lastCompanyWebsite)", location: address, profile_url: profileUrl, summary: "coalesce(headline, description)"}
   companyenrich.people.search:
     accepts: [[company_domain, title], [company_domain]]
     in:  {company_domain: body.domains, title: body.positionQuery}
     in_expr: {body.domains: "list(company_domain)", body.positionQuery: "list(title)", body.pageSize: limit, body.page: "1"}
     out: {people: items, count: totalItems}
     miss: "items == []"
+    row: {name: name, title: position, location: location.address, profile_url: socials.linkedin_url}
   hunter.companies.emails:
     accepts: [[company_domain]]
     in:  {company_domain: queryParams.domain}
     in_expr: {queryParams.limit: limit}
     out: {people: data.emails, count: meta.results}
     miss: "data.emails == []"
+    row: {name: "join(first_name, last_name)", title: position, profile_url: linkedin, email: value, email_status: verification.status}
   leadmagic.x.employee-finder:
     accepts: [[company_domain]]
     in:  {company_domain: body.company_domain}
     in_expr: {body.limit: limit}
     out: {people: data, count: total_count}
     miss: "data == []"
+    row: {name: full_name, title: title, company: company_name, company_domain: "host(website)", location: country_code, profile_url: profile_url, summary: headline}
   lusha.people.search:
     accepts: [[title]]
     in:  {title: body.filters.contacts.include.jobTitles}
     in_expr: {body.filters.contacts.include.jobTitles: "list(title)", body.pagination.size: "at_least(limit, 10)", body.pagination.page: "0"}
     out: {people: results, count: pagination.total}
     miss: "results == []"
+    row: {name: "join(firstName, lastName)", title: jobTitle.title, company: company.name, company_domain: company.domain, location: "place(location.city, location.state, location.country)", profile_url: socialLinks.linkedin}
   oceanio.people.search:
     accepts: [[company_domain]]
     in: {company_domain: body.companiesFilters.includeDomains}
@@ -1003,6 +1017,7 @@ adapters:
     cost_units: "at_most(limit, 100)"
     out: {people: people, count: total, next_cursor: searchAfter}
     miss: "people == []"
+    row: {name: name, title: jobTitle, company_domain: domain, location: location, profile_url: linkedinUrl, summary: headline}
 
   apollo.people.enrich:
     accepts: [[email], [linkedin_url], [full_name, domain]]
@@ -2589,6 +2604,7 @@ adapters:
     const: {queryParams.page: "1", queryParams.enrich: "false"}
     out: {people: items, count: totalResults}
     miss: "items == []"
+    row: {name: fullName, location: location, profile_url: "linkedin_url(URLs.linkedin)"}
   # No adapter for companyenrich.people.search.scroll: its first page is the same query against the
   # same index as companyenrich.people.search, so routing both billed one empty answer twice.
   crustdata.people.search:
@@ -2597,6 +2613,7 @@ adapters:
     in_expr: {body.filters: "obj('field', 'basic_profile.name', 'type', '=', 'value', full_name)", body.limit: limit}
     out: {people: profiles, count: total_count, next_cursor: next_cursor}
     miss: "profiles == []"
+    row: {name: basic_profile.name, title: basic_profile.current_title, company: "experience.employment_details.current[0].name", company_domain: "host(experience.employment_details.current[0].company_website)", location: basic_profile.location.full_location, profile_url: social_handles.professional_network_identifier.profile_url, summary: basic_profile.headline}
   fiber-ai.people.search:
     accepts: [[company_domain]]
     in:  {}
@@ -2611,18 +2628,21 @@ adapters:
     in:  {title: body.job_title, company_domain: body.company_domain}
     out: {people: "list(obj('name', name, 'profile_url', profile_url, 'first_name', first_name, 'last_name', last_name, 'company_name', company_name))", count: "len(list(name))"}
     miss: "name == null"
+    row: {name: name, company: company_name, profile_url: profile_url}
   leadsforge.people.search:
     accepts: [[company_domain]]
     in:  {company_domain: body.companyDomains.include}
     in_expr: {body.companyDomains.include: "list(company_domain)", body.limit: limit, body.keywords.include: "list(keywords)"}
     out: {people: leads, next_cursor: cursor}
     miss: "leads == []"
+    row: {name: "join(firstName, lastName)", title: jobTitle, company_domain: company.domain, location: "place(location.city, location.state, location.country)"}
   findymail.search.employees:
     accepts: [[company_domain, title]]
     in:  {company_domain: body.website, title: body.job_titles}
     in_expr: {body.job_titles: "list(title)", body.count: limit}
     out: {people: ".", count: "len(.)"}
     miss: ". == []"
+    row: {name: name, title: jobTitle, company: companyName, company_domain: "host(companyWebsite)", profile_url: linkedinUrl}
   leadmagic.people.search:
     accepts: [[company_domain, title], [company_domain]]
     in:  {company_domain: body.company_domain, title: body.titles}
@@ -2634,7 +2654,7 @@ adapters:
     accepts: [[company_domain]]
     in:  {company_domain: body.domain}
     out: {people: contacts, count: "len(contacts)"}
-    miss: "contacts == []"
+    row: {name: name, company_domain: domain, email: email}
 
   # *.bulk endpoints are never routed (Jason, 2026-08-29): a routed call is one subject, one answer.
   fiber-ai.people.enrich:
@@ -2713,6 +2733,7 @@ adapters:
     cost_units: "choose(title, 20, 1)"
     out: {people: data, count: "len(data)"}
     miss: "coalesce(data, []) == []"
+    row: {name: "join(first_name, last_name)", title: title, company: company_name, company_domain: "host(company_url)", location: "place(city, region_code, country_code)", profile_url: employee_linkedin, email: email}
   apollo.people.search:
     # Free search rows carry an obfuscated last name: evidence only, not a routed people.search child.
     route: false
@@ -2729,12 +2750,13 @@ adapters:
     in: {company_domain: body.where.company.domain, title: body.where.person.title, full_name: body.where.person.name, q: body.q}
     in_expr:
       body.where.person.title: "scalar(title)"
-      body.where.company.country: "upper(country)"
+      body.where.company.country: "country_code(country)"
       body.where.company.city: location
       body.limit: limit
     max: {limit: 100}
     out: {people: data, count: "len(data)"}
     miss: "coalesce(data, []) == []"
+    row: {name: name, title: title, company: company.name, company_domain: company.domain, location: insight.location, profile_url: "coalesce(linkedin, source_url)", email: email.value, email_status: email.status, summary: insight.summary}
   quickenrich.people.search:
     accepts: [[title, company_domain], [company_domain], [title]]
     in: {company_domain: body.company_url.include, title: body.title.include}
@@ -2746,6 +2768,7 @@ adapters:
       body.per_page: limit
     out: {people: data, count: "len(data)", next_cursor: meta.next_cursor}
     miss: "coalesce(data, []) == []"
+    row: {name: "join(first_name, last_name)", title: title, company: company_name, company_domain: "host(company_url)", location: "place(city, region_code, country_code)", profile_url: employee_linkedin}
   quickenrich.companies.search:
     accepts: [[domain], [name], [industry]]
     in: {domain: body.company_url, name: body.company_name.include, industry: body.industry.include}
@@ -2872,6 +2895,7 @@ adapters:
     in_expr: {queryParams.locations: "coalesce(location, country_name(country))", queryParams.search: "csv(keywords)"}
     out: {people: elements, count: pagination.totalElements}
     miss: "coalesce(elements, []) == []"
+    row: {name: "join(firstName, lastName)", title: "currentPositions[0].title", company: "currentPositions[0].companyName", location: location.linkedinText, profile_url: linkedinUrl, summary: summary}
 
   # ---- AnyAPI (PR #398) --------------------------------------------------------------------------
   # One envelope for every SKU: `output.found` + `output.data`, exact charge in `costUsd`. A
@@ -3233,7 +3257,8 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.format: markdown, body.links: true, body.ttl: 0}
     out: {pages: results, count: "len(results)"}
-    miss: "coalesce(results[0].text, '') == ''"
+    # final_url is where the page was finally read: a redirect to the home page is not the page
+    miss: "choose(lost_path(results[0].url, results[0].final_url), true, coalesce(results[0].text, '') == '')"
   exa.web.contents.get:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
@@ -3295,7 +3320,8 @@ adapters:
     test_identity: {url: "https://example.com"}
     const: {body.formats: [markdown], body.onlyMainContent: false}
     out: {pages: "list(output.data)", count: "len(list(output.data))"}
-    miss: "coalesce(output.data.markdown, '') == ''"
+    # output.data.statusCode is the TARGET's status: a 4xx/5xx is the site's error page, not the page
+    miss: "choose(http_error(output.data.statusCode), true, coalesce(output.data.markdown, '') == '')"
   crawl4ai.web.extract.structured:
     accepts: [[url, schema, instruction], [url, schema], [url, instruction]]
     in: {url: body.url, schema: body.schema, instruction: body.instruction}
@@ -3321,7 +3347,7 @@ adapters:
     in: {url: body.url}
     const: {body.format: md}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: "coalesce(markdown, '') == ''"
+    miss: "coalesce(text_len, markdown, 0) == 0"
   firecrawl.web.scrape:
     accepts: [[url]]
     in: {url: body.url}
@@ -3491,6 +3517,7 @@ adapters:
     cost_units: "at_most(limit, 10)"
     out: {people: results, count: total_result_count}
     miss: "results == []"
+    row: {profile_url: linkedin_profile_url}
   enrichlayer.companies.search:
     accepts: [[name], [industry], [domain]]
     in: {name: queryParams.name, industry: queryParams.industry,
@@ -3554,6 +3581,14 @@ adapters:
     route: false
     accepts: [[q]]
     in: {q: body.query}
+    out: {results: results, count: "len(results)"}
+    miss: "coalesce(results, []) == []"
+  exa.web.search.lite:
+    route: false
+    accepts: [[q]]
+    in: {q: body.query}
+    in_expr: {body.numResults: limit}
+    const: {body.type: lite}
     out: {results: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
   scrapegraphai.web.search.extract:
@@ -3763,6 +3798,7 @@ adapters:
               body.max_results: "at_most(limit, 50)"}
     out: {people: results, count: total_results, next_cursor: cursor}
     miss: "results == []"
+    row: {name: full_name, title: "coalesce(experiences[0].job_title, headline)", company: "experiences[0].company_name", company_domain: "experiences[0].company_domain", location: "place(location.city, location.country_code)", profile_url: linkedin_url, summary: headline}
   blitzapi.companies.search:
     accepts: [[name]]
     in: {name: body.company.name.include}
@@ -3771,3 +3807,54 @@ adapters:
               body.max_results: "at_most(limit, 50)"}
     out: {companies: results, count: total_results, next_cursor: cursor}
     miss: "results == []"
+
+  # Low verified yield leaves work email out of routing; direct calls retain every status.
+  leadocean.people.email.find.work:
+    route: false
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.linkedin_url}
+    out: {email: data.email, verified: "data.status == 'verified'"}
+    miss: "data.status != 'verified'"
+  leadocean.people.email.find.personal:
+    route: false
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.linkedin_url}
+    out: {email: "data[0].email"}
+    miss: "data == []"
+  leadocean.people.phone.find:
+    accepts: [[linkedin_url]]
+    in: {linkedin_url: queryParams.linkedin_url}
+    out: {phone: data.best.phone}
+    miss: "data.best.phone == null"
+  leadocean.people.enrich:
+    accepts: [[linkedin_url], [email]]
+    in: {linkedin_url: body.linkedin_url, email: body.email}
+    out: {full_name: data.profile_data.profile_full_name, first_name: data.profile_data.profile_first_name,
+          last_name: data.profile_data.profile_last_name, title: "data.contact_data.contact_current_experiences[0].job_title",
+          company: "data.contact_data.contact_current_experiences[0].company_name",
+          company_domain: "data.contact_data.contact_current_experiences[0].company_domain",
+          linkedin_url: data.profile_data.profile_url,
+          location: "join(data.profile_data.profile_address.city, data.profile_data.profile_address.country)"}
+    miss: "data.profile_data.profile_full_name == null"
+  leadocean.companies.enrich:
+    accepts: [[domain], [linkedin_url]]
+    in: {domain: body.domain, linkedin_url: body.linkedin_url}
+    out: {name: data.company_data.company_name, domain: data.company_data.company_domain,
+          website: data.company_data.company_web_address, description: data.company_data.company_description,
+          employees: data.company_data.company_employees,
+          location: "join(data.company_data.company_primary_address.city, data.company_data.company_primary_address.country)"}
+    miss: "data.company_data.company_name == null"
+  leadocean.people.search:
+    accepts: [[company_domain], [title], [q]]
+    # Each returned person uses a search record, so larger requests use another routed provider.
+    max: {limit: 10}
+    in: {company_domain: queryParams.domain, title: queryParams.title, q: queryParams.q}
+    in_expr: {queryParams.limit: limit}
+    out: {people: data, count: meta.total, next_cursor: meta.nextCursor}
+    miss: "data == []"
+  leadocean.companies.search:
+    accepts: [[domain], [name], [industry], [q]]
+    in: {domain: queryParams.domain, name: queryParams.name, industry: queryParams.industry, q: queryParams.q}
+    in_expr: {queryParams.limit: "at_most(limit, 25)"}
+    out: {companies: data, count: meta.total, next_cursor: meta.nextCursor}
+    miss: "data == []"

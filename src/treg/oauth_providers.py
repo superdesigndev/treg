@@ -1334,30 +1334,58 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
-MOBIUSENGINE_JOBS = OAuthProvider(
-    service="mobiusengine-jobs",
-    display_name="MobiusEngine Jobs Data",
+DANSUGC = OAuthProvider(
+    service="dansugc",
+    display_name="DansUGC",
     auth_kind="key",
     token_label="API key",
-    token_placeholder="your MobiusEngine Jobs Data API key",
+    token_placeholder="dsk_…",
+    # Bearer header only; DansUGC accepts no query-param key.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://dansugc.com/dashboard/api-keys?utm_source=treg",
+    setup_action_label="Get your DansUGC API key",
+    setup_steps=(
+        "Sign in to DansUGC (any plan) and open Dashboard → Developers.",
+        "Create a secret key (it starts with dsk_) and copy it; it is shown once.",
+    ),
+    setup_note="Any DansUGC account's key covers these B-roll endpoints. Licensing a clip spends "
+               "account credits; search, filters, clip details and the key check are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Advertising",
+    summary="Search and license real-human UGC reaction clips (never AI) for ads and organic posts.",
+    base_url="https://dansugc.com/api/v1",
+    docs_url="https://dansugc.com/docs",
+    probe_path="/broll/filters",  # free, read-only — a bad key gets 401 {"error":"Invalid API key"}
+)
+
+
+MOBIUSENGINE_JOBS = OAuthProvider(
+    service="mobiusengine-jobs",
+    display_name="MobiusEngine.ai Jobs Data",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your MobiusEngine.ai Jobs Data API key",
     # The key rides in x-api-key (Authorization: Bearer is accepted too); the header keeps it out of logged URLs.
     token_header="x-api-key",
     token_format="{secret}",
-    setup_url="https://jobs.arihaan.ai/pay-per-job",
-    setup_action_label="Get your MobiusEngine Jobs Data API key",
+    setup_url="https://jobs.mobiusengine.ai/login?utm_source=treg&utm_medium=connect",
+    setup_action_label="Get your MobiusEngine.ai Jobs Data API key",
     setup_steps=(
-        "Open the pay-per-job page and sign in with Google. New accounts start with a $1 credit.",
+        "Open jobs.mobiusengine.ai and sign in with Google. New accounts start with a $1 credit.",
         "Copy the API key shown on your first sign-in (it is shown once; more can be made under API keys).",
-        "Add funds under Pay per job when the credit is used: calls are charged per job from that balance.",
+        "Add funds on your account page (jobs.mobiusengine.ai/app) when the credit is used: calls are charged per job from that balance.",
     ),
     setup_note="Billed per job from a prepaid balance. The balance, usage, meta and rates routes are free.",
     auth_uri="", token_uri="",
     scopes={},
     client_id_setting="", client_secret_setting="",
     category="Jobs data",
-    summary="Search and fetch live job postings from employers' own career sites, with or without the full description.",
+    summary="Search and count open jobs from employers' own career sites, including Workday, Greenhouse, Lever, Ashby and SmartRecruiters, with an optional 300-character description preview.",
     base_url="https://jobs-api.arihaan.ai",
-    docs_url="https://jobs.arihaan.ai/docs",
+    docs_url="https://jobs.mobiusengine.ai/docs?utm_source=treg&utm_medium=docs",
     probe_path="/v1/balance",  # free; a bad or missing key gets HTTP 401 {"error": {"code": "unauthorized", ...}}
 )
 
@@ -1499,6 +1527,19 @@ SIXTYFOUR = OAuthProvider(
     summary="Research people and companies, search for prospects, and find or verify contact details.",
     base_url="https://api.sixtyfour.ai", docs_url="https://docs.sixtyfour.ai/introduction",
     probe_path="/check-balance",
+)
+
+LEADOCEAN = OAuthProvider(
+    service="leadocean", display_name="LeadOcean", auth_kind="key",
+    token_label="API key", token_placeholder="your LeadOcean API key",
+    token_header="x-api-key", token_format="{secret}",
+    setup_url="https://leadocean.io/", setup_action_label="Get your LeadOcean API key",
+    setup_steps=("Sign in to LeadOcean and copy an API key.", "Paste the key here."),
+    setup_note="Search and enrichment consume provider records. Connection verification is free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment", summary="Search and enrich people and companies, and find contact details.",
+    base_url="https://api.leadocean.io", docs_url="https://leadocean.io/docs",
+    probe_path="/v1/account",
 )
 
 BLITZAPI = OAuthProvider(
@@ -4211,7 +4252,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
@@ -4232,7 +4273,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
-        SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
+        SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
     )
 }

@@ -221,6 +221,7 @@ _SOCIAL_PAGE_ERRORS = {
     "suspended": ("Account suspended", "This account has been suspended.", False, 403),
     # A page, like `suspended`: a human is in the browser. Names no list and no domain.
     "blocked_domain": ("Sign-in refused", "This address cannot be used to sign in.", False, 403),
+    "check_expired": ("Sign-in expired", "Please start the sign-in again.", False, 400),
 }
 
 
@@ -326,8 +327,80 @@ async def auth_github_callback(
         return _social_login_failure(auth_use_cases.SocialLoginError("callback_failed"))
     except auth_use_cases.SocialLoginError as exc:
         return _social_login_failure(exc)
+    return await _after_social_proof(request, proof)
+
+
+_SOCIAL_CHECK_COOKIE = "treg_social_check"
+_SOCIAL_NAMES = {"github": "GitHub", "google": "Google"}
+
+
+async def _after_social_proof(request: Request, proof):
+    if isinstance(proof, auth_use_cases.SocialCheckPending):
+        resp = RedirectResponse("/auth/social/check", status_code=303)
+        resp.set_cookie(_SOCIAL_CHECK_COOKIE, proof.nonce, httponly=True, max_age=600,
+                        samesite="lax", secure=_is_https(request))
+        return resp
     await signup.stash_ad_click(proof.user.email, request.cookies.get("treg_ad", ""))
-    return _finish_oauth_login(request, proof.user, proof.cli_state)
+    resp = _finish_oauth_login(request, proof.user, proof.cli_state)
+    resp.delete_cookie(_SOCIAL_CHECK_COOKIE)
+    return resp
+
+
+_SOCIAL_CHECK_JS = """(function(){
+var f=document.getElementById('go'),b=document.getElementById('btn'),m=document.getElementById('msg'),busy=false,tries=0;
+function go(e){
+  if(e)e.preventDefault();
+  if(busy)return;
+  if(!window.tregCaptcha){f.submit();return;}
+  busy=true;b.disabled=true;tries++;
+  window.tregCaptcha.token('social_start').then(function(t){
+    if(t.charAt(0)==='!'&&tries<2){
+      busy=false;b.disabled=false;
+      m.textContent=t==='!pending'?'Finish the check below, then press Continue.'
+        :'The browser check did not load. Allow challenges.cloudflare.com, then press Continue.';
+      return;
+    }
+    f.captcha_token.value=t;f.submit();
+  });
+}
+f.addEventListener('submit',go);
+b.focus();
+go();
+})();"""
+
+
+@app.get("/auth/social/check")
+async def auth_social_check_page(request: Request):
+    """A provider proved an address no verified user holds yet: run the browser check, then post
+    its token to finish signing in. Without a waiting login (Back after signing in) go on to /app.
+    A check with no token is offered once more, then the sign-in finishes without credit; without
+    script the button finishes it at once."""
+    door = await auth_use_cases.social_check_door(request.cookies.get(_SOCIAL_CHECK_COOKIE, ""))
+    if door is None:
+        return RedirectResponse("/app", status_code=302)
+    name = _SOCIAL_NAMES[door]
+    html = (
+        f"{_AUTH_HEAD.replace('</style>', '.pbtn:disabled{opacity:.55;cursor:progress}</style>')}"
+        f'<body><div class="wrap"><form class="card" id="go" method="post" action="/auth/social/check">'
+        f'<div class="logo">▚ tools-registry</div><h1>Almost there</h1>'
+        f'<input type="hidden" name="captcha_token" value="">'
+        f'<p id="msg" style="margin-bottom:18px">{name} confirmed your address. One quick browser check finishes signing you in.</p>'
+        f'<button class="pbtn" id="btn" type="submit" data-captcha="social_start">Continue</button></form></div>'
+        f'<script src="/captcha.js"></script><script>{_SOCIAL_CHECK_JS}</script></body></html>'
+    )
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/auth/social/check")
+async def auth_social_check(request: Request, captcha_token: str = Form("")):
+    try:
+        proof = await auth_use_cases.finish_social_check(
+            request.cookies.get(_SOCIAL_CHECK_COOKIE, ""), captcha_token, _client_ip(request))
+    except auth_use_cases.CliPairingError:
+        return _social_login_failure(auth_use_cases.SocialLoginError("callback_failed"))
+    except auth_use_cases.SocialLoginError as exc:
+        return _social_login_failure(exc)
+    return await _after_social_proof(request, proof)
 
 
 @app.get("/auth/google")
@@ -361,8 +434,7 @@ async def auth_google_callback(
         return _social_login_failure(auth_use_cases.SocialLoginError("callback_failed"))
     except auth_use_cases.SocialLoginError as exc:
         return _social_login_failure(exc)
-    await signup.stash_ad_click(proof.user.email, request.cookies.get("treg_ad", ""))
-    return _finish_oauth_login(request, proof.user, proof.cli_state)
+    return await _after_social_proof(request, proof)
 
 
 app = APIRouter()

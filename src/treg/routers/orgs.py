@@ -65,7 +65,6 @@ from ..models import (
     Project,
     RunRecord,
     TagBudget,
-    TagSpend,
     Tool,
     User,
 )
@@ -84,11 +83,6 @@ _org_deny_rules = access_policy._org_deny_rules
 INVITE_TTL_DAYS = 7  # invite codes are one-time AND expire after this many days
 
 sys.modules.setdefault("treg.routers.providers", _providers)
-
-
-class UserIn(BaseModel):
-    email: str
-    webhook_url: str | None = None
 
 
 class OrgIn(BaseModel):
@@ -381,10 +375,7 @@ def _deny_view(r: DenyRule) -> dict:
 
 
 _SIGNUP_HTTP_ERRORS = {
-    "machine_identity": (403, "this address cannot be used to sign in"),
     "blocked_domain": (403, "this address cannot be used to sign in"),  # same words: leaks no list
-    "unsafe_webhook": (422, "webhook_url must be a public http(s) URL"),
-    "email_exists": (409, "email already registered"),
     "sandbox_user": (403, (
         "the demo sandbox can't create a real team — sign in with GitHub, Google, or email to make one"
     )),
@@ -408,24 +399,6 @@ def _signup_http_error(exc: signup_use_cases.SignupError) -> HTTPException:
 
 app = APIRouter()
 signup_router = app
-
-
-@app.post("/users")
-async def register_user(body: UserIn, request: Request, response: Response) -> dict:
-    try:
-        result = await signup_use_cases.register_user(
-            email=body.email,
-            webhook_url=body.webhook_url,
-            ad_cookie=request.cookies.get("treg_ad") or "",
-            utm_cookie=request.cookies.get("treg_utm") or "",
-            referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
-        )
-        response.headers["Cache-Control"] = "no-store"
-        return result
-    except signup_use_cases.SignupError as exc:
-        raise _signup_http_error(exc) from exc
-    except teams.OwnedTeamLimitReached as exc:
-        raise _owned_team_limit_error() from exc
 
 
 @app.post("/orgs")
@@ -1438,8 +1411,7 @@ async def list_tag_keys(
     friends from the dashboard even though the API served them fine.
     """
     _require_admin_of(org_id, caller)
-    seen = (await db.execute(
-        select(TagSpend.dim).where(TagSpend.org_id == org_id).distinct())).scalars().all()
+    seen = await ledger.tag_dims(db, org_id)
     declared = _budget_dims_of(caller.org)
     return {"seen": sorted(set(seen)), "budgetable": declared,
             "primary": _primary_dim_of(caller)}
