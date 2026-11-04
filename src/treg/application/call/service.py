@@ -1349,7 +1349,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # Secret reads above opened the dependency session. Release its pool slot before the
             # application opens the short transaction that owns the reservation.
             await db.commit()
-            await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref)
+            await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref, allow_holdless=True)
             request.context.finalization = FinalizationState.OPEN
         except asyncio.CancelledError:
             await _finish_cancelled_call(request, mk, call_ref)

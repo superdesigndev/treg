@@ -1285,6 +1285,16 @@ async def _platform_settle(
     turn a served call into a 500. A hold that fails to close is not lost money either — the reaper
     releases it, which errs in the org's favour. Runs on its OWN session because the request's session
     may be mid-rollback from the very error we are releasing for."""
+    if mk.metered and mk.holdless:
+        decision = decide_settle(mk, status_code, body, headers=headers, reason=reason,
+                                 observed_override=observed_override, cached_repeat=cached_repeat)
+        if decision.charged_micro:
+            logging.getLogger("treg.ledger").error(
+                "holdless call on %s computed a charge of %s micro; nothing was held, treg absorbs it",
+                mk.endpoint_id, decision.charged_micro)
+        if finalized is not None:
+            finalized()
+        return 0, decision.observed_micro
     if not mk.metered or not mk.call_id:
         return 0, None
     decision = decide_settle(mk, status_code, body, headers=headers, reason=reason,
@@ -1495,11 +1505,18 @@ async def _finish_cancelled_call(
             except (Exception, asyncio.CancelledError):
                 logging.getLogger("treg.proxy").error(
                     "upstream close failed for cancelled call %s", call_ref, exc_info=True)
+        # A holdless parent never had a hold; only a started overflow child may have one.
+        hold_ids = ([] if mk is None or not mk.metered else
+                    [hold_id for hold_id, possible in (
+                        (call_ref, not mk.holdless),
+                        (f"{call_ref}:overflow", not mk.holdless or mk.overflow_hold_possible),
+                    ) if possible])
         if mk is not None and mk.metered:
+            mk.call_id = None
+        if hold_ids:
             # `ledger.reserve` may have committed without returning, so `mk.call_id` is not an
             # authority here. The pre-reserve call_ref is the hold id in either outcome, and release
             # conditionally claims it: committed means refund, rolled back means a safe no-op.
-            mk.call_id = None
             try:
                 # A parent reserve already stored mk.payer_org_id. Overflow cancel passes
                 # the authenticated caller instead, including skip-direct, where the parent
@@ -1522,7 +1539,7 @@ async def _finish_cancelled_call(
                                     if charge_hold and hold_id == call_ref else "call_cancelled"),
                             meta={"provider": mk.provider, "cost_type": mk.cost_type,
                                   "status_code": None})
-                        for hold_id in (call_ref, f"{call_ref}:overflow")
+                        for hold_id in hold_ids
                     ])
                     await cleanup_db.commit()
             except (Exception, asyncio.CancelledError):
