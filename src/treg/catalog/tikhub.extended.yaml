@@ -16114,7 +16114,7 @@ endpoints:
       post_id:
         type: string
         required: true
-        note: 'Reddit post FULLNAME — the t3_ prefix is required. Build it from the URL: reddit.com/r/.../comments/1v7z1m7/ → t3_1v7z1m7. A bare id answers HTTP 200 with data.postInfoById null and STILL BILLS (see miss).'
+        note: 'Reddit post FULLNAME - the t3_ prefix is required. Build it from the URL: reddit.com/r/.../comments/1v7z1m7/ → t3_1v7z1m7. An unknown or bare (un-prefixed) id still answers HTTP 200 with data.postInfoById null, and TikHub bills the call anyway: fix the id, do not retry.'
         example: t3_1ojnvca
       sort_type:
         type: string
