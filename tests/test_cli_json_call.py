@@ -85,10 +85,11 @@ def _refused(kind, **headers):
 @pytest.mark.parametrize("response, code", [
     (_refused("insufficient_balance"), 255),
     (_refused("route_max_cost"), 1),  # refuses this call only
+    (_refused("tag_blocked"), 1),  # the next item may carry another tag
     (_refused("insufficient_balance", **{"X-Treg-Idempotent-Replay": "1"}), 1),  # a stored answer
     (httpx.Response(402, json={"detail": {"error": "insufficient_balance"}}), 1),  # the provider's
 ])
-def test_only_a_refusal_every_later_call_meets_exits_255(monkeypatch, capsys, response, code):
+def test_only_a_refusal_for_the_teams_money_exits_255(monkeypatch, capsys, response, code):
     _serve(monkeypatch, response)
     for argv in (["call", "treg.people.search"], ["--json", "call", "treg.people.search"]):
         with pytest.raises(SystemExit) as exc:

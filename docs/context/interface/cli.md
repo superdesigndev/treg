@@ -63,7 +63,7 @@ is self-teaching. This fragment holds only what the code and help cannot say.
   `{"result": <body>, "_treg": {...}}` (`_call_envelope`), and suppresses the charge, hint and
   diagnostic stderr lines: a script that merged the streams once discarded every result it had paid
   for. `--json` and `--org` are stripped in `main` and last for one `main()` call.
-- **`call` exits 255**, not 1, on a treg refusal every later call meets too
+- **`call` exits 255**, not 1, on a treg refusal for the whole team's money
   (`capacity_notice.STOP_REFUSALS`, never a replay): POSIX `xargs` stops on 255, so an agent's batch
   ends instead of turning the rest of its list into refusals.
 - **Option hints.** An unknown `treg call` option agents commonly guess (`--path`, `--body`, `-o`)

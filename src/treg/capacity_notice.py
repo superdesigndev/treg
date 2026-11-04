@@ -17,19 +17,18 @@ def is_balance_refusal(headers, body) -> bool:
             and isinstance(detail, dict) and detail.get("error") == "insufficient_balance")
 
 
-# treg's own refusals that every later call from this caller meets too, with what lifts each one.
+# treg's refusals for the whole team's money, which no other item of a batch escapes until a person
+# acts, with what that person does. A tag's limits are left out: the next item may carry another tag.
 STOP_REFUSALS = {
-    "insufficient_balance": "until the team's balance is topped up (`treg topup`)",
-    "platform_daily_cap_reached": "until the team's daily limit resets at 00:00 UTC",
-    "tag_spend_cap_reached": "until this tag's spend limit resets or an admin raises it",
-    "tag_call_cap_reached": "until this tag's daily call limit resets or an admin raises it",
-    "tag_blocked": "until an admin unblocks this tag",
+    "insufficient_balance": "the team's balance is below this call's cost; top it up (`treg topup`)",
+    "platform_daily_cap_reached": "the team reached its daily limit for calls on treg's keys; "
+                                  "it resets at 00:00 UTC",
 }
 
 
 def stop_refusal(headers, body) -> str | None:
-    """The kind of a treg refusal that every later call meets too (`STOP_REFUSALS`), else None.
-    A replay marks every stored error `X-Treg-Error`, so it never counts."""
+    """The kind of a treg refusal for the team's money (`STOP_REFUSALS`), else None. A replay marks
+    every stored error `X-Treg-Error`, so it never counts."""
     detail = body.get("detail") if isinstance(body, dict) else None
     if not headers.get("X-Treg-Error") or headers.get("X-Treg-Idempotent-Replay") \
             or not isinstance(detail, dict):

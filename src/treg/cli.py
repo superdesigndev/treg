@@ -2722,15 +2722,15 @@ def _stop_kind(response: httpx.Response) -> str | None:
 
 
 def _failure_exit(response: httpx.Response) -> int:
-    """1 for a failed call, STOP_EXIT when treg refused it in a way every later call meets too.
+    """1 for a failed call, STOP_EXIT when treg refused it for the team's money.
     Outside --json it also says so on stderr, after the failure lines."""
     kind = _stop_kind(response)
     if kind is None:
         return 1
     _note(error=kind)
     if not _JSON_OVERRIDE:
-        print(f"treg: every call will be refused the same way {STOP_REFUSALS[kind]}; stop the "
-              f"batch instead of moving on to the next item (exit {STOP_EXIT})", file=sys.stderr)
+        print(f"treg: {STOP_REFUSALS[kind]}. Stop the batch and tell the person rather than moving "
+              f"on to the next item (exit {STOP_EXIT})", file=sys.stderr)
     return STOP_EXIT
 
 
