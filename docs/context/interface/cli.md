@@ -75,7 +75,9 @@ is self-teaching. This fragment holds only what the code and help cannot say.
   before the body, so an agent's output cut keeps it; the line names no JSON path, because a guessed
   one can be wrong.
 - **Hints.** `X-Treg-Hint: review|feedback` (older `X-Treg-Review: requested`) prints one stderr line
-  per kind. `X-Treg-Routed-Tool` on a provider endpoint's success prints a pointer to the routed
+  per kind. The feedback line asks for expected versus observed behavior, counts/timings and
+  checks of the caller's inputs/parsing; feedback help shares `FEEDBACK_DESCRIPTION` with MCP.
+  `X-Treg-Routed-Tool` on a provider endpoint's success prints a pointer to the routed
   `treg.<capability>` tool (`_treg.routed_tool` under `--json`).
 - **Headers sent.** `_client` sends `X-Treg-Client-Version` (recorded as `client_version` on
   `tool_called`, so output changes compare across releases) and, with telemetry on, `X-Treg-Session`

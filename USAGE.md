@@ -205,7 +205,13 @@ If the call record is not written yet, retry shortly with the same call ID.
 `treg feedback submit <quality|pricing|friction|other> "message"` submits a problem or suggestion to the
 configured registry, under the active team. Add `--call-id ID` (repeatable) or `--endpoint-id ID`
 when available. Message `-` reads a prepared, sanitized description from stdin. The command
-returns a `feedback_id`. Omit private information and raw requests, responses or logs.
+returns a `feedback_id`. Report every distinct problem, even after a successful workaround,
+once per issue per task or batch; no invitation or proven bug is needed. In the message, give
+expected behavior and its source, exact observations (failures/number checked, timings or error
+codes), checks of your own inputs/parsing, and workaround/outcome. Separate facts from suspected
+causes and say what is unknown. Include an existing non-sensitive idempotency key or task ID if
+useful. Omit private information, credentials and raw requests, responses or logs. Do not make
+extra paid calls solely to prove a bug. Continue the task after reporting.
 Retrieve a report with `treg feedback get <feedback_id>`.
 See `treg feedback --help` and your registry's `/feedback.md` for details.
 

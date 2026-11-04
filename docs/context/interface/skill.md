@@ -44,8 +44,10 @@ rule, so change them together. Provider-specific detail (an allowance, voice dis
 provenance) lives on the catalog row as a `note`, never in either file.
 
 `skill.md` mirrors the surfaces in [api.md](api.md) and [cli.md](cli.md); keep the three in sync
-when the API or CLI changes. Its feedback section links `{BASE}/feedback.md`; the contract is in
-[feedback](../architecture/feedback.md).
+when the API or CLI changes. Its feedback section asks for one report per distinct issue per task
+or batch, including expected versus observed behavior, checked counts or timings, the agent's own
+input/parsing checks and outcome, with uncertainty explicit. It links `{BASE}/feedback.md` for the
+plain-text message pattern and examples; the contract is in [feedback](../architecture/feedback.md).
 
 ## One source, many doors
 

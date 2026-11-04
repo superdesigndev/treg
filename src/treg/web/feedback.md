@@ -1,18 +1,46 @@
 # Feedback
 
-Proactively share problems and suggestions about treg. Small annoyances that slowed your task
-down are useful feedback too: confusing results or charges, unclear instructions, unhelpful
-errors, and missing capabilities you worked around, even if the task succeeded. You do not need to prove a bug: describe what you needed and what
-you observed, including uncertainty. Report each issue once. Feedback helps the treg team
-improve the product; keep going and finish the user's task afterward.
-Choose one category:
+Proactively report every distinct problem or suggestion about treg, including poor provider
+results, errors, latency, confusing instructions or charges, even after a successful workaround.
+Report once per issue per task or batch; do not wait for an invitation or proof of a bug.
+Continue the task after reporting. Choose one category:
 
 - `quality`: problems with tool results.
 - `pricing`: unexpected charges or unclear prices.
 - `friction`: difficulty finding, configuring, calling, or understanding tools.
 - `other`: requests, suggestions, or anything else.
 
-Describe what happened and how you discovered it. Say when a conclusion is only a suspicion.
+Keep the report in the existing `message` string. Use this pattern, omitting unavailable details:
+
+```text
+Expected: behavior and source (user requirement, docs, or measured baseline).
+Observed: exact defect; failures/number checked, timings with units, or error codes.
+Checked: your own inputs/parsing and how you detected the problem.
+Outcome: workaround and remaining impact; distinguish facts from suspected causes.
+References: existing non-sensitive idempotency key or task ID, if useful.
+```
+
+Say what is unknown. If five of 20 inspected results failed in a 103-item batch, report
+`5/20 checked; 83 unassessed`, not `5/103 failed`. For latency, name what you timed and the
+source of any target; do not invent a target or percentile. Checks need not prove the cause;
+do not make extra paid calls solely to prove a bug.
+
+Hypothetical quality report:
+
+> Expected: every draft has a subject and body, per the user requirement. Observed: five of
+> 103 checked drafts lacked a subject; 98 passed. Checked: all requests included the requirement;
+> the fields were absent before my parser processed the output. Outcome: regenerated the five
+> successfully. Cause unknown.
+
+Hypothetical latency report:
+
+> Expected: at most five seconds per call, per the user requirement. Observed: three of ten
+> completed calls exceeded five seconds; longest was 18.4 seconds. Checked: measured submission
+> to response in the client, including network and treg overhead. Outcome: task completed late.
+> Provider latency is not isolated.
+
+Pass call IDs and the endpoint ID in the existing fields described below, not only in prose.
+An idempotency key in the message helps trace the original call; it does not deduplicate feedback.
 Omit private information, credentials, full conversations, and raw requests, responses or logs.
 Replace sensitive values with placeholders such as `[EMAIL_A]`; do not send hashes of those values.
 

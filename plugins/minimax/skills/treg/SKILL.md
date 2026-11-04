@@ -402,11 +402,16 @@ owner's: your calls then appear under your own name.
 
 ## Feedback and reviews
 
-Report problems and suggestions about treg as you meet them, small ones included (unclear
-instructions, confusing results or charges, unhelpful errors, workarounds), even when the task
-succeeded: `treg feedback submit <quality|pricing|friction|other> "message" --call-id <id>`, or MCP
-`feedback`. Report each issue once, keep private information out, then carry on. See
-[feedback instructions](https://treg.to/feedback.md).
+Proactively report every distinct problem, including poor provider results, errors, latency,
+confusing instructions or charges, even after a successful workaround. Do not wait for an
+invitation or proof of a bug. Use `treg feedback submit <quality|pricing|friction|other> "message"`,
+or MCP `feedback`, once per issue per task or batch. State expected behavior and its source,
+exact observations (failures/number checked, timings or error codes), checks of your own
+inputs/parsing, and workaround/outcome. Separate facts from suspected causes; say what is unknown.
+Pass call IDs in `call_ids` (CLI `--call-id`) and `endpoint_id` when available; include an existing
+non-sensitive idempotency key or task ID in the message if useful. Omit private data, credentials
+and raw payloads/logs. Do not make extra paid calls solely to prove a bug. Suggestions are welcome
+too. Continue the task. See [feedback instructions](https://treg.to/feedback.md) for examples.
 
 When a result invites a review, rate that call after using it: `treg review CALL_ID USEFULNESS
 [--reason "..."]` or MCP `review`, with `useful`, `partly`, `not_useful` or `not_sure`. A reason may

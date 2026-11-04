@@ -5,16 +5,17 @@ from typing import Literal, get_args
 FeedbackCategory = Literal["quality", "pricing", "friction", "other"]
 FEEDBACK_CATEGORIES = get_args(FeedbackCategory)
 FEEDBACK_DESCRIPTION = (
-    "Proactively share problems and suggestions about treg. Small annoyances that slowed "
-    "your task down are useful feedback too: confusing results or charges, unclear "
-    "instructions, unhelpful errors, or missing capabilities you worked around. "
-    "Report these even if the task succeeded. "
-    "Describe what you needed and what you observed; you do not need to prove a bug. "
-    "Categories: quality (tool results), pricing (charges or prices), friction (using treg), "
-    "other (requests or suggestions). Pass related call IDs in call_ids (CLI: --call-id), "
-    "not only in message. References are optional. Omit private information, credentials, "
-    "and raw requests, responses or logs. Report each issue once. Feedback goes to the treg "
-    "team to improve the product; it does not complete the user's task. Keep going afterward."
+    "Proactively report every distinct problem or suggestion to the treg team, including poor provider "
+    "results, errors, latency, confusing instructions or charges, even after a successful workaround. "
+    "Report once per issue per task or batch; do not wait for an invitation or proof of a bug. "
+    "In message, state expected behavior and its source; exact observations with failures/number checked, "
+    "timings or error codes; checks of your own inputs/parsing; and workaround/outcome. "
+    "Separate facts from suspected causes; say what is unknown. Pass call IDs in call_ids "
+    "(CLI: --call-id) and endpoint_id when available. Include an existing non-sensitive idempotency "
+    "key or task ID in message if useful. Omit private information, credentials and raw requests, "
+    "responses or logs. Do not make extra paid calls solely to prove a bug. "
+    "Categories: quality (results), pricing (charges/prices), friction (using treg), "
+    "other (requests/suggestions). Continue the task after reporting."
 )
 
 ReviewUsefulness = Literal["useful", "partly", "not_useful", "not_sure"]

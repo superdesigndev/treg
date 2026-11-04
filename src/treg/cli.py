@@ -441,7 +441,8 @@ def _show_hint_line(resp: httpx.Response) -> None:
               '<useful|partly|not_useful|not_sure> [--reason "..."]; '
               'omit private data, then keep going with the task.', file=sys.stderr)
     elif kind == "feedback":
-        print('treg: anything confusing or wrong about this call, even if it worked? '
+        print('treg: report any problem, even after a workaround; include expected vs observed, '
+              'counts/timings and checks of your inputs/parsing: '
               'treg feedback submit <quality|pricing|friction|other> "what you saw" '
               f'--call-id {call_id}; omit private data, then keep going with the task.',
               file=sys.stderr)
@@ -7462,7 +7463,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     fb = mk(sub, "feedback", "Submit or retrieve private team feedback.",
             'treg feedback submit friction "The pagination example is unclear."',
-            'treg feedback submit quality "The result is outdated." --call-id CALL_ID --endpoint-id PROVIDER.ENDPOINT',
+            'treg feedback submit quality "Expected current data; 3/10 checked results predate the requested window." --call-id CALL_ID --endpoint-id PROVIDER.ENDPOINT',
             'treg feedback submit other - < sanitized-feedback.txt',
             'treg feedback get 123')
     fb.description = textwrap.fill(FEEDBACK_DESCRIPTION, width=88)
@@ -7470,8 +7471,9 @@ def build_parser() -> argparse.ArgumentParser:
         "\n\nSubmission fields:\n"
         "  category       Required: quality (results), pricing (charges/prices),\n"
         "                 friction (using treg), other (requests/suggestions).\n"
-        "  message        Required: what you needed and what happened, 1-2000 characters.\n"
-        "                 State uncertainty; use - to read sanitized text from stdin.\n"
+        "  message        Required: expected/source, observed/counts or timings, own checks,\n"
+        "                 workaround/outcome; distinguish facts from suspected causes.\n"
+        "                 1-2000 characters; - reads sanitized text from stdin.\n"
         "  --call-id ID   Optional: the treg call ID returned with the relevant call.\n"
         "                 Repeat for multiple calls (up to 100); sent as call_ids.\n"
         "                 IDs written only in message are not linked automatically.\n"
@@ -7487,13 +7489,13 @@ def build_parser() -> argparse.ArgumentParser:
     feedback_commands = fb.add_subparsers(dest="sub", metavar="<subcommand>")
     submit = mk(feedback_commands, "submit", "Submit a problem or suggestion.",
                 'treg feedback submit friction "The pagination example is unclear."',
-                'treg feedback submit quality "The returned data is outdated." --call-id CALL_ID',
+                'treg feedback submit quality "Expected current data; 3/10 checked results predate the requested window." --call-id CALL_ID',
                 'treg feedback submit other - < sanitized-feedback.txt')
     submit.description = textwrap.fill(FEEDBACK_DESCRIPTION, width=88)
     submit.add_argument("category", choices=FEEDBACK_CATEGORIES,
                         help="quality: results; pricing: charges/prices; friction: using treg; other: requests/suggestions")
     submit.add_argument("message",
-                        help="what you needed and observed, 1-2000 characters; state uncertainty; - reads stdin")
+                        help="expected/source, observed/counts or timings, own checks, outcome; 1-2000 characters; - reads stdin")
     submit.add_argument("--call-id", action="append",
                         help="returned treg call ID; repeat up to 100; sent as call_ids, not extracted from message")
     submit.add_argument("--endpoint-id", help="public catalog endpoint ID, if known")

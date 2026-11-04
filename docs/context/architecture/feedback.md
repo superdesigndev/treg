@@ -36,9 +36,14 @@ related:
 
 `FeedbackIn` takes `category` (`FeedbackCategory`), `message`, optional `call_ids` and optional
 public `endpoint_id`, and rejects extra fields. Free text is not sanitized: the privacy guidance asks
-callers to replace sensitive values and omit raw payloads. Guidance invites reports of small
-friction even after a workaround, asks for references in `call_ids` (CLI `--call-id`), and tells the
-agent to continue its task after reporting once.
+callers to replace sensitive values and omit raw payloads. Guidance asks agents to report every
+distinct issue once per task or batch, even after a workaround, without waiting for an invitation
+or proof. The message stays a string: expected behavior and source, exact observations with
+checked denominators or timings, the agent's own input/parsing checks, and workaround/outcome.
+Facts and suspected causes stay separate; unavailable details remain unknown. Call references go
+in `call_ids` (CLI `--call-id`), with `endpoint_id` when available; an existing non-sensitive
+idempotency key or task ID can go in the message for tracing, not feedback deduplication.
+Agents must not make extra paid calls solely to prove a bug, and continue their task after reporting.
 
 `POST /feedback` (`require_member`, public-demo write restriction applies) commits the report and the
 per-team rate-limit hit in one transaction before acknowledging 201. It spends no balance, calls no

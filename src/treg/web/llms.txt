@@ -117,7 +117,10 @@ Publishing a hub tool adds `hub_create`, `hub_update` and `hub_mine`.
   on the team calls it without holding it.
 - When an answer or an error names a next step (a hint, `_treg.advice`, an error body), follow it.
 - If a result invites a review, rate that call with `treg review` or MCP `review`. Report anything
-  confusing, wrong or slow with `treg feedback submit` or MCP `feedback`, then carry on.
+  confusing, wrong or slow with `treg feedback submit` or MCP `feedback`, even after a workaround;
+  no invitation or proven bug is needed. Once per issue per task/batch, give expected vs observed,
+  counts checked or timings, your own input/parsing checks and outcome; separate facts from
+  suspected causes. Attach call IDs, omit private data, then carry on. See `{BASE}/feedback.md`.
 
 **Building treg into a product** that bills its own users is allowed and encouraged, with no special
 agreement: tag each call with your customer ids from your backend, cap and invoice per customer from

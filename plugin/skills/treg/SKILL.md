@@ -38,5 +38,12 @@ ask the human for - treg adds the provider credential on its server.
 - **Refused for funds:** check `balance` and tell the human to add funds at https://treg.to.
 - **A provider error:** the response is the provider's own answer, relayed unchanged; read it before
   retrying, and try another provider from `catalog_get` if it keeps failing.
-- `feedback` and `review` text goes to the treg team; keep it about the tool and leave out private
-  data, credentials and raw responses.
+- Proactively report every distinct problem through `feedback`, even after a successful workaround;
+  do not wait for an invitation or proof. Report once per issue per task/batch. In `message`, give
+  expected behavior and its source, exact observations (failures/number checked, timings or error
+  codes), checks of your own inputs/parsing, and workaround/outcome. Separate facts from suspected
+  causes; say what is unknown. Pass call IDs in `call_ids` and `endpoint_id` when available; include
+  an existing non-sensitive idempotency key or task ID in the message if useful. Do not make extra
+  paid calls solely to prove a bug. Continue the task. See https://treg.to/feedback.md for examples.
+- `feedback` and `review` text goes to the treg team; omit private data, credentials and raw
+  requests, responses or logs.

@@ -310,7 +310,9 @@ Directory Sync plan removes a deactivated employee's team access. See
 ## Going deeper
 
 - **Feedback:** `treg feedback submit friction "The pagination example is unclear."`
-  Share problems or suggestions without private information. See [feedback instructions](https://treg.to/feedback.md).
+  Report problems even after a workaround: expected vs observed, counts checked or timings,
+  your own input/parsing checks, and outcome. Attach call IDs, distinguish suspected causes,
+  and omit private information. See [feedback instructions](https://treg.to/feedback.md).
 - **Review:** `treg review CALL_ID useful`
   Rate an invited catalog call after using its result; `not_sure` is fine. Omit private data and continue the task.
 
