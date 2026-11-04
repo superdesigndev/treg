@@ -114,8 +114,10 @@ columns (`column_source`):
 
 - **contract**: a routed job. Columns follow the capability contract's `output` order, then
   `served_by`; a miss has no row. A contract with a required `list` field is one row per item; the
-  items are the provider's own objects, so `LIST_MAPS` (data) maps common names to fixed columns
-  first and every other field follows under the provider's own name.
+  items are the contract's row shape (people.search `row`), or the provider's own objects where an
+  adapter has no row map, so `LIST_MAPS` (data) maps common names to fixed columns first and every
+  other field follows under its own name. The free preview runs a child's saved example rows
+  through the same row map, so its columns match a live answer.
 - **hub**: an id not in the catalog that `hub.tool_for` resolves for this caller, read after the
   answer is read (non-negotiable 3). Columns are the manifest's output fields, one row.
 - **generated**: anything else. `_find_tables` collects every list of objects (looking inside

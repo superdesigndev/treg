@@ -157,7 +157,8 @@ editing the body re-runs the job. The report goes to the job summary.
 When a pull request changes loader, schema or validator source (anything under
 `src/treg/domain/catalog/`, `scripts/catalog_validate.py`, `scripts/catalog_dump.py` or the Replay
 workflow), the same job also dumps the base checkout's catalog (`scripts/catalog_dump.py`: every
-field of the loaded `Catalog` and each row's cost view, sorted keys) with the base's code and with
+field of the loaded `Catalog` and each row's cost view, sorted keys; a dataclass field at its
+default is left out, so adding a field nobody sets yet is not a difference) with the base's code and with
 the merge result's code (`--catalog`) and fails on any byte difference, naming the first differing
 path ([catalog-schema](catalog-schema.md)). A pull request that also rewrites rows is held to that
 on its code alone; the replay judges the rows. It needs no body declaration, and a pure catalog
