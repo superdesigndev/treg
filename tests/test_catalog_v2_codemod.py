@@ -73,19 +73,32 @@ def test_a_counted_row_rewrites_its_hold_rounding_and_report():
     assert change.replaced == ("cost",) and _v2(change)
 
 
-def test_a_table_row_with_expect_and_an_adapter_miss_freezes_its_outcome():
-    change = codemod.rewrite({"id": "demo.x", "expect": {"json_path": "base.code", "equals": 0}, "cost": {
+def _table_row(**keys) -> dict:
+    return {"id": "demo.x", **keys, "cost": {
         "type": "per_success", "currency": "USD", "settle": "table",
         "table": [{"when": {"body.model": "m1", "queryParams.size": 2}, "value": 0.28}],
-        "fallback": {"value": 0.5, "note": "ceiling"}, **PROVENANCE}}, provider="demo",
-        adapter={"miss": "items == null", "verified": True}, check_branches=False)
+        "fallback": {"value": 0.5, "note": "ceiling"}, **PROVENANCE}}
+
+
+def test_a_table_row_with_an_adapter_miss_freezes_its_outcome():
+    change = codemod.rewrite(_table_row(), provider="demo", adapter={"miss": "items == null", "verified": True},
+                             check_branches=False)
     assert change.keys["price"]["table"] == [{"when": [
         {"path": "body.model", "op": "equals", "value": "m1"},
         {"path": "query.size", "op": "equals", "value": 2}], "value": "0.28"}]
-    assert change.keys["expect"] == {"path": "response.base.code", "op": "equals", "value": 0}
     assert change.keys["miss"] == {"when": {"path": "response.items", "op": "absent"}}
     assert change.keys["error"] == {"when": codemod.ENVELOPE} and change.keys["bill"] == {"error": "charged"}
-    assert change.adapter_miss and change.replaced == ("cost", "expect") and _v2(change)
+    assert change.adapter_miss and change.replaced == ("cost",) and _v2(change)
+
+
+def test_a_per_success_row_whose_failed_expect_is_free_and_envelope_charged_is_refused():
+    with pytest.raises(codemod.Refused, match="a failed `expect` is free and a 2xx error envelope is charged"):
+        codemod.rewrite(_table_row(expect={"json_path": "base.code", "equals": 0}), provider="demo",
+                        adapter={"miss": "items == null", "verified": True}, check_branches=False)
+    change = codemod.rewrite(_table_row(expect={"json_path": "base.code", "equals": 0}), provider="demo",
+                             adapter={"miss": "coalesce(items, []) == []", "verified": True}, check_branches=False)
+    assert "bill" not in change.keys and change.replaced == ("cost", "expect")
+    assert any("carries results is charged today" in w for w in change.warnings)
 
 
 @pytest.mark.parametrize("spec", [{"type": "string"}, {"type": "array[string]"}])
@@ -144,3 +157,30 @@ def test_applying_moves_the_adapter_miss_out_of_adapters_yaml():
     text = "adapters:\n  demo.x:\n    out: {a: b}\n    miss: \"a == []\"\n  demo.y:\n    miss: \"b == []\"\n"
     assert codemod.drop_adapter_misses(text, {"demo.x"}) == \
         "adapters:\n  demo.x:\n    out: {a: b}\n  demo.y:\n    miss: \"b == []\"\n"
+
+
+ANCHORED = """provider: demo
+endpoints:
+  - id: demo.x
+    cost: &one {type: per_success, value: 1, source: docs, source_url: 'https://example.com', checked: '2026-10-01', confidence: documented}
+  - id: demo.y
+    cost: *one
+  - id: demo.z
+    expect: &ok {json_path: ok, equals: true}
+    cost: {type: free}
+"""
+
+
+def test_a_row_whose_replaced_key_defines_an_anchor_another_row_aliases_is_not_rewritten():
+    rows = yaml.safe_load(ANCHORED)["endpoints"]
+    changes = {row["id"]: codemod.rewrite(row, provider="demo", check_branches=False) for row in rows}
+    assert codemod.anchored(ANCHORED, changes) == {"demo.x": "cost"}
+    del changes["demo.x"]
+    text, _ = codemod.apply_rows(ANCHORED, changes)
+    assert [row.get("price") for row in yaml.safe_load(text)["endpoints"]] == [None, {"value": "1"}, {"value": "0"}]
+
+
+def test_a_rewrite_whose_kept_keys_do_not_parse_as_a_v2_row_is_refused():
+    with pytest.raises(codemod.Refused, match="the rewritten row does not parse: async"):
+        codemod.rewrite({"id": "demo.x", "async": False, "cost": {"type": "free"}}, provider="demo",
+                        check_branches=False)

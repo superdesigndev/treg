@@ -84,11 +84,11 @@ defaults and type coercion. A usage meter is one value: no `*` and no root filte
 miss when a `miss` rule lists its status and its `when` or `plugin` holds, else an error; a 2xx is
 an error when `expect` does not hold or `error` holds, a miss when it is a 204 or a status-less
 `miss` rule holds, else a hit. Billing reads it in the settlement order; `results.classify` (stats,
-cache admission) reads it for a row that declares a 2xx miss, in today's result reasons; routing's
-`child_outcome` reads it too, keeping its own checks (declared miss, `not_found`, non-JSON body,
-empty required output) on top: a 2xx it judges an error is a miss with reason `provider_error`, a
-204 a miss with `adapter_miss`. A v2 row's adapter only maps fields: `Adapter.is_miss`
-reads the row's rule, so every reader of an adapter's miss reads the one declaration.
+cache admission) reads it for a row that declares a 2xx miss beside a verified adapter, in today's
+result reasons; routing's `child_outcome` reads it too, keeping its own checks (declared miss,
+`not_found`, non-JSON body, empty required output) on top: a 2xx it judges an error is a miss with
+reason `provider_error`, a 204 a miss with `adapter_miss`. A v2 row's adapter only maps fields:
+`Adapter.is_miss` reads the row's rule, so every reader of an adapter's miss reads the one declaration.
 
 ## Rewriting rows: `scripts/catalog_v2.py`
 
@@ -97,8 +97,16 @@ behavior, not a wished one: a per_result or per_call row bills misses and errors
 row gets today's error envelope as an `error` rule, an adapter's `miss` moves to the row. Dry-run
 (the default) prints each rewrite, warns where it reads an answer shape differently, and lists the
 rows it cannot rewrite with the reason (a provider decided in Python, a single-provider cost key, a
-guessed hold); every rewrite it prints parses. `--apply` edits the files in place and keeps every
+guessed hold, a per_success row whose failed `expect` is free while its error envelope is charged,
+which one `bill.error` cannot say, a replaced key that defines a YAML anchor another row aliases);
+every rewritten row it prints parses whole. `--apply` edits the files in place and keeps every
 comment outside the replaced keys. The fixture replay is the proof that a rewrite changes nothing.
+
+The validator checks a v2 row's cost beyond its model: `price.currency`, `settle.reported.unit`
+and `settle.usage.unit` resolve to a rate in `fx.yaml`, usage `terms` are in USD, and the request
+paths of `reserve.rows.param`, `reserve.entities.from` and `price.table` (`when` and `times`) name
+declared input fields; an equality-only table also meets today's table checks (required or
+defaulted fields, enum and range, a bounded `times`, a fallback at least every row's maximum).
 
 ## Provider defaults and the one merge rule
 
