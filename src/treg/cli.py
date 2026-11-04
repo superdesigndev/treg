@@ -636,7 +636,7 @@ def cmd_login(args, cfg) -> None:
     blocking = bool(getattr(args, "wait", False)) or sys.stdout.isatty()
     pending = _load_pending_login()
     if pending and pending["base_url"] == cfg["base_url"]:
-        status = _claim_pending_login(cfg, pending, wait=False)
+        status = _claim_pending_login(cfg, pending, wait_until=0)
         if status == "logged_in":
             _maybe_offer_onboarding(cfg)
             return
@@ -733,18 +733,28 @@ def _open_login_page(url: str) -> None:
 def _show_pending_login(cfg: dict, pending: dict, *, blocking: bool) -> None:
     if blocking:
         _print_login_link(pending["url"], pending["code"])
-        if _claim_pending_login(cfg, pending, wait=True) != "logged_in":
-            sys.exit("That sign-in link expired before it was used. Run `treg login` again.")
+        wait_until = pending["expires_at"]
+    else:
+        print(f"Sign in to treg at:\n  {pending['url']}\n\n"
+              f"The sign-in page shows this code; check it matches:  {pending['code']}\n\n"
+              f"Waiting up to {AGENT_LOGIN_GRACE_SECONDS} seconds for the sign-in…", flush=True)
+        wait_until = time.time() + AGENT_LOGIN_GRACE_SECONDS
+    status = _claim_pending_login(cfg, pending, wait_until=wait_until)
+    if status == "logged_in":
         _maybe_offer_onboarding(cfg)
         return
+    if blocking or status == "expired":
+        sys.exit("That sign-in link expired before it was used. Run `treg login` again.")
     minutes = max(1, round((pending["expires_at"] - time.time()) / 60))
-    print(f"Sign in to treg at:\n  {pending['url']}\n\n"
-          f"The sign-in page shows this code; check it matches:  {pending['code']}\n\n"
-          f"Give this link to the person you are working for. When they have signed in, run "
+    print(f"\nGive this link to the person you are working for. When they have signed in, run "
           f"`treg login` again to finish, or `treg login --wait` to block until they do. "
-          f"The link expires in {minutes} minute{'' if minutes == 1 else 's'}.",
-          flush=True)
+          f"The link expires in {minutes} minute{'' if minutes == 1 else 's'}.", flush=True)
     _note(login="pending")
+    raise SystemExit(LOGIN_PENDING_EXIT)
+
+
+AGENT_LOGIN_GRACE_SECONDS = 20
+LOGIN_PENDING_EXIT = 3
 
 
 def _poll_login(base: str, login_id: str, *, verifier: str, timeout: float) -> dict:
@@ -776,7 +786,8 @@ def _adopt_login(cfg: dict, d: dict, *, forget_ad_link: bool = False, pick_org: 
     print(f"✓ Logged in as {cfg['email']}. Active org: {cfg.get('active_org')}", file=out or sys.stdout)
 
 
-def _claim_pending_login(cfg: dict, pending: dict, *, wait: bool, timeout: float = 10.0, out=None) -> str:
+def _claim_pending_login(cfg: dict, pending: dict, *, wait_until: float, timeout: float = 10.0,
+                         out=None) -> str:
     """Move the pending login to `logged_in` or `expired`, or report it still `pending`."""
     hard_cap = pending["expires_at"] + pending["expires_in"]
     token_before = cfg.get("token")
@@ -787,7 +798,7 @@ def _claim_pending_login(cfg: dict, pending: dict, *, wait: bool, timeout: float
             return "logged_in"
         if d.get("status") == "expired" or time.time() >= hard_cap:
             break
-        if not wait or time.time() >= pending["expires_at"]:
+        if time.time() >= min(wait_until, pending["expires_at"]):
             return "pending"
         time.sleep(1)
     _forget_pending_login(pending["login_id"])
@@ -811,7 +822,7 @@ def _pick_up_pending_login(cfg: dict) -> None:
     if not pending or pending["base_url"] != cfg["base_url"]:
         return
     out = io.StringIO() if _JSON_OVERRIDE else sys.stderr
-    status = _claim_pending_login(cfg, pending, wait=False, out=out)
+    status = _claim_pending_login(cfg, pending, wait_until=0, out=out)
     _note(pending_login=status)
     if status == "pending":
         print(f"treg: sign-in is not finished yet; open {pending['url']} to finish it", file=out)
@@ -7052,7 +7063,8 @@ def build_parser() -> argparse.ArgumentParser:
     lg.add_argument("--email", help="sign in with a one-time code emailed to this address")
     lg.add_argument("--wait", action="store_true",
                     help="block until the browser sign-in finishes; resumes the link a previous "
-                         "`treg login` printed (without this, a non-terminal shell gets the link and returns)")
+                         "`treg login` printed (without this, a non-terminal shell gets the link, waits 20 seconds, "
+                         "and exits 3 while the sign-in is pending)")
     lg.set_defaults(fn=cmd_login)
 
     mk(sub, "logout", "Clear the stored credentials for this machine.",

@@ -104,8 +104,10 @@ is self-teaching. This fragment holds only what the code and help cannot say.
 - **Login without waiting.** `start` sends a `poll_challenge`; its verifier never enters the shared
   link. Only a 404 from `start` falls back to a locally minted id; any other failure exits naming
   it, because a current server answers `expired` for an id it never issued. Outside a terminal and
-  without `--wait`, `login` saves `~/.treg/pending-login.json` (`0600`) and returns 0; `login` again
-  or `--wait` resumes it rather than orphaning the link already shared. A signed-out command without
+  without `--wait`, `login` saves `~/.treg/pending-login.json` (`0600`), prints the link, polls for
+  20 s so a human with a dashboard session finishes in one click, then exits 3 (as `call --await`
+  does for a task still running) while the sign-in stays pending; `login` again (with the same
+  grace) or `--wait` resumes it rather than orphaning the link already shared. A signed-out command without
   `TREG_TOKEN` collects it once before running and reports on stderr, so its stdout stays parseable
   and a process on another credential never consumes the human's login. The server decides expiry,
   since approval extends it. The pending login is a separate file so a claim that sees `expired`
