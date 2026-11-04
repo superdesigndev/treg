@@ -167,18 +167,25 @@ one call answers `{status: 0, timed_out: true}` instead of ending the run, and t
 releases its hold.
 
 `TREG_HUB_SANDBOX` selects the engine (`quickjs` default, or `workers`). The host rules above do
-not move. The workers loader (`workers/hub-sandbox`) puts the script in a dynamic worker whose
-`globalOutbound` is null and whose only binding is a loopback back to this process; that binding
-is not a place to inject a provider key, or the key would sit in the isolate with the script and
-the call path would no longer be the only place a key exists. `ctx.exports` (the loopback) needs a
-compatibility date on or after 2025-11-17; the date in the worker config is one the pinned
-workerd accepts, and a newer date than the deployed workerd refuses to boot. The auth secret is a
-Wrangler secret, the same value as `TREG_HUB_WORKERS_AUTH_SECRET`, and it authorizes the run body
-only. The bridge token is held by the process running the script, the same shape as the in-process
-run cap: another process answers 401. Workers isolate memory is the platform's 128 MB, not
+not move: `_Host` in `sandbox.py` admits every call, charge and log for both engines. In `workers`
+mode the process running the script opens a WebSocket to the loader's `/run`
+(`workers/hub-sandbox`) and holds it for the run. Nothing connects into treg: the script's
+`ctx.call`, `ctx.charge` and logs arrive as frames on that socket and are answered on it, so the
+run is served by the process that started it whatever the number of workers or instances, and the
+run's in-flight calls are its own tasks, cancelled when it ends. The first frame is the run (script,
+inputs, data, wall) with an HMAC over `exp.` and the run under `TREG_HUB_WORKERS_AUTH_SECRET`, the
+same value as the loader's Wrangler secret `AUTH_SECRET`; the loader loads nothing before it checks
+it. A captured frame replays only into the replayer's own socket, never into treg. The loader puts
+the script in a dynamic worker with `globalOutbound: null` and an empty `env`; its one road out is
+the bridge object passed to `run()`, which lives in the loader, forwards only `call`, `charge` and
+`logs`, and holds no key. A key is never given to the loader or the isolate: the call path stays the
+only place a key exists. `TREG_HUB_WORKERS_URL` must be https off loopback, because the frames carry
+the caller's inputs and every step's answer. A Workers WebSocket message is at most 32 MiB, above
+the hub's data, answer and output caps. Workers isolate memory is the platform's 128 MB, not
 `MEMORY_MB`, and local workerd does not surface it before the wall clock. A tight loop also blocks
-that workerd thread, so the parent's wait is the kill that actually lands there; `cpuMs` does not
-include time spent waiting on the bridge. Dynamic workers disallow `eval` / `new Function`.
+that workerd thread, so the parent's wall is the kill that actually lands there; `cpuMs` does not
+include time spent waiting on a reply. Dynamic workers disallow `eval`, `new Function` and Wasm
+compilation; `tests/test_hub_sandbox_workers.py` tries each way out from inside a script.
 
 ## The maker's road (`routers/hub.py`, `application/hub/__init__.py`)
 

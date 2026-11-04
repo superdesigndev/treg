@@ -126,6 +126,19 @@ export default async function run(ctx) {
     assert len(log) == 50 and all(len(line) <= 2000 for line in log)
 
 
+async def test_a_call_over_8_mib_ends_the_run(backend):
+    with pytest.raises(SandboxError) as e:
+        await _run('export default async function run(ctx) {'
+                   ' await ctx.call("x", { body: { x: "a".repeat(9 << 20) } }); return {}; }')
+    assert e.value.kind == "protocol" and "over 8 MiB" in e.value.message
+
+
+async def test_call_options_must_be_an_object(backend):
+    with pytest.raises(SandboxError) as e:
+        await _run('export default async function run(ctx) { await ctx.call("x", "abc"); return {}; }')
+    assert e.value.kind == "refused" and "must be an object" in e.value.message
+
+
 async def test_the_call_cap_is_enforced_by_the_parent(backend):
     calls = 0
 
