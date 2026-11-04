@@ -200,7 +200,7 @@ def _page_body(key: str, base: str) -> str:
             if c.get("note") else "")
 
     rows = []
-    for group, items in cp.ROWS:
+    for group, items in cp.rows_for(key):
         rows.append(f'<tr class="grp"><th colspan="3" scope="colgroup">{_e(group)}</th></tr>')
         for row, label in items:
             us, them = _cell(key, row, True), _cell(key, row, False)
@@ -358,7 +358,7 @@ def _page_md(key: str, base: str) -> str:
     out += [f"- {x}" for x in c["fit_them"]] + ["", "Choose treg if:", ""]
     out += [f"- {x}" for x in c["fit_treg"]] + ["", "## Side by side", "",
             '"Not published" means the product\'s pages say nothing about it.', ""]
-    for group, items in cp.ROWS:
+    for group, items in cp.rows_for(key):
         out += [f"### {group}", "", f"| | treg | {short} |", "|---|---|---|"]
         out += [f"| {label} | {_cell(key, row, True)} | {_cell(key, row, False)} |" for row, label in items]
         out.append("")

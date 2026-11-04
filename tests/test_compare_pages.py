@@ -32,7 +32,7 @@ def test_every_page_fills_every_row_and_card():
     assert keys == set(cp.TREG_CELLS)
     groups = {g for g, _, _ in cp.GROUPS}
     for key, c in cp.COMPETITORS.items():
-        assert set(c["cells"]) == keys, key
+        assert keys - cp.OPTIONAL_ROWS <= set(c["cells"]) <= keys, key
         assert set(c["spec"]) == {k for k, _ in cp.SPEC_LABELS}, key
         assert c["group"] in groups, key
         assert set(c.get("treg_cells", {})) <= keys, key
@@ -68,6 +68,15 @@ async def test_each_page_answers_with_its_own_head(clients: AsyncClient):
         assert html.count("<h1>") == 1 and f"vs</span> {_html.escape(cp.short(key))}</h1>" in html
         assert cp.CHECKED_LABEL in html
         assert "/adtrack.js" in html and "/sitetrack.js" in html
+
+
+async def test_the_x402_row_shows_only_where_a_record_fills_it(clients: AsyncClient):
+    for key, c in cp.COMPETITORS.items():
+        html = (await clients.get(f"/compare/{cp.page_slug(key)}")).text
+        shown = "x402 or stablecoin pay per call</th>" in html
+        assert shown == ("x402" in c["cells"] or "x402" not in cp.OPTIONAL_ROWS), key
+        if shown and not cp.TREG_X402:
+            assert cp.TREG_CELLS["x402"].startswith("Not yet"), key
 
 
 async def test_structured_data_matches_the_visible_page(clients: AsyncClient):

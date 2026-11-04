@@ -24,6 +24,11 @@ CORRECTIONS = "jason@superdesign.dev"
 
 NOT_PUBLISHED = "Not published"
 
+# True once treg.to takes x402 or MPP payments. The x402 row then shows on every page; until then it
+# shows only on pages whose record fills it (the products where it is a real difference).
+TREG_X402 = False
+OPTIONAL_ROWS = frozenset() if TREG_X402 else frozenset({"x402"})
+
 # The rows of the side-by-side table, in order, under their group headings.
 ROWS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     ("Billing", (
@@ -60,7 +65,7 @@ TREG_CELLS: dict[str, str] = {
     "fees": "0% markup, a commitment in the terms. No top-up fee. Calls on your own keys, tools and "
             "connected accounts are never metered, except X through treg's own X app, which X bills "
             "per use.",
-    "x402": "No. Top-ups are by card.",
+    "x402": "Yes." if TREG_X402 else "Not yet. Top-ups are by card today.",
     "catalog": "{ENDPOINTS} tools across {PROVIDERS} providers, plus the tools your team registers.",
     "data": "Yes: SEO and SERP data, backlinks, people and company enrichment, social profiles and "
             "posts, ad libraries, web search and scraping, image, video and voice generation.",
@@ -268,7 +273,6 @@ COMPETITORS: dict[str, dict] = {
             free_start="Free plan: 1,000 credits a month, no card. Alexandria needs an account.",
             fees="Tools run at their listed price in credits. A markup is not published. Credits roll "
                  "over only on Scale and Enterprise.",
-            x402=NOT_PUBLISHED,
             catalog="430 providers and 2,462 capabilities, plus 113M+ indexed sources.",
             data="Public records and government (the largest group), company, retail, finance, real "
                  "estate, health, research, places and more, plus the live web.",
@@ -685,7 +689,6 @@ COMPETITORS: dict[str, dict] = {
             free_start="Hobby plan, no card, with $2 of Instant Tools credit.",
             fees="Own-app calls $0.0003 each after 100K; managed-app calls $0.0005 to $0.01. Instant Tools "
                  "at 0% markup plus the tool-call charge.",
-            x402=NOT_PUBLISHED,
             catalog="1,500+ apps (home page); 1,000+ toolkits (GitHub README).",
             data="Some, through Instant Tools (off by default): search, scraping and maps from Serper, "
                  "Tavily, SerpApi, Firecrawl, Exa and others. SEO metrics, enrichment and ad data are not "
@@ -784,7 +787,6 @@ COMPETITORS: dict[str, dict] = {
                     "(annual). Each successful MCP tool call is 2 tasks.",
             free_start="Free plan: 100 tasks a month, about 50 MCP tool calls.",
             fees="Failed calls use no tasks. Pay-per-task overage at 1.25x to 2.5x the base rate.",
-            x402=NOT_PUBLISHED,
             catalog="9,000+ apps and tens of thousands of actions.",
             data="Not published. Actions run in apps you connect with your own accounts.",
             own_accounts="Yes, the core of the product: apps connected to your Zapier account.",
@@ -882,7 +884,6 @@ COMPETITORS: dict[str, dict] = {
                     "credits, then $2 per user and $0.012 per credit. One credit is 30 seconds of compute.",
             free_start="Free for development and personal MCP use, no card. Production needs a paid plan.",
             fees="MCP tool calls use credits; there is no separate MCP fee.",
-            x402=NOT_PUBLISHED,
             catalog="10,000+ tools and triggers across 3,000+ APIs.",
             data="Not published. Tools act in accounts your users connect.",
             own_accounts="Yes, the core of the product: each end user's own accounts, through managed OAuth "
@@ -978,7 +979,6 @@ COMPETITORS: dict[str, dict] = {
                     "5 August 2026.",
             free_start="Free, with no account needed to browse.",
             fees="None. Smithery no longer proxies or bills calls; you pay each vendor.",
-            x402="Not applicable.",
             catalog="214 servers on the directory today.",
             data="No. You connect to each vendor's server with your own account.",
             own_accounts="Through each vendor's own server.",
@@ -1070,7 +1070,6 @@ COMPETITORS: dict[str, dict] = {
                     "each). Launch from $167 a month and Growth from $446 a month on the plan cards.",
             free_start="Free plan: 500 Actions and 100 Data Credits a month, up to 200 rows a table.",
             fees="Top-ups on Launch and Growth cost 30% more. No charge when an enrichment finds nothing.",
-            x402=NOT_PUBLISHED,
             catalog="150+ to 200+ data and AI vendors, depending on the page.",
             data="Yes: people and company enrichment, emails, phones and AI research, on Clay's accounts.",
             own_accounts="CRM and data warehouse sync, an email sequencer and ad audiences.",
@@ -1171,7 +1170,6 @@ COMPETITORS: dict[str, dict] = {
             free_start="A free plan with no time limit. Search and enrichment by MCP or CLI need a work email.",
             fees="Enrichment costs 1 to 9 credits a person (+8 with a mobile number). Many other API endpoints "
                  "use no credits.",
-            x402=NOT_PUBLISHED,
             catalog="240M+ contacts and 30M+ companies in its own database.",
             data="Its own people and company data, plus waterfall email and phone from other vendors, in "
                  "credits.",
@@ -1327,6 +1325,13 @@ COMPETITORS: dict[str, dict] = {
         ],
     },
 }
+
+
+def rows_for(key: str) -> tuple[tuple[str, tuple[tuple[str, str], ...]], ...]:
+    """The table rows this page shows: every row, less an optional row its record leaves out."""
+    cells = COMPETITORS[key]["cells"]
+    return tuple((g, tuple((r, lab) for r, lab in items if r not in OPTIONAL_ROWS or r in cells))
+                 for g, items in ROWS)
 
 
 def page_slug(key: str) -> str:
