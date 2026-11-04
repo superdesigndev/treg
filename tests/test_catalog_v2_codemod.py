@@ -144,9 +144,34 @@ def test_a_row_is_written_against_its_providers_defaults():
     unpriced = codemod.rewrite({"id": "demo.z", "tier": "extended"}, provider="demo",
                                check_branches=False, defaults=DEFAULTS)
     assert unpriced.keys == {"provenance": None} and unpriced.replaced == ("tier",)
-    ruled = codemod.rewrite({"id": "demo.w", "tier": "extended", "expect": {"status": 200}}, provider="demo",
-                            check_branches=False, defaults=DEFAULTS)
+    ruled = codemod.rewrite({"id": "demo.w", "tier": "extended", "expect": {"path": "response.ok", "op": "present"}},
+                            provider="demo", check_branches=False, defaults=DEFAULTS)
     assert ruled.keys == {"provenance": None} and ruled.replaced == ("tier",)
+
+
+def test_an_unpriced_row_moves_its_outcome_keys_to_v2_with_its_opt_out():
+    expected = codemod.rewrite({"id": "demo.z", "tier": "extended", "expect": {"json_path": "code", "equals": 0}},
+                               provider="demo", check_branches=False, defaults=DEFAULTS)
+    assert expected.keys == {"provenance": None, "expect": {"path": "response.code", "op": "equals", "value": 0}}
+    assert expected.replaced == ("tier", "expect") and _v2(expected)
+    missed = codemod.rewrite({"id": "demo.z", "miss": {"status": 404, "means": "No such user."}}, provider="demo",
+                             check_branches=False, defaults=DEFAULTS)
+    assert missed.keys == {"provenance": None, "miss": {"status": [404], "means": "No such user."}}
+    assert missed.replaced == ("miss",) and _v2(missed)
+    adapted = codemod.rewrite({"id": "demo.z"}, provider="demo", adapter={"miss": "data == null", "verified": True},
+                              check_branches=False, defaults=DEFAULTS)
+    assert adapted.keys == {"provenance": None, "error": {"when": codemod.ENVELOPE},
+                            "miss": {"when": {"path": "response.data", "op": "absent"}}} and adapted.adapter_miss
+
+
+@pytest.mark.parametrize("row,adapter,reason", [
+    ({"miss": {"status": 404, "means": "x"}}, {"miss": "a == null", "verified": True}, "one `miss` rule"),
+    ({"expect": {"status": 200}}, None, "does not parse: expect"),
+])
+def test_an_unpriced_row_whose_outcome_keys_have_no_v2_rewrite_stays_as_it_is(row, adapter, reason):
+    with pytest.raises(codemod.Refused, match=reason):
+        codemod.rewrite({"id": "demo.z", "tier": "extended", **row}, provider="demo", adapter=adapter,
+                        check_branches=False, defaults=DEFAULTS)
 
 
 def test_an_inert_2xx_miss_status_leaves_its_means_in_the_note():

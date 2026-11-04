@@ -102,9 +102,12 @@ which one `bill.error` cannot say, a replaced key that defines a YAML anchor ano
 every rewritten row it prints parses whole. A provider whose header declares `defaults:` is
 rewritten against them: a key equal to its default is left out, one the row lacks is written as
 `null`, and a `bill` default, the batch's translation of the Python branch it deletes, is inherited
-whole. An inert `miss.status` on a 2xx is dropped and its `means` joins the row's `note`. `--apply`
-edits the files in place and keeps every comment outside the replaced keys. The fixture replay is
-the proof that a rewrite changes nothing.
+whole. An unpriced row only opts out of the price defaults, and its outcome keys move to v2 as a
+priced row's do. The codemod loads the catalog with a provider's `defaults:` withheld while one of
+its rows is still in today's spelling, and with them once its rows are v2. An inert `miss.status` on
+a 2xx is dropped and its `means` joins the row's `note`. `--apply` edits the files in place and
+keeps every comment outside the replaced keys. The fixture replay is the proof that a rewrite
+changes nothing.
 
 The validator checks a v2 row's cost beyond its model: `price.currency`, `settle.reported.unit`
 and `settle.usage.unit` resolve to a rate in `fx.yaml`, usage `terms` are in USD, and the request

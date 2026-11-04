@@ -175,75 +175,14 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
     keeps today's behavior."""
     endpoint_id = str(row["id"])
     out = Rewrite(endpoint_id)
-    cost = row.get("cost")
-    if cost is None and defaults and not any(k in row for k in (*COST_KEYS, "observed_cost")):
-        # An unpriced row stays unpriced; it only opts out of the defaults that describe a price.
-        out.keys = {k: None for k in COST_KEYS if k in defaults and k != "bill"}
-        out.replaced = ("tier",) if "tier" in row else ()
-        return out
-    if not isinstance(cost, dict):
-        raise Refused("the row has no cost to rewrite")
-    if row.get("observed_cost") is not None:
-        raise Refused("an observed_cost price is written by the ingester in its batch")
-    if check_branches and (branch := _branches(provider, endpoint_id)):
-        raise Refused(f"{branch}; its batch moves that rule into data or a plugin")
-    if found := [k for k in PROVIDER_KEYS if k in cost]:
-        raise Refused(f"cost.{found[0]} is a single-provider key: a plugin or its batch")
-    kind = cost.get("type")
-    if kind == "quota_rows":
-        raise Refused("quota_rows has no v2 rewrite yet")
-    settle_word = cost.get("settle")
-    if isinstance(settle_word, str) and settle_word in PLUGIN_SETTLES:
-        raise Refused(f"cost.settle: {settle_word} is a plugin or a batch decision")
-    if cost.get("unit") in ("character", "utf8_byte"):
-        raise Refused(f"a hold by {cost['unit']} is a plugin")
-    if "rate_card" in cost:
-        out.warnings.append("cost.rate_card is dropped: no code read it")
-    keys: dict = {}
-    keys["price"] = _price(cost, out.warnings)
-    provenance = {k: cost[k] for k in ("source", "source_url", "checked", "confidence") if k in cost}
-    if {"source", "checked", "confidence"} <= provenance.keys():
-        keys["provenance"] = provenance
-    elif provenance and keys["price"].get("value") == "0":
-        out.warnings.append("a free row needs no provenance; the partial one is dropped")
-    elif provenance:
-        raise Refused("a priced row's provenance needs source, checked and confidence")
-    per = int(cost.get("per") or 1)
-    reserve = cost.get("reserve")
-    if isinstance(reserve, dict) and "rows" in reserve:
-        rows = reserve["rows"]
-        keys["reserve"] = {"rows": {"param": request_path(rows["param"]), "default": rows["default"],
-                                    "max": rows["max"]}}
-    elif isinstance(reserve, dict) and "entities" in reserve:
-        fields = _entities(row)
-        if len(fields) > 1:
-            raise Refused(f"today's hold takes the first of {', '.join(fields)}; v2 adds them up")
-        out.warnings.append("today's hold also counts entity fields the input does not declare")
-        if fields:
-            keys["reserve"] = {"entities": {"from": fields[0]}}
-    elif kind == "per_result" and cost.get("unit") != "call":
-        raise Refused("today's per_result hold guesses the count from common parameter names; "
-                      "a person picks its reserve")
-    if cost.get("reported_charge"):
-        reported = cost["reported_charge"]
-        keys["settle"] = {"reported": {"path": response_path(reported["path"]), "unit": reported["unit"]}}
-        out.warnings.append("today a 2xx whose body `status` is an integer of 400 or more and lacks the "
-                            "charge is free; v2 judges it by its outcome (cost G9)")
-    elif isinstance(settle_word, dict):
-        if per > 1:
-            raise Refused("today's count bills whole rows at the value, whatever `per` says")
-        keys["settle"] = {"count": {"path": response_path(settle_word["count"]["path"])}}
-        out.warnings.append("null items no longer count (cost G3)")
-    elif settle_word == "usage":
-        usage = cost["usage"]
-        keys["settle"] = {"usage": {"unit": usage["unit"], **(
-            {"terms": [{"path": response_path(t["path"]), "rate": money(t["rate"])} for t in usage["terms"]]}
-            if usage.get("terms") else {"path": response_path(usage["path"])})}}
-    bill: dict = {}
-    if kind in ("per_call", "per_result"):
-        # Today only a per_success row frees a miss or a failed `expect`; the others bill by their
-        # settle form whatever the answer says.
-        bill = {"miss": "charged", "error": "charged"}
+    if row.get("cost") is None and defaults and not any(k in row for k in (*COST_KEYS, "observed_cost")):
+        # An unpriced row stays unpriced: it opts out of the defaults that describe a price, and its
+        # outcome keys in today's spelling move to v2 as a priced row's do.
+        keys, kind, bill = {k: None for k in COST_KEYS if k in defaults and k != "bill"}, None, {}
+        if spelling({k: row[k] for k in OUTCOME_KEYS if k in row}) == "v2":
+            return _checked(row, out, keys, ("tier",) if "tier" in row else (), defaults)
+    else:
+        keys, kind, bill = _cost(row, provider, out, check_branches)
     expect = row.get("expect") if row.get("expect") is not None else header_expect
     if expect is not None:
         if expect.get("misses"):
@@ -313,16 +252,88 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
     if label != kind:
         out.warnings.append(f"the views will label it {label}; today they say {kind}")
     order = ("price", "provenance", "reserve", "settle", "bill", "expect", "error", "miss", "not_found", "note")
-    out.keys = {k: keys[k] for k in order if k in keys}
-    out.replaced = tuple(k for k in ("cost", "tier", *OUTCOME_KEYS, *(("note",) if "note" in keys else ()))
-                         if k in row)
-    try:
-        parse_row(merge({**{k: v for k, v in row.items() if k not in out.replaced}, **out.keys}, defaults),
-                  endpoint_id)
-    except CatalogSchemaError as exc:
-        raise Refused(f"the rewritten row does not parse: {str(exc).removeprefix(f'{endpoint_id}: ')}") from None
-    return out
+    return _checked(row, out, {k: keys[k] for k in order if k in keys},
+                    tuple(k for k in ("cost", "tier", *OUTCOME_KEYS, *(("note",) if "note" in keys else ()))
+                          if k in row), defaults)
 
+
+def _cost(row: dict, provider: str, out: Rewrite, check_branches: bool) -> tuple[dict, str | None, dict]:
+    """A priced row's v2 cost keys, today's `cost.type`, and the bill that type implies."""
+    endpoint_id, cost = out.endpoint_id, row.get("cost")
+    if not isinstance(cost, dict):
+        raise Refused("the row has no cost to rewrite")
+    if row.get("observed_cost") is not None:
+        raise Refused("an observed_cost price is written by the ingester in its batch")
+    if check_branches and (branch := _branches(provider, endpoint_id)):
+        raise Refused(f"{branch}; its batch moves that rule into data or a plugin")
+    if found := [k for k in PROVIDER_KEYS if k in cost]:
+        raise Refused(f"cost.{found[0]} is a single-provider key: a plugin or its batch")
+    kind = cost.get("type")
+    if kind == "quota_rows":
+        raise Refused("quota_rows has no v2 rewrite yet")
+    settle_word = cost.get("settle")
+    if isinstance(settle_word, str) and settle_word in PLUGIN_SETTLES:
+        raise Refused(f"cost.settle: {settle_word} is a plugin or a batch decision")
+    if cost.get("unit") in ("character", "utf8_byte"):
+        raise Refused(f"a hold by {cost['unit']} is a plugin")
+    if "rate_card" in cost:
+        out.warnings.append("cost.rate_card is dropped: no code read it")
+    keys: dict = {}
+    keys["price"] = _price(cost, out.warnings)
+    provenance = {k: cost[k] for k in ("source", "source_url", "checked", "confidence") if k in cost}
+    if {"source", "checked", "confidence"} <= provenance.keys():
+        keys["provenance"] = provenance
+    elif provenance and keys["price"].get("value") == "0":
+        out.warnings.append("a free row needs no provenance; the partial one is dropped")
+    elif provenance:
+        raise Refused("a priced row's provenance needs source, checked and confidence")
+    per = int(cost.get("per") or 1)
+    reserve = cost.get("reserve")
+    if isinstance(reserve, dict) and "rows" in reserve:
+        rows = reserve["rows"]
+        keys["reserve"] = {"rows": {"param": request_path(rows["param"]), "default": rows["default"],
+                                    "max": rows["max"]}}
+    elif isinstance(reserve, dict) and "entities" in reserve:
+        fields = _entities(row)
+        if len(fields) > 1:
+            raise Refused(f"today's hold takes the first of {', '.join(fields)}; v2 adds them up")
+        out.warnings.append("today's hold also counts entity fields the input does not declare")
+        if fields:
+            keys["reserve"] = {"entities": {"from": fields[0]}}
+    elif kind == "per_result" and cost.get("unit") != "call":
+        raise Refused("today's per_result hold guesses the count from common parameter names; "
+                      "a person picks its reserve")
+    if cost.get("reported_charge"):
+        reported = cost["reported_charge"]
+        keys["settle"] = {"reported": {"path": response_path(reported["path"]), "unit": reported["unit"]}}
+        out.warnings.append("today a 2xx whose body `status` is an integer of 400 or more and lacks the "
+                            "charge is free; v2 judges it by its outcome (cost G9)")
+    elif isinstance(settle_word, dict):
+        if per > 1:
+            raise Refused("today's count bills whole rows at the value, whatever `per` says")
+        keys["settle"] = {"count": {"path": response_path(settle_word["count"]["path"])}}
+        out.warnings.append("null items no longer count (cost G3)")
+    elif settle_word == "usage":
+        usage = cost["usage"]
+        keys["settle"] = {"usage": {"unit": usage["unit"], **(
+            {"terms": [{"path": response_path(t["path"]), "rate": money(t["rate"])} for t in usage["terms"]]}
+            if usage.get("terms") else {"path": response_path(usage["path"])})}}
+    bill: dict = {}
+    if kind in ("per_call", "per_result"):
+        # Today only a per_success row frees a miss or a failed `expect`; the others bill by their
+        # settle form whatever the answer says.
+        bill = {"miss": "charged", "error": "charged"}
+    return keys, kind, bill
+
+
+def _checked(row: dict, out: Rewrite, keys: dict, replaced: tuple[str, ...], defaults: dict | None) -> Rewrite:
+    """The rewrite, once the row it leaves parses against its provider's defaults."""
+    out.keys, out.replaced = keys, replaced
+    try:
+        parse_row(merge({**{k: v for k, v in row.items() if k not in replaced}, **keys}, defaults), out.endpoint_id)
+    except CatalogSchemaError as exc:
+        raise Refused(f"the rewritten row does not parse: {str(exc).removeprefix(f'{out.endpoint_id}: ')}") from None
+    return out
 
 WIDTH = 110
 
