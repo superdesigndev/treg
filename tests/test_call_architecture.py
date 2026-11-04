@@ -12,7 +12,7 @@ import pytest
 from treg import archive, archive_bodies, bootstrap
 from treg.application import billing, asynctasks as task_app
 from treg.application.hub import runner as hub_runner
-from treg.application.call import authorize, overflow, reserve, service, settle
+from treg.application.call import allowance, authorize, overflow, reserve, service, settle
 from treg.domain import money
 from treg.domain.capacity import fair_share, marks as capacity_marks, rate_observe
 from treg.domain.governance import usage as usage_policy
@@ -127,6 +127,12 @@ _DATAPLANE_DERIVED_WRITES = {
         (rate_observe.release, "provider_rate.release"),
         (provider_rate._release, "store.release_slot"),
     ),
+    # A connection call drawing on an allowance treg's app holds spends its units from the team's
+    # daily share (Redis, after the DB phase ended, immediately before the request is sent).
+    "shared_allowance_share": (
+        (service._execute_call, "allowance.spend_share"),
+        (allowance.spend_share, "store.take_units"),
+    ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
     "org_endpoint_quota",
@@ -147,6 +153,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "member_daily_cap_slot",
     "provider_concurrency_lease",
     "provider_rate_window",
+    "shared_allowance_share",
 })
 _DERIVED_WRITE_FILES = {
     _SRC / "application" / "asynctasks.py": {"money_admission.admit"},
@@ -177,6 +184,7 @@ _DERIVED_WRITE_FILES = {
         "store.acquire_slot", "self.store.renew_slot", "self.store.release_slot",
     },
     _SRC / "domain" / "capacity" / "rate_observe.py": {"provider_rate.admit", "provider_rate.release"},
+    _SRC / "application" / "call" / "allowance.py": {"store.take_units"},
     _SRC / "infra" / "provider_rate.py": {"store.rate_window", "store.release_slot"},
     _SRC / "application" / "call" / "service.py": {
         "org_endpoint_quota.admit",
@@ -198,6 +206,7 @@ _DERIVED_WRITE_FILES = {
 }
 _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/service.py", "_admit_org_endpoint", "org_endpoint_quota.admit"),
+    ("application/call/allowance.py", "spend_share", "store.take_units"),
     ("application/call/reserve.py", "_platform_reserve", "reserve_admission"),
     ("application/call/reserve.py", "reserve_admission", "money_admission.admit"),
     ("application/call/settle.py", "_platform_settle", "money_admission.admit"),

@@ -114,6 +114,15 @@ _RENEW_SLOT = _SLOT_CLOCK + """
 if not redis.call('ZSCORE', KEYS[1], ARGV[1]) then return 0 end
 """ + _SLOT_EXTEND
 _RELEASE_SLOT = "return redis.call('ZREM', KEYS[1], ARGV[1])"
+# Units against a limit: refused without spending when they would exceed it.
+_TAKE_UNITS = """
+local used = tonumber(redis.call('GET', KEYS[1]) or '0')
+local units = tonumber(ARGV[1])
+if used + units > tonumber(ARGV[2]) then return {0, used} end
+used = redis.call('INCRBY', KEYS[1], units)
+if redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[3]) end
+return {1, used}
+"""
 _RATE_WINDOW = _SLOT_CLOCK + """
 if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then
     local first = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
@@ -242,6 +251,12 @@ class Store(Protocol):
 
     async def ping(self) -> bool: ...
 
+    async def take_units(self, key: str, units: int, limit: int,
+                         ttl_s: int) -> tuple[bool, int] | None:
+        """Spend `units` of `key`'s `limit`, in a window that starts at its first use and lasts
+        `ttl_s`: (admitted, used after). A spend past the limit is refused and spends nothing.
+        None when the store cannot answer."""
+
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
         """Bounded JSON or missing (None), distinct from invalid data and transport failure."""
 
@@ -273,6 +288,7 @@ class LocalStore:
 
     def __init__(self) -> None:
         self._windows: dict[str, tuple[float, int]] = {}
+        self._units: dict[str, tuple[float, int]] = {}
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         now = time.monotonic()
@@ -284,6 +300,19 @@ class LocalStore:
         count += 1
         self._windows[key] = (expires, count)
         return count <= limit
+
+    async def take_units(self, key: str, units: int, limit: int,
+                         ttl_s: int) -> tuple[bool, int] | None:
+        now = time.monotonic()
+        expires, used = self._units.get(key, (0.0, 0))
+        if expires <= now:
+            if len(self._units) >= _LOCAL_MAX_KEYS:
+                self._units = {k: v for k, v in self._units.items() if v[0] > now}
+            expires, used = now + ttl_s, 0
+        if used + units > limit:
+            return False, used
+        self._units[key] = (expires, used + units)
+        return True, used + units
 
     def _evict(self, now: float) -> None:
         live = {k: v for k, v in self._windows.items() if v[0] > now}
@@ -310,6 +339,7 @@ class LocalStore:
 
     async def aclose(self) -> None:
         self._windows.clear()
+        self._units.clear()
 
     async def acquire_slot(self, key: str, token: str, ttl_ms: int, limit: int) -> AcquireResult:
         return "unavailable"
@@ -348,6 +378,16 @@ class RedisStore:
         except Exception as exc:  # noqa: BLE001 — a store fault is a spent budget, never a call fault
             _note_fault(exc)
             return False
+
+    async def take_units(self, key: str, units: int, limit: int,
+                         ttl_s: int) -> tuple[bool, int] | None:
+        try:
+            async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
+                admitted, used = await self._client.eval(_TAKE_UNITS, 1, key, units, limit, ttl_s)
+            return bool(int(admitted)), int(used)
+        except Exception as exc:  # noqa: BLE001 - an unanswered share admits the call
+            _note_fault(exc)
+            return None
 
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
         if type(org_id) is not int or not 0 < org_id <= 2147483647:

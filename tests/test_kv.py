@@ -97,6 +97,7 @@ async def test_unreachable_redis_fails_closed_and_fast():
     assert await store.acquire_lease('lease', 'token', 1000) == 'unavailable'
     assert await store.renew_lease('lease', 'token', 1000) == 'unavailable'
     assert await store.release_lease('lease', 'token') == 'unavailable'
+    assert await store.take_units('units', 1, 5, 60) is None
     assert time.monotonic() - started < 2
     await store.aclose()
 
@@ -175,3 +176,24 @@ async def test_real_redis_expired_owner_cannot_renew_or_delete_replacement():
     finally:
         await first._client.delete(key)
         await asyncio.gather(first.aclose(), second.aclose())
+
+
+async def _units(store, key: str) -> list:
+    return [await store.take_units(key, units, 10, 5) for units in (6, 4, 1)]
+
+
+async def test_local_units_refuse_past_the_limit_without_spending():
+    store = kv.LocalStore()
+    assert await _units(store, 'units') == [(True, 6), (True, 10), (False, 10)]
+
+
+@pytest.mark.skipif(not os.environ.get('TREG_TEST_KV_URL'), reason='set TREG_TEST_KV_URL to a scratch Redis')
+async def test_real_redis_units():
+    store = kv.RedisStore(os.environ['TREG_TEST_KV_URL'])
+    key = f'treg-test:units:{time.time_ns()}'
+    try:
+        assert await _units(store, key) == [(True, 6), (True, 10), (False, 10)]
+        assert 0 < await store._client.ttl(key) <= 5
+    finally:
+        await store._client.delete(key)
+        await store.aclose()

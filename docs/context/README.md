@@ -11,6 +11,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | Fragment | Status | Covers |
 |---|---|---|
 | [Google Ads conversion tracking - capture, outbox, upload](architecture/ads-conversions.md) | shipped | adsconv.py, signup.py, settle.py, adtrack.js, … |
+| [Team shares of an allowance treg's app holds with a provider](architecture/allowance-share.md) | built, off until TREG_SHARED_ALLOWANCE_SHARES names a service | allowance.py, service.py, oauth_providers.py, config.py, … |
 | [Archive - versioned history and cache admission](architecture/archive.md) | building | archive.py, hunter.yaml, results.py, 0031_archive_result_admission.py, … |
 | [Auth & secrets - injectors, encryption, OAuth freshness, health](architecture/auth-secrets.md) | shipped | injectors.py, ssrf.py, crypto.py, oauth.py, … |
 | [Call events - one pseudonymous event per call, to an Iceberg table outside Postgres](architecture/call-events.md) | shipped | call_events.py, call_events.py, contracts.yaml, test_call_events.py |

@@ -40,7 +40,7 @@ from ...infra.upstream.relay import identify_as_treg, relay, scope_shared_idempo
 from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
-from . import keyslots
+from . import allowance, keyslots
 from .authorize import authorize_call, enforce_public_demo_limit
 from .evidence import (
     _ERROR_BODY_SLICE,
@@ -1237,6 +1237,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     if paused is not None:
         _audit(503, refused_by="paused", answered=False)
         raise provider_paused(paused)
+    allowance_draw = allowance.draw_for(tool, secrets, request.method, upstream_url)
     billed_provider = _oauth_billed_provider(secrets)
     if billed_provider is not None:
         # The sandbox never reaches here (it returned above); the public demo could, and one shared
@@ -1511,6 +1512,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
 
                 async def admit_outbound():
                     nonlocal sent, rate_seen
+                    await allowance.spend_share(allowance_draw, caller.org_id)
                     if platform_tier:
                         rate_seen = await rate_observe.observe(mk.provider, rl)
                         if _rate_refuses(mk, rate_seen):
@@ -1531,7 +1533,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
 
                 relay_options = {}
                 if ((mk is not None and _quota_targets(request, mk.endpoint_id))
-                        or (platform_tier and rl is not None and rate_observe.enabled())):
+                        or (platform_tier and rl is not None and rate_observe.enabled())
+                        or allowance_draw is not None):
                     relay_options["before_outbound"] = admit_outbound
                 else:
                     await admit_outbound()
@@ -1710,7 +1713,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         _renderings = _safe_secret_renderings(tool, secrets)
         _audit(exc.status_code, charged_micro=0 if metered or free_poll else None,
                refused_by="policy" if exc.kind in routed._QUOTA_REFUSALS
-               else "capacity" if exc.kind == "share_busy" else None,
+               else "capacity" if exc.kind == "share_busy"
+               else "cap" if exc.kind == "shared_allowance_share" else None,
                duration_ms=_now_ms() - started, answered=False,
                error_request=(
                    _ERROR_MASKING_FAILED if _renderings is None else
