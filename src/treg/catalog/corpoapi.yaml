@@ -331,6 +331,7 @@ endpoints:
       note: "`valid`, the name and address VIES returns, and the matching register company when one is found. A 200 with valid false is free"
     test_request:
       pathParams: {vat_number: "SE556029519701"}
+    expect: {json_path: valid, equals: true, misses: [false]}
     cost:
       type: per_success
       value: 0.05
