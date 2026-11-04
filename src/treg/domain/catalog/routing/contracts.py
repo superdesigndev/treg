@@ -196,10 +196,12 @@ class Adapter:
     def rows(self, items: list) -> list[Any]:
         """Each provider row in the contract's row shape: empty values dropped, text cut to
         ROW_TEXT_MAX. A row the map cannot read (none of the contract's `row_needs`: the provider
-        changed its shape) stays the provider's own row rather than vanish from a paid answer."""
+        changed its shape) stays the provider's own row rather than vanish from a paid answer, and
+        so does an item that is not an object."""
         out = []
         for item in items:
             if not isinstance(item, dict):
+                out.append(item)
                 continue
             row = {}
             for key, expr in self.row_map.items():
@@ -623,7 +625,8 @@ def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -
             return False, "row: the contract has no row shape"
         if unknown := sorted(set(adapter.row_map) - set(contract.row_fields)):
             return False, f"row: fields outside the contract's row: {unknown}"
-        rows = core.get(contract.row_of) or []
+        # a saved example's truncation marker ("… 8 more item(s) truncated") is not a row
+        rows = [r for r in core.get(contract.row_of) or [] if isinstance(r, dict)]
         if not rows or any(not any(r.get(k) for k in contract.row_needs) for r in rows):
             return False, f"row: every example row must fill one of {list(contract.row_needs)}"
     return True, ""

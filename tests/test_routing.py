@@ -174,7 +174,7 @@ def test_a_row_map_puts_every_provider_row_in_the_contract_shape():
     assert rows[0]["name"] == "Ada Lovelace" and rows[0]["location"] == "London, UK" and "id" not in rows[0]
     assert len(rows[0]["summary"]) == C.ROW_TEXT_MAX, "text is capped"
     assert rows[1] == {"handle": "@someone"}, "unreadable row kept as the provider's"
-    assert len(rows) == 2
+    assert rows[2] == "not a row" and len(rows) == 3, "a non-object item is kept too"
     with pytest.raises(ValueError, match="row"):
         C.parse_contracts({"contracts": {"y": {**doc["contracts"]["x.search"], "row": {"of": "nope", "needs": ["name"], "fields": {"name": "str"}}}}})
     with pytest.raises(ValueError, match="needs"):
