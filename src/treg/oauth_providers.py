@@ -3676,6 +3676,37 @@ VILLAGE = OAuthProvider(
     probe_path="/v2/user/me",  # free; a bad token gets HTTP 401 (verified live 2026-10-07)
 )
 
+HIDEMAIL = OAuthProvider(
+    service="hidemail",
+    display_name="HideMail",
+    auth_kind="key",
+    token_label="API token",
+    token_placeholder="your HideMail API token",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://hidemail.app/user/api-tokens",
+    setup_action_label="Get your HideMail API token",
+    setup_steps=(
+        "Sign in to HideMail and open API Tokens from the account menu.",
+        "Create a token and copy it. It acts as you, so keep it private.",
+    ),
+    setup_note=(
+        "API calls are free on every plan. The free plan allows 10 aliases and 100 forwarded "
+        "emails a day; Premium lifts both."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Other",
+    summary=(
+        "Hide my email: create and manage private email aliases that forward to your real inbox, "
+        "and set up custom alias domains."
+    ),
+    base_url="https://hidemail.app",
+    docs_url="https://hidemail.app/docs/",
+    probe_path="/api/user",  # free; a bad token gets HTTP 401 (verified live 2026-11-03)
+)
+
 ATLY = OAuthProvider(
     service="atly",
     display_name="Atly",
@@ -4213,6 +4244,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE,
+        # Email privacy: the caller's own aliases and alias domains
+        HIDEMAIL,
         # Places: intent-scored local search
         ATLY,
         # Market data API-key providers
