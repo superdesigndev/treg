@@ -1,9 +1,12 @@
-// Loader for one hub script. The dynamic worker has no outbound network. ctx.call is a
-// loopback binding; the fetch back to treg runs in this isolate, which holds the per-run
-// bridge token and no provider key.
-import { WorkerEntrypoint } from "cloudflare:workers";
+// Loader for one hub script. treg opens a WebSocket to /run and keeps it for the run; the
+// script's ctx.call travels back over that socket, so nothing ever connects into treg. The
+// dynamic worker has no outbound network and no bindings: its one road out is the bridge object
+// passed to run(), which lives in this isolate and holds no key.
+import { RpcTarget } from "cloudflare:workers";
 
 const COMPAT = "2026-08-06";
+const AUTH_WAIT_MS = 10000;
+const GUEST_OPS = new Set(["call", "charge", "logs"]);
 
 const GUEST = `
 import { WorkerEntrypoint } from "cloudflare:workers";
@@ -93,7 +96,7 @@ function failureKind(text) {
 }
 
 export default class Guest extends WorkerEntrypoint {
-  async run(payload) {
+  async run(payload, bridge) {
     if (!(await networkClosed())) {
       return { op: "error", kind: "protocol", message: "the sandbox has an open network" };
     }
@@ -108,12 +111,12 @@ export default class Guest extends WorkerEntrypoint {
     if (typeof run !== "function") {
       return { op: "error", kind: "script", message: "run.js must export default async function run(ctx)" };
     }
-    const made = makeCtx(this.env.BRIDGE, payload.inputs || {}, payload.data == null ? null : payload.data);
+    const made = makeCtx(bridge, payload.inputs || {}, payload.data == null ? null : payload.data);
     const ctx = made.ctx;
     const flush = async () => {
       if (!ctx.logs.length) return;
       const lines = ctx.logs.splice(0, ctx.logs.length);
-      await this.env.BRIDGE.op({ op: "logs", lines: lines });
+      await bridge.op({ op: "logs", lines: lines });
     };
     try {
       const value = await run(ctx);
@@ -136,33 +139,43 @@ export default class Guest extends WorkerEntrypoint {
 }
 `;
 
-async function bridgeFetch(url, token, message) {
-  const res = await fetch(url, {
-    method: "POST",
-    redirect: "manual",
-    headers: {
-      authorization: "Bearer " + token,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(message),
-  });
-  if (res.status >= 300 && res.status < 400) throw new Error("bridge redirect is refused");
-  return res;
-}
+class Bridge extends RpcTarget {
+  constructor(socket) {
+    super();
+    this.socket = socket;
+    this.next = 1;
+    this.waiting = new Map();
+    this.closed = false;
+  }
 
-export class CallBridge extends WorkerEntrypoint {
-  async op(message) {
-    const res = await bridgeFetch(this.ctx.props.bridgeUrl, this.ctx.props.bridgeToken, message);
-    const text = await res.text();
-    if (text.length > 8 * 1024 * 1024) throw new Error("bridge response is over 8 MiB");
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      throw new Error("bridge response is not JSON");
+  op(message) {
+    if (this.closed) return Promise.reject(new Error("the run has ended"));
+    if (!message || typeof message !== "object" || !GUEST_OPS.has(message.op)) {
+      return Promise.reject(new Error("unknown bridge message"));
     }
-    if (!res.ok) throw new Error((data && data.message) || "bridge rejected the call");
-    return data;
+    const id = this.next++;
+    return new Promise((resolve, reject) => {
+      this.waiting.set(id, { resolve, reject });
+      try {
+        this.socket.send(JSON.stringify({ t: "op", id: id, msg: message }));
+      } catch (e) {
+        this.waiting.delete(id);
+        reject(new Error("the run has ended"));
+      }
+    });
+  }
+
+  answer(frame) {
+    const waiter = this.waiting.get(frame.id);
+    if (!waiter) return;
+    this.waiting.delete(frame.id);
+    waiter.resolve(frame.reply);
+  }
+
+  end() {
+    this.closed = true;
+    for (const waiter of this.waiting.values()) waiter.reject(new Error("the run has ended"));
+    this.waiting.clear();
   }
 }
 
@@ -172,18 +185,15 @@ function hexToBytes(hex) {
   return out;
 }
 
-async function authorized(secret, header, body) {
-  if (!secret) return false;
-  const match = /^Bearer ([0-9]+)\.([0-9a-f]{64})$/.exec(header || "");
+async function authorized(secret, auth, run) {
+  if (!secret || typeof auth !== "string" || typeof run !== "string") return false;
+  const match = /^([0-9]+)\.([0-9a-f]{64})$/.exec(auth);
   if (!match) return false;
   const exp = Number(match[1]);
   if (!Number.isFinite(exp) || exp * 1000 < Date.now()) return false;
   const key = await crypto.subtle.importKey(
     "raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const prefix = new TextEncoder().encode(match[1] + ".");
-  const data = new Uint8Array(prefix.length + body.byteLength);
-  data.set(prefix, 0);
-  data.set(new Uint8Array(body), prefix.length);
+  const data = new TextEncoder().encode(match[1] + "." + run);
   const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, data));
   const got = hexToBytes(match[2]);
   if (sig.length !== got.length) return false;
@@ -192,71 +202,90 @@ async function authorized(secret, header, body) {
   return diff === 0;
 }
 
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    if (url.pathname !== "/run" || request.method !== "POST") {
-      return new Response("not found", { status: 404 });
-    }
-    if (!env.AUTH_SECRET) return new Response("unauthorized", { status: 401 });
-    const body = await request.arrayBuffer();
-    if (body.byteLength > 64 * 1024 * 1024) {
-      return Response.json({ op: "error", kind: "protocol", message: "run request is over 64 MiB" }, { status: 413 });
-    }
-    if (!(await authorized(env.AUTH_SECRET, request.headers.get("authorization"), body))) {
-      return new Response("unauthorized", { status: 401 });
-    }
-    let payload;
-    try {
-      payload = JSON.parse(new TextDecoder().decode(body));
-    } catch (e) {
-      return Response.json({ op: "error", kind: "protocol", message: "run body is not JSON" }, { status: 400 });
-    }
-    if (typeof payload.script !== "string" || typeof payload.bridge_url !== "string" || typeof payload.bridge_token !== "string") {
-      return Response.json({ op: "error", kind: "protocol", message: "run body is missing script or bridge" }, { status: 400 });
-    }
-    let bridge;
-    try {
-      bridge = new URL(payload.bridge_url);
-    } catch (e) {
-      return Response.json({ op: "error", kind: "protocol", message: "bridge url is not a url" }, { status: 400 });
-    }
-    if (bridge.protocol !== "http:" && bridge.protocol !== "https:") {
-      return Response.json({ op: "error", kind: "protocol", message: "bridge url is not http" }, { status: 400 });
-    }
-    let begin;
-    try {
-      begin = await bridgeFetch(payload.bridge_url, payload.bridge_token, { op: "begin", jti: payload.jti });
-    } catch (e) {
-      return Response.json({ op: "error", kind: "protocol", message: String(e && e.message || e).slice(0, 600) }, { status: 502 });
-    }
-    if (!begin.ok) return new Response("bridge rejected the run", { status: 401 });
+function failureKind(text) {
+  const folded = text.toLowerCase();
+  if (folded.indexOf("memory") !== -1) return "memory";
+  if (folded.indexOf("cpu") !== -1 || folded.indexOf("time limit") !== -1) return "timeout";
+  return "script";
+}
 
-    const wall = Number(payload.wall_s);
-    const cpuMs = Math.max(1, Math.min(300000, Math.round((Number.isFinite(wall) ? wall : 1) * 1000)));
-    try {
-      const worker = env.LOADER.load({
-        compatibilityDate: COMPAT,
-        mainModule: "guest.js",
-        modules: {
-          "guest.js": GUEST,
-          "user.js": payload.script,
-        },
-        globalOutbound: null,
-        limits: { cpuMs: cpuMs, subRequests: 1000 },
-        env: {
-          BRIDGE: ctx.exports.CallBridge({ props: { bridgeUrl: payload.bridge_url, bridgeToken: payload.bridge_token } }),
-        },
-      });
-      const result = await worker.getEntrypoint().run({ inputs: payload.inputs || {}, data: payload.data == null ? null : payload.data });
-      return Response.json(result);
-    } catch (e) {
-      const text = String(e && (e.message || e) || e);
-      const folded = text.toLowerCase();
-      const kind = folded.indexOf("memory") !== -1 ? "memory"
-        : (folded.indexOf("cpu") !== -1 || folded.indexOf("time limit") !== -1) ? "timeout"
-        : "script";
-      return Response.json({ op: "error", kind: kind, message: text.slice(0, 600) });
-    }
+async function execute(env, payload, bridge) {
+  const wall = Number(payload.wall_s);
+  const cpuMs = Math.max(1, Math.min(300000, Math.round((Number.isFinite(wall) ? wall : 1) * 1000)));
+  try {
+    const worker = env.LOADER.load({
+      compatibilityDate: COMPAT,
+      mainModule: "guest.js",
+      modules: { "guest.js": GUEST, "user.js": payload.script },
+      globalOutbound: null,
+      limits: { cpuMs: cpuMs, subRequests: 1000 },
+      env: {},
+    });
+    return await worker.getEntrypoint().run(
+      { inputs: payload.inputs || {}, data: payload.data == null ? null : payload.data }, bridge);
+  } catch (e) {
+    const text = String(e && (e.message || e) || e);
+    return { op: "error", kind: failureKind(text), message: text.slice(0, 600) };
+  }
+}
+
+function finish(socket, frame) {
+  try {
+    socket.send(JSON.stringify(frame));
+    socket.close(1000, "done");
+  } catch (e) { /* treg already left; its wall clock decided the run */ }
+}
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname !== "/run") return new Response("not found", { status: 404 });
+    if (request.headers.get("upgrade") !== "websocket") return new Response("websocket only", { status: 426 });
+    if (!env.AUTH_SECRET) return new Response("unauthorized", { status: 401 });
+
+    const [client, socket] = Object.values(new WebSocketPair());
+    socket.accept();
+    let bridge = null;
+    const waitForAuth = setTimeout(() => {
+      if (!bridge) finish(socket, { t: "end", result: { op: "error", kind: "protocol", message: "no run arrived" } });
+    }, AUTH_WAIT_MS);
+
+    socket.addEventListener("close", () => { if (bridge) bridge.end(); });
+    socket.addEventListener("message", async (event) => {
+      let frame;
+      try {
+        frame = JSON.parse(typeof event.data === "string" ? event.data : new TextDecoder().decode(event.data));
+      } catch (e) {
+        finish(socket, { t: "end", result: { op: "error", kind: "protocol", message: "frame is not JSON" } });
+        return;
+      }
+      if (bridge) {
+        if (frame && frame.t === "reply") bridge.answer(frame);
+        return;
+      }
+      clearTimeout(waitForAuth);
+      bridge = new Bridge(socket);
+      if (!frame || !(await authorized(env.AUTH_SECRET, frame.auth, frame.run))) {
+        bridge.end();
+        finish(socket, { t: "end", result: { op: "error", kind: "protocol", message: "unauthorized" } });
+        return;
+      }
+      let payload;
+      try {
+        payload = JSON.parse(frame.run);
+      } catch (e) {
+        payload = null;
+      }
+      if (!payload || typeof payload.script !== "string") {
+        bridge.end();
+        finish(socket, { t: "end", result: { op: "error", kind: "protocol", message: "run is missing its script" } });
+        return;
+      }
+      const result = await execute(env, payload, bridge);
+      bridge.end();
+      finish(socket, { t: "end", result: result });
+    });
+
+    return new Response(null, { status: 101, webSocket: client });
   },
 };

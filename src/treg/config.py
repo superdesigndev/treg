@@ -745,15 +745,10 @@ class Settings(BaseSettings):
     # lets a reader in; both empty means every team.
     hub_users: str = ""
     # Which engine runs a hub script. quickjs is the in-process child (`python -m treg.hub_sandbox`).
-    # workers sends the script to the loader at hub_workers_url; ctx.call comes back to this process.
+    # workers opens a WebSocket to the loader at hub_workers_url and serves ctx.call on it.
     hub_sandbox: Literal["quickjs", "workers"] = "quickjs"
     hub_workers_url: str = ""
     hub_workers_auth_secret: str = Field(default="", repr=False)
-    # Full URL the loader POSTs ctx.call to. Empty: the bridge listener's own loopback URL, which a
-    # loader on this machine can reach and a loader on Cloudflare's network cannot.
-    hub_workers_callback_url: str = ""
-    hub_workers_callback_host: str = "127.0.0.1"
-    hub_workers_callback_port: int = Field(default=0, ge=0, le=65535)
 
     @field_validator("hub_sandbox", mode="before")
     @classmethod
@@ -764,8 +759,15 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _hub_workers_configured(self):
-        if self.hub_sandbox == "workers" and not (self.hub_workers_url and self.hub_workers_auth_secret):
+        if self.hub_sandbox != "workers":
+            return self
+        if not (self.hub_workers_url and self.hub_workers_auth_secret):
             raise ValueError("workers sandbox requires hub_workers_url and hub_workers_auth_secret")
+        parts = urlsplit(self.hub_workers_url.strip())
+        loopback = parts.hostname in {"127.0.0.1", "localhost", "::1"}
+        if not parts.hostname or parts.scheme not in {"https", "wss"} and not (
+                loopback and parts.scheme in {"http", "ws"}):
+            raise ValueError("hub_workers_url must be https (plain http only on loopback)")
         return self
 
     # `/table/<tool id>`: the same call as `/call/`, answered as rows and columns (for the Google
