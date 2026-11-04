@@ -171,6 +171,9 @@ class Settings(BaseSettings):
             "TREG_MONEY_ADMISSION_RETRY_AFTER_S", "TREG_ORG_CONCURRENCY_RETRY_AFTER_S",
             "money_admission_retry_after_s"))
 
+    # Orgs whose untagged free platform calls take no $0 hold (money.md "holdless"); [] = none.
+    holdless_free_org_ids: list[PositiveInt] = Field(default_factory=list)
+
     # SQLite locally, Postgres in production - same code path, just swap the URL.
     database_url: str = "sqlite+aiosqlite:///./treg.db"
     # Optional SQLite / PostgreSQL datasource for explicitly opted-in, lag-tolerant reads.

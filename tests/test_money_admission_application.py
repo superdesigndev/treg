@@ -1294,8 +1294,29 @@ async def _ledger_rows(call_ref: str) -> list[str]:
             LedgerEntry.call_id == call_ref))).scalars())
 
 
+async def _allow_holdless(clients, monkeypatch) -> int:
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    monkeypatch.setattr(get_settings(), "holdless_free_org_ids", [org_id])
+    return org_id
+
+
+async def test_unlisted_org_free_platform_call_keeps_its_hold(clients, icypeas_platform_on, monkeypatch):
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    monkeypatch.setattr(get_settings(), "holdless_free_org_ids", [org_id + 1])
+    probe = AdmissionProbe(monkeypatch)
+    probe.allow.set()
+    try:
+        response = await clients.post(f"/call/{FREE_EP}", json=FREE_BODY)
+        assert response.status_code == 200, response.text
+        assert [op for op, _ in probe.calls] == ["reserve", "release"]
+    finally:
+        probe.close()
+    assert sorted(await _ledger_rows(response.headers["X-Treg-Call-Id"])) == ["reserve", "settle"]
+
+
 async def test_untagged_free_platform_call_takes_no_hold_and_no_admission(
         clients, icypeas_platform_on, monkeypatch):
+    await _allow_holdless(clients, monkeypatch)
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     async with session_maker() as db:
         before = await ledger.balance_of(db, org_id)
@@ -1316,6 +1337,7 @@ async def test_untagged_free_platform_call_takes_no_hold_and_no_admission(
 
 
 async def test_tagged_free_platform_call_keeps_its_hold(clients, icypeas_platform_on, monkeypatch):
+    await _allow_holdless(clients, monkeypatch)
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     probe = AdmissionProbe(monkeypatch)
     probe.allow.set()
@@ -1332,6 +1354,7 @@ async def test_tagged_free_platform_call_keeps_its_hold(clients, icypeas_platfor
 
 async def test_free_platform_call_still_honours_an_exhausted_daily_cap(
         clients, icypeas_platform_on, monkeypatch):
+    await _allow_holdless(clients, monkeypatch)
     from treg.domain.governance import budgets as budget_policy
 
     monkeypatch.setattr(budget_policy, "_effective_daily_cap", lambda _org: 100)
@@ -1347,6 +1370,7 @@ async def test_free_platform_call_still_honours_an_exhausted_daily_cap(
 
 async def test_cancelled_untagged_free_call_does_not_return_to_the_money_queue(
         clients, icypeas_platform_on, monkeypatch):
+    await _allow_holdless(clients, monkeypatch)
     from treg.application.call import service as call_service
 
     entered, never = asyncio.Event(), asyncio.Event()

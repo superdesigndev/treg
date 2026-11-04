@@ -263,10 +263,12 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     endpoint match. The already-parsed object travels, never a bare dict — re-deriving the primary
     dimension here would be a second place that could disagree about who pays.
 
-    `allow_holdless` admits a `holdless_eligible` call from an untagged caller without a hold: a $0
-    reserve and its release only queued on the org's balance row. A tagged call keeps its hold,
+    `allow_holdless` admits a `holdless_eligible` call from an untagged caller in an org listed in
+    `holdless_free_org_ids` without a hold: a $0 reserve and its release only queued on the org's
+    balance row. A tagged call keeps its hold,
     because the tag rows written with it count toward `calls_per_day`."""
-    if allow_holdless and mk.holdless_eligible and not meta.tags:
+    if (allow_holdless and mk.holdless_eligible and not meta.tags
+            and caller.org_id in get_settings().holdless_free_org_ids):
         await _holdless_reserve(mk, caller)
         return
     mk.holdless = False
