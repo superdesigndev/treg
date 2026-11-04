@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: ${{ github.event_name == 'merge_group' && 0 || 1 }}
+          fetch-depth: ${{ github.event_name != 'merge_group' && 1 || 0 }}
       - name: Fetch the base branch
         if: github.event_name == 'pull_request'
         run: git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
