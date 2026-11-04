@@ -420,7 +420,9 @@ concurrent burst counts once, with no 2xx between, locks the provider (balance) 
 endpoint (quota; allowances are per operation). While locked, resolve admits one real call per
 process per interval as a probe (`MarketplaceCall.probe_lock_id`); its 2xx clears exactly that lock.
 A sweep `exhausted` reading admits the same probe, and its 2xx lifts the reading until the next
-sweep (`marks.clear_sweep_state`, conditional on `observed_at`). Hold lengths are capped whatever
+sweep (`marks.clear_sweep_state`, conditional on `observed_at`). An accepted async submission's
+2xx is no recovery and no probe success: the task's terminal answer goes through the same two
+functions once, from `asynctasks._finish_terminal` (ops/capacity.md). Hold lengths are capped whatever
 `retry-after` says; the sweep never writes this namespace. These writes run on their own short
 session after settle closed the hold (`capacity_exhausted_mark` in
 `tests/test_call_architecture.py`).

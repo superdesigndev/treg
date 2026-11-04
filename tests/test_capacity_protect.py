@@ -426,23 +426,87 @@ WIZA_EMAIL_BODY = {"individual_reveal": {"profile_url": "https://www.linkedin.co
                    "email_options": {"accept_work": True, "accept_personal": False, "accept_generic": False}}
 
 
-async def test_a_wiza_200_between_two_credit_errors_keeps_the_lock_closed(clients: AsyncClient, monkeypatch):
-    """A 2xx from another Wiza route clears the pending strike of a credit error, so 400, 200, 400
-    does not lock."""
+WIZA_BILLING_ISSUE = {"status": "failed", "is_complete": True, "fail_error": "billing_issue"}
+WIZA_FINISHED = {"status": "finished", "is_complete": True, "email": "jane@example.com",
+                 "email_status": "valid", "credits": {"api_credits": {"total": 2}}}
+
+
+@pytest.fixture
+def wiza_on(monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_WIZA", "PLATFORM-WIZA-KEY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "wiza")
     get_settings.cache_clear()
     monkeypatch.setattr(capacity_marks, "STRIKE_MIN_GAP", timedelta(0))
-    monkeypatch.setattr(call_service, "relay", _by_path({
-        "/company_enrichments": (400, WIZA_OUT),
-        "/individual_reveals": (200, b'{"data":{"id":910001,"status":"queued"}}')}))
-    try:
-        assert (await clients.post(f"/call/{WIZA_ENRICH}", json={"company_domain": "example.com"})).status_code == 400
-        assert (await _lock("wiza")).strikes == 1, "the credit error is a strike"
-        assert (await clients.post(f"/call/{WIZA_EMAIL}", json=WIZA_EMAIL_BODY)).status_code == 200
-        assert await _lock("wiza") is None, "the find's 200 erases the strike"
-        assert (await clients.post(f"/call/{WIZA_ENRICH}", json={"company_domain": "example.com"})).status_code == 400
-        lock = await _lock("wiza")
-        assert lock.strikes == 1 and not lock.is_active(), "400, 200, 400 does not lock"
-    finally:
-        get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def _wiza_relay(terminals: list[dict]):
+    """Wiza on treg's key: enrichment answers its empty-pool 400, each reveal is queued with the next
+    id, and polling reveal `n` answers `terminals[n - 1]`."""
+    async def relay(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False):
+        if "/company_enrichments" in upstream_url:
+            return await _relay(400, WIZA_OUT)(request, upstream_url, tool, secrets, client)
+        if request.method == "POST":
+            relay.submitted += 1
+            doc = {"data": {"id": relay.submitted, "status": "queued", "is_complete": False}}
+        else:
+            reveal = int(upstream_url.rsplit("/", 1)[1])
+            doc = {"data": {"id": reveal, **terminals[reveal - 1]}}
+        return await _relay(200, json.dumps(doc).encode())(request, upstream_url, tool, secrets, client)
+    relay.submitted = 0
+    return relay
+
+
+async def _wiza_enrich(clients: AsyncClient):
+    return await clients.post(f"/call/{WIZA_ENRICH}", json={"company_domain": "example.com"})
+
+
+async def _wiza_reveal(clients: AsyncClient, *, poll: bool = True) -> int:
+    submitted = await clients.post(f"/call/{WIZA_EMAIL}", json=WIZA_EMAIL_BODY)
+    assert submitted.status_code == 200, submitted.text
+    reveal = submitted.json()["data"]["id"]
+    if poll:
+        assert (await clients.get("/call/wiza.people.reveal.get", params={"id": reveal})).status_code == 200
+    return reveal
+
+
+async def test_an_accepted_wiza_reveal_is_no_recovery(clients: AsyncClient, monkeypatch, wiza_on):
+    """Wiza queues a reveal on an empty pool, so its 200 says nothing about the balance: a credit
+    error, a queued reveal and a credit error lock."""
+    monkeypatch.setattr(call_service, "relay", _wiza_relay([]))
+    assert (await _wiza_enrich(clients)).status_code == 400
+    await _wiza_reveal(clients, poll=False)
+    assert (await _lock("wiza")).strikes == 1, "the queued reveal keeps the strike"
+    assert (await _wiza_enrich(clients)).status_code == 400
+    assert (await _lock("wiza")).is_active()
+
+
+async def test_a_wiza_reveal_failed_for_billing_is_one_strike_per_task(
+        clients: AsyncClient, monkeypatch, wiza_on):
+    monkeypatch.setattr(call_service, "relay", _wiza_relay([WIZA_BILLING_ISSUE] * 2))
+    first = await _wiza_reveal(clients)
+    assert (await _lock("wiza")).strikes == 1, "the terminal billing_issue is a strike"
+    await clients.get("/call/wiza.people.reveal.get", params={"id": first})
+    assert (await _lock("wiza")).strikes == 1, "polling a finished task again is no second strike"
+    await _wiza_reveal(clients)
+    assert (await _lock("wiza")).is_active(), "a second task failed for billing locks"
+    assert (await _wiza_enrich(clients)).status_code == 503
+
+
+async def test_a_finished_wiza_reveal_clears_a_pending_strike(clients: AsyncClient, monkeypatch, wiza_on):
+    monkeypatch.setattr(call_service, "relay", _wiza_relay([WIZA_FINISHED]))
+    assert (await _wiza_enrich(clients)).status_code == 400
+    assert (await _lock("wiza")).strikes == 1
+    await _wiza_reveal(clients)
+    assert await _lock("wiza") is None
+
+
+async def test_a_queued_wiza_reveal_never_lifts_the_sweep_reading(clients: AsyncClient, monkeypatch, wiza_on):
+    """The sweep read zero, and the probe a minute later was a reveal Wiza queued: the reading
+    stands until the task's own answer or the next sweep."""
+    monkeypatch.setattr(call_service, "relay", _wiza_relay([WIZA_BILLING_ISSUE]))
+    await _publish("wiza", exhausted=True, ago=timedelta(minutes=2))
+    await _wiza_reveal(clients, poll=False)
+    assert (await _state("wiza")).exhausted_until is not None
+    assert (await clients.post(f"/call/{WIZA_EMAIL}", json=WIZA_EMAIL_BODY)).status_code == 503

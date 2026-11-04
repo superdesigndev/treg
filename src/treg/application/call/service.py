@@ -1820,18 +1820,28 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             await _finish_cancelled_call(request, mk, call_ref, response)
             raise
         capacity_signal = None
-        if response.status >= 400 or account_out_2xx:
+        # Only treg's own account is marked: an org's own key running dry is the org's business,
+        # and an oauth-billed connect has no shared account.
+        on_treg_account = mk.tier == "platform"
+        if on_treg_account and (response.status >= 400 or account_out_2xx):
             # Did the provider just say OUR account is out? Mark it for the next caller. After the
             # settle on purpose: the hold is closed, no connection is held.
             try:
                 capacity_signal = await _note_capacity_signal(
-                    mk, response.status, httpx.Headers(response.raw_headers), body)
+                    mk.provider, mk.endpoint_id, mk.key_slot, response.status,
+                    httpx.Headers(response.raw_headers), body)
             except asyncio.CancelledError:
                 await _finish_cancelled_call(request, mk, call_ref, response)
                 raise
-        elif response.status < 300:  # a 2xx that says the account is out is no recovery
+        # A 2xx that says the account is out is no recovery, and neither is an accepted async
+        # submission: a vendor can queue a job on an empty account and fail it later (Wiza's
+        # reveals end `billing_issue`). The task's terminal answer decides (application/asynctasks).
+        elif on_treg_account and response.status < 300 and not deferred:
             try:
-                await _note_capacity_recovery(mk)
+                await _note_capacity_recovery(
+                    mk.provider, mk.endpoint_id, mk.key_slot,
+                    metered=capacity_marks.spends_balance(mk.cost_type),
+                    probe_lock_id=mk.probe_lock_id)
             except asyncio.CancelledError:
                 await _finish_cancelled_call(request, mk, call_ref, response)
                 raise
