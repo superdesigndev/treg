@@ -299,3 +299,65 @@ def test_a_spooled_v2_row_keeps_every_answer_path_its_rules_read():
              settle={"usage": {"unit": "usd", "terms": [{"path": "response.usage.details[kind=IMG].n", "rate": "1"}]}},
              miss={"when": {"path": "response.items.*.id", "op": "absent"}})
     assert cost.evidence_paths(ep) == ("usage", "meta.ok", "items")
+
+
+# -- refusals, served forms and evidence the review of the first v2 rows found -------------------
+
+@pytest.mark.parametrize("hold", [lambda request: 1 / 0, lambda request: "many"])
+def test_a_reserve_plugin_without_a_quantity_refuses_the_call_before_any_hold(monkeypatch, hold):
+    from treg.application.call.types import ResolutionFailed
+    module = types.ModuleType("treg.domain.plugins.demo")
+    module.hold = hold
+    monkeypatch.setitem(sys.modules, "treg.domain.plugins.demo", module)
+    ep = row(price={"value": "0.01"}, reserve={"plugin": "demo.hold", "max": "0.5"})
+    with pytest.raises(ResolutionFailed) as refused:
+        call(ep)
+    assert (refused.value.kind, refused.value.blame, refused.value.status_code) == \
+        ("catalog_price_invalid", "treg", 503)
+
+
+def test_free_when_compares_with_null_as_written():
+    ep = row(bill={"free_when": {"path": "response.cost", "op": "equals", "value": None}})
+    assert ep["bill"]["free_when"] == {"path": "response.cost", "op": "equals", "value": None}
+    assert call(ep, answer={"cost": None})[1].actual_micro == 0
+    assert call(ep, answer={"cost": 1})[1].actual_micro == 20000
+
+
+@pytest.mark.parametrize("path,answer,actual", [
+    ("response.items.*.id", {}, 200000),
+    ("response.items.*.id", b"<html>", 200000),
+    ("response.items.*.id", {"error": "x"}, 200000),
+    ("response.items.*.id", {"items": "x"}, 200000),
+    ("response.items.*.id", {"items": []}, 0),
+    ("response.items.*.id", {"items": [{"id": 1}, {}]}, 20000),
+    ("response.items[kind=a]", {}, 200000),
+    ("response.items[kind=a]", {"items": [{"kind": "b"}]}, 0),
+    ("response[kind=a]", {"kind": "a"}, 200000),
+    ("response[kind=a]", [{"kind": "a"}, {"kind": "a"}], 40000),
+    ("response.data.*.items.*", {"data": [{"x": 1}]}, 200000),
+    ("response.data.*.items.*", {"data": [{"items": []}]}, 0),
+    ("response.data.*.items.*", {"data": [{"items": [1, 2]}]}, 40000),
+])
+def test_a_many_valued_count_settles_at_the_hold_when_its_list_is_unreadable(path, answer, actual):
+    ep = row(settle={"count": {"path": path}},
+             reserve={"rows": {"param": "body.n", "default": {"value": 10, "source": "docs"}, "max": 10}})
+    assert call(ep, answer=answer)[1].actual_micro == actual
+
+
+def test_a_rates_row_is_served_at_its_reserve_max_so_treg_s_key_may_serve_it():
+    from treg.domain.catalog import store
+    ep = row(price={"rates": {"result": "0.01"}}, reserve={"plugin": "demo.hold", "max": "0.5"})
+    assert store.load().cost_view(ep["cost"], "demo")["usd"] == 0.5
+    assert store.load().platform_eligible(ep)
+
+
+def test_a_v2_miss_opts_into_result_aware_caching_only_beside_a_verified_adapter(monkeypatch):
+    from types import SimpleNamespace
+
+    from treg.domain.catalog import results, store
+    ep = row(miss={"when": {"path": "response.items", "op": "empty"}})
+    for adapter, opted in ((None, False), (SimpleNamespace(verified=False, miss=""), False),
+                           (SimpleNamespace(verified=True, miss=""), True)):
+        loaded = SimpleNamespace(by_id={"demo.x": ep}, adapters={"demo.x": adapter} if adapter else {})
+        monkeypatch.setattr(store, "load", lambda loaded=loaded: loaded)
+        assert results.has_result_rules("demo.x") is opted
