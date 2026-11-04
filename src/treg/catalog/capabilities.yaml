@@ -1299,6 +1299,11 @@ capabilities:
   stocks.company.news: "News for a specific company"
   stocks.fundamentals.metrics: "Fundamental metrics and ratios for a ticker"
   stocks.market.status: "Is the market open right now"
+  stocks.financials.all: "Get standardized company financial statements"
+  stocks.financials.segments: "Get company financial-statement segments"
+  stocks.filings.list: "List a company's filings"
+  stocks.insider-trades.list: "List insider trades"
+  stocks.discovery.filings-types: "List filing types available for filings"
 
 # Short titles people scan on a platform shelf, only where a compared job's description runs long.
 # The description above stays whole: agents read it, and search ranks on it.

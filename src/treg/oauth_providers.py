@@ -4001,6 +4001,41 @@ FINANCIALDATASETS = OAuthProvider(
 )
 
 
+FINANCIALFILINGS = OAuthProvider(
+    service="financialfilings",
+    display_name="FinancialFilings",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your FinancialFilings API key",
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://financialfilings.com/accounts/api-dashboard/",
+    setup_action_label="Get your FinancialFilings API key",
+    setup_steps=(
+        "Sign up at financialfilings.com (or let an agent POST https://api.financialreports.eu/agent/signup).",
+        "Open the API dashboard, choose pay-as-you-go, and copy your API key.",
+    ),
+    setup_note=(
+        "Pay-as-you-go is priced in credits (1 credit = $0.01, the first 500 a month free): "
+        "metadata 1, filing text 6 or 12, financials 40 credits per successful call. "
+        "Connecting spends nothing: the probe is the free usage route."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Market data",
+    summary=(
+        "Official filings, as published, and normalized financials for listed companies in the "
+        "US, EU, UK, APAC and LATAM: annual and interim reports with full text, insider "
+        "transactions, dividends, splits and segment data."
+    ),
+    base_url="https://api.financialreports.eu",
+    docs_url="https://financialfilings.com/developers/",
+    # GET /usage/ is free and never billed. A valid key answers 200 with the cycle's spend; a bad
+    # key answers 403 {"type": "invalid_api_key"}, so reject-on-status works.
+    probe_path="/usage/",
+)
+
 # Alpha Vantage is DELIBERATELY absent. Its API serves real quote data to a garbage key (bogus
 # key -> HTTP 200 with the IBM quote; even premium endpoints answer 200 with an upsell note), so a
 # pasted key can never be validated at connect - the ScrapeCreators rule:
@@ -4217,7 +4252,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         ATLY,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
-        FINANCIALDATASETS,
+        FINANCIALDATASETS, FINANCIALFILINGS,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
