@@ -75,7 +75,7 @@ endpoints:
         emailStatus: {type: string, required: false}
         emailType: {type: string, required: false}
         cursor: {type: string, required: false}
-        limit: {type: integer, required: false, default: 25, min: 1, max: 100}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100, note: "On treg's shared key, send an explicit limit from 1 to 10. Your own key keeps LeadOcean's 1-100 range."}
       note: Each returned record consumes search allowance; an empty result consumed none in live verification.
     test_request: {queryParams: {domain: stripe.com, limit: 1}}
     example_response: examples/leadocean.people.search.json

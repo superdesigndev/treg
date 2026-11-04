@@ -185,6 +185,36 @@ def test_a_row_map_puts_every_provider_row_in_the_contract_shape():
     assert C.verify(ad, contract, endpoint, {"items": [{"first": "A"}]})[0] is True
 
 
+def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
+    """people.search builds `q` from the caller's title and location, but only for a provider that
+    accepts none of the caller's own fields: exa joins a {title} request, a provider that takes
+    {title} still gets exactly the title, and a {company_domain} request still skips exa."""
+    from treg.domain.catalog.routing.contracts import adapter_accepts
+    from treg.domain.catalog.routing.plan import unscoped
+
+    cat = catalog_store.load()
+    contract = cat.contracts["people.search"]
+    ident, _ = canonical_identity(contract, {"title": "Product Manager", "location": "Seattle, United States",
+                                             "keywords": ["developer tools"]})
+    assert "q" not in ident, "the stand-in never enters the request's identity"
+    exa = cat.adapters["exa.people.search"]
+    assert adapter_accepts(exa, ident) == ("q",) and not unscoped(exa, contract, ident)
+    _, body = exa.to_upstream(ident, ("q",))
+    assert body["query"] == "Product Manager Seattle, United States developer tools"
+    icy = cat.adapters["icypeas.people.search"]
+    variant = adapter_accepts(icy, ident)
+    assert variant == ("title",)
+    assert icy.to_upstream(ident, variant)[1]["query"] == {
+        "currentJobTitle": {"include": ["Product Manager"]}, "location": {"include": ["Seattle, United States"]},
+        "keyword": {"include": ["developer tools"]}}, "a provider that takes the title gets it unchanged"
+    scoped, _ = canonical_identity(contract, {"title": "CTO", "company_domain": "stripe.com"})
+    assert unscoped(exa, contract, scoped) == ("company_domain",), "a text match cannot scope by company"
+    with pytest.raises(ValueError, match="stand_in"):
+        from treg.domain.catalog.routing import contracts as C
+        C.parse_contracts({"contracts": {"y": {"identity": [{"q": "str"}], "output": {"a": "str"},
+                                               "miss": "a == null", "stand_in": {"nope": "q"}}}})
+
+
 def test_every_shipped_adapter_round_trips_its_fixture():
     cat = catalog_store.load()
     bad = {eid: a.verify_note for eid, a in cat.adapters.items() if not a.verified}
@@ -452,7 +482,7 @@ async def test_sampled_provider_only_filters_shared_key_routes(clients, monkeypa
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
     monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "test-key")
     get_settings.cache_clear()
-    ep = catalog_store.load().by_id[ROUTED]
+    ep = catalog_store.load().by_id["treg.people.phone.find"]
     options = call_route.RouteOptions.from_headers(lambda key: None)
     identity = {"linkedin_url": "https://www.linkedin.com/in/example"}
 
@@ -486,25 +516,25 @@ async def test_sampled_provider_changes_routed_call_not_direct_call(clients, mon
     monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "test-key")
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({
-        "leadocean": [(200, {"data": {"email": "person@example.com", "status": "verified"}}),
-                      (200, {"data": {"email": "person@example.com", "status": "verified"}})],
+        "leadocean": [(200, {"data": {"best": {"phone": "+15555550100"}}}),
+                      (200, {"data": {"best": {"phone": "+15555550100"}}})],
     }, seen))
     identity = {"linkedin_url": "https://www.linkedin.com/in/example"}
     try:
         monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"leadocean":0}')
         get_settings.cache_clear()
-        refused = await clients.post(f"/call/{ROUTED}", json=identity)
+        refused = await clients.post("/call/treg.people.phone.find", json=identity)
         assert refused.status_code == 503
         assert seen == []
-        direct = await clients.get("/call/leadocean.people.email.find.work", params=identity)
+        direct = await clients.get("/call/leadocean.people.phone.find", params=identity)
         assert direct.status_code == 200, direct.text
-        assert direct.json()["data"]["email"] == "person@example.com"
+        assert direct.json()["data"]["best"]["phone"] == "+15555550100"
 
         monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"leadocean":100}')
         get_settings.cache_clear()
-        served = await clients.post(f"/call/{ROUTED}", json=identity)
+        served = await clients.post("/call/treg.people.phone.find", json=identity)
         assert served.status_code == 200, served.text
-        assert served.json()["_treg"]["served_by"] == "leadocean.people.email.find.work"
+        assert served.json()["_treg"]["served_by"] == "leadocean.people.phone.find"
         assert served.json()["_treg"]["charged_micro"] == 0
         assert [provider for provider, *_ in seen] == ["leadocean", "leadocean"]
     finally:

@@ -352,6 +352,11 @@ contracts:
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
     scoping: [company_domain, title, full_name]   # a child that cannot send one of these answers a different question
+    # A free-text provider (exa, parallel) takes only {q}; without this a {title} request never
+    # reaches it. Built only for a provider that accepts none of the caller's fields. No keywords:
+    # those adapters append them to q themselves. No domain: a text match cannot scope by
+    # company, so a {company_domain} request still skips it.
+    stand_in: {q: "join(full_name, title, location)"}
     output:
       people: {type: list, required: true, note: "one row per person, in the row shape below; the provider's own rows are in raw"}
       count: {type: int}

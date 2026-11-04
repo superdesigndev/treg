@@ -1084,6 +1084,14 @@ an invalid extra never disables the primary.
   `output.next_cursor` only serves a direct call to the serving provider. One longer than
   `CURSOR_MAX` (512 chars; icypeas returns tokens of many KB) is set to null and
   `_treg.next_cursor` names `{chars, in_raw}`, the adapter path where `raw` keeps it whole.
+- **A stand-in reaches a provider the caller's fields cannot**: a contract's `stand_in` maps an
+  identity key to an expression over the identity and filters (people.search:
+  `q = join(full_name, title, location)`). `adapter_accepts` tries the caller's own fields first and
+  builds the stand-in only when an adapter accepts none of them, so exa and parallel (`{q}` only)
+  can answer a `{title}` request while every other provider's request is unchanged. The stand-in
+  never enters the plan's identity; `to_upstream` fills it for the matched variant, and `unscoped`
+  counts the keys inside it as sent. A key left out of the expression keeps its scoping guard
+  (`company_domain`: a text match cannot scope by company).
 - **Free text is a filter, not identity**: a brief's requirements ride in `keywords` (always sent),
   never in `q` alone, or a provider matching the `{title}` variant never sees them. Hard filters
   that broaden or over-constrain measured worse; add one opt-in, and measure it first.

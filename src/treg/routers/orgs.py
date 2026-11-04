@@ -65,7 +65,6 @@ from ..models import (
     Project,
     RunRecord,
     TagBudget,
-    TagSpend,
     Tool,
     User,
 )
@@ -1412,8 +1411,7 @@ async def list_tag_keys(
     friends from the dashboard even though the API served them fine.
     """
     _require_admin_of(org_id, caller)
-    seen = (await db.execute(
-        select(TagSpend.dim).where(TagSpend.org_id == org_id).distinct())).scalars().all()
+    seen = await ledger.tag_dims(db, org_id)
     declared = _budget_dims_of(caller.org)
     return {"seen": sorted(set(seen)), "budgetable": declared,
             "primary": _primary_dim_of(caller)}
