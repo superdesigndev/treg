@@ -10,8 +10,9 @@ sentence: a lasting preference, or a one-off task? A sentence at 0.8 or higher i
 `.claude/jev-memory.md` and goes back into the first message of every later session. One check is one
 treg call, around $0.00002 for a short prompt.
 
-Runs on treg. If it isn't set up (`treg --version` fails), read https://treg.to/llms.txt and follow it to install
-and sign in, then come back here.
+Runs on the `treg` CLI: the mod's hook calls it after every turn, so treg's MCP tools are not
+enough here. If `treg --version` fails, tell the human this mod needs the CLI and point them at
+https://treg.to/llms.txt; install it only if they asked you to.
 
 ## Before you start
 

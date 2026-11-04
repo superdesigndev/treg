@@ -4,8 +4,8 @@ source:
   openapi: null # paths transcribed and live-verified 2026-08-15 (free tier, 60 req/min)
   curated: 2026-08-15
 # TRIAL POOL + own-key: treg holds only Finnhub's free key, and their free tier is licensed for personal,
-# non-commercial use; the commercial All-In-One is $3,500/mo billed annually (research doc,
-# licensing table). No fx rate -> usd null -> platform_eligible FALSE by construction. A team pasting
+# non-commercial use; the commercial All-In-One is $3,500/mo billed annually.
+# No fx rate -> usd null -> platform_eligible FALSE by construction. A team pasting
 # its own Finnhub key gets everything at their own tier's limits.
 pricing_url: https://finnhub.io/pricing
 # Archive/cache judgment: a JUDGED forbidden, distinct from unjudged-absent. Finnhub's terms bar

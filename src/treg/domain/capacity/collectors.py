@@ -28,6 +28,15 @@ async def _get(c: httpx.AsyncClient, url: str, **kw) -> dict:
     return r.json()
 
 
+async def _orbisearch(c, key):
+    d = await _get(c, "https://api.orbisearch.com/v1/credits",
+                   headers={"X-API-Key": key})
+    balance = _finite(d.get("credits")) if isinstance(d, dict) else None
+    if balance is None or balance < 0:
+        raise ValueError("OrbiSearch returned no valid credit balance")
+    return {"value": balance, "unit": "credits", "note": "prepaid credit balance"}
+
+
 def _finite(raw):
     """A finite JSON number, sign kept; None for anything else (Booleans and strings included)."""
     return raw if type(raw) in (int, float) and math.isfinite(raw) else None
@@ -402,6 +411,25 @@ async def _sixtyfour(c, key):
     return {"value": remaining, "unit": "credits", "note": "Organization credit balance"}
 
 
+async def _leadocean(c, key):
+    d = await _get(c, "https://api.leadocean.io/v1/usage", headers={"x-api-key": key})
+    pace = (d.get("data") or {}).get("pace") if isinstance(d, dict) else None
+    if not isinstance(pace, dict):
+        raise ValueError("LeadOcean returned no pace counters")
+    remaining = []
+    for group in ("search", "enrich"):
+        windows = pace.get(group)
+        if not isinstance(windows, list) or not windows:
+            raise ValueError(f"LeadOcean returned no {group} counters")
+        for window in windows:
+            used, limit = window.get("used"), window.get("limit")
+            if type(used) is not int or type(limit) is not int or used < 0 or limit < 0:
+                raise ValueError("LeadOcean returned an invalid pace counter")
+            remaining.append(max(0, limit - used))
+    return {"value": min(remaining), "unit": "records", "informational": True,
+            "note": "Smallest remaining search/enrichment window; pools are independent"}
+
+
 async def _blitzapi(c, key):
     d = await _get(c, "https://api.blitz-api.ai/v2/account/key-info",
                    headers={"x-api-key": key})
@@ -413,6 +441,17 @@ async def _blitzapi(c, key):
     return {"value": remaining, "unit": "records",
             "note": f"Monthly allowance resets {reset if isinstance(reset, str) else 'unknown'}; "
                     f"per-endpoint limit {rps if type(rps) is int else 'unknown'} requests/s"}
+
+
+async def _mobiusengine_jobs(c, key):
+    # Free: GET /v1/balance spends nothing and answers 401 for a bad key. A wallet account answers its prepaid
+    # dollars; an account on a monthly plan answers mode "plan" and no balance, which is not a usable slot.
+    d = await _get(c, "https://jobs-api.arihaan.ai/v1/balance", headers={"x-api-key": key})
+    left = _finite(d.get("balance_usd")) if isinstance(d, dict) and d.get("mode") == "wallet" else None
+    if left is None or left < 0:
+        raise ValueError("MobiusEngine.ai Jobs Data returned no pay-per-job balance")
+    return {"value": left, "unit": "USD left",
+            "note": "prepaid pay-per-job balance; HTTP 402 insufficient_balance at zero"}
 
 
 async def _dropleads(c, key):
@@ -581,6 +620,20 @@ async def _bounceban(c, key):
             or not math.isfinite(credits) or credits < 0):
         raise ValueError("BounceBan returned no valid verification-credit balance")
     return {"value": credits, "unit": "verification credits", "note": ""}
+
+
+async def _dropcontact(c, key):
+    response = await c.post(
+        "https://api.dropcontact.com/v1/enrich/all",
+        headers={"X-Access-Token": key}, json={"data": [{}]},
+    )
+    response.raise_for_status()
+    data = response.json()
+    credits = data.get("credits_left") if isinstance(data, dict) and not data.get("error") else None
+    if (isinstance(credits, bool) or not isinstance(credits, (int, float))
+            or not math.isfinite(credits) or credits < 0):
+        raise ValueError("Dropcontact returned no valid credit balance")
+    return {"value": credits, "unit": "credits", "note": ""}
 
 
 async def _zerobounce(c, key):
@@ -764,25 +817,36 @@ async def _predictleads(c, key):
             "note": f"{used}/{quota} used, subscription {attrs.get('status', '?')}"}
 
 
-async def _theirstack(c, key):
-    # GET /v0/billing/credit-balance is free. api_credits is the API credits granted, not what is
-    # left: the balance is api_credits - used_api_credits. ui_credits are the separate app-reveal
-    # meter and never move on API calls.
-    d = await _get(c, "https://api.theirstack.com/v0/billing/credit-balance",
-                   headers={"Authorization": f"Bearer {key}"})
-    granted, used = d.get("api_credits"), d.get("used_api_credits")
-    left = max(granted - used, 0) if isinstance(granted, int) and isinstance(used, int) else None
-    expires = (d.get("earliest_expiration") or "")[:10]
-    return {"value": left, "unit": "API credits",
-            "note": f"{used} of {granted} used"
-                    + (f", earliest expiry {expires}" if expires else "")}
-
-
 async def _findymail(c, key):
     d = await _get(c, "https://app.findymail.com/api/credits",
                    headers={"Authorization": f"Bearer {key}", "Accept": "application/json"})
     return {"value": d.get("credits"), "unit": "finder credits",
             "note": f"verifier {d.get('verifier_credits')} left (separate pool)"}
+
+
+async def _anymailfinder(c, key):
+    d = await _get(c, "https://api.anymailfinder.com/v5.1/account",
+                   headers={"Authorization": key})
+    credits = d.get("credits_left")
+    if isinstance(credits, bool) or not isinstance(credits, int) or credits < 0:
+        raise ValueError("Anymail Finder account returned an invalid credit balance")
+    return {"value": credits, "unit": "credits", "note": ""}
+
+
+async def _enrow(c, key):
+    d = await _get(c, "https://api.enrow.io/account/info", headers={"x-api-key": key})
+    credits = _finite(d.get("credits")) if isinstance(d, dict) else None
+    if credits is None or credits < 0:
+        raise ValueError("Enrow account returned an invalid credit balance")
+    return {"value": credits, "unit": "credits", "note": ""}
+
+
+async def _filtrat(c, key):
+    d = await _get(c, "https://filtrat.io/v1/credits/balance", headers={"Authorization": f"Bearer {key}"})
+    credits = _finite(d.get("balance")) if isinstance(d, dict) else None
+    if credits is None or credits < 0:
+        raise ValueError("Filtrat returned an invalid credit balance")
+    return {"value": credits, "unit": "credits", "note": ""}
 
 
 async def _branddev(c, key):
@@ -918,6 +982,16 @@ async def _crustdata(c, key):
     return {"value": acct.get("credits"), "unit": "credits", "note": note}
 
 
+async def _theirstack(c, key):
+    d = await _get(c, "https://api.theirstack.com/v0/billing/credit-balance",
+                   headers={"Authorization": f"Bearer {key}"})
+    total = d.get("api_credits") if isinstance(d, dict) else None
+    used = d.get("used_api_credits") if isinstance(d, dict) else None
+    if type(total) is not int or total < 0 or type(used) is not int or used < 0:
+        raise ValueError("TheirStack returned no valid API credit balance")
+    return {"value": max(total - used, 0), "unit": "API credits", "note": "Available API credits"}
+
+
 async def _enrichlayer(c, key):
     d = await _get(c, "https://enrichlayer.com/api/v2/credit-balance",
                    headers={"Authorization": f"Bearer {key}"})
@@ -999,6 +1073,9 @@ async def _piapi(c, key):
 
 
 BALANCE_ROUTES = {
+    "orbisearch": _orbisearch,
+    "dropcontact": _dropcontact,
+    "theirstack": _theirstack,
     "anyapi": _anyapi,
     "cloro": _cloro,
     "openrouter": _openrouter,
@@ -1021,10 +1098,12 @@ BALANCE_ROUTES = {
     "branddev": _branddev,
     "companyenrich": _companyenrich,
     "findymail": _findymail,
+    "anymailfinder": _anymailfinder,
+    "enrow": _enrow,
+    "filtrat": _filtrat,
     "leadsforge": _leadsforge,
     "oceanio": _oceanio,
     "predictleads": _predictleads,
-    "theirstack": _theirstack,
     "tomba": _tomba,
     "hlrlookup": _hlrlookup,
     "dataforseo": _dataforseo,
@@ -1049,7 +1128,9 @@ BALANCE_ROUTES = {
     "harvestapi": _harvestapi,
     "fetchinio": _fetchinio,
     "sixtyfour": _sixtyfour,
+    "leadocean": _leadocean,
     "blitzapi": _blitzapi,
+    "mobiusengine_jobs": _mobiusengine_jobs,
     "prospeo": _prospeo,
     "aiark": _aiark,
     "wiza": _wiza,
@@ -1076,6 +1157,9 @@ BALANCE_ROUTES = {
 # obtain. Kept explicit so the report names them instead of silently skipping, and so a future probe
 # has a list of what to re-check.
 NO_BALANCE_API = {
+    "corpoapi": "GET /v1/usage returns usage totals; the published docs name no remaining-balance "
+                "field; the prepaid USD balance is visible in the Corpo API dashboard",
+    "bravesearch": "no API-key-readable balance or usage endpoint in Brave's Search API; prepaid credits and usage are visible in its dashboard",
     "quickenrich": "no balance endpoint, and no response carries the allowance any more: a free "
                    "Contact Finder miss or hit and a billed employee search all return a meta without "
                    "remaining_credits (or no meta), despite the published docs; the subscription "

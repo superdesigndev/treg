@@ -5756,6 +5756,7 @@ endpoints:
   observed_time: 4.31
 - id: anyapi.web.scrape
   capability: web.extract
+  not_found: {status: 200, when: "choose(output.data.statusCode == 404, true, output.data.statusCode == 410)", means: "the site itself answered 404 or 410: the page does not exist"}
   tier: extended
   platform: web
   domain: scrape

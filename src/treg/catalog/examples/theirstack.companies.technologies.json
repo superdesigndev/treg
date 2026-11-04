@@ -1,0 +1,12 @@
+{
+  "data": [
+    {
+      "technology": {
+        "name": "Greenhouse",
+        "category": "HRMS",
+        "slug": "greenhouse",
+        "category_slug": "hrms"
+      }
+    }
+  ]
+}

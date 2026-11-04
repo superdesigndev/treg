@@ -1,16 +1,12 @@
 """HTTP routes for first-run team onboarding."""
 
-import re
-
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from .. import sandbox as demo_sandbox
 from ..application import onboard as onboard_use_cases
 from ..application import signup as signup_use_cases
 from ..application.onboard import first_run
-from ..config import get_settings
 from ..domain.identity.access import (
     SANDBOX_CLOSED,
     Caller,
@@ -46,15 +42,11 @@ def _onboard_http_error(exc: onboard_use_cases.OnboardError) -> HTTPException:
 _SANDBOX_HTTP_ERRORS = {
     "rate_limited": (429, "too many demo sandboxes from here — try again later"),
     "sandbox_only_live": (400, "live-wire info is for the landing-page sandbox only"),
-    "bad_signature": (400, "bad signature"),
-    "bad_payload": (400, "bad payload"),
     "sandbox_only_skill": (400, "skill export is for the landing-page sandbox only"),
 }
 
 
 def _sandbox_http_error(exc: onboard_use_cases.SandboxError) -> HTTPException:
-    if exc.kind == "webhook_unconfigured":
-        return HTTPException(status_code=404)
     status_code, detail = _SANDBOX_HTTP_ERRORS[exc.kind]
     return HTTPException(status_code=status_code, detail=detail)
 
@@ -141,29 +133,6 @@ async def demo_sandbox_live(caller: Caller = Depends(require_member)) -> dict:
         raise _sandbox_http_error(exc) from exc
 
 
-@app.post("/stripe/webhook", include_in_schema=False)
-async def stripe_webhook(request: Request) -> dict:
-    """Stripe → treg: a signed event from the demo sandbox account. Only `charge.succeeded` feeds
-    the landing ticker; everything else is acknowledged and dropped. 404 when unconfigured, so a
-    deploy without the secret exposes no unauthenticated POST surface."""
-    try:
-        return await onboard_use_cases.accept_stripe_event(
-            payload_factory=request.body,
-            signature=request.headers.get("stripe-signature", ""))
-    except onboard_use_cases.SandboxError as exc:
-        raise _sandbox_http_error(exc) from exc
-
-
-@app.get("/landing/stripe-feed", include_in_schema=False)
-async def landing_stripe_feed() -> StreamingResponse:
-    """SSE stream for the landing demo pane: recent charges, then live ones. Unauthenticated by
-    design — it carries only server-chosen fields (amount/currency/created/id-suffix)."""
-    return StreamingResponse(onboard_use_cases.stripe_feed(), media_type="text/event-stream", headers={
-        "Cache-Control": "no-cache",
-        "X-Accel-Buffering": "no",  # tell the reverse proxy not to buffer the stream
-    })
-
-
 @app.get("/demo/sandbox/skill")
 async def demo_sandbox_skill(
     caller: Caller = Depends(require_member),
@@ -175,31 +144,6 @@ async def demo_sandbox_skill(
             org_id=caller.org_id, sandbox=demo_sandbox.is_sandbox(caller.org))
     except onboard_use_cases.SandboxError as exc:
         raise _sandbox_http_error(exc) from exc
-
-
-@app.get("/skills/samples")
-async def skill_samples() -> list[dict]:
-    """The hosted sample skills the landing offers — each with its files (SKILL.md/treg.json/.secret)
-    and the prompt to try. Public: the landing renders these as file packages."""
-    base = get_settings().public_url.rstrip("/")
-    return onboard_use_cases.sample_skills(base=base)
-
-
-@app.get("/skills/{name}/install.sh", include_in_schema=False)
-async def skill_install(name: str, token: str = ""):
-    """`curl -fsSL {BASE}/skills/<name>/install.sh?token=<t> | sh` — writes the skill into
-    ./.claude/skills/<name>/ so Claude Code loads it. The token (if given) is baked into the
-    recipe's calls; without it the recipe reads the token from `treg login`."""
-    if name not in demo_sandbox.SAMPLE_SKILLS:
-        raise HTTPException(status_code=404, detail=f"unknown skill {name!r}")
-    # The token is interpolated into a shell script the visitor runs (`curl … | sh`). Restrict it to a
-    # real token charset so a crafted value can't inject a newline + commands into the generated script.
-    if token and not re.fullmatch(r"[A-Za-z0-9_\-]{1,200}", token):
-        raise HTTPException(status_code=422, detail="invalid token")
-    base = get_settings().public_url.rstrip("/")
-    script = onboard_use_cases.sandbox_install_script(
-        name=name, base=base, token=token or None)
-    return PlainTextResponse(script, media_type="text/plain; charset=utf-8")
 
 
 sandbox_router = app

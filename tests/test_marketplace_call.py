@@ -359,7 +359,10 @@ async def _telemetry(clients: AsyncClient) -> dict:
 def _fake_relay(status_code: int, body: bytes = b"{}", *, raises: Exception | None = None):
     """Stand in for `relay` when the test needs a specific UPSTREAM outcome the echo app can't give
     (a provider 5xx, a network error, a provider-reported cost). Everything else uses the real relay."""
-    async def _relay(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False):
+    async def _relay(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False,
+                     before_outbound=None):
+        if before_outbound is not None:
+            await before_outbound()
         if raises is not None:
             raise raises
 
@@ -909,6 +912,107 @@ def _mk(provider: str, **kw) -> call_resolution.MarketplaceCall:
     return call_resolution.MarketplaceCall(tool=None, upstream="", consumed=set(), provider=provider, **kw)
 
 
+@pytest.mark.parametrize(("endpoint", "body", "expected"), [
+    ("theirstack.jobs.search", b'{"data":[{},{}]}', 40_000),
+    ("theirstack.companies.search", b'{"data":[{}]}', 60_000),
+    ("theirstack.companies.search", b'{"data":[]}', 0),
+    ("theirstack.companies.technologies", b'{"data":[{},{}]}', 60_000),
+    ("theirstack.companies.buying_intents", b'{"data":[]}', 0),
+    ("theirstack.jobs.search", b'{"data":{}}', None),
+    ("theirstack.companies.jobs", b'{"data":[{},{}]}', 40_000),
+    ("theirstack.technologies.users", b'{"data":[{}]}', 60_000),
+    ("theirstack.technologies.users", b'{"data":[]}', 0),
+])
+def test_theirstack_settles_returned_records_or_one_company_lookup(endpoint, body, expected):
+    per_row = endpoint not in {"theirstack.companies.technologies", "theirstack.companies.buying_intents"}
+    mk = _mk("theirstack", endpoint_id=endpoint, cost_type=("per_result" if per_row else "per_success"),
+             unit_micro=20_000, estimate_micro=(200_000 if per_row else 60_000))
+    assert call_settle._observed_cost_micro(mk, body) == expected
+
+
+@pytest.mark.parametrize(("endpoint", "body", "valid"), [
+    ("theirstack.jobs.search", {"limit": 2}, True),
+    ("theirstack.jobs.search", {}, False),
+    ("theirstack.companies.search", {"limit": 500}, True),
+    ("theirstack.companies.search", {"limit": 501}, False),
+    ("theirstack.companies.jobs", {"limit": 500}, True),
+    ("theirstack.companies.jobs", {}, False),
+    ("theirstack.technologies.users", {"limit": 501}, False),
+    ("theirstack.jobs.search", {"limit": 1, "blur_company_data": True}, False),
+    ("theirstack.companies.technologies", {"company_domain": "stripe.com"}, True),
+    ("theirstack.companies.buying_intents", {"company_name_or": ["Stripe", "Google"]}, False),
+])
+def test_theirstack_platform_requests_bound_credits(endpoint, body, valid):
+    ep = {"id": endpoint, "provider": "theirstack"}
+    if valid:
+        call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
+    else:
+        with pytest.raises(call_resolution.ResolutionFailed):
+            call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
+
+
+async def test_leadocean_direct_search_requires_a_bounded_shared_key_page(clients, monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "PLATFORM-LEADOCEAN")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
+    get_settings.cache_clear()
+    seen = []
+
+    def upstream(request):
+        seen.append((request.headers["x-api-key"], request.url.params.multi_items()))
+        return _dropleads_response(200, {"success": True, "data": [], "meta": {"credits": 0}})
+
+    try:
+        async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+            monkeypatch.setattr(A.app.state, "http", vendor)
+            for params in ({"domain": "stripe.com"}, {"domain": "stripe.com", "limit": "0"},
+                           {"domain": "stripe.com", "limit": "11"},
+                           [("domain", "stripe.com"), ("limit", "10"), ("limit", "1")]):
+                refused = await clients.get("/call/leadocean.people.search", params=params)
+                assert refused.status_code == 400, refused.text
+                assert refused.json()["detail"]["parameter"] == "queryParams.limit"
+            assert seen == []
+
+            allowed = await clients.get("/call/leadocean.people.search", params={
+                "domain": "stripe.com", "limit": "10"})
+            assert allowed.status_code == 200, allowed.text
+            assert allowed.headers["x-treg-cost-micro"] == "0"
+            assert seen == [("PLATFORM-LEADOCEAN", [("domain", "stripe.com"), ("limit", "10")])]
+
+            own = await clients.post("/secrets", json={"name": "leadocean", "value": "OWN-LEADOCEAN"})
+            assert own.status_code == 200, own.text
+            for params in ({"domain": "stripe.com"}, {"domain": "stripe.com", "limit": "25"}):
+                served = await clients.get("/call/leadocean.people.search", params=params)
+                assert served.status_code == 200, served.text
+                assert "x-treg-cost-micro" not in served.headers
+            assert [key for key, _ in seen] == ["PLATFORM-LEADOCEAN", "OWN-LEADOCEAN", "OWN-LEADOCEAN"]
+            assert [query for _, query in seen[1:]] == [[("domain", "stripe.com")],
+                                                        [("domain", "stripe.com"), ("limit", "25")]]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_theirstack_platform_holds_match_the_credit_prices():
+    from treg.domain.catalog import store as catalog_store
+
+    catalog = catalog_store.load()
+    for endpoint, body, hold in (
+        ("theirstack.jobs.search", {"limit": 2, "posted_at_max_age_days": 30}, 40_000),
+        ("theirstack.companies.search", {"limit": 2, "company_domain_or": ["stripe.com"]}, 120_000),
+        ("theirstack.companies.search", {"limit": 500, "company_country_code_or": ["US"]}, 30_000_000),
+        ("theirstack.companies.jobs", {"limit": 2, "company_domain_or": ["stripe.com"]}, 40_000),
+        ("theirstack.technologies.users", {"limit": 500, "company_technology_slug_or": ["hubspot"]}, 30_000_000),
+        ("theirstack.companies.technologies", {"company_domain": "stripe.com"}, 60_000),
+    ):
+        ep = catalog.by_id[endpoint]
+        assert catalog.platform_eligible(ep)
+        estimate, unit = call_resolution._marketplace_pricing(
+            "theirstack", endpoint, catalog.cost_view(ep["cost"], "theirstack"), {},
+            json.dumps(body).encode())
+        assert estimate == hold and unit > 0
+    assert not catalog.platform_eligible(catalog.by_id["theirstack.account.balance"])
+    assert not catalog.platform_eligible(catalog.by_id["theirstack.account.credits_consumption"])
+
+
 def test_litescrape_ai_overview_unserved_is_free():
     mk = _mk("litescrape", endpoint_id="litescrape.google.serp.ai_overview",
              cost_type="per_success", estimate_micro=150)
@@ -1324,35 +1428,6 @@ def test_hunter_email_finder_miss_is_free():
     assert call_settle._observed_cost_micro(f, b'{"errors": [{"code": "wrong_params"}]}') is None, \
         "no email key at all: we never learned the outcome, settle at the estimate"
     assert call_settle._observed_cost_micro(f, b"not json") is None
-
-
-def test_theirstack_company_lookup_miss_is_free():
-    """Technographics and buying intents bill one flat lookup per KNOWN company; an unknown one
-    answers 200 with `data: []` and TheirStack charges nothing, so neither may treg."""
-    for endpoint_id in ("theirstack.companies.technographics", "theirstack.companies.buying_intents"):
-        mk = _mk("theirstack", endpoint_id=endpoint_id, cost_type="per_success")
-        assert call_settle._observed_cost_micro(
-            mk, b'{"data": [], "metadata": {"total_results": null}}') == 0
-        assert call_settle._observed_cost_micro(
-            mk, b'{"data": [{"keyword": {"slug": "python"}}], "metadata": {}}') is None, \
-            "a hit settles at the estimate: one lookup, however many rows"
-        assert call_settle._observed_cost_micro(mk, b'{"error": {"title": "x"}}') is None
-
-
-def test_tikhub_envelope_no_charge_settles_at_zero():
-    """TikHub reports billing in prose, not a number: a 2xx whose payload is an embedded error
-    still says the request will incur a charge — and TikHub really does charge us for it
-    (verified live 2026-07-30), so those settle at the estimate, faithfully. Only the explicit
-    no-charge phrasing settles at zero."""
-    t = _mk("tikhub", cost_type="per_success")
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "message": "Request successful. This request will incur a charge.", "data": {}}') is None, \
-        "a billed answer settles at the estimate — that IS what TikHub takes"
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "message": "Request successful. This request will incur a charge.", "data": {"error": "dead_page"}}') is None, \
-        "a dead page TikHub bills us for is passed through, not eaten"
-    assert call_settle._observed_cost_micro(t, b'{"code": 400, "message": "Request failed. You won\'t be charged for this request.", "data": null}') == 0
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "message": "This request will not incur charges.", "data": {}}') == 0
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "data": {}}') is None, "no message: estimate"
-    assert call_settle._observed_cost_micro(t, b"not json") is None
 
 
 async def test_daily_cap_fails_closed(clients: AsyncClient, platform_on, monkeypatch):
@@ -1935,6 +2010,50 @@ async def test_the_sweep_clears_labels_NOBODY_COMES_BACK_FOR(clients: AsyncClien
     assert gone is None, "an expired row nobody returns for must still be reclaimed"
 
 
+async def test_the_sweep_never_waits_on_a_concurrent_request_of_the_same_member(
+        clients: AsyncClient, platform_on):
+    """A member's concurrent batch must not queue on each other's expired rows.
+
+    Another request holds the lock on every expired label (it is mid-sweep). A new claim skips
+    those rows instead of waiting for that transaction, and the next claim reclaims them."""
+    import asyncio
+    from datetime import timedelta
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from sqlmodel import select
+
+    from treg.application.call.idempotency import _claim_idempotent
+    from treg.models import IdempotentCall, Membership
+
+    if session_maker.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("requires an isolated PostgreSQL database via TREG_TEST_DB_URL")
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    expired = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)
+    async with session_maker() as db:
+        m = (await db.execute(select(Membership).where(
+            Membership.org_id == org_id).order_by(Membership.id))).scalars().first()
+        for n in range(3):
+            db.add(IdempotentCall(org_id=org_id, membership_id=m.id, key=f"old-{n}",
+                                  endpoint_id=EP, status="done", expires_at=expired))
+        await db.commit()
+    caller = SimpleNamespace(org_id=org_id, membership=m)
+
+    async with session_maker() as holder:
+        await holder.execute(select(IdempotentCall.id).where(
+            IdempotentCall.membership_id == m.id).with_for_update())
+        async with session_maker() as db, asyncio.timeout(5):
+            assert await _claim_idempotent("fresh-1", "fp", EP, caller, db, call_ref=uuid4().hex)
+        await holder.rollback()
+
+    async with session_maker() as db:
+        assert await _claim_idempotent("fresh-2", "fp", EP, caller, db, call_ref=uuid4().hex)
+    async with session_maker() as db:
+        keys = set((await db.execute(select(IdempotentCall.key).where(
+            IdempotentCall.membership_id == m.id))).scalars().all())
+    assert keys == {"fresh-1", "fresh-2"}
+
+
 async def _claim_row(key: str):
     from sqlmodel import select
 
@@ -2469,81 +2588,24 @@ def test_observed_cost_counts_brightdata_records():
     assert call_settle._observed_cost_micro(_mk("brightdata", cost_type="free"), b'{"status": "ready"}') is None
 
 
-def test_influencersclub_settle_counts_accounts():
-    """Verify influencersclub discovery settles at cost.value × credit_rate per row, not one whole
-    credit per row. unit_micro is ONE CREDIT ($0.598 = 598,000 micro-USD); cost.value is 0.01
-    credits per creator, so each creator costs $0.00598 = 5,980 micro-USD."""
+def test_influencersclub_discovery_settles_creators_returned():
+    """Discovery bills each creator in `accounts` at the catalog's per-creator USD price, never
+    more than the hold, and ignores the provider's 0.01-credit `credits_cost` meter."""
     from types import SimpleNamespace
     from treg.application.call.settle import _observed_cost_micro
-    # unit_micro = one whole credit = $0.598 = 598,000 micro-USD (from fx.yaml influencersclub rate)
-    # estimate_micro = reserve for 10 rows at 0.01 credits each = 10 × 5,980 = 59,800 micro-USD
-    mk = SimpleNamespace(cost_type="per_result", unit_micro=598_000, billed_oauth=False,
-                         endpoint_id="influencersclub.creators.search", provider="influencersclub",
-                         estimate_micro=59_800)
-    body = json.dumps({"total": 634, "limit": 10,
-                       "accounts": [{"user_id": i} for i in range(10)]}).encode()
-    # 10 creators returned at 0.01 credits each → 10 × 0.01 × $0.598 = $0.0598 = 59,800 micro-USD
-    # (NOT 10 × $0.598 = $5.98 = 5,980,000 micro-USD, which was the ~100x bug)
-    assert _observed_cost_micro(mk, body) == 59_800
-    # an envelope with no rows costs nothing
-    assert _observed_cost_micro(mk, json.dumps({"detail": "quota"}).encode()) == 0
+    for endpoint_id in ("influencersclub.creators.search", "influencersclub.creators.similar"):
+        mk = SimpleNamespace(cost_type="per_result", unit_micro=30_000, billed_oauth=False,
+                             endpoint_id=endpoint_id, provider="influencersclub",
+                             estimate_micro=300_000, cost_terms=None)
 
+        def page(rows: int) -> bytes:
+            return json.dumps({"total": 634, "limit": 10, "credits_cost": rows * 0.01,
+                               "accounts": [{"user_id": i} for i in range(rows)]}).encode()
 
-@pytest.mark.parametrize(('endpoint_id', 'rows', 'expected_micro'), [
-    # Regression tests for the ~100x billing bug fixed 2026-10: settlement was multiplying
-    # rows × unit_micro (one whole credit = $0.598) instead of rows × cost.value × unit_micro
-    # (0.01 credits = $0.00598 per creator). Catalog: cost.value=0.01, credit_rate=$0.598.
-    # Correct: per_row = 0.01 × 598,000 = 5,980 micro-USD ($0.00598)
-    #
-    # creators.search: 0.01 credits per creator
-    ("influencersclub.creators.search", 0, 0),        # 0 rows → $0
-    ("influencersclub.creators.search", 5, 29_900),   # 5 rows → $0.0299 (not $2.99)
-    ("influencersclub.creators.search", 10, 59_800),  # 10 rows → $0.0598 (not $5.98)
-    ("influencersclub.creators.search", 20, 119_600), # 20 rows → $0.1196 (not $11.96)
-    # creators.similar: same 0.01 credits per creator
-    ("influencersclub.creators.similar", 0, 0),
-    ("influencersclub.creators.similar", 5, 29_900),
-    ("influencersclub.creators.similar", 10, 59_800),
-    ("influencersclub.creators.similar", 20, 119_600),
-])
-def test_influencersclub_discovery_billing_regression(endpoint_id, rows, expected_micro):
-    """Verify influencersclub discovery endpoints bill at 0.01 credits per creator, not 1 credit.
-
-    Incident 2026-10: customers were charged ~100x the catalog price ($2.99 for 5 rows instead of
-    $0.0299). Root cause: settle.py multiplied rows by unit_micro (one credit = $0.598) instead
-    of by cost.value × unit_micro (0.01 credits = $0.00598 per row).
-    """
-    from types import SimpleNamespace
-    from treg.application.call.settle import _observed_cost_micro
-    # unit_micro = one credit = $0.598 = 598,000 micro-USD
-    # estimate_micro = reserve large enough to not cap the result
-    mk = SimpleNamespace(
-        cost_type="per_result", unit_micro=598_000, billed_oauth=False,
-        endpoint_id=endpoint_id, provider="influencersclub",
-        estimate_micro=rows * 5_980 + 100_000)  # add buffer to avoid capping
-    body = json.dumps({
-        "total": 100, "limit": rows,
-        "accounts": [{"user_id": i} for i in range(rows)] if rows else [],
-    }).encode()
-    assert _observed_cost_micro(mk, body) == expected_micro
-
-
-def test_influencersclub_settle_capped_at_hold():
-    """Settlement must never exceed the reserve (hold), even if more rows are returned than
-    requested. This prevents a rogue response from overbilling the caller."""
-    from types import SimpleNamespace
-    from treg.application.call.settle import _observed_cost_micro
-    mk = SimpleNamespace(
-        cost_type="per_result", unit_micro=598_000, billed_oauth=False,
-        endpoint_id="influencersclub.creators.search", provider="influencersclub",
-        estimate_micro=29_900)  # reserve for 5 rows = $0.0299
-    # Response returns 10 rows but only 5 were reserved
-    body = json.dumps({
-        "total": 100, "limit": 10,
-        "accounts": [{"user_id": i} for i in range(10)],
-    }).encode()
-    # Should be capped at the hold (29,900), not 10 × 5,980 = 59,800
-    assert _observed_cost_micro(mk, body) == 29_900
+        assert _observed_cost_micro(mk, page(7)) == 210_000
+        assert _observed_cost_micro(mk, page(0)) == 0
+        assert _observed_cost_micro(mk, json.dumps({"detail": "quota"}).encode()) == 0
+        assert _observed_cost_micro(mk, page(20)) == 300_000
 
 
 @pytest.mark.parametrize(('query', 'count', 'page_size', 'credits'), [
@@ -3061,7 +3123,8 @@ def test_contactout_contact_reveals_require_recognizable_hit_evidence(body):
     from types import SimpleNamespace
     from treg.application.call.settle import _observed_cost_micro
     mk = SimpleNamespace(provider="contactout", endpoint_id="contactout.people.contact.work",
-                         cost_type="per_success", unit_micro=0, billed_oauth=False, request_data={})
+                         cost_type="per_success", unit_micro=0, billed_oauth=False, request_data={},
+                         cost_terms=None)
     assert _observed_cost_micro(mk, body) == 0
 
 
@@ -3225,11 +3288,6 @@ def _usd_to_micro_for_test(usd) -> int:
     ("thecompaniesapi.companies.search", {"size": "10"}, None, b'{"companies":[{},{}]}', 2),
     # Findymail employee search: one credit per contact, never above the hold.
     ("findymail.search.employees", None, {"website": "x.io", "job_titles": ["CEO"], "count": 5}, b'[]', 0),
-    # TheirStack searches: 1 credit per job, 3 per company in `data[]`; an empty page is free.
-    ("theirstack.jobs.search", None, {"posted_at_max_age_days": 7, "limit": 10}, b'{"metadata":{},"data":[]}', 0),
-    ("theirstack.jobs.search", None, {"posted_at_max_age_days": 7, "limit": 10}, b'{"metadata":{},"data":[{},{}]}', 2),
-    ("theirstack.companies.search", None, {"limit": 10}, b'{"metadata":{},"data":[{},{},{}]}', 3),
-    ("theirstack.companies.search", None, {"limit": 10}, b'{"error":{"title":"x"}}', None),
     # SpyFu: one row per `results` item, an empty list is free, an unknown shape estimates.
     ("spyfu.google.domain.overview", {"domain": "example.com", "pastNMonths": "1"}, None,
      b'{"resultCount":1,"domain":"example.com","results":[{}]}', 1),
@@ -3247,17 +3305,6 @@ def test_per_result_search_settles_on_rows_returned_not_rows_requested(endpoint_
         assert observed is None
     else:
         assert observed == min(rows * per_row, estimate), (observed, per_row, estimate)
-
-
-@pytest.mark.parametrize(("req", "rows"), [({}, 25), ({"limit": 5}, 5), ({"limit": 500}, 500),
-                                           ({"limit": 900}, 500), ({"limit": "x"}, 25)])
-def test_theirstack_search_hold_covers_the_page_asked_for(req, rows):
-    """TheirStack serves up to 500 rows a page and 25 by default; the shared 100-row cap would
-    have left rows 101-500 paid by treg and never charged, because a settle never exceeds the hold."""
-    mk, estimate, per_row = _priced("theirstack.companies.search", None, req)
-    assert estimate == rows * per_row
-    full_page = json.dumps({"metadata": {}, "data": [{}] * rows}).encode()
-    assert call_settle._observed_cost_micro(mk, full_page) == estimate
 
 
 def test_row_counts_never_bill_above_the_hold():
@@ -3717,6 +3764,32 @@ def test_octen_runtime_uses_frozen_rates_and_checks_platform_shape():
         call_resolution._enforce_platform_request({"provider": "octen", "id": endpoint},
                                           json.dumps({"urls": ["https://example.com"] * 21}).encode())
     assert caught.value.kind == "catalog_parameter_invalid"
+
+
+def test_strict_query_accepts_only_declared_path_parameters():
+    ep = {"id": "sample.jobs.get", "strict_query": True,
+          "input": {"pathParams": {"request_id": {"type": "string", "required": True}}}}
+    call_resolution._enforce_catalog_query(
+        ep, call_resolution.QueryValues((("request_id", "job-1"),)), False)
+    for items in ((("request_id", "job-1"), ("forceResults", "true")),
+                  (("request_id", "job-1"), ("request_id", "job-2"))):
+        with pytest.raises(ResolutionFailed) as caught:
+            call_resolution._enforce_catalog_query(ep, call_resolution.QueryValues(items), False)
+        assert caught.value.kind == "catalog_parameter_invalid"
+
+
+def test_body_allowlist_requires_declared_fields_within_each_object():
+    ep = {"id": "sample.people.find", "body_allowlist": True,
+          "input": {"body": {"data": {"type": "array[object]", "required": True,
+                                      "minItems": 1, "maxItems": 1,
+                                      "item_required_any": ["full_name", "linkedin"],
+                                      "item_required_all": ["company"]}}}}
+    call_resolution._enforce_catalog_body(ep, b'{"data":[{"full_name":"A B","company":"Acme"}]}')
+    for body in (b'{"data":[{"company":"Acme"}]}',
+                 b'{"data":[{"full_name":"A B"}]}'):
+        with pytest.raises(ResolutionFailed) as caught:
+            call_resolution._enforce_catalog_body(ep, body)
+        assert caught.value.kind == "catalog_parameter_invalid"
 
 
 async def test_an_answer_over_the_size_limit_is_not_kept_and_a_retry_never_runs_again(

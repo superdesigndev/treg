@@ -6463,6 +6463,19 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.dataforseo-labs-google-historical-rank-overview-live.json
+  cost:
+    type: per_call
+    value: 0.15
+    currency: USD
+    per: 1
+    unit: call
+    display:
+      unit: call
+      variable: true
+    source: observed
+    confidence: verified
+    checked: '2026-11-03'
+    note: 'DataForSEO bills by monthly rows returned, not per call: most observed charges fit about $0.12 plus $0.0012 per month in the `date_from`..`date_to` window (3 months $0.1236, the default 6 months about $0.128, 24-25 months $0.149-$0.15, the full history from 2020-10-01 about $0.21). The response `cost` is the exact charge and settles the call, so a long window can settle above this $0.15 estimate. `X-Treg-Route-Max-Cost` is checked against the estimate before the call, not against the settled charge; narrow `date_from` to stay under a cap.'
   observed_cost: 0.1236
 - id: dataforseo.x.dataforseo-labs-google-historical-serps-live
   tier: extended
@@ -8276,7 +8289,7 @@ endpoints:
   platform: google
   method: GET
   path: /merchant/google/sellers/ad_url/{shop_ad_aclk}
-  cost: {type: per_call, value: 1e-06, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', confidence: verified, note: 'read from our own account rate card'}
+  cost: {type: per_call, value: 0.000001, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.dataforseo.com/v3/appendix/user_data', checked: '2026-08-07', confidence: verified, note: 'read from our own account rate card'}
   name: "Resolve a Google Shopping ad to its full URL"
   summary: Google Shopping Sellers Ad URL is designed to provide you with a full URL of the advertisement containing all additional parameters set by the seller.
   docs_url: https://docs.dataforseo.com/v3/merchant/google/sellers/ad_url/

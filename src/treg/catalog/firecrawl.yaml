@@ -196,7 +196,7 @@ endpoints:
     input:
       pathParams:
         id: {type: string, required: true, example: "01a0e888-65d6-75ae-afff-7b8e37572349"}
-      query:
+      queryParams:
         skip: {type: integer, required: false, min: 0, note: "Use the skip value from the returned next URL to fetch another page of results."}
     test_request: {pathParams: {id: "01a0e888-65d6-75ae-afff-7b8e37572349"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling does not consume Firecrawl credits."}
@@ -272,7 +272,7 @@ endpoints:
     input:
       pathParams:
         id: {type: string, required: true, example: "01a0e887-c66f-76e9-abc1-3f749d48e3ab"}
-      query:
+      queryParams:
         skip: {type: integer, required: false, min: 0, note: "Use the skip value from the returned next URL to fetch another page of results."}
     test_request: {pathParams: {id: "01a0e887-c66f-76e9-abc1-3f749d48e3ab"}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling does not consume Firecrawl credits."}

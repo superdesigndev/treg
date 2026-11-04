@@ -2,7 +2,11 @@
 // is the one source: the Dashboard imports it, and the build also compiles it to the classic
 // `/agent-setup.js` script for the standalone Arena page (see index.ts). No credentials are stored.
 
-export type Agent = { id: string, name: string, icon: string | null, plugin?: string, connector?: boolean }
+// `plugin` and `connector` agents install treg in the host and sign in there over OAuth, so they get
+// no setup line and no key. `setupFallback` adds the setup line for the agent's surfaces that cannot
+// install plugins.
+export type Agent = { id: string, name: string, icon: string | null, plugin?: string, connector?: boolean,
+  setupFallback?: string, directiveSetup?: boolean }
 export type Example = { k: string, cat: string, logo: string, avatar?: string, show?: string, prompt: string }
 export type OAuthGroup = { label: string, items: { s: string, n: string }[], soon: { s: string, n: string }[] }
 export type IconUrl = (icon: string | null | undefined, theme?: string) => string
@@ -11,7 +15,8 @@ export type IconUrl = (icon: string | null | undefined, theme?: string) => strin
 // 'other' stays last, as the catch-all.
 export const agents: Agent[] = [
   {id:'claude-code',name:'Claude Code',icon:'claudecode-color'},
-  {id:'codex',name:'Codex',icon:'codex-color'},
+  {id:'codex',name:'Codex',icon:'codex-color',plugin:'https://chatgpt.com/plugins/plugin_asdk_app_6ac4c2df9c548191b83ea0c156bd9b6a',
+   setupFallback:'Using the Codex IDE extension, which installs no plugins? Send this in its chat instead:'},
   {id:'claudeai',name:'Claude.ai',icon:'claude-color',connector:true},
   {id:'grokbot',name:'Grok Bot',icon:'/logos/agents/grokbot.png',plugin:'https://x.ai/bot/plugin/55647425'},
   {id:'hermes',name:'Hermes Agent',icon:'hermesagent'},
@@ -22,8 +27,10 @@ export const moreAgents: Agent[] = [
   {id:'opencode',name:'opencode',icon:'opencode'},
   {id:'pi',name:'pi',icon:'pi'},
   {id:'gemini-cli',name:'Gemini CLI',icon:'gemini-color'},
-  {id:'other',name:'Other',icon:null},
+  {id:'other',name:'Other',icon:null,directiveSetup:true},
 ]
+
+export const installsInHost = (agent: Agent) => !!(agent.connector || agent.plugin)
 
 export const iconUrl: IconUrl = (icon, theme = 'light') =>
   icon?.startsWith('/') ? icon : icon ? 'https://unpkg.com/@lobehub/icons-static-png@latest/'+theme+'/'+icon+'.png' : ''
@@ -37,6 +44,20 @@ export const command = (base: string) => 'set up treg \u2014 '+base.replace(/\/$
 export const claudeConnectorLink = (base: string) =>
   'https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Treg&connectorUrl='
   + encodeURIComponent(base.replace(/\/$/,'')+'/mcp/')
+
+// The install prompt as explicit steps rather than one pointer at llms.txt: first person, the
+// commands themselves, and the MCP route for a client with no shell.
+export function directiveSetupText(base: string, team?: string, token?: string, masked = false) {
+  const root = base.replace(/\/$/, '')
+  const shown = token ? (masked ? token.slice(0,14)+'••••••••••••••••' : token) : ''
+  const teamName = team || '<team-slug>'
+  const install = token
+    ? `1. curl -fsSL ${root}/install.sh | sh -s -- --token ${shown}\n2. treg\n   It should print team ${teamName} and a balance.`
+    : `1. curl -fsSL ${root}/install.sh | sh\n2. treg login\n   Open the link it prints for me, then run treg to confirm.`
+  return `Install treg for me and sign it in to my team ${teamName}. I approve these steps; run them in order.\n\n${install}\n\n`
+    + `If you cannot run shell commands but can add an MCP server, add ${root}/mcp/ as a remote MCP server instead, and tell me to finish the sign-in there.\n\n`
+    + `How treg works: ${root}/llms.txt`
+}
 
 export function setupText(command: string, team?: string, token?: string, masked = false) {
   if(!team&&!token) return command

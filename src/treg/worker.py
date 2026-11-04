@@ -9,6 +9,7 @@
     treg-worker catalog requeue-async-stats [--apply]   # preview or queue one async-window repair
     treg-worker catalog repair-status --manifest <path>  # check the saved applied target list
     treg-worker spend rollup [--max-rows 50000]      # fold new ledger settles into per-key daily spend
+    treg-worker usage rollup [--max-rows 500000]     # fold new audit rows into per-member daily call counts
     treg-worker showcase activity                    # add new calls to the /showcase activity rows (hourly)
     treg-worker rankings refresh                     # rebuild the public /rankings boards from the day stats (hourly)
     treg-worker media sweep                          # delete public pictures nothing uses any more (daily)
@@ -16,6 +17,8 @@
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
     treg-worker admin erase-archive --org <id>             # erase what an opted-out team stored in the archive
+    treg-worker admin erase-archive --org <id> --dry-run   # count what that would remove; delete nothing
+    treg-worker admin erase-archive --org <id> --include-sole-public  # also public answers only that team paid for
     treg-worker enterprise reconcile [--org <id>]          # repair missed Directory Sync removals
     treg-worker enterprise cleanup [--org <id>]            # remove WorkOS setup after paid SSO ends
     treg-worker enterprise purge-audit [--days 400]        # delete expired SSO audit evidence
@@ -25,7 +28,7 @@ outbound calls to third parties, so they run as Render cron jobs with the server
 dataplane lifespan work (refactor plan §2.2). The worker never originates a money movement. It may
 complete a hold opened by the request path, settling or releasing it with full call and org attribution.
 
-The two analytics commands exist so that no web process walks `callrecord` next to the money path:
+The audit-table analytics commands exist so that no web process walks `callrecord` next to the money path:
 each is a bounded incremental pass over the audit table that a cron repeats, and the request path
 reads only what they published.
 """
@@ -263,7 +266,7 @@ async def _asynctasks_settle(args) -> int:
 
 
 async def _hub_check(args) -> int:
-    """The scheduled health check (docs/HUB-DECISIONS.md round 2 q8; architecture/hub.md): every
+    """The scheduled health check (docs/context/architecture/hub.md): every
     live tool's newest version runs its check.json once as its maker. The verdict lands on the
     row; health is derived from the last three runs. Cron it every 6 hours."""
     import httpx
@@ -442,6 +445,15 @@ async def _spend_rollup(args) -> int:
     return 0
 
 
+async def _usage_rollup(args) -> int:
+    from .infra.db import verify_db
+    from .application.call_usage_rollup import refresh
+
+    await verify_db()
+    print(json.dumps(await refresh(max_rows=args.max_rows), sort_keys=True))
+    return 0
+
+
 async def _jev_xboost(args) -> int:
     import httpx
 
@@ -485,15 +497,26 @@ async def _admin_purge_ad_clicks(args) -> int:
 
 async def _admin_erase_archive(args) -> int:
     """Erase what one opted-out team stored in the archive (application/archive_erasure): the
-    answer to an erasure request. Refuses a team still in the archive; opt it out first."""
+    answer to an erasure request. Refuses a team still in the archive; opt it out first.
+    `--dry-run` counts what would go, opted out or not, and touches neither rows nor objects.
+    Progress after each committed batch goes to stderr as one JSON line; the result to stdout."""
     from . import bootstrap
     from .application import archive_erasure
     from .infra.db import verify_db
 
     await verify_db()
+    sole_public = getattr(args, "include_sole_public", False)
+    if getattr(args, "dry_run", False):
+        print(json.dumps(await archive_erasure.count_org(args.org, include_sole_public=sole_public),
+                         sort_keys=True))
+        return 0
+    def progress(totals: dict) -> None:
+        print(json.dumps({"progress": totals}, sort_keys=True), file=sys.stderr, flush=True)
+
     try:
         async with bootstrap.archive_object_store():
-            result = await archive_erasure.erase_org(args.org)
+            result = await archive_erasure.erase_org(args.org, include_sole_public=sole_public,
+                                                     progress=progress)
     except archive_erasure.NotOptedOut as exc:
         print(json.dumps({"error": str(exc)}, sort_keys=True))
         return 1
@@ -625,6 +648,10 @@ async def _run_command(args) -> int:
             finally:
                 try:
                     emit_snapshot(role="worker", shutdown=True)
+                    from .domain.capacity import rate_observe
+                    from .infra import provider_rate
+                    rate_observe.flush()
+                    await provider_rate.drain()
                 except Exception:  # noqa: BLE001 - preserve the command's result/failure
                     pass
                 finally:
@@ -736,6 +763,12 @@ def main(argv: list[str] | None = None) -> int:
     rollup.add_argument("--max-recount-seconds", type=float, default=60.0,
                         help="time one run spends on the daily recount; the next run resumes it")
     rollup.set_defaults(fn=_spend_rollup)
+    usage = sub.add_parser("usage", help="call-count read models derived from the audit table")
+    usagesub = usage.add_subparsers(dest="cmd", required=True)
+    urollup = usagesub.add_parser("rollup", help="fold new audit rows into per-member, per-tool, per-day call counts")
+    urollup.add_argument("--max-rows", type=_positive_int, default=500_000,
+                         help="audit rows to fold in one run; the next run resumes from the cursor")
+    urollup.set_defaults(fn=_usage_rollup)
     jev = sub.add_parser("jev", help="the /jev landing-page demos")
     jevsub = jev.add_subparsers(dest="cmd", required=True)
     xb = jevsub.add_parser("xboost", help="launch posts on X from the last 24h -> forensics -> jev; stores the run for /jev")
@@ -753,6 +786,10 @@ def main(argv: list[str] | None = None) -> int:
     clicks.set_defaults(fn=_admin_purge_ad_clicks)
     erase = adminsub.add_parser("erase-archive", help="erase what an opted-out team stored in the archive")
     erase.add_argument("--org", type=_positive_int, required=True, help="the team's org id")
+    erase.add_argument("--dry-run", action="store_true",
+                       help="count the keys, snapshots, bodies and marks that would go; delete nothing")
+    erase.add_argument("--include-sole-public", action="store_true",
+                       help="also erase public answers only this team paid for; shared ones stay")
     erase.set_defaults(fn=_admin_erase_archive)
     enterprise = sub.add_parser("enterprise", help="enterprise identity maintenance")
     enterprisesub = enterprise.add_subparsers(dest="cmd", required=True)

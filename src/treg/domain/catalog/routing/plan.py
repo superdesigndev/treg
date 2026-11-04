@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 
 from dataclasses import dataclass, field
@@ -63,6 +65,10 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
     dropped, not ranked down: a `{title}`-only people search asked for `{company_domain, title}`
     returns the same title-matched strangers for every company, and each one bills as a hit."""
     used = _used_keys(adapter)
+    # A stand-in this adapter sends carries the caller's keys inside it (`q` from `title`)
+    for k, expr in (getattr(adapter, "_stand_in", None) or {}).items():
+        if k in used and identity.get(k) in (None, ""):
+            used |= set(re.findall(r"[A-Za-z_]\w*", expr))
     return tuple(k for k in contract.scoping if identity.get(k) not in (None, "") and k not in used)
 
 
@@ -146,6 +152,19 @@ class Plan:
     def view(self) -> dict:
         return {"capability": self.contract.capability, "identity_variant": list(self.variant),
                 "plan": [c.view() for c in self.candidates], "dropped": self.dropped}
+
+
+def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_id: int | None,
+                             capability: str, identity: dict[str, Any]) -> bool:
+    """Stable per question, so retries and plan previews choose the same candidate set."""
+    percent = percentages.get(provider)
+    if percent is None or percent == 100:
+        return True
+    if percent == 0:
+        return False
+    question = json.dumps([provider, org_id, capability, identity], sort_keys=True, separators=(",", ":"), default=str)
+    bucket = int.from_bytes(hashlib.sha256(question.encode()).digest()[:8], "big") % 10_000
+    return bucket < percent * 100
 
 
 def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclude: list[str] | None = None,

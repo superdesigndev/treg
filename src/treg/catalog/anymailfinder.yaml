@@ -1,0 +1,193 @@
+provider: anymailfinder
+source:
+  docs: https://anymailfinder.com/email-finder-api/docs
+  openapi: https://api.anymailfinder.com/openapi.json
+  curated: '2026-10-27'
+pricing_url: https://anymailfinder.com/pricing
+limits: "Anymail Finder states there are no API rate limits. Synchronous lookups recommend a 180-second timeout."
+proposed_capabilities:
+  companies.emails.list: "List every work email found on a company domain"
+  companies.emails.count: "Count the emails known for a domain, by department & seniority"
+  people.email.report_bad: Report an email that bounced after being returned as valid
+endpoints:
+  - id: anymailfinder.people.email.find
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v5.1/find-email/person
+    name: Find a verified work email
+    summary: Find one person's verified work email from their name and company or LinkedIn profile.
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: false, note: "Preferred company domain; pair with a name.", example: "microsoft.com"}
+        company_name: {type: string, required: false, note: "Company name when the domain is unknown."}
+        first_name: {type: string, required: false, note: "Use with last_name and company."}
+        last_name: {type: string, required: false, note: "Use with first_name and company."}
+        full_name: {type: string, required: false, note: "Use with company instead of first_name and last_name.", example: "Satya Nadella"}
+        linkedin_url: {type: string, required: false, note: "May be used alone or with name and company."}
+      note: "Supply a LinkedIn URL, or a person name and domain/company_name. A miss answers 200 with email_status=not_found and credits_charged=0. Do not use x-webhook-url for a synchronous answer."
+    test_request: {body: {domain: "microsoft.com", full_name: "Satya Nadella"}}
+    cost: &one_credit
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      reported_charge: {path: credits_charged, unit: credit}
+      source: observed
+      source_url: https://anymailfinder.com/email-finder-api/docs/find-person-email
+      checked: '2026-10-27'
+      confidence: verified
+      note: "A fresh valid result charged 1 credit; a not_found result charged 0. A repeat within 30 days is free."
+    docs_url: https://anymailfinder.com/email-finder-api/docs/find-person-email
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/anymailfinder.people.email.find.json
+
+  - id: anymailfinder.people.decision_makers
+    domain: contacts
+    capability: people.decision_makers
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v5.1/find-email/decision-maker
+    name: Find a decision maker's verified email
+    summary: Find a company decision maker by an ordered list of role categories and return a verified email.
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: false, note: "Preferred company domain.", example: "stripe.com"}
+        company_name: {type: string, required: false, note: "Use if the domain is unknown."}
+        decision_maker_category: {type: "array[string]", required: true, note: "Ordered categories: ceo, engineering, finance, hr, it, logistics, marketing, operations, buyer, sales.", example: ["ceo"]}
+      note: "Supply domain or company_name. Only the first category with a valid result is returned; a not_found result costs zero."
+    test_request: {body: {domain: "stripe.com", decision_maker_category: ["ceo"]}}
+    cost:
+      <<: *one_credit
+      value: 2
+      source_url: https://anymailfinder.com/email-finder-api/docs/find-decision-maker-email
+      note: "A fresh valid result charged 2 credits. A repeat within 30 days returned a valid email at zero credits."
+    docs_url: https://anymailfinder.com/email-finder-api/docs/find-decision-maker-email
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/anymailfinder.people.decision_makers.json
+
+  - id: anymailfinder.companies.emails.list
+    domain: contacts
+    capability: companies.emails.list
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v5.1/find-email/company
+    name: Find verified emails at a company
+    summary: Find up to 20 verified email addresses at a company for one credit when any are found.
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: false, note: "Preferred company domain.", example: "microsoft.com"}
+        company_name: {type: string, required: false, note: "Use if the domain is unknown."}
+        email_type: {type: string, required: false, enum: [any, generic, personal], default: any}
+      note: "Supply domain or company_name. One credit covers up to 20 returned emails; no emails or a blacklisted result costs zero."
+    test_request: {body: {domain: "microsoft.com", email_type: "any"}}
+    cost:
+      <<: *one_credit
+      source_url: https://anymailfinder.com/email-finder-api/docs/find-company-email
+      note: "A fresh 20-email result charged 1 credit; the charge is per successful call, not per email."
+    docs_url: https://anymailfinder.com/email-finder-api/docs/find-company-email
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/anymailfinder.companies.emails.list.json
+
+  - id: anymailfinder.people.email.verify
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v5.1/verify-email
+    name: Verify an email address
+    summary: Check whether an existing email address is valid, risky or invalid.
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, example: "invalid-address-20261027@example.com"}
+      note: "A fresh verification costs 0.2 credit for any verdict; a repeat within 30 days is free."
+    test_request: {body: {email: "invalid-address-20261027@example.com"}}
+    cost:
+      type: per_call
+      value: 0.2
+      currency: credit
+      per: 1
+      unit: call
+      reported_charge: {path: credits_charged, unit: credit}
+      source: docs
+      source_url: https://anymailfinder.com/email-finder-api/docs/verify-email
+      checked: '2026-10-27'
+      confidence: documented
+      note: "A fresh invalid verdict reported credits_charged=0.2. The account endpoint reports only integer credits_left, so its balance delta cannot independently confirm the fraction."
+    docs_url: https://anymailfinder.com/email-finder-api/docs/verify-email
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/anymailfinder.people.email.verify.json
+
+  - id: anymailfinder.companies.emails.count
+    domain: companies
+    capability: companies.emails.count
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v5.1/domain/{domain}/email
+    name: Count emails available for a domain
+    summary: Get the number of known emails and the quoted credit cost for a domain list.
+    input:
+      pathParams:
+        domain: {type: string, required: true, example: "stripe.com"}
+      note: "This free count does not purchase or download the unverified email list."
+    test_request: {pathParams: {domain: "stripe.com"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: "https://anymailfinder.com/email-finder-api/docs/domain-email/count", checked: '2026-10-27', confidence: verified}
+    docs_url: https://anymailfinder.com/email-finder-api/docs/domain-email/count
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/anymailfinder.companies.emails.count.json
+
+  - id: anymailfinder.account
+    kind: account
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v5.1/account
+    name: Check your Anymail Finder credits
+    summary: Read the credit balance for the connected Anymail Finder key.
+    input:
+      note: "No parameters. Returns credits_left and the account email; platform balance monitoring calls the same free endpoint internally."
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: observed, source_url: "https://anymailfinder.com/email-finder-api/docs/account", checked: '2026-10-27', confidence: verified}
+    docs_url: https://anymailfinder.com/email-finder-api/docs/account
+    verified: '2026-10-27'
+    added: '2026-10-27'
+    example_response: examples/anymailfinder.account.json
+
+  - id: anymailfinder.report.bad-email
+    domain: contacts
+    capability: people.email.report_bad
+    platform: people
+    scope: own_account
+    method: POST
+    path: /v5.1/report/bad-email
+    name: Report a bounced email
+    summary: Ask Anymail Finder to review a previously returned valid email that bounced.
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, note: "Anymail Finder email that bounced."}
+        additional_info: {type: string, required: true, maxLength: 500, note: "Why the email is being reported."}
+        bounce_message: {type: string, required: false, note: "SMTP bounce text, if available."}
+      note: "Anymail Finder may restore credits after review. Use only for a real bounce on your own account."
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://anymailfinder.com/email-finder-api/docs/report-bad-email", checked: '2026-10-27', confidence: documented}
+    docs_url: https://anymailfinder.com/email-finder-api/docs/report-bad-email
+    added: '2026-10-27'
+    untestable: "A successful call requires a real bounced email; an authenticated empty body returned 400 without filing a report."

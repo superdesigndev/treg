@@ -111,7 +111,7 @@ export default function data(){
       skillFiles:[], detected:null, skillSel:{}, skillVals:{}, skillResults:null,
       sessionMode:false, activeSlug: storageGet('treg-active')||null, meta:{github:false, public_url:location.origin},
       view:'tools', q:'', err:'', loading:false, toolTab:'all', bundles:[], confirmDelBundle:null, installCopied:null,
-      copyRecipe:null, recipeTab:'cURL', viewRecipe:null, recipeSaved:false,
+      copyRecipe:null, recipeTab:'CLI', viewRecipe:null, recipeSaved:false,
       // detail pages (shareable /app/skills/<name> + /app/tools/<name> deep links)
       detail:null, detailData:null, detailErr:'', detailLoading:false, detailFile:'SKILL.md', detailCopied:'', detailNote:'',
       shareGate:null,  // logged-out arrival at a shared detail link: {kind,name} → focused sign-in page (no sandbox/tour)

@@ -82,7 +82,29 @@ def test_cost_modifiers_accept_only_supported_declarative_credit_rules():
 
     bad_settle: list[str] = []
     validator.check_cost(base | {"settle": "estimate"}, "catalog:test", bad_settle, [])
-    assert any("cost.settle currently supports only 'base', 'modifiers', 'usage' or 'quantity'" in error for error in bad_settle)
+    assert any("cost.settle currently supports only" in error for error in bad_settle)
+
+
+def test_terminal_presence_cost_requires_a_bounded_async_result_rule():
+    base = {
+        "type": "per_success", "value": 1, "currency": "credit", "per": 1,
+        "unit": "call", "source": "docs", "source_url": "https://example.com/pricing",
+        "checked": "2026-10-27", "confidence": "documented",
+        "settle": "terminal_presence", "presence": {"row": "data.0", "field": "email"},
+    }
+    errors: list[str] = []
+    validator.check_cost(base, "catalog:test", errors, [])
+    assert errors == []
+
+    invalid: list[str] = []
+    validator.check_cost(base | {"presence": {"row": "data..0", "field": "email"}},
+                         "catalog:test", invalid, [])
+    assert any("presence.field JSON path" in error for error in invalid)
+
+    root_errors: list[str] = []
+    validator.check_cost(base | {"presence": {"field": "number"}},
+                         "catalog:test", root_errors, [])
+    assert root_errors == []
 
 
 def test_status_marker_references_must_exist_and_end_at_a_live_endpoint():
@@ -585,7 +607,7 @@ def test_flat_price_usage_settlement_is_accepted():
     (lambda c: c.update(usage={"path": "usage.cost", "unit": "tokens"}),
      "needs a numeric fx.yaml unit_rates_usd entry"),
     (lambda c: c.update(settle="base"), "usage is only valid with settle: usage"),
-    (lambda c: c.update(settle="later"), "supports only 'base', 'modifiers', 'usage' or 'quantity'"),
+    (lambda c: c.update(settle="later"), "supports only 'base', 'modifiers', 'usage', 'quantity' or 'terminal_presence'"),
 ])
 def test_flat_price_usage_settlement_rejects_bad_shapes(mutate, message):
     cost = _flat_usage_cost()
@@ -878,6 +900,26 @@ def test_strict_query_contract_validation(patch, valid):
     assert bool(errors) is not valid
 
 
+def test_strict_query_accepts_a_declared_path_parameter():
+    ep = {'strict_query': True, 'method': 'GET', 'path': '/jobs/{id}',
+          'input': {'pathParams': {'id': {'type': 'string', 'required': True}}}}
+    errors = []
+    validator.check_strict_query(ep, 'example', errors)
+    assert not errors
+
+
+def test_body_allowlist_object_item_presence_rules():
+    ep = {'body_allowlist': True, 'method': 'POST',
+          'input': {'body': {'data': {'type': 'array[object]',
+                                      'item_required_any': ['email', 'linkedin']}}}}
+    errors = []
+    validator.check_body_allowlist(ep, 'example', errors)
+    assert not errors
+    ep['input']['body']['data']['item_required_any'] = []
+    validator.check_body_allowlist(ep, 'example', errors)
+    assert any('item_required_any' in error for error in errors)
+
+
 @pytest.mark.parametrize('patch,valid', [
     ({}, True),
     ({'strict_body': 'yes'}, False),
@@ -915,6 +957,11 @@ def test_body_allowlist_contract_validation(patch, valid):
     ({'scope': 'own_account'}, False),
     ({'authorization_method': 'oauth'}, False),
     ({'async': {'poll': {}}}, False),
+    ({'cost': None, 'price': {'value': '0'}}, True),
+    ({'cost': None, 'price': {'value': '0.0'}}, True),
+    ({'cost': None, 'price': {'value': '0.00'}}, True),
+    ({'cost': None, 'price': {'value': '0.02'}}, False),
+    ({'cost': None, 'price': {'value': 'free'}}, False),
 ])
 def test_anonymous_platform_auth_is_a_verified_free_read_only_contract(patch, valid):
     ep = {
@@ -928,6 +975,14 @@ def test_anonymous_platform_auth_is_a_verified_free_read_only_contract(patch, va
     errors = []
     validator.check_platform_auth(ep | patch, 'example', errors)
     assert (not errors) is valid
+
+
+def test_anonymous_platform_auth_refuses_a_priced_v2_row_naming_the_free_price():
+    ep = {'id': 'example.public.values', 'platform_auth': 'anonymous', 'method': 'GET',
+          'scope': 'any_account', 'price': {'value': '0.02'}, 'verified': '2026-09-15'}
+    errors = []
+    validator.check_platform_auth(ep, 'example', errors)
+    assert errors == ["example: platform_auth anonymous requires cost.type free (in v2, price.value '0')"]
 
 
 def test_missing_platform_auth_normalizes_as_absent():
@@ -1075,18 +1130,242 @@ def test_a_fixed_price_spools_when_its_success_rule_is_declared():
 
 
 def test_the_fast_catalog_loader_reads_every_file_like_the_pure_python_one():
-    """`store._Loader` uses libyaml's C parser when it is installed; every shipped catalog file must
-    parse to the same document as with the pure-Python SafeLoader, timestamps kept as strings."""
+    """The catalog's YAML reading uses libyaml's C parser when it is installed; every shipped catalog
+    file must parse to the same document as with the pure-Python SafeLoader, timestamps kept as
+    strings."""
     import yaml
     from treg.domain.catalog import store
+    from treg.domain.catalog.schema import files
 
     class Pure(yaml.SafeLoader):
         pass
-    Pure.yaml_implicit_resolvers = store._Loader.yaml_implicit_resolvers
+    Pure.yaml_implicit_resolvers = files._Loader.yaml_implicit_resolvers
     if not getattr(yaml, "__with_libyaml__", False):
         pytest.skip("libyaml not installed")
-    assert issubclass(store._Loader, yaml.CSafeLoader)
+    assert issubclass(files._Loader, yaml.CSafeLoader)
     for path in sorted(store.CATALOG_DIR.rglob("*.yaml")):
         text = path.read_text(encoding="utf-8")
-        assert yaml.load(text, Loader=store._Loader) == yaml.load(text, Loader=Pure), path.name
-    assert yaml.load("checked: 2026-09-01", Loader=store._Loader) == {"checked": "2026-09-01"}
+        assert yaml.load(text, Loader=files._Loader) == yaml.load(text, Loader=Pure), path.name
+    assert yaml.load("checked: 2026-09-01", Loader=files._Loader) == {"checked": "2026-09-01"}
+
+
+def _per_result_cost(**extra):
+    return {
+        "type": "per_result", "value": 1, "currency": "USD", "per": 1, "unit": "keyword",
+        "source": "docs", "source_url": "https://example.com/pricing", "checked": "2026-10-28",
+        "confidence": "documented",
+        "reserve": {"rows": {"param": "queryParams.limit",
+                             "default": {"value": 100, "source": "docs"}, "max": 1000}},
+    } | extra
+
+
+_LIMIT_INPUT = {"queryParams": {"limit": {"type": "integer", "required": False}}}
+
+
+def _cost_errors(cost, example=None):
+    errors: list[str] = []
+    validator.check_cost(cost, "x", errors, [], _LIMIT_INPUT)
+    if isinstance(cost.get("settle"), dict):
+        validator.check_cost_settle_count(cost, example, "x", errors)
+    return errors
+
+
+def test_cost_reserve_accepts_rows_and_entities():
+    assert _cost_errors(_per_result_cost()) == []
+    assert _cost_errors(_per_result_cost(reserve={"entities": {}})) == []
+
+
+@pytest.mark.parametrize("reserve", [
+    {"rows": {"param": "queryParams.size", "default": {"value": 100, "source": "docs"}, "max": 1000}},
+    {"rows": {"param": "queryParams.limit", "default": {"value": 100}, "max": 1000}},
+    {"rows": {"param": "queryParams.limit", "default": {"value": 100, "source": "guess"}, "max": 1000}},
+    {"rows": {"param": "queryParams.limit", "default": {"value": 2000, "source": "docs"}, "max": 1000}},
+    {"rows": {"param": "queryParams.limit", "default": {"value": 100, "source": "docs"}}},
+    {"rows": {"param": "limit", "default": {"value": 100, "source": "docs"}, "max": 1000}},
+    {"entities": {"param": "body.keywords"}},
+    {"rows": {}, "entities": {}},
+])
+def test_cost_reserve_rejects_each_invalid_shape(reserve):
+    assert any("cost.reserve" in e for e in _cost_errors(_per_result_cost(reserve=reserve)))
+
+
+def test_cost_reserve_requires_a_per_result_price():
+    errors = _cost_errors(_per_result_cost(type="per_call"))
+    assert any("cost.reserve requires a per_result price" in e for e in errors)
+
+
+def test_settle_count_needs_a_rows_hold_one_row_per_price_and_a_list_in_the_example():
+    example = {"keywords": [{"keyword": "a"}], "total": 1}
+    counted = {"count": {"path": "keywords"}}
+    assert _cost_errors(_per_result_cost(settle=counted), example) == []
+    for cost, message in (
+        (_per_result_cost(settle=counted, reserve=None), "requires cost.reserve"),
+        (_per_result_cost(settle=counted, per=10), "requires per: 1"),
+        (_per_result_cost(settle=counted, reported_charge={"path": "cost", "unit": "usd"}),
+         "without cost.settle"),
+        (_per_result_cost(settle={"count": {"path": "total"}}), "is not a list in the example_response"),
+        (_per_result_cost(settle={"count": {"path": "keywords", "where": "x"}}), "requires {count"),
+        (_per_result_cost(settle={"count": {"path": "keywords"}, "reported": {}}), "requires {count"),
+    ):
+        assert any(message in e for e in _cost_errors(cost, example)), message
+
+
+def _entity_row_catalog(tmp_path, endpoint_id: str, reserve: str = "") -> None:
+    (tmp_path / "capabilities.yaml").write_text(
+        "platforms: {google: Google}\ncapabilities: {google.keywords.ideas: Ideas}\n")
+    (tmp_path / "fx.yaml").write_text("credit_rates_usd: {}\n")
+    (tmp_path / "tikhub.yaml").write_text(
+        "provider: tikhub\n"
+        "source: {docs: https://example.com/docs}\n"
+        "endpoints:\n"
+        f"  - id: {endpoint_id}\n"
+        "    capability: google.keywords.ideas\n"
+        "    platform: google\n"
+        "    method: GET\n"
+        "    path: /ideas\n"
+        "    summary: Keyword ideas\n"
+        "    added: '2026-10-28'\n"
+        "    input:\n"
+        "      queryParams:\n"
+        "        limit: {type: integer, required: false}\n"
+        "    cost:\n"
+        "      type: per_result\n"
+        "      value: 0.001\n"
+        "      currency: USD\n"
+        "      unit: keyword\n"
+        "      source: docs\n"
+        "      source_url: https://example.com/pricing\n"
+        "      checked: '2026-10-28'\n"
+        "      confidence: documented\n" + reserve)
+
+
+def test_an_entity_unit_per_result_row_must_declare_how_it_reserves(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas")
+    assert validator.main(["tikhub"]) == 1
+    assert "needs cost.reserve" in capsys.readouterr().out
+
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", "      reserve: {entities: {}}\n")
+    assert validator.main(["tikhub"]) == 0
+
+
+def test_the_undeclared_reserve_list_only_shrinks(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    monkeypatch.setattr(validator, "UNDECLARED_RESERVE", frozenset({"tikhub.google.keywords.ideas"}))
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas")
+    assert validator.main(["tikhub"]) == 0
+
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", "      reserve: {entities: {}}\n")
+    assert validator.main(["tikhub"]) == 1
+    assert "remove from UNDECLARED_RESERVE" in capsys.readouterr().out
+
+    monkeypatch.setattr(validator, "UNDECLARED_RESERVE", frozenset({"tikhub.retired.row"}))
+    assert validator.main([]) == 1
+    assert "in UNDECLARED_RESERVE but not in the catalog" in capsys.readouterr().out
+
+
+def test_the_validator_reads_the_settle_count_path_against_the_example(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    (tmp_path / "examples").mkdir()
+    (tmp_path / "examples" / "ideas.json").write_text('{"keywords": [{"keyword": "a"}], "total": 1}')
+    rows = ("      reserve: {rows: {param: queryParams.limit, default: {value: 100, source: docs}, max: 1000}}\n"
+            "      settle: {count: {path: %s}}\n"
+            "    example_response: examples/ideas.json\n")
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", rows % "keywords")
+    assert validator.main(["tikhub"]) == 0
+    capsys.readouterr()
+
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", rows % "total")
+    assert validator.main(["tikhub"]) == 1
+    assert "is not a list in the example_response" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("block, ok", [
+    ({"jq": {"type": "string"}}, True),
+    ({}, False),
+    ({"jq": "string"}, False),
+    ({"bad-name": {"type": "string"}}, False),
+    ({"jq": {"type": "string", "required": True}}, False),
+])
+def test_provider_query_params_shape(block, ok):
+    errors: list[str] = []
+    validator.check_provider_query_params(block, "test", errors)
+    assert (not errors) is ok, errors
+
+
+def test_bills_miss_is_true_and_only_on_a_per_success_price():
+    base = {
+        "type": "per_success", "value": 6, "currency": "credit", "per": 1,
+        "unit": "result", "source": "docs", "source_url": "https://example.com/pricing",
+        "checked": "2026-10-27", "confidence": "documented",
+    }
+    ok: list[str] = []
+    validator.check_cost(base | {"bills_miss": True}, "catalog:test", ok, [])
+    assert ok == []
+    for bad in (base | {"bills_miss": False}, base | {"bills_miss": "yes"},
+                base | {"type": "per_call", "bills_miss": True}):
+        errors: list[str] = []
+        validator.check_cost(bad, "catalog:test", errors, [])
+        assert any("bills_miss" in e for e in errors), bad
+
+
+def test_a_v2_row_ships_priced_on_core_with_its_miss_on_the_row(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(validator, "CATALOG", tmp_path)
+    _entity_row_catalog(tmp_path, "tikhub.google.keywords.ideas", "      reserve: {entities: {}}\n")
+    legacy = (tmp_path / "tikhub.yaml").read_text()
+    (tmp_path / "tikhub.yaml").write_text(legacy[:legacy.index("    cost:\n")] + "    price: {value: '0'}\n")
+    assert validator.main(["tikhub"]) == 0
+
+    (tmp_path / "tikhub.yaml").write_text(legacy[:legacy.index("    cost:\n")] + "    bill: {miss: charged}\n"
+                                          "    ceiling_param: {in: query, name: max_usd, unit: usd}\n")
+    (tmp_path / "adapters.yaml").write_text(
+        "adapters:\n  tikhub.google.keywords.ideas: {accepts: [[q]], out: {a: b}, miss: 'a == []'}\n")
+    assert validator.main(["tikhub"]) == 1
+    out = capsys.readouterr().out
+    assert "a core row needs a price" in out and "remove the adapter's miss" in out
+    assert "ceiling_param is read from the file header" in out
+
+def _v2_cost_errors(endpoint_id: str, **keys) -> list[str]:
+    from treg.domain.catalog.schema import parse_row
+    provider = endpoint_id.split(".")[0]
+    raw = next(ep for ep in validator.schema.read_yaml(validator.CATALOG / f"{provider}.yaml")["endpoints"]
+               if ep["id"] == endpoint_id)
+    ep = {**raw, **keys}
+    errors: list[str] = []
+    validator.check_v2_cost(parse_row(ep, "test"), ep, provider, "test", errors)
+    return errors
+
+
+GEMINI = "google-ai.image-gen.gemini-3-1-flash-image"
+
+
+def test_the_pilot_v2_rows_pass_the_v2_cost_checks():
+    assert _v2_cost_errors(GEMINI) == [] and _v2_cost_errors("findymail.search.domain") == []
+
+
+@pytest.mark.parametrize("endpoint_id,keys,message", [
+    ("findymail.search.domain", {"settle": {"reported": {"path": "response.credits_used", "unit": "credits"}}},
+     "settle.reported.unit 'credits' is not usd, credit"),
+    ("findymail.search.domain", {"price": {"value": "1", "currency": "unit", "unit": "page"}},
+     "price.currency unit (unit page) has no fx.yaml rate"),
+    ("findymail.search.domain", {"reserve": {"rows": {"param": "body.limit", "max": 10}}},
+     "reserve.rows.param 'body.limit' must name a declared integer"),
+    ("findymail.search.domain", {"reserve": {"entities": {"from": "body.domains"}}},
+     "reserve.entities.from 'body.domains' must name a declared input field"),
+    (GEMINI, {"settle": {"usage": {"path": "response.usageMetadata.totalTokenCount", "unit": "tokens"}}},
+     "settle.usage.unit 'tokens' is not usd, credit"),
+    (GEMINI, {"price": {"table": [
+        {"when": [{"path": "body.generationConfig.imageConfig.imagesize", "op": "equals", "value": "512"}],
+         "value": "0.05"}], "fallback": {"value": "0.165", "note": "4K"}}},
+     "'body.generationConfig.imageConfig.imagesize' is not declared in input"),
+    (GEMINI, {"price": {"table": [
+        {"when": [{"path": "body.generationConfig.imageConfig.imagesize", "op": "in", "value": ["512"]}],
+         "value": "0.05"}], "fallback": {"value": "0.165", "note": "4K"}}},
+     "'body.generationConfig.imageConfig.imagesize' is not a declared input field"),
+    (GEMINI, {"price": {"table": [
+        {"when": [{"path": "body.generationConfig.imageConfig.imageSize", "op": "equals", "value": "512"}],
+         "value": "0.05", "times": "body.contents"}], "fallback": {"value": "0.165", "note": "4K"}}},
+     "times field 'body.contents' must be numeric"),
+])
+def test_the_v2_cost_checks_refuse_a_unit_without_a_rate_and_a_path_to_no_declared_field(endpoint_id, keys, message):
+    assert any(message in error for error in _v2_cost_errors(endpoint_id, **keys))

@@ -1,9 +1,9 @@
-"""The registry data model — minimal on purpose (charter: don't invent extra nouns).
+"""The registry data model — minimal on purpose (don't invent extra nouns).
 
 Multi-tenancy (orgs) shape: an **Org** is the tenant that owns resources; a **User** is a
 global identity; a **Membership** links a user to an org with a role and IS where the caller's
 token lives (a token = a (user, org) pair). Secrets/tools/bundles/call records carry `org_id`,
-so every list/call/mutation is scoped to the caller's org. See docs/MULTI-TENANCY-PLAN.md.
+so every list/call/mutation is scoped to the caller's org.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ class Org(SQLModel, table=True):
     # open Holds. It exists as a column, not a query, because it is the hot-path spend gate: one
     # conditional UPDATE against this integer is what stops concurrent agent calls racing past zero
     # (see money.reserve). Only `domain/money` may write it.
-    balance_micro: int = Field(default=0)
+    balance_micro: int = Field(default=0, sa_type=BigInteger)
     # "Committed since midnight UTC": everything settled today plus everything still held from
     # today - the number the fail-closed daily cap is checked against on EVERY metered call. Kept
     # here, in the same UPDATE that moves the balance, because the equivalent aggregate over
@@ -77,8 +77,8 @@ class Org(SQLModel, table=True):
     # org explicitly turned it on AND recorded consent — an off-session charge with no mandate is an
     # unauthorized charge under PSD2/SCA, so `autotopup_consented_at` gates the charge, not the UI.
     autotopup_enabled: bool = Field(default=False)
-    autotopup_threshold_micro: int = Field(default=0)   # 0 = "use the configured default"
-    autotopup_amount_micro: int = Field(default=0)      # 0 = "use the configured default"
+    autotopup_threshold_micro: int = Field(default=0, sa_type=BigInteger)   # 0 = "use the configured default"
+    autotopup_amount_micro: int = Field(default=0, sa_type=BigInteger)      # 0 = "use the configured default"
     autotopup_monthly_cap_micro: int = Field(default=0)  # 0 = the default, `billing.TOPUP_MAX_USD`
     # How many automatic charges may run in one hour after a SUCCESSFUL one (0 = the configured
     # default). Part of the mandate the team agreed to, so it is stored next to the amounts.
@@ -111,7 +111,7 @@ class Org(SQLModel, table=True):
     # default. The EFFECTIVE cap is min(this, the platform ceiling): a team may lower it freely, and
     # raising it past the ceiling is refused — which makes that a conversation with us rather than an
     # env-var edit that lifts the blast-radius rail for every team at once.
-    daily_cap_micro: int = Field(default=0)
+    daily_cap_micro: int = Field(default=0, sa_type=BigInteger)
 
     # Google Ads attribution (see adsconv.py).
     # The click that produced this team, captured as a first-party cookie on landing and persisted
@@ -201,8 +201,8 @@ class User(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
-    # Only an inbox proof or a provider-verified email can set this. Legacy /users and
-    # admin-visible invitation codes are not email proofs.
+    # Only an inbox proof or a provider-verified email can set this. Admin-visible invitation
+    # codes are not email proofs.
     email_verified_at: NaiveUTC | None = Field(default=None)
     # Consumed atomically with the signup grant; survives leaving/deleting every team.
     # The DB default is false so pre-upgrade users and old writers never gain a fresh claim.
@@ -516,7 +516,7 @@ class CallRecord(SQLModel, table=True):
                             sqlite_where=text("api_key_id IS NOT NULL")),)
 
     id: int | None = Field(default=None, primary_key=True)
-    org_id: int | None = Field(default=None, foreign_key="org.id", index=True)
+    org_id: int | None = Field(default=None, foreign_key="org.id")
     user_email: str = Field(index=True)
     tool_name: str = Field(index=True)
     method: str
@@ -654,7 +654,7 @@ class Bundle(SQLModel, table=True):
     packaging. "Register a skill" creates a bundle; its secrets/tools point back via `bundle_id`.
 
     Execution config (both `treg run` tiers) lives on `Tool.cli` — one profile, read by the local
-    grant path and the server runner alike (see docs/CLI-RUN-PLAN.md). The old bundle-side run
+    grant path and the server runner alike. The old bundle-side run
     columns (runtime/package/entrypoint/runnable) were folded into `Tool.cli` by a startup
     migration; they may still exist physically in older databases but nothing reads them.
     """
@@ -946,8 +946,8 @@ class CreditBlock(SQLModel, table=True):
     id: str = Field(primary_key=True)  # uuid4 hex
     org_id: int = Field(foreign_key="org.id", index=True)
     kind: str = Field(default="promotional", index=True)  # promotional | purchased
-    amount_micro: int  # granted amount, micro-USD (1e-6 USD) — never mutated
-    remaining_micro: int  # what's left to spend from this block
+    amount_micro: int = Field(sa_type=BigInteger)  # granted amount, micro-USD (1e-6 USD) — never mutated
+    remaining_micro: int = Field(sa_type=BigInteger)  # what's left to spend from this block
     currency: str = Field(default="USD")
     expires_at: NaiveUTC | None = Field(default=None)
     # The already-authorized payment this block was funded by. Doubles as the idempotency
@@ -975,10 +975,23 @@ class LedgerEntry(SQLModel, table=True):
     # `(org_id, created_at)` serves "this org, since midnight" (`money.spent_today_from_ledger`)
     # and `entries_of` (`/billing`). With only single-column indexes the planner walks the whole
     # platform's day and filters the org in memory. Revision 0021 builds it concurrently.
-    __table_args__ = (Index("ix_ledgerentry_org_id_created_at", "org_id", "created_at"),)
+    # The partial settle index carries `amount_micro` so `money.spend_since` sums a window from the
+    # index alone instead of fetching every row's heap page (revision 0089). The partial topup index
+    # finds a team's few top-ups without walking all of its rows (revision 0090).
+    __table_args__ = (Index("ix_ledgerentry_org_id_created_at", "org_id", "created_at"),
+                      Index("ix_ledgerentry_settle_org_id_created_at", "org_id", "created_at",
+                            postgresql_include=["amount_micro"],
+                            postgresql_where=text("kind = 'settle'"),
+                            sqlite_where=text("kind = 'settle'")),
+                      Index("ix_ledgerentry_topup_org_id_created_at", "org_id", "created_at",
+                            postgresql_where=text("kind = 'topup'"),
+                            sqlite_where=text("kind = 'topup'")),
+                      Index("ix_ledgerentry_grant_org_id_created_at", "org_id", "created_at",
+                            postgresql_where=text("kind = 'grant'"),
+                            sqlite_where=text("kind = 'grant'")))
 
     id: str = Field(primary_key=True)  # uuid4 hex
-    org_id: int = Field(foreign_key="org.id", index=True)
+    org_id: int = Field(foreign_key="org.id")
     block_id: str | None = Field(default=None, index=True)
     # grant | topup | reserve | settle | release
     kind: str = Field(index=True)
@@ -1002,7 +1015,7 @@ class Hold(SQLModel, table=True):
     id: str = Field(primary_key=True)  # == call_id
     org_id: int = Field(foreign_key="org.id", index=True)
     endpoint_id: str = Field(default="")
-    amount_micro: int  # what was withheld from the balance (margin already applied)
+    amount_micro: int = Field(sa_type=BigInteger)  # what was withheld from the balance (margin already applied)
     created_at: NaiveUTC = Field(default_factory=_now, index=True)
 
 
@@ -1123,7 +1136,7 @@ class TagSpend(SQLModel, table=True):
     __table_args__ = (Index("ix_tagspend_org_dim_val_created", "org_id", "dim", "val", "created_at"),)
 
     id: int | None = Field(default=None, primary_key=True)
-    org_id: int = Field(foreign_key="org.id", index=True)
+    org_id: int = Field(foreign_key="org.id")
     dim: str  # the tag key, e.g. "customer"
     val: str  # the tag value, e.g. "cust_8123"
     # The hold this belongs to (== call_id). Kept after settle so a row can be traced back to its call.
@@ -1170,8 +1183,8 @@ class TagBudget(SQLModel, table=True):
     # NULL = no ceiling on this axis. Caps are SOFT (see application/call/reserve.py
     # `_enforce_tag_budgets`): the figure they
     # test is an aggregate, not a materialized column, so concurrent calls can overshoot slightly.
-    daily_cap_micro: int | None = Field(default=None)
-    monthly_cap_micro: int | None = Field(default=None)
+    daily_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
+    monthly_cap_micro: int | None = Field(default=None, sa_type=BigInteger)
     calls_per_day: int = Field(default=-1)  # -1 = unlimited, mirroring Membership.daily_call_cap
     # "active" | "blocked". Blocking is the soft form of revocation — it needs no token management,
     # and it is checked before the idempotency replay so a blocked user cannot be served a cached
@@ -1478,7 +1491,7 @@ class Feedback(SQLModel, table=True):
 
 
 class HubTool(SQLModel, table=True):
-    """One version of a tool a maker published on the hub (docs/HUB-DECISIONS.md). A tool is
+    """One version of a tool a maker published on the hub. A tool is
     made of other tools: either a JSON list of steps or a script that runs in a sandbox. The row
     stores the four files a maker ships (manifest, script, check, readme) plus what the runner
     and the catalog read straight off the row.
@@ -1505,23 +1518,23 @@ class HubTool(SQLModel, table=True):
     readme: str = Field(default="")
     created_by: str = Field(default="")              # the maker's email
     created_at: datetime = Field(default_factory=_now)
-    # The check run's verdict (docs/HUB-DECISIONS.md round 2 q10): {status, run_id, checked_at,
+    # The check run's verdict: {status, run_id, checked_at,
     # error?, trace?}. Declared LAST to match the migration's ALTER TABLE append position.
     check_result: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
-    # The maker's uploaded CSV (docs/HUB-DECISIONS.md round 1 q6): at most 50 MB, read-only after
+    # The maker's uploaded CSV: at most 5 MB, read-only after
     # upload, a replacement is a new version; the script reads it as ctx.data. Declared LAST
     # (migration 0037).
     data: str | None = Field(default=None)
-    # docs/hub-listing-decisions.md: flipped without a version bump. Whether the tool is in
+    # Flipped without a version bump. Whether the tool is in
     # catalog search is not a version's switch: it is the tool's HubListing row.
     listed: bool = Field(default=False)              # UNREAD since migration 0050 (expand-only); use HubListing
     public_log: bool = Field(default=True)           # true = the share page shows the recent-runs log
 
 
 class HubListing(SQLModel, table=True):
-    """A hub tool's place in catalog search (docs/hub-listing-decisions.md round 2, 2026-09-24): the
+    """A hub tool's place in catalog search: the
     maker requests it, a superadmin approves or rejects it. One row per tool, not per version, so
-    the listing stays while each new version waits for its own review (round 4); unlisting deletes the row, and listing again
+    the listing stays while each new version waits for its own review; unlisting deletes the row, and listing again
     is a new request. Only `approved` puts the tool in search."""
 
     tool_id: str = Field(primary_key=True)           # `<slug>.<name>`
@@ -1552,7 +1565,7 @@ class HubRun(SQLModel, table=True):
     """One run of a hub tool: who called, which version, what ran, what it cost. Kept 30 days.
     Every step is ALSO an ordinary CallRecord under `{run_id}:s{n}`, so nothing here is a second
     source of truth for money — the ledger holds the holds and settles; this row holds the trace
-    a caller and a maker read (docs/HUB-DECISIONS.md rounds 2 and 5)."""
+    a caller and a maker read."""
 
     id: int | None = Field(default=None, primary_key=True)
     run_id: str = Field(index=True)                  # `r_<hex>`, also the parent call_ref
@@ -1572,7 +1585,7 @@ class HubRun(SQLModel, table=True):
     error: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     started_at: datetime = Field(default_factory=_now, index=True)
     finished_at: datetime | None = Field(default=None)
-    # The run's answer, for the caller's run page (docs/HUB-DECISIONS.md round 5 q8); only for
+    # The run's answer, for the caller's run page; only for
     # successful runs, capped by the runner's 2 MB output rule. Declared LAST (migration 0029).
     output: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
 class FeedbackHandling(SQLModel, table=True):
@@ -1635,8 +1648,9 @@ class CallReview(SQLModel, table=True):
 
 class Media(SQLModel, table=True):
     """A reference file a member hosted for a vendor to fetch (`treg host`): the image, voice clip
-    or video an AIGC endpoint takes as a public URL. Bytes live in the row, expire by TTL, and are
-    served by an opaque token that names no org or file. See docs/context/architecture/media.md.
+    or video an AIGC endpoint takes as a public URL. The bytes live in the object store under
+    `object_key`, or in `body` when the registry keeps them in the database; they expire by TTL and
+    are served by an opaque token that names no org or file. See docs/context/architecture/media.md.
     """
 
     __table_args__ = (Index("ix_media_org_created", "org_id", "created_at"),)
@@ -1645,7 +1659,8 @@ class Media(SQLModel, table=True):
     org_id: int = Field(foreign_key="org.id")
     content_type: str
     size: int = Field(default=0)
-    body: bytes
+    body: bytes | None = Field(default=None)
+    object_key: str | None = Field(default=None)
     created_at: NaiveUTC = Field(default_factory=_now)
     expires_at: NaiveUTC = Field(index=True)
 
@@ -1763,7 +1778,7 @@ class CapacityPolicy(SQLModel, table=True):
     `source` how we learn it (its free account API, response headers, a calculation, a hand entry,
     nothing). `unknown`/`none` are honest defaults for a provider nobody has classified yet — a
     sweep flags them rather than inventing a number. Numbers only: no key or payment detail lives
-    here. See docs/PROVIDER-CAPACITY-PLAN.md §2.2.
+    here.
     """
 
     provider: str = Field(primary_key=True)
@@ -1823,7 +1838,7 @@ class OverflowRoute(SQLModel, table=True):
     `enabled` is DERIVED by `domain.capacity.routes.eligible` at sync time (same unit, ratio ≤ 4,
     platform-eligible, policy allows, verified < 7 days ago); the call path only ever reads it.
     Prices are the aggregator's list price in micro-USD: the caller pays exactly that, 0% markup,
-    disclosed in-band. See docs/PROVIDER-CAPACITY-PLAN.md §4.3.
+    disclosed in-band.
     """
 
     endpoint_id: str = Field(primary_key=True)
@@ -1958,13 +1973,14 @@ class ArchiveSnapshot(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    key_id: int = Field(foreign_key="archivekey.id", index=True)
+    key_id: int = Field(foreign_key="archivekey.id")
     version: int = Field(default=1)                # 1..N within the key, newest = max
     status_code: int = Field(default=200)
     media_type: str = Field(default="")
     content_hash: str                              # sha256 of the RAW body (dedup identity)
     body: bytes | None = Field(default=None)       # verbatim bytes, or NULL when body_of is set
-    body_of: int | None = Field(default=None, foreign_key="archivesnapshot.id")
+    # An archivesnapshot.id in the same key, deliberately not a foreign key (alembic 0094).
+    body_of: int | None = Field(default=None)
     size_bytes: int = Field(default=0)             # of the raw body, even when deduplicated
     fetched_at: NaiveUTC = Field(default_factory=_now, index=True)
     # Who triggered the fetch: "caller" (a real request) | "refresh" (worker) | "sample" (learner).
@@ -1997,7 +2013,7 @@ class ArchiveKeyOrg(SQLModel, table=True):
     __table_args__ = (UniqueConstraint("org_id", "key_hash", name="uq_archive_key_org"),)
 
     id: int | None = Field(default=None, primary_key=True)
-    org_id: int = Field(index=True)
+    org_id: int
     key_hash: str = Field(index=True)
     first_call_at: NaiveUTC = Field(default_factory=_now)
     last_call_at: NaiveUTC = Field(default_factory=_now)
@@ -2117,8 +2133,8 @@ class ArenaEvaluation(SQLModel, table=True):
 
 
 class ArchiveEndpointStat(SQLModel, table=True):
-    """The archive report's running totals, one row per endpoint — maintained by the recorder in
-    the SAME transaction as each snapshot, so the panel reads 50 tiny rows instead of walking
+    """The archive report's running totals, one row per endpoint — maintained by the recorder
+    through batched per-endpoint deltas (archive.flush_stats), so the panel reads 50 tiny rows instead of walking
     434k keys + 505k snapshots (measured 9.9s + 8.0s + 14.8s per report on prod, 2026-09-03).
     Counters move only via atomic column arithmetic (col = col + n): the credit-block drift
     taught us what read-modify-write does under parallel settles."""
@@ -2293,6 +2309,45 @@ class ApiKeySpendCursor(SQLModel, table=True):
     recount_after_org: int = Field(default=0)
     recount_owner: str | None = Field(default=None)
     recount_lease_until: NaiveUTC | None = Field(default=None)
+    updated_at: NaiveUTC = Field(default_factory=_now)
+
+
+class CallUsageDay(SQLModel, table=True):
+    """How many audit rows one team wrote for one member, kind, tool and client on one UTC day, and
+    when the last of them was: the read model behind the Usage page's counts and the observed-agents
+    roster. Folded from `callrecord` by `application.call_usage_rollup` (the `treg-worker usage
+    rollup` cron), which is this table's only writer; team deletion clears it with the team. The
+    reports read a few hundred of these rows instead of every audit row of the window.
+
+    `kind` is the audit row's own value; readers map an unexpected one to "call", as they always
+    did. Counts inherit the audit table's loss: a row `audit.py` shed is not counted here either.
+    """
+
+    org_id: int = Field(foreign_key="org.id", primary_key=True)
+    day: str = Field(primary_key=True)  # YYYY-MM-DD, UTC, from CallRecord.created_at
+    user_email: str = Field(primary_key=True)
+    kind: str = Field(primary_key=True)
+    tool_name: str = Field(primary_key=True)
+    client: str = Field(primary_key=True)
+    calls: int = Field(default=0)
+    last_at: NaiveUTC
+    updated_at: NaiveUTC = Field(default_factory=_now)
+
+
+class CallUsageCursor(SQLModel, table=True):
+    """Where `application.call_usage_rollup` has got to in `callrecord`. One row
+    (`id = "callrecord"`). `cursor_id` is the last folded `CallRecord.id`; reports add the rows
+    after it live. `history_from` is the first UTC day the rollup holds; nothing reads before it.
+    `caught_up_at` is NULL until a run drains the first backfill, and the reports say usage is
+    being prepared until then. With no row at all (the worker never ran) the reports aggregate
+    `callrecord` directly, as a small self-hosted registry without the cron always has.
+    """
+
+    id: str = Field(primary_key=True)
+    cursor_id: int = Field(default=0)
+    watermark: NaiveUTC | None = Field(default=None)  # created_at of the last folded row
+    history_from: str  # YYYY-MM-DD
+    caught_up_at: NaiveUTC | None = Field(default=None)
     updated_at: NaiveUTC = Field(default_factory=_now)
 
 

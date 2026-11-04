@@ -44,8 +44,20 @@ contracts:
     # scored, not a delivery check: 2026-09-06 one team sent to catch-all (`accept_all`) and
     # pattern-guessed hits without verifying and bounced on most of them.
     advice_unverified: "This address was found, not confirmed deliverable (verified != true). Send X-Treg-Route-Verify: true and treg checks it with treg.people.email.verify in the same call, or run that check yourself before outreach — a fraction of a cent, and it catches catch-all domains and dead mailboxes."
+    # Attached as `_treg.advice` when the hit's mailbox domain differs from the domain the caller
+    # sent (`_treg.domain_match: false`). LinkedIn-only children ignore the domain and often return
+    # a former employer; the flag discloses it, the answer is not altered.
+    advice_domain_mismatch: "The address is at a different domain than the one you sent (_treg.domain_match: false). A LinkedIn-only provider often returns a former employer. Treat this as a possible stale hit: prefer a provider that takes domain, or re-ask with X-Treg-Route-Prefer naming one that does."
     # `X-Treg-Route-Verify`: checks every hit, a finder's own `verified` included; BounceBan first here only.
-    check: {endpoint: treg.people.email.verify, field: email, prefer: [bounceban]}
+    # The check wins over the finder's claim: a `verified: true` hit it does not find valid says so.
+    check:
+      endpoint: treg.people.email.verify
+      field: email
+      prefer: [bounceban]
+      disagree_advice: "The provider marked this address verified, but treg's check did not confirm it: read _treg.verification.verdict, which wins over output.verified. Do not send to an invalid address, and treat catch_all, risky or unknown as unconfirmed."
+    # `X-Treg-Route-Confirm`: a hit counts only once a second provider returns the same address.
+    # Finders that guess from the same name patterns can still agree on a wrong one.
+    confirm: email
 
   people.email.find.personal:
     summary: "Find someone's personal email from their LinkedIn URL or work email — treg picks the provider (own keys first, then cheapest per hit) and names the one that served"
@@ -65,7 +77,11 @@ contracts:
     one_subject: true           # every variant names one person: cost per hit ranks first
     # A personal find is a guess tied to a profile: one finder's hits have belonged to someone else.
     advice_unverified: "A personal email is found, not confirmed to belong to this person or to accept mail. Send X-Treg-Route-Verify: true and treg checks it with treg.people.email.verify in the same call, or run that check yourself before outreach."
-    check: {endpoint: treg.people.email.verify, field: email, prefer: [bounceban]}
+    check:
+      endpoint: treg.people.email.verify
+      field: email
+      prefer: [bounceban]
+      disagree_advice: "The provider marked this address verified, but treg's check did not confirm it: read _treg.verification.verdict, which wins over output.verified. Do not send to an invalid address, and treat catch_all, risky or unknown as unconfirmed."
 
   # ---- batch 1: social lookups (2026-08-28) ---------------------------------------------------
   instagram.user.profile:
@@ -137,6 +153,7 @@ contracts:
     summary: "Find someone's phone number — treg picks the provider (own keys first, then cheapest per hit) and names the one that served"
     identity:
       - {linkedin_url: url}
+      - {linkedin_handle: str}
       - {email: str}
       - {full_name: str, domain: str}
       - {first_name: str, last_name: str, domain: str}
@@ -149,7 +166,7 @@ contracts:
       linkedin_handle: "linkedin_handle(linkedin_url)"
     filters: {}
     output:
-      phone: {type: str, required: true, note: "as the provider formats it; E.164 when it offers one, and +1 added to a 10-digit number the provider marks US or CA"}
+      phone: {type: str, required: true, note: "as the provider formats it; E.164 when it offers one, and +1 added to a 10-digit number the provider marks US or CA", analytics: key}
       line_type: {type: str, analytics: value}
       country_code: {type: str, analytics: value}
     miss: "phone == null"
@@ -206,7 +223,8 @@ contracts:
     idempotent: true
     # Stored per call. Each adapter maps its provider's words (`verdicts`); `unknown` is a word,
     # not a miss, and catch-all is kept apart from `risky` so it can be counted on its own.
-    verdict: {from: status, words: [valid, invalid, catch_all, risky, unknown]}
+    # `decisive`: the words that answer the question, for `X-Treg-Route-Decisive` (route.py).
+    verdict: {from: status, words: [valid, invalid, catch_all, risky, unknown], decisive: [valid, invalid]}
 
   people.enrich:
     summary: "Enrich a person from an email, a LinkedIn URL or a name + company domain — treg picks the provider and names the one that served"
@@ -314,6 +332,7 @@ contracts:
       results: {type: list, required: true, note: "the provider's own organic result rows (title, link/url, snippet…) — shapes differ per provider"}
       count: {type: int}
     miss: "results == []"
+    question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
     prefer: [crawl4ai]
@@ -332,18 +351,39 @@ contracts:
       limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row"}
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
-    scoping: [company_domain]
+    scoping: [company_domain, title, full_name]   # a child that cannot send one of these answers a different question
+    # A free-text provider (exa, parallel) takes only {q}; without this a {title} request never
+    # reaches it. Built only for a provider that accepts none of the caller's fields. No keywords:
+    # those adapters append them to q themselves. No domain: a text match cannot scope by
+    # company, so a {company_domain} request still skips it.
+    stand_in: {q: "join(full_name, title, location)"}
     output:
-      people: {type: list, required: true, note: "the provider's own people rows (name, title, profile url, location…) — shapes differ per provider; raw is the same body"}
+      people: {type: list, required: true, note: "one row per person, in the row shape below; the provider's own rows are in raw"}
       count: {type: int}
       next_cursor: {type: str}
+    # Every provider's row in one shape, so an agent reads the same keys whoever answered and
+    # pays tokens for the person, not for a provider's internal ids and flags.
+    row:
+      of: people
+      needs: [name, profile_url, email]
+      fields:
+        name: {type: str}
+        title: {type: str, note: "current job title, or the provider's headline when it has no title"}
+        company: {type: str, note: "current employer's name"}
+        company_domain: {type: str}
+        location: {type: str}
+        profile_url: {type: str, note: "the person's profile page, a LinkedIn URL where the provider has one"}
+        email: {type: str, note: "found by the provider, not confirmed deliverable"}
+        email_status: {type: str, note: "the provider's own verdict on that email, where it gives one (`valid`, `VERIFIED`); absent = nobody checked it"}
+        summary: {type: str, note: "the provider's own words about the person (bio, headline, matching passage), cut to 300 characters: what to check the brief against"}
     miss: "people == []"
     idempotent: true
+    prefer: [crawl4ai]
     # Search rows are directory listings. An email in a row is found, not confirmed deliverable,
     # unless that row's own verification field says so — a team that mailed Hunter domain-search
     # rows unverified (`verification: null`, confidence 10) bounced on 73 of 79 addresses that one
     # $0.006 verify call each would have caught (2026-09-08).
-    advice_unverified: "Rows are provider directory listings: an email in a row is found, not confirmed deliverable, unless that row's own verification field says so. Run treg.people.email.verify on each address before outreach (a fraction of a cent), and never send to an address that is not in a row."
+    advice_unverified: "Rows are provider directory listings: an email in a row is found, not confirmed deliverable, unless that row's `email_status` says the provider verified it. Run treg.people.email.verify on each address before outreach (a fraction of a cent), and never send to an address that is not in a row."
 
   # ---- batch 5: company enrichment (2026-08-28) -----------------------------------------------
   companies.enrich:
@@ -372,6 +412,7 @@ contracts:
       linkedin_url: {type: str}
     miss: "name == null"
     idempotent: true
+    prefer: [crawl4ai]
 
   companies.similar:
     summary: "Find companies similar to a seed domain"
@@ -449,6 +490,7 @@ contracts:
       about: {type: str}
       linkedin_url: {type: str}
     miss: "full_name == null"
+    complete: [full_name, headline, location]   # X-Treg-Route-Complete only
     idempotent: true
 
   linkedin.user.posts:
@@ -933,6 +975,19 @@ contracts:
     idempotent: true
     prefer: [crawl4ai]
 
+  google.ads.transparency:
+    summary: "The ads Google Ads Transparency Center shows for one company domain — provider-native ad rows in `ads`"
+    identity:
+      - {company_domain: str}
+    filters: {}
+    output:
+      ads: {type: list, required: true, note: "the provider's own ad rows (creative id, format, advertiser…) — shapes differ per provider; raw is the same body"}
+      count: {type: int}
+      next_cursor: {type: str}
+    # No ads is a miss. Every child is free on an empty answer except a per_call one, which bills it.
+    miss: "ads == []"
+    idempotent: true
+
   google.maps.reviews:
     summary: "The reviews Google Maps shows for one place, by place id — provider-native review rows in `reviews`"
     identity:
@@ -1259,6 +1314,7 @@ contracts:
       results: {type: list, required: true, note: "the provider's own ranked result objects; raw is the same body"}
       count: {type: int}
     miss: "results == []"
+    question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
     prefer: [crawl4ai]

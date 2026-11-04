@@ -42,9 +42,10 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "src" / "treg" / "catalog"
+sys.path.insert(0, str(ROOT / "src"))
+from treg.domain.catalog.store import EXAMPLE_MAX_BYTES as MAX_BYTES  # noqa: E402
 MAX_STR = 500
 MAX_LIST = 2
-MAX_BYTES = 10_000
 
 
 def truncate(node, depth=0):
@@ -68,6 +69,32 @@ def _shrink_strings(node, limit: int):
     if isinstance(node, str) and len(node) > limit:
         return node[:limit] + "…"
     return node
+
+
+def _shrink_keys(node, limit: int):
+    if isinstance(node, dict):
+        out = {k: _shrink_keys(v, limit) for k, v in list(node.items())[:limit]}
+        if len(node) > limit:
+            out["…"] = f"{len(node) - limit} more field(s) truncated"
+        return out
+    if isinstance(node, list):
+        return [_shrink_keys(v, limit) for v in node]
+    return node
+
+
+def render_example(doc) -> str:
+    """Shrink recursively until under the cap — never byte-slice serialized JSON (a mid-token slice
+    writes an unparseable example file). Strings give way first, then the widest objects."""
+    shrunk, max_str, max_keys = truncate(doc), MAX_STR, 64
+    text = json.dumps(shrunk, indent=2, ensure_ascii=False) + "\n"
+    while len(text.encode()) > MAX_BYTES and max_str > 15:
+        max_str //= 4
+        shrunk = _shrink_strings(shrunk, max_str)
+        text = json.dumps(shrunk, indent=2, ensure_ascii=False) + "\n"
+    while len(text.encode()) > MAX_BYTES and max_keys > 1:
+        max_keys //= 2
+        text = json.dumps(_shrink_keys(shrunk, max_keys), indent=2, ensure_ascii=False) + "\n"
+    return text
 
 
 def dig(doc, dotted: str):
@@ -100,7 +127,6 @@ def main() -> int:
         print("TREG_CATALOG_CRED not set (or use --via-treg <tool>)", file=sys.stderr)
         return 2
 
-    sys.path.insert(0, str(ROOT / "src"))
     from treg.oauth_providers import REGISTRY
 
     prov = REGISTRY.get(args.service)
@@ -176,7 +202,7 @@ def main() -> int:
             expect = ep.get("expect")
             if ok and expect and doc is not None:
                 got = dig(doc, expect["json_path"])
-                ok = got == expect.get("equals")
+                ok = got == expect.get("equals") or got in (expect.get("misses") or ())
                 detail += f", {expect['json_path']}={got!r}"
             if ok:
                 note = ""
@@ -184,15 +210,7 @@ def main() -> int:
                     ex_rel = ep.get("example_response") or f"examples/{eid}.json"
                     out = CATALOG / ex_rel
                     out.parent.mkdir(parents=True, exist_ok=True)
-                    # shrink recursively until under the cap — never byte-slice serialized JSON
-                    # (a mid-token slice writes an unparseable example file)
-                    shrunk, max_str = truncate(doc), MAX_STR
-                    dump = json.dumps(shrunk, indent=2, ensure_ascii=False)
-                    while len(dump.encode()) > MAX_BYTES and max_str > 15:
-                        max_str //= 4
-                        shrunk = _shrink_strings(shrunk, max_str)
-                        dump = json.dumps(shrunk, indent=2, ensure_ascii=False)
-                    out.write_text(dump + "\n")
+                    out.write_text(render_example(doc))
                     note = f" -> {ex_rel}"
                 print(f"PASS {eid} ({detail}){note}  [stamp verified: {today}]")
             else:

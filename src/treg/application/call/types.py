@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, AsyncIterator, Awaitable, Callable, Literal, Protocol
 
@@ -35,6 +35,7 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     "capability_pinned": "caller",
     "policy_denied": "caller",
     "daily_cap_reached": "caller",
+    "org_endpoint_quota_exceeded": "caller",
     "public_demo_rate_limited": "caller",
     "trial_allowance_unavailable": "treg",
     "trial_allowance_reached": "caller",
@@ -56,6 +57,9 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     # Fair share: the provider on treg's key is fully used and this team already holds calls on it
     # (domain/capacity/fair_share.py). Not charged; a routed job moves to its next provider.
     "share_busy": "caller",
+    # treg's account for the provider is at its declared rate (domain/capacity/rate_observe.py):
+    # refused before it was sent, not charged; a routed job moves to its next provider.
+    "provider_rate_limited": "treg",
     # Routed endpoints (treg.<capability>): the caller's identity fits no provider, or the
     # ceiling they set is below the cheapest candidate, or every candidate failed.
     "route_no_candidate": "caller",
@@ -274,6 +278,8 @@ class CallContext:
     # Set by a routed parent on each child: the child leaves its hold OPEN here instead of settling,
     # and the parent charges or releases every one at the end (route.py `_close_deferred`).
     deferred_settles: list | None = None
+    quota_admissions: set[tuple[int, str]] = field(default_factory=set)
+    quota_pending: tuple[tuple[int, str], ...] = ()
     # Scalar snapshots for root request logs; never resolve a target just for telemetry.
     tool_name: str | None = None
     endpoint_id: str | None = None

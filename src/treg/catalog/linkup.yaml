@@ -1,4 +1,6 @@
 provider: linkup
+# Not catalogued: account-wide task listing, mixed batch Tasks, closed-beta Extract and the
+# undocumented Responses route.
 source:
   docs: https://docs.linkup.so/pages/documentation/get-started/introduction
   openapi: https://api.linkup.so/v1/openapi.json

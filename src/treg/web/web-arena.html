@@ -116,7 +116,7 @@
           </template>
           <span v-if="searchFreshness(a)" class="web-metric-chip web-freshness-chip" :class="'freshness-'+freshnessTone(a.quality)" title="Among links with known dates, within the last 30 days">{{freshnessLabel(a.quality)}}</span>
         </div>
-        <p v-if="a.detail&&a.state!=='hit'" class="web-note">{{a.detail}}</p>
+        <p v-if="a.detail" class="web-note">{{a.detail}}</p>
         <section v-if="a.state==='hit'&&run.task!=='fetch'&&searchResults(a).length" class="web-search-results wa-links" :class="{'is-expanded':expandedResults[a.id]}" :aria-label="providerName(a.provider)+' results'">
           <ol>
             <li v-for="(item,index) in (expandedResults[a.id]?searchResults(a):searchResults(a).slice(0,linkLimit))" :key="item.url+'-'+index">

@@ -1,0 +1,90 @@
+{
+  "success": true,
+  "videos": [
+    {
+      "id": "7c7059f5-980b-4d73-a601-4d61d001dfed",
+      "title": "Woman Reacting in Surprise at Laptop",
+      "description": "A woman sits on an armchair holding a laptop on her lap, clapping her hands before suddenly widening her eyes and gasping in disbelief. She quickly refocuses her attention down onto the screen in a bright indoor room.",
+      "duration_seconds": 8,
+      "difficulty_level": 1,
+      "price": 11,
+      "tier_name": "Easy reaction",
+      "media_type": "video",
+      "preview_url": "https://media.dansugcmodels.com/broll/previews/7c7059f5-980b-4d73-a601-4d61d001dfed.mp4",
+      "thumbnail_url": "https://media.dansugcmodels.com/broll/thumbnails/7c7059f5-980b-4d73-a601-4d61d001dfed.jpg",
+      "emotion": "surprised",
+      "gender": "female",
+      "location": "Living Room",
+      "age_range": "25-34",
+      "hair_color": "Brown",
+      "outfit": "Casual",
+      "virality_score": 68,
+      "download_count": 0,
+      "purchase_count": 0,
+      "featured": false,
+      "is_daily_drop": false,
+      "drop_date": null,
+      "model_id": "109d3e62-60c6-4f80-b19b-3c376b49a1d7",
+      "model_name": "Emily Streeton",
+      "created_at": "2026-11-01T23:41:23.785979+00:00"
+    }
+  ],
+  "total": 1043,
+  "search_type": "text",
+  "pagination": {
+    "page": 1,
+    "limit": 1,
+    "total_pages": 1043,
+    "has_more": true
+  },
+  "filters": {
+    "emotions": [
+      "neutral",
+      "happy",
+      "… 11 more item(s) truncated"
+    ],
+    "genders": [
+      "female",
+      "male",
+      "… 1 more item(s) truncated"
+    ],
+    "locations": [
+      "Restaurant",
+      "Rooftop",
+      "… 14 more item(s) truncated"
+    ],
+    "age_ranges": [
+      "18-24",
+      "25-34",
+      "… 1 more item(s) truncated"
+    ],
+    "hair_colors": [
+      "Brown",
+      "Auburn",
+      "… 5 more item(s) truncated"
+    ],
+    "outfits": [
+      "Casual",
+      "Loungewear",
+      "… 7 more item(s) truncated"
+    ],
+    "media_types": [
+      "video",
+      "image"
+    ]
+  },
+  "pricing_tiers": [
+    {
+      "level": 0,
+      "name": "Free",
+      "price": 0
+    },
+    {
+      "level": 1,
+      "name": "Easy reaction",
+      "price": 11
+    },
+    "… 10 more item(s) truncated"
+  ],
+  "pricing_note": "Prices are per clip in DansUGC credits (top-ups add 1 credit per $1; subscription plans include bonus credits) and already include this account's plan discount (subscribers) or a live sale, whichever is larger: 11 credits list per video, 8 per image, 0 for free clips. There are no volume discounts; the purchase call's confirmed total is authoritative (it asks you to confirm expected_total_cents, in hundredths of a credit). pricing_tiers lists each tier's list price in credits; difficulty and cre… [617 chars total]"
+}

@@ -15,8 +15,10 @@ serves every capability, so the capability-specific part is contract-driven maps
   table change. A team that opted out of the archive gets no answer columns.
 
 Every identifier is HMAC-SHA256 under `call_events_hmac_secret`, after one normalization
-(emails lower-cased, domains without scheme or `www.`, LinkedIn URLs reduced to the handle), so
-a find's `answer_keys['email']` equals a later verify's `input_keys['email']`. No raw email,
+(emails lower-cased, domains without scheme or `www.`, LinkedIn URLs reduced to the handle, phone
+numbers to their E.164 digits), so a find's `answer_keys['email']` equals a later verify's
+`input_keys['email']`. A phone written without its country code gets no key: its digits alone
+could be another country's number. No raw email,
 name, domain, phone or URL is ever emitted. `answer_values` does carry raw segment text as the
 provider wrote it (at most 256 characters): a company's industry, size and HQ location, and a
 person's `location`, which can name a city. That is personal data next to the person's keys, kept
@@ -96,6 +98,8 @@ def normalize(field: str, value: Any) -> str | None:
         return v.lower()
     if field in _DOMAIN_KEYS:
         return _host(v) or None
+    if field == "phone" or field.endswith("_phone"):
+        return P.e164_digits(v)
     if field in ("linkedin_url", "linkedin_handle"):
         handle = P.linkedin_handle(v) if field == "linkedin_url" else v.strip("/")
         return handle.lower().strip("/") if handle else _host(v) or None

@@ -806,3 +806,20 @@ async def test_the_dimension_bound_still_holds(clients: AsyncClient):
     d = r.json()["detail"]
     assert d["error"] == "too_many_budget_dimensions" and d["limit"] == 3
     assert sorted(d["declared"]) == ["customer", "project", "workspace"]
+
+
+async def test_tag_dims_lists_each_sent_key_once_and_only_the_teams_own(clients: AsyncClient):
+    org_id = await _org_id(clients)
+    async with session_maker() as db:
+        other = Org(name="other", slug="other-tag-dims")
+        db.add(other)
+        await db.flush()
+        db.add_all([TagSpend(org_id=org_id, dim=dim, val=val, hold_id=f"h{i}")
+                     for i, (dim, val) in enumerate([("workspace", "a"), ("customer", "c1"),
+                                                     ("workspace", "b"), ("customer", "c2"),
+                                                     ("feature", "x")])])
+        db.add(TagSpend(org_id=other.id, dim="secret", val="s", hold_id="h-other"))
+        await db.commit()
+        assert await ledger.tag_dims(db, org_id) == ["customer", "feature", "workspace"]
+        assert await ledger.tag_dims(db, other.id) == ["secret"]
+        assert await ledger.tag_dims(db, other.id + 1) == []
