@@ -118,8 +118,9 @@ agents then built against a constitution that was wrong.
 | `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money`, `asynctasks`, `feedback`, `hub` (a maker's tool made of tools: the manifest, the reference language, the graph), `showcase` (leaderboard applications, tiers, badges, consent), `images` (picture kinds, sizes and limits), `plugins` (a provider's pure functions a catalog row names, resolved by import) | routers, application, concrete SDKs |
 | `infra/` | DB engine and sessions, crypto, upstream relay and SSRF, ratestore, the shared key-value store, email, Stripe | decisions |
 
-- Domains do not import each other, with three sanctioned edges: `governance -> identity`,
-  `tools -> connections`, `capacity -> catalog` (read-only). `identity` and `money` are leaves.
+- Domains do not import each other, with four sanctioned edges: `governance -> identity`,
+  `tools -> connections`, `capacity -> catalog` (read-only), `catalog -> plugins` (the functions its
+  rows name). `identity` and `money` are leaves.
   import-linter enforces the layering (`[tool.importlinter]` in `pyproject.toml`, run by CI);
   `docs/context/architecture/import-boundaries.md` explains each contract.
 - `bootstrap.py` alone knows concrete implementations. `api.py` is the legacy `all`-role
@@ -169,7 +170,7 @@ agents then built against a constitution that was wrong.
   (hub.md "The surfaces"). See `docs/context/architecture/hub.md`.
 - **Signup credit.** Once per new verified user and once per inbox (Gmail dots and `+tag` aliases
   share one), enforced by a user-level atomic claim plus a `SignupPromoClaim` row committed with
-  the grant. Team deletion never restores eligibility; legacy registration is not email proof.
+  the grant. Team deletion never restores eligibility; an invitation code is not email proof.
   An installed policy extension may defer it through the `signup_credit` decision point
   (`src/treg/policy.py`, docs/context/architecture/policy-extensions.md); extensions only restrict.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
@@ -225,6 +226,17 @@ so parallel runs and side-by-side runs never share one.
 - **Schema.** Alembic owns it (`src/treg/alembic/versions/`); every schema change is a revision.
   Startup only verifies the revision and refuses to boot when behind; migrations run only via
   `python -m treg upgrade`.
+- **No new foreign keys.** Keep referential rules in domain and application code, where a reader
+  sees them, not in database triggers that fire on every write. A foreign key adds a share lock on
+  the parent row to every child insert, and a lookup of every referencing table to every parent
+  delete; on an unindexed referencing column that lookup is a scan of the whole child table, per
+  deleted row. Do not drop existing ones in passing, but a delete path over a table that is still
+  referenced must have every referencing column indexed.
+- **Count the rows a query scans before it runs on the primary.** Run `EXPLAIN` against the replica
+  and read the plan, not the size of the result: a query returning a few thousand rows can scan
+  a whole large table once per candidate row. Write `NOT EXISTS`, never `NOT IN (subquery)`, against
+  a large table; past `work_mem` the latter cannot be hashed and rescans the subquery per row. A
+  statement that runs long on the primary holds back vacuum for every table, the hottest included.
 
 ## Working agreement
 

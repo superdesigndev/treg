@@ -9,7 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 from treg import adsconv
 from treg.api import app
 from treg.config import get_settings
@@ -92,7 +92,7 @@ async def callenv(ads_enabled):
     app.state.http = AsyncClient(transport=ASGITransport(app=make_upstream()),
                                  base_url="http://upstream")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        r = await c.post("/users", json={"email": "caller@example.com"})
+        r = await verified_signup(c, json={"email": "caller@example.com"})
         assert r.status_code == 200, r.text
         token, org_id = r.json()["token"], r.json()["org_id"]
         sid = (await c.post("/secrets", headers=_h(token),
@@ -193,7 +193,7 @@ async def test_queue_is_a_noop_when_disabled(clients, ads_disabled):
 ])
 async def test_signup_persists_the_ad_click_cookie(clients, ads_enabled, email, cookie, click_id,
                                                    click_type, landing):
-    r = await clients.post("/users", json={"email": email}, cookies={"treg_ad": cookie})
+    r = await verified_signup(clients, json={"email": email}, cookies={"treg_ad": cookie})
     assert r.status_code == 200, r.text
     async with session_maker() as db:
         org = await db.get(Org, r.json()["org_id"])
@@ -203,12 +203,8 @@ async def test_signup_persists_the_ad_click_cookie(clients, ads_enabled, email, 
         assert org.ad_click_at is not None
 
 
-@pytest.mark.parametrize("path,body", [
-    ("/users", {"email": "organic@example.com"}),
-    ("/orgs", {"name": "organic team"}),
-])
-async def test_signup_without_the_cookie_leaves_attribution_null(clients, path, body):
-    r = await clients.post(path, json=body)
+async def test_signup_without_the_cookie_leaves_attribution_null(clients):
+    r = await clients.post("/orgs", json={"name": "organic team"})
     assert r.status_code == 200, r.text
     async with session_maker() as db:
         org = await db.get(Org, r.json()["org_id"])
@@ -216,9 +212,7 @@ async def test_signup_without_the_cookie_leaves_attribution_null(clients, path, 
 
 
 async def test_disabled_signup_ignores_ad_cookie(clients, ads_disabled):
-    r = await clients.post(
-        "/users",
-        json={"email": "disabled-click@example.com"},
+    r = await verified_signup(clients, json={"email": "disabled-click@example.com"},
         cookies={"treg_ad": "gclid|CLICK_DISABLED|p1"},
     )
     assert r.status_code == 200, r.text
@@ -236,7 +230,7 @@ async def test_tracking_script_is_empty_when_disabled(clients, ads_disabled, pat
 
 
 async def test_signup_queues_a_conversion_when_attributed(clients, ads_enabled):
-    r = await clients.post("/users", json={"email": "conv@example.com"},
+    r = await verified_signup(clients, json={"email": "conv@example.com"},
                               cookies={"treg_ad": "CLICK_SIGNUP|p1"})
     assert r.status_code == 200, r.text
     async with session_maker() as db:
@@ -247,8 +241,8 @@ async def test_signup_queues_a_conversion_when_attributed(clients, ads_enabled):
 
 async def test_org_creation_persists_the_gclid_cookie(clients, ads_enabled):
     # The OTHER signup door: a signed-in user creating their first team via /orgs (the browser
-    # sign-in path). `clients` is already authenticated (X-Treg-Token from /users registration
-    # in the fixture) — this only adds the ad-click cookie on top, same shape as the /users test.
+    # sign-in path). `clients` is already authenticated by the fixture; this only adds the
+    # ad-click cookie on top.
     r = await clients.post(
         "/orgs",
         json={"name": "ad team"},
@@ -706,7 +700,7 @@ def test_build_payload_identifies_an_unattributed_team_by_hashed_email_alone(use
 async def test_queue_records_an_unattributed_signup_when_user_data_is_enabled(clients, user_data_enabled):
     await reset_db()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        r = await c.post("/users", json={"email": "lead@example.com"})  # no treg_ad cookie
+        r = await verified_signup(c, json={"email": "lead@example.com"})  # no treg_ad cookie
         assert r.status_code == 200, r.text
         org_id = r.json()["org_id"]
     async with session_maker() as db:
@@ -750,7 +744,7 @@ async def test_human_owner_is_the_earliest_human_member(clients, user_data_enabl
 async def test_drain_uploads_the_hashed_email_for_an_unattributed_team(clients, user_data_enabled):
     await reset_db()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        r = await c.post("/users", json={"email": "lead@example.com"})
+        r = await verified_signup(c, json={"email": "lead@example.com"})
         org_id = r.json()["org_id"]
     fake = FakeAdsClient(FakeAdsResponse({"requestId": "req-1"}))
     async with session_maker() as db:
@@ -783,7 +777,7 @@ async def test_flag_off_parks_email_only_rows_instead_of_dead_lettering(clients,
     # flag coming back, not be failed for good.
     await reset_db()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        org_id = (await c.post("/users", json={"email": "lead@example.com"})).json()["org_id"]
+        org_id = (await verified_signup(c, json={"email": "lead@example.com"})).json()["org_id"]
     monkeypatch.setattr(user_data_enabled, "ads_conv_user_data", False)
     fake = FakeAdsClient(FakeAdsResponse({"requestId": "req-1"}))
     async with session_maker() as db:
@@ -803,7 +797,7 @@ async def test_terms_not_accepted_keeps_retrying_instead_of_dead_lettering(clien
     # Terms in the Ads UI. It is "not yet", not "never": the rows must outlive the attempt ceiling.
     await reset_db()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        org_id = (await c.post("/users", json={"email": "lead@example.com"})).json()["org_id"]
+        org_id = (await verified_signup(c, json={"email": "lead@example.com"})).json()["org_id"]
     async with session_maker() as db:
         row = (await db.execute(select(AdConversion).where(AdConversion.org_id == org_id))).scalars().one()
         row.attempts = 50  # far past _MAX_ATTEMPTS
@@ -893,12 +887,11 @@ async def test_auth_stashes_click(clients, ads_enabled, monkeypatch, door, cooki
             assert _ad_attribution_from(stash.raw_cookie) == ('wbraid', 'PHONE', 'landing')
 
 
-@pytest.mark.parametrize('door', ['users', 'orgs'])
 @pytest.mark.parametrize('cookie,age,expected', [('', 0, 'LATEST'), ('gclid|BROWSER|here', 0, 'BROWSER'), ('', 91, None)])
-async def test_signup_stash_fallback(clients, ads_enabled, door, cookie, age, expected):
+async def test_signup_stash_fallback(clients, ads_enabled, cookie, age, expected):
     from treg.application.signup import stash_ad_click
     from treg.models import AdClickStash
-    email = 'cross-device@example.com' if door == 'users' else 'tim@superdesign.dev'
+    email = 'tim@superdesign.dev'
     await stash_ad_click(email.upper(), 'gclid|OLD|original')
     await stash_ad_click(' ' + email + ' ', 'gbraid|LATEST|original')
     async with session_maker() as db:
@@ -907,10 +900,10 @@ async def test_signup_stash_fallback(clients, ads_enabled, door, cookie, age, ex
         db.add(stash)
         await db.commit()
     clients.cookies.set('treg_ad', cookie)
-    response = await clients.post('/' + door, json={'email': email} if door == 'users' else {'name': 'cross device'})
+    response = await clients.post('/orgs', json={'name': 'cross device'})
     assert response.status_code == 200, response.text
     async with session_maker() as db:
-        org = await db.get(Org, response.json().get('org_id', response.json().get('id')))
+        org = await db.get(Org, response.json()['org_id'])
         assert org.ad_gclid == expected
         if expected == 'LATEST':
             assert org.ad_click_id_type == 'gbraid'

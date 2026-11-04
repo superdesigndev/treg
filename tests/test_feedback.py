@@ -13,6 +13,7 @@ from treg.config import get_settings
 from treg.feedback_contract import FEEDBACK_CATEGORIES
 from treg.infra.db import session_maker
 from treg.models import CallRecord, Feedback, FeedbackHandling, FeedbackHandlingEvent, LedgerEntry
+from conftest import verified_signup
 
 
 async def rows():
@@ -34,7 +35,7 @@ async def test_feedback_is_durable_and_private_to_the_team(clients):
     assert row.id == receipt["feedback_id"]
     assert row.user_email == "tim@superdesign.dev"
 
-    other = (await clients.post("/users", json={"email": "other-feedback@example.test"})).json()
+    other = (await verified_signup(clients, json={"email": "other-feedback@example.test"})).json()
     denied = await clients.get(f"/feedback/{row.id}", headers={"X-Treg-Token": other["token"]})
     assert denied.status_code == 404
     assert (await clients.get("/admin/feedback")).status_code == 403

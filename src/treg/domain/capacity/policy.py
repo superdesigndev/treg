@@ -28,6 +28,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "harvestapi": ("cash", "auto_recharge", "api"),  # Owner will enable vendor auto top-up for production.
     "fetchinio": ("credits", "manual", "api"),
     "sixtyfour": ("credits", "subscription", "api"),
+    "leadocean": ("rolling_quota", "quota_reset", "api"),
     "blitzapi": ("monthly_quota", "quota_reset", "api"),
     "dataforseo": ("cash", "auto_recharge", "api"),
     "tikhub": ("cash", "auto_recharge", "api"),
@@ -138,6 +139,7 @@ _RATE_LIMITS: dict[str, dict] = {
     # No published provider-wide limit. The shared-key smoother uses the documented
     # balance-check allowance as a conservative policy ceiling for all routes.
     "sixtyfour": {"limit": 60, "window_s": 60, "source": "policy"},
+    "leadocean": {"limit": 25, "window_s": 1, "source": "docs"},
     # The allowance is independent per endpoint; this is the fallback for uncatalogued calls.
     "blitzapi": {"limit": 10, "window_s": 1, "source": "policy"},
     "adyntel": {"limit": 5, "window_s": 1, "source": "docs"},

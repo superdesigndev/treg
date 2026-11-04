@@ -343,6 +343,7 @@ class Settings(BaseSettings):
     platform_key_harvestapi: str = ""  # X-API-Key; prepaid USD wallet
     platform_key_fetchinio: str = ""  # X-API-Key; subscription + PAYG credit balance
     platform_key_sixtyfour: str = ""  # x-api-key; monthly credits, free balance check
+    platform_key_leadocean: str = ""  # x-api-key; usage is read through the free account API
     platform_key_blitzapi: str = ""  # x-api-key; monthly record allowance, free key-info balance
     platform_key_mobiusengine_jobs: str = ""  # x-api-key; prepaid USD balance, free GET /v1/balance
     platform_key_anyapi: str = ""  # X-API-Key; prepaid USD wallet, exact charge settles from costUsd
@@ -468,6 +469,9 @@ class Settings(BaseSettings):
     # router answer well" and "should every agent be led to it by default" are separate questions,
     # and the second one is answered by traffic, not by argument.
     routed_discovery: str = "on"
+    # Optional percent of routed requests on which each shared-key provider may be considered.
+    # Empty leaves routing unchanged; direct calls and own-key candidates are unaffected.
+    route_provider_sample_pct: str = ""
     # The discovery EXPERIMENT (application.search_experiment): a relevance judge (TypeSafe's Jev)
     # scores a widened lexical recall and the result is compared with the shipped ranker on
     # behaviour — did the caller go on to `call` something from the page. `off` (default) leaves
@@ -925,8 +929,8 @@ class Settings(BaseSettings):
     # The WHOLE email-domain blocklist (TREG_BLOCKED_EMAIL_DOMAINS), comma-separated:
     # "example-one.io,example-two.net". There is no list in the code; empty (the default) blocks
     # nothing. A listed domain blocks itself AND every subdomain, case-insensitively, at every
-    # sign-up and sign-in door and at the two doors that create a promo-funded team (POST /users,
-    # POST /orgs). Configuration rather than code because bulk registration moves to a new domain in
+    # sign-up and sign-in door and at the door that creates a promo-funded team (POST /orgs).
+    # Configuration rather than code because bulk registration moves to a new domain in
     # minutes, and a defence that needs a deploy to keep up is always behind. Existing accounts on a
     # listed domain are suspended out of band, so listing one strands nobody legitimate. A blocklist,
     # deliberately: no allowlist, no table, no admin UI.
@@ -966,6 +970,27 @@ class Settings(BaseSettings):
     def _platform_accounts_shape(cls, v: str) -> str:
         _parse_platform_pools(v)  # raises ValueError on a malformed value
         return v
+
+    @field_validator("route_provider_sample_pct")
+    @classmethod
+    def _route_provider_sample_pct_shape(cls, v: str) -> str:
+        if not v.strip():
+            return v
+        try:
+            parsed = json.loads(v)
+        except ValueError:
+            raise ValueError("route_provider_sample_pct must be a JSON object") from None
+        if not isinstance(parsed, dict) or not all(
+            isinstance(provider, str) and re.fullmatch(r"[a-z0-9][a-z0-9-]*", provider)
+            and isinstance(pct, int) and not isinstance(pct, bool) and 0 <= pct <= 100
+            for provider, pct in parsed.items()
+        ):
+            raise ValueError("route_provider_sample_pct must map lowercase providers to integer percentages from 0 to 100")
+        return v
+
+    @property
+    def route_provider_sample_percentages(self) -> dict[str, int]:
+        return json.loads(self.route_provider_sample_pct) if self.route_provider_sample_pct.strip() else {}
 
     @property
     def fixed_login_code_hashes(self) -> dict[str, str]:

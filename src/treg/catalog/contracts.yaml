@@ -332,6 +332,7 @@ contracts:
       results: {type: list, required: true, note: "the provider's own organic result rows (title, link/url, snippet…) — shapes differ per provider"}
       count: {type: int}
     miss: "results == []"
+    question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
     prefer: [crawl4ai]
@@ -350,11 +351,26 @@ contracts:
       limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row"}
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
-    scoping: [company_domain]
+    scoping: [company_domain, title, full_name]   # a child that cannot send one of these answers a different question
     output:
-      people: {type: list, required: true, note: "the provider's own people rows (name, title, profile url, location…) — shapes differ per provider; raw is the same body"}
+      people: {type: list, required: true, note: "one row per person, in the row shape below; the provider's own rows are in raw"}
       count: {type: int}
       next_cursor: {type: str}
+    # Every provider's row in one shape, so an agent reads the same keys whoever answered and
+    # pays tokens for the person, not for a provider's internal ids and flags.
+    row:
+      of: people
+      needs: [name, profile_url, email]
+      fields:
+        name: {type: str}
+        title: {type: str, note: "current job title, or the provider's headline when it has no title"}
+        company: {type: str, note: "current employer's name"}
+        company_domain: {type: str}
+        location: {type: str}
+        profile_url: {type: str, note: "the person's profile page, a LinkedIn URL where the provider has one"}
+        email: {type: str, note: "found by the provider, not confirmed deliverable"}
+        email_status: {type: str, note: "the provider's own verdict on that email, where it gives one (`valid`, `VERIFIED`); absent = nobody checked it"}
+        summary: {type: str, note: "the provider's own words about the person (bio, headline, matching passage), cut to 300 characters: what to check the brief against"}
     miss: "people == []"
     idempotent: true
     prefer: [crawl4ai]
@@ -362,7 +378,7 @@ contracts:
     # unless that row's own verification field says so — a team that mailed Hunter domain-search
     # rows unverified (`verification: null`, confidence 10) bounced on 73 of 79 addresses that one
     # $0.006 verify call each would have caught (2026-09-08).
-    advice_unverified: "Rows are provider directory listings: an email in a row is found, not confirmed deliverable, unless that row's own verification field says so. Run treg.people.email.verify on each address before outreach (a fraction of a cent), and never send to an address that is not in a row."
+    advice_unverified: "Rows are provider directory listings: an email in a row is found, not confirmed deliverable, unless that row's `email_status` says the provider verified it. Run treg.people.email.verify on each address before outreach (a fraction of a cent), and never send to an address that is not in a row."
 
   # ---- batch 5: company enrichment (2026-08-28) -----------------------------------------------
   companies.enrich:
@@ -1293,6 +1309,7 @@ contracts:
       results: {type: list, required: true, note: "the provider's own ranked result objects; raw is the same body"}
       count: {type: int}
     miss: "results == []"
+    question_miss: "choose(no_result_on_site(q, results), true, quoted_absent(q, results))"   # a site: question answered from other sites, or a quoted phrase no row mentions
     idempotent: true
     empty_is_failure: true   # an empty answer is the provider failing the job
     prefer: [crawl4ai]

@@ -20,8 +20,9 @@ from ... import sandbox as demo_sandbox
 from ...capacity_notice import CAPACITY_HEADER, EXHAUSTED
 from ...client_identity import _norm_client, mcp_host
 from ...config import get_settings
+from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import results as catalog_results
-from ...domain.catalog import store as catalog_store
+from ...domain.catalog import schema, store as catalog_store
 from ...domain.money import with_margin
 from ...domain import provider_resources
 from ...infra import money_admission, org_endpoint_quota
@@ -2073,8 +2074,12 @@ def _submission_rejected(mk, body: bytes) -> str:
         document = json.loads(body)
     except (ValueError, UnicodeDecodeError):
         return "submission_not_json"
-    rule = (catalog_store.load().by_id.get(mk.endpoint_id) or {}).get("expect")
-    if rule:
+    endpoint = catalog_store.load().by_id.get(mk.endpoint_id) or {}
+    rule = endpoint.get("expect")
+    if schema.is_v2(endpoint):
+        if catalog_outcome.expect_failure(endpoint, document) is not None:
+            return "submission_expect_failed"
+    elif rule:
         try:
             if _dig(document, rule["json_path"]) != rule.get("equals"):
                 return "submission_expect_failed"
