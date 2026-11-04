@@ -57,9 +57,9 @@ endpoints:
         linkedin_url: {type: string, required: false, example: "http://www.linkedin.com/in/tim-cook"}
         id: {type: string, required: false, note: "Apollo person id from a previous search"}
         reveal_personal_emails: {type: boolean, required: false, note: "unlocks personal emails; default false", example: false}
-        reveal_phone_number: {type: boolean, required: false, note: "OWN KEY ONLY: refused on treg's shared key. Adds 8 CREDITS when a mobile is found. The number is returned ASYNCHRONOUSLY to webhook_url, not inline, so webhook_url becomes required; default false", example: false}
-        run_waterfall_email: {type: boolean, required: false, note: "OWN KEY ONLY: refused on treg's shared key. Fall through to third-party vendors when Apollo's own data misses; some vendors bill even on a miss; default false"}
-        run_waterfall_phone: {type: boolean, required: false, note: "OWN KEY ONLY: refused on treg's shared key. As run_waterfall_email, for phone numbers; default false"}
+        reveal_phone_number: {type: boolean, required: false, note: "OWN KEY ONLY: true is refused on treg's shared key (false, the default, is accepted, as is omitting it). Adds 8 CREDITS when a mobile is found. The number is returned ASYNCHRONOUSLY to webhook_url, not inline, so webhook_url becomes required; default false", example: false}
+        run_waterfall_email: {type: boolean, required: false, note: "OWN KEY ONLY: true is refused on treg's shared key (false, the default, is accepted). Fall through to third-party vendors when Apollo's own data misses; some vendors bill even on a miss; default false"}
+        run_waterfall_phone: {type: boolean, required: false, note: "OWN KEY ONLY: true is refused on treg's shared key (false, the default, is accepted). As run_waterfall_email, for phone numbers; default false"}
         webhook_url: {type: string, required: false, note: "OWN KEY ONLY: refused on treg's shared key. REQUIRED when reveal_phone_number is true"}
       note: "POST, but every parameter rides in the QUERY STRING — there is no JSON body. Supply the strongest identifier you have: email > linkedin_url > name + domain. A request with none of them cannot match"
     cost:
