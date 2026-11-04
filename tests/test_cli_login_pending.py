@@ -364,10 +364,8 @@ async def test_server_without_poll_verifier_keeps_the_blocking_login(registry, c
         return {"login_id": started["login_id"], "code": started["code"]}
 
     monkeypatch.setattr(auth_routes.auth_use_cases, "start_cli_login", old_server)
-    started = threading.Event()
-    monkeypatch.setattr(cli.time, "sleep", lambda s: started.set() or threading.Event().wait(.02))
     waiting = asyncio.create_task(asyncio.to_thread(cli.main, ["login"]))
-    await asyncio.to_thread(started.wait, 10)
+    await _until_polled(registry, 1, waiting)
     out = capsys.readouterr().out
     url = out.split("visit:\n  ", 1)[1].split("\n", 1)[0]
     login_id = parse_qs(urlsplit(url).query)["cli"][0]
