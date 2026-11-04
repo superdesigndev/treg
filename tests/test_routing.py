@@ -535,8 +535,37 @@ async def test_sampled_provider_changes_routed_call_not_direct_call(clients, mon
         served = await clients.post("/call/treg.people.phone.find", json=identity)
         assert served.status_code == 200, served.text
         assert served.json()["_treg"]["served_by"] == "leadocean.people.phone.find"
-        assert served.json()["_treg"]["charged_micro"] == 0
+        assert served.json()["_treg"]["charged_micro"] == 5_000
         assert [provider for provider, *_ in seen] == ["leadocean", "leadocean"]
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(("status", "outcome", "charged"), [
+    ("verified", "hit", 5_000), ("catch_all", "miss", 0), ("untested", "miss", 0),
+])
+async def test_leadocean_work_email_routes_only_verified_hits(clients, monkeypatch, status, outcome, charged):
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "test-key")
+    monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"leadocean":100}')
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "leadocean": [(200, {"data": {"email": "jane@example.com", "status": status}})],
+    }, seen))
+
+    try:
+        before = await _balance(clients)
+        response = await clients.post("/call/treg.people.email.find",
+                                      json={"linkedin_url": "https://www.linkedin.com/in/example"},
+                                      headers={"X-Treg-Route-Waterfall": "0"})
+        assert response.status_code == 200, response.text
+        routed = response.json()["_treg"]
+        assert routed["served_by"] == "leadocean.people.email.find.work"
+        assert routed["outcome"] == outcome
+        assert routed["charged_micro"] == charged
+        assert before - await _balance(clients) == charged
+        assert [provider for provider, *_ in seen] == ["leadocean"]
     finally:
         get_settings.cache_clear()
 
