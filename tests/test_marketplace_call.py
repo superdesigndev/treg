@@ -944,6 +944,46 @@ def test_theirstack_platform_requests_bound_credits(endpoint, body, valid):
             call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
 
 
+async def test_leadocean_direct_search_requires_a_bounded_shared_key_page(clients, monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "PLATFORM-LEADOCEAN")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
+    get_settings.cache_clear()
+    seen = []
+
+    def upstream(request):
+        seen.append((request.headers["x-api-key"], request.url.params.multi_items()))
+        return _dropleads_response(200, {"success": True, "data": [], "meta": {"credits": 0}})
+
+    try:
+        async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+            monkeypatch.setattr(A.app.state, "http", vendor)
+            for params in ({"domain": "stripe.com"}, {"domain": "stripe.com", "limit": "0"},
+                           {"domain": "stripe.com", "limit": "11"},
+                           [("domain", "stripe.com"), ("limit", "10"), ("limit", "1")]):
+                refused = await clients.get("/call/leadocean.people.search", params=params)
+                assert refused.status_code == 400, refused.text
+                assert refused.json()["detail"]["parameter"] == "queryParams.limit"
+            assert seen == []
+
+            allowed = await clients.get("/call/leadocean.people.search", params={
+                "domain": "stripe.com", "limit": "10"})
+            assert allowed.status_code == 200, allowed.text
+            assert allowed.headers["x-treg-cost-micro"] == "0"
+            assert seen == [("PLATFORM-LEADOCEAN", [("domain", "stripe.com"), ("limit", "10")])]
+
+            own = await clients.post("/secrets", json={"name": "leadocean", "value": "OWN-LEADOCEAN"})
+            assert own.status_code == 200, own.text
+            for params in ({"domain": "stripe.com"}, {"domain": "stripe.com", "limit": "25"}):
+                served = await clients.get("/call/leadocean.people.search", params=params)
+                assert served.status_code == 200, served.text
+                assert "x-treg-cost-micro" not in served.headers
+            assert [key for key, _ in seen] == ["PLATFORM-LEADOCEAN", "OWN-LEADOCEAN", "OWN-LEADOCEAN"]
+            assert [query for _, query in seen[1:]] == [[("domain", "stripe.com")],
+                                                        [("domain", "stripe.com"), ("limit", "25")]]
+    finally:
+        get_settings.cache_clear()
+
+
 def test_theirstack_platform_holds_match_the_credit_prices():
     from treg.domain.catalog import store as catalog_store
 
