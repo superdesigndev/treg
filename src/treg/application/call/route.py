@@ -345,6 +345,7 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
     return ChildOutcome("hit", doc=doc, core=core, rows=rows)
 
 
+CURSOR_MAX = 512  # chars of a provider cursor `output.next_cursor` carries; longer stays in `raw`
 DEFAULT_MAX_COST_MICRO = 1_000_000  # $1.00 per routed call unless the caller says otherwise — a runaway guard, not a budget
 
 
@@ -467,6 +468,17 @@ def _adapter_uses_limit(adapter) -> bool:
         n for e in (adapter.in_expr or {}).values() for n in re.findall(r"[A-Za-z_]\w*", e)
     }
     return "limit" in used
+
+
+def _long_cursor(output: dict | None, adapter, merged: bool) -> tuple[dict | None, dict | None]:
+    """A `next_cursor` longer than CURSOR_MAX leaves `output` and is named on `_treg` instead.
+    A routed endpoint takes no cursor, so the token only serves a direct call to the provider,
+    and that call reads it from `raw`, where it stays whole (icypeas: an 18 KB token, twice)."""
+    cursor = (output or {}).get("next_cursor")
+    if not isinstance(cursor, str) or len(cursor) <= CURSOR_MAX:
+        return output, None
+    path = (adapter.out_map.get("next_cursor") if adapter is not None and not merged else None)
+    return {**output, "next_cursor": None}, {"chars": len(cursor), **({"in_raw": path} if path else {})}
 
 
 def _limit_exceeded_note(*, asked: int, returned: int, served_by: str, merged: bool, adapter) -> dict:
@@ -1254,9 +1266,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 asked=asked_n, returned=returned_n, served_by=served,
                 merged=bool(merged_from), adapter=cand.adapter)
 
+    output, long_cursor = _long_cursor(output, cand.adapter, bool(merged_from))
+
     body_out = {"output": output or {k: None for k in plan.contract.output}, "raw": doc,
                 "_treg": {"served_by": served, "provider": provider, "tier": cand.tier,
                           **({"merged_from": merged_from} if merged_from else {}),
+                          **({"next_cursor": long_cursor} if long_cursor else {}),
                           **({"advice": advice} if advice else {}),
                           **({"domain_match": domain_match} if domain_match is not None else {}),
                           "outcome": winner_outcome, "tried": [t.view() for t in tried], "charged_micro": spent,
