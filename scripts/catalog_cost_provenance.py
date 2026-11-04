@@ -51,11 +51,6 @@ CANONICAL_FREE = {"type": "free", "value": 0, "currency": "USD", "unit": "call"}
 # "0.0015" is per call or per row.
 PROVIDERS: dict[str, dict] = {
     # Prices from the provider's own machine-readable rate card → verified.
-    "tikhub": {
-        "source": "rate_card_api", "confidence": "verified",
-        "url": "https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info",
-        "units": {"*": "call"},
-    },
     "dataforseo": {
         "source": "rate_card_api", "confidence": "verified",
         "url": "https://api.dataforseo.com/v3/appendix/user_data",

@@ -1380,22 +1380,6 @@ def test_hunter_email_finder_miss_is_free():
     assert call_settle._observed_cost_micro(f, b"not json") is None
 
 
-def test_tikhub_envelope_no_charge_settles_at_zero():
-    """TikHub reports billing in prose, not a number: a 2xx whose payload is an embedded error
-    still says the request will incur a charge — and TikHub really does charge us for it
-    (verified live 2026-07-30), so those settle at the estimate, faithfully. Only the explicit
-    no-charge phrasing settles at zero."""
-    t = _mk("tikhub", cost_type="per_success")
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "message": "Request successful. This request will incur a charge.", "data": {}}') is None, \
-        "a billed answer settles at the estimate — that IS what TikHub takes"
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "message": "Request successful. This request will incur a charge.", "data": {"error": "dead_page"}}') is None, \
-        "a dead page TikHub bills us for is passed through, not eaten"
-    assert call_settle._observed_cost_micro(t, b'{"code": 400, "message": "Request failed. You won\'t be charged for this request.", "data": null}') == 0
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "message": "This request will not incur charges.", "data": {}}') == 0
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "data": {}}') is None, "no message: estimate"
-    assert call_settle._observed_cost_micro(t, b"not json") is None
-
-
 async def test_daily_cap_fails_closed(clients: AsyncClient, platform_on, monkeypatch):
     """The per-org daily ceiling on treg's keys — the blast radius of a runaway agent. Unlike the soft
     per-user call cap, it refuses rather than letting spend through."""

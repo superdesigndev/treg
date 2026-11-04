@@ -466,9 +466,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
       - hunter (email finder): DERIVED, the flat case — one whole SEARCH credit when an email is
         found, nothing on a miss ("a miss is free", per Hunter's own pricing), yet a miss still
         answers HTTP 200, so the estimate billed the full credit for a name Hunter had nothing on.
-      - tikhub: REPORTED in prose rather than a number. Every envelope says whether the call is
-        billed; only the explicit no-charge phrasing settles at zero, because TikHub really does
-        charge for a 2xx whose payload is an embedded error.
 
       - crustdata / cloro / aiark: REPORTED in credits in a response HEADER (`_CREDIT_HEADERS`),
         the only place the charge exists. AI Ark reports debits as negative `X-Credit` values; its
@@ -818,18 +815,6 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         rate = catalog_store.load().credit_rates.get("hunter")
         if isinstance(data, dict) and "email" in data and rate:
             return int(rate * 1_000_000 + 0.5) if data["email"] else 0
-        return None
-    if provider == "tikhub":
-        # REPORTED in prose rather than a number: every TikHub envelope states whether the call is
-        # billed. A 2xx whose payload is an embedded error still says "This request will incur a
-        # charge." and TikHub really does charge us for it, so a dead page settling at the estimate
-        # is faithful, not an over-charge. Only the explicit no-charge phrasing settles at zero;
-        # anything else stays at the estimate.
-        msg = doc.get("message")
-        if isinstance(msg, str):
-            low = msg.lower()
-            if "won't be charged" in low or "will not be charged" in low or "not incur" in low:
-                return 0
         return None
     if provider == "apollo":
         # Only the shapes whose billing rule is documented and body-decidable: company enrichment

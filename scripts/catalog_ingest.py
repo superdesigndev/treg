@@ -33,9 +33,11 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import yaml
+from treg.domain.catalog.schema import spelling
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "src" / "treg" / "catalog"
@@ -224,6 +226,10 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
             "authorization_method", "authorization_methods", "authorization_paths",
             "required_scopes", "required_resource", "token_type",
         ]
+        if spelling(prev) == "v2":
+            # A row in the v2 spelling carries its reviewed cost and its outcome rules, which hold
+            # the miss its adapter no longer does.
+            carried_fields += ["price", "provenance", "reserve", "settle", "bill", "error", "miss", "not_found"]
         if carry_input:
             carried_fields.append("input")
         if carry_capability:
@@ -693,10 +699,9 @@ def ingest_tikhub(refresh: bool) -> tuple[Path, dict]:
             tail = uri.strip("/").split("/")[3:]
             where = "/".join(tail[:-1])
             summary = f"{label}: {titlecase(tail[-1]).lower()}" + (f" ({where})" if where else "")
-        cost = float(row.get("endpoint_cost") or 0)
+        cost = Decimal(str(row.get("endpoint_cost") or 0))
         entry = {
             "id": slug_id("tikhub", uri.replace("/api/v1/", "")),
-            "tier": "extended",
             "platform": platform,
             "method": method,
             "path": uri,
@@ -707,10 +712,11 @@ def ingest_tikhub(refresh: bool) -> tuple[Path, dict]:
         title = short_name((doc_op or {}).get("name") or "", summary)
         if title:
             entry["name"] = title
-        entry["cost"] = (
-            {"type": "free", "value": 0.0, "currency": "USD"} if cost == 0
-            else {"type": "per_success", "value": cost, "currency": "USD"}
-        )
+        # The provenance and the billing rule are the `defaults:` of tikhub.yaml.
+        if cost == 0:
+            entry["price"], entry["provenance"] = {"value": "0", "currency": "USD", "unit": "call"}, None
+        else:
+            entry["price"] = {"value": format(cost.normalize(), "f"), "currency": "USD", "per": 1, "unit": "call"}
         if doc_op is not None:
             documented += 1
             inp, test, reason = tikhub_input_and_test(doc_op, docs_defs, method=method, spec_op=op)

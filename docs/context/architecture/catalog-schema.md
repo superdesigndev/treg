@@ -99,14 +99,19 @@ row gets today's error envelope as an `error` rule, an adapter's `miss` moves to
 rows it cannot rewrite with the reason (a provider decided in Python, a single-provider cost key, a
 guessed hold, a per_success row whose failed `expect` is free while its error envelope is charged,
 which one `bill.error` cannot say, a replaced key that defines a YAML anchor another row aliases);
-every rewritten row it prints parses whole. `--apply` edits the files in place and keeps every
-comment outside the replaced keys. The fixture replay is the proof that a rewrite changes nothing.
+every rewritten row it prints parses whole. A provider whose header declares `defaults:` is
+rewritten against them: a key equal to its default is left out, one the row lacks is written as
+`null`, and a `bill` default, the batch's translation of the Python branch it deletes, is inherited
+whole. An inert `miss.status` on a 2xx is dropped and its `means` joins the row's `note`. `--apply`
+edits the files in place and keeps every comment outside the replaced keys. The fixture replay is
+the proof that a rewrite changes nothing.
 
 The validator checks a v2 row's cost beyond its model: `price.currency`, `settle.reported.unit`
 and `settle.usage.unit` resolve to a rate in `fx.yaml`, usage `terms` are in USD, and the request
 paths of `reserve.rows.param`, `reserve.entities.from` and `price.table` (`when` and `times`) name
 declared input fields; an equality-only table also meets today's table checks (required or
-defaulted fields, enum and range, a bounded `times`, a fallback at least every row's maximum).
+defaulted fields, enum and range, a bounded `times`, a fallback at least every row's maximum). A
+`provenance.checked` older than 90 days warns, as `cost.checked` does.
 
 ## Provider defaults and the one merge rule
 

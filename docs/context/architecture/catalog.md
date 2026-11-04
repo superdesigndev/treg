@@ -185,8 +185,9 @@ conflict on. It is not `verified` and not `source.curated`.
   date.
 - `carry_verification` carries `added` by id from every catalog file BEFORE its method/path check,
   so a moved route keeps its date and only a never-seen id gets today. For a route that still
-  matches it also carries `cost`, `observed_cost`, `expect`, `untestable` and `status`, but not
-  `platform_blocked` once the fresh row declares `resource_ownership.requires`.
+  matches it also carries `cost`, `observed_cost`, `expect`, `untestable` and `status`, and from a
+  row in the v2 spelling its `price`, `provenance`, `reserve`, `settle`, `bill`, `error`, `miss` and
+  `not_found`, but not `platform_blocked` once the fresh row declares `resource_ownership.requires`.
 - `scripts/catalog_backfill_added.py` dated existing rows once from main's first-parent history;
   reviewed renames are applied with `--same-tool OLD=NEW`.
 

@@ -125,7 +125,33 @@ def test_a_row_with_no_zero_diff_rewrite_stays_as_it_is(row, reason):
 
 def test_a_provider_decided_in_python_waits_for_its_batch():
     with pytest.raises(codemod.Refused, match="settle.py"):
-        codemod.rewrite({"id": "tikhub.x", "cost": {"type": "per_success", "value": 1}}, provider="tikhub")
+        codemod.rewrite({"id": "apollo.x", "cost": {"type": "per_success", "value": 1}}, provider="apollo")
+
+
+DEFAULTS = {"bill": {"miss": "charged", "error": "charged"}, "provenance": PROVENANCE}
+
+
+def test_a_row_is_written_against_its_providers_defaults():
+    adapter = {"miss": "data == null", "verified": True}
+    priced = codemod.rewrite({"id": "demo.x", "cost": {"type": "per_success", "value": 0.001, **PROVENANCE}},
+                             provider="demo", adapter=adapter, check_branches=False, defaults=DEFAULTS)
+    assert priced.keys == {"price": {"value": "0.001"},
+                           "error": {"when": codemod.ENVELOPE},
+                           "miss": {"when": {"path": "response.data", "op": "absent"}}}
+    free = codemod.rewrite({"id": "demo.y", "cost": {"type": "free"}}, provider="demo",
+                           check_branches=False, defaults=DEFAULTS)
+    assert free.keys == {"price": {"value": "0"}, "provenance": None}
+    unpriced = codemod.rewrite({"id": "demo.z", "tier": "extended"}, provider="demo",
+                               check_branches=False, defaults=DEFAULTS)
+    assert unpriced.keys == {"provenance": None} and unpriced.replaced == ("tier",)
+
+
+def test_an_inert_2xx_miss_status_leaves_its_means_in_the_note():
+    change = codemod.rewrite({"id": "demo.x", "note": "Pass a fullname.", "miss": {"status": 200, "means": "Billed."},
+                              "cost": {"type": "per_success", "value": 1, **PROVENANCE}},
+                             provider="demo", check_branches=False)
+    assert change.keys["note"] == "Pass a fullname. Billed." and "miss" not in change.keys
+    assert change.replaced == ("cost", "miss", "note")
 
 
 FILE = """provider: demo
