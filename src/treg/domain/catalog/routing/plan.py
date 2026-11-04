@@ -65,6 +65,10 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
     dropped, not ranked down: a `{title}`-only people search asked for `{company_domain, title}`
     returns the same title-matched strangers for every company, and each one bills as a hit."""
     used = _used_keys(adapter)
+    # A stand-in this adapter sends carries the caller's keys inside it (`q` from `title`)
+    for k, expr in (getattr(adapter, "_stand_in", None) or {}).items():
+        if k in used and identity.get(k) in (None, ""):
+            used |= set(re.findall(r"[A-Za-z_]\w*", expr))
     return tuple(k for k in contract.scoping if identity.get(k) not in (None, "") and k not in used)
 
 

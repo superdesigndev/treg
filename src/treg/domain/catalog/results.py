@@ -48,15 +48,17 @@ def _email(value) -> bool:
 
 
 def has_result_rules(endpoint_id: str) -> bool:
-    """Only verified, configured hit/miss adapters opt into result-aware cache behavior; a v2 row
-    opts in by declaring what a 2xx miss looks like."""
+    """Only verified, configured hit/miss adapters opt into result-aware cache behavior; on a v2
+    row the miss is the row's own rule, beside a verified adapter."""
     from .store import load
 
+    adapter = load().adapters.get(endpoint_id)
+    if adapter is None or not adapter.verified:
+        return False
     endpoint = load().by_id.get(endpoint_id)
     if endpoint is not None and is_v2(endpoint):
         return outcome.declares_miss(endpoint)
-    adapter = load().adapters.get(endpoint_id)
-    return adapter is not None and adapter.verified and bool(adapter.miss.strip())
+    return bool(adapter.miss.strip())
 
 
 def verdict(endpoint_id: str, status: int, body: bytes) -> str | None:

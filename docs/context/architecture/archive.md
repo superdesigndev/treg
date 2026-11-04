@@ -170,8 +170,26 @@ refuse a team still in the archive: with the gate shut nothing new is recorded w
 there is no sweep, pending state or recorder coordination. What is "the team's" is decided in
 governance (`teams.private_archive_key_ids`, `teams.erase_archive_rows`): every key under the
 team's `org:`/`conn:` scopes with its snapshots and request shape, plus every `ArchiveKeyOrg`
-mark. Platform-key answers are public questions and stay; once the marks go nothing names the
-team.
+mark. Platform-key answers are public questions and stay by default. Once the marks go, the
+archive no longer names the team; `callrecord` still keeps the team's `params_hash` per call.
+
+On request (`erase-archive --include-sole-public`), erasure also takes the public keys only this
+team paid for (`teams.sole_public_archive_key_ids`: marked by it and by no other team). A question
+another team also paid for stays. These keys are found through the team's marks, so this phase
+runs first, before the private phase deletes the marks. It reads every candidate before anything
+is deleted, a page of marks (`teams.archive_mark_hashes`, by `key_hash` from a cursor) per capped
+statement, so the read fits the cap however many questions the team paid for. An erasure of the
+same team running alongside (an owner delete, a second worker) can delete the marks at any moment,
+so the mark count is read before and after; fewer after means pages were read against vanishing
+marks, and the job raises before deleting anything. Each batch then re-checks only that no other
+team has paid for the key since; it does not require the team's own mark. A plain erasure that
+finishes before the public phase starts still leaves nothing for it to find, so the run order
+matters. Candidates are held in memory. It deletes keys and snapshots through
+`teams.erase_archive_keys`, which leaves marks alone. Unlike a private key, a public key can gain
+a snapshot from another team's call between the orphan judgment and the delete. That snapshot
+goes with the key, and its object, if new, is left unreferenced in the store. The cost of the
+phase is that other teams lose future hits on those questions; their next call goes live and
+re-records.
 
 Order matters:
 
@@ -183,7 +201,19 @@ Order matters:
 3. Only then the rows. A failed object delete stops the pass before the rows, so a retry starts
    from them; deleting a row first would orphan its object for good.
 
-Endpoint running totals subtract what each DELETE returned, so two erasers subtract once. Because
+Passes walk the team's keys by id from a cursor, and every statement in them runs under a
+Postgres `statement_timeout`. One long transaction holds back the cleanup of old row versions in
+every table, the hot `org` balance row included; a pass that runs over the cap fails the job
+instead, and what earlier passes committed stays erased. That is why `body_of` is not a foreign
+key (alembic 0094): with no index on it, Postgres checked each deleted snapshot with a scan of
+the whole table, and no batch fit the cap. `erase-archive --dry-run`
+(`archive_erasure.count_org`, with the same `--include-sole-public` switch) reads the same
+passes and deletes nothing. It reports keys, snapshots, marks and distinct bodies; the bodies
+count is an upper bound, because a shared body stays.
+
+Endpoint running totals subtract what each DELETE returned, so two erasers subtract once, and
+move in endpoint order, the order `archive.flush_stats` locks the same rows in, so the two cannot
+deadlock. The worker prints the running totals to stderr after every committed batch. Because
 another process's upload cache cannot be told, `archive_bodies.prepare` trusts a remembered
 upload only after one `head` confirms the object still exists. Accepted race (documented in the
 module): another team records identical bytes between the orphan judgment and the delete; its
@@ -244,8 +274,8 @@ branch, and a fault anywhere in lookup degrades to a live call.
 `domain.catalog.results.classify` reads the buffered bytes, never rewriting them, into `found`,
 `empty`, `error` or `unknown` with bounded reason codes. Result-aware behavior applies only to
 endpoints with a verified adapter and a nonempty hit/miss expression (`has_result_rules`), reusing
-`Adapter.is_miss`, and to a v2 row that declares a 2xx miss, judged by its outcome declaration
-([catalog-schema](catalog-schema.md)); a capability that must never be routed can opt in through a
+`Adapter.is_miss`, and to a v2 row with a verified adapter that declares a 2xx miss, judged by its
+outcome declaration ([catalog-schema](catalog-schema.md)); a capability that must never be routed can opt in through a
 `routed: false` contract ([catalog](catalog.md)). A 2xx failing the `expect` success rule is `error` /
 `expect_failed` before any adapter reads it, but a value listed in the rule's `misses` is judged by
 the adapter. Strict per-endpoint validators live in `results.py`.

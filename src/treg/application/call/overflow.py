@@ -123,6 +123,7 @@ def _child(mk: MarketplaceCall, route) -> MarketplaceCall:
     # The child settles against ITS price: an aggregator that reports no cost settles at the
     # aggregator reserve, never at the parent's direct price or table ceiling.
     return replace(mk, tier="platform-overflow", call_id=None, estimate_micro=agg,
+                   holdless=False, overflow_hold_possible=False,
                    cost_type="per_call" if route.agg_unit == "call" else "per_result",
                    unit_micro=agg,
                    settlement_basis={"when": "response", "amount": {"kind": "observed"},
@@ -277,6 +278,8 @@ async def _maybe_overflow_attempt(
     path_params = {k: v for k, v in query_items if k in mk.consumed}
     if mode == "on":
         # Child hold: own id, same call_ref family. Insufficient balance here is the normal 402.
+        # Marked first: a cancel can land after the reserve commits but before it returns.
+        mk.overflow_hold_possible = True
         await _platform_reserve(child, caller, meta=meta, call_ref=f"{call_ref}:overflow")
         reserved.append(child)
     res: AggregatorResult | None = None

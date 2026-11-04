@@ -69,7 +69,7 @@ from ...domain import asynctasks as asynctasks_rules
 from ...domain.capacity.routes_view import view as overflow_routes_view
 from ...domain.capacity.view import view as capacity_view
 from ...domain.capacity.marks import spends_balance
-from ...domain.capacity.signatures import classify as classify_capacity
+from ...domain.capacity.signatures import classify as classify_capacity, is_exhausting
 from ...domain import plugins
 from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import results as catalog_results
@@ -288,6 +288,10 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
     if declared_not_found(endpoint, status, raw):
         return ChildOutcome("not_found")
     capacity_signal = classify_capacity(endpoint["provider"], status, body=raw)
+    if tier == "platform" and is_exhausting(capacity_signal):
+        # treg's own account is out of money or out of its period allowance: nothing about the
+        # question, so the attempt is skipped like a rate-limited one, never the route's error.
+        return ChildOutcome("account_exhausted", detail=capacity_signal.kind)
     temporary_capacity = capacity_signal is not None and capacity_signal.kind in ("burst", "unknown")
     platform_auth_failure = tier == "platform" and status in (401, 403)
     # 405 and 410 Gone say the PROVIDER cannot serve this route (a discontinued endpoint answers
@@ -341,6 +345,7 @@ def child_outcome(endpoint: dict, contract, adapter, status: int, raw: bytes, *,
     return ChildOutcome("hit", doc=doc, core=core, rows=rows)
 
 
+CURSOR_MAX = 512  # chars of a provider cursor `output.next_cursor` carries; longer stays in `raw`
 DEFAULT_MAX_COST_MICRO = 1_000_000  # $1.00 per routed call unless the caller says otherwise — a runaway guard, not a budget
 
 
@@ -463,6 +468,17 @@ def _adapter_uses_limit(adapter) -> bool:
         n for e in (adapter.in_expr or {}).values() for n in re.findall(r"[A-Za-z_]\w*", e)
     }
     return "limit" in used
+
+
+def _long_cursor(output: dict | None, adapter, merged: bool) -> tuple[dict | None, dict | None]:
+    """A `next_cursor` longer than CURSOR_MAX leaves `output` and is named on `_treg` instead.
+    A routed endpoint takes no cursor, so the token only serves a direct call to the provider,
+    and that call reads it from `raw`, where it stays whole (icypeas: an 18 KB token, twice)."""
+    cursor = (output or {}).get("next_cursor")
+    if not isinstance(cursor, str) or len(cursor) <= CURSOR_MAX:
+        return output, None
+    path = (adapter.out_map.get("next_cursor") if adapter is not None and not merged else None)
+    return {**output, "next_cursor": None}, {"chars": len(cursor), **({"in_raw": path} if path else {})}
 
 
 def _limit_exceeded_note(*, asked: int, returned: int, served_by: str, merged: bool, adapter) -> dict:
@@ -1026,6 +1042,10 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 "message": f"{cand.endpoint['id']} rejected the request ({response.status}); "
                            + ("not retried elsewhere" if len(rejected_by) == 1 else "every free-on-failure provider rejected it too"),
                 "provider_response": raw[:600].decode("utf-8", "replace")})
+        if outcome.kind == "account_exhausted":
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", response.status, charged,
+                                 f"treg's account is used up ({outcome.detail})"))
+            continue
         if outcome.kind == "error":
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", response.status, charged, raw[:120].decode("utf-8", "replace")))
@@ -1246,9 +1266,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 asked=asked_n, returned=returned_n, served_by=served,
                 merged=bool(merged_from), adapter=cand.adapter)
 
+    output, long_cursor = _long_cursor(output, cand.adapter, bool(merged_from))
+
     body_out = {"output": output or {k: None for k in plan.contract.output}, "raw": doc,
                 "_treg": {"served_by": served, "provider": provider, "tier": cand.tier,
                           **({"merged_from": merged_from} if merged_from else {}),
+                          **({"next_cursor": long_cursor} if long_cursor else {}),
                           **({"advice": advice} if advice else {}),
                           **({"domain_match": domain_match} if domain_match is not None else {}),
                           "outcome": winner_outcome, "tried": [t.view() for t in tried], "charged_micro": spent,

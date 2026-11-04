@@ -153,6 +153,68 @@ def test_a_route_false_adapter_is_never_routed():
     assert C.parse_adapters({"adapters": {"c.find": {"route": False}}})["c.find"].route is False
 
 
+def test_a_row_map_puts_every_provider_row_in_the_contract_shape():
+    """`row:` reads each provider row into the contract's keys, so an agent reads the same fields
+    whoever answered; a row the map cannot read stays the provider's own, never dropped."""
+    from treg.domain.catalog.routing import contracts as C
+
+    doc = {"contracts": {"x.search": {
+        "identity": [{"q": "str"}], "output": {"people": {"type": "list", "required": True}},
+        "miss": "people == []",
+        "row": {"of": "people", "needs": ["name"], "fields": {"name": "str", "location": "str", "summary": "str"}}}}}
+    contract = C.parse_contracts(doc)["x.search"]
+    ad = C.parse_adapters({"adapters": {"p.search": {
+        "accepts": [["q"]], "in": {"q": "body.q"}, "out": {"people": "items"}, "miss": "items == []",
+        "row": {"name": "join(first, last)", "location": "place(city, country, country)", "summary": "texts(lines)"}}}})["p.search"]
+    ad = C.Adapter(**{**ad.__dict__, "_row_of": contract.row_of, "_row_needs": contract.row_needs})
+    long = "word " * 200
+    rows = ad.from_upstream({"items": [
+        {"first": "Ada", "last": "Lovelace", "city": "London", "country": "UK", "lines": ["one", long], "id": 7},
+        {"handle": "@someone"}, "not a row"]})["people"]
+    assert rows[0]["name"] == "Ada Lovelace" and rows[0]["location"] == "London, UK" and "id" not in rows[0]
+    assert len(rows[0]["summary"]) == C.ROW_TEXT_MAX, "text is capped"
+    assert rows[1] == {"handle": "@someone"}, "unreadable row kept as the provider's"
+    assert rows[2] == "not a row" and len(rows) == 3, "a non-object item is kept too"
+    with pytest.raises(ValueError, match="row"):
+        C.parse_contracts({"contracts": {"y": {**doc["contracts"]["x.search"], "row": {"of": "nope", "needs": ["name"], "fields": {"name": "str"}}}}})
+    with pytest.raises(ValueError, match="needs"):
+        C.parse_contracts({"contracts": {"y": {**doc["contracts"]["x.search"], "row": {"of": "people", "needs": ["age"], "fields": {"name": "str"}}}}})
+    stray = C.Adapter(**{**ad.__dict__, "row_map": {**ad.row_map, "age": "age"}})
+    endpoint = {"test_request": {"body": {"q": "x"}}}
+    assert C.verify(stray, contract, endpoint, {"items": [{"first": "A"}]}) == (False, "row: fields outside the contract's row: ['age']")
+    assert C.verify(ad, contract, endpoint, {"items": [{"first": "A"}]})[0] is True
+
+
+def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
+    """people.search builds `q` from the caller's title and location, but only for a provider that
+    accepts none of the caller's own fields: exa joins a {title} request, a provider that takes
+    {title} still gets exactly the title, and a {company_domain} request still skips exa."""
+    from treg.domain.catalog.routing.contracts import adapter_accepts
+    from treg.domain.catalog.routing.plan import unscoped
+
+    cat = catalog_store.load()
+    contract = cat.contracts["people.search"]
+    ident, _ = canonical_identity(contract, {"title": "Product Manager", "location": "Seattle, United States",
+                                             "keywords": ["developer tools"]})
+    assert "q" not in ident, "the stand-in never enters the request's identity"
+    exa = cat.adapters["exa.people.search"]
+    assert adapter_accepts(exa, ident) == ("q",) and not unscoped(exa, contract, ident)
+    _, body = exa.to_upstream(ident, ("q",))
+    assert body["query"] == "Product Manager Seattle, United States developer tools"
+    icy = cat.adapters["icypeas.people.search"]
+    variant = adapter_accepts(icy, ident)
+    assert variant == ("title",)
+    assert icy.to_upstream(ident, variant)[1]["query"] == {
+        "currentJobTitle": {"include": ["Product Manager"]}, "location": {"include": ["Seattle, United States"]},
+        "keyword": {"include": ["developer tools"]}}, "a provider that takes the title gets it unchanged"
+    scoped, _ = canonical_identity(contract, {"title": "CTO", "company_domain": "stripe.com"})
+    assert unscoped(exa, contract, scoped) == ("company_domain",), "a text match cannot scope by company"
+    with pytest.raises(ValueError, match="stand_in"):
+        from treg.domain.catalog.routing import contracts as C
+        C.parse_contracts({"contracts": {"y": {"identity": [{"q": "str"}], "output": {"a": "str"},
+                                               "miss": "a == null", "stand_in": {"nope": "q"}}}})
+
+
 def test_every_shipped_adapter_round_trips_its_fixture():
     cat = catalog_store.load()
     bad = {eid: a.verify_note for eid, a in cat.adapters.items() if not a.verified}
@@ -420,7 +482,7 @@ async def test_sampled_provider_only_filters_shared_key_routes(clients, monkeypa
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
     monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "test-key")
     get_settings.cache_clear()
-    ep = catalog_store.load().by_id[ROUTED]
+    ep = catalog_store.load().by_id["treg.people.phone.find"]
     options = call_route.RouteOptions.from_headers(lambda key: None)
     identity = {"linkedin_url": "https://www.linkedin.com/in/example"}
 
@@ -454,25 +516,25 @@ async def test_sampled_provider_changes_routed_call_not_direct_call(clients, mon
     monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "test-key")
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({
-        "leadocean": [(200, {"data": {"email": "person@example.com", "status": "verified"}}),
-                      (200, {"data": {"email": "person@example.com", "status": "verified"}})],
+        "leadocean": [(200, {"data": {"best": {"phone": "+15555550100"}}}),
+                      (200, {"data": {"best": {"phone": "+15555550100"}}})],
     }, seen))
     identity = {"linkedin_url": "https://www.linkedin.com/in/example"}
     try:
         monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"leadocean":0}')
         get_settings.cache_clear()
-        refused = await clients.post(f"/call/{ROUTED}", json=identity)
+        refused = await clients.post("/call/treg.people.phone.find", json=identity)
         assert refused.status_code == 503
         assert seen == []
-        direct = await clients.get("/call/leadocean.people.email.find.work", params=identity)
+        direct = await clients.get("/call/leadocean.people.phone.find", params=identity)
         assert direct.status_code == 200, direct.text
-        assert direct.json()["data"]["email"] == "person@example.com"
+        assert direct.json()["data"]["best"]["phone"] == "+15555550100"
 
         monkeypatch.setenv("TREG_ROUTE_PROVIDER_SAMPLE_PCT", '{"leadocean":100}')
         get_settings.cache_clear()
-        served = await clients.post(f"/call/{ROUTED}", json=identity)
+        served = await clients.post("/call/treg.people.phone.find", json=identity)
         assert served.status_code == 200, served.text
-        assert served.json()["_treg"]["served_by"] == "leadocean.people.email.find.work"
+        assert served.json()["_treg"]["served_by"] == "leadocean.people.phone.find"
         assert served.json()["_treg"]["charged_micro"] == 0
         assert [provider for provider, *_ in seen] == ["leadocean", "leadocean"]
     finally:
@@ -784,7 +846,9 @@ async def test_a_people_search_hit_always_carries_verify_advice(clients: AsyncCl
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["_treg"]["served_by"] == "hunter.companies.emails" and d["_treg"]["outcome"] == "hit"
-    assert d["output"]["people"][0]["verification"]["status"] is None, "the row's own field, untouched"
+    row = d["output"]["people"][0]
+    assert row["email"] == "info@royalfarms.com" and "email_status" not in row, "no verdict from the provider, none claimed"
+    assert d["raw"]["data"]["emails"][0]["verification"]["status"] is None, "the provider's row, untouched in raw"
     assert "treg.people.email.verify" in d["_treg"]["advice"] and "directory" in d["_treg"]["advice"]
     assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]), "the find, nothing chained"
 
@@ -1028,6 +1092,36 @@ async def test_idempotent_replay_of_a_routed_call_never_calls_a_provider_twice(c
     r2 = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": "stripe.com"}, headers=h)
     assert r1.status_code == 200 and r2.status_code == 200 and r2.headers.get("X-Treg-Idempotent-Replay") == "true"
     assert r2.json() == r1.json() and len(seen) == 1
+
+
+async def test_treg_accounts_used_up_allowance_is_skipped_not_the_routes_error(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    """Live 2026-11-04: every title-capable provider answered "nobody" but one, whose answer on
+    treg's account was LeadOcean's 429 "Fair-use pace reached"; that one error turned the caller's
+    honest no-match into a 502 `route_failed`. treg's own account being used up says nothing about
+    the question: the attempt is skipped, and the call ends as the 200 miss the others answered."""
+    cat = catalog_store.load()
+    provs = sorted({cat.by_id[e]["provider"] for e in cat.adapters
+                    if cat.by_id.get(e, {}).get("capability") == "people.search"})
+    for p in provs:
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p.upper().replace('-', '_')}", "PLATFORM-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", ",".join(provs))
+    get_settings.cache_clear()
+    pace = (429, {"success": False, "error": {"message": "Fair-use pace reached — this account has received "
+                                                          "50,000 search records in the current period"}})
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"leadocean": [pace] * 4, "*": [(200, {})] * 40}, seen))
+    r = await clients.post("/call/treg.people.search",
+                           json={"company_domain": "stjosephacademy.com", "title": "librarian", "limit": 2},
+                           headers={"X-Treg-Route-Prefer": "leadocean"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["outcome"] == "miss"
+    lead = [t for t in d["_treg"]["tried"] if t["provider"] == "leadocean"]
+    assert lead and lead[0]["outcome"] == "skipped" and "used up" in lead[0].get("detail", "")
+    assert all(t["outcome"] in ("miss", "skipped") for t in d["_treg"]["tried"])
+    get_settings.cache_clear()
 
 
 async def test_a_routed_call_that_fails_charges_nothing_and_a_retry_tries_again(
@@ -1700,6 +1794,39 @@ async def test_routed_child_that_ignores_limit_keeps_every_row_and_discloses(
         {"crawl4ai": [(200, {"results": rows, "n": 10})]}, seen))
     r2 = await clients.post("/call/treg.web.search", json={"q": "golden retriever"})
     assert r2.status_code == 200 and "limit_exceeded" not in r2.json()["_treg"]
+    get_settings.cache_clear()
+
+
+def test_a_long_cursor_leaves_output_and_is_named_on_treg():
+    ad = SimpleNamespace(out_map={"next_cursor": "pagination.token"})
+    short = {"people": [], "next_cursor": "abc"}
+    assert call_route._long_cursor(short, ad, False) == (short, None)
+    long = {"people": [{"name": "A"}], "next_cursor": "x" * (call_route.CURSOR_MAX + 1)}
+    out, note = call_route._long_cursor(long, ad, False)
+    assert out == {"people": [{"name": "A"}], "next_cursor": None} and long["next_cursor"], "a copy, not a mutation"
+    assert note == {"chars": call_route.CURSOR_MAX + 1, "in_raw": "pagination.token"}
+    assert call_route._long_cursor(long, ad, True)[1] == {"chars": call_route.CURSOR_MAX + 1}, "a merge names no one path"
+    assert call_route._long_cursor(None, ad, False) == (None, None)
+
+
+async def test_a_long_provider_cursor_stays_in_raw_only(clients: AsyncClient, enrichment_on, monkeypatch):
+    """icypeas answers a people search with a pagination token of many KB. A routed endpoint takes
+    no cursor, so the token only serves a direct icypeas call: `raw` keeps it whole, `output`
+    drops it, and `_treg.next_cursor` says where it is."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "PLATFORM-ICYPEAS-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
+    get_settings.cache_clear()
+    token = "t" * 20_000
+    icy = {"success": True, "total": 1, "pagination": {"token": token, "size": 1},
+           "leads": [{"firstname": "Ada", "lastname": "L", "profileUrl": "https://linkedin.com/in/ada"}]}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"icypeas": [(200, icy)]}, []))
+    r = await clients.post("/call/treg.people.search", json={"title": "Backend Engineer", "limit": 1})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["served_by"] == "icypeas.people.search"
+    assert d["output"]["next_cursor"] is None and d["output"]["people"]
+    assert d["raw"]["pagination"]["token"] == token
+    assert d["_treg"]["next_cursor"] == {"chars": len(token), "in_raw": "pagination.token"}
     get_settings.cache_clear()
 
 

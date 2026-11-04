@@ -51,6 +51,7 @@ import json
 import math
 import re
 import sys
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import yaml
@@ -72,6 +73,8 @@ from treg.domain.catalog.routing import paths as _paths  # noqa: E402
 from treg.domain import plugins  # noqa: E402
 from treg.domain.catalog import schema  # noqa: E402
 from treg.domain.catalog.schema import violations  # noqa: E402
+from treg.domain.catalog.schema.paths import leaves, parse_path  # noqa: E402
+from treg.domain.catalog.schema.v2 import _legacy_location  # noqa: E402
 
 COST_TYPES = {"per_call", "per_result", "per_success", "free", "quota_rows"}
 # What the price is denominated in. `credit` and `unit` are PROVIDER-scoped meters, not currencies,
@@ -502,6 +505,15 @@ def check_enrichlayer_rule(cost: dict, input_schema: dict, where: str,
         fail(errors, where, "cost.enrichlayer.extra_per_result needs declared options with positive credit rates")
 
 
+def _v2_price_is_free(price: object) -> bool:
+    if not isinstance(price, dict) or price.get("value") is None:
+        return False
+    try:
+        return Decimal(str(price["value"])) == 0
+    except InvalidOperation:
+        return False
+
+
 def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
     """Anonymous platform fallback is intentionally narrow: proven public GETs that cost zero."""
     mode = ep.get("platform_auth")
@@ -512,9 +524,9 @@ def check_platform_auth(ep: dict, where: str, errors: list[str]) -> None:
         return
     if ep.get("method") != "GET":
         fail(errors, where, "platform_auth anonymous requires GET")
-    cost = ep.get("cost")
-    if not isinstance(cost, dict) or cost.get("type") != "free":
-        fail(errors, where, "platform_auth anonymous requires cost.type free")
+    cost, price = ep.get("cost"), ep.get("price")
+    if not (isinstance(cost, dict) and cost.get("type") == "free") and not _v2_price_is_free(price):
+        fail(errors, where, "platform_auth anonymous requires cost.type free (in v2, price.value '0')")
     if not ep.get("verified"):
         fail(errors, where, "platform_auth anonymous requires live verification")
     if ep.get("scope", "any_account") != "any_account" or ep.get("kind") == "account":
@@ -1382,6 +1394,62 @@ def check_v2_row(ep: dict, provider: str, tier: str, adapters: dict, where: str,
         fail(errors, where, "a row that names a plugin needs an example_response")
 
 
+def _v2_rated(provider: str, currency: str, unit: object = None) -> bool:
+    """A v2 money unit resolves to a USD rate: usd itself, the provider's credit, its meter `unit`,
+    or a currency's fx rate."""
+    if currency in ("usd", "USD"):
+        return True
+    if currency == "credit":
+        return _finite_number(_credit_rate(provider))
+    if currency == "unit":
+        return _finite_number(_unit_rate(provider, unit))
+    fx = yaml.safe_load((CATALOG / "fx.yaml").read_text()) or {}
+    return _finite_number((fx.get("rates_to_usd") or {}).get(currency))
+
+
+def _v2_field(path: str, input_schema: object) -> str:
+    """A v2 request path (`body.x`, `query.x`) as the declared input field it names."""
+    return _legacy_location(path, input_schema if isinstance(input_schema, dict) else {})
+
+
+def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors: list[str]) -> None:
+    """What the strict model cannot see alone: every money unit resolves to a rate, and every
+    request path a price or a hold reads names a declared input field of the right kind."""
+    inp = ep.get("input") or {}
+    fields = _input_fields(inp)
+    price, settle, reserve = row.price, row.settle, row.reserve
+    if price is not None and not _v2_rated(provider, price.currency, price.unit):
+        fail(errors, where, f"price.currency {price.currency}"
+                            f"{f' (unit {price.unit})' if price.currency == 'unit' else ''} has no "
+                            f"fx.yaml rate for '{provider}'")
+    for name, rule in (("settle.reported", settle and settle.reported), ("settle.usage", settle and settle.usage)):
+        if rule is not None and not _v2_rated(provider, rule.unit if rule.unit in ("usd", "credit") else "unit",
+                                              rule.unit):
+            fail(errors, where, f"{name}.unit '{rule.unit}' is not usd, credit or an fx.yaml "
+                                f"unit_rates_usd meter of '{provider}'")
+    if settle is not None and settle.usage is not None and settle.usage.terms and settle.usage.unit != "usd":
+        fail(errors, where, "settle.usage.terms rates are USD per unit; its unit must be usd")
+    if reserve is not None and reserve.rows is not None and reserve.rows.param is not None:
+        spec = fields.get(_v2_field(reserve.rows.param, inp))
+        if spec is None or spec.get("type") != "integer":
+            fail(errors, where, f"reserve.rows.param '{reserve.rows.param}' must name a declared integer input field")
+    if reserve is not None and reserve.entities is not None:
+        sources = reserve.entities.from_ if isinstance(reserve.entities.from_, list) else [reserve.entities.from_]
+        for path in sources:
+            if not parse_path(path).many and fields.get(_v2_field(path, inp)) is None:
+                fail(errors, where, f"reserve.entities.from '{path}' must name a declared input field")
+    if price is None or price.table is None:
+        return
+    view = schema.served(row, inp)["cost"]
+    if "table" in view:
+        check_cost_table({"table": view["table"], "fallback": view["fallback"]}, inp, where, errors, provider)
+        return
+    for index, entry in enumerate(price.table):
+        for path in [leaf.path for leaf in leaves(entry.when)] + [entry.times] * bool(entry.times):
+            if fields.get(_v2_field(path, inp)) is None:
+                fail(errors, f"{where}:price.table[{index}]", f"'{path}' is not a declared input field")
+
+
 def check_routing(errors: list[str]) -> None:
     """contracts.yaml and adapters.yaml parse whole, every expression in them included."""
     from treg.domain.catalog.routing.contracts import parse_adapters, parse_contracts
@@ -1509,6 +1577,7 @@ def main(argv: list[str]) -> int:
             tier = ep.get("tier", "extended" if extended_file else "core")
             if not legacy:
                 check_v2_row(ep, service, tier, adapter_rows, where, errors)
+                check_v2_cost(row, ep, service, where, errors)
             if extended_file != (tier == "extended"):
                 fail(errors, where, f"tier '{tier}' does not belong in {name}")
             route_tiers.setdefault((service, ep.get("method"), ep.get("path")), {}) \
