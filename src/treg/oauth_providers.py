@@ -4191,6 +4191,43 @@ PINTEREST_ADS = OAuthProvider(
     probe_path="/user_account",  # cheap token check once configured; auto-provisions a Bearer tool
 )
 
+CORPOAPI = OAuthProvider(
+    service="corpoapi",
+    display_name="Corpo API",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Corpo API key (ck_live_...)",
+    # The key rides in X-API-Key (Authorization: Bearer is accepted too); the header keeps it out of
+    # logged URLs.
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://corpoapi.com/app/signup",
+    setup_action_label="Get your Corpo API key",
+    setup_steps=(
+        "Sign up at corpoapi.com. New accounts get 100 free paid calls, no card.",
+        "Open API keys in the dashboard and create a key.",
+        "Copy the key (ck_live_...) and paste it here.",
+    ),
+    setup_note=(
+        "Company records, officers, owners, documents, financials, verification and VAT checks are "
+        "$0.05 per paid call; search, coverage and the usage check are free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Company data from official business registers in 86 jurisdictions: search, register "
+        "record, officers, shareholders and UBOs, filings, financials, KYB verification and EU VAT."
+    ),
+    base_url="https://api.corpoapi.com",
+    docs_url="https://docs.corpoapi.com",
+    # /v1/usage is free and needs auth. Checked 2026-11-03: a valid key gets 200 with the account's
+    # usage totals; "ck_live_" plus 32 zeros and "garbage" both get HTTP 401 application/problem+json
+    # with code "invalid_api_key"; no key gets 401 "missing_api_key".
+    probe_path="/v1/usage",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4211,7 +4248,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
-        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
+        COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,
