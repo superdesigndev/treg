@@ -213,3 +213,18 @@ def test_a_rewrite_whose_kept_keys_do_not_parse_as_a_v2_row_is_refused():
     with pytest.raises(codemod.Refused, match="the rewritten row does not parse: async"):
         codemod.rewrite({"id": "demo.x", "async": False, "cost": {"type": "free"}}, provider="demo",
                         check_branches=False)
+
+
+@pytest.mark.parametrize("provider", ["hunter", "tikhub"])
+def test_the_codemod_runs_on_the_real_catalog(provider, capsys):
+    assert codemod.main(["--provider", provider]) == 0
+    assert f"cannot rewrite {provider}." in capsys.readouterr().out
+
+
+def test_only_a_provider_with_a_row_in_todays_spelling_has_its_defaults_withheld(tmp_path):
+    header = "defaults:\n  provenance: {source: docs, checked: '2026-10-01', confidence: documented}\n"
+    (tmp_path / "demo.yaml").write_text(f"provider: demo\n{header}endpoints:\n  - id: demo.x\n    price: {{value: '1'}}\n")
+    (tmp_path / "demox.yaml").write_text("provider: demox\nendpoints:\n  - id: demox.x\n    cost: {type: free}\n")
+    (tmp_path / "mid.yaml").write_text(f"provider: mid\n{header}endpoints:\n  - id: mid.x\n    price: {{value: '1'}}\n")
+    (tmp_path / "mid.extended.yaml").write_text("provider: mid\nendpoints:\n  - id: mid.y\n    cost: {type: free}\n")
+    assert codemod.withheld(tmp_path) == {tmp_path / "mid.yaml"}

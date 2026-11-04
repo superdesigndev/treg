@@ -28,7 +28,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import yaml
-from treg.domain.catalog.schema import CatalogSchemaError, merge, parse_row
+from treg.domain.catalog.schema import CatalogSchemaError, merge, parse_row, read_yaml, spelling
 from treg.domain.catalog.schema.v2 import cost_type
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -450,17 +450,32 @@ def drop_adapter_misses(text: str, endpoint_ids: set[str]) -> str:
     return "".join(lines)
 
 
-def _catalog_before_defaults():
-    """The loaded catalog with every header's `defaults:` withheld: a batch declares its defaults
-    before the codemod rewrites its rows, and a row in today's spelling cannot inherit them."""
-    from treg.domain.catalog import schema, store
+def withheld(directory: Path) -> set[Path]:
+    """The endpoint files whose header `defaults:` the codemod loads without: those of a provider
+    with a row still in today's spelling. A batch declares its defaults before the codemod rewrites
+    its rows, and such a row cannot inherit them; a rewritten row needs them."""
+    out = set()
+    for path in directory.glob("*.yaml"):
+        if "\ndefaults:" not in path.read_text(encoding="utf-8"):
+            continue
+        provider = read_yaml(path)["provider"]
+        rows = [row for name in (f"{provider}.yaml", f"{provider}.extended.yaml")
+                if (directory / name).exists() for row in read_yaml(directory / name).get("endpoints") or []]
+        if any(spelling(row) == "legacy" for row in rows):
+            out.add(path)
+    return out
 
+
+def _catalog_before_defaults():
+    """The loaded catalog, with the `defaults:` of a provider still in today's spelling withheld."""
+    from treg.domain.catalog import store
+
+    held = withheld(CATALOG)
     with tempfile.TemporaryDirectory() as tmp:
         for path in CATALOG.iterdir():
             target = Path(tmp) / path.name
-            if path.suffix == ".yaml" and "\ndefaults:" in path.read_text(encoding="utf-8"):
-                doc = schema.read_yaml(path)
-                target.write_text(yaml.safe_dump({k: v for k, v in doc.items() if k != "defaults"},
+            if path in held:
+                target.write_text(yaml.safe_dump({k: v for k, v in read_yaml(path).items() if k != "defaults"},
                                                  sort_keys=False, allow_unicode=True))
             else:
                 target.symlink_to(path)
