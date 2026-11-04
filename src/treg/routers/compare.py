@@ -186,7 +186,8 @@ def _others(key: str) -> list[str]:
 def _card(key: str) -> str:
     c = cp.COMPETITORS[key]
     return (f'<a class="ccard" href="/compare/{cp.page_slug(key)}">'
-            f'<span class="t">{_mono(key)}treg <em>vs</em> {_e(cp.short(key))}</span>'
+            f'<span class="t"><span class="side">{_treg_mono()}treg</span><em>vs</em>'
+            f'<span class="side">{_mono(key)}{_e(cp.short(key))}</span></span>'
             f'<p>{_e(c["sub"])}</p><span class="go">Read the comparison →</span></a>')
 
 

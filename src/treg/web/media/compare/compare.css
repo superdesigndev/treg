@@ -194,6 +194,10 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 .ccard:hover { transform: translateY(-2px); box-shadow: 0 24px 50px -36px rgba(20,18,12,.4); border-color: #DAD7D0; }
 .ccard .t { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 16.5px; }
 .ccard .t em { font-style: normal; color: var(--muted); font-weight: 400; font-size: 13px; }
+.ccard .t { flex-wrap: wrap; row-gap: 6px; }
+.ccard .t .side { display: inline-flex; align-items: center; gap: 8px; }
+.ccard .mono { width: 24px; height: 24px; border-radius: 7px; }
+.ccard .mono.treg svg { width: 24px; height: 24px; border-radius: 7px; }
 .ccard p { margin: 0; color: var(--body); font-size: 14px; }
 .ccard .go { margin-top: auto; font-family: var(--mono); font-size: 12px; color: var(--green); }
 @media (max-width: 900px) { .cards { grid-template-columns: 1fr 1fr; } }
