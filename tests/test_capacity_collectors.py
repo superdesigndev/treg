@@ -32,6 +32,13 @@ async def test_anymailfinder_balance_uses_free_account_route():
                                b'{"error":"upgrade_needed","message":"You do not have enough credits."}').kind == "balance"
 
 
+def test_leadoceans_fair_use_pace_is_its_period_allowance_used_up():
+    body = '{"success":false,"error":{"message":"Fair-use pace reached \u2014 this account has received 50,000 search records"}}'
+    sig = signatures.classify("leadocean", 429, {}, body)
+    assert sig is not None and sig.kind == "quota" and signatures.is_exhausting(sig)
+    assert signatures.classify("leadocean", 429, {}, '{"error":"slow down"}').kind != "quota"
+
+
 @pytest.mark.parametrize("credits", [None, True, -1, "12"])
 async def test_anymailfinder_balance_rejects_invalid_values(credits):
     async with httpx.AsyncClient(transport=httpx.MockTransport(
