@@ -219,6 +219,10 @@ and money-worker process must use the same store and rollout settings; no migrat
 `TREG_MONEY_ADMISSION_ORG_IDS` selects an opt-in subset (`[]` = all orgs). Wait, lease and retry
 semantics are in [money](../architecture/money.md#optional-admission-before-the-settlement-session).
 
+`TREG_HOLDLESS_FREE_ORG_IDS` (default `[]`) lists orgs whose untagged free platform calls skip
+the $0 hold, and with it money admission ([money](../architecture/money.md), "holdless"). Removing
+an id restores the hold path for that org's new calls; no migration is needed.
+
 Raising `TREG_MONEY_ADMISSION_WAIT_S` lengthens no other timeout: Redis command budgets, the
 upstream `call_timeout_s`, hold age (`call_timeout_s + hold_grace_s`), CLI, local-proxy and MCP
 client timeouts, the async settlement worker's processing deadline, hub and Arena deadlines and the
