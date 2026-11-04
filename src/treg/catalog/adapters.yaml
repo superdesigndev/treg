@@ -3808,9 +3808,9 @@ adapters:
     out: {companies: results, count: total_results, next_cursor: cursor}
     miss: "results == []"
 
-  # LeadOcean's finder only accepts a LinkedIn identity in the shared work-email contract.
-  # A non-verified address is useful in a direct call, but must not stop a routed waterfall.
+  # Low verified yield leaves work email out of routing; direct calls retain every status.
   leadocean.people.email.find.work:
+    route: false
     accepts: [[linkedin_url]]
     in: {linkedin_url: queryParams.linkedin_url}
     out: {email: data.email, verified: "data.status == 'verified'"}
@@ -3846,8 +3846,10 @@ adapters:
     miss: "data.company_data.company_name == null"
   leadocean.people.search:
     accepts: [[company_domain], [title], [q]]
+    # Each returned person uses a search record, so larger requests use another routed provider.
+    max: {limit: 10}
     in: {company_domain: queryParams.domain, title: queryParams.title, q: queryParams.q}
-    in_expr: {queryParams.limit: "at_most(limit, 25)"}
+    in_expr: {queryParams.limit: limit}
     out: {people: data, count: meta.total, next_cursor: meta.nextCursor}
     miss: "data == []"
   leadocean.companies.search:
