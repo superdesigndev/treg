@@ -333,6 +333,10 @@ class MarketplaceCall:
     # A platform-key utility poll was authorized against this org-owned submission. The buffered
     # response may teach the same row its provider result/file id before the background worker runs.
     async_owner_call_id: str | None = None
+    # Reserved with no hold (`holdless_eligible` and an untagged caller): settle has nothing to close.
+    holdless: bool = False
+    # An overflow child reserve started for this parent: its `{call_ref}:overflow` hold may exist.
+    overflow_hold_possible: bool = False
     # Admitted through an active capacity lock as its probe (domain.capacity.marks): a 2xx clears
     # exactly that lock.
     probe_lock_id: str | None = None
@@ -361,6 +365,16 @@ class MarketplaceCall:
                 and self.async_owner_call_id is None and not self.async_descriptor
                 and not ownership.get("produces")
                 and str(required.get("kind", "")).startswith("fetch:"))
+
+    @property
+    def holdless_eligible(self) -> bool:
+        """A $0 platform call whose settlement can write nothing: no hold to take or close."""
+        ownership = self.resource_ownership or {}
+        return (self.tier == "platform" and self.cost_type == "free"
+                and self.estimate_micro == 0 and not self.billed_oauth
+                and self.deferred is None and self.async_owner_call_id is None
+                and not self.async_descriptor and not ownership.get("produces")
+                and (self.settlement_basis.get("amount") or {}).get("kind") != "usage")
 
     @property
     def metered(self) -> bool:

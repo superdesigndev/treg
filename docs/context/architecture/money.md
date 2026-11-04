@@ -239,6 +239,8 @@ admit wraps the session; nothing inside calls `admit` again. It changes no commi
   the correctness mechanism. Fallbacks preserve correctness but not isolation and are counted
   separately.
 
+A holdless free call (below) never admits: it touches no balance row.
+
 This is best-effort contention isolation, not a global money concurrency cap, durable queue or FIFO.
 Serializing the whole session can lower hot-org throughput, and Redis round trips add latency.
 Default off; `money_admission_org_ids` selects an opt-in subset (all orgs when empty and enabled).
@@ -339,6 +341,20 @@ and `_platform_settle` entirely (no new Hold, LedgerEntry or TagSpend) while aut
 and rate smoothing still apply. This does not cover fetch utilities, BYOK, billed OAuth or a zero
 estimate on a paid endpoint. An overflow child carries its own `observed` basis at the aggregator
 price.
+
+Any other direct platform call with an explicit `free` price and zero estimate is
+`MarketplaceCall.holdless_eligible` unless it is billed OAuth, a routed child, an owned poll, an
+async submission, a resource producer or usage-settled. For an org listed in
+`holdless_free_org_ids` (default `[]`: none; the money queue also brakes free bursts, so this rolls
+out per org until an explicit free-call rate limit exists) and with no caller tags (`X-Treg-Meta`
+or a pin), `_platform_reserve(allow_holdless=True)` sets `mk.holdless` instead of reserving: no Hold,
+LedgerEntry or TagSpend, no money admission, no balance-row lock. Only the platform daily-cap read
+runs, so a team past its cap is still refused. `_platform_settle` then writes nothing; a computed
+charge is logged and absorbed. A tagged call keeps its $0 hold because its settled tag rows count
+toward `calls_per_day`. Overflow children always reserve, since their aggregator spend is recorded
+in the settle transaction; `_child` never inherits the parent's flags. Cancellation of a holdless
+parent releases nothing unless `mk.overflow_hold_possible` (set before the child reserve starts),
+in which case it releases only `{call_ref}:overflow`.
 
 The audit row froze the reserve as `cost_charged_micro` at submission, so displays must not read it
 alone. `application.asynctasks.views_for` joins the org's tasks, loads archived terminal JSON and
@@ -897,8 +913,8 @@ upstream; the call releases its hold and idempotency claim. Partial JSON never f
 estimate or settles as success.
 
 An authorized, explicitly free final result GET with no body-evidence consumers streams unbuffered
-(`MarketplaceCall.streamable_free_result`), settling with an explicit zero before returning the
-stream. It is not stored for idempotent replay. MIME type never decides billability.
+(`MarketplaceCall.streamable_free_result`), closing its settlement with an explicit zero before
+returning the stream (a no-op for a holdless call, above). It is not stored for idempotent replay. MIME type never decides billability.
 
 A metered 2xx on a `spooled_response` endpoint settles in `_spool_response` from the paths its row
 reads before headers go out, so `X-Treg-Cost-Micro` stays exact. A completed answer whose evidence is
