@@ -13,8 +13,8 @@ The constraint guards nothing the application relies on: `body_of` only points w
 erasure deletes all of a key's snapshots together, the pruner clears bodies but never a surviving
 version's carrier, and a read whose carrier is gone finds no body (unavailable, a cache miss).
 Dropping it is a catalog change with no table scan; it takes a brief ACCESS EXCLUSIVE lock, and
-`env.py`'s session `lock_timeout` makes it fail fast rather than queue behind live calls. A retry after a lock timeout
-finds the constraint still present and drops it then.
+`env.py`'s session `lock_timeout` makes it fail fast rather than queue behind live calls. A retry
+after a lock timeout finds the constraint still present and drops it then.
 
 Rollback floor: older code runs without the constraint, so a code rollback does not need the
 downgrade. The downgrade adds it back NOT VALID, which checks only new rows and scans nothing;
