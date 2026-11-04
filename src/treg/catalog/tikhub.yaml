@@ -301,7 +301,17 @@ endpoints:
         sort_by: {type: string, required: false, note: "relevance | upload_date | view_count | rating"}
     test_request:
       queryParams: {keyword: "coffee", type: "video"}
-    cost: {type: per_success, value: 0.002, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info', checked: '2026-07-28', confidence: verified}
+    cost:
+      type: per_call
+      value: 0.002
+      currency: USD
+      per: 1
+      unit: call
+      source: rate_card_api
+      source_url: 'https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info'
+      checked: '2026-07-28'
+      confidence: verified
+      note: "TikHub bills every HTTP 200, including empty data.videos ([]); the envelope says the request will incur a charge. per_call so routed youtube.search.videos does not claim misses are free."
     verified: 2026-07-28
     added: '2026-07-28'
     example_response: examples/tikhub.youtube.search.videos.json

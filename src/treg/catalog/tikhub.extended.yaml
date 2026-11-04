@@ -35361,7 +35361,7 @@ endpoints:
   name: "Search YouTube videos by keyword"
   summary: 'Youtube: search video (web)'
   cost:
-    type: per_success
+    type: per_call
     value: 0.001
     currency: USD
     per: 1
@@ -35370,6 +35370,7 @@ endpoints:
     source_url: https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info
     checked: '2026-07-28'
     confidence: verified
+    note: "TikHub bills every HTTP 200, including empty data.videos ([]); the envelope says the request will incur a charge. per_call so routed youtube.search.videos does not claim misses are free."
   input:
     queryParams:
       search_query:
