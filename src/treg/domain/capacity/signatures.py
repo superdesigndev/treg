@@ -145,6 +145,10 @@ _TABLE: list[Signature] = [
     Signature("fishaudio", 429, r"concurrency limit", "burst"),
     # Icypeas: its per-minute limit is a 429 "exceeded the max number of requests per minute", no Retry-After.
     Signature("icypeas", 429, r"max number of requests per minute", "burst"),
+    # DocuQueue (our own API): an empty document-credit pack is a 402 {"detail": "Insufficient
+    # credits. Used 25/25. Upgrade plan."}; batch routes say "Need {n}, have {remaining}"
+    # instead (api.py convert/fill guards, observed in source 2026-11-03).
+    Signature("docuqueue", 402, r"insufficient credits", "balance"),
     Signature("*", 402, r"", "balance"),
 ]
 
