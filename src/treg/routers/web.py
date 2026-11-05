@@ -217,7 +217,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
     # self-hosted registry must not put three 404s in its own footer.
     hub_links = ('<a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a>'
                  '<a href="/gtm-engineering">GTM engineering</a><a href="/showcase">Showcase</a><a href="/rankings">Rankings</a>'
-                 '<a href="/agents">Agents</a><a href="/compare">Compare</a><a href="/blog">Blog</a>' if _hosted() else "")
+                 '<a href="/agents">Agents</a><a href="/blog">Blog</a>' if _hosted() else "")
     return HTMLResponse(f"""<!doctype html>
 <html lang="en">
 <head>
