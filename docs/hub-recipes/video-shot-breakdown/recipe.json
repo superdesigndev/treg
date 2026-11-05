@@ -1,0 +1,25 @@
+{
+  "name": "video-shot-breakdown",
+  "summary": "Shot-by-shot breakdown of an X video post: each shot's timecodes, framing, motion, on-screen text and a keyframe image, plus hook, pacing and suggestions.",
+  "inputs": {
+    "url": {
+      "type": "string",
+      "example": "https://x.com/treg_ai/status/2117240513862738341",
+      "note": "an x.com or twitter.com post with one video, up to 120 seconds"
+    },
+    "language": {
+      "type": "string",
+      "default": "en",
+      "note": "language of the descriptions and analysis, e.g. en or zh; on-screen text stays verbatim"
+    }
+  },
+  "uses": [
+    "tikhub.x.twitter-web-fetch-tweet-detail",
+    "google-ai.video-understand.gemini-3-8-flash"
+  ],
+  "limits": {"steps": 4, "wall_s": 120},
+  "script": "run.js",
+  "output": {
+    "fields": ["post", "video", "shots", "analysis"]
+  }
+}

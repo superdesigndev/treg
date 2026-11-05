@@ -39,6 +39,7 @@ sources:
   - docs/hub-recipes/data-sheets/run.js
   - docs/hub-recipes/data-csv/run.js
   - docs/hub-recipes/engineering-team-size/run.js
+  - docs/hub-recipes/video-shot-breakdown/run.js
   - tests/test_hub.py
   - tests/test_hub_sandbox.py
   - tests/test_hub_sandbox_workers.py
