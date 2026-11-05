@@ -189,6 +189,8 @@ platEpById(){ const m={}; for(const r of this.platRowsAll) for(const e of r.endp
     drawerEp(){ if(!this.drawerTool) return null;
       return (this.view==='provider' ? this.mkToolById : this.platEpById)[this.drawerTool]||null; },
 drawerInfo(){ const i=this.drawerTool && this.epInfo[this.drawerTool]; return i&&i.data||null; },
+// The row's caveat rides only on the tool's own detail, never on the list the drawer opened from.
+    drawerNote(){ const d=this.drawerInfo; return d && d.endpoint && d.endpoint.note || ''; },
 // The comparison a URL names, by its key (`enrich` on the companies shelf is `companies.enrich`).
     platComparison(){ return this.platCap ? this.platComparisons.find(j=>j.slug===this.platCap)||null : null; },
 platCapRow(){ return this.platComparison ? this.platComparison.row : null; },

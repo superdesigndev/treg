@@ -58,7 +58,7 @@ behavior.
 | Area | Must stay shared | Intentional difference |
 |---|---|---|
 | catalog search | loading, ranking, price view, near misses, the process observation cache and refresh Task used by HTTP | next-call guidance and event source; V2 drops rows on its hidden platforms |
-| endpoint details | the `/catalog/endpoints/{id}` route and error shape | client attribution; V2 refuses an endpoint on its hidden platforms |
+| endpoint details | the `/catalog/endpoints/{id}` route and error shape | client attribution; V2 refuses an endpoint on its hidden platforms and leaves out the row's `note` (`_SurfacePolicy.endpoint_note`) |
 | calls | request assembly, credentials, policy, limits, idempotency, relay, errors, metering, audit | team MCP accepts team tools; V2 accepts catalog ids only, splits read/write methods, refuses its hidden platforms and shows no invitation |
 | balance | team selection, grant labels, balance route, error shape | client attribution |
 | catalog requests | `/tool-requests`, rate limit, field limits, caller IP | event source and client attribution |
