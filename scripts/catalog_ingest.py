@@ -1035,6 +1035,10 @@ JOA_PLATFORM = {
 }
 
 
+def _money(value: float) -> str:
+    return format(Decimal(str(value)).normalize(), "f")
+
+
 def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
     sitemap = fetch("https://docs.justoneapi.com/en/sitemap.xml", "justoneapi_sitemap.xml",
                     refresh=refresh).decode()
@@ -1086,7 +1090,6 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
                 summary = re.split(r"(?<=[.!?])\s+", desc)[0] if desc else spec["info"].get("title", rel)
                 entry = {
                     "id": slug_id("justoneapi", path.replace("/api/", "")),
-                    "tier": "extended",
                     "platform": platform,
                     "method": method,
                     "path": path,
@@ -1099,10 +1102,13 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
                                    summary)
                 if title:
                     entry["name"] = title
+                # The provenance and the success rule are the `defaults:` of justoneapi.yaml.
                 price = joa_prices.get(path)
                 if price is not None:
-                    entry["cost"] = {"type": "per_success", "value": price, "currency": "CNY",
-                                     "note": "billed only on success (code 0); errors free"}
+                    entry["price"] = {"value": _money(price), "currency": "CNY", "per": 1, "unit": "call",
+                                      "note": "billed only on success (code 0); errors free"}
+                else:
+                    entry["provenance"] = None
                 endpoints.append(entry)
 
     source = {
@@ -1128,19 +1134,6 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
     return write_extended("justoneapi", source, endpoints, notes), {"missing": len(missing)}
 
 
-def _aigc_async_static() -> dict:
-    return {
-        "id_from": "id",
-        "poll": {"endpoint": "openrouter.video-gen.task.status",
-                 "param": {"in": "pathParams", "name": "id"}},
-        "status": {"path": "status", "success": ["completed"],
-                   "failure": ["failed", "cancelled", "expired"]},
-        "result": {"fetch": "openrouter.video-gen.result.retrieve",
-                   "fetch_param": {"in": "pathParams", "name": "id", "value_from": "id"}},
-        "interval": 30,
-    }
-
-
 def core_body_models(provider: str, method: str, path: str) -> set[str]:
     """Fixed body.model values curated in core for one shared generation route."""
     core = CATALOG / f"{provider}.yaml"
@@ -1158,7 +1151,10 @@ def core_body_models(provider: str, method: str, path: str) -> set[str]:
     return models
 
 
-def _openrouter_cost(model: dict) -> dict:
+def _openrouter_price(model: dict) -> dict:
+    """A generated row's v2 cost keys, written against the `defaults:` of openrouter.yaml: the rate
+    card provenance and the terminal usage.cost settle are inherited, so a priced row carries only
+    its price."""
     model_id = str(model["id"])
     skus = model.get("pricing_skus") or {}
     unsupported = (
@@ -1166,14 +1162,10 @@ def _openrouter_cost(model: dict) -> dict:
     )
     if any(str(name).startswith(unsupported) for name in skus):
         return {
-            "type": "per_success",
-            "value": None,
-            "confidence": "unknown",
-            "source": "rate_card_api",
-            "source_url": "https://openrouter.ai/api/v1/videos/models",
-            "checked": "2026-09-02",
-            "rate_card": {str(name): str(value) for name, value in sorted(skus.items())},
-            "note": "The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.",
+            "price": {"value": None, "note": "The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only."},
+            "provenance": {"source": "rate_card_api", "source_url": "https://openrouter.ai/api/v1/videos/models",
+                           "checked": "2026-09-02", "confidence": "unknown"},
+            "settle": None,
         }
     durations = [int(v) for v in (model.get("supported_durations") or []) if isinstance(v, int)]
     duration_max = max(durations, default=30)
@@ -1212,22 +1204,18 @@ def _openrouter_cost(model: dict) -> dict:
     rows = list(grouped.values())
     rows.sort(key=lambda row: (-len(row["when"]), sorted(row["when"].items())))
     upper = max([minimum, *maxima], default=0.0)
-    return {
-        "type": "per_success",
-        "table": rows or [{"when": {"body.model": model_id}, "value": 0.0}],
+    table = [{"when": [{"path": k, "op": "equals", "value": v} for k, v in row["when"].items()],
+              "value": _money(row["value"]), **({"times": row["times"]} if "times" in row else {})}
+             for row in rows or [{"when": {"body.model": model_id}, "value": 0.0}]]
+    return {"price": {
+        "table": table,
         "fallback": {
-            "value": round(upper + 0.000000001, 9),
+            "value": _money(round(upper + 0.000000001, 9)),
             "note": "The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.",
         },
         "currency": "USD",
-        "settle": "usage",
-        "usage": {"path": "usage.cost", "unit": "usd"},
-        "source": "rate_card_api",
-        "source_url": "https://openrouter.ai/api/v1/videos/models",
-        "checked": "2026-09-02",
-        "confidence": "documented",
         "note": "Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).",
-    }
+    }}
 
 
 def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
@@ -1260,7 +1248,6 @@ def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
                                       "default": bool(model.get("generate_audio", False))}
         ep = {
             "id": slug_id("openrouter", model_id),
-            "tier": "extended",
             "platform": "video-gen",
             "domain": "models",
             "method": "POST",
@@ -1270,7 +1257,7 @@ def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
                 str(model.get("description") or f"Generate video with {model_id}.")
             ).replace("\N{EM DASH}", "-")[:400],
             "input": {"body": body, "bodyType": "json"},
-            "cost": _openrouter_cost(model),
+            **_openrouter_price(model),
             "docs_url": f"https://openrouter.ai/{model_id}",
         }
         endpoints.append(ep)
@@ -1279,12 +1266,6 @@ def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
         "Generated from the live video model rate card. Each row fixes one model on POST /videos.",
         "pricing_skus become a first-match reserve table; terminal usage.cost remains authoritative.",
     ], carry_capability=False)
-    # Provider defaults belong at the document top level, not inside source provenance.
-    generated = yaml.safe_load(out.read_text())
-    doc = {"provider": generated["provider"], "source": generated["source"],
-           "async": _aigc_async_static(), "endpoints": generated["endpoints"]}
-    header, _, _ = out.read_text().partition("provider:")
-    out.write_text(header + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=4096))
     return out, {"models": len(endpoints)}
 
 
