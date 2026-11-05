@@ -38,7 +38,7 @@ async def test_apps_are_in_the_served_html_and_the_structured_data(clients: Asyn
 
 async def test_showcase_is_linked_and_listed(clients: AsyncClient):
     for page in ("/", "/blog", "/use-cases", "/people-search", "/leads-signals", "/grokbot", "/fable",
-                 "/ugc", "/aeo", "/rea-growth", "/social-search", "/jev", "/gtm-engineering"):
+                 "/ugc", "/aeo", "/rea-growth", "/social", "/jev", "/gtm-engineering"):
         r = await clients.get(page)
         assert f'href="{PATH}"' in r.text, page
         # the bundled pages unwrap their hosted markers when they serve (the home page keeps its own)

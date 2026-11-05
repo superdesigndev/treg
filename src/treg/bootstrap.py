@@ -205,7 +205,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/aeo', ('GET',), 'aeo_page'),
     ('/rea-growth', ('GET',), 'rea_growth_page'),
     ('/rea-growth.md', ('GET',), 'rea_growth_md'),
-    ('/social-search', ('GET',), 'social_search_page'),
+    ('/social', ('GET',), 'social_search_page'),
     ('/showcase', ('GET',), 'showcase_page'),
     ('/showcase/leaderboard', ('GET',), 'showcase_leaderboard'),
     ('/showcase/votes/me', ('GET',), 'showcase_my_votes'),

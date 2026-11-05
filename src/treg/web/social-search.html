@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Put Your Social Media on Autopilot — Social Search for Your Agent | treg</title>
 <meta name="description" content="Your agent spots what goes viral, tracks the creators, decodes the structure, dissects the comments, then posts and A/B tests it on your own accounts, all through one treg key. No subscr
-<link rel="canonical" href="{BASE}/social-search"/>
+<link rel="canonical" href="{BASE}/social"/>
 <meta property="og:title" content="Put your social media on autopilot | treg"/>
 <meta property="og:description" content="Spot what goes viral, decode it, auto-post and A/B test. One treg key."/>
-<meta property="og:url" content="{BASE}/social-search"/>
+<meta property="og:url" content="{BASE}/social"/>
 <meta property="og:type" content="website"/>
 <meta name="twitter:card" content="summary"/>
 <link rel="icon" href="favicon.svg">
@@ -347,7 +347,7 @@
   <span class="wordmark"><a href="/" aria-label="treg home"><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>treg</a> <span class="sl">/</span> <span>Social autopilot</span></span>
   <span class="nav-r">
     <span class="nav-links"><a href="#spot">How it works</a><a href="#start">Platforms</a><a href="/catalog">Catalog</a></span>
-    <a class="pill dark" href="/app?ref=social-search" id="ctaNav">Set up treg</a>
+    <a class="pill dark" href="/app?ref=social" id="ctaNav">Set up treg</a>
   </span>
 </nav>
 
@@ -355,7 +355,7 @@
   <h1 id="heroA"><span class="hw">Social media</span><br><span class="hw"><button class="toggle big" id="heroToggle" role="switch" aria-checked="false"><span class="lab">autopilot</span><span class="knob"></span></button></span> <span class="hw">for <span class="hero-agents"><img src="media/people-search/claude-code.png" alt="Claude Code" title="Claude Code"><img src="media/people-search/codex.png" alt="Codex" title="Codex"><img src="media/people-search/openclaw.png" alt="OpenClaw" title="OpenClaw"><img src="media/people-search/hermes.png" alt="Hermes" title="Hermes"></span></span></h1>
   <p class="sub">Your agent spots what goes viral and decodes why it works, then <strong>posts and A/B tests it on your own accounts</strong>. Everything runs through <strong>one treg key</strong>, no subscription.</p>
   <div class="ctas">
-    <a class="pill dark" href="/app?ref=social-search" id="ctaHero">Set up treg</a>
+    <a class="pill dark" href="/app?ref=social" id="ctaHero">Set up treg</a>
     <a class="pill" href="#spot">See how it works ↓</a>
   </div>
 </header>
@@ -542,7 +542,7 @@
       <div class="line"><span id="cmdText">set up treg - {BASE}/llms.txt</span><button type="button" id="cmd">Copy</button></div>
     </div>
     <div class="ctas">
-      <a class="pill light" href="/app?ref=social-search" id="ctaFinal">Set up treg</a>
+      <a class="pill light" href="/app?ref=social" id="ctaFinal">Set up treg</a>
       <a class="pill" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a>
     </div>
   </div>
@@ -771,7 +771,7 @@
   document.querySelectorAll('[data-in]').forEach(function (s) { io.observe(s); });
   var $ = function (id) { return document.getElementById(id); };
   /* Setup CTAs: signed in → the app; signed out → the sign-in modal */
-  var APP = '/app?ref=social-search'; /* the CTAs' href; boot.js keeps the ref through sign-in */
+  var APP = '/app?ref=social'; /* the CTAs' href; boot.js keeps the ref through sign-in */
   var scrim = $('signin-scrim');
   function openSignin() { scrim.classList.add('open'); $('em-input').focus(); }
   function closeSignin() { scrim.classList.remove('open'); }

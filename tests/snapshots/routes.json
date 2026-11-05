@@ -1094,7 +1094,7 @@
       "HEAD"
     ],
     "name": "social_search_page",
-    "path": "/social-search"
+    "path": "/social"
   },
   {
     "kind": "APIRoute",
