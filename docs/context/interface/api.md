@@ -175,9 +175,10 @@ membership.
   at the top of `grant_local_run`. It takes the slot with one conditional UPDATE
   (`take_daily_slot`): the WHERE is the check and the SET is the count, so the cap is exact under
   concurrency and refused events are not counted. `-1` skips it; a database error fails open (a
-  courtesy limit, not a money gate). `used_today` reads the journal, and `set_member_cap` copies
-  that count onto the counter when a member goes from unlimited to capped. Never put the journal
-  count back in the gate: it scans the member's whole day.
+  courtesy limit, not a money gate). `used_today` (the members list and `/usage/me`) reads the
+  usage rollup and the rows after its cursor; `set_member_cap` copies the journal count
+  (`count_today`) onto the counter when a member goes from unlimited to capped. Never put the
+  journal count in the gate or on a page: it scans the member's whole day.
 - Dashboard reports (`/usage`, `/usage/by-tag`, `/agents/observed`) run on the gated report
   session and answer `429 {"report_busy": ...}` with `Retry-After: 2`, never `treg_saturated`
   ([deploy](../ops/deploy.md#dashboard-reports)).
