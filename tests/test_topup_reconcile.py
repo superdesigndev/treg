@@ -132,6 +132,25 @@ async def test_a_failed_bonus_fails_the_delivery_and_a_redelivery_grants_it_once
     assert await _bonuses(org_id, "pi_heal") == [10_000_000], "a third delivery grants nothing more"
 
 
+async def test_a_bonus_healed_after_a_refund_keeps_only_the_unrefunded_share(c, monkeypatch):
+    """A refund processed before the redelivery could not see the bonus; the heal applies it."""
+    org_id = await _org(c)
+    _fail_bonus_grants(monkeypatch, times=1)
+    pi = _pi(org_id, "pi_refund_first", 10_000)
+    assert (await _deliver(c, pi)).status_code == 500
+    async with session_maker() as db:
+        await billing.revoke_refunded(db, "pi_refund_first", 50_000_000, source="test")
+    assert (await _deliver(c, pi)).status_code == 200
+    assert await _bonuses(org_id, "pi_refund_first") == [10_000_000]
+    async with session_maker() as db:
+        bonus = (await db.execute(select(CreditBlock).where(
+            CreditBlock.org_id == org_id, CreditBlock.kind == "bonus"))).scalar_one()
+        assert bonus.remaining_micro == 5_000_000, "half the payment was refunded, so half the bonus goes"
+        await billing.revoke_refunded(db, "pi_refund_first", 50_000_000, source="test")
+        await db.refresh(bonus)
+        assert bonus.remaining_micro == 5_000_000, "the same refund again takes nothing twice"
+
+
 async def test_two_deliveries_of_one_payment_at_once_grant_one_bonus(c):
     """`checkout.session.completed` and `payment_intent.succeeded` arrive together for every Checkout
     purchase. The lock on the purchased block keeps them to one bonus on Postgres and SQLite alike."""

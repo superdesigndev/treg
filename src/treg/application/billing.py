@@ -1610,6 +1610,10 @@ async def _grant_topup_bonus(db: AsyncSession, org_id: int, pi_id: str, block_id
     deliveries of a Checkout, the inline auto-top-up credit and its webhook), so the check and the
     grant cannot interleave. The lock is a no-op UPDATE: a row lock on PostgreSQL and the write lock
     on SQLite, which ignores SELECT FOR UPDATE.
+
+    A refund recorded before this grant (a delivery that heals after the refund was processed) is
+    applied to the new bonus in the same transaction, in the proportion `revoke_refunded` uses, since
+    that refund could not see a block that did not exist yet. Returns the bonus net of that.
     """
     bonus_micro, bonus_pct = bonus_for_topup(amount_micro)
     if bonus_micro <= 0:
@@ -1621,11 +1625,27 @@ async def _grant_topup_bonus(db: AsyncSession, org_id: int, pi_id: str, block_id
     if _now() - created_at > BONUS_HEAL_WINDOW or pi_id in await _bonused_payments(db, org_id):
         await db.rollback()
         return 0, 0
-    await ledger.grant(db, org_id, amount_micro=bonus_micro, kind="bonus", once=False,
-                       meta={"source": "topup_bonus", "payment_intent": pi_id,
-                             "pct": bonus_pct, "topup_block_id": block_id})
+    bonus = await ledger.grant(db, org_id, amount_micro=bonus_micro, kind="bonus", once=False,
+                               meta={"source": "topup_bonus", "payment_intent": pi_id,
+                                     "pct": bonus_pct, "topup_block_id": block_id})
+    refunded = await _refunded_of(db, block_id)
+    if refunded and bonus is not None:
+        revoked = await ledger.revoke_in_transaction(
+            db, org_id, [ledger.RevokeTarget(bonus.id, bonus_micro * min(refunded, amount_micro)
+                                             // amount_micro)],
+            meta={"payment_intent": pi_id, "refunded_micro": refunded, "source": "bonus_heal"})
+        bonus_micro -= sum(r.revoked_micro for r in revoked)
     await db.commit()
     return bonus_micro, bonus_pct
+
+
+async def _refunded_of(db: AsyncSession, block_id: str) -> int:
+    """The cumulative refund recorded against a purchased block: the highest `target_micro` of its
+    `revoke` entries, 0 when it was never refunded."""
+    metas = (await db.execute(
+        select(LedgerEntry.meta).where(LedgerEntry.kind == "revoke", LedgerEntry.block_id == block_id)
+    )).scalars().all()
+    return max((int((m or {}).get("target_micro") or 0) for m in metas), default=0)
 
 
 async def _bonused_payments(db: AsyncSession, org_id: int) -> set[str]:
