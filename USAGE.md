@@ -283,8 +283,11 @@ billed at its own price, inside `X-Treg-Route-Max-Cost`. When every hit is inval
 miss (all output fields null) whose `_treg.verification` holds the last invalid verdict and
 `withheld` (how many hits were dropped); `_treg.checks` lists every check when more than one ran.
 An address found invalid stays invalid for the whole call, even when another provider returns it.
-A call that fails or is cancelled after a check charges nothing, the check included. A check that
-is still running counts its hold against `X-Treg-Route-Max-Cost`.
+A call that fails or is cancelled after a synchronous check charges nothing, the check included. A
+check a verifier runs as an asynchronous task (BounceBan's `verifying`) is billed like any async
+call once submitted: if its task already settled, a later provider error or refusal ends in the
+null miss that charges what was paid, and a cancelled request still pays for it; a check still
+running counts its hold against `X-Treg-Route-Max-Cost` and settles when the task does.
 Other routed tools refuse the header (422, unbilled).
 
 `X-Treg-Route-Confirm: true` on `treg.people.email.find` counts a hit only once a second provider

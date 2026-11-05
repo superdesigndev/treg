@@ -728,6 +728,7 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
                        for a in (rows or []) if isinstance(a, dict) and not a.get("pending")
                        ) if isinstance(exc.detail, dict) else 0
         await close_deferred(pending, charge=False, why=f"routed_{exc.kind}")
+        parent.routed_spent_micro = parent.settled_outside_micro
         if isinstance(exc.detail, dict):
             exc.detail["charged_micro"] = 0
             if released:
@@ -741,7 +742,9 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
         raise
     except BaseException:
         await close_deferred(pending, charge=False, why="routed_aborted")
+        parent.routed_spent_micro = parent.settled_outside_micro
         raise
+    parent.routed_spent_micro = spent
     if outer is not None:
         outer.extend(pending)
     else:
@@ -846,6 +849,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     invalid_values: set[str] = set()  # check values (folded) a check in this call called invalid
     held = 0                       # holds of checks still pending: they may settle, so they spend the ceiling
     settled_outside: list[int] = []  # check money an async task already settled: no failure can release it
+
+    def committed() -> bool:
+        """Money an async task settled on its own (this call's child or a check's): a failure can no
+        longer charge nothing, so the call ends in a 200 that charges what was paid."""
+        return bool(parent.settled_outside_micro or sum(settled_outside))
+
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
     # measured quality the providers left are ordered by once the first attempt has not decided.
@@ -913,7 +922,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             if exc.kind == "org_endpoint_quota_exceeded":
                 if isinstance(exc.detail, dict) and any(
                     endpoint == exc.detail.get("endpoint_id") for _, endpoint in parent.quota_pending
-                ):
+                ) and not committed():
                     raise
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
                                      exc.status_code, 0, "endpoint call allowance exhausted"))
@@ -926,6 +935,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             if exc.kind in _GLOBAL_REFUSALS or (
                 exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
             ):
+                if committed():
+                    # A check already settled money no failure can release: end in the null miss
+                    # that charges it, not a refusal that says nothing was charged.
+                    tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped",
+                                         exc.status_code, 0, exc.kind))
+                    break
                 raise  # the same refusal everywhere; nothing to fall back to
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", exc.status_code, 0, str(exc.detail)[:120]))
@@ -1041,6 +1056,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             # 410). Every other provider can only find the same nothing, or answer an empty page that
             # reads as a success, so the call ends here with that answer, charging nothing.
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "not_found", response.status, charged))
+            if committed():
+                break   # money already settled: the null miss charges it (see the refusal above)
             status = response.status if 400 <= response.status < 500 else 404
             _audit_parent(parent, ep, status, 0, audit_client)
             raise ResolutionFailed("route_not_found", status_code=status, detail={
@@ -1272,7 +1289,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             })
         outcome = ("miss" if tried and any(t.outcome == "miss" for t in tried)
                    and all(t.outcome in ("miss", "skipped", "weak", "rejected") for t in tried) else "error")
-        if outcome == "miss" or (sum(settled_outside) and any(t.detail == "check verdict invalid" for t in tried)):
+        if outcome == "miss" or committed():
             # A check whose async task already settled cannot be released, so once an address was
             # dropped as invalid a later provider error ends in the null miss that charges what
             # was paid, never in a 502 that says nothing was charged.
@@ -1504,10 +1521,14 @@ async def _run_check(parent: CallContext, check, output: dict, remaining: int | 
         response = await execute_child(child, upstream_client)
         raw = await _read(response)
     except CallFailure as exc:
-        return _unchecked(_CHECK_REASONS.get(exc.kind, "checker_failed")), 0
+        # A routed check that failed may still have moved money it cannot release (a verifier's
+        # async task that settled on its own); it is reported and spent from the ceiling.
+        lost = child.routed_spent_micro if routed else 0
+        return {**_unchecked(_CHECK_REASONS.get(exc.kind, "checker_failed")), "cost_micro": lost}, lost
     except Exception:
         log.warning("check %s failed after %s", check.endpoint, parent.call_ref, exc_info=True)
-        return _unchecked("checker_failed"), 0
+        lost = child.routed_spent_micro if routed else 0
+        return {**_unchecked("checker_failed"), "cost_micro": lost}, lost
     finally:
         if settled is not None and child.settled_outside_micro:
             settled.append(child.settled_outside_micro)
@@ -1522,12 +1543,14 @@ async def _run_check(parent: CallContext, check, output: dict, remaining: int | 
             # async worker, which settles or releases it; nothing of it is charged now.
             # Forward the child's async poll descriptor so the caller can resume without digging
             # through GET /calls/{call_id}; cost_micro is the hold (reserved), not a settled charge.
+            # Verifiers it asked before this one charged as usual: those count now, the hold later.
+            earlier = child.routed_spent_micro
             view = {"verdict": "unknown", "checked": True, "served_by": meta.get("served_by"),
                     "cost_micro": int(meta.get("reserved_micro") or 0), "pending": True,
-                    "call_id": meta.get("call_ref")}
+                    "call_id": meta.get("call_ref"), **({"charged_micro": earlier} if earlier else {})}
             if isinstance(meta.get("async"), dict):
                 view["async"] = meta["async"]
-            return view, 0
+            return view, earlier
         cost = int(_header(response, "X-Treg-Cost-Micro") or 0)
         served = meta.get("served_by")
         if not 200 <= response.status < 300 or meta.get("outcome") not in ("hit", "weak", "miss"):

@@ -281,6 +281,9 @@ class CallContext:
     # What this routed call's async children settled through their task (not via the parent's
     # `deferred_settles`): money a later failure of an enclosing routed call cannot release.
     settled_outside_micro: int = 0
+    # Set by `run_routed` on every exit, for an enclosing routed call's budget: what this routed
+    # call moved (on success what it charges, on failure only what it could not release).
+    routed_spent_micro: int = 0
     quota_admissions: set[tuple[int, str]] = field(default_factory=set)
     quota_pending: tuple[tuple[int, str], ...] = ()
     # Scalar snapshots for root request logs; never resolve a target just for telemetry.

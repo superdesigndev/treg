@@ -941,8 +941,12 @@ returned and never documented as stable. An output field may say where it lands 
   provider returning it is a miss without a second check. Each find and check still settles, and a
   routed check (and an upgrade `:u`) hands its holds to the find's `pending`, so a find that fails
   or is cancelled after it charges it nothing. An async check whose task settled on its own cannot
-  be released: once such a check dropped a hit, a later provider error ends in the null miss that
-  charges what was paid, not a 502 (cancellation in that window still charges the settled check).
+  be released (`CallContext.settled_outside_micro`): after that, a later provider error, refusal
+  (balance, caller fault) or not-found ends in the null miss that charges what was paid, never a
+  zero-charge failure, for any routed call. A cancelled request still pays a settled or still
+  running async task, like any async call. `run_routed` leaves `routed_spent_micro` (what it moved;
+  on failure only what it could not release) on its context; the find spends that and a pending
+  check's hold from the ceiling.
   A pending check's hold counts against `X-Treg-Route-Max-Cost` for every later call. When an
   upgrade's value is invalid, the answer it replaced is checked and returned, and
   `_treg.upgrade` says `reason: invalid`. With `X-Treg-Route-Confirm`, the off-domain fallback is

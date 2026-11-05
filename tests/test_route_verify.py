@@ -21,6 +21,7 @@ from treg.config import get_settings
 from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing.contracts import Check
 from treg.infra.db import session_maker
+from treg.domain import money as ledger
 from treg.models import AsyncTaskRecord, CallRecord, Hold, LedgerEntry
 
 from test_marketplace_call import _balance, platform_on  # noqa: F401
@@ -671,3 +672,90 @@ async def test_an_async_invalid_check_then_a_provider_error_charges_what_it_says
     total = int(r.headers["X-Treg-Cost-Micro"])
     assert total == d["_treg"]["charged_micro"] == before - await _balance(clients)
     assert total == TOMBA_FIND_PRICE + d["_treg"]["verification"]["cost_micro"] and total > TOMBA_FIND_PRICE
+
+
+def _poll_fast(monkeypatch):
+    descriptor = catalog_store.load().by_id["bounceban.people.email.verify"]["async"]
+    monkeypatch.setitem(descriptor, "interval", 0.05)   # poll at once, not at BounceBan's cadence
+
+
+VERIFYING = (200, {"id": "bb-1", "status": "verifying", "try_again_at": 1})
+
+
+async def test_a_balance_refusal_after_a_settled_check_charges_what_it_says_once(
+    clients: AsyncClient, verifiers_on, monkeypatch,
+):
+    """The next finder is refused for balance after an async check settled: a 200 null miss that
+    charges the find and the check, stored under the idempotency key, so a retry charges nothing."""
+    _poll_fast(monkeypatch)
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        await ledger.reserve(db, org_id, "leave room for one find and one check", await _balance(clients) - 25_000)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA], "bounceban": [VERIFYING, _bb("undeliverable", email="ada@example.com")],
+         "hunter": [HUNTER_HIT]}, seen))
+    before = await _balance(clients)
+    h = {**ON, "Idempotency-Key": "settled-check-1"}
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=h)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert seen == ["tomba", "bounceban", "bounceban"], "hunter was refused before any request"
+    assert d["output"]["email"] is None and d["_treg"]["outcome"] == "miss"
+    assert d["_treg"]["tried"][-1]["detail"] == "insufficient_balance"
+    total = int(r.headers["X-Treg-Cost-Micro"])
+    assert total == d["_treg"]["charged_micro"] == before - await _balance(clients) > TOMBA_FIND_PRICE
+    mid = await _balance(clients)
+    r2 = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=h)
+    assert r2.headers.get("X-Treg-Idempotent-Replay") == "true" and await _balance(clients) == mid
+
+
+async def test_a_verifier_that_settled_before_the_check_failed_spends_the_ceiling(
+    clients: AsyncClient, upgradable, monkeypatch,
+):
+    """BounceBan settled through its task without a verdict and the other verifiers failed: that
+    money is reported on the check and spent from Max-Cost before the upgrade is budgeted."""
+    _poll_fast(monkeypatch)
+    seen, budgets = [], []
+    down = (503, {"message": "down"})
+    monkeypatch.setattr(call_route, "_run_upgrade", _fake_upgrade(budgets, None))
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA], "bounceban": [VERIFYING, _bb(None, email="ada@example.com")],
+         "tomba-verify": [down], "hunter-verify": [down]}, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK,
+                           headers={**ON, "X-Treg-Route-Upgrade": "linkedin_url", "X-Treg-Route-Max-Cost": "0.20"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    v = d["_treg"]["verification"]
+    assert v["cost_micro"] > 0, "the settled verifier is on the check"
+    assert budgets == [200_000 - TOMBA_FIND_PRICE - v["cost_micro"]]
+    total = int(r.headers["X-Treg-Cost-Micro"])
+    assert total == d["_treg"]["charged_micro"] == before - await _balance(clients) == TOMBA_FIND_PRICE + v["cost_micro"]
+
+
+async def test_a_pending_check_returns_what_its_earlier_verifiers_charged():
+    """The routed check's first verifier charged without a verdict and the next is still running:
+    `_run_check` returns that charge as spent now, and the hold as the pending view's cost."""
+    async def pending_check(child, client):
+        child.routed_spent_micro = 4_000       # what run_routed records for the verifiers before
+        body = json.dumps({"output": {}, "raw": {}, "_treg": {
+            "outcome": "pending", "served_by": "bounceban.people.email.verify", "reserved_micro": 4_000,
+            "call_ref": f"{child.call_ref}:r1", "async": {"task_id": "bb-1"}}}).encode()
+
+        async def stream():
+            yield body
+
+        async def close():
+            return None
+        return UpstreamResponse(202, ((b"x-treg-cost-micro", b"4000"),), stream(), close)
+    parent = type("P", (), {})()
+    parent.call_ref = "c1"
+    parent.meta = None
+    parent.quota_admissions = set()
+    parent.quota_pending = ()
+    parent.input = type("I", (), {"raw_headers": (), "caller": None, "client_ip": "", "catalog_only": False})()
+    v, cost = await call_route._run_check(parent, Check(endpoint=VERIFY, field="email", prefer=("bounceban",)),
+                                          {"email": "ada@example.com"}, None, [], pending_check, None)
+    assert v["pending"] is True and v["cost_micro"] == 4_000 and v["charged_micro"] == 4_000
+    assert cost == 4_000 and call_route._held(v) == 4_000, "spent now 4,000, still held 4,000"
