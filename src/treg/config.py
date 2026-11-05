@@ -621,9 +621,9 @@ class Settings(BaseSettings):
     topup_default_usd: int = 10
     # Four presets plus "Other" (any whole amount ≥ min). Deliberately few and skewed big.
     topup_presets: list[int] = [10, 50, 100, 200]
-    # Bonus credit on a MANUAL top-up, as {min_usd: percent}: the highest key ≤ the amount applies.
-    # It is promotional credit (a separate block that burns first and is never refundable), never
-    # purchased balance — see billing.bonus_for_topup. Automatic refills get no bonus.
+    # Bonus credit on a top-up, manual or automatic, as {min_usd: percent}: the highest key ≤ the
+    # amount applies. It is promotional credit (a separate block that burns first and is never
+    # refundable), never purchased balance — see billing.bonus_for_topup.
     topup_bonus_tiers: dict[int, int] = {10: 0, 50: 5, 100: 10, 200: 15}
     # After each manual top-up the dashboard's preselected amount steps one preset up, but never past
     # this — the ladder nudges $10 payers toward $50 without preselecting $200 at anyone.
