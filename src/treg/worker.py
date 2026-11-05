@@ -17,6 +17,7 @@
     treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
     treg-worker admin purge-ad-clicks                      # delete email-to-click stash rows past 90 days
     treg-worker admin erase-archive --org <id>             # erase what an opted-out team stored in the archive
+    treg-worker admin revoke-refund <payment_intent>       # revoke a refunded top-up's unspent credit now
     treg-worker admin erase-archive --org <id> --dry-run   # count what that would remove; delete nothing
     treg-worker admin erase-archive --org <id> --include-sole-public  # also public answers only that team paid for
     treg-worker enterprise reconcile [--org <id>]          # repair missed Directory Sync removals
@@ -549,6 +550,17 @@ async def _admin_erase_archive(args) -> int:
     return 0
 
 
+async def _admin_revoke_refund(args) -> int:
+    """Revoke a refunded top-up's unspent credit from the refunded total Stripe reports now: for a
+    missed `charge.refunded` webhook, or a shortfall that calls in flight held at the time."""
+    from .application import billing
+    from .infra.db import verify_db
+
+    await verify_db()
+    print(json.dumps(await billing.revoke_refunded_payment(args.payment_intent), sort_keys=True))
+    return 0
+
+
 async def _enterprise_reconcile(args) -> int:
     """Bounded full-roster repair; run periodically, independent of webhook delivery."""
     import time
@@ -824,6 +836,9 @@ def main(argv: list[str] | None = None) -> int:
     erase.add_argument("--include-sole-public", action="store_true",
                        help="also erase public answers only this team paid for; shared ones stay")
     erase.set_defaults(fn=_admin_erase_archive)
+    revoke = adminsub.add_parser("revoke-refund", help="revoke a refunded top-up's unspent credit")
+    revoke.add_argument("payment_intent", help="the refunded top-up's Stripe PaymentIntent id (pi_...)")
+    revoke.set_defaults(fn=_admin_revoke_refund)
     enterprise = sub.add_parser("enterprise", help="enterprise identity maintenance")
     enterprisesub = enterprise.add_subparsers(dest="cmd", required=True)
     reconcile = enterprisesub.add_parser("reconcile", help="repair missed WorkOS Directory Sync changes")

@@ -194,6 +194,51 @@ class OrgFlowControlVersion(SQLModel, table=True):
     published_at: NaiveUTC | None = Field(default=None)
 
 
+class RouteRuleVersion(SQLModel, table=True):
+    """Saved route rule sets (docs/context/architecture/route-rules.md). The private admin is the
+    only writer; workers read the published snapshot from Redis, never this table."""
+
+    __table_args__ = (
+        CheckConstraint("version > 0", name="ck_routeruleversion_version"),
+        CheckConstraint("review_status IN ('draft', 'approved', 'rejected')",
+                        name="ck_routeruleversion_review_status"),
+        CheckConstraint("publish_status IN ('unpublished', 'pending', 'published', 'failed')",
+                        name="ck_routeruleversion_publish_status"),
+        CheckConstraint("length(trim(created_by)) > 0 AND length(trim(reason)) > 0",
+                        name="ck_routeruleversion_created"),
+        CheckConstraint(
+            "review_status = 'draft' OR (reviewed_by IS NOT NULL AND length(trim(reviewed_by)) > 0"
+            " AND reviewed_at IS NOT NULL)",
+            name="ck_routeruleversion_reviewed"),
+        CheckConstraint("publish_status = 'unpublished' OR review_status = 'approved'",
+                        name="ck_routeruleversion_publish_approved"),
+        CheckConstraint(
+            "publish_status != 'published' OR "
+            "(published_by IS NOT NULL AND length(trim(published_by)) > 0 AND published_at IS NOT NULL)",
+            name="ck_routeruleversion_published"),
+        Index("ix_routeruleversion_publish_status", "publish_status", "version"),
+    )
+    version: int = Field(sa_column=Column(Integer, primary_key=True, autoincrement=False))
+    config: dict = Field(sa_column=Column(
+        JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql"),
+        nullable=False,
+    ))
+    reason: str
+    created_by: str
+    created_at: NaiveUTC = Field(default_factory=_now)
+    review_status: str = Field(default="draft", sa_column=Column(
+        String, nullable=False, server_default="draft",
+    ))
+    reviewed_by: str | None = Field(default=None)
+    reviewed_at: NaiveUTC | None = Field(default=None)
+    review_note: str | None = Field(default=None)
+    publish_status: str = Field(default="unpublished", sa_column=Column(
+        String, nullable=False, server_default="unpublished",
+    ))
+    published_by: str | None = Field(default=None)
+    published_at: NaiveUTC | None = Field(default=None)
+
+
 class User(SQLModel, table=True):
     """A global identity (one email/login). Identity ONLY — the token and role live on
     Membership, so one person in two orgs has two memberships (two tokens), one User.
@@ -985,12 +1030,15 @@ class LedgerEntry(SQLModel, table=True):
                             sqlite_where=text("kind = 'settle'")),
                       Index("ix_ledgerentry_topup_org_id_created_at", "org_id", "created_at",
                             postgresql_where=text("kind = 'topup'"),
-                            sqlite_where=text("kind = 'topup'")))
+                            sqlite_where=text("kind = 'topup'")),
+                      Index("ix_ledgerentry_grant_org_id_created_at", "org_id", "created_at",
+                            postgresql_where=text("kind = 'grant'"),
+                            sqlite_where=text("kind = 'grant'")))
 
     id: str = Field(primary_key=True)  # uuid4 hex
     org_id: int = Field(foreign_key="org.id")
     block_id: str | None = Field(default=None, index=True)
-    # grant | topup | reserve | settle | release
+    # grant | topup | reserve | settle | release | revoke
     kind: str = Field(index=True)
     amount_micro: int  # signed (see docstring)
     call_id: str | None = Field(default=None, index=True)

@@ -1212,8 +1212,13 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
                             "distinct from `verified`, which is the date the ROUTE was called)")
     elif (day := _as_date(checked)) is None:
         fail(errors, where, f"cost.checked '{checked}' is not an ISO date (YYYY-MM-DD)")
-    elif (age := (dt.date.today() - day).days) > STALE_DAYS:
-        warnings.append(f"{where}: cost.checked is {age} days old (> {STALE_DAYS}) — re-check the price")
+    else:
+        check_fresh(day, "cost.checked", where, warnings)
+
+
+def check_fresh(day: dt.date, key: str, where: str, warnings: list[str]) -> None:
+    if (age := (dt.date.today() - day).days) > STALE_DAYS:
+        warnings.append(f"{where}: {key} is {age} days old (> {STALE_DAYS}) — re-check the price")
 
 
 SHARED_PLAN_KIND = "treg_shared_plan"
@@ -1394,16 +1399,19 @@ def check_v2_row(ep: dict, provider: str, tier: str, adapters: dict, where: str,
         fail(errors, where, "a row that names a plugin needs an example_response")
 
 
-def _v2_rated(provider: str, currency: str, unit: object = None) -> bool:
+def _v2_rated(provider: str, currency: str, unit: object = None, *, unknown: bool = False) -> bool:
     """A v2 money unit resolves to a USD rate: usd itself, the provider's credit, its meter `unit`,
-    or a currency's fx rate."""
+    or a currency's fx rate. With `unknown`, a credit or meter rate declared `usd: null` (no
+    published price, so the row stays native and treg's key never serves it) also counts."""
     if currency in ("usd", "USD"):
         return True
-    if currency == "credit":
-        return _finite_number(_credit_rate(provider))
-    if currency == "unit":
-        return _finite_number(_unit_rate(provider, unit))
     fx = yaml.safe_load((CATALOG / "fx.yaml").read_text()) or {}
+    if currency in ("credit", "unit"):
+        entries = (fx.get("credit_rates_usd") if currency == "credit"
+                   else (fx.get("unit_rates_usd") or {}).get(provider)) or {}
+        key = provider if currency == "credit" else str(unit or "")
+        rate = _credit_rate(provider) if currency == "credit" else _unit_rate(provider, unit)
+        return _finite_number(rate) or (unknown and key in entries and rate is None)
     return _finite_number((fx.get("rates_to_usd") or {}).get(currency))
 
 
@@ -1418,7 +1426,7 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
     inp = ep.get("input") or {}
     fields = _input_fields(inp)
     price, settle, reserve = row.price, row.settle, row.reserve
-    if price is not None and not _v2_rated(provider, price.currency, price.unit):
+    if price is not None and not _v2_rated(provider, price.currency, price.unit, unknown=True):
         fail(errors, where, f"price.currency {price.currency}"
                             f"{f' (unit {price.unit})' if price.currency == 'unit' else ''} has no "
                             f"fx.yaml rate for '{provider}'")
@@ -1578,6 +1586,8 @@ def main(argv: list[str]) -> int:
             if not legacy:
                 check_v2_row(ep, service, tier, adapter_rows, where, errors)
                 check_v2_cost(row, ep, service, where, errors)
+                if row.provenance is not None and (day := _as_date(row.provenance.checked)) is not None:
+                    check_fresh(day, "provenance.checked", where, warnings)
             if extended_file != (tier == "extended"):
                 fail(errors, where, f"tier '{tier}' does not belong in {name}")
             route_tiers.setdefault((service, ep.get("method"), ep.get("path")), {}) \

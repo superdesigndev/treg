@@ -136,14 +136,14 @@ def render_example(doc) -> str:
 def cost_of(ep: dict) -> float:
     """What the next call to this endpoint should be budgeted at.
 
-    The rate card (`cost`) is preferred, but several providers publish prices per API family rather
+    The rate card (`cost`, or a v2 row's `price`) is preferred, but several providers publish prices per API family rather
     than per route and their entries carry none at all — every DataForSEO entry, for one. A missing
     price silently reads as FREE, which makes `--budget` inert: a run can queue the whole file at an
     estimated $0.000 and still spend real money, with only the balance readback noticing afterwards.
     So fall back to `observed_cost`, what the provider charged last time. It is the better number
     anyway — measured rather than transcribed — and it makes the cap bind from the second run on.
     """
-    c = ep.get("cost") or {}
+    c = ep.get("cost") or ep.get("price") or {}
     try:
         listed = float(c.get("value") or 0.0)
     except (TypeError, ValueError):

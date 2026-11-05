@@ -338,7 +338,8 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
            submitted: int | None = None) -> tuple[int | None, int]:
     """(observed, actual) for a 2xx answer, by the settlement order from step 2: `free_when`, a
     readable reported charge, then the outcome with `bill`, then the `settle` form. `observed` is
-    what the answer itself said it cost."""
+    what the answer itself said it cost: a free outcome with no settle evidence says 0, as a row in
+    today's spelling records it."""
     request_values = request_data if request_data is not None else terms.get("request") or {}
     endpoint = {"provider": terms["provider"], **terms}
     request = plugins.Request(method=terms["method"],
@@ -355,7 +356,7 @@ def charge(terms: dict, basis_: dict, hold: int, status: int, doc: object, *, ra
     judged = outcomes.judge(endpoint, status, doc, request=request, answer=answer)
     rule = {"error": bill.get("error", "free"), "miss": bill.get("miss", "free")}.get(judged.state, "charged")
     if rule == "free":
-        return evidence, 0
+        return (0 if evidence is None else evidence), 0
     if rule != "charged":
         return evidence, min(amount(terms, rule), hold)
     return evidence, _settled(terms, basis_, hold, doc, raw, evidence)

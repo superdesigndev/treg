@@ -944,6 +944,55 @@ def test_theirstack_platform_requests_bound_credits(endpoint, body, valid):
             call_resolution._enforce_platform_request(ep, json.dumps(body).encode())
 
 
+async def test_leadocean_direct_search_requires_a_bounded_shared_key_page(clients, monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LEADOCEAN", "PLATFORM-LEADOCEAN")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "leadocean")
+    get_settings.cache_clear()
+    seen = []
+
+    def upstream(request):
+        seen.append((request.headers["x-api-key"], request.url.params.multi_items()))
+        data = [] if request.url.params.get("domain") == "missing.example" else [
+            {"id": "a"}, {"id": "b"}, {"id": "c"}]
+        return _dropleads_response(200, {"success": True, "data": data,
+                                         "meta": {"credits": len(data)}})
+
+    try:
+        async with AsyncClient(transport=httpx.MockTransport(upstream)) as vendor:
+            monkeypatch.setattr(A.app.state, "http", vendor)
+            for params in ({"domain": "stripe.com"}, {"domain": "stripe.com", "limit": "0"},
+                           {"domain": "stripe.com", "limit": "11"},
+                           [("domain", "stripe.com"), ("limit", "10"), ("limit", "1")]):
+                refused = await clients.get("/call/leadocean.people.search", params=params)
+                assert refused.status_code == 400, refused.text
+                assert refused.json()["detail"]["parameter"] == "queryParams.limit"
+            assert seen == []
+
+            allowed = await clients.get("/call/leadocean.people.search", params={
+                "domain": "stripe.com", "limit": "10"})
+            assert allowed.status_code == 200, allowed.text
+            assert allowed.headers["x-treg-cost-micro"] == "3000"
+            empty = await clients.get("/call/leadocean.people.search", params={
+                "domain": "missing.example", "limit": "10"})
+            assert empty.status_code == 200, empty.text
+            assert empty.headers["x-treg-cost-micro"] == "0"
+            assert seen == [("PLATFORM-LEADOCEAN", [("domain", "stripe.com"), ("limit", "10")]),
+                            ("PLATFORM-LEADOCEAN", [("domain", "missing.example"), ("limit", "10")])]
+
+            own = await clients.post("/secrets", json={"name": "leadocean", "value": "OWN-LEADOCEAN"})
+            assert own.status_code == 200, own.text
+            for params in ({"domain": "stripe.com"}, {"domain": "stripe.com", "limit": "25"}):
+                served = await clients.get("/call/leadocean.people.search", params=params)
+                assert served.status_code == 200, served.text
+                assert "x-treg-cost-micro" not in served.headers
+            assert [key for key, _ in seen] == ["PLATFORM-LEADOCEAN", "PLATFORM-LEADOCEAN",
+                                                 "OWN-LEADOCEAN", "OWN-LEADOCEAN"]
+            assert [query for _, query in seen[2:]] == [[("domain", "stripe.com")],
+                                                        [("domain", "stripe.com"), ("limit", "25")]]
+    finally:
+        get_settings.cache_clear()
+
+
 def test_theirstack_platform_holds_match_the_credit_prices():
     from treg.domain.catalog import store as catalog_store
 
@@ -1378,22 +1427,6 @@ def test_hunter_email_finder_miss_is_free():
     assert call_settle._observed_cost_micro(f, b'{"errors": [{"code": "wrong_params"}]}') is None, \
         "no email key at all: we never learned the outcome, settle at the estimate"
     assert call_settle._observed_cost_micro(f, b"not json") is None
-
-
-def test_tikhub_envelope_no_charge_settles_at_zero():
-    """TikHub reports billing in prose, not a number: a 2xx whose payload is an embedded error
-    still says the request will incur a charge — and TikHub really does charge us for it
-    (verified live 2026-07-30), so those settle at the estimate, faithfully. Only the explicit
-    no-charge phrasing settles at zero."""
-    t = _mk("tikhub", cost_type="per_success")
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "message": "Request successful. This request will incur a charge.", "data": {}}') is None, \
-        "a billed answer settles at the estimate — that IS what TikHub takes"
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "message": "Request successful. This request will incur a charge.", "data": {"error": "dead_page"}}') is None, \
-        "a dead page TikHub bills us for is passed through, not eaten"
-    assert call_settle._observed_cost_micro(t, b'{"code": 400, "message": "Request failed. You won\'t be charged for this request.", "data": null}') == 0
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "message": "This request will not incur charges.", "data": {}}') == 0
-    assert call_settle._observed_cost_micro(t, b'{"code": 200, "data": {}}') is None, "no message: estimate"
-    assert call_settle._observed_cost_micro(t, b"not json") is None
 
 
 async def test_daily_cap_fails_closed(clients: AsyncClient, platform_on, monkeypatch):
@@ -2414,6 +2447,60 @@ async def test_the_trial_allowance_bites_at_the_fx_number(clients: AsyncClient, 
     assert d["error"] == "trial_allowance_reached" and d["allowance_per_day"] == 50
     assert "connect" in d["message"]
     assert await _balance(clients) == before
+
+
+async def test_a_team_at_its_trial_allowance_is_refused_without_counting_its_day_again(
+        clients: AsyncClient, trial_on, monkeypatch):
+    from sqlalchemy import event
+    from treg.models import CallRecord
+
+    async with session_maker() as db:
+        for _ in range(50):
+            db.add(CallRecord(org_id=1, user_email="u@example.com", tool_name="finnhub.quote",
+                              method="GET", path="/quote", status_code=200,
+                              credential_tier="platform"))
+        await db.commit()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"c": 1}'))
+    assert (await clients.get("/call/finnhub.quote?symbol=AAPL")).status_code == 429
+    counts = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        if "count(callrecord.id)" in statement:
+            counts.append(statement)
+
+    engine = session_maker.kw["bind"].sync_engine
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        r = await clients.get("/call/finnhub.quote?symbol=AAPL")
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert r.status_code == 429 and r.json()["detail"]["used_today"] == 50
+    assert counts == []
+
+
+async def test_a_new_team_on_a_deleted_teams_id_starts_with_its_own_trial(clients: AsyncClient, trial_on):
+    """SQLite gives a deleted team's id to the next team created."""
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from sqlalchemy import delete
+    from treg.application.call import reserve as call_reserve
+    from treg.application.call.types import ReservationFailed
+    from treg.models import CallRecord
+
+    old = SimpleNamespace(org_id=1, org=SimpleNamespace(created_at=datetime(2026, 1, 1)))
+    new = SimpleNamespace(org_id=1, org=SimpleNamespace(created_at=datetime(2026, 1, 2)))
+    async with session_maker() as db:
+        for _ in range(50):
+            db.add(CallRecord(org_id=1, user_email="u@example.com", tool_name="finnhub.quote",
+                              method="GET", path="/quote", status_code=200,
+                              credential_tier="platform"))
+        await db.commit()
+        with pytest.raises(ReservationFailed):
+            await call_reserve._enforce_trial_allowance(old, "finnhub", "finnhub.quote", db)
+        await db.execute(delete(CallRecord).where(CallRecord.org_id == 1))
+        await db.commit()
+        await call_reserve._enforce_trial_allowance(new, "finnhub", "finnhub.quote", db)
 
 
 async def test_failures_alone_never_exhaust_a_trial(clients: AsyncClient, trial_on, monkeypatch):

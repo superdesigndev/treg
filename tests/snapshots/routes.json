@@ -1093,6 +1093,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "social_search_page",
+    "path": "/social"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "rea_growth_md",
     "path": "/rea-growth.md"
   },
@@ -3324,6 +3333,24 @@
     ],
     "name": "rankings_board",
     "path": "/rankings/data/{board}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "compare_hub",
+    "path": "/compare"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "compare_page",
+    "path": "/compare/{slug}"
   },
   {
     "kind": "APIRoute",
