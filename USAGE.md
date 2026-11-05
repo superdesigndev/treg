@@ -60,6 +60,13 @@ treg login                                 # GitHub; or:
 treg login --email you@example.com        # emailed 6-digit code (register-or-login)
 ```
 
+## MCP server (agents)
+
+| Command | What it does |
+|---|---|
+| `treg mcp install` | writes the logged-in team's key as an `Authorization` header into every supported agent (Claude Code, Cursor, Codex, opencode). Needs a valid login; restart the agent afterward. |
+| `treg mcp install --oauth` | repairs a dead saved key: rewrites those entries to the URL only so each client can authorize itself. Needs no login; restart each agent, then authorize treg in it. |
+
 ## Teams / orgs
 
 An **org** (team) owns the tools/secrets. After `treg login` the CLI holds a single **identity token**
