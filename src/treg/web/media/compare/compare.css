@@ -124,7 +124,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
   .vs-table, .vs-table tbody, .vs-table tr, .vs-table th, .vs-table td { display: block; width: 100% !important; }
   .vs-table tbody th[scope="row"] { padding: 14px 16px 4px; border-top: 1px solid #F1EFEA; }
   .vs-table td { border-left: 0; padding: 4px 16px 10px; border-top: 0 !important; }
-  .vs-table td::before { content: attr(data-who); display: block; padding-left: 20px; min-height: 14px; background: var(--them-logo) left center / 14px 14px no-repeat; filter: grayscale(1); opacity: .75; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+  .vs-table td::before { content: attr(data-who); display: block; padding-left: 20px; min-height: 14px; background: var(--them-logo) left center / 14px 14px no-repeat; filter: grayscale(.4); opacity: .85; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
   .vs-table td.us::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%23101010'/%3E%3Crect x='111' y='111' width='140.5' height='140.5' rx='20' fill='%23fff'/%3E%3Crect x='260.5' y='260.5' width='140.5' height='140.5' rx='20' fill='%23fff'/%3E%3C/svg%3E"); }
 }
 
