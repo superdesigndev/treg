@@ -133,7 +133,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 
 /* the trade-off: two columns, numbered lines, hairline rules */
 .ledger { display: grid; grid-template-columns: 1fr 1fr; gap: 0 64px; margin-top: 28px; }
-.ledger .col h3 { display: flex; align-items: center; gap: 10px; margin: 0; padding: 0 0 14px; font-family: var(--display); font-weight: 600; font-size: 17px; letter-spacing: -.01em; border-bottom: 1.5px solid var(--ink); }
+.ledger .col h3 { display: flex; align-items: center; gap: 10px; margin: 0; padding: 0 0 14px; font-family: var(--display); font-weight: 600; font-size: 17px; letter-spacing: -.01em; }
 .ledger ol { list-style: none; margin: 0; padding: 0; }
 .ledger li { display: grid; grid-template-columns: 36px 1fr; gap: 6px; padding: 18px 0; border-bottom: 1px solid var(--line); }
 .ledger .n { font-family: var(--mono); font-size: 12px; color: var(--muted); padding-top: 3px; }
@@ -164,6 +164,8 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 .faq { border-top: 1px solid var(--line); }
 .faq details { border-bottom: 1px solid var(--line); padding: 18px 2px; }
 .faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 18px; font-family: var(--display); font-weight: 500; font-size: 18px; letter-spacing: -.01em; }
+.faq summary h3 { font: inherit; letter-spacing: inherit; margin: 0; }
+.sec h2.eyebrow { font-family: var(--mono); font-size: 12px; font-weight: 400; letter-spacing: .1em; line-height: 1.4; margin: 0 0 12px; }
 .faq summary::-webkit-details-marker { display: none; }
 .faq summary::after { content: "+"; font-family: var(--mono); color: var(--muted); font-size: 20px; line-height: 1; transition: transform .2s ease; }
 .faq details[open] summary::after { transform: rotate(45deg); }

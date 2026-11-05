@@ -232,7 +232,7 @@ def _page_body(key: str, base: str) -> str:
         return "".join(f'<li><span class="n">{i:02d}</span><p><b>{_e(a)}</b> {_e(b)}</p></li>'
                        for i, (a, b) in enumerate(items, 1))
 
-    faq = "".join(f"<details><summary>{_e(q)}</summary><p>{_e(a)}</p></details>" for q, a in c["faq"])
+    faq = "".join(f"<details><summary><h3>{_e(q)}</h3></summary><p>{_e(a)}</p></details>" for q, a in c["faq"])
     sources = "".join(
         f'<li><a href="{_e(u)}" rel="nofollow noopener" target="_blank">{_e(lab)}</a><small>{_e(u)}</small></li>'
         for lab, u in c["sources"])
@@ -251,11 +251,11 @@ def _page_body(key: str, base: str) -> str:
   <div class="ctas"><a class="pill dark" href="/app?ref=compare-{cp.page_slug(key)}">Try treg free — $1.00 credit</a><a class="pill" href="#side-by-side">See the side by side ↓</a></div>
 </header>
 
-<nav class="jump" aria-label="On this page"><a href="#answer">Short answer</a><a href="#fit">Which one fits</a><a href="#side-by-side">Side by side</a><a href="#their-strengths">Where {_e(short)} is better</a><a href="#treg-differs">Where treg differs</a><a href="#both">Using both</a><a href="#faq">Questions</a><a href="#sources">Sources</a></nav>
+<nav class="jump" aria-label="On this page"><a href="#answer">Short answer</a><a href="#fit">Which one fits</a><a href="#side-by-side">Side by side</a><a href="#their-strengths">Where {_e(short)} does best</a><a href="#treg-differs">Where treg is the better choice</a><a href="#both">Using both</a><a href="#faq">FAQ</a><a href="#sources">Sources</a></nav>
 
 <main>
 <section class="sec" id="answer"><div class="wrap">
-  <div class="answer rv"><p class="eyebrow">The short answer</p><p>{_e(c["tldr"])}</p></div>
+  <div class="answer rv"><h2 class="eyebrow">treg vs {_e(short)}: the short answer</h2><p>{_e(c["tldr"])}</p></div>
   {note}
 </div></section>
 
@@ -269,7 +269,7 @@ def _page_body(key: str, base: str) -> str:
 </div></section>
 
 <section class="sec" id="side-by-side"><div class="wrap">
-  <h2 class="rv">Side by side</h2>
+  <h2 class="rv">treg vs {_e(short)}, side by side</h2>
   <p class="lede rv">Each {_e(short)} cell restates {_e(name)}'s own public pages on {cp.checked_label(key)}. "Not published" means those pages say nothing about it, not that the feature does not exist.</p>
   <div class="tablewrap rv"><table class="vs-table">
     <thead><tr><th scope="col"><span class="sr">Feature</span></th><th scope="col" class="us"><span>{_treg_mono()}treg</span></th><th scope="col"><span>{_mono(key)}{_e(short)}</span></th></tr></thead>
@@ -289,11 +289,11 @@ def _page_body(key: str, base: str) -> str:
   <h2 class="rv">What each one does better</h2>
   <div class="ledger rv">
     <div class="col them" id="their-strengths">
-      <h3>{_mono(key)}Where {_e(short)} is the better choice</h3>
+      <h3>{_mono(key)}Where {_e(short)} does best</h3>
       <ol>{li_pairs(c["better"])}</ol>
     </div>
     <div class="col us" id="treg-differs">
-      <h3>{_treg_mono()}Where treg is different</h3>
+      <h3>{_treg_mono()}Where treg is the better choice</h3>
       <ol>{li_pairs(c["different"])}</ol>
     </div>
   </div>
@@ -301,7 +301,7 @@ def _page_body(key: str, base: str) -> str:
 
 <section class="sec" id="both"><div class="wrap">
   <div class="both rv">
-    <div><p class="eyebrow" style="color:#8B8985">Not either-or</p><h2>Using both</h2><p>{_e(c["both"])}</p></div>
+    <div><p class="eyebrow" style="color:#8B8985">Not either-or</p><h2>Using {_e(short)} and treg together</h2><p>{_e(c["both"])}</p></div>
     <div class="flow" aria-hidden="true">
       <div class="agent">your agent</div>
       <div class="lanes">
@@ -313,7 +313,7 @@ def _page_body(key: str, base: str) -> str:
 </div></section>
 
 <section class="setup rv" id="setup">
-  <h2>Give your agent<br>every tool in the catalog.</h2>
+  <h2>Give your agent <br>every tool in the catalog.</h2>
   <div class="cmd-tabs" role="tablist">
     <button type="button" role="tab" aria-selected="true" data-tab="agent"><span class="ct-ico"><img src="/media/people-search/claude-code.png" alt="" width="18" height="18"><img src="/media/people-search/codex.png" alt="" width="18" height="18"><img src="/media/people-search/openclaw.png" alt="" width="18" height="18"></span>Connect to your agent</button>
     <button type="button" role="tab" aria-selected="false" data-tab="dev">Developers</button>
@@ -328,13 +328,13 @@ def _page_body(key: str, base: str) -> str:
 </section>
 
 <section class="sec" id="faq"><div class="wrap narrow">
-  <h2 class="rv">Questions</h2>
+  <h2 class="rv">Frequently Asked Questions</h2>
   <div class="faq rv">{faq}</div>
 </div></section>
 
 <section class="sec" id="sources"><div class="wrap narrow">
   <div class="sources rv">
-    <p class="eyebrow">Sources and method</p>
+    <h2 class="eyebrow">Sources and method</h2>
     <ol>{sources}</ol>
     <p>We read these pages on {cp.checked_label(key)}. treg's own facts come from its <a href="/pricing">pricing</a>, <a href="/terms">terms</a> and <a href="{_GH}" target="_blank" rel="noopener">code</a>. We left out what we could not check, and we do not guess why a product works the way it does.</p>
     <p>Something wrong or out of date? Write to <a href="mailto:{cp.CORRECTIONS}?subject=Correction%3A%20treg%20vs%20{_e(short)}">{cp.CORRECTIONS}</a> and we will fix it. The same page as text: <a href="/compare/{cp.page_slug(key)}.md">markdown</a>.</p>
@@ -377,21 +377,21 @@ def _page_md(key: str, base: str) -> str:
     short = cp.short(key)
     out = [f"# treg vs {short}", "", c["sub"], "",
            f"Read from {c['name']}'s public pages on {cp.checked_label(key)}. HTML page: "
-           f"{base}/compare/{cp.page_slug(key)}", "", "## The short answer", "", c["tldr"], ""]
+           f"{base}/compare/{cp.page_slug(key)}", "", f"## treg vs {short}: the short answer", "", c["tldr"], ""]
     if c.get("note"):
         out += [f"Recent change: {c['note']}", ""]
     out += ["## Which one fits", "", f"Choose {short} if:", ""]
     out += [f"- {x}" for x in c["fit_them"]] + ["", "Choose treg if:", ""]
-    out += [f"- {x}" for x in c["fit_treg"]] + ["", "## Side by side", "",
+    out += [f"- {x}" for x in c["fit_treg"]] + ["", f"## treg vs {short}, side by side", "",
             '"Not published" means the product\'s pages say nothing about it.', ""]
     for group, items in cp.rows_for(key):
         out += [f"### {group}", "", f"| | treg | {short} |", "|---|---|---|"]
         out += [f"| {label} | {_cell(key, row, True)} | {_cell(key, row, False)} |" for row, label in items]
         out.append("")
-    out += [f"## Where {short} is the better choice", ""]
+    out += [f"## Where {short} does best", ""]
     out += [f"- **{a}** {b}" for a, b in c["better"]]
-    out += ["", "## Where treg is different", ""] + [f"- **{a}** {b}" for a, b in c["different"]]
-    out += ["", "## Using both", "", c["both"], "", "## Questions", ""]
+    out += ["", "## Where treg is the better choice", ""] + [f"- **{a}** {b}" for a, b in c["different"]]
+    out += ["", f"## Using {short} and treg together", "", c["both"], "", "## Frequently Asked Questions", ""]
     for q, a in c["faq"]:
         out += [f"### {q}", "", a, ""]
     out += ["## Sources and method", ""]
