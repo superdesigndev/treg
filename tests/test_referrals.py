@@ -402,15 +402,15 @@ async def test_dispute_inside_the_hold_cancels_the_referrers_half(c, monkeypatch
 
 
 async def test_dispute_does_not_touch_the_balance(c, monkeypatch):
-    """The clawback cancels a BONUS, never a top-up. treg has no path that drives a balance
-    negative, and refunding a payment is a human decision — that boundary is deliberate."""
+    """A dispute cancels a pending BONUS but leaves the top-up's credit alone: a won dispute returns
+    the money, and the ledger has no entry that would give revoked credit back."""
     _, _, code = await _ready_referrer(c, monkeypatch)
     bob_org, bob_token = await _signup(c, "bob@example.com", ref=code)
     await _topup(c, monkeypatch, bob_org, pi="pi_bob", fingerprint="fp_bob")
     async with session_maker() as db:
         before = await ledger.balance_of(db, bob_org)
-    await _deliver(c, {"id": "evt_d1", "type": "charge.refunded", "data": {"object": {
-        "id": "ch_1", "object": "charge", "payment_intent": "pi_bob"}}})
+    await _deliver(c, {"id": "evt_d1", "type": "charge.dispute.created", "data": {"object": {
+        "id": "dp_1", "object": "dispute", "charge": "ch_1", "payment_intent": "pi_bob"}}})
     async with session_maker() as db:
         assert await ledger.balance_of(db, bob_org) == before
 
