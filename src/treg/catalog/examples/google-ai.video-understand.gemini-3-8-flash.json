@@ -1,0 +1,35 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "A man stands in front of an elephant enclosure at a zoo, discussing the elephants' trunks.",
+            "thoughtSignature": "EmkKZwFpFH0Te90yCXyxHxfFzVfLDWU38L1+bDQvIq7HW99EQtRfAULRcos6XPvSCyEEOXIyvKeAsorrt1dp0fkS7V0Hl7f5x8Z3+V6reQ37J2puq0zRKfYGFsXADjMW3fbrDhE/R07E200="
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 1684,
+    "candidatesTokenCount": 19,
+    "totalTokenCount": 1703,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 8
+      },
+      {
+        "modality": "VIDEO",
+        "tokenCount": 1676
+      }
+    ],
+    "serviceTier": "standard"
+  },
+  "modelVersion": "gemini-3.8-flash",
+  "responseId": "P2zsarPtA_iwqtsP0bGjuQ8"
+}
