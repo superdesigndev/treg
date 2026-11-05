@@ -2449,6 +2449,35 @@ async def test_the_trial_allowance_bites_at_the_fx_number(clients: AsyncClient, 
     assert await _balance(clients) == before
 
 
+async def test_a_team_at_its_trial_allowance_is_refused_without_counting_its_day_again(
+        clients: AsyncClient, trial_on, monkeypatch):
+    from sqlalchemy import event
+    from treg.models import CallRecord
+
+    async with session_maker() as db:
+        for _ in range(50):
+            db.add(CallRecord(org_id=1, user_email="u@example.com", tool_name="finnhub.quote",
+                              method="GET", path="/quote", status_code=200,
+                              credential_tier="platform"))
+        await db.commit()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"c": 1}'))
+    assert (await clients.get("/call/finnhub.quote?symbol=AAPL")).status_code == 429
+    counts = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        if "count(callrecord.id)" in statement:
+            counts.append(statement)
+
+    engine = session_maker.kw["bind"].sync_engine
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        r = await clients.get("/call/finnhub.quote?symbol=AAPL")
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert r.status_code == 429 and r.json()["detail"]["used_today"] == 50
+    assert counts == []
+
+
 async def test_failures_alone_never_exhaust_a_trial(clients: AsyncClient, trial_on, monkeypatch):
     from treg.models import CallRecord
 
