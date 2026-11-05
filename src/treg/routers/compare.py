@@ -395,7 +395,8 @@ def _page_body(key: str, base: str) -> str:
     <h2 class="eyebrow">Sources and method</h2>
     <ol>{sources}</ol>
     <p>We read these pages on {cp.checked_label(key)}. treg's own facts come from its <a href="/pricing">pricing</a>, <a href="/terms">terms</a> and <a href="{_GH}" target="_blank" rel="noopener">code</a>. We left out what we could not check, and we do not guess why a product works the way it does.</p>
-    <p>Something wrong or out of date? Write to <a href="mailto:{cp.CORRECTIONS}?subject=Correction%3A%20treg%20vs%20{_e(short)}">{cp.CORRECTIONS}</a> and we will fix it. The same page as text: <a href="/compare/{cp.page_slug(key)}.md">markdown</a>.</p>
+    <p>Something wrong or out of date? Write to <a href="mailto:{cp.CORRECTIONS}?subject=Correction%3A%20treg%20vs%20{_e(short)}">{cp.CORRECTIONS}</a> and we will fix it.</p>
+    <div class="mdbar"><span class="mdlab">This page as markdown, for your agent or notes</span><button type="button" class="pill" data-md="/compare/{cp.page_slug(key)}.md"><span class="lbl">Copy markdown</span><svg class="ico" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 3.2V3A1.5 1.5 0 0 0 9 1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button><a class="pill" href="/compare/{cp.page_slug(key)}.md" target="_blank" rel="noopener">Open markdown ↗</a></div>
   </div>
 </div></section>
 

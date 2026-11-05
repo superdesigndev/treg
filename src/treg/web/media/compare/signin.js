@@ -56,3 +56,16 @@
       .catch(function (e2) { err.textContent = e2.message; btn2.textContent = 'Sign in'; });
   }
 })();
+
+/* "Copy markdown": the page's .md twin, to the clipboard. */
+(function () {
+  [].slice.call(document.querySelectorAll('[data-md]')).forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      fetch(btn.getAttribute('data-md')).then(function (r) { return r.text(); })
+        .then(function (t) { return navigator.clipboard.writeText(t); })
+        .then(function () { var l = btn.querySelector('.lbl'); l.textContent = 'Copied ✓'; btn.classList.add('ok');
+          setTimeout(function () { l.textContent = 'Copy markdown'; btn.classList.remove('ok'); }, 1800); })
+        .catch(function () { location.href = btn.getAttribute('data-md'); });
+    });
+  });
+})();

@@ -145,6 +145,9 @@ async def test_each_page_has_a_markdown_twin_kept_out_of_the_index(clients: Asyn
         assert r.status_code == 200 and r.headers["x-robots-tag"] == "noindex"
         assert r.text.startswith(f"# treg vs {cp.short(key)}") and "{ENDPOINTS}" not in r.text
         assert _fill_headline(c["tldr"]) in r.text
+        page = (await clients.get(f"/compare/{cp.page_slug(key)}")).text
+        assert f'data-md="/compare/{cp.page_slug(key)}.md"' in page, key   # Copy markdown
+        assert f'href="/compare/{cp.page_slug(key)}.md"' in page, key     # Open markdown
 
 
 @pytest.mark.parametrize("path", ["/compare/clay", "/compare/treg-vs-nobody", "/compare/treg-vs-clay.txt"])
