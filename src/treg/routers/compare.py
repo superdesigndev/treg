@@ -266,7 +266,6 @@ def _page_body(key: str, base: str) -> str:
   <div class="ctas"><a class="pill dark" href="/app?ref=compare-{cp.page_slug(key)}">Try treg free — $1.00 credit</a><a class="pill" href="#side-by-side">See the side by side ↓</a></div>
 </header>
 
-<nav class="jump" aria-label="On this page"><a href="#answer">Short answer</a><a href="#fit">Which one fits</a><a href="#side-by-side">Side by side</a><a href="#their-strengths">Where {_e(short)} does best</a><a href="#treg-differs">Where treg is the better choice</a><a href="#both">Using both</a><a href="#faq">FAQ</a><a href="#sources">Sources</a></nav>
 
 <main>
 <section class="sec" id="answer"><div class="wrap">

@@ -43,6 +43,8 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
     radial-gradient(40% 50% at 22% 30%, rgba(17,132,83,.16), transparent 70%),
     radial-gradient(36% 46% at 80% 26%, var(--them-soft, rgba(99,102,241,.14)), transparent 70%),
     radial-gradient(50% 40% at 50% 90%, rgba(232,200,150,.18), transparent 70%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent);
   }
 .hero h1 { font-family: var(--pixel); font-weight: 400; letter-spacing: -.02em; font-size: clamp(40px, 7vw, 84px); line-height: 1.04; margin: 0 0 18px; text-wrap: balance; }
 .hero h1 .vs { color: var(--muted); font-size: .62em; vertical-align: .14em; margin: 0 .12em; }
@@ -73,13 +75,10 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 }
 @media (prefers-reduced-motion: reduce) { .spec { opacity: 1; transform: none; transition: none; } }
 
-/* jump links */
-.jump { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 0 auto; padding: 0 24px; }
-.jump a { font-size: 13px; text-decoration: none; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--body); }
-.jump a:hover { background: var(--card); color: var(--ink); }
 
 /* sections */
 .sec { padding: 88px 0 0; }
+.hero + main > .sec:first-child { padding-top: 24px; }
 .sec h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; font-size: clamp(28px, 4vw, 40px); line-height: 1.12; margin: 0 0 12px; text-wrap: balance; }
 .sec .lede { color: var(--muted); font-size: 16.5px; max-width: 62ch; margin: 0 0 32px; }
 .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
