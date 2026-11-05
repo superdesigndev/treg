@@ -237,8 +237,8 @@ naming only the host the caller supplied, never the hidden tool.
 
 A named miss falls through, in order: an exact catalog endpoint, then, only for a top-level call
 (`child_of is None`), a hub tool (`<team-slug>.<name>`). An own tool or catalog id always wins; a
-hub tool never shadows either. Hub runs take a per-team `hub_limits.slot()` and refuse with
-`429 hub_busy` past `MAX_RUNS_PER_TEAM` rather than queue ([hub](hub.md)).
+hub tool never shadows either. Hub runs take a per-team and per-tool `hub_limits.slot()` and refuse
+with `429 hub_busy` past either cap rather than queue ([hub](hub.md)).
 
 Named-miss diagnostics, all on the error path:
 

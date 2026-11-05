@@ -840,16 +840,12 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         try:
             body_bytes = await _await_before_reserve(request.body(), request, call_ref)
             try:
-                with hub_limits.slot(caller.org_id):
+                async with hub_limits.slot(caller.org_id, hub_row.tool_id):
                     response, charged = await hub_runner.run_hub_tool(
                         request.context, hub_row, body_bytes, request.headers.get, upstream_client,
                         execute_call, audit_client=_client_name(request))
-            except hub_limits.TeamBusy as busy:
-                raise ResolutionFailed("hub_busy", status_code=429, detail={
-                    "error": "hub_busy", "active": busy.active,
-                    "max": hub_limits.MAX_RUNS_PER_TEAM, "retry_after_s": hub_limits.RETRY_AFTER_S,
-                    "message": f"your team already has {busy.active} hub runs in flight; "
-                               f"try again in {hub_limits.RETRY_AFTER_S} s"}) from None
+            except hub_limits.HubBusy as busy:
+                raise ResolutionFailed("hub_busy", status_code=429, detail=busy.detail()) from None
         except asyncio.CancelledError:
             await _finish_cancelled_call(request, None, call_ref)
             raise
