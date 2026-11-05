@@ -35,6 +35,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Policy extensions - decision points a private abuse policy can plug into](architecture/policy-extensions.md) | shipped | policy.py, bootstrap.py, signup.py, promotions.py, … |
 | [The proxy - faithful credential-injecting relay + tool resolution](architecture/proxy-model.md) | shipped | relay.py, jsontext.py, ssrf.py, api.py, … |
 | [Replay - recorded exchanges re-run through one checkout's billing, outcome and routing code](architecture/replay.md) | shipped | __init__.py, __main__.py, records.py, engine.py, … |
+| [Route rules - a published provider order per segment of a routed capability](architecture/route-rules.md) | building | rules.py, route_rules.py, route.py, call_events.py, … |
 | [Shadow provider - a candidate asked the same question as served calls, after the fact, and compared](architecture/shadow.md) | building | shadow.py, shadow.py, 0086_shadow_pairs.py, test_shadow.py |
 | [Showcase leaderboard and pictures - applications, review, votes, avatars](architecture/showcase.md) | shipped | __init__.py, showcase.py, showcase.py, __init__.py, … |
 | [Super-admin - cross-tenant read + control](architecture/super-admin.md) | shipped | api.py, admin.py, evidence_retention.py, access.py, … |

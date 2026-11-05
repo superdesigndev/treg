@@ -29,8 +29,9 @@ from treg.infra.db import session_maker
 from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing import paths as P
 from treg.domain.catalog.routing.contracts import canonical_identity, parse_contracts
-from treg.domain.catalog.routing.plan import Candidate, cost_at, rank, sampled_provider_allowed
+from treg.domain.catalog.routing.plan import UNMEASURED_HIT_PRIOR, Candidate, cost_at, rank, sampled_provider_allowed
 from treg.infra.catalog_observations import CachedEndpointObservationReader
+from treg.infra.upstream import relay as relay_module
 from treg.models import CallRecord, Hold, LedgerEntry, OverflowRoute
 from treg.timeutil import utcnow_naive
 
@@ -79,6 +80,8 @@ def _relay_by_provider(answers: dict[str, list[tuple[int, dict]]], seen: list):
     """A fake upstream keyed by the vendor host: each provider answers its scripted list in order."""
     async def _relay(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False):
         provider = next((p for p in answers if p != "*" and p in upstream_url), "*")  # "*": any other vendor
+        if (on_send := relay_module.ON_SEND.get()) is not None:
+            on_send()  # as the real relay does once its local checks pass
         body = b""
         async for chunk in request.body_stream():
             body += chunk
@@ -183,6 +186,27 @@ def test_a_row_map_puts_every_provider_row_in_the_contract_shape():
     endpoint = {"test_request": {"body": {"q": "x"}}}
     assert C.verify(stray, contract, endpoint, {"items": [{"first": "A"}]}) == (False, "row: fields outside the contract's row: ['age']")
     assert C.verify(ad, contract, endpoint, {"items": [{"first": "A"}]})[0] is True
+
+
+def test_an_instagram_search_row_keeps_its_field_names_and_drops_picture_urls():
+    """instagram.search.users rows: an agent picks accounts by audience size and bio. The provider's
+    picture URL and bio-link metadata were most of each row's tokens and told it nothing."""
+    ad = catalog_store.load().adapters["scrapecreators.x.v1-instagram-search-profiles"]
+    assert ad.verified, ad.verify_note
+    row = ad.from_upstream({"profiles": [{
+        "username": "ada", "full_name": "Ada", "url": "https://www.instagram.com/ada/", "follower_count": 12000,
+        "media_count": 300, "biography": "coffee roaster", "is_private": False, "is_professional_account": True,
+        "profile_pic_url": "https://scontent.cdninstagram.com/" + "x" * 400,
+        "bio_links": [{"url": "https://linktr.ee/ada", "lynx_url": "https://l.instagram.com/" + "y" * 300}]}]})["users"][0]
+    assert row == {"username": "ada", "full_name": "Ada", "url": "https://www.instagram.com/ada/", "follower_count": 12000,
+                   "media_count": 300, "biography": "coffee roaster", "is_private": False,
+                   "is_professional_account": True}, "the provider's own names, so existing readers still work"
+    # a link is never cut: a 305-character URL cut to 300 points at another resource
+    long_url = "https://example.com/" + "a" * 275 + "?id=target"
+    row2 = ad.from_upstream({"profiles": [{"username": "bo", "url": "https://www.instagram.com/bo/",
+                                           "external_url": long_url, "biography": "b " * 400}]})["users"][0]
+    assert row2["external_url"] == long_url and len(long_url) > 300
+    assert len(row2["biography"]) == 300, "text is still cut"
 
 
 def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
@@ -517,6 +541,37 @@ def test_cost_at_and_ranking_math():
     assert [c.endpoint["id"] for c in rank([a, b], exclude=["a"])] == ["b.x"]
     a.exhausted = True
     assert [c.endpoint["id"] for c in rank([a, b])] == ["b.x"]
+
+
+def test_an_unmeasured_child_ranks_on_the_prior_not_on_a_certain_hit():
+    def child(i, price, hit_rate=None, ok_rate=None, t="per_call"):
+        return Candidate({"id": i, "provider": i.split(".")[0], "cost": {"type": t}}, None, ("video_id",),
+                         "platform", price, hit_rate=hit_rate, ok_rate=ok_rate, p50_ms=None, last_ok_days=None)
+    measured = child("measured.x", 1_000, hit_rate=0.96, ok_rate=1.0)
+    seen_twice = child("seen.x", 1_000)
+    works = child("works.x", 1_000, ok_rate=0.9)
+    cheap = child("cheap.x", 400)
+    per_success = child("free_miss.x", 1_000, t="per_success")
+    assert seen_twice.expected_cost_per_hit == pytest.approx(1_000 / UNMEASURED_HIT_PRIOR)
+    assert works.expected_cost_per_hit == pytest.approx(1_000 / (UNMEASURED_HIT_PRIOR * 0.9)), "the ok rate still counts"
+    assert per_success.expected_cost_per_hit == pytest.approx(1_000), "a miss it never bills costs nothing"
+    assert [c.endpoint["id"] for c in rank([seen_twice, works, measured])] == ["measured.x", "seen.x", "works.x"]
+    assert rank([measured, cheap])[0] is cheap, "a child cheap enough is still tried first, so it can be measured"
+
+
+def test_a_hit_rate_counts_from_the_publication_floor():
+    from treg.domain.catalog import stats
+
+    def ranked(hit_decided):
+        published = stats.publish(["new.x"], {"new.x": stats.Tally(n=hit_decided, ok=hit_decided,
+                                                                  hits=hit_decided, hit_decided=hit_decided)})
+        new = Candidate({"id": "new.x", "provider": "new", "cost": {"type": "per_call"}}, None, ("video_id",),
+                        "platform", 1_000, published["new.x"]["hit_rate"], published["new.x"]["ok_rate"], None, None)
+        old = Candidate({"id": "old.x", "provider": "old", "cost": {"type": "per_call"}}, None, ("video_id",),
+                        "platform", 1_000, 0.96, 1.0, None, None)
+        return [c.endpoint["id"] for c in rank([new, old])]
+    assert ranked(stats.MIN_HIT_SAMPLES - 1) == ["old.x", "new.x"]
+    assert ranked(stats.MIN_HIT_SAMPLES) == ["new.x", "old.x"]
 
 
 def test_sampled_provider_is_stable_and_applies_per_provider():
@@ -1540,7 +1595,7 @@ def test_a_one_subject_lookup_ranks_cheapest_per_hit_first_whatever_keys_a_child
     """A caller holding a LinkedIn URL, a name and a domain sent phone finds to a name+domain child
     at ~$0.25 ahead of LinkedIn children at a fraction of a cent that hit on the same people:
     specificity ranked ahead of price. On a one-subject lookup every variant names the same
-    person, so price per hit leads and the plan is in ascending price order."""
+    person, so price per hit leads and the plan is in ascending order of it."""
     from treg.domain.catalog.routing.plan import candidates_for
     cat = catalog_store.load()
     contract = cat.contracts[capability]
@@ -1554,8 +1609,8 @@ def test_a_one_subject_lookup_ranks_cheapest_per_hit_first_whatever_keys_a_child
                        price_micro=cost_at(cat.cost_view(e.get("cost"), e["provider"]), ident, ad),
                        hit_rate=None, ok_rate=None, p50_ms=None, last_ok_days=None) for e, ad, v in raw]
     ranked = rank(cands, given=set(sent), derive=contract.derive, one_subject=contract.one_subject)
-    prices = [c.price_micro for c in ranked]
-    assert prices == sorted(prices), [(c.endpoint["id"], c.price_micro) for c in ranked]
+    costs = [c.expected_cost_per_hit for c in ranked]
+    assert costs == sorted(costs), [(c.endpoint["id"], c.expected_cost_per_hit) for c in ranked]
     # a search keeps specificity first: the flag is what changes the order, not the price data
     assert not cat.contracts["people.search"].one_subject
 
@@ -2118,18 +2173,24 @@ def test_a_per_success_endpoint_with_no_adapter_settles_on_the_providers_own_suc
     caller."""
     from test_marketplace_call import _mk
     from treg.application.call import settle as A
+    from treg.application.call.resolve import QueryValues
+    from treg.application.replay.engine import platform_call
     cat = catalog_store.load()
     eid = "justoneapi.x.linkedin-search-user-v1"
     ep = cat.by_id[eid]
     assert (ep.get("cost") or {}).get("type") == "per_success" and cat.adapters.get(eid) is None, \
         "the shape this rule exists for: priced per success, no adapter to ask"
-    assert ep.get("expect") == {"json_path": "code", "equals": 0}, "the loader must carry the rule"
+    assert ep.get("expect") == {"path": "response.code", "op": "equals", "value": 0}, \
+        "the row inherits its provider's rule"
 
-    mk = _mk("justoneapi", endpoint_id=eid, cost_type="per_success")
+    mk = platform_call(ep, QueryValues(()), b"", set(), routed_child=False)
     fail = b'{"code": 301, "data": null, "message": "COLLECT FAILED, SEND REQUEST AGAIN"}'
-    assert A._observed_cost_micro(mk, fail) == 0, "a vendor-side failure the vendor does not bill"
+    decision = A.decide_settle(mk, 200, fail)
+    assert (decision.observed_micro, decision.actual_micro) == (0, 0), \
+        "a vendor-side failure the vendor does not bill"
     ok = b'{"code": 0, "data": {"users": [{"name": "Ada"}]}}'
-    assert A._observed_cost_micro(mk, ok) is None, "a real hit still settles at the estimate"
+    assert A.decide_settle(mk, 200, ok).actual_micro == mk.estimate_micro > 0, \
+        "a real hit still settles at the estimate"
 
     # a nested rule form (dataforseo's task envelope) reads the same way
     dfs = [e for e in cat.by_id.values()

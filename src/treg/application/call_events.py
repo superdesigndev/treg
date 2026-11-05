@@ -198,8 +198,9 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
     return given
 
 
-def input_columns(contract: Contract, given: dict) -> tuple[dict, dict]:
-    """(input columns, the normalized identity) for what the caller asked."""
+def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str], dict]:
+    """(`input_type`, `input_meta`, the normalized identity): the segment a call is in, with no
+    hashing, so published route rules match calls exactly as their events record them."""
     identity, _ = canonical_identity(contract, given or {})
     norm = {k: n for k in contract.identity_types
             if (n := normalize(k, identity.get(k))) is not None}
@@ -214,8 +215,65 @@ def input_columns(contract: Contract, given: dict) -> tuple[dict, dict]:
     for k, spec in (contract.filters or {}).items():
         if (spec or {}).get("analytics") == "value" and (s := _stringify(identity.get(k))) is not None:
             meta[k] = s
+    return ("+".join(variant) if variant else None), meta, norm
+
+
+_DOMAIN_CLASSES = frozenset({"company", "webmail", "edu", "gov"})
+# Placeholder values for asking which variant a call carrying some identity fields is recorded as.
+_SAMPLE = {"linkedin_url": "https://www.linkedin.com/in/example-person", "email": "ann.lee@example.com",
+           "domain": "example.com", "company_domain": "example.com", "website": "https://example.com",
+           "url": "https://example.com", "phone": "+14155550100", "full_name": "Ann Lee",
+           "first_name": "Ann", "last_name": "Lee"}
+_SAMPLE_BY_TYPE = {"bool": True, "list": ["example"], "object": {"type": "object"}}
+
+
+def _sample(contract: Contract, key: str):
+    return _SAMPLE.get(key, _SAMPLE_BY_TYPE.get(str(contract.identity_types.get(key)), "example"))
+
+
+def recorded_variants(contract: Contract) -> dict[str, dict]:
+    """Each `input_type` this contract's calls can be recorded as, with the widest identity a call
+    recorded as it can carry. A variant an earlier one always shadows (`{ai_overview, q}` behind
+    `{q}`) is never recorded and is absent."""
+    out: dict[str, dict] = {}
+    for variant in contract.identity:
+        name = "+".join(variant)
+        fields = {k: _sample(contract, k) for k in variant}
+        if segment(contract, fields)[0] != name:
+            continue
+        for key in contract.identity_types:
+            if key not in fields and segment(contract, {**fields, key: _sample(contract, key)})[0] == name:
+                fields[key] = _sample(contract, key)
+        out[name] = fields
+    return out
+
+
+def _tld(value: str) -> bool:
+    # The last label of a lower-cased host, as `segment` records it: an internationalized name
+    # stays in its own script.
+    return 0 < len(value) <= 63 and value == value.lower() and "." not in value \
+        and not any(c.isspace() for c in value)
+
+
+def segment_checks(contract: Contract) -> dict:
+    """Every key `segment` can produce for this contract's calls, each with a test of a value it
+    can record: a recorded variant for `input_type`, a lower-cased label for `tld`."""
+    checks: dict = {"input_type": recorded_variants(contract).__contains__}
+    if any(k in contract.identity_types for k in (*_DOMAIN_KEYS, "email")):
+        checks["tld"] = _tld
+        checks["domain_class"] = _DOMAIN_CLASSES.__contains__
+    for k, spec in (contract.filters or {}).items():
+        if (spec or {}).get("analytics") == "value":
+            checks[k] = lambda v: True
+    return checks
+
+
+def input_columns(contract: Contract, given: dict) -> tuple[dict, dict]:
+    """(input columns, the normalized identity) for what the caller asked."""
+    input_type, meta, norm = segment(contract, given)
+    variant = tuple(input_type.split("+")) if input_type else None
     cols = {
-        "input_type": "+".join(variant) if variant else None,
+        "input_type": input_type,
         "input_id": (keyed("\x1f".join(f"{k}={norm[k]}" for k in variant)) if variant else None),
         "input_keys": {k: keyed(v) for k, v in norm.items()} or None,
         "input_meta": meta or None,
@@ -268,14 +326,17 @@ def emit(kind: str, *, org_id: int | None, endpoint_id: str | None, call_ref: st
          request_body: bytes | None = None, identity: dict | None = None,
          answer_status: int | None = None, answer_body: bytes | None = None,
          output: dict | None = None, answers_allowed: bool = True, retained_extra: int = 0,
-         **columns: Any) -> None:
+         route_rule: dict[str, str] | None = None, **columns: Any) -> None:
     """Queue one event. Cheap and never raising: the bodies are read later, in the flusher.
 
     `identity` (a routed parent's caller fields) or `query_items` + `request_body` (a direct
     call's vendor request) say what was asked; `output` (a routed parent's core) or
     `answer_status` + `answer_body` (a vendor answer) what came back. Everything the builder
     keeps alive counts against the sink's byte budget: the bodies, the query, and
-    `retained_extra` (the serialized size of `identity` and `output`, which the caller knows)."""
+    `retained_extra` (the serialized size of `identity` and `output`, which the caller knows).
+    `route_rule` (a routed parent's ordering: `route_order`, which of header, rule, quality or
+    default decided it, plus `route_rules_version` and `route_rule` when published rules are on)
+    joins `input_meta`, so analysis can split a segment by the rules it ran under."""
     try:
         if not sink.enabled():
             return
@@ -295,8 +356,11 @@ def emit(kind: str, *, org_id: int | None, endpoint_id: str | None, call_ref: st
                     + sum(len(k) + len(v) for k, v in query))
 
         def build() -> dict:
-            return _derived(endpoint_id, capability, query, request_body, identity,
-                            answer_status, answer_body, output, answers_allowed)
+            out = _derived(endpoint_id, capability, query, request_body, identity,
+                           answer_status, answer_body, output, answers_allowed)
+            if route_rule:
+                out["input_meta"] = {**(out.get("input_meta") or {}), **route_rule}
+            return out
 
         sink.emit(event, build, retained_bytes=retained)
     except Exception:  # noqa: BLE001 — an event must never surface into a call

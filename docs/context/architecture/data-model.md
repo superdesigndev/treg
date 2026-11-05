@@ -59,6 +59,7 @@ sources:
   - src/treg/alembic/versions/0072_callrecord_call_ref_index.py
   - src/treg/alembic/versions/0073_org_flow_control_version.py
   - tests/test_org_flow_control_schema.py
+  - src/treg/alembic/versions/0096_route_rule_version.py
   - src/treg/alembic/versions/0075_ad_click_stash.py
   - src/treg/alembic/versions/0079_enterprise_sso.py
   - src/treg/alembic/versions/0082_oauth_sso_provenance.py
@@ -192,6 +193,14 @@ snapshots immutable are the management writer's job; the schema does not prevent
 updates. `org_id` has no foreign key, keeping the table independent of locks on the balance table,
 so `cascade_delete_org` removes this history explicitly, and the writer must validate Org existence
 and coordinate saves with Org deletion. A schema downgrade deletes the saved history.
+
+## Route rule storage
+
+`RouteRuleVersion` is keyed by `version` alone: one global rule set. The schema enforces positive
+versions, a reviewer on every reviewed row, a publisher on every published row, and refuses any
+publication state on a version that is not approved. Allocating versions, validating the rule JSON
+and keeping snapshots immutable are the private admin's job; the call path never reads the table
+([route-rules.md](route-rules.md)). A schema downgrade deletes the saved history.
 
 ## `CallRecord` and `LedgerEntry`: indexes are throughput
 

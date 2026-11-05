@@ -168,6 +168,7 @@ class OrgSnapshot:
     first_call_at: Any
     autotopup_max_per_hour: int = 0
     archive_opt_out_at: Any = None   # set = the team opted out of the archive (archive.md)
+    created_at: Any = None
 
 
 @dataclass(frozen=True)
@@ -229,6 +230,7 @@ class CallerSnapshot:
                 autotopup_max_per_hour=int(getattr(org, 'autotopup_max_per_hour', 0) or 0),
                 archive_opt_out_at=getattr(org, 'archive_opt_out_at', None),
                 first_call_at=org.first_call_at,
+                created_at=getattr(org, "created_at", None),
             ),
             api_key_id=key.id if key else None,
             api_key_name=key.name if key else None,
@@ -304,6 +306,10 @@ class CallContext:
     # A routed parent's outcome for its call event (route.py `_summarize`): identity, output,
     # served_by, tried_count, hit, verdict, check_verdict. Never read by money or relay.
     route_summary: dict | None = None
+    # The request left for the provider (the relay's `ON_SEND`, past every local check), or its
+    # archived answer was served.
+    # A routed parent attributes its order only to children that did (route.py `_note_call`).
+    reached_provider: bool = False
 
 
 @dataclass(frozen=True)

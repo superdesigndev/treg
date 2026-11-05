@@ -4,10 +4,10 @@ source:
   openapi: null # CoinGecko publishes rendered reference pages; paths below transcribed 2026-08-15
   curated: 2026-08-15
 # OWN-KEY-ONLY: treg serves CoinGecko on the caller's own Pro key, never on a shared one.
-# Mechanically: there is NO fx rate for coingecko, so usd stays null and platform_eligible is FALSE
+# Mechanically: coingecko's fx credit rate is null, so usd stays null and platform_eligible is FALSE
 # by construction. A team pasting its own CoinGecko key gets every endpoint below, unmetered.
 # Billing: CoinGecko's usage docs state each successful API request consumes 1 call credit, uniform
-# across the endpoints below — hence every cost block is `per_call, 1 credit, documented`. Errors and
+# across the endpoints below — hence every row is priced 1 credit per call, documented. Errors and
 # rate-limit rejections consume nothing.
 # Host: the PRO host only (pro-api.coingecko.com, header x-cg-pro-api-key — the registry injects it).
 # The demo host answers 200 to anything and demo keys ride a different header; neither is served
@@ -22,6 +22,9 @@ cache:
   license_quote: "We do not encourage caching or storage of Data. However, if you must cache or store Data: You should refresh the cache at least every 24 hours"
   source_url: https://www.coingecko.com/en/api_terms
   checked: "2026-08-27"
+defaults:
+  bill: {miss: charged, error: charged}
+  provenance: {source: docs, source_url: 'https://docs.coingecko.com/reference/common-errors-rate-limit', checked: '2026-08-15', confidence: documented}
 endpoints:
   - id: coingecko.simple.price
     domain: crypto
@@ -40,7 +43,12 @@ endpoints:
         include_24hr_vol: {type: boolean, required: false}
         include_24hr_change: {type: boolean, required: false}
     test_request: {queryParams: {ids: "bitcoin,ethereum", vs_currencies: "usd", include_24hr_change: "true"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://docs.coingecko.com/reference/common-errors-rate-limit", checked: "2026-08-15", confidence: documented, note: "1 credit per successful request, uniform across plan endpoints"}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: call
+      note: 1 credit per successful request, uniform across plan endpoints
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/coingecko.simple.price.json
@@ -58,7 +66,7 @@ endpoints:
     input:
       note: "no parameters"
     test_request: {queryParams: {}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://docs.coingecko.com/reference/common-errors-rate-limit", checked: "2026-08-15", confidence: documented}
+    price: {value: '1', currency: credit, per: 1, unit: call}
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/coingecko.simple.supported-currencies.json
@@ -82,7 +90,7 @@ endpoints:
         page: {type: integer, required: false}
         price_change_percentage: {type: string, required: false, note: "extra change windows: 1h,24h,7d,30d,1y"}
     test_request: {queryParams: {vs_currency: "usd", per_page: "3", page: "1"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://docs.coingecko.com/reference/common-errors-rate-limit", checked: "2026-08-15", confidence: documented}
+    price: {value: '1', currency: credit, per: 1, unit: call}
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/coingecko.coins.markets.json
@@ -106,7 +114,7 @@ endpoints:
         community_data: {type: boolean, required: false}
         developer_data: {type: boolean, required: false}
     test_request: {queryParams: {coin_id: "bitcoin", localization: "false", tickers: "false", market_data: "true", community_data: "false", developer_data: "false"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://docs.coingecko.com/reference/common-errors-rate-limit", checked: "2026-08-15", confidence: documented}
+    price: {value: '1', currency: credit, per: 1, unit: call}
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/coingecko.coins.get.json
@@ -128,7 +136,7 @@ endpoints:
         days: {type: string, required: true, note: "1 | 7 | 30 | 365 | max"}
         interval: {type: string, required: false, note: "daily forces daily points"}
     test_request: {queryParams: {coin_id: "bitcoin", vs_currency: "usd", days: "1"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://docs.coingecko.com/reference/common-errors-rate-limit", checked: "2026-08-15", confidence: documented}
+    price: {value: '1', currency: credit, per: 1, unit: call}
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/coingecko.coins.market-chart.json
@@ -149,7 +157,7 @@ endpoints:
         date: {type: string, required: true, note: "dd-mm-yyyy", example: "01-01-2026"}
         localization: {type: boolean, required: false}
     test_request: {queryParams: {coin_id: "bitcoin", date: "01-01-2026", localization: "false"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://docs.coingecko.com/reference/common-errors-rate-limit", checked: "2026-08-15", confidence: documented}
+    price: {value: '1', currency: credit, per: 1, unit: call}
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/coingecko.coins.history.json
@@ -170,7 +178,7 @@ endpoints:
         vs_currency: {type: string, required: true, example: "usd"}
         days: {type: string, required: true, note: "1 | 7 | 14 | 30 | 90 | 180 | 365"}
     test_request: {queryParams: {coin_id: "bitcoin", vs_currency: "usd", days: "1"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://docs.coingecko.com/reference/common-errors-rate-limit", checked: "2026-08-15", confidence: documented}
+    price: {value: '1', currency: credit, per: 1, unit: call}
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/coingecko.coins.ohlc.json
@@ -189,7 +197,7 @@ endpoints:
       queryParams:
         query: {type: string, required: true, example: "solana"}
     test_request: {queryParams: {query: "solana"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://docs.coingecko.com/reference/common-errors-rate-limit", checked: "2026-08-15", confidence: documented}
+    price: {value: '1', currency: credit, per: 1, unit: call}
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/coingecko.search.json
@@ -207,7 +215,7 @@ endpoints:
     input:
       note: "no parameters"
     test_request: {queryParams: {}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://docs.coingecko.com/reference/common-errors-rate-limit", checked: "2026-08-15", confidence: documented}
+    price: {value: '1', currency: credit, per: 1, unit: call}
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/coingecko.search.trending.json
@@ -225,7 +233,7 @@ endpoints:
     input:
       note: "no parameters"
     test_request: {queryParams: {}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://docs.coingecko.com/reference/common-errors-rate-limit", checked: "2026-08-15", confidence: documented}
+    price: {value: '1', currency: credit, per: 1, unit: call}
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/coingecko.global.json
@@ -245,7 +253,7 @@ endpoints:
         per_page: {type: integer, required: false, note: "1-250, default 100"}
         page: {type: integer, required: false}
     test_request: {queryParams: {per_page: "3", page: "1"}}
-    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source_url: "https://docs.coingecko.com/reference/common-errors-rate-limit", checked: "2026-08-15", confidence: documented}
+    price: {value: '1', currency: credit, per: 1, unit: call}
     verified: 2026-08-15
     added: '2026-08-16'
     example_response: examples/coingecko.exchanges.json

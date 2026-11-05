@@ -72,6 +72,7 @@ from urllib.parse import urlencode
 import httpx
 
 from ... import audit, jsontext
+from .. import call_events
 from ...config import get_settings
 from ...infra.db import session_maker
 from ...domain import asynctasks as asynctasks_rules
@@ -95,6 +96,7 @@ from ...domain.catalog.routing.plan import (
 )
 from .. import asynctasks as async_task_app
 from . import async_bridge, keyslots
+from . import route_rules as route_rules_app
 from .intake import _tag_telemetry
 from .resolve import _anonymous_offer, _host_of, _marketplace_secret
 from .settle import close_deferred
@@ -640,12 +642,42 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             else:
                 kept.append(c)
         cands = kept
-    ranked = rank(cands, prefer=options.prefer or default_prefer(contract, identity, given), exclude=options.exclude,
-                  given=given, derive=contract.derive, one_subject=contract.one_subject)
-    if options.complete:  # stable: price order within each group
-        ranked = [c for c in ranked if _can_answer_fully(contract, c.adapter)] + \
-                 [c for c in ranked if not _can_answer_fully(contract, c.adapter)]
-    return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped)
+    decision = None
+    if route_rules_app.enabled():
+        input_type, meta, _ = call_events.segment(contract, identity_given)
+        decision = route_rules_app.decide(contract.capability, {**meta, "input_type": input_type})
+    rule = decision.rule if decision else None
+    route_rule: dict[str, str] = {}
+    if decision is not None:
+        route_rule["route_rules_version"] = str(decision.version)
+    if rule is not None:
+        route_rule["route_rule"] = rule.id
+
+    def ordered(prefer):
+        out = rank(cands, prefer=prefer, exclude=options.exclude,
+                   given=given, derive=contract.derive, one_subject=contract.one_subject)
+        if options.complete:  # stable: price order within each group
+            out = [c for c in out if _can_answer_fully(contract, c.adapter)] + \
+                  [c for c in out if not _can_answer_fully(contract, c.adapter)]
+        return out
+
+    orders: dict[str, list[str]] = {}
+    if options.prefer:
+        ranked = ordered(options.prefer)
+    else:
+        default = default_prefer(contract, identity, given)
+        ranked = ordered(default)
+        orders["default"] = _endpoints(ranked)
+        if rule is not None:
+            ruled = ordered([*rule.order, *(p for p in default if p not in rule.order)])
+            orders["rule"] = _endpoints(ruled)
+            ranked = ruled
+    return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped,
+                route_rule=route_rule, orders=orders)
+
+
+def _endpoints(cands) -> list[str]:
+    return [c.endpoint["id"] for c in cands]
 
 
 def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
@@ -907,6 +939,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
     plan = await build_plan(ep, given, parent.input.caller, options)
+    _summarize(parent, route_rule=plan.route_rule)
     if not plan.candidates:
         # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
         # caller's own choice and answers 422 (nothing was charged either way)
@@ -1012,7 +1045,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                             quota_pending=parent.quota_pending)
         try:
             response = await execute_child(child, upstream_client)
+            _note_call(parent, plan, cand, child, tried)
         except CallFailure as exc:
+            _note_call(parent, plan, cand, child, tried)
             if exc.kind == "route_max_cost":
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0,
                                      "would exceed max cost"))
@@ -1738,6 +1773,33 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
         return {**view, "upgraded": False, "reason": "other_name"}, None, cost
     return {**view, "upgraded": True}, ({**output, **{k: v for k, v in found.items() if v is not None}},
                                         doc.get("raw"), meta.get("served_by")), cost
+
+
+def _note_call(parent: CallContext, plan: Plan, cand: Candidate, child: CallContext, tried: list) -> None:
+    """Which order each provider actually reached came from. `route_order` names the first's;
+    `route_retry_order` the first later one the contract's own order would not have reached next.
+    A child counts only when its request left for the provider or its archived answer was served
+    (`reached_provider`), never when a local gate refused it. Each order is read from its first
+    candidate not yet passed over, and every earlier attempt is passed over, reached or not."""
+    if not child.reached_provider:
+        return
+    route = dict((parent.route_summary or {}).get("route_rule") or {})
+    passed = {t.endpoint_id for t in tried}
+    called = cand.endpoint["id"]
+
+    def next_in(order: str) -> str | None:
+        return next((e for e in plan.orders.get(order, ()) if e not in passed), None)
+    if not plan.orders:
+        source = "header"  # the caller's own X-Treg-Route-Prefer order
+    else:
+        source = "default" if called == next_in("default") else "rule" if called == next_in("rule") else "quality"
+    if "route_order" not in route:
+        route["route_order"] = source
+    elif source not in ("default", "header") and "route_retry_order" not in route:
+        route["route_retry_order"] = source
+    else:
+        return
+    _summarize(parent, route_rule=route)
 
 
 def _summarize(parent: CallContext, **outcome) -> None:
