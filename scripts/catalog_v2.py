@@ -84,33 +84,44 @@ def request_path(path: str) -> str:
 
 
 _LITERAL = re.compile(r"""^(?:'([^']*)'|"([^"]*)"|(-?\d+)|(-?\d+\.\d+)|(true|false))$""")
-_COALESCE = re.compile(r"^coalesce\(\s*([^,()]+?)\s*,\s*\[\]\s*\)$")
+_COALESCE = re.compile(r"^coalesce\(\s*((?:[^,()]+?\s*,\s*)+)\[\]\s*\)$")
 _PATH = re.compile(r"^(?:\.|(?:\[\d+\])?[A-Za-z_][\w-]*(?:\[\d+\])?(?:\.[A-Za-z_][\w-]*(?:\[\d+\])?)*|\[\d+\])$")
 
 
-def predicate(expr: str, warnings: list[str]) -> dict:
+def predicate(expr: str, warnings: list[str]) -> dict | list:
     """An adapter expression's v2 predicate, by the section 4.4 table."""
     left, op, right = (part.strip() for part in re.split(r"\s*(==|!=)\s*", str(expr).strip(), maxsplit=1)) \
         if re.search(r"==|!=", str(expr)) else (str(expr), "", "")
     if op != "==":
         raise Refused(f"`{expr}` has no zero-diff predicate (the predicate has no negation or call)")
     if (found := _COALESCE.match(left)) and right == "[]":
-        path = response_path(found.group(1))
-        return {"any": [{"path": path, "op": "absent"}, {"path": path, "op": "empty"}]}
+        names = [name.strip() for name in found.group(1).split(",") if name.strip()]
+        if not all(_PATH.match(name) for name in names):
+            raise Refused(f"`{expr}` has no zero-diff predicate")
+        warnings.append(f"`{expr}` becomes absent-or-empty, which also reads {{}} as a miss")
+        return _coalesced([response_path(name) for name in names])
     if not _PATH.match(left):
         raise Refused(f"`{expr}` has no zero-diff predicate")
     path = response_path(left)
     if right == "null":
         return {"path": path, "op": "absent"}
     if right == "[]":
-        warnings.append(f"`{expr}` becomes `empty`, which also reads null, '' and {{}} as a miss")
-        return {"path": path, "op": "empty"}
+        # present: today a null is not `[]`, so it stays a hit
+        warnings.append(f"`{expr}` becomes present and `empty`, which also reads '' and {{}} as a miss")
+        return [{"path": path, "op": "present"}, {"path": path, "op": "empty"}]
     if not (literal := _LITERAL.match(right)):
         raise Refused(f"`{expr}` has no zero-diff predicate")
     single, double, whole, fraction, flag = literal.groups()
     value = (single if single is not None else double if double is not None
              else int(whole) if whole is not None else float(fraction) if fraction is not None else flag == "true")
     return {"path": path, "op": "equals", "value": value}
+
+
+def _coalesced(paths: list[str]) -> dict | list:
+    """`coalesce(p1, ..., pn, []) == []`: today's coalesce skips null, '' and [], so it holds when
+    every path is missing or one of those."""
+    rules = [{"any": [{"path": path, "op": "absent"}, {"path": path, "op": "empty"}]} for path in paths]
+    return rules[0] if len(rules) == 1 else rules
 
 
 def _branches(provider: str, endpoint_id: str) -> str | None:
@@ -223,15 +234,19 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
         out.adapter_miss = True
     if rules:
         keys["miss"] = {"when": rules[0] if len(rules) == 1 else {"any": rules}}
-    if adapter_miss:
+    if adapter_miss and kind == "per_success" and expect is not None:
+        # Today a failed `expect` is free while billing charges a 2xx error envelope unless the
+        # adapter reads it as a miss. One `bill.error` cannot say both, so the envelope stays out of
+        # the error rule: billing and routing read it as today, by the miss rule.
+        out.warnings.append("the error envelope is not an error rule (a failed expect is free, an "
+                            "envelope is charged unless it misses); stats stop calling a truthy "
+                            "`error` or `errors` an error")
+    elif adapter_miss:
         # Today's result judge calls a 2xx carrying `error` or `errors` an error on this row; billing
         # charges it unless the adapter reads it as a miss.
         keys["error"] = {"when": ENVELOPE}
         out.warnings.append("the error envelope is `present`; today it is any truthy `error` or `errors`")
         if kind == "per_success" and not adapter_miss.strip().startswith("coalesce("):
-            if expect is not None:
-                raise Refused("today a failed `expect` is free and a 2xx error envelope is charged; "
-                              "v2 bills both as the one error outcome")
             bill["error"] = "charged"
         elif kind == "per_success":
             out.warnings.append("an error envelope that also carries results is charged today; v2 judges "
@@ -252,6 +267,9 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
         if key not in (defaults or {}) or key == "bill":
             continue
         if key not in keys:
+            if key == "expect" and expect is None:
+                # today the row inherits its header's expect, which the batch moves into defaults
+                continue
             keys[key] = None
         elif keys[key] == defaults[key]:
             del keys[key]
