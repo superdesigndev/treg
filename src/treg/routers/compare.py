@@ -278,6 +278,12 @@ def _page_body(key: str, base: str) -> str:
   <p class="tnote">treg's catalog size is read live from the catalog. Prices change; check each product's own pricing page before you decide.</p>
 </div></section>
 
+<section class="zeroband rv" id="zeroband">
+  <h2>0% <i>additional fee.</i></h2>
+  <div class="zeq"><span class="ps">$</span><code id="zeqtxt">provider rate <b>+ $0.000 markup</b> = your price</code><span class="zcaret"></span></div>
+  <div class="zsub">we earn on volume pricing with vendors - not on you</div>
+</section>
+
 <section class="sec" id="tradeoff"><div class="wrap">
   <p class="eyebrow rv">The trade-off</p>
   <h2 class="rv">What each one does better</h2>
@@ -305,12 +311,6 @@ def _page_body(key: str, base: str) -> str:
     </div>
   </div>
 </div></section>
-
-<section class="zeroband rv" id="zeroband">
-  <h2>0% <i>additional fee.</i></h2>
-  <div class="zeq"><span class="ps">$</span><code id="zeqtxt">provider rate <b>+ $0.000 markup</b> = your price</code><span class="zcaret"></span></div>
-  <div class="zsub">we earn on volume pricing with vendors - not on you</div>
-</section>
 
 <section class="setup rv" id="setup">
   <h2>Give your agent<br>every tool in the catalog.</h2>
