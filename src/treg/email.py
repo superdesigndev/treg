@@ -116,7 +116,7 @@ async def send_topup_receipt(email: str, org_name: str, amount_micro: int, balan
     # explains a balance that went up $110 on a $100 card charge, which otherwise reads as a mistake.
     bonus = f' <span style="color:#19D0E8">+ {_money(bonus_micro)} bonus</span>' if bonus_micro else ""
     lead = (f'Your balance dropped below your auto top-up threshold, so we charged your saved card '
-            f'<b style="color:#f2efe8">{added}</b>.' if auto
+            f'<b style="color:#f2efe8">{added}</b>{bonus}.' if auto
             else f'Thanks — <b style="color:#f2efe8">{added}</b>{bonus} has been added to your balance.')
     body = (
         f'<p style="margin:0 0 6px;color:#f2efe8;font-size:16px;font-weight:600">{how} confirmed</p>'
