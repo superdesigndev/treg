@@ -2184,7 +2184,6 @@ adapters:
     in:  {symbol: queryParams.symbol}
     in_expr: {queryParams.symbol: "upper(symbol)"}
     out: {price: c, open: o, high: h, low: l, previous_close: pc, quote: "."}
-    miss: "c == null"
   twelvedata.quote:
     accepts: [[symbol]]
     in:  {symbol: queryParams.symbol}
