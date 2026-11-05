@@ -91,7 +91,7 @@ endpoints:
         include:
           type: object
           required: false
-          note: "any of markdown, html, rawResponse, searchQueries, ads, shopping. markdown and html are free; setting any of rawResponse / searchQueries / ads / shopping adds 2 credits once, however many of the four are set."
+          note: "any of markdown, html, rawResponse, searchQueries, ads, shopping. markdown and html are free; setting any of rawResponse / searchQueries / ads / shopping adds 2 credits once, however many of the four are set. searchQueries and mapSearchQueries may be empty even when sources show a web search ran."
       bodyType: json
     test_request:
       body:
@@ -114,7 +114,7 @@ endpoints:
       confidence: documented
       modifiers:
         state: {location: body, when: present, add_credits: 2}
-      note: "9 = 5 base + 2 for the include.rawResponse / searchQueries / ads / shopping family (charged once, however many of the four are set) + the 2-credit sync surcharge every /v1/monitor/* call carries. A plain call with none of those four flags is 7. `state` adds 2 more. Setting the ads/shopping flags is what is billed; whether those blocks actually render is a separate matter — they appear on the desktop UI, which `legacy: true` (free) selects. A failed extraction is not charged."
+      note: "9 = 5 base + 2 for the include.rawResponse / searchQueries / ads / shopping family (charged once, however many of the four are set) + the 2-credit sync surcharge every /v1/monitor/* call carries. A plain call with none of those four flags is 7. `state` adds 2 more. Setting the ads/shopping/searchQueries flags is what is billed; whether ads/shopping render or searchQueries is non-empty is separate — ads/shopping need the desktop UI (`legacy: true`, free). A failed extraction is not charged."
     docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-chatgpt
 
   - id: cloro.ai-search.chatgpt.scrape.task
@@ -156,7 +156,7 @@ endpoints:
       source_url: 'https://cloro.dev/docs/guides/making-requests/async.md'
       checked: '2026-11-04'
       confidence: verified
-      note: "Any of include.rawResponse, searchQueries, ads or shopping adds 2 credits once; payload.state adds 2; each prompt after the first adds 1. A FAILED task is free; an answer that is ChatGPT's own refusal is billed."
+      note: "Any of include.rawResponse, searchQueries, ads or shopping adds 2 credits once (searchQueries may still be empty); payload.state adds 2; each prompt after the first adds 1. A FAILED task is free; an answer that is ChatGPT's own refusal is billed."
     docs_url: https://cloro.dev/docs/api-reference/endpoint/create-async-task
     verified: '2026-11-04'
     example_response: examples/cloro.ai-search.chatgpt.scrape.task.json
