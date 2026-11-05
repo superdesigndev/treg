@@ -632,14 +632,19 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             else:
                 kept.append(c)
         cands = kept
-    prefer, route_rule = options.prefer, None
+    input_type, meta, _ = call_events.segment(contract, identity_given)
+    decision = route_rules_app.decide(contract.capability, {**meta, "input_type": input_type})
+    rule = decision.rule if decision else None
+    route_rule = {"route_order": "header" if options.prefer else "rule" if rule else "default"}
+    if decision is not None:
+        route_rule["route_rules_version"] = str(decision.version)
+    if rule is not None:
+        route_rule["route_rule"] = rule.id
+    prefer = options.prefer
     if not prefer:
         prefer = default_prefer(contract, identity, given)
-        input_type, meta, _ = call_events.segment(contract, identity_given)
-        if found := await route_rules_app.rule_for(contract.capability, {**meta, "input_type": input_type}):
-            version, rule = found
+        if rule is not None:
             prefer = [*rule.order, *(p for p in prefer if p not in rule.order)]
-            route_rule = {"route_rules_version": str(version), "route_rule": rule.id}
     ranked = rank(cands, prefer=prefer, exclude=options.exclude,
                   given=given, derive=contract.derive, one_subject=contract.one_subject)
     if options.complete:  # stable: price order within each group
@@ -846,6 +851,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             queue = route_quality.by_quality(queue, lambda item: item[1].endpoint["id"], quality,
                                              route_quality.variant_slice(plan.variant))
             ordered_on = route_quality.variant_slice(plan.variant)
+            _summarize(parent, route_rule={**(plan.route_rule or {}), "route_order": "quality"})
         except Exception:  # a bad number keeps the price order
             log.warning("route quality ordering failed", exc_info=True)
     while queue:

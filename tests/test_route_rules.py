@@ -1,6 +1,8 @@
 """Published route rules: parsing, matching, the worker's snapshot, and the routed plan."""
 from __future__ import annotations
 
+import asyncio
+import copy
 import dataclasses
 import json
 from types import SimpleNamespace
@@ -8,6 +10,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from treg.application import call_events as ev
 from treg.application.call import route_rules as reader_app
 from treg.application.call import service as call_service
 from treg.domain.catalog import store as catalog_store
@@ -62,15 +65,29 @@ def test_a_malformed_rule_set_is_refused(raw):
         R.parse(raw)
 
 
-def test_a_rule_must_name_a_contract_its_recorded_segments_and_serving_providers():
+def test_a_rule_must_be_able_to_take_effect():
     contracts = catalog_store.load().contracts
-    providers = lambda cap: {"tomba", "hunter"}  # noqa: E731
-    R.check_against(R.parse(envelope()), contracts, providers)
-    for rule, why in ((_rule(capability="no.such"), "no contract"),
-                      (_rule(match={"seniority": "vp"}), "records no seniority"),
-                      (_rule(order=["tomba", "nobody"]), "nobody serve")):
+    check = lambda rule: R.check_against(  # noqa: E731
+        R.parse(envelope(rules=[rule])), contracts, reader_app._providers_of, ev.segment_keys)
+    check(_rule())
+    for rule, why in (
+            (_rule(capability="no.such"), "no contract"),
+            (_rule(match={"seniority": "vp"}), "records no seniority"),
+            # a provider with an email finder in the catalog but no routed child for the capability
+            (_rule(order=["tomba", "anyapi"]), "anyapi cannot serve routed"),
+            # a capability with no routed endpoint
+            (_rule(capability="people.phone.verify", order=["twilio"]), "is not routed"),
+            # a web search never records a domain segment
+            (_rule(capability="web.search", order=["exa"]), "records no tld"),
+    ):
         with pytest.raises(ValueError, match=why):
-            R.check_against(R.parse(envelope(rules=[rule])), contracts, providers)
+            check(rule)
+
+
+def test_segment_keys_are_what_the_event_can_record():
+    contracts = catalog_store.load().contracts
+    assert ev.segment_keys(contracts["people.email.find"]) >= {"input_type", "tld", "domain_class"}
+    assert ev.segment_keys(contracts["people.phone.verify"]) == {"input_type"}
 
 
 def test_the_most_specific_rule_wins_then_the_first_listed():
@@ -99,17 +116,57 @@ def snapshot_env(monkeypatch):
     return reader_app.Reader(), store, clock
 
 
+async def _read(reader, refresh_s=30):
+    """What a plan sees once the refresh it started has landed."""
+    reader.current(refresh_s)
+    if reader.task is not None:
+        await reader.task
+    return reader.current(refresh_s)[1]
+
+
 async def test_one_read_per_refresh_interval_and_a_missing_key_means_no_rules(snapshot_env):
     reader, store, clock = snapshot_env
-    assert await reader.current(30) is None
+    assert reader.current(30) == (False, None), "a cold worker plans in the YAML order"
+    await reader.task
+    assert reader.current(30) == (True, None), "read: none published"
     store.read_route_rules.return_value = envelope()
-    assert await reader.current(30) is None, "the next read waits for the interval"
+    assert await _read(reader) is None, "the next read waits for the interval"
     clock[0] += 30
-    assert (await reader.current(30)).version == 1
+    assert (await _read(reader)).version == 1
     assert store.read_route_rules.await_count == 2
     store.read_route_rules.return_value = None
     clock[0] += 30
-    assert await reader.current(30) is None
+    assert await _read(reader) is None
+
+
+async def test_a_plan_never_waits_for_a_slow_read(snapshot_env):
+    reader, store, clock = snapshot_env
+    store.read_route_rules.return_value = envelope()
+    assert (await _read(reader)).version == 1
+    gate = asyncio.Event()
+
+    async def hangs():
+        await gate.wait()
+    store.read_route_rules.side_effect = hangs
+    clock[0] += 30
+    seen = [reader.current(30) for _ in range(8)]
+    assert all(observed and snap.version == 1 for observed, snap in seen)
+    await asyncio.sleep(0)
+    assert store.read_route_rules.await_count == 2, "concurrent plans share one refresh"
+    gate.set()
+    await reader.task
+
+
+async def test_an_unchanged_value_is_not_checked_again(snapshot_env, monkeypatch):
+    reader, store, clock = snapshot_env
+    store.read_route_rules.return_value = envelope()
+    checks = []
+    original = R.check_against
+    monkeypatch.setattr(R, "check_against", lambda *a: checks.append(1) or original(*a))
+    for _ in range(3):
+        await _read(reader)
+        clock[0] += 30
+    assert len(checks) == 1
 
 
 @pytest.mark.parametrize("bad", [
@@ -121,37 +178,43 @@ async def test_one_read_per_refresh_interval_and_a_missing_key_means_no_rules(sn
 async def test_every_failure_keeps_the_last_valid_rule_set(snapshot_env, bad):
     reader, store, clock = snapshot_env
     store.read_route_rules.return_value = envelope(version=1)
-    assert (await reader.current(30)).version == 1
+    assert (await _read(reader)).version == 1
     store.read_route_rules.return_value = bad
     clock[0] += 30
-    kept = await reader.current(30)
+    kept = await _read(reader)
     assert kept.version == 1 and kept.rules[0].order == ("tomba",)
 
 
 async def test_a_read_that_raises_keeps_the_rules_and_a_higher_version_replaces_them(snapshot_env):
     reader, store, clock = snapshot_env
     store.read_route_rules.return_value = envelope(version=1)
-    await reader.current(30)
+    await _read(reader)
     store.read_route_rules.side_effect = RuntimeError("boom")
     clock[0] += 30
-    assert (await reader.current(30)).version == 1
+    assert (await _read(reader)).version == 1
     store.read_route_rules.side_effect = None
     store.read_route_rules.return_value = envelope(version=2, rules=[_rule(order=["hunter"])])
     clock[0] += 30
-    assert (await reader.current(30)).rules[0].order == ("hunter",)
+    assert (await _read(reader)).rules[0].order == ("hunter",)
 
 
 # ---- the routed plan and its event -------------------------------------------------------------
 
 @pytest.fixture
-def published(monkeypatch):
-    """Route rules on, with the published set served from a fake store."""
+async def published(monkeypatch):
+    """Route rules on, with the published set served from a fake store and already read."""
     reader_app.reset()
     store = SimpleNamespace(read_route_rules=AsyncMock(return_value=envelope()))
     monkeypatch.setattr(reader_app, "_store", lambda: store)
     monkeypatch.setattr(reader_app, "get_settings", lambda: SimpleNamespace(
         route_rules_enabled=True, route_rules_refresh_s=30))
-    yield store
+
+    async def publish(raw):
+        store.read_route_rules.return_value = raw
+        reader_app._reader.next_refresh = 0.0
+        await _read(reader_app._reader)
+    await publish(envelope())
+    yield publish
     reader_app.reset()
 
 
@@ -159,7 +222,7 @@ async def test_a_published_rule_goes_ahead_of_the_yaml_order(clients, enrichment
     cat = catalog_store.load()
     monkeypatch.setitem(cat.contracts, "people.email.find", dataclasses.replace(
         cat.contracts["people.email.find"], prefer_by_domain_suffix={"fr": ("hunter",)}))
-    published.read_route_rules.return_value = envelope(rules=[_rule(order=["leadmagic"])])
+    await published(envelope(version=2, rules=[_rule(order=["leadmagic"])]))
     assert await _first_providers(ROUTED, {"full_name": "Jean Dupont", "domain": "acme.fr"}) == ["leadmagic", "hunter"]
     assert await _first_providers(ROUTED, {"full_name": "Jean Dupont", "domain": "acme.de"}, n=1) != ["leadmagic"]
     header = await _first_providers(ROUTED, {"full_name": "Jean Dupont", "domain": "acme.fr"}, header="hunter", n=1)
@@ -171,22 +234,72 @@ async def test_off_by_default_the_published_set_is_never_read(clients, enrichmen
     store = SimpleNamespace(read_route_rules=AsyncMock(return_value=envelope()))
     monkeypatch.setattr(reader_app, "_store", lambda: store)
     await _first_providers(ROUTED, {"full_name": "Jean Dupont", "domain": "acme.fr"})
-    assert store.read_route_rules.await_count == 0
+    assert store.read_route_rules.await_count == 0 and reader_app._reader.task is None
 
 
-async def test_the_routed_event_records_the_rule_it_ran_under(clients, enrichment_on, events_on,
-                                                            monkeypatch, published):
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"tomba": [(200, {"data": {"email": "j.dupont@acme.fr", "score": 96,
-                                   "verification": {"status": "valid"}}})]}, []))
-    routed = await clients.post(f"/call/{ROUTED}", json={"full_name": "Jean Dupont", "domain": "acme.fr"})
+async def _parent_meta(clients, events_on, body, headers=None):
+    routed = await clients.post(f"/call/{ROUTED}", json=body, headers=headers or {})
     assert routed.status_code == 200, routed.text
     events = await _flushed(events_on)
+    ref = routed.headers["x-treg-call-id"]
+    child = next(e for e in events if e["call_ref"] == ref + ":r0")
+    assert "route_order" not in (child.get("input_meta") or {}), "children join by parent_ref"
+    return next(e for e in events if e["call_ref"] == ref)["input_meta"]
+
+
+TOMBA_HIT = {"tomba": [(200, {"data": {"email": "j.dupont@acme.fr", "score": 96,
+                                       "verification": {"status": "valid"}}})]}
+
+
+async def test_the_routed_event_records_the_version_the_rule_and_what_ordered_it(
+        clients, enrichment_on, events_on, monkeypatch, published):
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(copy.deepcopy(TOMBA_HIT), []))
+    meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"})
+    assert meta == {"domain_class": "company", "tld": "fr", "route_order": "rule",
+                    "route_rules_version": "1", "route_rule": "find-fr"}
+
+
+async def test_a_segment_no_rule_matches_still_records_the_version(
+        clients, enrichment_on, events_on, monkeypatch, published):
+    await published(envelope(version=8, enabled=False))
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(copy.deepcopy(TOMBA_HIT), []))
+    meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"})
+    assert meta["route_order"] == "default" and meta["route_rules_version"] == "8"
+    assert "route_rule" not in meta
+
+
+async def test_a_caller_header_is_recorded_as_what_ordered_the_call(
+        clients, enrichment_on, events_on, monkeypatch, published):
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(copy.deepcopy(TOMBA_HIT), []))
+    meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"},
+                              {"X-Treg-Route-Prefer": "tomba"})
+    assert meta["route_order"] == "header" and meta["route_rule"] == "find-fr"
+
+
+async def test_quality_ordering_is_recorded_over_the_rule(clients, platform_on, events_on, monkeypatch, published):
+    from test_route_quality_upgrade import HARVEST_FIRST, LINKEDIN, _Reader
+    from test_routing import _example
+    from treg.application.call import route as call_route
+    from treg.config import get_settings
+
+    for p in ("BLITZAPI", "HARVESTAPI"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "blitzapi,harvestapi")
+    get_settings.cache_clear()
+    await published(envelope(version=2, rules=[_rule(id="enrich-li", capability="people.enrich",
+                                          match={"input_type": "linkedin_url"}, order=["blitzapi"])]))
+    seen = []
+    monkeypatch.setattr(call_route, "_route_quality_reader", _Reader(HARVEST_FIRST))
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"harvest": [(200, _example("harvestapi.linkedin.user.profile"))]}, seen))
+    routed = await clients.post("/call/treg.people.enrich", json=LINKEDIN, headers={"X-Treg-Route-Quality": "1"})
+    assert routed.status_code == 200, routed.text
+    assert [s[0] for s in seen] == ["harvest"]
+    events = await _flushed(events_on)
     parent = next(e for e in events if e["call_ref"] == routed.headers["x-treg-call-id"])
-    assert parent["input_meta"] == {"domain_class": "company", "tld": "fr",
-                                    "route_rules_version": "1", "route_rule": "find-fr"}
-    child = next(e for e in events if e["call_ref"] == routed.headers["x-treg-call-id"] + ":r0")
-    assert child["provider"] == "tomba" and "route_rule" not in (child.get("input_meta") or {})
+    assert parent["input_meta"]["route_order"] == "quality"
+    assert parent["input_meta"]["route_rule"] == "enrich-li"
+    get_settings.cache_clear()
 
 
 # ---- storage -----------------------------------------------------------------------------------

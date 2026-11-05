@@ -218,6 +218,15 @@ def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str]
     return ("+".join(variant) if variant else None), meta, norm
 
 
+def segment_keys(contract: Contract) -> set[str]:
+    """Every key `segment` can produce for this contract's calls."""
+    keys = {"input_type"}
+    if any(k in contract.identity_types for k in (*_DOMAIN_KEYS, "email")):
+        keys |= {"tld", "domain_class"}
+    return keys | {k for k, spec in (contract.filters or {}).items()
+                   if (spec or {}).get("analytics") == "value"}
+
+
 def input_columns(contract: Contract, given: dict) -> tuple[dict, dict]:
     """(input columns, the normalized identity) for what the caller asked."""
     input_type, meta, norm = segment(contract, given)
@@ -284,8 +293,9 @@ def emit(kind: str, *, org_id: int | None, endpoint_id: str | None, call_ref: st
     `answer_status` + `answer_body` (a vendor answer) what came back. Everything the builder
     keeps alive counts against the sink's byte budget: the bodies, the query, and
     `retained_extra` (the serialized size of `identity` and `output`, which the caller knows).
-    `route_rule` (a routed parent's published rule, `{route_rules_version, route_rule}`) joins
-    `input_meta`, so analysis can split a segment by the rules it ran under."""
+    `route_rule` (a routed parent's ordering: `route_order`, which of header, rule, quality or
+    default decided it, plus `route_rules_version` and `route_rule` when published rules are on)
+    joins `input_meta`, so analysis can split a segment by the rules it ran under."""
     try:
         if not sink.enabled():
             return

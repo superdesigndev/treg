@@ -65,8 +65,10 @@ envelope:
   providers; `match` maps segment keys to non-empty exact strings. No wildcards or negation.
 - At most 50 rules per capability, 200 in all, 32 KB.
 - `enabled: false` publishes "no rules" as a version, the kill switch.
-- On read, every rule must also name a contract, segment keys that contract records, and providers
-  that serve it. Unknown fields, duplicate keys and wrong types are rejected.
+- On read, every rule must be able to take effect: it names a routed contract, segment keys that
+  contract's calls can record (`call_events.segment_keys`: no `tld` for a capability with no domain
+  or email in its identity), and providers among its routed endpoint's children (not merely any
+  endpoint of that capability). Unknown fields, duplicate keys and wrong types are rejected.
 
 | Refresh result | Plan behavior |
 | --- | --- |
@@ -87,18 +89,25 @@ TREG_ROUTE_RULES_REFRESH_S=30    # 1-300
 # Enabling requires a Redis TREG_KV_URL, the same database the publisher writes.
 ```
 
-One snapshot per worker. A routed plan after the refresh interval performs one read bounded at
-200 ms, joined by concurrent plans; there is no background poller. The read happens after the
-plan's database session has closed. Events: `route_rules_version_observed` when a worker adopts a
+One snapshot per worker. A plan never waits for Redis: it uses the snapshot the worker holds, and
+the first plan past the refresh interval starts one background read bounded at 200 ms, which
+concurrent plans share. A cold worker plans in the YAML order until that first read lands. An
+unchanged value (and catalog) is not parsed or checked again. Events: `route_rules_version_observed` when a worker adopts a
 version, and `route_rules_config_unavailable` (rate-limited, with `suppressed_since_last_log`) when
 it keeps the previous one. They never carry rule content.
 
 ## What each call records
 
-A routed parent whose order came from a rule adds `route_rules_version` and `route_rule` (the
-rule id) to its event's `input_meta` ([call-events.md](call-events.md)). Its children do not;
-analysis joins them by `parent_ref`. Before and after a publication can then be compared on the
-same segment by version.
+Every routed parent's event carries three separate facts in `input_meta`
+([call-events.md](call-events.md)); its children do not, analysis joins them by `parent_ref`:
+
+- `route_order`: what decided the order actually asked: `header` (`X-Treg-Route-Prefer`), `rule`,
+  `quality` (`X-Treg-Route-Quality` reordered the plan, whatever a rule said) or `default` (the
+  contract's YAML order).
+- `route_rules_version`: the published set this worker held, whether or not a rule matched; `0`
+  when a read found none published. Absent when the feature is off or the worker has not read yet,
+  so "no rule under version 8" and "not read" stay distinct.
+- `route_rule`: the id of the rule that matched, even when a header or quality ordering overrode it.
 
 ## Storage
 

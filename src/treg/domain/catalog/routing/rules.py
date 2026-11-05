@@ -19,9 +19,6 @@ _MAX_INT = 2147483647
 _NAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 _KEY = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 _VALUE_MAX = 100
-# Segment keys every capability records (`application/call_events.input_columns`); a contract
-# filter declared `analytics: value` adds its own name.
-BUILTIN_KEYS = frozenset({"input_type", "tld", "domain_class"})
 
 
 @dataclass(frozen=True)
@@ -97,20 +94,25 @@ def parse(raw: str) -> RuleSet:
     return RuleSet(version, config["enabled"], tuple(rules), canonical)
 
 
-def check_against(rules: RuleSet, contracts: dict, providers_of) -> None:
-    """Every rule names a routed capability, segment keys it records and providers that serve it.
-    `providers_of(capability)` is the set of provider names with an endpoint for it."""
+def check_against(rules: RuleSet, contracts: dict, providers_of, segment_keys_of) -> None:
+    """Every rule can take effect: it names a routed contract, segment keys that contract's calls
+    record (`segment_keys_of(contract)`), and providers its routed plan can ask
+    (`providers_of(capability)`). Each lookup runs once per capability."""
+    providers: dict[str, set[str]] = {}
+    keys: dict[str, set[str]] = {}
     for rule in rules.rules:
         contract = contracts.get(rule.capability)
         if contract is None:
             raise ValueError(f"rule {rule.id}: no contract {rule.capability}")
-        keys = BUILTIN_KEYS | {k for k, spec in (contract.filters or {}).items()
-                               if (spec or {}).get("analytics") == "value"}
-        if unknown := sorted({k for k, _ in rule.match} - keys):
+        if rule.capability not in keys:
+            keys[rule.capability] = set(segment_keys_of(contract))
+            providers[rule.capability] = set(providers_of(rule.capability))
+        if not providers[rule.capability]:
+            raise ValueError(f"rule {rule.id}: {rule.capability} is not routed")
+        if unknown := sorted({k for k, _ in rule.match} - keys[rule.capability]):
             raise ValueError(f"rule {rule.id}: {rule.capability} records no {', '.join(unknown)}")
-        serving = providers_of(rule.capability)
-        if missing := [p for p in rule.order if p not in serving]:
-            raise ValueError(f"rule {rule.id}: {', '.join(missing)} serve no {rule.capability}")
+        if missing := [p for p in rule.order if p not in providers[rule.capability]]:
+            raise ValueError(f"rule {rule.id}: {', '.join(missing)} cannot serve routed {rule.capability}")
 
 
 def match(rules: RuleSet | None, capability: str, segment: dict[str, Any]) -> Rule | None:

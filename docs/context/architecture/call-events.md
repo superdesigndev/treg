@@ -98,8 +98,8 @@ The stream has no map type; they travel as JSON objects (`json` columns):
 - `input_keys`: `{field: hmac}` for every identity field present after derivation.
 - `input_meta`: non-sensitive segments: `domain_class` (`company`, `webmail`, `edu`, `gov`) and
   `tld` of the input domain (or the email's), plus any filter declared `analytics: value`. A routed
-  parent ordered by a published rule also carries `route_rules_version` and `route_rule`
-  ([route-rules.md](route-rules.md)).
+  parent also carries `route_order` (what decided its order) and, with published rules on,
+  `route_rules_version` and `route_rule` ([route-rules.md](route-rules.md)).
 - `answer_keys`: `{field: hmac}` for output fields declared `analytics: key`.
 - `answer_values`: `{field: value}` for output fields declared `analytics: value`, as strings
   (capped length), exactly as the adapter produced them.
