@@ -287,7 +287,10 @@ A call that fails or is cancelled after a synchronous check charges nothing, the
 check a verifier runs as an asynchronous task (BounceBan's `verifying`) is billed like any async
 call once submitted: if its task already settled, a later provider error or refusal ends in the
 null miss that charges what was paid, and a cancelled request still pays for it; a check still
-running counts its hold against `X-Treg-Route-Max-Cost` and settles when the task does.
+running counts its hold against `X-Treg-Route-Max-Cost` and settles when the task does. The same
+holds for a provider served through an overflow aggregator, which bills at once. A provider whose
+result came before its final usage figure is named in `_treg.unsettled` with its hold: it is not in
+`charged_micro` and settles later, between zero and that hold.
 Other routed tools refuse the header (422, unbilled).
 
 `X-Treg-Route-Confirm: true` on `treg.people.email.find` counts a hit only once a second provider

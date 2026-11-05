@@ -284,6 +284,14 @@ class CallContext:
     # Set by `run_routed` on every exit, for an enclosing routed call's budget: what this routed
     # call moved (on success what it charges, on failure only what it could not release).
     routed_spent_micro: int = 0
+    # Holds of async children whose result is in but whose task has not settled yet (the usage
+    # figure is still to come): the worker settles each later, from zero to the hold.
+    unsettled_micro: int = 0
+    # A routed call nested in another (the find's check) writes its own audit row here instead of
+    # at once; the enclosing call writes it once it knows whether the money stands (`child_audits`
+    # is the list this call owns for its own nested children).
+    deferred_audits: list | None = None
+    child_audits: list | None = None
     quota_admissions: set[tuple[int, str]] = field(default_factory=set)
     quota_pending: tuple[tuple[int, str], ...] = ()
     # Scalar snapshots for root request logs; never resolve a target just for telemetry.
