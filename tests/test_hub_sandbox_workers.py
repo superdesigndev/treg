@@ -314,3 +314,16 @@ async def test_an_endless_loop_on_the_workers_engine_dies_at_the_wall(monkeypatc
             assert loop.time() - began < 8
         finally:
             proxy.close()
+
+
+async def test_an_unreachable_loader_is_a_protocol_failure_an_operator_can_see(monkeypatch, caplog):
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    _use_workers(monkeypatch, f"http://127.0.0.1:{port}")
+    with caplog.at_level("WARNING", logger="treg.hub.sandbox"):
+        with pytest.raises(SandboxError) as e:
+            await run_script(NOOP, {}, wall_s=5, execute=None, log=[])
+    assert e.value.kind == "protocol" and "unreachable" in e.value.message
+    assert any("hub sandbox unreachable" in r.getMessage() for r in caplog.records)
