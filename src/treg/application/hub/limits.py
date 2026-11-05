@@ -1,42 +1,85 @@
-"""Four runs at a time per team.
+"""Hub runs in flight, per team and per tool.
 
-A run holds a request and, on the script road, a sandbox process, for up to 120 seconds; four
-in flight per team bounds both. The counter is in-process, which is exact for production as
-deployed (`python -m treg` runs one uvicorn process) and per-worker otherwise — stated here so a
-future multi-worker deploy knows to move it to the rate store.
+A run holds a request and, on the script road, a sandbox, for up to its wall clock. Two caps bound
+that: `MAX_RUNS_PER_TEAM` for one team, and `hub_tool_max_runs` for one tool across every team, so
+one tool cannot spend a shared upstream quota for everyone. With the shared store configured both
+are counted across every server process on renewed leases (`infra/provider_concurrency.py`), so a
+crashed process frees its places within one lease. Without a store, or when it does not answer,
+the cap falls back to this process's own counter: still a bound, per process.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
-from contextlib import contextmanager
-from typing import Iterator
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, Literal
+
+from ...config import get_settings
+from ...infra import provider_concurrency
 
 MAX_RUNS_PER_TEAM = 4
 RETRY_AFTER_S = 5
 
-_active: dict[int, int] = defaultdict(int)
+Scope = Literal["team", "tool"]
+_active: dict[tuple[Scope, str], int] = defaultdict(int)
 
 
-class TeamBusy(Exception):
-    def __init__(self, org_id: int, active: int) -> None:
-        super().__init__(f"team {org_id} has {active} runs in flight")
-        self.org_id, self.active = org_id, active
+class HubBusy(Exception):
+    def __init__(self, scope: Scope, cap: int) -> None:
+        super().__init__(f"the {scope} already has {cap} hub runs in flight")
+        self.scope, self.cap = scope, cap
+
+    @property
+    def message(self) -> str:
+        if self.scope == "team":
+            return (f"your team already has {self.cap} hub runs in flight; "
+                    f"try again in {RETRY_AFTER_S} s")
+        return f"this tool already has {self.cap} runs in flight; try again in {RETRY_AFTER_S} s"
+
+    def detail(self) -> dict:
+        return {"error": "hub_busy", "scope": self.scope, "max": self.cap,
+                "retry_after_s": RETRY_AFTER_S, "message": self.message}
 
 
-@contextmanager
-def slot(org_id: int) -> Iterator[None]:
-    """Take one of the team's slots for the duration of a run; refuse with TeamBusy at the cap."""
-    if _active[org_id] >= MAX_RUNS_PER_TEAM:
-        raise TeamBusy(org_id, _active[org_id])
-    _active[org_id] += 1
+class _Local:
+    def __init__(self, key: tuple[Scope, str]) -> None:
+        self.key = key
+
+    def release(self) -> None:
+        _active[self.key] -= 1
+        if _active[self.key] <= 0:
+            _active.pop(self.key, None)
+
+
+async def _take(scope: Scope, ident: str, cap: int):
+    if provider_concurrency.enabled():
+        held = await provider_concurrency.try_acquire(ident, cap, namespace=f"hub-{scope}")
+        if held == provider_concurrency.BUSY:
+            raise HubBusy(scope, cap)
+        if held is not None:
+            return held
+    key = (scope, ident)
+    if _active.get(key, 0) >= cap:
+        raise HubBusy(scope, cap)
+    _active[key] += 1
+    return _Local(key)
+
+
+@asynccontextmanager
+async def slot(org_id: int, tool_id: str) -> AsyncIterator[None]:
+    """Hold one of the team's places and one of the tool's for a run; HubBusy at either cap."""
+    held = []
     try:
+        for scope, ident, cap in (("team", str(org_id), MAX_RUNS_PER_TEAM),
+                                  ("tool", tool_id, get_settings().hub_tool_max_runs)):
+            if cap > 0:
+                held.append(await _take(scope, ident, cap))
         yield
     finally:
-        _active[org_id] -= 1
-        if _active[org_id] <= 0:
-            _active.pop(org_id, None)
+        for place in held:
+            place.release()
 
 
 def active(org_id: int) -> int:
-    return _active.get(org_id, 0)
+    """This process's own count for a team: the fallback counter, for tests and diagnostics."""
+    return _active.get(("team", str(org_id)), 0)

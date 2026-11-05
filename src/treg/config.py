@@ -743,6 +743,9 @@ class Settings(BaseSettings):
     # Sign-in emails who may use the hub in ANY team they work in, beside `hub_teams`. Either list
     # lets a reader in; both empty means every team.
     hub_users: str = ""
+    # Runs of one hub tool in flight across every team; 0 = no per-tool cap. A tool's steps share
+    # upstream quotas, so one busy tool must not exhaust them for everyone (application/hub/limits.py).
+    hub_tool_max_runs: int = Field(default=20, ge=0)
     # Which engine runs a hub script. quickjs is the in-process child (`python -m treg.hub_sandbox`).
     # workers opens a WebSocket to the loader at hub_workers_url and serves ctx.call on it.
     hub_sandbox: Literal["quickjs", "workers"] = "quickjs"

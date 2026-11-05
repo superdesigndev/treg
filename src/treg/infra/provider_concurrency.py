@@ -34,9 +34,9 @@ def _background(coro) -> None:
 class Lease:
     """One place on one account. `release()` is sync and idempotent; the store write runs behind."""
 
-    def __init__(self, store: kv.Store, account: str) -> None:
+    def __init__(self, store: kv.Store, account: str, namespace: str = "provider-concurrency") -> None:
         self.store = store
-        self.key = f"treg:provider-concurrency:v1:{account}"
+        self.key = f"treg:{namespace}:v1:{account}"
         self.token = uuid.uuid4().hex
         self.ttl_ms = int(_LEASE_S * 1000)
         # Local clock bound for the Redis-time deadline: set from before the write was sent.
@@ -80,14 +80,16 @@ async def _drop_after(attempt: asyncio.Future, lease: Lease) -> None:
     await lease._release(quiet=True)
 
 
-async def try_acquire(account: str, cap: int) -> Lease | None | Literal["busy"]:
+async def try_acquire(account: str, cap: int, *,
+                      namespace: str = "provider-concurrency") -> Lease | None | Literal["busy"]:
     """One attempt at a place on `account` among `cap` shared by every process: a renewed `Lease`,
-    `BUSY` when every place is taken, `None` when the store does not answer."""
+    `BUSY` when every place is taken, `None` when the store does not answer. `namespace` keeps
+    another counter (hub runs) on the same lease scripts without sharing its keys."""
     try:
         store = kv.store()
     except Exception:  # noqa: BLE001 - a store that cannot initialize reads as unavailable
         return None
-    lease = Lease(store, account)
+    lease = Lease(store, account, namespace)
     attempt = asyncio.ensure_future(store.acquire_slot(lease.key, lease.token, lease.ttl_ms, cap))
     try:
         outcome = await asyncio.shield(attempt)
