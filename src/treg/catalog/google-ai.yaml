@@ -420,7 +420,7 @@ endpoints:
           type: array
           required: true
           example: [{parts: [{fileData: {fileUri: "https://www.youtube.com/watch?v=jNQXAC9IVRw"}}, {text: "Shot list as JSON: shot, start, end, framing, camera_move, visual, dialogue_sfx."}]}]
-          note: "One user turn, video part first, then the text prompt. A video part is {fileData: {mimeType, fileUri}}. fileUri is a public https URL Google fetches (15 MB per file; set mimeType, video/mp4 for an mp4; `treg host <file>` prints a URL) or a public YouTube URL (preview; private and unlisted videos are refused; mimeType may be omitted). A file already uploaded with this same key is a File API URI, and a file under 100 MB can be {inlineData: {mimeType, data: <base64>}}. Up to 10 videos. On the video part, mediaProcessing is STATIC (default, 1 frame/s) or AGENTIC (the model loads only the segments it needs), and mediaResolution is {level: MEDIA_RESOLUTION_LOW|MEDIA_RESOLUTION_MEDIUM|MEDIA_RESOLUTION_HIGH}. The default is low, about 100 tokens a second with audio, and any higher setting about 300. Refer to a moment as MM:SS."
+          note: "One user turn, video part first, then the text prompt. A video part is {fileData: {mimeType, fileUri}}. fileUri is a public https URL Google fetches (15 MB per file; set mimeType, video/mp4 for an mp4; `treg host <file>` prints a URL) or a public YouTube URL (preview; private and unlisted videos are refused; mimeType may be omitted). A file already uploaded with this same key is a File API URI, and a file under 100 MB can be {inlineData: {mimeType, data: <base64>}}. Up to 10 videos. On the video part: videoMetadata {fps, startOffset, endOffset} samples more or fewer frames than 1 a second and clips the video (offsets like \"5s\"); mediaProcessing is STATIC (default) or AGENTIC (the model loads only the segments it needs); mediaResolution is {level: MEDIA_RESOLUTION_LOW|MEDIA_RESOLUTION_MEDIUM|MEDIA_RESOLUTION_HIGH}. The default, 1 frame a second at low resolution, is about 100 tokens a second with audio and suits a summary; it places cuts within about 0.3 s and can read an animated number mid-count. A shot list or on-screen text wants fps 5 at MEDIA_RESOLUTION_HIGH, about 1,350 tokens a second. Above 1 frame a second, refer to a moment as MM:SS.sss, else MM:SS."
         generationConfig:
           type: object
           required: false
@@ -438,10 +438,10 @@ endpoints:
       body: {contents: [{parts: [{fileData: {fileUri: "https://www.youtube.com/watch?v=jNQXAC9IVRw"}}, {text: "Summarize this video in one sentence."}]}], generationConfig: {thinkingConfig: {thinkingLevel: low}}}
     cost:
       type: per_success
-      value: 0.02
+      value: 0.1
       per: 1
       unit: call
-      fallback: {value: 0.02, note: "About 3 minutes at the default resolution (~18,000 input tokens) plus a short answer; usageMetadata settles, and a longer or higher-resolution video may settle above it."}
+      fallback: {value: 0.1, note: "About 75 s at fps 5 and high resolution (~100,000 input tokens) with a shot list; usageMetadata settles, below the hold for a summary at the default and above it for a longer or denser video."}
       currency: USD
       settle: usage
       usage:
@@ -455,6 +455,8 @@ endpoints:
       source_url: https://ai.google.dev/gemini-api/docs/pricing
       checked: 2026-11-03
       confidence: documented
-      note: "Standard paid-tier rates for gemini-3.8-flash through 2026-12-31: input $0.75/M, output including thinking $3.75/M. From 2027-01-01 those rates are $1.50/M and $7.50/M. Static video is about 100 tokens/s at the default (low) resolution and about 300 tokens/s otherwise, so 60 s is about 6,000 input tokens ($0.0045). AGENTIC bills loaded frames, audio and transcript on toolUsePromptTokenCount (input) and navigation on thoughtsTokenCount (output). A YouTube URL is a preview input the video page lists as available at no extra charge; whatever usageMetadata reports still settles at these rates, and Google says that preview pricing may change. Batch, flex and context-cache prices are not these rates. The row is the hold; usageMetadata settles."
+      note: "Standard paid-tier rates for gemini-3.8-flash through 2026-12-31: input $0.75/M, output including thinking $3.75/M. From 2027-01-01 those rates are $1.50/M and $7.50/M. Static video is about 100 tokens/s at the default (low) resolution and about 300 tokens/s otherwise, so 60 s is about 6,000 input tokens ($0.0045). AGENTIC bills loaded frames, audio and transcript on toolUsePromptTokenCount (input) and navigation on thoughtsTokenCount (output). A YouTube URL is a preview input the video page lists as available at no extra charge; whatever usageMetadata reports still settles at these rates, and Google says that preview pricing may change. Batch, flex and context-cache prices are not these rates. Live, a 40 s video settled at these rates to the micro-dollar: default settings 4,063 input and 3,501 output tokens ($0.016176); fps 5 at high resolution 54,223 input tokens. The row is the hold; usageMetadata settles."
+    verified: 2026-11-05
     added: '2026-11-03'
+    example_response: examples/google-ai.video-understand.gemini-3-8-flash.json
     docs_url: https://ai.google.dev/gemini-api/docs/generate-content/video-understanding
