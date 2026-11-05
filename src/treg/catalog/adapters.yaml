@@ -2878,8 +2878,9 @@ adapters:
   anyapi.linkedin.user.profile:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: body.url}
-    out: {full_name: output.data.name, location: output.data.location, followers: output.data.followers,
-          about: output.data.about}
+    out: {full_name: output.data.name, headline: output.data.headline, location: output.data.location,
+          followers: output.data.followers, about: output.data.about,
+          linkedin_url: "fmt('https://www.linkedin.com/in/{}', output.data.publicIdentifier)"}
     miss: "output.found == false"
   anyapi.linkedin.user.profile.full:
     accepts: [[linkedin_url]]

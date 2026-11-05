@@ -306,6 +306,14 @@ when nobody decides, the first answer comes back as it was. Your own `X-Treg-Rou
 kept. With `X-Treg-Route-Waterfall: 0`, or on a routed tool without deciding verdict words, the
 header is refused (422, unbilled).
 
+`X-Treg-Route-Complete: 1` keeps looking past a thin hit: one missing a contract `complete` field
+(today `treg.linkedin.user.profile` names `full_name`, `headline`, `location`; see
+`catalog_get` → `routing.contract.complete`), or under half the output when the contract names none.
+The fullest answer so far is kept if nothing fuller turns up; adapters that cannot map a complete
+answer are asked last. A name-only profile stub is still a hit without the header (identity lookups
+stay possible); send Complete when you need role or location fields filled. It only runs with the
+waterfall on (`X-Treg-Route-Waterfall: 0` makes the header a no-op).
+
 On `treg.people.phone.find` the same header checks the line with HLR Lookup's live network lookup
 (`hlrlookup.people.phone.verify`): your own HLR key first, `usa_status` only for `+1` numbers, no
 cache reads. The verdict is `live` / `dead` / `unknown`; a live line is not proof the number is
