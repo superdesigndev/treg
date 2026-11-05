@@ -376,7 +376,7 @@ contracts:
         company: {type: str, note: "current employer's name"}
         company_domain: {type: str}
         location: {type: str}
-        profile_url: {type: str, note: "the person's profile page, a LinkedIn URL where the provider has one"}
+        profile_url: {type: url, note: "the person's profile page, a LinkedIn URL where the provider has one"}
         email: {type: str, note: "found by the provider, not confirmed deliverable"}
         email_status: {type: str, note: "the provider's own verdict on that email, where it gives one (`valid`, `VERIFIED`); absent = nobody checked it"}
         summary: {type: str, note: "the provider's own words about the person (bio, headline, matching passage), cut to 300 characters: what to check the brief against"}
@@ -657,7 +657,7 @@ contracts:
 
   # ---- batch 6: long tail (2026-08-28) ----------------------------------------------------------
   instagram.search.users:
-    summary: "Search Instagram accounts by keyword — provider-native profile rows in `users`"
+    summary: "Search Instagram accounts by keyword — profile rows in `users` (picture and link metadata only in `raw`, the provider's full answer)"
     identity:
       - {q: str}
     filters: {}
@@ -675,13 +675,13 @@ contracts:
         id: {type: str}
         username: {type: str}
         full_name: {type: str}
-        url: {type: str, note: "the account's Instagram page"}
+        url: {type: url, note: "the account's Instagram page"}
         follower_count: {type: int}
         following_count: {type: int}
         media_count: {type: int}
         biography: {type: str, note: "the account's own bio, cut to 300 characters"}
         category_name: {type: str}
-        external_url: {type: str}
+        external_url: {type: url}
         is_verified: {type: bool}
         is_private: {type: bool}
         is_business_account: {type: bool}

@@ -198,6 +198,12 @@ def test_an_instagram_search_row_keeps_its_field_names_and_drops_picture_urls():
     assert row == {"username": "ada", "full_name": "Ada", "url": "https://www.instagram.com/ada/", "follower_count": 12000,
                    "media_count": 300, "biography": "coffee roaster", "is_private": False,
                    "is_professional_account": True}, "the provider's own names, so existing readers still work"
+    # a link is never cut: a 305-character URL cut to 300 points at another resource
+    long_url = "https://example.com/" + "a" * 275 + "?id=target"
+    row2 = ad.from_upstream({"profiles": [{"username": "bo", "url": "https://www.instagram.com/bo/",
+                                           "external_url": long_url, "biography": "b " * 400}]})["users"][0]
+    assert row2["external_url"] == long_url and len(long_url) > 300
+    assert len(row2["biography"]) == 300, "text is still cut"
 
 
 def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
