@@ -61,6 +61,7 @@ reported in `_treg.upgrade`. Both are opt-in.
 from __future__ import annotations
 
 
+import asyncio
 import json
 import re
 import logging
@@ -719,48 +720,133 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
     success, so they close with the parent: a find that fails or is cancelled after its check ran
     charges the check nothing either."""
     outer = parent.deferred_settles
+    nested_into = parent.deferred_audits   # set when this call is nested in another routed call
     pending: list = []
-    parent.child_audits = []
+    records: list = []
+    parent.child_audits = records
+    if nested_into is None:
+        # The top-level call's own audit row waits for the ledger too (`_finish_records`).
+        parent.deferred_audits = records
     try:
-        response, spent = await _run_routed(parent, ep, body_bytes, get_header, upstream_client,
-                                            execute_child, pending, audit_client=audit_client)
-    except CallFailure as exc:
-        released = sum(int(a.get(k) or 0) for k, rows in (("charged_micro", exc.detail.get("tried")),
-                                                           ("cost_micro", exc.detail.get("checks")))
-                       for a in (rows or []) if isinstance(a, dict) and not a.get("pending")
-                       ) if isinstance(exc.detail, dict) else 0
-        await close_deferred(pending, charge=False, why=f"routed_{exc.kind}")
-        _close_audits(parent.child_audits, stands=False, outer=parent.deferred_audits)
-        parent.routed_spent_micro = parent.settled_outside_micro
-        if isinstance(exc.detail, dict):
-            exc.detail["charged_micro"] = 0
-            if released:
-                exc.detail["released_micro"] = released
-            for a in exc.detail.get("tried") or []:
-                if isinstance(a, dict):
-                    a["charged_micro"] = 0
-            for c in exc.detail.get("checks") or []:
-                if isinstance(c, dict) and not c.get("pending"):
-                    c["cost_micro"] = 0
-        raise
-    except BaseException:
-        await close_deferred(pending, charge=False, why="routed_aborted")
-        _close_audits(parent.child_audits, stands=False, outer=parent.deferred_audits)
-        parent.routed_spent_micro = parent.settled_outside_micro
-        raise
-    parent.routed_spent_micro = spent
-    if outer is not None:
-        outer.extend(pending)
-        _close_audits(parent.child_audits, stands=True, outer=parent.deferred_audits)
-    else:
-        # Nested records are written once the batch settle committed (or did not): a settle that
-        # fails or is cancelled releases in the caller's favour, and they say so.
-        closed: dict = {}
         try:
-            await close_deferred(pending, charge=True, outcome=closed)
-        finally:
-            _close_audits(parent.child_audits, stands=bool(closed.get("ok")), outer=None)
-    return response, spent
+            response, spent = await _run_routed(parent, ep, body_bytes, get_header, upstream_client,
+                                                execute_child, pending, audit_client=audit_client)
+        except CallFailure as exc:
+            released = sum(int(a.get(k) or 0) for k, rows in (("charged_micro", exc.detail.get("tried")),
+                                                               ("cost_micro", exc.detail.get("checks")))
+                           for a in (rows or []) if isinstance(a, dict) and not a.get("pending")
+                           ) if isinstance(exc.detail, dict) else 0
+            await close_deferred(pending, charge=False, why=f"routed_{exc.kind}")
+            parent.routed_spent_micro = parent.settled_outside_micro
+            if isinstance(exc.detail, dict):
+                exc.detail["charged_micro"] = 0
+                if released:
+                    exc.detail["released_micro"] = released
+                for a in exc.detail.get("tried") or []:
+                    if isinstance(a, dict):
+                        a["charged_micro"] = 0
+                for c in exc.detail.get("checks") or []:
+                    if isinstance(c, dict) and not c.get("pending"):
+                        c["cost_micro"] = 0
+            raise
+        except BaseException:
+            await close_deferred(pending, charge=False, why="routed_aborted")
+            parent.routed_spent_micro = parent.settled_outside_micro
+            raise
+        parent.routed_spent_micro = spent
+        if outer is not None:
+            outer.extend(pending)   # nested: the enclosing call closes these and writes the records
+            return response, spent
+        await close_deferred(pending, charge=True)
+        settled, held = await _finish_records(parent.call_ref, records)
+        parent.routed_spent_micro = settled
+        return await _restate(response, settled, held), settled
+    finally:
+        parent.deferred_audits = nested_into
+        if nested_into is not None:
+            nested_into.extend(records)
+        elif records:
+            # A failure, a cancellation, or a settle that failed or was cancelled after its
+            # commit: whatever the ledger holds now is what every record says.
+            await _finish_records(parent.call_ref, records)
+
+
+async def _ledger_view(root: str) -> tuple[dict[str, int], int]:
+    """What the ledger says for every hold under `root` (`root:...`): settled amount per call id,
+    and the total of holds still open (an async task's, settled later by its worker)."""
+    from sqlalchemy import or_, select as _select
+    from ...models import Hold, LedgerEntry
+    like = root + ":%"
+    async with session_maker() as db:
+        rows = (await db.execute(_select(LedgerEntry.call_id, LedgerEntry.amount_micro).where(
+            LedgerEntry.kind == "settle",
+            or_(LedgerEntry.call_id == root, LedgerEntry.call_id.like(like))))).all()
+        open_ = (await db.execute(_select(Hold.amount_micro).where(
+            or_(Hold.id == root, Hold.id.like(like))))).scalars().all()
+    settled: dict[str, int] = {}
+    for call_id, amount in rows:
+        settled[call_id] = settled.get(call_id, 0) - int(amount or 0)
+    return settled, sum(int(a or 0) for a in open_)
+
+
+async def _finish_records(root: str, records: list) -> tuple[int, int]:
+    """Write every record this call deferred (its own audit row, its nested calls' rows and
+    events) at what the ledger settled under each one's ref, once. Shielded: a cancellation
+    arriving now must not leave a record that disagrees with the money. Returns (settled under
+    `root`, still held under it)."""
+    async def finish() -> tuple[int, int]:
+        try:
+            settled, held = await _ledger_view(root)
+        except Exception:  # the ledger unreadable: records say nothing was settled, like a release
+            log.warning("reading the ledger for %s failed", root, exc_info=True)
+            settled, held = {}, 0
+
+        def amount_for(ref: str) -> int:
+            return sum(v for k, v in settled.items() if k == ref or k.startswith(ref + ":"))
+        rows, records[:] = list(records), []
+        for write in rows:
+            try:
+                write(amount_for)
+            except Exception:  # a record never fails the call
+                log.warning("writing a routed record for %s failed", root, exc_info=True)
+        return amount_for(root), held
+    return await asyncio.shield(finish())
+
+
+async def _restate(response: UpstreamResponse, settled: int, held: int) -> UpstreamResponse:
+    """The answer with `_treg.charged_micro` as the ledger settled it, and `_treg.held_micro` for
+    holds still open (an async task's, settled later): what the caller and a replay are told."""
+    raw = await _read(response)
+    try:
+        doc = json.loads(raw)
+    except ValueError:
+        doc = None
+    meta = doc.get("_treg") if isinstance(doc, dict) else None
+    if not isinstance(meta, dict):
+        return _json_raw(raw, response)
+    # A 202 keeps `charged_micro: null` while nothing has settled (its hold is `reserved_micro`).
+    meta["charged_micro"] = None if response.status == 202 and not settled else settled
+    if held:
+        meta["held_micro"] = held
+    else:
+        meta.pop("held_micro", None)
+    if response.status == 202 and "reserved_micro" in meta:
+        meta["reserved_micro"] = held
+    headers = {k.decode("latin-1"): v.decode("latin-1") for k, v in response.raw_headers
+               if k.lower() not in (b"content-length", b"content-type")}
+    if "X-Treg-Reserved-Micro" in headers or "x-treg-reserved-micro" in headers:
+        headers.pop("x-treg-reserved-micro", None)
+        headers["X-Treg-Reserved-Micro"] = str(held)
+    return _json(doc, response.status, headers)
+
+
+def _json_raw(raw: bytes, response: UpstreamResponse) -> UpstreamResponse:
+    async def _one():
+        yield raw
+
+    async def _closed():
+        return None
+    return UpstreamResponse(response.status, response.raw_headers, _one(), _closed)
 
 
 async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_header, upstream_client: httpx.AsyncClient,
@@ -1004,14 +1090,6 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     waited.outcome == "error" and waited.task_id):
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "pending",
                                      202, 0, "provider is still processing", ignored=ignored))
-                if reserved and not await _open_hold(child.call_ref):
-                    # No hold is left for this kickoff: it settled at once (an overflow aggregator
-                    # bills on submission). Charged now, never reported as a reservation.
-                    spent += reserved
-                    parent.settled_outside_micro += reserved
-                    settled_kickoff, reserved = reserved, 0
-                else:
-                    settled_kickoff = 0
                 async_view = {
                     "task_id": waited.task_id,
                     "poll": descriptor.get("poll") or {},
@@ -1024,7 +1102,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                         "served_by": cand.endpoint["id"], "provider": cand.endpoint["provider"],
                         "tier": cand.tier, "outcome": "pending", "tried": [t.view() for t in tried],
                         "call_ref": child.call_ref, "async": async_view,
-                        "reserved_micro": reserved, "charged_micro": settled_kickoff or None,
+                        "reserved_micro": reserved, "charged_micro": None,
                         **({"checks": checks} if checks else {}),
                         **({"unsettled": unsettled} if unsettled else {}),
                         **({"dropped": plan.dropped} if plan.dropped else {}),
@@ -1512,16 +1590,6 @@ def _in_pending(pending: list, ref: str) -> bool:
                for d in pending)
 
 
-async def _open_hold(ref: str) -> bool:
-    """An open hold of this child (`ref` or one under it) anywhere: an async task's, for one."""
-    from sqlalchemy import or_, select as _select
-    from ...models import Hold
-    async with session_maker() as db:
-        row = (await db.execute(_select(Hold.id).where(
-            or_(Hold.id == ref, Hold.id.like(ref + ":%"))).limit(1))).first()
-    return row is not None
-
-
 def _held(view: dict) -> int:
     """What a check still holds and may settle later: a pending check's hold, or the holds of
     verifiers whose task has not settled yet."""
@@ -1679,26 +1747,12 @@ def _summarize(parent: CallContext, **outcome) -> None:
 
 def _audit_parent(parent: CallContext, ep: dict, status: int, charged: int, client: str) -> None:
     if parent.deferred_audits is not None:
-        # Nested in another routed call: whether this charge stands is that call's decision.
-        parent.deferred_audits.append(lambda stands: _write_audit(
-            parent, ep, status, charged if stands else parent.settled_outside_micro, client))
+        # Written once the money is closed, at what the ledger settled under this call's ref
+        # (`_finish_records`), never at what this call expected to charge.
+        parent.deferred_audits.append(lambda amount_for: _write_audit(
+            parent, ep, status, amount_for(parent.call_ref), client))
         return
     _write_audit(parent, ep, status, charged, client)
-
-
-def _close_audits(entries: list, *, stands: bool, outer: list | None) -> None:
-    """Write (or hand on) the records (audit row, call event) of routed calls nested in this one:
-    each at what it charged when the money stood, else at what it could not release. Each entry
-    is a callable taking `stands`."""
-    rows, entries[:] = list(entries), []
-    if stands and outer is not None:
-        outer.extend(rows)   # still undecided: the enclosing call decides
-        return
-    for write in rows:
-        try:
-            write(stands)
-        except Exception:  # a record never fails the call
-            log.warning("writing a nested routed record failed", exc_info=True)
 
 
 def _write_audit(parent: CallContext, ep: dict, status: int, charged: int, client: str) -> None:

@@ -292,7 +292,9 @@ can submit a second check task, and each submission is billed. A check still
 running counts its hold against `X-Treg-Route-Max-Cost` and settles when the task does. The same
 holds for a provider served through an overflow aggregator, which bills at once. A provider whose
 result came before its final usage figure is named in `_treg.unsettled` with its hold: it is not in
-`charged_micro` and settles later, between zero and that hold.
+`charged_micro` and settles later, between zero and that hold. `_treg.charged_micro` (and the cost
+header, and a replay's original cost) is read from the ledger once the call closed its holds;
+`_treg.held_micro` names holds still open, which settle later.
 Other routed tools refuse the header (422, unbilled).
 
 `X-Treg-Route-Confirm: true` on `treg.people.email.find` counts a hit only once a second provider

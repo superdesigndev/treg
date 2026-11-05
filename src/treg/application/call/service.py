@@ -938,12 +938,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         nested = request.context.deferred_audits
         if nested is not None:
             # A routed call nested in another (the find's check): its event waits for the
-            # enclosing call, which knows whether this charge stands.
+            # enclosing call, and says what the ledger settled under its ref once that call closed.
             ctx = request.context
-            nested.append(lambda stands: _routed_event(
+            nested.append(lambda amount_for: _routed_event(
                 request, ep, response.status,
-                charged=None if routed_pending else (charged if stands else ctx.settled_outside_micro),
-                response=response))
+                charged=None if routed_pending else amount_for(ctx.call_ref), response=response))
         else:
             _routed_event(request, ep, response.status, charged=None if routed_pending else charged,
                           response=response)

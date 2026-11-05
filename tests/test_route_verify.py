@@ -1017,3 +1017,127 @@ async def test_a_nested_checks_records_follow_the_money(clients: AsyncClient, ve
     rows = {x.call_ref: x for x in await _rows()}
     assert rows[f"{call_ref}:v"].cost_charged_micro == 0, "the settle never committed"
     assert await _balance(clients) <= before
+
+
+async def test_a_concurrent_poll_that_settles_at_zero_is_what_the_find_reports(
+    clients: AsyncClient, verifiers_on, monkeypatch,
+):
+    """The caller's own poll settles Enrow's task at zero while the router is still waiting: the
+    find's answer and its replay report what the ledger settled (zero), not the hold."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ENROW", "PLATFORM-ENROW-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tomba,bounceban,hunter,enrow")
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_route, "ROUTED_ASYNC_WAIT_SECONDS", 0.6)
+    waiting = asyncio.Event()
+    wait = call_route.async_bridge.await_terminal
+
+    async def observed(*args, **kwargs):
+        waiting.set()
+        return await wait(*args, **kwargs)
+    monkeypatch.setattr(call_route.async_bridge, "await_terminal", observed)
+
+    async def enrow(request, upstream_url, tool, secrets, client, **kwargs):
+        if before_outbound := kwargs.get("before_outbound"):
+            await before_outbound()
+        doc = ({"id": "en-1", "qualification": "ongoing"} if request.method == "POST"
+               else {"id": "en-1", "qualification": "invalid", "email": None, "credits_used": 0})
+        payload = json.dumps(doc).encode()
+
+        async def stream():
+            yield payload
+
+        async def close():
+            return None
+        return UpstreamResponse(200, ((b"content-type", b"application/json"),), stream(), close)
+    monkeypatch.setattr(call_service, "relay", enrow)
+    before = await _balance(clients)
+    h = {"X-Treg-Route-Prefer": "enrow", "Idempotency-Key": "concurrent-zero-1"}
+    req = asyncio.create_task(clients.post(f"/call/{FIND}", json=EX_ASK, headers=h))
+    await asyncio.wait_for(waiting.wait(), 3)
+    assert (await clients.get("/call/enrow.people.email.find.get", params={"id": "en-1"})).status_code == 200
+    r = await req
+    paid = before - await _balance(clients)
+    t = r.json()["_treg"]
+    assert paid == 0 and (t.get("charged_micro") or 0) == 0 and not t.get("held_micro")
+    replay = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=h)
+    assert int(replay.headers.get("X-Treg-Original-Cost-Micro") or 0) == paid
+
+
+@pytest.mark.parametrize("reported", [False, True])
+async def test_a_pending_overflow_check_reports_what_the_wallet_paid(
+    clients: AsyncClient, verifiers_on, monkeypatch, reported,
+):
+    """BounceBan through Monid answers `verifying`; with or without a reported price, the find's
+    `charged_micro`, the wallet and the replay's original cost agree."""
+    import httpx
+
+    from treg.application.call import overflow
+    _overflow_on(monkeypatch, "bounceban.people.email.verify", "bounceban", 6_000)
+    await _add_overflow_route()
+    monkeypatch.setattr(call_route, "ROUTED_ASYNC_WAIT_SECONDS", 0.07)
+
+    async def monid_send(client, req):
+        doc = {"runId": "run-1", "status": "COMPLETED", "providerResponse": {"httpStatus": 200},
+               "output": {"status": "verifying", "id": "bb-1", "email": "ada@example.com", "try_again_at": 1}}
+        if reported:
+            doc["billing"] = {"reportedCost": {"value": 5_500, "unit": "MICRO_DOLLAR"}}
+        return httpx.Response(200, json=doc)
+    monkeypatch.setattr(overflow, "_send", monid_send)
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [EX_TOMBA]}, []))
+    h = {**ON, "X-Treg-Route-Prefer": "tomba", "Idempotency-Key": f"pending-overflow-{reported}"}
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=h)
+    assert r.status_code == 200, r.text
+    t = r.json()["_treg"]
+    paid = before - await _balance(clients)
+    assert t["charged_micro"] + t.get("held_micro", 0) == paid
+    assert int(r.headers["X-Treg-Cost-Micro"]) == t["charged_micro"]
+    replay = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=h)
+    assert int(replay.headers["X-Treg-Original-Cost-Micro"]) == t["charged_micro"]
+
+
+async def test_a_cancel_after_the_settle_committed_records_what_was_charged(
+    clients: AsyncClient, verifiers_on, monkeypatch,
+):
+    """Cancelled while the settle's session closes, after its commit: the check's audit row and
+    call event say what the ledger charged, not zero."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from treg import call_events as sink
+    from treg.domain import money as ledger_mod
+    events = []
+    monkeypatch.setattr(sink, "enabled", lambda: True)
+    monkeypatch.setattr(sink, "emit", lambda row, *a, **k: events.append(row))
+    sessions = []
+    close_holds = ledger_mod.close_holds_in_transaction
+
+    async def closing(db, closings):
+        sessions.append(db)
+        return await close_holds(db, closings)
+    monkeypatch.setattr(ledger_mod, "close_holds_in_transaction", closing)
+    entered, proceed = asyncio.Event(), asyncio.Event()
+    session_close = AsyncSession.close
+
+    async def slow_close(db):
+        if db in sessions:
+            entered.set()
+            await proceed.wait()
+        await session_close(db)
+    monkeypatch.setattr(AsyncSession, "close", slow_close)
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA], "bounceban": [_bb("deliverable", email="ada@example.com")]}, []))
+    before = await _balance(clients)
+    req = asyncio.create_task(clients.post(f"/call/{FIND}", json=EX_ASK, headers=ON))
+    await asyncio.wait_for(entered.wait(), 4)
+    req.cancel()
+    await asyncio.sleep(0)
+    proceed.set()
+    with pytest.raises(asyncio.CancelledError):
+        await req
+    await asyncio.sleep(0.05)
+    paid = before - await _balance(clients)
+    assert paid > TOMBA_FIND_PRICE, "the settle committed: find and check were charged"
+    check = next(x for x in await _rows() if x.endpoint_id == VERIFY)
+    assert check.cost_charged_micro == paid - TOMBA_FIND_PRICE
+    assert [e.get("cost_charged_micro") for e in events
+            if e.get("call_ref") == check.call_ref and e.get("event_kind") == "call"] == [check.cost_charged_micro]

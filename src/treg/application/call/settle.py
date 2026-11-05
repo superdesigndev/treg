@@ -1410,15 +1410,12 @@ def hold_admission_wait_s(reserved_at: list[float | None]) -> float | None:
     return ledger.hold_ttl_s() - age - get_settings().hold_grace_s / 2
 
 
-async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str = "",
-                         outcome: dict | None = None) -> int:
+async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str = "") -> int:
     """Close every hold a routed call's children left open, exactly once each, in one transaction.
     `charge=True` settles each billable one as its own settle would have; `charge=False` releases all
     of them, because a routed call that fails charges the caller nothing. Returns what was charged.
     Never raises: a hold that fails to close is released later by the reaper, in the caller's favour."""
     if not items:
-        if outcome is not None:
-            outcome["ok"] = True
         return 0
     pending, items[:] = list(items), []
     # One session closes every hold. A batch that draws blocks stays `deferred` and also leases
@@ -1456,8 +1453,6 @@ async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str 
                             await archive.note_org_uses_in_transaction(db, uses)
                 with timing.phase("commit"):
                     await db.commit()
-        if outcome is not None:
-            outcome["ok"] = True
     except Exception as exc:
         logging.getLogger("treg.ledger").error(
             "closing %d deferred routed holds (charge=%s) failed: %s", len(pending), charge, exc,
