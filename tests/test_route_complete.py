@@ -39,12 +39,6 @@ def _fetchin(url: str = ASKED) -> dict:
     return doc
 
 
-def _harvest(url: str) -> dict:
-    doc = copy.deepcopy(_example("harvestapi.linkedin.user.profile.main"))
-    doc["element"]["linkedinUrl"] = url
-    return doc
-
-
 def _anyapi_full(url: str) -> dict:
     doc = copy.deepcopy(_example("anyapi.linkedin.user.profile.full"))
     doc["output"]["data"]["url"] = url
@@ -88,7 +82,7 @@ async def test_another_identifier_needs_a_second_provider(clients, profile_on, m
     renamed = "https://www.linkedin.com/in/bill-gates-renamed"
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"fetchin": [(200, _fetchin(renamed))], "harvest": [(200, _harvest(renamed))]}, seen))
+        {"fetchin": [(200, _fetchin(renamed))], "anyapi": [(200, _anyapi_full(renamed))]}, seen))
     r = await clients.post(PROFILE, json={"linkedin_url": ASKED}, headers=COMPLETE)
     assert r.status_code == 200, r.text
     d = r.json()
@@ -116,9 +110,9 @@ async def test_the_contract_names_what_a_complete_answer_carries(clients, profil
     headless["title"] = None
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
-        {"fetchin": [(200, headless)], "harvest": [(200, _harvest(ASKED))]}, seen))
+        {"fetchin": [(200, headless)], "anyapi": [(200, _anyapi_full(ASKED))]}, seen))
     r = await clients.post(PROFILE, json={"linkedin_url": ASKED}, headers=COMPLETE)
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["_treg"]["served_by"] == "harvestapi.linkedin.user.profile.main"
+    assert d["_treg"]["served_by"] == "anyapi.linkedin.user.profile.full"
     assert d["_treg"]["tried"][0]["outcome"] == "weak" and "headline" in d["_treg"]["tried"][0]["detail"]

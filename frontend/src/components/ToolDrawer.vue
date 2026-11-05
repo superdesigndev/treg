@@ -33,6 +33,7 @@ export default {
 
   <div class="td-b">
     <p v-if="drawerEp.summary && drawerEp.summary!==drawerEp.name" class="td-sum">{{drawerEp.summary}}</p>
+    <p v-if="drawerNote" class="td-caveat">{{drawerNote}}</p>
 
     <div class="td-stats">
       <div><span>Price</span><b>{{toolPrice(drawerEp)}}</b></div>

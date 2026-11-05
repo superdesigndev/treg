@@ -369,6 +369,9 @@ export default {
                     <p v-if="billing.autotopup.disabled_reason==='no_card'" class="sub" style="margin:14px 0 0">
                       Auto top-up is set up and will switch on as soon as a top-up saves a card. Until then, calls stop when the balance runs out.
                     </p>
+                    <p v-else-if="billing.autotopup.disabled_reason==='payment_refunded'" class="sub" style="margin:14px 0 0">
+                      Auto top-up is off because a top-up was refunded and its unspent credit removed. Switch it back on below when you want refills to resume.
+                    </p>
                     <div v-else-if="billing.autotopup.disabled_reason" class="banner"
                          :class="{'auth-warning':billing.autotopup.disabled_reason==='authentication_required'}"
                          style="margin:14px 0 0">
@@ -454,9 +457,11 @@ export default {
                             <td style="padding:8px 10px 8px 0;font-family:var(--mono);white-space:nowrap">{{money(i.amount_micro)}}</td>
                             <td style="padding:8px 10px 8px 0;white-space:nowrap" class="sub">
                               {{i.kind==='subscription'?'SSO subscription':i.kind==='auto'?'Auto top-up':'Manual top-up'}} ·
-                              <span :style="i.status==='paid'?'color:var(--green)':''">{{i.status==='paid'?'Paid':i.status==='open'?'Payment due':i.status||'Pending'}}</span>
+                              <span v-if="i.refunded_micro&&i.refunded_micro>=i.amount_micro">Refunded</span>
+                              <span v-else :style="i.status==='paid'?'color:var(--green)':''">{{i.status==='paid'?'Paid':i.status==='open'?'Payment due':i.status||'Pending'}}</span>
                               <span v-if="i.kind==='subscription'&&i.number" class="muted"> · {{i.number}}</span>
-                              <span v-if="i.bonus_micro" style="color:var(--green)"> +{{money(i.bonus_micro)}} bonus</span>
+                              <span v-if="i.bonus_micro&&!(i.refunded_micro>=i.amount_micro)" style="color:var(--green)"> +{{money(i.bonus_micro)}} bonus</span>
+                              <span v-if="i.refunded_micro&&i.refunded_micro<i.amount_micro"> · Refunded {{money(i.refunded_micro)}}</span>
                             </td>
                             <td style="padding:8px 0;text-align:right;white-space:nowrap">
                               <a v-if="i.invoice_pdf||i.hosted_invoice_url" :href="i.invoice_pdf||i.hosted_invoice_url" target="_blank" rel="noopener">Invoice</a>
