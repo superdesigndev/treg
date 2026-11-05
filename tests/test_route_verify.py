@@ -578,3 +578,96 @@ async def test_both_mcp_servers_pass_the_header_through(monkeypatch):
     await mcp.call(FIND, params=ASK, headers=ON, ctx=ctx)
     await mcp.directory_catalog_call_write(FIND, params=ASK, headers=ON, ctx=ctx)
     assert [h.get("X-Treg-Route-Verify") for h in sent] == ["true", "true"]
+
+
+@pytest.fixture
+def upgradable(verifiers_on):
+    """Let the email find take `X-Treg-Route-Upgrade: linkedin_url` (its answer carries no URL today)."""
+    contract = catalog_store.load().contracts["people.email.find"]
+    original = contract.output
+    object.__setattr__(contract, "output", {**original, "linkedin_url": {"type": "url"}})  # frozen
+    yield
+    object.__setattr__(contract, "output", original)
+
+
+def _fake_upgrade(seen_remaining: list, email: str | None, cost: int = 0):
+    """`_run_upgrade` stand-in: records the budget it was given and replaces the email."""
+    async def run(parent, ep, key, output, remaining, execute_child, upstream_client, pending=None):
+        seen_remaining.append(remaining)
+        if email is None:
+            return {"upgraded": False, "via": key, "reason": "over_cost_limit"}, None, 0
+        return ({"upgraded": True, "via": key, "served_by": "x.people.email.find", "cost_micro": cost},
+                ({**output, "email": email}, {"x": 1}, "x.people.email.find"), cost)
+    return run
+
+
+async def test_an_upgrade_whose_address_is_invalid_keeps_the_checked_first_answer(
+    clients: AsyncClient, upgradable, monkeypatch,
+):
+    """The first address checked valid; the upgrade's other address is invalid. The first answer
+    comes back, `tried` keeps the find a hit and `_treg.upgrade` says why the upgrade did not stand."""
+    seen, budgets = [], []
+    monkeypatch.setattr(call_route, "_run_upgrade", _fake_upgrade(budgets, "ada.other@example.com"))
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA], "bounceban": [_bb("deliverable", email="ada@example.com"),
+                                            _bb("undeliverable", email="ada.other@example.com")]}, seen))
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers={**ON, "X-Treg-Route-Upgrade": "linkedin_url"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert seen == ["tomba", "bounceban", "bounceban"]
+    assert d["output"]["email"] == "ada@example.com" and d["_treg"]["served_by"] == "tomba.people.email.find"
+    assert [t["outcome"] for t in d["_treg"]["tried"]] == ["hit"]
+    assert d["_treg"]["upgrade"]["upgraded"] is False and d["_treg"]["upgrade"]["reason"] == "invalid"
+    assert d["_treg"]["verification"]["verdict"] == "valid"
+    assert [c["verdict"] for c in d["_treg"]["checks"]] == ["valid", "invalid"]
+
+
+async def test_a_pending_checks_hold_counts_against_the_ceiling(clients: AsyncClient, upgradable, monkeypatch):
+    """A check still running may settle later, so its hold is spent from Max-Cost before any later call."""
+    seen, budgets = [], []
+    verifying = (200, {"id": "bb-1", "status": "verifying", "try_again_at": 1})
+    monkeypatch.setattr(call_route, "_run_upgrade", _fake_upgrade(budgets, None))
+    monkeypatch.setattr(call_route, "ROUTED_ASYNC_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [EX_TOMBA], "bounceban": [verifying] * 6}, seen))
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK,
+                           headers={**ON, "X-Treg-Route-Upgrade": "linkedin_url", "X-Treg-Route-Max-Cost": "0.20"})
+    assert r.status_code == 200, r.text
+    v = r.json()["_treg"]["verification"]
+    assert v["pending"] is True and v["cost_micro"] > 0
+    assert budgets == [200_000 - TOMBA_FIND_PRICE - v["cost_micro"]]
+
+
+async def test_a_failed_find_reports_the_released_check(clients: AsyncClient, verifiers_on, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA], "bounceban": [_bb("undeliverable", email="ada@example.com")],
+         "hunter": [(500, {"message": "down"})]}, []))
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=ON)
+    assert r.status_code == 502, r.text
+    detail = r.json()["detail"]
+    assert detail["released_micro"] == TOMBA_FIND_PRICE + 4_000, "the check's hold is part of the release"
+    assert [c["cost_micro"] for c in detail["checks"]] == [0]
+
+
+async def test_an_async_invalid_check_then_a_provider_error_charges_what_it_says(
+    clients: AsyncClient, verifiers_on, monkeypatch,
+):
+    """BounceBan answered `verifying`, then invalid on the poll: its task settled the check on its
+    own, so no later failure can release it. A provider error after that ends in the null miss that
+    charges what was paid (find and check), never a 502 claiming nothing was charged."""
+    seen = []
+    verifying = (200, {"id": "bb-1", "status": "verifying", "try_again_at": 1})
+    descriptor = catalog_store.load().by_id["bounceban.people.email.verify"]["async"]
+    monkeypatch.setitem(descriptor, "interval", 0.05)   # poll at once, not at BounceBan's cadence
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA], "bounceban": [verifying, _bb("undeliverable", email="ada@example.com")],
+         "hunter": [(500, {"message": "down"})]}, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=ON)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert seen == ["tomba", "bounceban", "bounceban", "hunter"]
+    assert d["output"]["email"] is None and d["_treg"]["outcome"] == "miss"
+    assert d["_treg"]["verification"]["verdict"] == "invalid"
+    total = int(r.headers["X-Treg-Cost-Micro"])
+    assert total == d["_treg"]["charged_micro"] == before - await _balance(clients)
+    assert total == TOMBA_FIND_PRICE + d["_treg"]["verification"]["cost_micro"] and total > TOMBA_FIND_PRICE

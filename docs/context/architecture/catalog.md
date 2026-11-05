@@ -939,8 +939,14 @@ returned and never documented as stable. An output field may say where it lands 
   and every check in `_treg.checks` (when more than one ran; a 202 after checks lists them too).
   A value found invalid is remembered (trimmed, case-folded) for the rest of the call: another
   provider returning it is a miss without a second check. Each find and check still settles, and a
-  routed check hands its holds to the find's `pending`, so a find that fails or is cancelled after
-  a check charges the check nothing.
+  routed check (and an upgrade `:u`) hands its holds to the find's `pending`, so a find that fails
+  or is cancelled after it charges it nothing. An async check whose task settled on its own cannot
+  be released: once such a check dropped a hit, a later provider error ends in the null miss that
+  charges what was paid, not a 502 (cancellation in that window still charges the settled check).
+  A pending check's hold counts against `X-Treg-Route-Max-Cost` for every later call. When an
+  upgrade's value is invalid, the answer it replaced is checked and returned, and
+  `_treg.upgrade` says `reason: invalid`. With `X-Treg-Route-Confirm`, the off-domain fallback is
+  the first off-domain value a second provider also returned.
   The header on a contract without `check` is a 422 before planning.
 - `confirm` (opt-in via `X-Treg-Route-Confirm`) names the field two DIFFERENT providers must agree on
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is

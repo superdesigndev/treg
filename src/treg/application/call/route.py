@@ -723,8 +723,10 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
         response, spent = await _run_routed(parent, ep, body_bytes, get_header, upstream_client,
                                             execute_child, pending, audit_client=audit_client)
     except CallFailure as exc:
-        released = sum(int(a.get("charged_micro") or 0) for a in (exc.detail.get("tried") or [])
-                       if isinstance(a, dict)) if isinstance(exc.detail, dict) else 0
+        released = sum(int(a.get(k) or 0) for k, rows in (("charged_micro", exc.detail.get("tried")),
+                                                           ("cost_micro", exc.detail.get("checks")))
+                       for a in (rows or []) if isinstance(a, dict) and not a.get("pending")
+                       ) if isinstance(exc.detail, dict) else 0
         await close_deferred(pending, charge=False, why=f"routed_{exc.kind}")
         if isinstance(exc.detail, dict):
             exc.detail["charged_micro"] = 0
@@ -733,6 +735,9 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
             for a in exc.detail.get("tried") or []:
                 if isinstance(a, dict):
                     a["charged_micro"] = 0
+            for c in exc.detail.get("checks") or []:
+                if isinstance(c, dict) and not c.get("pending"):
+                    c["cost_micro"] = 0
         raise
     except BaseException:
         await close_deferred(pending, charge=False, why="routed_aborted")
@@ -839,6 +844,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     checks: list[dict] = []        # X-Treg-Route-Verify: every check view, in order (each its own charge)
     checked: tuple | None = None   # (value, view) of the check that accepted the winner inside the loop
     invalid_values: set[str] = set()  # check values (folded) a check in this call called invalid
+    held = 0                       # holds of checks still pending: they may settle, so they spend the ceiling
+    settled_outside: list[int] = []  # check money an async task already settled: no failure can release it
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
     # measured quality the providers left are ordered by once the first attempt has not decided.
@@ -869,7 +876,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     quality = None
                 ordered_on = on
         n, cand = queue.pop(0)
-        if options.max_cost_micro is not None and spent + (cand.price_micro or 0) > options.max_cost_micro:
+        if options.max_cost_micro is not None and spent + held + (cand.price_micro or 0) > options.max_cost_micro:
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0, "would exceed max cost"))
             cost_capped = True
             continue
@@ -890,7 +897,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # A filter the caller sent that this adapter never mentions is silently NOT applied - say so
         # on the attempt. Computed at planning time, where it also ranks the candidate down.
         ignored = cand.ignored
-        remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
+        remaining = max(0, options.max_cost_micro - spent - held) if options.max_cost_micro is not None else None
         child = CallContext(input=_child_input(parent, cand.endpoint, query, body, remaining), call_ref=f"{parent.call_ref}:r{n}",
                             meta=parent.meta, deferred_settles=pending,
                             quota_admissions=parent.quota_admissions,
@@ -1006,6 +1013,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                                      response.status if response else None, 0, waited.detail[:120]))
                 break
             charged = await _async_cost(parent, child.call_ref, 0 if cand.tier != "platform" else reserved)
+            parent.settled_outside_micro += charged   # settled by the task, never in `pending`
         spent += charged
         if async_outcome == "failure":
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "miss",
@@ -1187,10 +1195,12 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             if value in invalid_values:
                 view = None
             else:
-                remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
+                remaining = max(0, options.max_cost_micro - spent - held) if options.max_cost_micro is not None else None
                 view, check_cost = await _run_check(parent, plan.contract.check, core, remaining, pending,
-                                                    execute_child, upstream_client, n=len(checks))
+                                                    execute_child, upstream_client, n=len(checks),
+                                                    settled=settled_outside)
                 spent += check_cost
+                held += _held(view)
                 checks.append(view)
             if view is None or _is_invalid(view):
                 invalid_values.add(value)
@@ -1211,14 +1221,19 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if winner is None and off_domain:
         winner = off_domain[0]    # nothing on-domain turned up: the first off-domain hit, flagged
         if options.confirm:
-            # Off-domain hits never reach the confirm step in the loop; two providers returning the
-            # same off-domain address still confirm each other.
-            value = str(winner[2].get(plan.contract.confirm) or "").strip().lower()
-            confirmed_by = next((h[0].endpoint["provider"] for h in off_domain[1:]
-                                 if str(h[2].get(plan.contract.confirm) or "").strip().lower() == value
-                                 and h[0].endpoint["provider"] != winner[0].endpoint["provider"]), None)
+            # Off-domain hits never reach the confirm step in the loop. The caller asked for
+            # agreement, so the first off-domain address a second provider also returned wins
+            # (A, B, B returns B confirmed); with no agreement the first stays, unconfirmed.
+            def _val(h):
+                return str(h[2].get(plan.contract.confirm) or "").strip().lower()
+            for i, h in enumerate(off_domain):
+                by = next((o[0].endpoint["provider"] for o in off_domain[i + 1:]
+                           if _val(o) == _val(h) and o[0].endpoint["provider"] != h[0].endpoint["provider"]), None)
+                if by is not None:
+                    winner, confirmed_by = h, by
+                    break
 
-    def _route_miss() -> UpstreamResponse:
+    def _route_miss(upgrade: dict | None = None) -> UpstreamResponse:
         """The 200 miss: every output field null. When a check called a hit invalid, the
         verification says so (`withheld`): the address was found, paid for, and not handed back."""
         invalid = [c for c in checks if _is_invalid(c)]
@@ -1228,6 +1243,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                     "_treg": {"served_by": None, "outcome": "miss", "tried": [t.view() for t in tried], "charged_micro": spent,
                               **({"verification": verification} if options.verify else {}),
                               **({"checks": checks} if len(checks) > 1 else {}),
+                              **({"upgrade": upgrade} if upgrade is not None else {}),
                               **({"capped": True} if cost_capped else {}),
                               **({"dropped": plan.dropped} if plan.dropped else {})}}
         _summarize(parent, hit=False, tried_count=len(tried),
@@ -1256,12 +1272,16 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             })
         outcome = ("miss" if tried and any(t.outcome == "miss" for t in tried)
                    and all(t.outcome in ("miss", "skipped", "weak", "rejected") for t in tried) else "error")
-        if outcome == "miss":
+        if outcome == "miss" or (sum(settled_outside) and any(t.detail == "check verdict invalid" for t in tried)):
+            # A check whose async task already settled cannot be released, so once an address was
+            # dropped as invalid a later provider error ends in the null miss that charges what
+            # was paid, never in a 502 that says nothing was charged.
             return _route_miss(), spent
         _summarize(parent, tried_count=len(tried))
         _audit_parent(parent, ep, 502, 0, audit_client)   # a failed routed call charges nothing
         raise GatewayFailed("route_failed", status_code=502, detail={
             "error": "route_failed", "endpoint_id": ep["id"], "tried": [t.view() for t in tried], "charged_micro": spent,
+            **({"checks": checks} if checks else {}),
             "dropped": plan.dropped,
             "message": f"every candidate for {ep['id']} failed; nothing useful was charged" if spent == 0 else
                        f"every candidate for {ep['id']} failed"})
@@ -1270,12 +1290,14 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     winner_outcome = next(t.outcome for t in reversed(tried)
                           if t.endpoint_id == served and t.outcome in ("hit", "weak", "miss"))
     upgrade, provider = None, cand.endpoint["provider"]
+    replaced: tuple | None = None   # the answer an upgrade replaced, back if the upgrade's value is invalid
     if options.upgrade and winner_outcome == "hit" and not given.get(options.upgrade):
-        remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
+        remaining = max(0, options.max_cost_micro - spent - held) if options.max_cost_micro is not None else None
         upgrade, better, upgrade_cost = await _run_upgrade(parent, ep, options.upgrade, output, remaining,
-                                                           execute_child, upstream_client)
+                                                           execute_child, upstream_client, pending)
         spent += upgrade_cost
         if better is not None:
+            replaced = (output, doc, served, provider)
             output, doc, served = better
             provider = served.split(".")[0]
     merged_from: list[str] = []
@@ -1299,26 +1321,38 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     # vouch for deliverability (`verified` absent or false — Hunter's `accept_all`, LeadMagic's
     # personal finder, every phone provider), say it where the agent reads the answer. A
     # suggestion only, unless the caller sent `X-Treg-Route-Verify`: then the check runs below.
-    advice = (plan.contract.advice_unverified
-              if plan.contract.advice_unverified and output and output.get("verified") is not True else "")
-    advice_locked = False  # a check's disagree/skip advice wins over domain-mismatch advice
     verification = None
     check = plan.contract.check
+
+    async def _verify(value_from: dict) -> dict:
+        """The check view for this answer: the one the waterfall already ran on it, the invalid
+        verdict it already has, or a new check (`:vN`, its holds in `pending`)."""
+        nonlocal spent, held
+        if checked is not None and checked[0] == value_from.get(check.field):
+            return checked[1]
+        if _check_key(value_from.get(check.field)) in invalid_values:
+            return next(c for c in reversed(checks) if _is_invalid(c))
+        remaining = max(0, options.max_cost_micro - spent - held) if options.max_cost_micro is not None else None
+        view, check_cost = await _run_check(parent, check, value_from, remaining,
+                                            pending, execute_child, upstream_client, n=len(checks))
+        spent += check_cost
+        held += _held(view)
+        checks.append(view)
+        return view
+
     if options.verify and check is not None and winner_outcome in ("hit", "weak"):
         # The find's holds stay open in `pending` while the check runs: a cancellation releases
         # them with everything else, and `run_routed` still closes each exactly once. A plain hit
         # was checked inside the waterfall; a winner chosen after it (a weak, unconfirmed,
         # undecided or off-domain answer, or an upgrade that changed the value) is checked here.
-        if checked is not None and checked[0] == output.get(check.field):
-            verification = checked[1]
-        elif _check_key(output.get(check.field)) in invalid_values:
-            verification = next(c for c in reversed(checks) if _is_invalid(c))
-        else:
-            remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
-            verification, check_cost = await _run_check(parent, check, output, remaining,
-                                                        pending, execute_child, upstream_client, n=len(checks))
-            spent += check_cost
-            checks.append(verification)
+        verification = await _verify(output)
+        if _is_invalid(verification) and replaced is not None:
+            # The upgrade's address is the bad one: the answer it replaced comes back (checked
+            # on its own), and `_treg.upgrade` says why the upgrade did not stand.
+            invalid_values.add(_check_key(output.get(check.field)))
+            output, doc, served, provider = replaced
+            upgrade = {**upgrade, "upgraded": False, "reason": "invalid"}
+            verification = await _verify(output)
         if _is_invalid(verification):
             # Known bad, and nothing better was found: no value is handed back.
             invalid_values.add(_check_key(output.get(check.field)))
@@ -1326,7 +1360,13 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 if t.endpoint_id == cand.endpoint["id"] and t.outcome in ("hit", "weak"):
                     t.outcome, t.detail = "miss", "check verdict invalid"
                     break
-            return _route_miss(), spent
+            return _route_miss(upgrade), spent
+    elif options.verify:
+        verification = _unchecked("no_hit")   # a miss is never checked; say why
+    advice = (plan.contract.advice_unverified
+              if plan.contract.advice_unverified and output and output.get("verified") is not True else "")
+    advice_locked = False  # a check's disagree/skip advice wins over domain-mismatch advice
+    if verification is not None and options.verify and check is not None and winner_outcome in ("hit", "weak"):
         if verification["checked"]:
             advice = ""   # the verdict answers what the advice suggests
             if (check.disagree_advice and output.get("verified") is True and not verification.get("pending")
@@ -1336,8 +1376,6 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         elif check.skip_advice and verification["reason"] == check.skip_reason:
             advice = check.skip_advice   # the caller asked; say why this hit was not checked
             advice_locked = True
-    elif options.verify:
-        verification = _unchecked("no_hit")   # a miss is never checked; say why
     # Disclose whether the hit's mailbox domain matches the domain the caller sent. An off-domain
     # answer here is the waterfall's last resort (nothing on-domain turned up), still a billed hit.
     domain_match = (_email_domain_match(plan.identity, output)
@@ -1413,6 +1451,11 @@ def _unchecked(reason: str) -> dict:
     return {"verdict": "unknown", "checked": False, "served_by": None, "cost_micro": 0, "reason": reason}
 
 
+def _held(view: dict) -> int:
+    """What a pending check still holds (it may settle later), else 0."""
+    return int(view.get("cost_micro") or 0) if view.get("pending") else 0
+
+
 def _check_key(value) -> str:
     """A checked value as this call remembers it: trimmed and case-folded."""
     return str(value or "").strip().lower()
@@ -1424,7 +1467,8 @@ def _is_invalid(view: dict) -> bool:
 
 
 async def _run_check(parent: CallContext, check, output: dict, remaining: int | None, pending: list,
-                     execute_child, upstream_client, n: int = 0) -> tuple[dict, int]:
+                     execute_child, upstream_client, n: int = 0,
+                     settled: list | None = None) -> tuple[dict, int]:
     """The contract's check on a hit, as an ordinary call: (`_treg.verification`, money it moved).
     The first check of a routed call is `:v`; one after an invalid verdict sent the waterfall on is `:v2`, `:v3`...
 
@@ -1464,6 +1508,9 @@ async def _run_check(parent: CallContext, check, output: dict, remaining: int | 
     except Exception:
         log.warning("check %s failed after %s", check.endpoint, parent.call_ref, exc_info=True)
         return _unchecked("checker_failed"), 0
+    finally:
+        if settled is not None and child.settled_outside_micro:
+            settled.append(child.settled_outside_micro)
     try:
         doc = json.loads(raw)
     except ValueError:
@@ -1508,7 +1555,7 @@ def _name_key(name) -> str | None:
 
 
 async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, remaining: int | None,
-                       execute_child, upstream_client) -> tuple[dict, tuple | None, int]:
+                       execute_child, upstream_client, pending: list | None = None) -> tuple[dict, tuple | None, int]:
     """`X-Treg-Route-Upgrade`: the hit named a stronger identity (a LinkedIn URL for an email), so ask
     this same routed endpoint again by that key alone, its providers in order of measured quality.
     Its answer replaces the first only when it is a hit about the same person (the contract's name
@@ -1518,7 +1565,7 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
     if not isinstance(value, str) or not value.strip():
         return {"upgraded": False, "via": key, "reason": f"no_{key}"}, None, 0
     child = CallContext(input=_child_input(parent, ep, {}, {key: value}, remaining, ((QUALITY_HEADER.encode(), b"1"),)),
-                        call_ref=f"{parent.call_ref}:u", meta=parent.meta, deferred_settles=None)
+                        call_ref=f"{parent.call_ref}:u", meta=parent.meta, deferred_settles=pending)
     try:
         response = await execute_child(child, upstream_client)
         doc = json.loads(await _read(response))

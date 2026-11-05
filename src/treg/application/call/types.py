@@ -278,6 +278,9 @@ class CallContext:
     # Set by a routed parent on each child: the child leaves its hold OPEN here instead of settling,
     # and the parent charges or releases every one at the end (route.py `_close_deferred`).
     deferred_settles: list | None = None
+    # What this routed call's async children settled through their task (not via the parent's
+    # `deferred_settles`): money a later failure of an enclosing routed call cannot release.
+    settled_outside_micro: int = 0
     quota_admissions: set[tuple[int, str]] = field(default_factory=set)
     quota_pending: tuple[tuple[int, str], ...] = ()
     # Scalar snapshots for root request logs; never resolve a target just for telemetry.

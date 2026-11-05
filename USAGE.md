@@ -283,7 +283,8 @@ billed at its own price, inside `X-Treg-Route-Max-Cost`. When every hit is inval
 miss (all output fields null) whose `_treg.verification` holds the last invalid verdict and
 `withheld` (how many hits were dropped); `_treg.checks` lists every check when more than one ran.
 An address found invalid stays invalid for the whole call, even when another provider returns it.
-A call that fails or is cancelled after a check charges nothing, the check included.
+A call that fails or is cancelled after a check charges nothing, the check included. A check that
+is still running counts its hold against `X-Treg-Route-Max-Cost`.
 Other routed tools refuse the header (422, unbilled).
 
 `X-Treg-Route-Confirm: true` on `treg.people.email.find` counts a hit only once a second provider

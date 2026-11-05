@@ -3005,3 +3005,21 @@ async def test_a_routed_find_asks_the_suffix_provider_first(clients, enrichment_
                            headers={"X-Treg-Route-Prefer": header} if header else {})
     assert r.status_code == 200, r.text
     assert [p for p, *_ in seen][:len(order)] == order and r.json()["_treg"]["served_by"] == "hunter.people.email.find"
+
+
+async def test_confirm_picks_the_off_domain_address_two_providers_agree_on(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    """Only off-domain answers A, B, B: with X-Treg-Route-Confirm the agreed B comes back confirmed."""
+    a = (200, {"data": {"email": "ada@acme-tools.de", "score": 90, "verification": {"status": "valid"}}})
+    b = (200, {"data": {"email": "ada@acme-tools.fr", "score": 90, "verification": {"status": "valid"}}})
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [a], "hunter": [b], "leadmagic": [(200, {"email": "ada@acme-tools.fr", "status": "valid"})],
+         "*": [(404, {})] * 8}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Ada Example", "domain": "acme-tools.com"},
+                           headers={"X-Treg-Route-Prefer": "tomba,hunter,leadmagic", "X-Treg-Route-Confirm": "true"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["confirmation"] == {"field": "email", "confirmed": True, "confirmed_by": "leadmagic"}
+    assert d["output"]["email"] == "ada@acme-tools.fr" and d["_treg"]["served_by"] == "hunter.people.email.find"
+    assert d["_treg"]["domain_match"] is False
