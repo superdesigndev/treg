@@ -137,7 +137,7 @@ async def run(host: _Host, script: str, inputs: dict[str, Any], data: Any) -> di
     host.deadline = asyncio.get_running_loop().time() + host.wall_s + 2
     try:
         async with asyncio.timeout(max(host.left(), 0.05)):
-            ws = await connect(url, max_size=MAX_LINE_BYTES, open_timeout=None, ping_interval=None,
+            ws = await connect(url, max_size=MAX_LINE_BYTES, open_timeout=None, ping_interval=20, ping_timeout=20,
                                close_timeout=1, compression=None)
         async with ws:
             in_flight: set[asyncio.Task] = set()
