@@ -1025,8 +1025,13 @@ an invalid extra never disables the primary.
   price and unit. A child treg would not call on its key ranks last with a `skipped` reason.
 - **Ranking** (`routing/plan.py`): own keys first at cost 0, then the anonymous tier, then
   `expected_cost_per_hit = cost_at(request) x P(billed) / P(hit)`, where `cost_at` prices this
-  request at its requested size and `P(hit)` is the published hit rate, else `ok_rate`, else 1.0
-  (`unmeasured`). Among one tier, a candidate that uses more of the keys the caller SENT outranks a
+  request at its requested size and `P(hit)` is the published hit rate. Below the publication floor
+  (`stats.MIN_HIT_SAMPLES` judged lookups) it is `UNMEASURED_HIT_PRIOR` (0.5) times `ok_rate`, or
+  the prior alone while `ok_rate` is unmeasured too: assuming every unproven answer a hit put a child
+  seen a few times ahead of same-priced siblings measured near 1. A per-success child bills no miss, so
+  its cost per hit is its price either way; an unmeasured per-call child leads only below half a
+  measured sibling's cost per hit, which still lets a much cheaper newcomer be tried and measured.
+  Among one tier, a candidate that uses more of the keys the caller SENT outranks a
   cheaper one (never counting keys reached through `derive`), and one that ignores a sent filter
   ranks below every one that can express it (`ignored_filters()`, computed at planning so ranking and
   report agree; `limit` and contract defaults never count). An exhausted platform provider with an
