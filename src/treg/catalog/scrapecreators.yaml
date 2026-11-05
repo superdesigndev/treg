@@ -333,7 +333,7 @@ endpoints:
           type: string
           required: false
           enum: [relevance, new, top, comment_count]
-          note: "Use relevance for posts that match the query. new, top and comment_count rank sitewide by date or engagement and often return unrelated posts. comment_count works for post search only."
+          note: "Use relevance for posts about the query. For a rare term like a brand, top and comment_count return almost only unrelated posts and new mixes them in. comment_count is post search only."
           example: relevance
         filter: {type: string, required: false, enum: [posts, comments], note: "Search posts or comments. Default posts.", example: "posts"}
         timeframe: {type: string, required: false, enum: [all, day, week, month, year], note: "Post search timeframe. One of: all | day | week | month | year.", example: "all"}
