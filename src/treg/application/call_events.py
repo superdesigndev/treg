@@ -59,7 +59,7 @@ COLUMNS = (
     "answer_values", "answer_flags",
 )
 
-_STEP = re.compile(r"^(?P<parent>.+):(?P<step>r(?P<n>\d+)|v|p\d+|s\d+)$")
+_STEP = re.compile(r"^(?P<parent>.+):(?P<step>r(?P<n>\d+)|v\d*|p\d+|s\d+)$")
 _DOMAIN_KEYS = ("domain", "company_domain", "website")
 _ROLE_LOCALS = frozenset({
     "admin", "billing", "careers", "contact", "enquiries", "hello", "help", "hr", "info",
@@ -129,7 +129,7 @@ def _stringify(value: Any) -> str | None:
 
 
 def ref_parts(call_ref: str | None) -> tuple[str | None, str | None, int | None]:
-    """`X:r2` -> (`X`, `r2`, 2); `X:v` -> (`X`, `v`, None); a root ref -> (None, None, None)."""
+    """`X:r2` -> (`X`, `r2`, 2); `X:v` / `X:v2` -> (`X`, `v` / `v2`, None); a root ref -> (None, None, None)."""
     m = _STEP.match(call_ref or "")
     if m is None:
         return None, None, None

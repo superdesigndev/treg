@@ -936,7 +936,11 @@ returned and never documented as stable. An output field may say where it lands 
   plain hit is checked inside the waterfall, becomes a `miss` in `tried` and the next candidate is
   asked; a winner chosen after the loop (weak, unconfirmed, undecided, off-domain, upgraded) is
   checked there and, if invalid, the call answers a 200 miss with null output, `verification.withheld`
-  and every check in `_treg.checks` (when more than one ran). Each find and check still settles.
+  and every check in `_treg.checks` (when more than one ran; a 202 after checks lists them too).
+  A value found invalid is remembered (trimmed, case-folded) for the rest of the call: another
+  provider returning it is a miss without a second check. Each find and check still settles, and a
+  routed check hands its holds to the find's `pending`, so a find that fails or is cancelled after
+  a check charges the check nothing.
   The header on a contract without `check` is a 422 before planning.
 - `confirm` (opt-in via `X-Treg-Route-Confirm`) names the field two DIFFERENT providers must agree on
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
@@ -1091,7 +1095,8 @@ an invalid extra never disables the primary.
   `email` hit, `_treg.domain_match` / `X-Treg-Domain-Match` disclose whether the mailbox host
   matches (as call events store `answer_flags.domain_match`); `advice_domain_mismatch` names it.
   On a contract that names that advice, an off-domain hit is billed but `weak`: the waterfall goes on
-  and an on-domain hit wins; the first off-domain one returns, flagged, only when none turns up.
+  and an on-domain hit wins, a weak one (Min-Results, Complete) included; the first off-domain one
+  returns, flagged, only when none turns up, confirmed when a second provider returned the same.
 - **The answer says what it ignored**: `ignored_filters` on `_treg` and `X-Treg-Ignored-Filters`.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a

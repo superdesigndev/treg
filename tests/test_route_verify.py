@@ -88,7 +88,10 @@ async def test_without_the_header_nothing_is_checked(clients: AsyncClient, verif
     assert int(r.headers["X-Treg-Cost-Micro"]) == TOMBA_FIND_PRICE
 
 
-HUNTER_HIT = (200, {"data": {"email": "pcollison@stripe.com", "score": 95, "verification": {"status": "valid"}}})
+# Fictional person and domain for the tests below; the two finders return different addresses.
+EX_ASK = {"full_name": "Ada Example", "domain": "example.com"}
+EX_TOMBA = (200, {"data": {"email": "ada@example.com", "score": 99, "verification": {"status": "valid"}}})
+HUNTER_HIT = (200, {"data": {"email": "a.example@example.com", "score": 95, "verification": {"status": "valid"}}})
 
 
 async def test_an_invalid_hit_is_dropped_and_the_next_provider_wins(clients: AsyncClient, verifiers_on, monkeypatch):
@@ -97,14 +100,14 @@ async def test_an_invalid_hit_is_dropped_and_the_next_provider_wins(clients: Asy
     provider, whose checked-valid address is the answer. Each find and each check is billed."""
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay(
-        {"tomba": [TOMBA_HIT], "hunter": [HUNTER_HIT],
-         "bounceban": [_bb("undeliverable"), _bb("deliverable", email="pcollison@stripe.com")]}, seen))
+        {"tomba": [EX_TOMBA], "hunter": [HUNTER_HIT],
+         "bounceban": [_bb("undeliverable", email="ada@example.com"), _bb("deliverable", email="a.example@example.com")]}, seen))
     before = await _balance(clients)
-    r = await clients.post(f"/call/{FIND}", json=ASK, headers=ON)
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=ON)
     assert r.status_code == 200, r.text
     d = r.json()
     assert seen == ["tomba", "bounceban", "hunter", "bounceban"], "BounceBan first for each check"
-    assert d["output"]["email"] == "pcollison@stripe.com" and d["_treg"]["served_by"] == "hunter.people.email.find"
+    assert d["output"]["email"] == "a.example@example.com" and d["_treg"]["served_by"] == "hunter.people.email.find"
     assert d["_treg"]["outcome"] == "hit"
     tried = d["_treg"]["tried"]
     assert [(t["provider"], t["outcome"]) for t in tried] == [("tomba", "miss"), ("hunter", "hit")]
@@ -136,10 +139,10 @@ async def test_every_hit_invalid_returns_no_email(clients: AsyncClient, verifier
     each one. The finds and checks were real work and stay billed, each at its own price."""
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay(
-        {"tomba": [TOMBA_HIT], "hunter": [HUNTER_HIT],
-         "bounceban": [_bb("undeliverable"), _bb("undeliverable", email="pcollison@stripe.com")]}, seen))
+        {"tomba": [EX_TOMBA], "hunter": [HUNTER_HIT],
+         "bounceban": [_bb("undeliverable", email="ada@example.com"), _bb("undeliverable", email="a.example@example.com")]}, seen))
     before = await _balance(clients)
-    r = await clients.post(f"/call/{FIND}", json=ASK, headers=ON)
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=ON)
     assert r.status_code == 200, r.text
     d = r.json()
     assert seen == ["tomba", "bounceban", "hunter", "bounceban"]
@@ -160,8 +163,8 @@ async def test_every_hit_invalid_returns_no_email(clients: AsyncClient, verifier
         assert (await db.execute(select(Hold))).scalars().all() == []
     # With the waterfall off there is no next provider: the one invalid hit is still not returned.
     seen.clear()
-    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_HIT], "bounceban": [_bb("undeliverable")]}, seen))
-    r = await clients.post(f"/call/{FIND}", json=ASK, headers={**ON, "X-Treg-Route-Waterfall": "0"})
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [EX_TOMBA], "bounceban": [_bb("undeliverable", email="ada@example.com")]}, seen))
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers={**ON, "X-Treg-Route-Waterfall": "0"})
     d = r.json()
     assert r.status_code == 200 and seen == ["tomba", "bounceban"]
     assert d["output"]["email"] is None and d["_treg"]["outcome"] == "miss"
@@ -172,13 +175,117 @@ async def test_an_invalid_hit_stops_at_the_cost_ceiling(clients: AsyncClient, ve
     """The next provider is asked only while it fits `X-Treg-Route-Max-Cost`; a ceiling that leaves
     no room answers null rather than the invalid address."""
     seen = []
-    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [TOMBA_HIT], "bounceban": [_bb("undeliverable")]}, seen))
-    r = await clients.post(f"/call/{FIND}", json=ASK, headers={**ON, "X-Treg-Route-Max-Cost": "0.02"})
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [EX_TOMBA], "bounceban": [_bb("undeliverable", email="ada@example.com")]}, seen))
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers={**ON, "X-Treg-Route-Max-Cost": "0.02"})
     assert r.status_code == 200, r.text
     d = r.json()
     assert seen == ["tomba", "bounceban"] and d["output"]["email"] is None
     assert d["_treg"]["capped"] is True and d["_treg"]["verification"]["verdict"] == "invalid"
     assert {t["outcome"] for t in d["_treg"]["tried"][1:]} == {"skipped"}
+
+
+async def test_a_find_that_fails_after_its_check_charges_the_check_nothing(
+    clients: AsyncClient, verifiers_on, monkeypatch,
+):
+    """The check settles with the routed find, not on its own: an invalid hit, then a provider
+    error, ends in a 502 that charges nothing, the check included."""
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA], "bounceban": [_bb("undeliverable", email="ada@example.com")],
+         "hunter": [(500, {"message": "down"})]}, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=ON)
+    assert r.status_code == 502, r.text
+    assert seen == ["tomba", "bounceban", "hunter"]
+    assert r.json()["detail"]["charged_micro"] == 0
+    assert await _balance(clients) == before
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == []
+        assert not [e for e in (await db.execute(select(LedgerEntry))).scalars() if e.kind == "settle"]
+
+
+async def test_cancelling_after_a_check_releases_the_check_too(clients: AsyncClient, verifiers_on, monkeypatch):
+    seen = []
+    started, release = asyncio.Event(), asyncio.Event()
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA], "bounceban": [_bb("undeliverable", email="ada@example.com")],
+         "hunter": [HUNTER_HIT]}, seen, gate={"hunter": (started, release)}))
+    before = await _balance(clients)
+    task = asyncio.create_task(clients.post(f"/call/{FIND}", json=EX_ASK, headers=ON))
+    await asyncio.wait_for(started.wait(), 5)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert seen == ["tomba", "bounceban", "hunter"]
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == []
+        assert not [e for e in (await db.execute(select(LedgerEntry))).scalars() if e.kind == "settle"]
+    assert await _balance(clients) == before
+
+
+@pytest.mark.parametrize("max_cost", [None, "0.0374"])
+async def test_an_address_found_invalid_stays_invalid_for_the_whole_call(
+    clients: AsyncClient, verifiers_on, monkeypatch, max_cost,
+):
+    """A second provider returning the address the check already called invalid is not checked
+    again and not returned, whether or not a second check would fit the ceiling."""
+    seen = []
+    same = (200, {"data": {"email": "Ada@Example.com", "score": 95, "verification": {"status": "valid"}}})
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA], "hunter": [same], "bounceban": [_bb("undeliverable", email="ada@example.com")]}, seen))
+    headers = {**ON, **({"X-Treg-Route-Max-Cost": max_cost} if max_cost else {})}
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=headers)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert seen == ["tomba", "bounceban", "hunter"], "no second check of a known-invalid address"
+    assert d["output"]["email"] is None and d["_treg"]["outcome"] == "miss"
+    assert d["_treg"]["verification"]["verdict"] == "invalid" and d["_treg"]["verification"]["withheld"] == 2
+    assert [t["outcome"] for t in d["_treg"]["tried"]] == ["miss", "miss"]
+
+
+async def test_a_pending_finder_after_invalid_checks_still_lists_them(clients: AsyncClient, verifiers_on, monkeypatch):
+    """A 202 after paid checks names them in `_treg.checks`, with who served each and its cost."""
+    seen = []
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ENROW", "PLATFORM-ENROW-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tomba,bounceban,hunter,enrow")
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_route, "ROUTED_ASYNC_WAIT_SECONDS", 0.05)
+    answers = {"tomba": [EX_TOMBA], "hunter": [HUNTER_HIT],
+               "bounceban": [_bb("undeliverable", email="ada@example.com"),
+                             _bb("undeliverable", email="a.example@example.com")],
+               "enrow": [(200, {"id": "en-1", "qualification": "ongoing"})] * 8}
+    relay = _relay(answers, seen)
+
+    async def with_enrow(request, upstream_url, tool, secrets, client, **kwargs):
+        if "enrow" in upstream_url:
+            if before_outbound := kwargs.get("before_outbound"):
+                await before_outbound()
+            seen.append("enrow")
+            payload = json.dumps(answers["enrow"].pop(0)[1]).encode()
+
+            async def stream():
+                yield payload
+
+            async def close():
+                return None
+            return UpstreamResponse(200, ((b"content-type", b"application/json"),), stream(), close)
+        return await relay(request, upstream_url, tool, secrets, client, **kwargs)
+    monkeypatch.setattr(call_service, "relay", with_enrow)
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK,
+                           headers={**ON, "X-Treg-Route-Prefer": "tomba,hunter,enrow"})
+    assert r.status_code == 202, r.text
+    t = r.json()["_treg"]
+    assert t["outcome"] == "pending" and t["served_by"] == "enrow.people.email.find"
+    assert [x["outcome"] for x in t["tried"]][:2] == ["miss", "miss"]
+    assert [c["verdict"] for c in t["checks"]] == ["invalid", "invalid"]
+    assert all(c["served_by"] == "bounceban.people.email.verify" and c["cost_micro"] > 0 for c in t["checks"])
+
+
+def test_every_check_ref_names_its_parent():
+    from treg.application import call_events
+    assert call_events.ref_parts("root:v") == ("root", "v", None)
+    assert call_events.ref_parts("root:v2") == ("root", "v2", None)
+    assert call_events.ref_parts("root:v2:r0") == ("root:v2", "r0", 0)
 
 
 async def test_a_checked_hit_drops_the_advice(

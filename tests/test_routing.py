@@ -936,6 +936,39 @@ async def test_an_on_domain_hit_from_a_later_provider_beats_an_off_domain_one(
     assert total == sum(t["charged_micro"] for t in d["_treg"]["tried"]) == before - await _balance(clients)
 
 
+async def test_two_providers_agreeing_on_one_off_domain_address_confirm_it(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    same = (200, {"data": {"email": "ada@acme-tools.de", "score": 90, "verification": {"status": "valid"}}})
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [same], "hunter": [same], "*": [(404, {})] * 8}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Ada Example", "domain": "acme-tools.com"},
+                           headers={"X-Treg-Route-Prefer": "tomba,hunter", "X-Treg-Route-Confirm": "true"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["output"]["email"] == "ada@acme-tools.de" and d["_treg"]["domain_match"] is False
+    assert d["_treg"]["confirmation"] == {"field": "email", "confirmed": True, "confirmed_by": "hunter"}
+
+
+@pytest.mark.parametrize("headers", [{"X-Treg-Route-Min-Results": "2"}, {"X-Treg-Route-Complete": "true"}])
+async def test_a_weak_on_domain_hit_beats_an_earlier_off_domain_one(
+    clients: AsyncClient, enrichment_on, monkeypatch, headers,
+):
+    """An on-domain answer wins even when it is weak too (Min-Results or Complete): the off-domain
+    one is the last resort, never just the first weak answer."""
+    off = (200, {"data": {"email": "ada@acme-tools.de", "score": 90, "verification": {"status": "valid"}}})
+    on = (200, {"data": {"email": "ada@acme-tools.com", "score": 90, "verification": {"status": "valid"}}})
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [off], "hunter": [on], "*": [(404, {})] * 8}, []))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Ada Example", "domain": "acme-tools.com"},
+                           headers={"X-Treg-Route-Prefer": "tomba,hunter", **headers})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["output"]["email"] == "ada@acme-tools.com" and d["_treg"]["served_by"] == "hunter.people.email.find"
+    assert d["_treg"]["domain_match"] is True
+    assert "different domain" not in d["_treg"].get("advice", "")
+
+
 async def test_matching_domain_hit_sets_domain_match_true(clients: AsyncClient, enrichment_on, monkeypatch):
     """A hit whose mailbox host equals the domain the caller sent reports domain_match true; the
     unverified advice still attaches when the provider did not vouch for deliverability."""

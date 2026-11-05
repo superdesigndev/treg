@@ -711,7 +711,13 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
     child that bills leaves its hold OPEN in `pending` (CallContext.deferred_settles) and this call
     closes all of them once, at the end: settled when the routed call answers (a hit, or a 200
     miss), released when it fails. A routed call that fails charges the caller nothing, even when
-    a provider on the way answered and billed treg (owner decision 2026-09-21)."""
+    a provider on the way answered and billed treg (owner decision 2026-09-21).
+
+    A routed call that is itself a routed parent's child (the email find's check runs the routed
+    `treg.people.email.verify`) hands its settled holds to that parent's `deferred_settles` on
+    success, so they close with the parent: a find that fails or is cancelled after its check ran
+    charges the check nothing either."""
+    outer = parent.deferred_settles
     pending: list = []
     try:
         response, spent = await _run_routed(parent, ep, body_bytes, get_header, upstream_client,
@@ -731,7 +737,10 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
     except BaseException:
         await close_deferred(pending, charge=False, why="routed_aborted")
         raise
-    await close_deferred(pending, charge=True)
+    if outer is not None:
+        outer.extend(pending)
+    else:
+        await close_deferred(pending, charge=True)
     return response, spent
 
 
@@ -829,6 +838,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     off_domain: list[tuple] = []   # email hits at another domain than the one sent, kept as a last resort
     checks: list[dict] = []        # X-Treg-Route-Verify: every check view, in order (each its own charge)
     checked: tuple | None = None   # (value, view) of the check that accepted the winner inside the loop
+    invalid_values: set[str] = set()  # check values (folded) a check in this call called invalid
     confirmed_by: str | None = None
     # X-Treg-Route-Decisive: answers whose verdict did not decide, the word that came back, and the
     # measured quality the providers left are ordered by once the first attempt has not decided.
@@ -972,6 +982,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                         "tier": cand.tier, "outcome": "pending", "tried": [t.view() for t in tried],
                         "call_ref": child.call_ref, "async": async_view,
                         "reserved_micro": reserved, "charged_micro": None,
+                        **({"checks": checks} if checks else {}),
                         **({"dropped": plan.dropped} if plan.dropped else {}),
                     },
                 }
@@ -1090,6 +1101,16 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # A HIT that answers thinly is not the end of the search. `min_results` lets the caller say
         # how many rows make an answer; below it the waterfall keeps going and the best result so
         # far is kept, so a weak first provider can still win if nothing better turns up.
+        if (options.waterfall and plan.contract.advice_domain_mismatch
+                and _email_domain_match(plan.identity, core) is False):
+            # The caller named the company and this mailbox is somewhere else (a LinkedIn-only
+            # child's former employer, a sister domain): weak, so any on-domain answer from a later
+            # provider wins, a weak one included. Kept, and returned flagged, only when nothing
+            # on-domain turns up.
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "weak", response.status, charged,
+                                 "email at another domain than the one sent", ignored=ignored))
+            off_domain.append((cand, doc, core, raw))
+            continue
         n_rows = outcome.rows
         # Under a merge the distinct rows of every answer so far are what the caller gets, so
         # they, not this answer alone, decide whether to keep looking.
@@ -1134,14 +1155,6 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             if weak_hits > MAX_WEAK_FALLBACKS:
                 break
             continue
-        if (options.waterfall and plan.contract.advice_domain_mismatch
-                and _email_domain_match(plan.identity, core) is False):
-            # The caller named the company and this mailbox is somewhere else (a LinkedIn-only
-            # child's former employer, a sister domain): weak, so an on-domain answer from a later
-            # provider wins. Kept, and returned flagged, only when nothing on-domain turns up.
-            tried[-1].outcome, tried[-1].detail = "weak", "email at another domain than the one sent"
-            off_domain.append((cand, doc, core, raw))
-            continue
         if options.decisive:
             word = catalog_results.verdict(cand.endpoint["id"], response.status, raw)
             if word not in plan.contract.verdict_decisive:
@@ -1168,12 +1181,19 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         if options.verify and plan.contract.check is not None:
             # The check runs here, inside the waterfall, so a value it calls invalid is never the
             # answer: the hit becomes a miss and the next provider is asked, within the cost cap.
-            remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
-            view, check_cost = await _run_check(parent, plan.contract.check, core, remaining, pending,
-                                                execute_child, upstream_client, n=len(checks))
-            spent += check_cost
-            checks.append(view)
-            if _is_invalid(view):
+            # A value already found invalid in this call is not checked again: a second provider
+            # returning it, or a later check that cannot run or says unknown, never revives it.
+            value = _check_key(core.get(plan.contract.check.field))
+            if value in invalid_values:
+                view = None
+            else:
+                remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
+                view, check_cost = await _run_check(parent, plan.contract.check, core, remaining, pending,
+                                                    execute_child, upstream_client, n=len(checks))
+                spent += check_cost
+                checks.append(view)
+            if view is None or _is_invalid(view):
+                invalid_values.add(value)
                 tried[-1].outcome, tried[-1].detail = "miss", "check verdict invalid"
                 if options.waterfall:
                     continue
@@ -1190,12 +1210,20 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         winner = best[1]          # nobody cleared min_results — the fullest answer we paid for wins
     if winner is None and off_domain:
         winner = off_domain[0]    # nothing on-domain turned up: the first off-domain hit, flagged
+        if options.confirm:
+            # Off-domain hits never reach the confirm step in the loop; two providers returning the
+            # same off-domain address still confirm each other.
+            value = str(winner[2].get(plan.contract.confirm) or "").strip().lower()
+            confirmed_by = next((h[0].endpoint["provider"] for h in off_domain[1:]
+                                 if str(h[2].get(plan.contract.confirm) or "").strip().lower() == value
+                                 and h[0].endpoint["provider"] != winner[0].endpoint["provider"]), None)
 
     def _route_miss() -> UpstreamResponse:
         """The 200 miss: every output field null. When a check called a hit invalid, the
         verification says so (`withheld`): the address was found, paid for, and not handed back."""
         invalid = [c for c in checks if _is_invalid(c)]
-        verification = ({**invalid[-1], "withheld": len(invalid)} if invalid else _unchecked("no_hit"))
+        withheld = sum(1 for t in tried if t.detail == "check verdict invalid")
+        verification = ({**invalid[-1], "withheld": withheld} if invalid else _unchecked("no_hit"))
         body_out = {"output": {k: None for k in plan.contract.output}, "raw": None,
                     "_treg": {"served_by": None, "outcome": "miss", "tried": [t.view() for t in tried], "charged_micro": spent,
                               **({"verification": verification} if options.verify else {}),
@@ -1283,6 +1311,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # undecided or off-domain answer, or an upgrade that changed the value) is checked here.
         if checked is not None and checked[0] == output.get(check.field):
             verification = checked[1]
+        elif _check_key(output.get(check.field)) in invalid_values:
+            verification = next(c for c in reversed(checks) if _is_invalid(c))
         else:
             remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
             verification, check_cost = await _run_check(parent, check, output, remaining,
@@ -1291,6 +1321,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             checks.append(verification)
         if _is_invalid(verification):
             # Known bad, and nothing better was found: no value is handed back.
+            invalid_values.add(_check_key(output.get(check.field)))
             for t in reversed(tried):
                 if t.endpoint_id == cand.endpoint["id"] and t.outcome in ("hit", "weak"):
                     t.outcome, t.detail = "miss", "check verdict invalid"
@@ -1382,6 +1413,11 @@ def _unchecked(reason: str) -> dict:
     return {"verdict": "unknown", "checked": False, "served_by": None, "cost_micro": 0, "reason": reason}
 
 
+def _check_key(value) -> str:
+    """A checked value as this call remembers it: trimmed and case-folded."""
+    return str(value or "").strip().lower()
+
+
 def _is_invalid(view: dict) -> bool:
     """A finished check that called the value invalid (a pending check has not decided)."""
     return bool(view.get("checked")) and not view.get("pending") and view.get("verdict") == "invalid"
@@ -1417,7 +1453,7 @@ async def _run_check(parent: CallContext, check, output: dict, remaining: int | 
     prefer = ((PREFER_HEADER.encode(), ",".join(check.prefer).encode()),) if routed and check.prefer else ()
     child = CallContext(input=_child_input(parent, ep, query, body, remaining, prefer),
                         call_ref=f"{parent.call_ref}:v" + (str(n + 1) if n else ""), meta=parent.meta,
-                        deferred_settles=None if routed else pending,
+                        deferred_settles=pending,
                         quota_admissions=parent.quota_admissions,
                         quota_pending=parent.quota_pending)
     try:
