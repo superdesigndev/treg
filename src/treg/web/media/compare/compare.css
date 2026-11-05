@@ -82,7 +82,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 .jump a:hover { background: var(--card); color: var(--ink); }
 
 /* sections */
-.sec { padding: 88px 24px 0; }
+.sec { padding: 88px 0 0; }
 .sec h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; font-size: clamp(28px, 4vw, 40px); line-height: 1.12; margin: 0 0 12px; text-wrap: balance; }
 .sec .lede { color: var(--muted); font-size: 16.5px; max-width: 62ch; margin: 0 0 32px; }
 .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
@@ -257,4 +257,4 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 .cmd button { flex: none; border: 1px solid #3A3A38; background: #262624; color: #D8D8D6; font-family: var(--mono); font-size: 12px; border-radius: 8px; padding: 7px 12px; cursor: pointer; }
 .cmd button:hover { background: #313130; }
 .setup .ctas { justify-content: center; }
-@media (max-width: 640px) { .zeroband { padding-top: 70px; } .setup { padding: 70px 18px 0; } .cmd .cline, .cmd .ps { font-size: 14px; } }
+@media (max-width: 640px) { .zeroband { padding-top: 70px; } .setup { padding-top: 70px; } .cmd .cline, .cmd .ps { font-size: 14px; } }
