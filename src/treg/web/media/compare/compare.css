@@ -211,7 +211,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 @media (max-width: 760px) { .method { grid-template-columns: 1fr; } }
 
 /* final band */
-.final { margin: 96px 24px 0; border-radius: 28px; padding: 64px 24px; text-align: center; background: radial-gradient(60% 80% at 50% 0%, rgba(17,132,83,.14), transparent 70%), #F3F1EC; }
+.final { margin: 96px max(24px, calc((100% - 1032px) / 2)) 0; border-radius: 28px; padding: 64px 24px; text-align: center; background: radial-gradient(60% 80% at 50% 0%, rgba(17,132,83,.14), transparent 70%), #F3F1EC; }
 .final h2 { font-family: var(--pixel); font-weight: 400; font-size: clamp(30px, 4.6vw, 52px); letter-spacing: -.02em; margin: 0 0 12px; line-height: 1.08; }
 .final p { color: var(--body); margin: 0 auto 24px; max-width: 54ch; }
 
