@@ -308,18 +308,81 @@ ORG_SCOPED_MODELS = (
 ARCHIVE_PRIVATE_SCOPES = ("org", "conn")
 
 
-async def private_archive_key_ids(db: AsyncSession, org_id: int, *, limit: int | None = None) -> list[int]:
+async def private_archive_key_ids(db: AsyncSession, org_id: int, *, limit: int | None = None,
+                                  after: int = 0) -> list[int]:
     """The archive keys that are the team's own (docs/context/architecture/archive.md, "Opting
     out"): keys under its `org:`/`conn:` scopes. A private key holds only that team's snapshots,
     because only that team ever computes its hash ("Sharing"). Platform-key answers are public
-    questions and are never the team's. Ascending by id, so a bounded pass is resumable."""
+    questions and are never the team's. Ascending by id from `after`, so a bounded pass is
+    resumable and a pass that deletes nothing (a count) still moves forward."""
     owned = select(ArchiveSnapshot.key_id).where(
-        ArchiveSnapshot.origin_org_id == org_id).distinct().scalar_subquery()
+        ArchiveSnapshot.origin_org_id == org_id, ArchiveSnapshot.key_id > after).scalar_subquery()
     rows = await db.execute(
         select(ArchiveKey.id)
-        .where(ArchiveKey.scope.in_(ARCHIVE_PRIVATE_SCOPES), ArchiveKey.id.in_(owned))
+        .where(ArchiveKey.scope.in_(ARCHIVE_PRIVATE_SCOPES), ArchiveKey.id > after,
+               ArchiveKey.id.in_(owned))
         .order_by(ArchiveKey.id).limit(limit or sys.maxsize))
     return [int(r[0]) for r in rows]
+
+
+async def archive_mark_hashes(db: AsyncSession, org_id: int, *, limit: int,
+                              after: str = "") -> list[str]:
+    """The question hashes the team's `ArchiveKeyOrg` marks name, ascending from `after`: one
+    page of `uq_archive_key_org`, so a large team's marks are read in bounded statements."""
+    rows = await db.execute(
+        select(ArchiveKeyOrg.key_hash)
+        .where(ArchiveKeyOrg.org_id == org_id, ArchiveKeyOrg.key_hash > after)
+        .order_by(ArchiveKeyOrg.key_hash).limit(limit))
+    return [str(r[0]) for r in rows]
+
+
+async def sole_public_archive_key_ids(db: AsyncSession, org_id: int,
+                                      key_hashes: list[str]) -> list[int]:
+    """Of the questions `key_hashes` name, the public keys only this team paid for: marked by it
+    and by no other team (archive.md, "Opting out"). A public answer is not the team's, so
+    erasure takes these only on request; a question another team also paid for stays.
+    Ascending by id."""
+    if not key_hashes:
+        return []
+    other = aliased(ArchiveKeyOrg)
+    asked_by_another = exists().where(other.key_hash == ArchiveKey.key_hash, other.org_id != org_id)
+    rows = await db.execute(
+        select(ArchiveKey.id)
+        .where(ArchiveKey.key_hash.in_(key_hashes), ArchiveKey.scope.is_(None), ~asked_by_another)
+        .order_by(ArchiveKey.id))
+    return [int(r[0]) for r in rows]
+
+
+async def still_sole_public(db: AsyncSession, org_id: int, key_ids: list[int]) -> list[int]:
+    """The `key_ids` that are still public and that no other team has paid for since they were
+    found. The team's own mark is not required: another erasure may already have deleted it."""
+    if not key_ids:
+        return []
+    other = aliased(ArchiveKeyOrg)
+    asked_by_another = exists().where(other.key_hash == ArchiveKey.key_hash, other.org_id != org_id)
+    rows = await db.execute(
+        select(ArchiveKey.id)
+        .where(ArchiveKey.id.in_(key_ids), ArchiveKey.scope.is_(None), ~asked_by_another)
+        .order_by(ArchiveKey.id))
+    return [int(r[0]) for r in rows]
+
+
+async def archive_snapshots_under(db: AsyncSession, key_ids: list[int]) -> dict[str, int]:
+    """content hash -> how many snapshots under `key_ids` carry it. Read-only: what an erasure
+    of those keys would remove, for a dry run."""
+    if not key_ids:
+        return {}
+    rows = await db.execute(
+        select(ArchiveSnapshot.content_hash, func.count())
+        .where(ArchiveSnapshot.key_id.in_(key_ids)).group_by(ArchiveSnapshot.content_hash))
+    return {str(h): int(n) for h, n in rows}
+
+
+async def archive_mark_count(db: AsyncSession, org_id: int) -> int:
+    """How many `ArchiveKeyOrg` marks tie the team to questions it paid for."""
+    return int((await db.execute(
+        select(func.count()).select_from(ArchiveKeyOrg).where(ArchiveKeyOrg.org_id == org_id)
+    )).scalar_one())
 
 
 async def archive_bodies_only_under(db: AsyncSession, key_ids: list[int]) -> set[str]:
@@ -353,6 +416,12 @@ async def erase_archive_rows(db: AsyncSession, org_id: int, key_ids: list[int] |
     await db.execute(delete(ArchiveKeyOrg).where(ArchiveKeyOrg.org_id == org_id))
     if key_ids is None:
         key_ids = await private_archive_key_ids(db, org_id)
+    return await erase_archive_keys(db, key_ids)
+
+
+async def erase_archive_keys(db: AsyncSession, key_ids: list[int]) -> int:
+    """Delete the given keys with their snapshots in `db` (no commit), moving the endpoint
+    running totals by what the statements returned -> keys deleted. Marks are untouched."""
     if not key_ids:
         return 0
     # Snapshots first (they reference the key and, through `body_of`, each other within a key).
@@ -377,7 +446,8 @@ async def erase_archive_rows(db: AsyncSession, org_id: int, key_ids: list[int] |
         if storage is not None or bool(has_body):
             acc[1] += 1
             acc[2] += int(size or 0)
-    for endpoint_id, (n_snaps, n_bodies, n_bytes, n_keys) in per_endpoint.items():
+    # In endpoint order, as `archive.flush_stats` takes the same rows, so the two cannot deadlock.
+    for endpoint_id, (n_snaps, n_bodies, n_bytes, n_keys) in sorted(per_endpoint.items()):
         await db.execute(
             update(ArchiveEndpointStat).where(ArchiveEndpointStat.endpoint_id == endpoint_id)
             .values(snapshots=ArchiveEndpointStat.snapshots - n_snaps,

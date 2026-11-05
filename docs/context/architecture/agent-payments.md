@@ -18,7 +18,7 @@ sources:
   - src/treg/domain/identity/access.py
   - src/treg/domain/identity/api_keys.py
   - src/treg/application/call/resolve.py
-  - src/treg/alembic/versions/0091_agent_payments.py
+  - src/treg/alembic/versions/0097_agent_payments.py
   - tests/test_agent_payments.py
 related:
   - architecture/money.md

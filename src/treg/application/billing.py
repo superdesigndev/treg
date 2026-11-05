@@ -78,6 +78,7 @@ AUTH_REQUIRED_CODES = {"authentication_required", "invoice_payment_intent_requir
 # Postgres matches the partial topup index (revision 0090) only when the predicate is a constant
 # in the statement; a bound `kind` would let a cached generic plan walk all of a team's rows.
 _TOPUP = literal_column("'topup'")
+_GRANT = literal_column("'grant'")  # likewise the partial grant index (revision 0095)
 
 
 class BillingNotConfigured(Exception):
@@ -623,13 +624,27 @@ async def _load_payment_rows(
     if blocks:
         grants = (await db.execute(
             select(LedgerEntry.amount_micro, LedgerEntry.meta).where(
-                LedgerEntry.org_id == org.id, LedgerEntry.kind == "grant")
+                LedgerEntry.org_id == org.id, LedgerEntry.kind == _GRANT)
         )).all()
         for amt, meta in grants:
             if isinstance(meta, dict) and meta.get("source") == "topup_bonus" and meta.get("payment_intent"):
                 bonus_by_pi[str(meta["payment_intent"])] = bonus_by_pi.get(str(meta["payment_intent"]), 0) + int(amt)
 
     return list(blocks), auto, bonus_by_pi
+
+
+async def _refunded_by_block(db: AsyncSession, block_ids: list[str]) -> dict[str, int]:
+    """The refunded total each top-up's `revoke` entries recorded, which is what the card got back
+    (the credit actually revoked can be less, when some of it was already spent)."""
+    if not block_ids:
+        return {}
+    out: dict[str, int] = {}
+    for block_id, meta in (await db.execute(
+            select(LedgerEntry.block_id, LedgerEntry.meta)
+            .where(LedgerEntry.kind == "revoke", LedgerEntry.block_id.in_(block_ids)))).all():
+        amount = int((meta or {}).get("refunded_micro") or 0)
+        out[block_id] = max(out.get(block_id, 0), amount)
+    return out
 
 
 def _assemble_payments(
@@ -1622,15 +1637,10 @@ async def _on_payment_succeeded(db: AsyncSession, pi: dict) -> dict:
 
 
 async def _on_payment_reversed(db: AsyncSession, charge_or_dispute: dict, kind: str) -> dict:
-    """A funded payment was disputed or refunded. Cancels any referral bonus it earned that has not
-    landed yet — and does NOTHING to the balance itself.
-
-    That split is deliberate and it is the reason the hold window exists. treg has never reversed a
-    top-up automatically: `domain/money` has no path that drives a balance negative, blocks burn
-    promotional-first precisely to keep the disputable pool small, and refund policy is a human
-    decision. What IS safe to automate is not paying a third party a bounty funded by money that
-    just went away. A bonus already granted is logged for a human instead (see
-    `referrals.reject_for_payment`); referral credit burns first, so by then it is usually spent.
+    """A funded payment was disputed or refunded. Both cancel any referral bonus it earned that has
+    not landed yet. A refund also revokes that payment's unspent credit (`revoke_refunded`); a
+    dispute leaves the balance alone, because a won dispute returns the money and the ledger has no
+    entry that would give the credit back.
 
     Both event shapes carry the PaymentIntent: a Charge has `payment_intent`, and a Dispute has it
     directly too (as well as `charge`). We key on it because it is what `CreditBlock` and
@@ -1642,31 +1652,110 @@ async def _on_payment_reversed(db: AsyncSession, charge_or_dispute: dict, kind: 
         return {"handled": False, "reason": "no payment_intent on event"}
     try:
         cancelled = await referrals.reject_for_payment(db, pi_id, kind)
-    except Exception as e:  # noqa: BLE001 — a webhook must not 500 over a bonus
+    except Exception as e:  # noqa: BLE001 - a webhook must not 500 over a bonus
+        await db.rollback()
         log.warning("billing: referral clawback failed for %s: %s", pi_id, e)
-        return {"handled": False, "reason": "clawback failed"}
+        cancelled = 0
     if cancelled:
         log.warning("billing: %s on %s cancelled %s pending referral bonus(es)", kind, pi_id, cancelled)
-    # The top-up bonus is in the same position as an already-granted referral bonus: it burns first,
-    # so by now it is usually spent, and reversing it would need the balance-reducing path the ledger
-    # deliberately does not have. Logged for a human, with the unspent remainder so they can decide.
-    bonus_rows = (await db.execute(
-        select(CreditBlock.id, CreditBlock.org_id, CreditBlock.amount_micro, CreditBlock.remaining_micro)
-        .join(LedgerEntry, LedgerEntry.block_id == CreditBlock.id)
-        .where(CreditBlock.kind == "bonus", LedgerEntry.kind == "grant")
-    )).all()
+    if kind == "charge.refunded":
+        # `amount_refunded` is cumulative over every refund of the charge, which is what makes a
+        # redelivered or out-of-order event harmless.
+        result = await revoke_refunded(db, pi_id, cents_to_micro(charge_or_dispute.get("amount_refunded") or 0),
+                                       source="stripe_webhook")
+        return {**result, "type": kind, "referrals_cancelled": cancelled}
     bonus_flagged = 0
-    for bid, oid, amt, rem in bonus_rows:
-        meta_row = (await db.execute(
-            select(LedgerEntry.meta).where(LedgerEntry.block_id == bid, LedgerEntry.kind == "grant")
-        )).first()
-        meta = (meta_row[0] if meta_row else None) or {}
-        if isinstance(meta, dict) and meta.get("payment_intent") == pi_id:
-            bonus_flagged += 1
-            log.warning("billing: %s on %s — org %s holds top-up bonus block %s (%s micro-USD, %s "
-                        "unspent); not reversed, needs a human", kind, pi_id, oid, bid, amt, rem)
+    block = await ledger.block_for_payment(db, pi_id)
+    for bid, oid, amt, rem in (await _bonus_blocks_for(db, pi_id, block.org_id) if block else []):
+        bonus_flagged += 1
+        log.warning("billing: %s on %s - org %s holds top-up bonus block %s (%s micro-USD, %s "
+                    "unspent); not reversed, needs a human", kind, pi_id, oid, bid, amt, rem)
     return {"handled": True, "type": kind, "referrals_cancelled": cancelled,
             "bonus_blocks_flagged": bonus_flagged}
+
+
+async def _bonus_blocks_for(db: AsyncSession, pi_id: str, org_id: int) -> list[tuple]:
+    """`(block_id, org_id, amount_micro, remaining_micro)` of the top-up bonus a payment earned. The
+    payment is named only in the grant entry's JSON meta, read in Python for SQLite/Postgres parity."""
+    rows = (await db.execute(
+        select(CreditBlock.id, CreditBlock.org_id, CreditBlock.amount_micro,
+               CreditBlock.remaining_micro, LedgerEntry.meta)
+        .join(LedgerEntry, LedgerEntry.block_id == CreditBlock.id)
+        .where(LedgerEntry.org_id == org_id, LedgerEntry.kind == _GRANT, CreditBlock.kind == "bonus"))).all()
+    return [(bid, oid, amt, rem) for bid, oid, amt, rem, meta in rows
+            if isinstance(meta, dict) and meta.get("payment_intent") == pi_id]
+
+
+async def revoke_refunded(db: AsyncSession, pi_id: str, refunded_micro: int, *, source: str) -> dict:
+    """Revoke what a refund of one top-up took back: the payment's own unspent credit and, in
+    proportion, the bonus it earned. Never touches another payment's block. Safe to run again with
+    the same or a larger `refunded_micro`; a later run also takes credit that calls in flight held
+    the first time (`held_micro`, logged for `treg-worker admin revoke-refund`).
+
+    A refund not seen before switches auto top-up off in the same transaction: the revoked balance
+    may sit below the threshold, and the next call would otherwise charge the card just refunded.
+    """
+    block = await ledger.block_for_payment(db, pi_id)
+    if block is None or block.kind != "purchased":
+        return {"handled": False, "reason": "no top-up for this payment"}
+    org_id, block_id, paid = block.org_id, block.id, int(block.amount_micro)
+    refunded = max(0, min(int(refunded_micro), paid))
+    if refunded == 0:
+        return {"handled": True, "revoked_micro": 0, "shortfall_micro": 0, "held_micro": 0}
+    targets = [ledger.RevokeTarget(block_id, refunded)]
+    targets += [ledger.RevokeTarget(bid, int(amt) * refunded // paid)
+                for bid, _, amt, _ in await _bonus_blocks_for(db, pi_id, org_id)]
+    results = await ledger.revoke_in_transaction(
+        db, org_id, targets, meta={"payment_intent": pi_id, "refunded_micro": refunded, "source": source})
+    new_refund = any(r.refund_rose for r in results)
+    autotopup_stopped = False
+    if new_refund:
+        autotopup_stopped = (await db.execute(
+            update(Org).where(Org.id == org_id, Org.autotopup_enabled.is_(True))
+            .values(autotopup_enabled=False, autotopup_disabled_reason="payment_refunded",
+                    autotopup_recovery_pi=None))).rowcount == 1
+    await db.commit()
+    revoked = sum(r.revoked_micro for r in results)
+    shortfall = sum(r.shortfall_micro for r in results)
+    held = sum(r.held_micro for r in results)
+    if shortfall:
+        log.warning("billing: refund of %s left %s micro-USD unrevoked for org %s (%s held by calls "
+                    "in flight, the rest spent); `treg-worker admin revoke-refund %s` takes the held "
+                    "part once they finish", pi_id, shortfall, org_id, held, pi_id)
+    if new_refund:
+        org = await db.get(Org, org_id)
+        slug, name = (org.slug, org.name or org.slug) if org else ("", "")
+        await db.rollback()  # the owner lookup and email must not hold a connection
+        if autotopup_stopped:
+            try:
+                to = await owner_email(db, org_id)
+                await db.rollback()
+                if to:
+                    await email_mod.send_autotopup_disabled(to, name, "payment_refunded")
+            except Exception as e:  # noqa: BLE001 - auto top-up is already off; the email is a courtesy
+                await db.rollback()
+                log.warning("billing: auto top-up off email failed for org %s: %s", org_id, e)
+        analytics.capture(f"org:{org_id}", "topup_refunded",
+                          {"refunded_micro": refunded, "revoked_micro": revoked,
+                           "shortfall_micro": shortfall, "source": source, "org": slug},
+                          groups={"team": slug} if slug else None)
+    return {"handled": True, "org_id": org_id, "block_id": block_id, "refunded_micro": refunded,
+            "revoked_micro": revoked, "shortfall_micro": shortfall, "held_micro": held,
+            "recorded": any(r.recorded for r in results), "autotopup_stopped": autotopup_stopped}
+
+
+async def revoke_refunded_payment(pi_id: str) -> dict:
+    """The operator's road to `revoke_refunded`: reads the refunded total from Stripe itself, for a
+    missed webhook or a shortfall that can now be taken."""
+    if not configured():
+        raise BillingNotConfigured("Stripe is not configured")
+    payment = await _sdk(stripe_adapter.PAYMENT_INTENT_RETRIEVE, id=pi_id, expand=["latest_charge"])
+    charge = payment.get("latest_charge") or {}
+    if isinstance(charge, str):
+        raise ValueError(f"{pi_id}: latest_charge was not expanded")
+    async with _db.session_maker() as db:
+        return await revoke_refunded(db, pi_id, cents_to_micro(charge.get("amount_refunded") or 0),
+                                     source="operator")
 
 
 async def _on_payment_failed(db: AsyncSession, pi: dict) -> dict:
@@ -1921,6 +2010,7 @@ async def get_payment_history(org_id: int, *, limit: int, kind: str = "all", cur
     blocks: list[CreditBlock] = []
     auto: set[str] = set()
     bonus_by_pi: dict[str, int] = {}
+    refunded: dict[str, int] = {}
     # The database connection closes before any Stripe call. Filtered top-up pages scan in bounded
     # chunks because the auto flag is ledger JSON and must behave identically on SQLite/Postgres.
     async with _db.session_maker() as db:
@@ -1947,6 +2037,7 @@ async def get_payment_history(org_id: int, *, limit: int, kind: str = "all", cur
                 if len(blocks) > page_size or len(batch) < 100:
                     break
                 scan_before = (batch[-1].created_at, batch[-1].id)
+            refunded = await _refunded_by_block(db, [b.id for b in blocks[:page_size]])
 
     invoices: list[dict] = []
     invoices_ok = True
@@ -1966,6 +2057,7 @@ async def get_payment_history(org_id: int, *, limit: int, kind: str = "all", cur
         item["_position"] = [block.created_at.isoformat(), block.id]
         item["id"] = block.id
         item["status"] = "paid"
+        item["refunded_micro"] = refunded.get(block.id, 0)
     for item in invoices:
         item["kind"] = "subscription"
     combined = topups + invoices

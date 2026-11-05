@@ -46,7 +46,7 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
 from typing import Annotated, Any, TypedDict
-from urllib.parse import parse_qsl, quote, urlencode, urlsplit
+from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit
 
 import httpx
 from mcp.server import MCPServer
@@ -107,6 +107,9 @@ class _SurfacePolicy:
     invites: bool = True
     # Catalog platforms this surface neither lists, describes nor calls.
     hidden_platforms: frozenset[str] = frozenset()
+    # Whether catalog_get shows the row's `note`. The directory surface returns what it was
+    # submitted with until the next resubmission.
+    endpoint_note: bool = True
 
     def hides(self, ep: dict | None) -> bool:
         return bool(ep) and ep.get("platform") in self.hidden_platforms
@@ -128,6 +131,7 @@ _DIRECTORY_SURFACE = _SurfacePolicy(
     next_call="catalog_call_read(...) or catalog_call_write(...), based on the documented method",
     invites=False,
     hidden_platforms=_DIRECTORY_HIDDEN_PLATFORMS,
+    endpoint_note=False,
 )
 
 
@@ -340,7 +344,7 @@ mcp = MCPServer(
 # NULLABLE as well: the SDK dumps every ABSENT key as `null` in `structuredContent`.
 class SearchResult(TypedDict, total=False):
     endpoint_id: str | None
-    kind: str | None             # "hub" for a listed hub tool (docs/hub-listing-decisions.md); absent otherwise
+    kind: str | None             # "hub" for a listed hub tool; absent otherwise
     name: str | None
     provider: str | None
     routed: str | None           # a routed row: what treg picks among, and where the rest are
@@ -700,6 +704,39 @@ async def _api(token: str, *, client_name: str = "mcp"):
                  **client_ip.forwarding_headers(_caller_ip.get())},
     ) as client:
         yield client
+
+
+_UNSAFE_SEGMENTS = frozenset({"", ".", ".."})
+
+
+def _leaves_route(endpoint_id: str) -> bool:
+    """Whether a dot or empty segment, at any depth of percent-encoding, could move the call off its
+    route: httpx collapses `..` before the in-process request, and the caller's credential rides it."""
+    path = endpoint_id.partition("?")[0].partition("#")[0]
+    for _ in range(4):
+        segments = path.split("/")
+        # A trailing slash is a real upstream path (`tool/items/`), not a way out.
+        if segments[-1] == "" and len(segments) > 1:
+            segments = segments[:-1]
+        if any(s in _UNSAFE_SEGMENTS for s in segments):
+            return True
+        decoded = unquote(path)
+        if decoded == path:
+            return False
+        path = decoded
+    return True
+
+
+_UNSAFE_ID_ERROR = {"error": "endpoint_id may not contain an empty, '.' or '..' path segment",
+                    "hint": "pass a catalog id or '<tool-name>/<path>' exactly"}
+
+
+def _call_url(route: str, endpoint_id: str) -> str:
+    url = f"{route}/{endpoint_id}"
+    path = httpx.URL(_INTERNAL_BASE + url).path
+    if _leaves_route(endpoint_id) or not path.startswith(route + "/"):
+        raise httpx.InvalidURL(f"{endpoint_id!r} does not stay under {route}/")
+    return url
 
 
 def _body(r: httpx.Response) -> Any:
@@ -1244,6 +1281,8 @@ async def _catalog_get_impl(
     # Lifted onto the result so the schema advertises it: the direct price is not the only price
     # a "free" endpoint can bill.
     ep = (out.get("endpoint") or {}) if isinstance(out, dict) else {}
+    if isinstance(ep, dict) and not surface.endpoint_note:
+        ep.pop("note", None)
     if isinstance(ep, dict):
         # Same quote catalog_search already leads with, so an agent that inspects by id
         # does not fall back to the per-record `cost.usd` slice on a grouped credit.
@@ -1348,6 +1387,8 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     token = _bearer(ctx) if ctx else ""
     if not token:
         return _need_token()
+    if _leaves_route(endpoint_id):
+        return _UNSAFE_ID_ERROR | {"endpoint_id": endpoint_id}
 
     # BOTH halves answer here, exactly as `treg call` does: `/call/{rest}` resolves a team's own tool
     # first and falls back to a catalog id, so an org tool always wins over the catalog. Refusing
@@ -1531,7 +1572,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
                 parts.append((name, (filename, data, mime)))
             kw["files"] = parts
         route = "/catalog/call" if catalog_only else "/call"
-        r = await client.request(method, f"{route}/{endpoint_id}", **kw)
+        r = await client.request(method, _call_url(route, endpoint_id), **kw)
 
     out: dict[str, Any] = {"status": r.status_code, "endpoint_id": endpoint_id, "body": _body(r)}
     if retry_after := r.headers.get("Retry-After"):
@@ -1621,6 +1662,12 @@ async def _call_media_impl(
             content=[TextContent(type="text", text=json.dumps(problem))],
             structuredContent=problem, isError=True,
         )
+    if _leaves_route(endpoint_id):
+        problem = _UNSAFE_ID_ERROR | {"endpoint_id": endpoint_id}
+        return CallToolResult(
+            content=[TextContent(type="text", text=json.dumps(problem))],
+            structuredContent=problem, isError=True,
+        )
     extra_headers = {k: str(v) for k, v in (headers or {}).items()
                      if k.lower() not in ("x-treg-token", "x-treg-org", "authorization",
                                           "idempotency-key", "x-treg-meta")}
@@ -1646,7 +1693,7 @@ async def _call_media_impl(
         else:
             kw["json"] = body
         route = "/catalog/call" if catalog_only else "/call"
-        response = await client.post(f"{route}/{endpoint_id}", **kw)
+        response = await client.post(_call_url(route, endpoint_id), **kw)
     metadata: dict[str, Any] = {"status": response.status_code, "endpoint_id": endpoint_id}
     if retry_after := response.headers.get("Retry-After"):
         metadata["retry_after"] = retry_after

@@ -26,6 +26,12 @@ Faithfulness contract — it alters ONLY these, everything else is relayed verba
      library default such as Python's is read as bot traffic: Cloudflare rules answered 403 (error
      1010) to every `Python-urllib` call on LimaData, and to Wiza's phone reveals for a day, both on
      treg's key. A team's own key relays the caller's header verbatim.
+  6. on treg's SHARED key only, when the provider's catalog file names a `client_header` and
+     `TREG_CLIENT_ID_SECRET` is set, that header carries treg's opaque code for the calling team
+     (`tag_shared_client`): HMAC-SHA256 of the secret over (provider, team), so the provider can
+     split usage, errors and cost per customer on treg's one account without learning who the
+     customer is, and two providers' codes for one team do not match. Any value the caller sent
+     under that name is replaced. A team's own key relays the caller's headers verbatim.
 
 Except for that explicit JSON-binding contract, it never buffers the body (rule 5: stream, don't
 duplicate) and uses the shared long-lived httpx client (rule 1: keepalive). Secrets are passed
@@ -36,8 +42,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 
 import httpx
 
@@ -96,6 +104,27 @@ def identify_as_treg(raw_headers: tuple[tuple[bytes, bytes], ...]) -> tuple[tupl
     return kept + ((b"user-agent", TREG_USER_AGENT.encode()),)
 
 
+def shared_client_code(secret: str, provider: str, org_id: int) -> str:
+    """treg's opaque code for one team at one provider: stable per (provider, team), not reversible
+    without the secret, and different at every provider."""
+    mac = hmac.new(secret.encode(), f"{provider}\x1f{org_id}".encode(), hashlib.sha256)
+    return "t_" + mac.hexdigest()[:24]
+
+
+def tag_shared_client(
+    raw_headers: tuple[tuple[bytes, bytes], ...], header: str | None, provider: str, org_id: int,
+) -> tuple[tuple[bytes, bytes], ...]:
+    """Rewrite 6 of the faithfulness contract: on treg's shared key, the provider's declared client
+    header carries treg's code for the team. Nothing changes when the provider declares no header
+    or the secret is unset."""
+    secret = get_settings().client_id_secret
+    if not header or not secret:
+        return raw_headers
+    name = header.lower().encode()
+    kept = tuple((k, v) for k, v in raw_headers if k.lower() != name)
+    return kept + ((name, shared_client_code(secret, provider, org_id).encode()),)
+
+
 def scope_shared_idempotency_key(
     raw_headers: tuple[tuple[bytes, bytes], ...], org_id: int,
     *, pinned_tags: dict | None = None,
@@ -134,6 +163,11 @@ def _scrub_treg_cookies(headers: httpx.Headers) -> None:
     else:
         del headers["cookie"]
 
+
+
+# Set by a caller that needs to know the request actually left: called once every local check
+# above has passed, immediately before the send. Not called for a request refused here.
+ON_SEND: ContextVar[Callable[[], None] | None] = ContextVar("relay_on_send", default=None)
 
 async def relay(
     request: UpstreamRequest,
@@ -257,6 +291,8 @@ async def relay(
             detail="upstream host resolves to a non-public address")
     if before_outbound is not None:
         await before_outbound()
+    if (on_send := ON_SEND.get()) is not None:
+        on_send()
     upstream_resp = await client.send(upstream_req, stream=True)
 
     # Response drop set: hop-by-hop + whatever the upstream marked hop-by-hop via its Connection

@@ -23,7 +23,7 @@ from starlette.routing import BaseRoute, Mount
 
 from . import adsconv, analytics, archive, audit, call_events
 from .application.call import route as routed_call
-from .application import arena, find_index
+from .application import arena, find_index, media
 from . import bootstrap_handlers, policy
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
@@ -33,6 +33,7 @@ from .bootstrap_http import (
 )
 from .config import TREG_USER_AGENT, get_settings
 from .infra import kv, money_timing, org_traffic, turnstile
+from .infra.loop_stall import start_loop_stall_watch, stop_loop_stall_watch
 from .infra.money_trace_runner import start_money_trace, stop_money_trace
 from .infra.db import ReportBusy, background_session_maker, verify_db
 from .infra.catalog_observations import (
@@ -133,6 +134,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/auth/github/callback', ('GET',), 'auth_github_callback'),
     ('/auth/google', ('GET',), 'auth_google'),
     ('/auth/google/callback', ('GET',), 'auth_google_callback'),
+    ('/auth/social/check', ('GET',), 'auth_social_check_page'),
+    ('/auth/social/check', ('POST',), 'auth_social_check'),
     ('/auth/cli/start', ('POST',), 'auth_cli_start'),
     ('/auth/cli/poll', ('GET',), 'auth_cli_poll'),
     ('/auth/cli/orgs', ('GET',), 'auth_cli_orgs'),
@@ -265,7 +268,6 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/tutorial', ('GET',), 'tutorial_page'),
     ('/auth/cli-token', ('GET',), 'auth_cli_token'),
     ('/auth/revoke-tokens', ('POST',), 'auth_revoke_tokens'),
-    ('/users', ('POST',), 'register_user'),
     ('/orgs', ('POST',), 'create_org'),
     ('/oauth/grants', ('GET',), 'oauth_grants'),
     ('/oauth/grants/{family_id}/team', ('POST',), 'oauth_grant_set_team'),
@@ -764,6 +766,7 @@ def _lifespan(role: AppRole):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         async with archive_object_store(getattr(app.state, "archive_object_store", None)):
+            media.validate_configuration()
             await verify_db()
             if kv.configured() and not await kv.store().ping():
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it
@@ -785,6 +788,7 @@ def _lifespan(role: AppRole):
             gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
             # Local transaction diagnostics run even when the analytics transport is disabled.
             trace_runner = start_money_trace(role=role)
+            stall_watch = start_loop_stall_watch()
             # The archive's refresh worker (docs/context/architecture/archive.md): serve mode only,
             # and a zero daily cap disables it without touching serving. Same discipline as the ads
             # task — in-process, cancelled on shutdown, a bad pass never kills the loop.
@@ -803,6 +807,10 @@ def _lifespan(role: AppRole):
             # Find's card vectors (docs/context/architecture/find.md): built now, in the background,
             # instead of by the first find after a deploy; off without an embedding key.
             find_task = asyncio.create_task(find_index.warm()) if find_index.enabled() else None
+            from .domain.capacity import rate_observe
+            rate_task = asyncio.create_task(rate_observe.flush_worker()) if rate_observe.enabled() else None
+            for name in rate_observe.unknown_enforced_names():
+                logging.getLogger("treg").warning("event=provider_rate_enforce_unknown name=%s", name)
             endpoint_observations = app.state.endpoint_observation_reader
             routed_call.configure_endpoint_observation_reader(endpoint_observations)
             # Measured verdict quality for X-Treg-Route-Decisive; unset settings keep price order.
@@ -836,7 +844,7 @@ def _lifespan(role: AppRole):
             finally:
                 try:
                     workers = [task for task in (
-                        gauge_task, ads_task, archive_task, prune_task, find_task,
+                        gauge_task, ads_task, archive_task, prune_task, find_task, rate_task,
                     ) if task is not None]
                     for task in workers:
                         task.cancel()
@@ -856,9 +864,13 @@ def _lifespan(role: AppRole):
                     await call_events.drain()
                     if gauge_task is not None:
                         _emit_money_timings()
+                    if rate_task is not None:
+                        rate_observe.flush()
                     await stop_money_trace(trace_runner)
                     await analytics.drain()
                     await app.state.http.aclose()
+                    from .infra import provider_rate
+                    await provider_rate.drain()
                     await kv.close()
                     from .infra import org_endpoint_quota
                     await org_endpoint_quota.close()
@@ -866,6 +878,7 @@ def _lifespan(role: AppRole):
                     if traffic_reporting:
                         org_traffic.stop_reporting()
                     try:
+                        await stop_loop_stall_watch(stall_watch)
                         await stop_money_trace(trace_runner)
                     finally:
                         analytics.remove_fault_handler(fault_handler)

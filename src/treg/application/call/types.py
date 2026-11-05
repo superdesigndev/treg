@@ -57,6 +57,9 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     # Fair share: the provider on treg's key is fully used and this team already holds calls on it
     # (domain/capacity/fair_share.py). Not charged; a routed job moves to its next provider.
     "share_busy": "caller",
+    # treg's account for the provider is at its declared rate (domain/capacity/rate_observe.py):
+    # refused before it was sent, not charged; a routed job moves to its next provider.
+    "provider_rate_limited": "treg",
     # Routed endpoints (treg.<capability>): the caller's identity fits no provider, or the
     # ceiling they set is below the cheapest candidate, or every candidate failed.
     "route_no_candidate": "caller",
@@ -165,6 +168,7 @@ class OrgSnapshot:
     first_call_at: Any
     autotopup_max_per_hour: int = 0
     archive_opt_out_at: Any = None   # set = the team opted out of the archive (archive.md)
+    created_at: Any = None
 
 
 @dataclass(frozen=True)
@@ -226,6 +230,7 @@ class CallerSnapshot:
                 autotopup_max_per_hour=int(getattr(org, 'autotopup_max_per_hour', 0) or 0),
                 archive_opt_out_at=getattr(org, 'archive_opt_out_at', None),
                 first_call_at=org.first_call_at,
+                created_at=getattr(org, "created_at", None),
             ),
             api_key_id=key.id if key else None,
             api_key_name=key.name if key else None,
@@ -287,6 +292,10 @@ class CallContext:
     # A routed parent's outcome for its call event (route.py `_summarize`): identity, output,
     # served_by, tried_count, hit, verdict, check_verdict. Never read by money or relay.
     route_summary: dict | None = None
+    # The request left for the provider (the relay's `ON_SEND`, past every local check), or its
+    # archived answer was served.
+    # A routed parent attributes its order only to children that did (route.py `_note_call`).
+    reached_provider: bool = False
 
 
 @dataclass(frozen=True)

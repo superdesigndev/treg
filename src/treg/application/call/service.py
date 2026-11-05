@@ -20,8 +20,9 @@ from ... import sandbox as demo_sandbox
 from ...capacity_notice import CAPACITY_HEADER, EXHAUSTED
 from ...client_identity import _norm_client, mcp_host
 from ...config import get_settings
+from ...domain.catalog import outcome as catalog_outcome
 from ...domain.catalog import results as catalog_results
-from ...domain.catalog import store as catalog_store
+from ...domain.catalog import schema, store as catalog_store
 from ...domain.money import with_margin
 from ...domain import provider_resources
 from ...infra import money_admission, org_endpoint_quota
@@ -35,7 +36,8 @@ from ...domain.capacity.fair_share import NO_SLOT, ShareBusy, fair_share
 from ...domain.capacity.fair_share import RETRY_AFTER_S as RETRY_AFTER_SHARE_S
 from ...domain.capacity.view import view as capacity_view
 from ...infra.upstream.limiter import limiter as provider_limiter
-from ...infra.upstream.relay import identify_as_treg, relay, scope_shared_idempotency_key
+from ...infra.upstream.relay import identify_as_treg, relay, scope_shared_idempotency_key, tag_shared_client
+from ...infra.upstream import relay as relay_module
 from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
@@ -353,6 +355,22 @@ SMOOTHING_RETRY_MAX_S = 5
 def _idempotent_read(request: _ApplicationRequest) -> bool:
     """Only a body-less GET/HEAD is re-sent: the same bytes, provably, with nothing to replay."""
     return request.method.upper() in ("GET", "HEAD") and not request.has_body
+
+
+def _rate_refuses(mk: MarketplaceCall, seen: rate_observe.Seen | None) -> bool:
+    """A capacity probe must reach the vendor, and a team's poll of its own submitted job is not a
+    new call: both are counted in the window, never refused by it."""
+    return (seen is not None and seen.refuses and mk.probe_lock_id is None
+            and not mk.free_owned_poll)
+
+
+def _provider_rate_limited(mk: MarketplaceCall, seen: rate_observe.Seen) -> GatewayFailed:
+    return GatewayFailed("provider_rate_limited", status_code=429, detail={
+        "error": "provider_rate_limited", "provider": mk.provider, "endpoint_id": mk.endpoint_id,
+        "retry_after_s": seen.retry_after_s,
+        "message": f"treg's account for {mk.provider} is at its rate limit; nothing was sent or "
+                   f"charged, try again in {seen.retry_after_s} s"},
+        retry_after_s=seen.retry_after_s)
 
 
 def _burst_retry_after(provider: str, response: UpstreamResponse, body: bytes) -> float | None:
@@ -1254,23 +1272,21 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     if mk is not None and mk.metered:
         _set_caller_max_cost(request, mk)
 
-    if mk is not None and mk.skip_direct:
-        # The resolver knows treg's own account is out and an overflow route is on: no direct
-        # attempt, no parent hold - straight to the child cycle. The DB phase ends here; the child
-        # places its own hold and the aggregator answers with none open.
-        await db.commit()
-        # No parent hold exists yet. Require the authenticated caller before the child
-        # reserve, and keep that org off `mk.payer_org_id` — the parent was not reserved.
+    async def _serve_overflow_instead(*, status: int, note: str, force_trigger: str, refusal,
+                                      keep_refusal: bool = False) -> UpstreamResponse:
+        """No direct answer exists (treg's own account is out, or its rate window is full) and no
+        parent hold is open: the child cycle may serve the same endpoint through an aggregator.
+        `refusal()` is the failure raised when it does not; with `keep_refusal` it also replaces
+        the child cycle's own failure."""
         caller_org = _required_caller_org(caller)
-        pending = _audit(503, charged_micro=0, refused_by="capacity",
-                         error_response="treg: own account exhausted — trying overflow",
+        pending = _audit(status, charged_micro=0, refused_by="capacity", error_response=note,
                          defer_analytics=True)
         try:
             outcome = await overflow_cycle.maybe_overflow(
-                mk=mk, caller=caller, meta=meta, call_ref=call_ref, status=402,
+                mk=mk, caller=caller, meta=meta, call_ref=call_ref, status=status,
                 headers=httpx.Headers(()), body=b"", method=request.method,
                 query_items=request.query_params.multi_items(), caller_body=caller_body,
-                client=upstream_client, audit_client=_client_name(request), force_trigger="exhausted",
+                client=upstream_client, audit_client=_client_name(request), force_trigger=force_trigger,
                 before_outbound=lambda: _admit_org_endpoint(request, mk.endpoint_id))
         except asyncio.CancelledError:
             _capture(pending)
@@ -1279,16 +1295,14 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         except CallFailure:
             _capture(pending)
             request.state.call_cost_micro = 0
+            if keep_refusal:
+                raise refusal() from None
             raise
         if outcome is None or not outcome.served or outcome.response is None:
             _capture(pending)  # a refusal after all
             request.state.call_cost_micro = 0
-            from .resolve import _provider_capacity_unavailable
-            raise (outcome.failure if outcome is not None and outcome.failure is not None
-                   else _provider_capacity_unavailable(
-                       _catalog_endpoint_for(mk.endpoint_id) or {"id": mk.endpoint_id},
-                       mk.provider, capacity_view.exhausted_until(
-                           mk.provider, mk.endpoint_id, metered=capacity_marks.spends_balance(mk.cost_type))))
+            raise (outcome.failure if not keep_refusal and outcome is not None
+                   and outcome.failure is not None else refusal())
         response, body, charged = outcome.response, outcome.body, outcome.charged_micro
         _capture(_overflow_event(pending, outcome, charged))
         if idem_key:
@@ -1308,6 +1322,22 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         _set_response_header(response, "X-Treg-Served-Via", f"overflow:{outcome.aggregator}")
         return response
 
+    if mk is not None and mk.skip_direct:
+        # The resolver knows treg's own account is out and an overflow route is on: no direct
+        # attempt, no parent hold - straight to the child cycle. The DB phase ends here; the child
+        # places its own hold and the aggregator answers with none open.
+        await db.commit()
+
+        def _exhausted():
+            from .resolve import _provider_capacity_unavailable
+            return _provider_capacity_unavailable(
+                _catalog_endpoint_for(mk.endpoint_id) or {"id": mk.endpoint_id},
+                mk.provider, capacity_view.exhausted_until(
+                    mk.provider, mk.endpoint_id, metered=capacity_marks.spends_balance(mk.cost_type)))
+        return await _serve_overflow_instead(
+            status=503, note="treg: own account exhausted - trying overflow",
+            force_trigger="exhausted", refusal=_exhausted)
+
     # Metered — treg's own money is about to be spent (tier 4's platform key, or a registry OAuth
     # connect on a pay-per-use app), so take the money FIRST. Dispatch admission below releases
     # this hold if a later local check or endpoint quota refuses the call.
@@ -1320,7 +1350,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # Secret reads above opened the dependency session. Release its pool slot before the
             # application opens the short transaction that owns the reservation.
             await db.commit()
-            await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref)
+            await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref, allow_holdless=True)
             request.context.finalization = FinalizationState.OPEN
         except asyncio.CancelledError:
             await _finish_cancelled_call(request, mk, call_ref)
@@ -1366,6 +1396,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 raw_headers = scope_shared_idempotency_key(
                     raw_headers, caller.org_id, pinned_tags=caller.membership.pinned_tags)
                 raw_headers = identify_as_treg(raw_headers)
+                raw_headers = tag_shared_client(
+                    raw_headers, catalog_store.load().client_headers.get(mk.provider),
+                    mk.provider, caller.org_id)
             query_items = tuple(request.query_params.multi_items())
             query_items += _ceiling_query(mk, query_items)
             upstream_request = UpstreamRequest(
@@ -1451,18 +1484,20 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 cache_diagnostics["cache_price"] = (
                     "free" if not mk.metered else "repeat" if served_repeat else "full")
                 request.context.cached = served_hit
+                request.context.reached_provider = True
                 archive_key_hash, archive_content_hash = served["key_hash"], served["content_hash"]
                 response = _served_response(served, body)
             else:
-                if platform_tier and (cap := capacity_view.concurrency(mk.provider)) \
-                        and (wait_s := get_settings().fair_share_wait_s) > 0:
+                share_pool, cap = (capacity_view.concurrency_pool(mk.provider, mk.endpoint_id)
+                                   if platform_tier else ("", 0))
+                if cap and (wait_s := get_settings().fair_share_wait_s) > 0:
                     # Fair share (domain/capacity/fair_share.py): every team shares this account's
                     # places; a full provider hands the next free place to the team with the fewest
                     # calls in progress. Held until the answer is read, released on every path below.
                     try:
                         # Each of treg's accounts has its own places (`keyslots.capacity_key`).
                         share_slot = await fair_share.acquire(
-                            keyslots.capacity_key(mk.provider, mk.key_slot), caller.org_id, cap,
+                            keyslots.capacity_key(share_pool, mk.key_slot), caller.org_id, cap,
                             max_wait_s=wait_s)
                     except ShareBusy as busy:
                         raise GatewayFailed("share_busy", status_code=429, detail={
@@ -1475,19 +1510,35 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     if share_slot.waited_ms:
                         smoothed.append(f"share_wait={share_slot.waited_ms}")
                 rate_seen = None
-                relay_options = {}
-                if mk is not None and _quota_targets(request, mk.endpoint_id):
-                    async def before_outbound():
-                        nonlocal sent, rate_seen
-                        await _admit_org_endpoint(request, mk.endpoint_id)
-                        rate_seen = await rate_observe.observe(mk.provider, rl) if platform_tier else None
-                        sent = True
 
-                    relay_options["before_outbound"] = before_outbound
-                else:
-                    rate_seen = await rate_observe.observe(mk.provider, rl) if platform_tier else None
+                async def admit_outbound():
+                    nonlocal sent, rate_seen
+                    if platform_tier:
+                        rate_seen = await rate_observe.observe(mk.provider, rl)
+                        if _rate_refuses(mk, rate_seen):
+                            refused, rate_seen = rate_seen, None
+                            rate_observe.record(refused, "refused")
+                            provider_limiter.refund(*rl)
+                            raise _provider_rate_limited(mk, refused)
+                    if mk is not None:
+                        try:
+                            await _admit_org_endpoint(request, mk.endpoint_id)
+                        except BaseException:
+                            if rate_seen is not None:
+                                rate_observe.release(rate_seen)
+                                provider_limiter.refund(*rl)
+                            rate_seen = None
+                            raise
                     sent = True
+
+                relay_options = {}
+                if ((mk is not None and _quota_targets(request, mk.endpoint_id))
+                        or (platform_tier and rl is not None and rate_observe.enabled())):
+                    relay_options["before_outbound"] = admit_outbound
+                else:
+                    await admit_outbound()
                 upstream_started = _now_ms()
+                reached = relay_module.ON_SEND.set(_reached_provider(request.context))
                 try:
                     response = await relay(
                         upstream_request,
@@ -1500,6 +1551,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         **relay_options,
                     )
                 finally:
+                    relay_module.ON_SEND.reset(reached)
                     rate_observe.record(rate_seen, response.status if response is not None else None)
                 upstream_ms = _now_ms() - upstream_started
             streaming_free_result = (mk is not None and mk.streamable_free_result
@@ -1518,15 +1570,24 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     # Half two: ONE bounded wait on the provider's own `retry-after`, then the identical
                     # request again on the same hold — idempotent reads only, only when the provider
                     # said when, never on 401/402/5xx (the "no retries" rule stands for those).
-                    await response.close()
                     await asyncio.sleep(retry_s)
-                    retry_started = _now_ms()
-                    response = await relay(
-                        upstream_request, upstream_url, tool, secrets, upstream_client,
-                        drop_params=drop_params or None, force_identity=True)
-                    response, body, spooled_bytes = await _read_evidence(mk, response)
-                    upstream_ms += _now_ms() - retry_started
-                    smoothed.append("retry=1")
+                    retry_seen = await rate_observe.observe(mk.provider, rl)
+                    if _rate_refuses(mk, retry_seen):
+                        rate_observe.record(retry_seen, "refused")
+                    else:
+                        await response.close()
+                        retry_started = _now_ms()
+                        retry_response = None
+                        try:
+                            retry_response = await relay(
+                                upstream_request, upstream_url, tool, secrets, upstream_client,
+                                drop_params=drop_params or None, force_identity=True)
+                        finally:
+                            rate_observe.record(retry_seen, retry_response.status
+                                                if retry_response is not None else None)
+                        response, body, spooled_bytes = await _read_evidence(mk, retry_response)
+                        upstream_ms += _now_ms() - retry_started
+                        smoothed.append("retry=1")
                 if mk.async_owner_call_id and 200 <= response.status < 300:
                     try:
                         await async_task_app.observe_owned_poll(
@@ -1643,11 +1704,17 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         if metered or free_poll:
             # The shared exception handler builds the response and adds this zero-cost result.
             request.state.call_cost_micro = 0
+        if exc.kind == "provider_rate_limited":
+            rate_refusal = exc
+            return await _serve_overflow_instead(
+                status=429, note="treg: provider rate window full", force_trigger="burst",
+                refusal=lambda: rate_refusal, keep_refusal=True)
         # No provider body exists on this branch. treg's own detail is the explanation instead, and
         # it is the one worth keeping: this branch carries refresh, timeout, injection and SSRF 502s.
         _renderings = _safe_secret_renderings(tool, secrets)
         _audit(exc.status_code, charged_micro=0 if metered or free_poll else None,
-               refused_by="policy" if exc.kind in routed._QUOTA_REFUSALS else None,
+               refused_by="policy" if exc.kind in routed._QUOTA_REFUSALS
+               else "capacity" if exc.kind == "share_busy" else None,
                duration_ms=_now_ms() - started, answered=False,
                error_request=(
                    _ERROR_MASKING_FAILED if _renderings is None else
@@ -1937,6 +2004,12 @@ def _response_retention_forbidden(endpoint_id: str | None) -> bool:
     return bool(entry and entry.get("response_retention") == "forbidden")
 
 
+def _reached_provider(context: CallContext):
+    def mark() -> None:
+        context.reached_provider = True
+    return mark
+
+
 def _routed_event(request: _ApplicationRequest, ep: dict, status: int, *,
                   refused_by: str | None = None, charged: int | None,
                   response: UpstreamResponse | None = None) -> None:
@@ -1959,7 +2032,7 @@ def _routed_event(request: _ApplicationRequest, ep: dict, status: int, *,
         status_code=status, refused_by=refused_by, hit=summary.get("hit"),
         verdict=summary.get("verdict"), cost_charged_micro=charged,
         served_by=summary.get("served_by"), tried_count=summary.get("tried_count"),
-        check_verdict=summary.get("check_verdict"),
+        check_verdict=summary.get("check_verdict"), route_rule=summary.get("route_rule"),
         retained_extra=int(summary.get("size") or 0) + answer_size)
 
 
@@ -2011,8 +2084,12 @@ def _submission_rejected(mk, body: bytes) -> str:
         document = json.loads(body)
     except (ValueError, UnicodeDecodeError):
         return "submission_not_json"
-    rule = (catalog_store.load().by_id.get(mk.endpoint_id) or {}).get("expect")
-    if rule:
+    endpoint = catalog_store.load().by_id.get(mk.endpoint_id) or {}
+    rule = endpoint.get("expect")
+    if schema.is_v2(endpoint):
+        if catalog_outcome.expect_failure(endpoint, document) is not None:
+            return "submission_expect_failed"
+    elif rule:
         try:
             if _dig(document, rule["json_path"]) != rule.get("equals"):
                 return "submission_expect_failed"

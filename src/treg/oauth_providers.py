@@ -1334,30 +1334,58 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
-MOBIUSENGINE_JOBS = OAuthProvider(
-    service="mobiusengine-jobs",
-    display_name="MobiusEngine Jobs Data",
+DANSUGC = OAuthProvider(
+    service="dansugc",
+    display_name="DansUGC",
     auth_kind="key",
     token_label="API key",
-    token_placeholder="your MobiusEngine Jobs Data API key",
+    token_placeholder="dsk_…",
+    # Bearer header only; DansUGC accepts no query-param key.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://dansugc.com/dashboard/api-keys?utm_source=treg",
+    setup_action_label="Get your DansUGC API key",
+    setup_steps=(
+        "Sign in to DansUGC (any plan) and open Dashboard → Developers.",
+        "Create a secret key (it starts with dsk_) and copy it; it is shown once.",
+    ),
+    setup_note="Any DansUGC account's key covers these B-roll endpoints. Licensing a clip spends "
+               "account credits; search, filters, clip details and the key check are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Advertising",
+    summary="Search and license real-human UGC reaction clips (never AI) for ads and organic posts.",
+    base_url="https://dansugc.com/api/v1",
+    docs_url="https://dansugc.com/docs",
+    probe_path="/broll/filters",  # free, read-only — a bad key gets 401 {"error":"Invalid API key"}
+)
+
+
+MOBIUSENGINE_JOBS = OAuthProvider(
+    service="mobiusengine-jobs",
+    display_name="MobiusEngine.ai Jobs Data",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your MobiusEngine.ai Jobs Data API key",
     # The key rides in x-api-key (Authorization: Bearer is accepted too); the header keeps it out of logged URLs.
     token_header="x-api-key",
     token_format="{secret}",
-    setup_url="https://jobs.arihaan.ai/pay-per-job",
-    setup_action_label="Get your MobiusEngine Jobs Data API key",
+    setup_url="https://jobs.mobiusengine.ai/login?utm_source=treg&utm_medium=connect",
+    setup_action_label="Get your MobiusEngine.ai Jobs Data API key",
     setup_steps=(
-        "Open the pay-per-job page and sign in with Google. New accounts start with a $1 credit.",
+        "Open jobs.mobiusengine.ai and sign in with Google. New accounts start with a $1 credit.",
         "Copy the API key shown on your first sign-in (it is shown once; more can be made under API keys).",
-        "Add funds under Pay per job when the credit is used: calls are charged per job from that balance.",
+        "Add funds on your account page (jobs.mobiusengine.ai/app) when the credit is used: calls are charged per job from that balance.",
     ),
     setup_note="Billed per job from a prepaid balance. The balance, usage, meta and rates routes are free.",
     auth_uri="", token_uri="",
     scopes={},
     client_id_setting="", client_secret_setting="",
     category="Jobs data",
-    summary="Search and fetch live job postings from employers' own career sites, with or without the full description.",
+    summary="Search and count open jobs from employers' own career sites, including Workday, Greenhouse, Lever, Ashby and SmartRecruiters, with an optional 300-character description preview.",
     base_url="https://jobs-api.arihaan.ai",
-    docs_url="https://jobs.arihaan.ai/docs",
+    docs_url="https://jobs.mobiusengine.ai/docs?utm_source=treg&utm_medium=docs",
     probe_path="/v1/balance",  # free; a bad or missing key gets HTTP 401 {"error": {"code": "unauthorized", ...}}
 )
 
@@ -1499,6 +1527,19 @@ SIXTYFOUR = OAuthProvider(
     summary="Research people and companies, search for prospects, and find or verify contact details.",
     base_url="https://api.sixtyfour.ai", docs_url="https://docs.sixtyfour.ai/introduction",
     probe_path="/check-balance",
+)
+
+LEADOCEAN = OAuthProvider(
+    service="leadocean", display_name="LeadOcean", auth_kind="key",
+    token_label="API key", token_placeholder="your LeadOcean API key",
+    token_header="x-api-key", token_format="{secret}",
+    setup_url="https://leadocean.io/", setup_action_label="Get your LeadOcean API key",
+    setup_steps=("Sign in to LeadOcean and copy an API key.", "Paste the key here."),
+    setup_note="Search and enrichment consume provider records. Connection verification is free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment", summary="Search and enrich people and companies, and find contact details.",
+    base_url="https://api.leadocean.io", docs_url="https://leadocean.io/docs",
+    probe_path="/v1/account",
 )
 
 BLITZAPI = OAuthProvider(
@@ -2998,6 +3039,10 @@ CRAWL4AI = OAuthProvider(
     base_url="https://api.crawl4ai.com",
     docs_url="https://api.crawl4ai.com/docs",
     probe_path="/v1/billing/balance",  # free: reads the credit balance, spends nothing
+    catalog_targets=(
+        # Lead (company and people search) answers from its own gate; the same key, same Bearer header.
+        CatalogTarget(host="gate.crawl4ai.com", base_url="https://gate.crawl4ai.com"),
+    ),
 )
 
 SPIDERCLOUD = OAuthProvider(
@@ -3481,6 +3526,23 @@ ENROW = OAuthProvider(
 )
 
 
+FILTRAT = OAuthProvider(
+    service="filtrat", display_name="Filtrat", auth_kind="key",
+    token_label="API key", token_placeholder="your Filtrat API key (ak_…)",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://filtrat.io/app/api",
+    setup_action_label="Get your Filtrat API key",
+    setup_steps=("Sign in to Filtrat and open API & Integrations.", "Create an API key and copy it."),
+    setup_note="Verifications and found emails spend credits; unknown, catch-all and not-found answers and the account check are free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Verify email addresses (with catch-all resolution) and find work emails from a name and domain.",
+    base_url="https://filtrat.io/v1",
+    docs_url="https://filtrat.io/v1/docs",
+    probe_path="/credits/balance",  # free; a bad key gets 401
+)
+
+
 DROPCONTACT = OAuthProvider(
     service="dropcontact", display_name="Dropcontact", auth_kind="key",
     token_label="API key", token_placeholder="your Dropcontact API key",
@@ -3642,6 +3704,32 @@ VILLAGE = OAuthProvider(
     probe_path="/v2/user/me",  # free; a bad token gets HTTP 401 (verified live 2026-10-07)
 )
 
+ATLY = OAuthProvider(
+    service="atly",
+    display_name="Atly",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Atly API key (atly_…)",
+    # Atly also accepts `Authorization: Bearer <key>`.
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://agentic-api.atly.com/v2/docs",
+    setup_action_label="Get a free Atly API key",
+    setup_steps=(
+        "POST https://agentic-api.atly.com/v2/keys with {\"email\": \"you@example.com\"}; the key comes back in the response.",
+        "Optional: POST https://agentic-api.atly.com/v2/keys/verify with {\"email\", \"code\"} (the 6-digit code emailed to you), sending the key as X-API-Key, to move that key to the verified daily quota.",
+    ),
+    setup_note="Every operation is free. A key is limited by a daily quota, larger once its email is verified.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Find places by intent (work friendly, gluten free, cappuccino) near a city or point, ranked by a score from reviews, with quotable review statements.",
+    base_url="https://agentic-api.atly.com/v2",
+    docs_url="https://agentic-api.atly.com/v2/docs",
+    probe_path="/keys/me",  # free, uses no quota; a bad key gets HTTP 401 (verified live 2026-10-27)
+)
+
 
 INFLUENCERSCLUB = OAuthProvider(
     service="influencersclub",
@@ -3679,9 +3767,7 @@ INFLUENCERSCLUB = OAuthProvider(
 )
 
 
-# Market data API-key providers (pricing: docs/SHARED-PLAN-PRICING-PLAN.md; provider selection:
-# docs/MARKET-DATA-CATEGORY-RESEARCH.md). CoinGecko leads because it is the one true credit-priced
-# provider in the sector - its fx.yaml entry divides like Hunter's.
+# Market data API-key providers.
 
 COINGECKO = OAuthProvider(
     service="coingecko",
@@ -4133,6 +4219,43 @@ PINTEREST_ADS = OAuthProvider(
     probe_path="/user_account",  # cheap token check once configured; auto-provisions a Bearer tool
 )
 
+CORPOAPI = OAuthProvider(
+    service="corpoapi",
+    display_name="Corpo API",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Corpo API key (ck_live_...)",
+    # The key rides in X-API-Key (Authorization: Bearer is accepted too); the header keeps it out of
+    # logged URLs.
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://corpoapi.com/app/signup",
+    setup_action_label="Get your Corpo API key",
+    setup_steps=(
+        "Sign up at corpoapi.com. New accounts get 100 free paid calls, no card.",
+        "Open API keys in the dashboard and create a key.",
+        "Copy the key (ck_live_...) and paste it here.",
+    ),
+    setup_note=(
+        "Company records, officers, owners, documents, financials, verification and VAT checks are "
+        "$0.05 per paid call; search, coverage and the usage check are free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Company data from official business registers in 86 jurisdictions: search, register "
+        "record, officers, shareholders and UBOs, filings, financials, KYB verification and EU VAT."
+    ),
+    base_url="https://api.corpoapi.com",
+    docs_url="https://docs.corpoapi.com",
+    # /v1/usage is free and needs auth. Checked 2026-11-03: a valid key gets 200 with the account's
+    # usage totals; "ck_live_" plus 32 zeros and "garbage" both get HTTP 401 application/problem+json
+    # with code "invalid_api_key"; no key gets 401 "missing_api_key".
+    probe_path="/v1/usage",
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -4140,7 +4263,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, BLITZAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, MOBIUSENGINE_JOBS, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, SIXTYFOUR, LEADOCEAN, BLITZAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, ORBISEARCH, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
@@ -4153,13 +4276,15 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, BRAVESEARCH, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
-        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
+        COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB, VILLAGE,
+        # Places: intent-scored local search
+        ATLY,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
-        SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
+        SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
     )
 }

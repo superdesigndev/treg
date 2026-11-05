@@ -1,4 +1,4 @@
-"""Step D′ of docs/PROVIDER-CAPACITY-PLAN.md — burst smoothing on treg's own platform keys:
+"""Provider capacity: burst smoothing on treg's own platform keys:
 a per-provider token bucket (wait ≤ 2 s, in-process, no DB) and one bounded `retry-after`
 re-send for idempotent reads. Never a refusal; never on tiers 1/2."""
 
@@ -13,6 +13,7 @@ from httpx import AsyncClient
 from treg import ratestore
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
+from treg.domain.identity import api_keys as managed_keys
 from treg.infra.db import _engine, session_maker
 from treg.domain.capacity.policy import LatestState
 from treg.domain.capacity.sweep import STATE_NS
@@ -208,6 +209,8 @@ async def test_a_smoothed_call_holds_no_db_connection_while_it_waits(clients: As
     # seconds, during which the bucket refills — that is the cold start that made this test pass
     # only after its siblings had run (a laptop saw no wait at all; CI gw2 measured 77 ms).
     assert (await clients.get(f"/call/{EP}?aweme_id=0")).status_code == 200
+    # The warm-up call schedules a last-used write on SQLite's shared pool.
+    await managed_keys.drain_last_used()
     seen.clear()
     bucket = limiter.bucket("tikhub", 2, 1.0)
     bucket.updated = time.monotonic()

@@ -21,6 +21,7 @@ from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing.contracts import Check
 from treg.infra.db import session_maker
 from treg.models import AsyncTaskRecord, CallRecord, Hold, LedgerEntry
+from treg.infra.upstream import relay as relay_module
 
 from test_marketplace_call import _balance, platform_on  # noqa: F401
 
@@ -54,6 +55,8 @@ def _relay(answers: dict[str, list[tuple[int, dict]]], seen: list, gate: dict | 
     async def relay(request, upstream_url, tool, secrets, client, **kwargs):
         if before_outbound := kwargs.get("before_outbound"):
             await before_outbound()
+        if (on_send := relay_module.ON_SEND.get()) is not None:
+            on_send()  # as the real relay does once its local checks pass
         provider = next(p for p in ("bounceban", "tomba", "hunter") if p in upstream_url)
         key = provider + ("-verify" if "verif" in upstream_url and provider != "bounceban" else "")
         seen.append(key)
@@ -272,6 +275,8 @@ async def test_a_check_still_verifying_is_pending_and_left_to_the_worker(clients
     call_id = r.headers["X-Treg-Call-Id"]
     assert v["verdict"] == "unknown" and v["checked"] is True and v["pending"] is True
     assert v["call_id"] == f"{call_id}:v:r0" and v["served_by"] == "bounceban.people.email.verify"
+    assert v["async"]["task_id"] == "bb-1"
+    assert v["async"]["poll"]["endpoint"] == "bounceban.people.email.verify.status"
     async with session_maker() as db:
         [task] = (await db.execute(select(AsyncTaskRecord))).scalars().all()
     assert task.status == "pending" and v["cost_micro"] == task.reserved_micro

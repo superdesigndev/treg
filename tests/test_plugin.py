@@ -66,7 +66,7 @@ MINIMAX_MANIFEST = MINIMAX_PLUGIN_DIR / ".minimax-plugin" / "plugin.json"
 MINIMAX_SKILL = MINIMAX_PLUGIN_DIR / "skills" / "treg" / "SKILL.md"
 
 # Every generated SKILL.md, and every manifest a public directory reads. Tests that apply to the
-# product as a whole (version, positioning, no-routing) parametrise over these rather than being
+# product as a whole (version, positioning) parametrise over these rather than being
 # written against whichever plugin happened to exist first.
 ALL_SKILLS = {"codex": SKILL, "skills": BARE_SKILL, "plugin": PLUGIN_SKILL, "dsh": DSH_SKILL,
               "minimax": MINIMAX_SKILL}

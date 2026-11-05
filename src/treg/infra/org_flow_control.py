@@ -26,6 +26,7 @@ _MAX_ORGS = 4096
 _MAX_BYTES = 32768
 _MAX_INT = 2147483647
 _LOG_INTERVAL_S = 5
+_READ_TIMEOUT_S = 0.2
 _clock = time.monotonic
 
 
@@ -187,7 +188,7 @@ class Reader:
         # refresh deadline untouched, so the next caller/waiter can retry immediately.
         was_available = entry.available
         try:
-            async with asyncio.timeout(0.2):
+            async with asyncio.timeout(_READ_TIMEOUT_S):
                 async with self.reads:
                     raw = await kv.store().read_org_flow_control(org_id)
         except asyncio.CancelledError:
