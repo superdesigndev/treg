@@ -2224,3 +2224,117 @@ async def test_a_team_sets_its_charges_per_hour(c: AsyncClient, monkeypatch):
         r = await c.post("/billing/autotopup", headers=_h(owner), json={"enabled": True, "per_hour": bad})
         assert r.status_code in (400, 422), r.text
     assert (await c.get("/billing", headers=_h(owner))).json()["autotopup"]["per_hour"] == 10
+
+
+# ---- refunds revoke the refunded payment's unspent credit ----------------------------------------
+def _refund_event(pi: str, refunded_cents: int, *, evt: str = "evt_refund") -> dict:
+    return {"id": evt, "type": "charge.refunded", "data": {"object": {
+        "id": f"ch_{pi}", "object": "charge", "payment_intent": pi,
+        "amount_refunded": refunded_cents, "refunded": True}}}
+
+
+async def _purchased(org_id: int) -> dict[str, int]:
+    async with session_maker() as db:
+        return {b.stripe_payment_intent: b.remaining_micro for b in await ledger.blocks_of(db, org_id)
+                if b.kind == "purchased"}
+
+
+async def _revoke_entries(org_id: int) -> list:
+    async with session_maker() as db:
+        return [e for e in await ledger.entries_of(db, org_id, limit=200) if e.kind == "revoke"]
+
+
+async def test_a_refund_revokes_only_that_payments_credit_and_stops_auto_topup(c: AsyncClient, monkeypatch):
+    """$10 by hand, then a $20 refill the team did not want. Refunding the $20 in Stripe takes back
+    exactly that block; the $10 stays, and auto top-up goes off so the card is not charged again."""
+    org_id, owner = await _org(c)
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    await _deliver(c, _pi_event(org_id, pi="pi_keep", cents=1_000))
+    await _deliver(c, _pi_event(org_id, pi="pi_extra", cents=2_000, auto="1"))
+    await _set_org(org_id, autotopup_enabled=True, autotopup_consented_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                   stripe_default_pm="pm_card_visa")
+    async with session_maker() as db:
+        before = await ledger.balance_of(db, org_id)
+
+    r = await _deliver(c, _refund_event("pi_extra", 2_000))
+    assert r.status_code == 200, r.text
+    assert r.json()["revoked_micro"] == 20_000_000 and r.json()["shortfall_micro"] == 0
+    async with session_maker() as db:
+        assert await ledger.balance_of(db, org_id) == before - 20_000_000
+        org = await db.get(Org, org_id)
+        assert org.autotopup_enabled is False and org.autotopup_disabled_reason == "payment_refunded"
+    assert await _purchased(org_id) == {"pi_keep": 10_000_000, "pi_extra": 0}
+
+    # Redelivery takes nothing and writes nothing.
+    assert (await _deliver(c, _refund_event("pi_extra", 2_000))).json()["recorded"] is False
+    assert len(await _revoke_entries(org_id)) == 1
+
+    history = (await c.get("/billing/history", headers=_h(owner))).json()["items"]
+    refunded = {i["payment_intent"]: i["refunded_micro"] for i in history}
+    assert refunded == {"pi_keep": 0, "pi_extra": 20_000_000}
+
+
+async def test_partial_refunds_accumulate_and_take_the_bonus_in_proportion(c: AsyncClient, monkeypatch):
+    org_id, _ = await _org(c)
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    await _deliver(c, _pi_event(org_id, pi="pi_part", cents=10_000))  # $100 + $10 bonus
+    async with session_maker() as db:
+        before = await ledger.balance_of(db, org_id)
+
+    await _deliver(c, _refund_event("pi_part", 2_500, evt="evt_r1"))
+    await _deliver(c, _refund_event("pi_part", 4_000, evt="evt_r2"))
+    # A late copy of the first refund's event is older than what is already recorded.
+    assert (await _deliver(c, _refund_event("pi_part", 2_500, evt="evt_r1"))).json()["recorded"] is False
+
+    async with session_maker() as db:
+        assert await ledger.balance_of(db, org_id) == before - 40_000_000 - 4_000_000
+        bonus = [b for b in await ledger.blocks_of(db, org_id) if b.kind == "bonus"][0]
+        assert bonus.remaining_micro == 6_000_000
+    assert (await _purchased(org_id))["pi_part"] == 60_000_000
+
+
+async def test_the_operator_rerun_takes_held_credit_without_switching_auto_topup_off_again(
+        c: AsyncClient, monkeypatch):
+    """Credit held by a call in flight is not taken, and the balance never goes below zero; the
+    operator's re-run takes it once the call lets go. Auto top-up goes off for a refund not seen
+    before; collecting the rest of that same refund must not undo an owner who switched it back on."""
+    org_id, _ = await _org(c)
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    await _deliver(c, _pi_event(org_id, pi="pi_rerun", cents=2_000))
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    await _set_org(org_id, autotopup_enabled=True, autotopup_consented_at=now, stripe_default_pm="pm_card_visa")
+    async with session_maker() as db:
+        held = await ledger.reserve(db, org_id, "ep_held", get_settings().promo_grant_micro + 4_000_000)
+    r = (await _deliver(c, _refund_event("pi_rerun", 2_000))).json()
+    assert r["revoked_micro"] == 16_000_000 and r["held_micro"] == 4_000_000
+    async with session_maker() as db:
+        assert await ledger.balance_of(db, org_id) == 0
+        assert (await db.get(Org, org_id)).autotopup_disabled_reason == "payment_refunded"
+        await ledger.release(db, held)
+    await _set_org(org_id, autotopup_enabled=True, autotopup_disabled_reason=None)
+
+    async def stripe(fn, /, **kw):
+        assert fn == billing.stripe_adapter.PAYMENT_INTENT_RETRIEVE and kw["id"] == "pi_rerun"
+        return {"id": "pi_rerun", "latest_charge": {"id": "ch_pi_rerun", "amount_refunded": 2_000}}
+
+    monkeypatch.setattr(billing, "_sdk", stripe)
+    r = await billing.revoke_refunded_payment("pi_rerun")
+    assert r["revoked_micro"] == 4_000_000 and r["held_micro"] == 0 and r["autotopup_stopped"] is False
+    async with session_maker() as db:
+        assert (await db.get(Org, org_id)).autotopup_enabled is True
+    assert await _purchased(org_id) == {"pi_rerun": 0}
+
+
+async def test_a_refund_of_fully_spent_credit_is_still_recorded(c: AsyncClient, monkeypatch):
+    org_id, owner = await _org(c)
+    monkeypatch.setattr(billing, "_sdk", _no_sdk)
+    promo = get_settings().promo_grant_micro
+    await _deliver(c, _pi_event(org_id, pi="pi_gone", cents=1_000))
+    async with session_maker() as db:
+        call = await ledger.reserve(db, org_id, "ep_all", promo + 10_000_000)
+        await ledger.settle(db, call, promo + 10_000_000)
+    r = (await _deliver(c, _refund_event("pi_gone", 1_000))).json()
+    assert r["recorded"] is True and r["revoked_micro"] == 0 and r["shortfall_micro"] == 10_000_000
+    assert r["held_micro"] == 0
+    history = (await c.get("/billing/history", headers=_h(owner))).json()["items"]
+    assert history[0]["refunded_micro"] == 10_000_000
