@@ -107,6 +107,9 @@ class _SurfacePolicy:
     invites: bool = True
     # Catalog platforms this surface neither lists, describes nor calls.
     hidden_platforms: frozenset[str] = frozenset()
+    # Whether catalog_get shows the row's `note`. The directory surface returns what it was
+    # submitted with until the next resubmission.
+    endpoint_note: bool = True
 
     def hides(self, ep: dict | None) -> bool:
         return bool(ep) and ep.get("platform") in self.hidden_platforms
@@ -128,6 +131,7 @@ _DIRECTORY_SURFACE = _SurfacePolicy(
     next_call="catalog_call_read(...) or catalog_call_write(...), based on the documented method",
     invites=False,
     hidden_platforms=_DIRECTORY_HIDDEN_PLATFORMS,
+    endpoint_note=False,
 )
 
 
@@ -1277,6 +1281,8 @@ async def _catalog_get_impl(
     # Lifted onto the result so the schema advertises it: the direct price is not the only price
     # a "free" endpoint can bill.
     ep = (out.get("endpoint") or {}) if isinstance(out, dict) else {}
+    if isinstance(ep, dict) and not surface.endpoint_note:
+        ep.pop("note", None)
     if isinstance(ep, dict):
         # Same quote catalog_search already leads with, so an agent that inspects by id
         # does not fall back to the per-record `cost.usd` slice on a grouped credit.

@@ -7,6 +7,7 @@ sources:
   - src/treg/bootstrap_http.py
   - src/treg/worker.py
   - src/treg/infra/money_trace_runner.py
+  - src/treg/infra/loop_stall.py
   - src/treg/infra/money_admission_reporting.py
   - src/treg/call_surface.py
   - src/treg/application/connect.py
@@ -72,6 +73,15 @@ operator serving the raw ASGI app must run the upgrade command on every release.
 - `infra.money_trace_runner` runs on every role regardless of analytics settings; it stops after
   money-producing background work drains. Its records are defined in
   [data-model](data-model.md#product-analytics-writer-analyticspy).
+- `infra.loop_stall` runs in every web worker's lifespan. The loop only stamps a heartbeat and,
+  when a beat comes `STALL_SECONDS` after the last, queues that gap: every such gap is one
+  `loop_stall_end`, measured on the loop's own clock (the stall plus at most one heartbeat), even
+  when nothing saw it in progress. A daemon thread writes `loop_stall` with the loop thread's stack
+  once the stamp is `STALL_SECONDS` old. Lines go straight to the stderr descriptor, not through
+  `logging`, so a full pipe blocks only that thread and holds no lock that request logs or
+  interpreter shutdown need. It does not use the process-wide faulthandler timer. A watcher that
+  woke late (C code held the GIL) marks its stack `stack_reliable: false`. It never raises into
+  startup or shutdown.
 
 ## HTTP middleware
 

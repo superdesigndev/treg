@@ -505,6 +505,22 @@ async def test_retired_rows_leave_discovery_but_keep_an_actionable_direct_lookup
     assert retired not in {row["id"] for row in search["results"]}
 
 
+async def test_a_rows_note_is_served_on_its_own_detail_only(clients: AsyncClient):
+    """`note` is a caller-facing caveat about the whole tool: `catalog get` shows it, while the
+    lists and search, which compare rows by their summary, leave it out."""
+    ep = next(e for e in cs.load().endpoints if e.get("note") and e["kind"] not in cs.HIDDEN_KINDS)
+    detail = (await clients.get(f"/catalog/endpoints/{ep['id']}")).json()
+    assert detail["endpoint"]["note"] == ep["note"]
+    shelf = (await clients.get(f"/catalog/platforms/{ep['platform']}")).json()
+    listed = [e for c in shelf["capabilities"] for e in c["endpoints"]] + shelf["extended"]
+    assert ep["id"] in {e["id"] for e in listed}
+    assert not any("note" in e for e in listed)
+    provider = (await clients.get(f"/catalog/providers/{ep['provider']}")).json()
+    assert not any("note" in t for p in provider["platforms"] for t in p["tools"])
+    search = (await clients.get("/catalog/search", params={"q": ep["name"] or ep["summary"]})).json()
+    assert search["results"] and not any("note" in r for r in search["results"])
+
+
 async def test_call_template_carries_method_and_body_for_a_post(clients: AsyncClient):
     body = (await clients.get("/catalog/endpoints/dataforseo.web.backlinks.summary")).json()
     tmpl = body["call_template"]

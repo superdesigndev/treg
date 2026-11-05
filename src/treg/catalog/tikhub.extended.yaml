@@ -16108,7 +16108,6 @@ endpoints:
   name: "Reddit post comments by post fullname"
   summary: 'Reddit: fetch post comments (app)'
   price: {value: '0.001', currency: USD, per: 1, unit: call}
-  note: an unknown or bare (un-prefixed) post_id still answers HTTP 200, with data.postInfoById null — and TikHub bills the call anyway; fix the id (t3_ fullname), do not retry (observed live 2026-08-20)
   input:
     queryParams:
       post_id:

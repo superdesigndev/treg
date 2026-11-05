@@ -1,0 +1,16 @@
+{
+  "success": true,
+  "task": {
+    "id": "933539ca-0fdb-41db-b082-0f322505b547",
+    "taskType": "CHATGPT",
+    "status": "QUEUED",
+    "priority": 1,
+    "createdAt": "2026-11-04T08:48:52.531Z",
+    "latencyMs": null,
+    "idempotencyKey": null
+  },
+  "credits": {
+    "creditsToCharge": 5,
+    "creditsCharged": null
+  }
+}

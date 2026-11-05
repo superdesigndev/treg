@@ -40,8 +40,8 @@ only what a user should install.
 **`skill.md` and `llms.txt` split the work.** `llms.txt` is the entry point in the
 [llms.txt](https://llmstxt.org) format (H1, summary blockquote, prose without headings, then H2 link
 lists) and restates nothing operational; it links `skill.md` for that. Both state the same money
-rule, so change them together. Provider-specific detail (an allowance, voice discovery, pricing
-provenance) lives on the catalog row as a `note`, never in either file.
+rule, so change them together. Provider-specific detail (an allowance, voice discovery) lives on the catalog row, in a
+parameter's, the cost's or the row's `note`, never in either file.
 
 `skill.md` mirrors the surfaces in [api.md](api.md) and [cli.md](cli.md); keep the three in sync
 when the API or CLI changes. Its feedback section links `{BASE}/feedback.md`; the contract is in
