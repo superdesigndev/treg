@@ -474,7 +474,7 @@ async def compare_page(slug: str, request: Request):
                   here=f' <span class="sl">/</span> <span class="here">vs {_e(cp.short(key))}</span>',
                   body=_page_body(key, base), ld=_page_ld(key, base),
                   ref=f"compare-{cp.page_slug(key)}", modified=cp.checked(key), them_color=c["mono"],
-                  nav='<a href="#side-by-side">Side by side</a><a href="#faq">Questions</a>')
+                  nav='<a href="#side-by-side">Side by side</a><a href="#faq">FAQ</a>')
     return _respond(html, request)
 
 
