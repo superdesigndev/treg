@@ -8,7 +8,6 @@ endpoint_keys:
   authorization_method: {provider: instagram}
   authorization_methods: {provider: instagram}
   authorization_paths: {provider: instagram}
-  call_note: {provider: scrapecreators}
   caller_email: {provider: crawl4ai}
   observed_cost: {provider: dataforseo}
   observed_from: {provider: crawl4ai}

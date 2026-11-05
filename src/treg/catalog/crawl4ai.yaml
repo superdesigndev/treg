@@ -327,7 +327,7 @@ endpoints:
     method: GET
     path: /serp
     name: "Google search results (SERP): organic rank, AI overview"
-    summary: "One Google results page as JSON: every organic result with its rank (position, and position_absolute counting the blocks above it), and each block Google showed (People also ask, local pack, videos, ...; the AI Overview when Google showed one: always with source=google, otherwise only when the answer came from Google directly, see note). Localised to a country, a language and optionally a city. When results is empty, empty_reason says why: google_no_results (Google matched nothing) or rescue_no_results (another provider may still have results)."
+    summary: "One Google results page as JSON: every organic result with its rank (position, and position_absolute counting the blocks above it), and each block Google showed (People also ask, local pack, videos, ...; the AI Overview when Google showed one: always with source=google, otherwise only when the answer came from Google directly, see the source parameter). Localised to a country, a language and optionally a city. When results is empty, empty_reason says why: google_no_results (Google matched nothing) or rescue_no_results (another provider may still have results)."
     strict_query: true
     input:
       queryParams:
@@ -339,7 +339,7 @@ endpoints:
         page: {type: integer, required: false, note: "page over num, 1 to 30: num=10&page=2 is results 11-20"}
         time: {type: string, required: false, enum: [hour, day, week, month, year], note: "Google's time filter"}
         fresh: {type: string, required: false, enum: ["1"], note: "1 skips the cache"}
-        source: {type: string, required: false, enum: [auto, google], note: "auto (default) may answer from Crawl4AI's fallback page, which has no AI Overview; google answers from Google's own page only, with the AI Overview when Google shows one, and is a free 503 when Google cannot be reached"}
+        source: {type: string, required: false, enum: [auto, google], note: "auto (default) may answer from Crawl4AI's fallback page, which has no AI Overview; google answers from Google's own page only, with the AI Overview when Google shows one, and is a free 503 when Google cannot be reached. The answer's source names the page that answered: gg is Google's own, gs the fallback"}
     test_request: {queryParams: {q: "best crm software", country: us}}
     cost:
       type: per_success
@@ -356,7 +356,6 @@ endpoints:
     added: '2026-10-09'
     docs_url: https://crawl4ai.com/llms.txt
     example_response: examples/crawl4ai.google.serp.organic.json
-    note: "The answer's source names the path that answered: gg is Google fetched directly and carries ai_overview when Google showed one; gs is Crawl4AI's fallback and never carries ai_overview. source=google always answers from gg (a free 503 when Google cannot be reached): 9 of 10 AI-Overview questions returned it, 0.7 to 3 s, observed live 2026-10-13. Routed treg.google.serp.organic sends source=google when the caller sets ai_overview true."
 
   # --- Many URLs ---------------------------------------------------------------------------------
   - id: crawl4ai.web.extract.batch

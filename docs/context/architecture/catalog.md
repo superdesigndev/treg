@@ -163,7 +163,14 @@ endpoints:
     verified: 2026-07-28             # last PASSING verify run; absent = unverified
     added: '2026-07-28'              # REQUIRED: UTC day this tool reached main
     example_response: examples/tikhub.tiktok.user.profile.json
+    note: "..."                      # optional: a caller-facing caveat about the whole tool or its answer
 ```
+
+Every `note` is caller-facing. A caveat goes to its most specific home: a parameter's `input.*.note`,
+then the charge's `cost.note`, then the row's `note`. Only the endpoint's own detail
+(`GET /catalog/endpoints/{id}`, `treg catalog get`, `/mcp/` `catalog_get`, the dashboard drawer) shows
+the row's `note`; lists, search and sibling rows leave it out. Maintainer context goes in a YAML
+comment, evidence in the PR body.
 
 The strict models ([catalog-schema](catalog-schema.md)), shared by the loader and the validator,
 refuse any `input` key and any parameter-spec key outside their vocabulary, because a misspelt
@@ -185,7 +192,8 @@ conflict on. It is not `verified` and not `source.curated`.
   date.
 - `carry_verification` carries `added` by id from every catalog file BEFORE its method/path check,
   so a moved route keeps its date and only a never-seen id gets today. For a route that still
-  matches it also carries `cost`, `observed_cost`, `expect`, `untestable` and `status`, and from a
+  matches it also carries `cost` (under a freshly generated `cost.note`), `observed_cost`, `expect`, `untestable`, `status` and a reviewer's
+  row `note` (no ingest writes one), and from a
   row in the v2 spelling its `reserve`, `settle`, `bill`, `error`, `miss` and `not_found`, and a
   priced row's `price` together with its `provenance` (an absent one stays absent and inherits the
   provider's default), but not `platform_blocked` once the fresh row declares `resource_ownership.requires`.
@@ -1173,7 +1181,7 @@ human-reviewed for PII before commit.
 ## Operator-supplied pricing evidence
 
 `catalog_ingest.py` requires `TREG_CATALOG_EVIDENCE_DIR` for AnyAPI and JustOneAPI imports:
-`anyapi_measured_charges.json` (`skus`, `as_of`, `window_days`) and `justoneapi_prices.json`
+`anyapi_measured_charges.json` (`skus`) and `justoneapi_prices.json`
 (`prices`). Missing files fail before any catalog output is written, rather than silently replacing
 measured prices with estimates. Published catalog prices are public; private ledger exports and
 account evidence are not, and hosted operators keep the inputs in their private repository.
