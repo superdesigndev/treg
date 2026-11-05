@@ -31,10 +31,10 @@ async def count_today(db: AsyncSession, org_id: int | None, user_email: str) -> 
     """How many usage events this user has produced in this org since midnight UTC, from the JOURNAL:
     proxy calls + local-run grants (both `CallRecord`) plus server runs (`RunRecord`).
 
-    NOT the cap's number and NOT on the call path. This is what the roster, `/usage/me` and the
-    usage report show, and what `seed_counter` copies when a cap is first set; the gate itself
-    reads `Membership.calls_today` (`take_daily_slot`). Two range COUNTs over
-    `(org_id, user_email, created_at)` - O(this member's rows today).
+    NOT the cap's number and NOT on the call path. This is what `seed_counter` copies when a cap is
+    first set; the gate itself reads `Membership.calls_today` (`take_daily_slot`), and the pages
+    read the usage rollup. Two range COUNTs over `(org_id, user_email, created_at)` - O(this
+    member's rows today), too slow for a page a busy member reloads.
     """
     since = _day_start_utc()
     calls = (await db.execute(select(func.count()).select_from(CallRecord).where(
