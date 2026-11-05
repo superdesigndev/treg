@@ -257,7 +257,7 @@ def _page_body(key: str, base: str) -> str:
     return f"""<header class="hero">
   <h1>treg <span class="vs">vs</span> {_e(short)}</h1>
   <p class="sub">{_e(c["sub"])}</p>
-  <div class="checked"><i></i>Read from {_e(name)}'s public pages on {cp.checked_label(key)}</div>
+  <div class="checked"><i></i>Facts last checked {cp.checked_label(key)}</div>
   <div class="duel">
     <div class="spec us"><div class="who">{_treg_mono()}treg<small>treg.to</small></div><dl>{spec_rows_us}</dl></div>
     <div class="medal" aria-hidden="true">vs</div>
@@ -431,8 +431,8 @@ def _hub_body() -> str:
                       + "".join(_card(k) for k in keys) + "</div></section>")
     return f"""<header class="hero">
   <h1>How treg compares</h1>
-  <p class="sub">treg is like OpenRouter for tools: one API key and one balance for many paid APIs. These are honest, side-by-side comparisons with the other ways an AI agent gets tools and data, and each one says where the other product is the better choice.</p>
-  <div class="checked"><i></i>Each page says the day its facts were read, most recently {cp.checked_label()}</div>
+  <p class="sub">treg is like OpenRouter for tools. Honest, side-by-side comparisons that say where the other product is the better choice.</p>
+  <div class="checked"><i></i>Facts last checked {cp.checked_label()}</div>
   <div class="ctas"><a class="pill dark" href="/app?ref=compare">Start free — $1.00 credit</a><a class="pill" href="/catalog">Browse the catalog</a></div>
 </header>
 <main class="wrap">

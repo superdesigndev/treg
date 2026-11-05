@@ -218,7 +218,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 .bf-tag { max-width: 1020px; margin: 36px auto 0; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .pill { white-space: nowrap; }
-.deep { display: contents; }
+.deep, .wordmark .mid { display: contents; }
 @media (max-width: 600px) {
   .nav { gap: 12px; }
   .nav-r { flex: none; }
