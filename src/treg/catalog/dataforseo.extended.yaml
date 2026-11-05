@@ -10029,9 +10029,7 @@ endpoints:
         type: array
         required: false
         note: '<p><em>SERP element types to exclude from target search</em><p>optional field<p>to enable this parameter, <code>stop_crawl_on_match</code> must also be enabled<p>specifies which SERP element types should be excluded when searching for target matches<p>possible values: <code>organic</code>, <code>pai'
-    note: |
-      the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 "You can set only one task at a time".
-      Organic items often arrive with domain=google.com and url as an opaque https://google.com/goto?url=… wrapper (or a bare CAES… token). When that happens the real destination host is often only in breadcrumb (and sometimes website_name or sitelink links[].domain). Do not invent a destination when breadcrumb is absent or is not a URL.
+    note: the POST body is a JSON array holding exactly one task object with these fields; a live route rejects extra tasks with status 40000 "You can set only one task at a time"
   test_request:
     body:
     - language_code: en
@@ -10045,6 +10043,7 @@ endpoints:
   verified: '2026-07-28'
   added: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-organic-live-advanced.json
+  note: "Organic items may carry domain=google.com and a google.com/goto?url=... wrapper or a bare CAES... token as url. The real host is then often only in breadcrumb, website_name or links[].domain; when none holds it, the destination is unknown."
   observed_cost: 0.004
 - id: dataforseo.x.serp-google-search-by-image-task-get-advanced
   added: '2026-10-15'

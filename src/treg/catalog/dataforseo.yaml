@@ -281,10 +281,6 @@ endpoints:
         `/live/regular` is the cheap variant used here: plain organic + a few SERP feature types.
         `/live/advanced` costs more and adds the full set of SERP features (people_also_ask,
         AI overview, images, videos, …) — switch paths if you need those elements.
-        Organic items often arrive with domain=google.com and url as an opaque
-        https://google.com/goto?url=… wrapper (or a bare CAES… token). When that happens the real
-        destination host is often only in breadcrumb (and on advanced, sometimes website_name or
-        sitelink links[].domain). Do not invent a destination when breadcrumb is absent or is not a URL.
     test_request:
       body:
         - {keyword: "coffee", location_code: 2840, language_code: "en", depth: 10}
@@ -296,6 +292,7 @@ endpoints:
     added: '2026-07-28'
     example_response: examples/dataforseo.google.serp.organic.json
     docs_url: https://docs.dataforseo.com/v3/serp/google/organic/live/regular
+    note: "Organic items may carry domain=google.com and a google.com/goto?url=... wrapper or a bare CAES... token as url. The real host is then often only in breadcrumb; when breadcrumb is not a URL, the destination is unknown."
 
   # re-run catalog_verify.py once verified
   - id: dataforseo.google.keywords.volume
