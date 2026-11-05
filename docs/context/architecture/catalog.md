@@ -977,7 +977,8 @@ returned and never documented as stable. An output field may say where it lands 
   search asks for everyone who fits, while a company lookup stays one provider's answer.
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
   per hit ranks before specificity.
-- `row` gives a list output one row shape whatever provider answered (`people.search`): `of` names
+- `row` gives a list output one row shape whatever provider answered (`people.search`,
+  `instagram.search.users`): `of` names
   the list field, `fields` the keys a row may carry, `needs` the keys of which a row must fill one.
   Each adapter's `row:` maps one provider row into it; a row it cannot read stays the provider's own
   rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.

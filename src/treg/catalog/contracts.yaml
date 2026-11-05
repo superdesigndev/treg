@@ -665,6 +665,30 @@ contracts:
       users: {type: list, required: true}
       count: {type: int}
       next_cursor: {type: str}
+    # The provider's own field names, minus what no reader of a search result uses: a provider's
+    # picture URLs and link metadata cost more tokens than everything else in its row. `raw` keeps
+    # the full row. Same names as before, so a caller reading `follower_count` reads it still.
+    row:
+      of: users
+      needs: [username, url]
+      fields:
+        id: {type: str}
+        username: {type: str}
+        full_name: {type: str}
+        url: {type: str, note: "the account's Instagram page"}
+        follower_count: {type: int}
+        following_count: {type: int}
+        media_count: {type: int}
+        biography: {type: str, note: "the account's own bio, cut to 300 characters"}
+        category_name: {type: str}
+        external_url: {type: str}
+        is_verified: {type: bool}
+        is_private: {type: bool}
+        is_business_account: {type: bool}
+        is_professional_account: {type: bool}
+        matched_from: {type: str, note: "how the provider found the account (`profile`, a web search)"}
+        google_title: {type: str}
+        google_description: {type: str}
     miss: "users == []"
     idempotent: true
 
