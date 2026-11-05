@@ -42,6 +42,8 @@ sources:
   - tests/test_hub.py
   - tests/test_hub_sandbox.py
   - tests/test_hub_sandbox_workers.py
+  - tests/test_hub_limits.py
+  - tests/test_hub_limits_redis.py
   - tests/hub_workers_runtime.py
   - workers/hub-sandbox/src/index.js
   - workers/hub-sandbox/wrangler.toml
@@ -144,8 +146,12 @@ Rules that look removable and are not:
 
 Failure: when a step fails, nothing new starts, in-flight steps finish, and the run answers 424
 `hub_run_failed`; passing the ceiling is 402 `hub_run_max_cost`. Money spent on completed steps
-stays spent and the price is released. Runs per team are capped in-process
-(`application/hub/limits.py`, 429 `hub_busy`); the cap is per process, not global.
+stays spent and the price is released. Runs in flight are capped per team (`MAX_RUNS_PER_TEAM`)
+and per tool across every team (`TREG_HUB_TOOL_MAX_RUNS`, 0 = off), so one busy tool cannot spend a
+shared upstream quota for everyone (`application/hub/limits.py`, 429 `hub_busy` with the `scope`
+that refused). With the shared store both are counted across every server process on renewed
+leases, the same scripts as provider concurrency; without it, or when it does not answer, each
+process counts its own.
 `Idempotency-Key` covers the whole run through the parent's store. `HubRun` keeps one row per run
 and is deleted with the calling team.
 
