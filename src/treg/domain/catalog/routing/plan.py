@@ -148,6 +148,7 @@ class Plan:
     variant: tuple[str, ...]
     candidates: list[Candidate] = field(default_factory=list)   # ranked, callable only
     dropped: list[dict] = field(default_factory=list)            # {endpoint_id, why}
+    route_rule: dict[str, str] | None = None   # the published rule that ordered it, for the event
 
     def view(self) -> dict:
         return {"capability": self.contract.capability, "identity_variant": list(self.variant),

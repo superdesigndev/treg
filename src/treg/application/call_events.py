@@ -198,8 +198,9 @@ def vendor_identity(adapter: Adapter, contract: Contract, query_items: Iterable[
     return given
 
 
-def input_columns(contract: Contract, given: dict) -> tuple[dict, dict]:
-    """(input columns, the normalized identity) for what the caller asked."""
+def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str], dict]:
+    """(`input_type`, `input_meta`, the normalized identity): the segment a call is in, with no
+    hashing, so published route rules match calls exactly as their events record them."""
     identity, _ = canonical_identity(contract, given or {})
     norm = {k: n for k in contract.identity_types
             if (n := normalize(k, identity.get(k))) is not None}
@@ -214,8 +215,15 @@ def input_columns(contract: Contract, given: dict) -> tuple[dict, dict]:
     for k, spec in (contract.filters or {}).items():
         if (spec or {}).get("analytics") == "value" and (s := _stringify(identity.get(k))) is not None:
             meta[k] = s
+    return ("+".join(variant) if variant else None), meta, norm
+
+
+def input_columns(contract: Contract, given: dict) -> tuple[dict, dict]:
+    """(input columns, the normalized identity) for what the caller asked."""
+    input_type, meta, norm = segment(contract, given)
+    variant = tuple(input_type.split("+")) if input_type else None
     cols = {
-        "input_type": "+".join(variant) if variant else None,
+        "input_type": input_type,
         "input_id": (keyed("\x1f".join(f"{k}={norm[k]}" for k in variant)) if variant else None),
         "input_keys": {k: keyed(v) for k, v in norm.items()} or None,
         "input_meta": meta or None,
@@ -268,14 +276,16 @@ def emit(kind: str, *, org_id: int | None, endpoint_id: str | None, call_ref: st
          request_body: bytes | None = None, identity: dict | None = None,
          answer_status: int | None = None, answer_body: bytes | None = None,
          output: dict | None = None, answers_allowed: bool = True, retained_extra: int = 0,
-         **columns: Any) -> None:
+         route_rule: dict[str, str] | None = None, **columns: Any) -> None:
     """Queue one event. Cheap and never raising: the bodies are read later, in the flusher.
 
     `identity` (a routed parent's caller fields) or `query_items` + `request_body` (a direct
     call's vendor request) say what was asked; `output` (a routed parent's core) or
     `answer_status` + `answer_body` (a vendor answer) what came back. Everything the builder
     keeps alive counts against the sink's byte budget: the bodies, the query, and
-    `retained_extra` (the serialized size of `identity` and `output`, which the caller knows)."""
+    `retained_extra` (the serialized size of `identity` and `output`, which the caller knows).
+    `route_rule` (a routed parent's published rule, `{route_rules_version, route_rule}`) joins
+    `input_meta`, so analysis can split a segment by the rules it ran under."""
     try:
         if not sink.enabled():
             return
@@ -295,8 +305,11 @@ def emit(kind: str, *, org_id: int | None, endpoint_id: str | None, call_ref: st
                     + sum(len(k) + len(v) for k, v in query))
 
         def build() -> dict:
-            return _derived(endpoint_id, capability, query, request_body, identity,
-                            answer_status, answer_body, output, answers_allowed)
+            out = _derived(endpoint_id, capability, query, request_body, identity,
+                           answer_status, answer_body, output, answers_allowed)
+            if route_rule:
+                out["input_meta"] = {**(out.get("input_meta") or {}), **route_rule}
+            return out
 
         sink.emit(event, build, retained_bytes=retained)
     except Exception:  # noqa: BLE001 — an event must never surface into a call

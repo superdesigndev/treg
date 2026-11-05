@@ -966,6 +966,9 @@ returned and never documented as stable. An output field may say where it lands 
   of `prefer`, when the caller sends no `X-Treg-Route-Prefer`; the longest matching suffix wins.
   Coverage differs by country while cost per hit is one number. The suffix only sees the company
   domain, so a French company on `.com` is not matched.
+- A published route rule ([route-rules.md](route-rules.md)) goes ahead of all three when one matches
+  the call's recorded segment and the caller sent no `X-Treg-Route-Prefer`; it changes without a
+  deploy and, like them, only reorders.
 - `prefer_when` lists `{sent: [identity keys], prefer: [providers]}` rules; the first whose keys the
   caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
   still wins. One order does not fit every question: `people.search` asks its semantic searches

@@ -2022,7 +2022,7 @@ def _routed_event(request: _ApplicationRequest, ep: dict, status: int, *,
         status_code=status, refused_by=refused_by, hit=summary.get("hit"),
         verdict=summary.get("verdict"), cost_charged_micro=charged,
         served_by=summary.get("served_by"), tried_count=summary.get("tried_count"),
-        check_verdict=summary.get("check_verdict"),
+        check_verdict=summary.get("check_verdict"), route_rule=summary.get("route_rule"),
         retained_extra=int(summary.get("size") or 0) + answer_size)
 
 

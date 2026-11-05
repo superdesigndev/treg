@@ -63,6 +63,7 @@ from urllib.parse import urlencode
 import httpx
 
 from ... import audit, jsontext
+from .. import call_events
 from ...config import get_settings
 from ...infra.db import session_maker
 from ...domain import asynctasks as asynctasks_rules
@@ -86,6 +87,7 @@ from ...domain.catalog.routing.plan import (
 )
 from .. import asynctasks as async_task_app
 from . import async_bridge, keyslots
+from . import route_rules as route_rules_app
 from .intake import _tag_telemetry
 from .resolve import _anonymous_offer, _host_of, _marketplace_secret
 from .settle import close_deferred
@@ -630,12 +632,21 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             else:
                 kept.append(c)
         cands = kept
-    ranked = rank(cands, prefer=options.prefer or default_prefer(contract, identity, given), exclude=options.exclude,
+    prefer, route_rule = options.prefer, None
+    if not prefer:
+        prefer = default_prefer(contract, identity, given)
+        input_type, meta, _ = call_events.segment(contract, identity_given)
+        if found := await route_rules_app.rule_for(contract.capability, {**meta, "input_type": input_type}):
+            version, rule = found
+            prefer = [*rule.order, *(p for p in prefer if p not in rule.order)]
+            route_rule = {"route_rules_version": str(version), "route_rule": rule.id}
+    ranked = rank(cands, prefer=prefer, exclude=options.exclude,
                   given=given, derive=contract.derive, one_subject=contract.one_subject)
     if options.complete:  # stable: price order within each group
         ranked = [c for c in ranked if _can_answer_fully(contract, c.adapter)] + \
                  [c for c in ranked if not _can_answer_fully(contract, c.adapter)]
-    return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped)
+    return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped,
+                route_rule=route_rule)
 
 
 def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
@@ -784,6 +795,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
     plan = await build_plan(ep, given, parent.input.caller, options)
+    if plan.route_rule:
+        _summarize(parent, route_rule=plan.route_rule)
     if not plan.candidates:
         # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
         # caller's own choice and answers 422 (nothing was charged either way)
