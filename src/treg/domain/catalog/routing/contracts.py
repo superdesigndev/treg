@@ -77,6 +77,11 @@ class Contract:
     # time and reliability: for `ai-search.perplexity.answer` it ranked the cheaper, slower and less
     # reliable cloro above dataforseo. A caller's own prefer header still replaces it.
     prefer: tuple[str, ...] = ()
+    # Domain suffix -> providers asked first when the caller's `domain` ends in it and the caller
+    # sends no `X-Treg-Route-Prefer` (`fr: [enrow]`). The longest matching suffix wins and goes
+    # ahead of `prefer`. Cost per hit is one number for every domain, but a finder's coverage
+    # differs by country.
+    prefer_by_domain_suffix: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # The per-call verdict word (`CallRecord.verdict`): `verdict_from` names the output field it is
     # read from, `verdict_words` the only words a call may be stored with, and `verdict_map` turns a
     # value of that field into one (`true` -> `verified`). Each adapter adds its provider's own
@@ -286,7 +291,7 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
 
 CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
-    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "prefer", "check", "confirm",
+    "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "prefer", "prefer_by_domain_suffix", "check", "confirm",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in"})
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "body_array", "test_identity", "cost_units", "max",
@@ -352,6 +357,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             routed=bool(c.get("routed", True)),
             scoping=tuple(str(k) for k in scoping),
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
+            prefer_by_domain_suffix=_parse_prefer_by_domain_suffix(cap, c.get("prefer_by_domain_suffix"), types),
             check=_parse_check(cap, c.get("check"), c.get("output") or {}),
             confirm=_parse_confirm(cap, c.get("confirm"), c.get("output") or {}),
             empty_is_failure=bool(c.get("empty_is_failure", False)),
@@ -361,6 +367,37 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             **_parse_row(cap, c.get("row"), c.get("output") or {}),
             **_parse_verdict(cap, c.get("verdict")))
     return out
+
+
+def _parse_prefer_by_domain_suffix(cap: str, raw, types: dict) -> dict[str, tuple[str, ...]]:
+    if raw is None:
+        return {}
+    if "domain" not in types or not isinstance(raw, dict) or not raw:
+        raise ValueError(f"contract {cap}: prefer_by_domain_suffix maps one or more domain suffixes to "
+                         "providers and needs a `domain` identity key")
+    out = {}
+    for suffix, providers in raw.items():
+        key = suffix.strip().lower().strip(".") if isinstance(suffix, str) else ""
+        if (not key or not isinstance(providers, list) or not providers
+                or any(not isinstance(p, str) or not p.strip() for p in providers)):
+            # A rule that names no provider would match and reorder nothing: fail the load instead
+            # of quietly routing that country by cost per hit.
+            raise ValueError(f"contract {cap}: prefer_by_domain_suffix.{suffix} must list one or more provider names")
+        out[key] = tuple(p.strip().lower() for p in providers)
+    return out
+
+
+def default_prefer(contract: Contract, identity: dict[str, Any]) -> list[str]:
+    """The provider order a caller who sent no `X-Treg-Route-Prefer` gets: the providers named for
+    the longest suffix of the identity's `domain`, then the contract's `prefer`."""
+    first: tuple[str, ...] = ()
+    domain = identity.get("domain")
+    if contract.prefer_by_domain_suffix and isinstance(domain, str):
+        host = domain.strip().lower().rstrip(".")
+        matches = [s for s in contract.prefer_by_domain_suffix if host == s or host.endswith("." + s)]
+        if matches:
+            first = contract.prefer_by_domain_suffix[max(matches, key=len)]
+    return [*first, *(p for p in contract.prefer if p not in first)]
 
 
 def _parse_row(cap: str, raw, output: dict) -> dict:

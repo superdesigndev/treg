@@ -38,6 +38,10 @@ contracts:
     miss: "email == null"
     idempotent: true            # a lookup — error-fallback to the next provider is safe
     one_subject: true           # every variant names one person: cost per hit ranks first
+    # Enrow first where its coverage of French and German company domains leads the other finders.
+    prefer_by_domain_suffix:
+      fr: [enrow]
+      de: [enrow]
     # The provider's own claim, stored per call; a finder with no `verified` output stores none.
     verdict: {from: verified, words: [verified, unverified], map: {true: verified, false: unverified}}
     # Attached as `_treg.advice` when a hit's `verified` is not true. A find is a guess the provider

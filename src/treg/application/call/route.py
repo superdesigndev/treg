@@ -78,7 +78,7 @@ from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import paths as P
 from ...domain.catalog.routing import quality as route_quality
 from ...domain.catalog.schema.v2 import is_v2
-from ...domain.catalog.routing.contracts import (canonical_identity, declared_miss, declared_not_found,
+from ...domain.catalog.routing.contracts import (canonical_identity, default_prefer, declared_miss, declared_not_found,
                                                  invalid_identity, miss_status)
 from ...domain.catalog.routing.plan import (
     MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank,
@@ -630,7 +630,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             else:
                 kept.append(c)
         cands = kept
-    ranked = rank(cands, prefer=options.prefer or list(contract.prefer), exclude=options.exclude,
+    ranked = rank(cands, prefer=options.prefer or default_prefer(contract, identity), exclude=options.exclude,
                   given=given, derive=contract.derive, one_subject=contract.one_subject)
     if options.complete:  # stable: price order within each group
         ranked = [c for c in ranked if _can_answer_fully(contract, c.adapter)] + \
