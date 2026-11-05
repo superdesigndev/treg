@@ -946,11 +946,15 @@ returned and never documented as stable. An output field may say where it lands 
   hold id, so `ref:overflow` is the child's; `CallContext.settled_outside_micro`). An async
   kickoff that left no open hold (overflow bills on submission) is reported charged on its 202,
   never as a reservation. What the caller is told is read back, not inferred: once the top-level
-  routed call closed its holds, `_finish_records` reads the ledger under its ref (settle entries
-  and holds still open), restates `_treg.charged_micro` (and `held_micro`, a 202's
-  `reserved_micro`) from it, returns that figure (the cost header and the idempotent record), and
-  writes every deferred record (its own audit row, its nested calls' rows and events) at what the
-  ledger settled under each one's ref. It is shielded, and also runs on failure and cancellation. After that, a later provider error, refusal
+  routed call closed its holds, `_finish_records` reads the ledger in ONE statement (one snapshot)
+  over the exact hold ids the call and its nested calls opened (`CallContext.money_refs`, each with
+  its `:overflow`): settle entries and holds still open. It restates `_treg.charged_micro` (and
+  `held_micro`, a 202's `reserved_micro`) from it, returns that figure (the cost header, the call
+  event, the idempotent record), and writes every deferred record (its own audit row, its nested
+  calls' rows and events) at what the ledger settled under each one's ref. A read that fails after
+  retries keeps the amounts the call computed, never zero. Closing and reading is one step a
+  cancellation cannot split; a request cancelled after it keeps its result under the idempotency
+  key (`routed_result`), so a retry replays it. It also runs on failure and cancellation. After that, a later provider error, refusal
   (balance, caller fault) or not-found ends in the null miss that charges what was paid, never a
   zero-charge failure, for any routed call. A cancelled request still pays a settled or still
   running async task, like any async call. `run_routed` leaves `routed_spent_micro` (what it moved;

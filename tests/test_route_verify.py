@@ -1141,3 +1141,117 @@ async def test_a_cancel_after_the_settle_committed_records_what_was_charged(
     assert check.cost_charged_micro == paid - TOMBA_FIND_PRICE
     assert [e.get("cost_charged_micro") for e in events
             if e.get("call_ref") == check.call_ref and e.get("event_kind") == "call"] == [check.cost_charged_micro]
+
+
+async def test_an_unreadable_ledger_never_makes_a_zero_receipt(clients: AsyncClient, verifiers_on, monkeypatch):
+    """The closing ledger read fails every time: the answer, its header, its replay and its audit
+    row keep what the call computed, which is what the wallet paid."""
+    async def unreadable(ids):
+        raise TimeoutError("injected read timeout")
+    monkeypatch.setattr(call_route, "_ledger_view", unreadable)
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA], "bounceban": [_bb("deliverable", email="ada@example.com")]}, []))
+    h = {**ON, "Idempotency-Key": "unreadable-1"}
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=h)
+    assert r.status_code == 200, r.text
+    paid = before - await _balance(clients)
+    assert paid > TOMBA_FIND_PRICE
+    assert r.json()["_treg"]["charged_micro"] == int(r.headers["X-Treg-Cost-Micro"]) == paid
+    replay = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=h)
+    assert int(replay.headers["X-Treg-Original-Cost-Micro"]) == paid
+    row = {x.call_ref: x for x in await _rows()}[r.headers["X-Treg-Call-Id"]]
+    assert row.cost_charged_micro == paid
+
+
+async def test_a_cancel_while_reading_the_ledger_keeps_the_paid_result_for_the_key(
+    clients: AsyncClient, verifiers_on, monkeypatch,
+):
+    """Both calls were paid when the request is cancelled during the closing read: the read still
+    finishes, the result is kept under the idempotency key, and a retry replays it for free."""
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA] * 2, "bounceban": [_bb("deliverable", email="ada@example.com")] * 2}, seen))
+    entered, proceed = asyncio.Event(), asyncio.Event()
+    read = call_route._ledger_view
+
+    async def paused(ids):
+        entered.set()
+        await proceed.wait()
+        return await read(ids)
+    monkeypatch.setattr(call_route, "_ledger_view", paused)
+    h = {**ON, "Idempotency-Key": "cancel-read-1"}
+    before = await _balance(clients)
+    task = asyncio.create_task(clients.post(f"/call/{FIND}", json=EX_ASK, headers=h))
+    await asyncio.wait_for(entered.wait(), 3)
+    paid = before - await _balance(clients)
+    task.cancel()
+    await asyncio.sleep(0)
+    proceed.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=h)
+    assert r.headers.get("X-Treg-Idempotent-Replay") == "true", r.text
+    assert seen == ["tomba", "bounceban"], "no provider asked twice"
+    assert before - await _balance(clients) == paid
+    assert int(r.headers["X-Treg-Original-Cost-Micro"]) == paid
+
+
+async def test_the_closing_read_is_one_statement_over_exact_hold_ids(clients: AsyncClient, verifiers_on, monkeypatch):
+    seen_ids = []
+    read = call_route._ledger_view
+
+    async def spy(ids):
+        seen_ids.append(list(ids))
+        return await read(ids)
+    monkeypatch.setattr(call_route, "_ledger_view", spy)
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA], "bounceban": [_bb("deliverable", email="ada@example.com")]}, []))
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=ON)
+    root = r.headers["X-Treg-Call-Id"]
+    [ids] = seen_ids
+    assert {root, f"{root}:r0", f"{root}:v", f"{root}:v:r0", f"{root}:r0:overflow"} <= set(ids)
+    assert all(i == root or i.startswith(root + ":") for i in ids)
+
+
+async def test_a_202_after_a_settle_reports_it_in_body_header_replay_and_event(
+    clients: AsyncClient, verifiers_on, monkeypatch,
+):
+    """Enrow's task settles (2,175) just before the closing read, while the find answers 202:
+    the body, the cost header, the replay and the call event all say 2,175, the wallet's figure."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from treg import call_events as sink
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ENROW", "PLATFORM-ENROW-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "enrow")
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_route, "ROUTED_ASYNC_WAIT_SECONDS", 0.07)
+    from test_routing import _relay_by_provider
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"enrow": [
+        (200, {"id": "split-1", "qualification": "ongoing"}),
+        (200, {"id": "split-1", "qualification": "invalid", "credits_used": 0.25})]}, []))
+    events = []
+    monkeypatch.setattr(sink, "enabled", lambda: True)
+    monkeypatch.setattr(sink, "emit", lambda row, *a, **k: events.append(row))
+    execute = AsyncSession.execute
+    polled = []
+
+    async def poll_first(db, statement, *args, **kwargs):
+        if not polled and "UNION ALL" in str(statement) and "ledgerentry" in str(statement).lower():
+            polled.append(True)
+            assert (await clients.get("/call/enrow.people.email.find.get", params={"id": "split-1"})).status_code == 200
+        return await execute(db, statement, *args, **kwargs)
+    monkeypatch.setattr(AsyncSession, "execute", poll_first)
+    h = {"X-Treg-Route-Prefer": "enrow", "Idempotency-Key": "split-1"}
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=h)
+    assert polled and r.status_code == 202, r.text
+    t = r.json()["_treg"]
+    paid = before - await _balance(clients)
+    assert paid == t["charged_micro"] == int(r.headers["X-Treg-Cost-Micro"]) > 0
+    assert not t.get("held_micro") and t["reserved_micro"] == 0
+    replay = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=h)
+    assert int(replay.headers["X-Treg-Original-Cost-Micro"]) == paid
+    root = r.headers["X-Treg-Call-Id"]
+    assert [e.get("cost_charged_micro") for e in events
+            if e.get("call_ref") == root and e.get("event_kind") == "call"] == [paid]

@@ -898,6 +898,21 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 request.context, ep, body_bytes, request.headers.get, upstream_client, execute_call,
                 audit_client=_client_name(request))
         except asyncio.CancelledError:
+            done = request.context.routed_result
+            if done is not None and idem_key and request.context.deferred_audits is None:
+                # The money closed before the cancel landed: keep that result under the caller's
+                # key, so a retry replays it instead of asking (and paying) every provider again.
+                restated, settled = done
+                try:
+                    await asyncio.shield(_store_idempotent(
+                        idem_key, caller, status_code=restated.status, body=await _drain(restated),
+                        media_type="application/json", charged_micro=settled, metered=True,
+                        call_ref=call_ref, response_retention_forbidden=_response_retention_forbidden(
+                            (request.context.route_summary or {}).get("served_by"))))
+                    request.state.idem_claim = None
+                except (Exception, asyncio.CancelledError):
+                    logging.getLogger("treg.route").warning(
+                        "storing the closed routed result for %s failed", call_ref, exc_info=True)
             await _finish_cancelled_call(request, None, call_ref)
             raise
         except CallFailure as exc:
@@ -933,18 +948,20 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                           charged=0)
             raise
         request.state.call_audited = True
-        routed_pending = response.status == 202 and routed._header(response, "X-Treg-Route-Outcome") == "pending"
-        request.state.call_cost_micro = None if routed_pending else charged
+        # A 202 with nothing settled yet says so (null, its hold is `reserved_micro`), like its
+        # body; once anything settled, the body, header and event all carry that one figure.
+        routed_unknown = (response.status == 202 and not charged
+                          and routed._header(response, "X-Treg-Route-Outcome") == "pending")
+        request.state.call_cost_micro = None if routed_unknown else charged
         nested = request.context.deferred_audits
         if nested is not None:
             # A routed call nested in another (the find's check): its event waits for the
             # enclosing call, and says what the ledger settled under its ref once that call closed.
-            ctx = request.context
-            nested.append(lambda amount_for: _routed_event(
-                request, ep, response.status,
-                charged=None if routed_pending else amount_for(ctx.call_ref), response=response))
+            nested.append((request.context.call_ref, charged, lambda amount: _routed_event(
+                request, ep, response.status, charged=None if routed_unknown and not amount else amount,
+                response=response)))
         else:
-            _routed_event(request, ep, response.status, charged=None if routed_pending else charged,
+            _routed_event(request, ep, response.status, charged=None if routed_unknown else charged,
                           response=response)
         if idem_key:
             try:
@@ -958,7 +975,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 await _finish_cancelled_call(request, None, call_ref)
                 raise
             request.state.idem_claim = None
-        if not routed_pending:
+        if not routed_unknown:
             _set_response_header(response, "X-Treg-Cost-Micro", str(charged))
         _set_response_header(response, "X-Treg-Call-Id", call_ref)
         return response

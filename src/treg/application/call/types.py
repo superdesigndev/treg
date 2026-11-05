@@ -292,6 +292,12 @@ class CallContext:
     # is the list this call owns for its own nested children).
     deferred_audits: list | None = None
     child_audits: list | None = None
+    # Every hold id a routed call (and the routed calls nested in it) may have opened: the exact
+    # ids its closing ledger read looks up (with each one's `:overflow`), never a prefix scan.
+    money_refs: list | None = None
+    # Set when a routed call's money closed but the request was cancelled before it returned: the
+    # answer and its charge, so the caller's idempotency key keeps that result (no second charge).
+    routed_result: tuple | None = None
     quota_admissions: set[tuple[int, str]] = field(default_factory=set)
     quota_pending: tuple[tuple[int, str], ...] = ()
     # Scalar snapshots for root request logs; never resolve a target just for telemetry.
