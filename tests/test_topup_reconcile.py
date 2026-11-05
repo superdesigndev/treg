@@ -134,11 +134,9 @@ async def test_a_failed_bonus_fails_the_delivery_and_a_redelivery_grants_it_once
 
 async def test_two_deliveries_of_one_payment_at_once_grant_one_bonus(c):
     """`checkout.session.completed` and `payment_intent.succeeded` arrive together for every Checkout
-    purchase. The row lock that keeps them to one bonus exists only on Postgres (the CI job)."""
+    purchase. The lock on the purchased block keeps them to one bonus on Postgres and SQLite alike."""
     import asyncio
 
-    if session_maker.kw["bind"].dialect.name != "postgresql":
-        pytest.skip("requires an isolated PostgreSQL database via TREG_TEST_DB_URL")
     org_id = await _org(c)
     pi = _pi(org_id, "pi_race", 10_000)
     first, second = await asyncio.gather(_deliver(c, pi), _deliver(c, {**pi}))
@@ -166,18 +164,22 @@ async def test_reconcile_reports_every_paid_top_up_the_ledger_does_not_match(c, 
                                  _pi(org_id, "pi_unbonused", 200_000), _pi(org_id, "pi_lost", 92_000))
     for pi in (ok, auto):
         assert (await _deliver(c, pi)).status_code == 200
-    _fail_bonus_grants(monkeypatch, times=1)
+    auto_unbonused = _pi(org_id, "pi_auto_unbonused", 10_000, auto="1")
+    _fail_bonus_grants(monkeypatch, times=2)
     assert (await _deliver(c, unbonused)).status_code == 500
+    assert (await _deliver(c, auto_unbonused)).status_code == 500
     stranger = {**_pi(org_id, "pi_demo", 500), "metadata": {}, "customer": "cus_not_a_team"}
     refused = {**_pi(org_id, "pi_declined", 5_000), "status": "requires_payment_method"}
-    monkeypatch.setattr(billing, "_sdk", _stripe_lists([lost, unbonused, stranger], [refused, auto, ok]))
+    monkeypatch.setattr(billing, "_sdk", _stripe_lists([lost, unbonused, stranger],
+                                                       [refused, auto, auto_unbonused, ok]))
 
     until = datetime.now(timezone.utc).replace(tzinfo=None)
     report = await billing.reconcile_topups(since=until - timedelta(hours=48), until=until)
 
-    assert report["topups"] == 4
+    assert report["topups"] == 5
     assert {(g["gap"], g["payment_intent"]) for g in report["gaps"]} == {
-        (billing.GAP_NOT_CREDITED, "pi_lost"), (billing.GAP_BONUS_MISSING, "pi_unbonused")}
+        (billing.GAP_NOT_CREDITED, "pi_lost"), (billing.GAP_BONUS_MISSING, "pi_unbonused"),
+        (billing.GAP_BONUS_MISSING, "pi_auto_unbonused")}
     lost_gap = next(g for g in report["gaps"] if g["payment_intent"] == "pi_lost")
     assert lost_gap["org_id"] == org_id and lost_gap["amount_micro"] == 920_000_000
 

@@ -461,8 +461,8 @@ never a Stripe coupon.
 **The top-up bonus is a separate `grant`, manual and automatic alike.** `topup_bonus_tiers`
 (`{min_usd: percent}`) gives a top-up a `bonus` block at the highest tier at or below the amount
 (`bonus_for_topup`, integer arithmetic). `_grant_topup_bonus` grants it per payment, not per first
-delivery, from `_credit` and from the inline auto-top-up credit: under a row lock on the purchased
-block, it grants only when no
+delivery, from `_credit` and from the inline auto-top-up credit: under a lock on the purchased block
+(a no-op UPDATE, so it serializes on SQLite too, which ignores FOR UPDATE), it grants only when no
 `topup_bonus` entry names the PaymentIntent. So the two deliveries of one Checkout, or an inline auto
 credit and its webhook, never both grant. When the webhook's grant fails, the delivery still credits
 and then fails (`BonusPending`, a 500), so Stripe redelivers and the redelivery grants it. When the
@@ -482,7 +482,7 @@ webhook is the only door for a paid top-up, so a delivery that keeps failing is 
 credited, and nothing in the request path notices. The command lists every succeeded PaymentIntent
 created in `[now - grace - hours, now - grace)`, keeps the treg top-ups (the same `_topup_metadata`
 rule as the webhook, so invoice-paid automatic top-ups count) and reports each with no purchased block
-(`not_credited`), a block of another org or amount (`credited_differently`), or a manual one owed a
+(`not_credited`), a block of another org or amount (`credited_differently`), or a top-up owed a
 bonus with no `topup_bonus` entry (`bonus_missing`). It writes nothing: the fix for a gap is a Stripe
 event resend, which goes through the webhook's idempotency; a hand credit pays twice if Stripe later
 delivers the event. It prints the report as one JSON line and exits 1 when there is a gap. With

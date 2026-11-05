@@ -1608,13 +1608,15 @@ async def _grant_topup_bonus(db: AsyncSession, org_id: int, pi_id: str, block_id
     the payment rather than on "first delivery", so a delivery after a failed grant completes it. The
     lock on the purchased block serializes every door that reaches one payment (the two webhook
     deliveries of a Checkout, the inline auto-top-up credit and its webhook), so the check and the
-    grant cannot interleave.
+    grant cannot interleave. The lock is a no-op UPDATE: a row lock on PostgreSQL and the write lock
+    on SQLite, which ignores SELECT FOR UPDATE.
     """
     bonus_micro, bonus_pct = bonus_for_topup(amount_micro)
     if bonus_micro <= 0:
         return 0, 0
     created_at = (await db.execute(
-        select(CreditBlock.created_at).where(CreditBlock.id == block_id).with_for_update()
+        update(CreditBlock).where(CreditBlock.id == block_id).values(id=CreditBlock.id)
+        .returning(CreditBlock.created_at).execution_options(synchronize_session=False)
     )).scalar_one()
     if _now() - created_at > BONUS_HEAL_WINDOW or pi_id in await _bonused_payments(db, org_id):
         await db.rollback()
@@ -2158,7 +2160,7 @@ async def reconcile_topups(*, since: datetime, until: datetime) -> dict:
     """Check every top-up Stripe collected in [since, until) (naive UTC) against the ledger. Read-only.
 
     A gap is a paid top-up with no purchased block (`not_credited`), one credited to another org or
-    amount (`credited_differently`), or a manual one owed a bonus that has none (`bonus_missing`).
+    amount (`credited_differently`), or a top-up owed a bonus that has none (`bonus_missing`).
     """
     paid = await _succeeded_payment_intents(since, until)
     topups: list[tuple[dict, int, int, bool]] = []
@@ -2183,7 +2185,7 @@ async def reconcile_topups(*, since: datetime, until: datetime) -> dict:
             gap = GAP_NOT_CREDITED
         elif block.org_id != org_id or block.amount_micro != amount_micro:
             gap = GAP_CREDITED_DIFFERENTLY
-        elif not auto and bonus_for_topup(amount_micro)[0] > 0 and pi["id"] not in bonused:
+        elif bonus_for_topup(amount_micro)[0] > 0 and pi["id"] not in bonused:
             gap = GAP_BONUS_MISSING
         else:
             continue
