@@ -208,7 +208,9 @@ such scan queues every other query and the API pool empties into `503 treg_satur
   `Membership.calls_today`. A team's busiest rows sit on every page of the day, so even an
   `(org_id, created_at)` index scan is too slow on the money path.
 - Partial indexes (`kind = 'settle'`, `kind = 'topup'`, `kind = 'grant'`, `kind = 'local_run'`)
-  are matched only when the query states the predicate as a constant, never a parameter.
+  are matched only when the query states the predicate as a constant, never a parameter. The
+  spend rollup's per-team recount (`key_spend_rollup`) and the billing reads state it with
+  `literal_column`.
 - `SELECT DISTINCT` over a team's rows in a large index reads every one of them: Postgres before 18
   cannot skip through an index. The distinct values are walked instead, one probe per value
   (`money.tag_dims`, a recursive CTE asking for the next value after the last).
