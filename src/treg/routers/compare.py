@@ -479,12 +479,15 @@ def _hub_body() -> str:
   <div class="ctas"><a class="pill" href="/catalog">Browse the catalog</a><a class="pill dark" href="/app?ref=compare">Get started</a></div>
 </header>
 <main class="wrap">
-  <div class="method rv">
-    <div><b>Their words, their pages.</b>Every fact about another product comes from its own site, docs or pricing page, and is linked.</div>
-    <div><b>"Not published" is not "no".</b>When a page says nothing, we say so, rather than guess that a feature is missing.</div>
-    <div><b>Dated, and open to fixes.</b>Prices change. Each page says when we read it; write to {cp.CORRECTIONS} with a correction.</div>
-  </div>
   {"".join(groups)}
+  <section class="method rv" aria-labelledby="method-h">
+    <h2 class="eyebrow" id="method-h">How these comparisons are made</h2>
+    <div class="method-cols">
+      <p><b>Their words, their pages.</b> Every fact about another product comes from its own site, docs or pricing page, and is linked.</p>
+      <p><b>"Not published" is not "no".</b> When a page says nothing, we say so, rather than guess that a feature is missing.</p>
+      <p><b>Dated, and open to fixes.</b> Prices change. Each page says when we read it; write to <a href="mailto:{cp.CORRECTIONS}">{cp.CORRECTIONS}</a> with a correction.</p>
+    </div>
+  </section>
 </main>
 <section class="final rv">
   <h2>One token for {"{ENDPOINTS}"} tools</h2>

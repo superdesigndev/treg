@@ -192,12 +192,16 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 @media (max-width: 900px) { .cards { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 600px) { .cards { grid-template-columns: 1fr; } }
 .group { margin-top: 56px; }
+main.wrap > .group:first-child { margin-top: 8px; }
 .group h2 { font-size: clamp(24px, 3vw, 30px); }
 .group .lede { margin-bottom: 20px; }
-.method { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; }
-.method div { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; font-size: 14.5px; color: var(--body); }
-.method b { display: block; font-family: var(--display); color: var(--ink); font-size: 15.5px; margin-bottom: 4px; }
-@media (max-width: 760px) { .method { grid-template-columns: 1fr; } }
+.method { margin-top: 80px; padding-top: 28px; border-top: 1px solid var(--line); }
+.method .eyebrow { margin: 0 0 14px; font-weight: 400; }
+.method-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+.method-cols p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--muted); }
+.method-cols b { color: var(--body); font-weight: 500; }
+.method-cols a { color: inherit; }
+@media (max-width: 760px) { .method-cols { grid-template-columns: 1fr; gap: 12px; } }
 
 /* final band */
 .final { margin: 96px max(24px, calc((100% - 1032px) / 2)) 0; border-radius: 28px; padding: 64px 24px; text-align: center; background: radial-gradient(60% 80% at 50% 0%, rgba(17,132,83,.14), transparent 70%), #F3F1EC; }
