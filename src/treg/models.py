@@ -993,7 +993,7 @@ class LedgerEntry(SQLModel, table=True):
     id: str = Field(primary_key=True)  # uuid4 hex
     org_id: int = Field(foreign_key="org.id")
     block_id: str | None = Field(default=None, index=True)
-    # grant | topup | reserve | settle | release
+    # grant | topup | reserve | settle | release | revoke
     kind: str = Field(index=True)
     amount_micro: int  # signed (see docstring)
     call_id: str | None = Field(default=None, index=True)
