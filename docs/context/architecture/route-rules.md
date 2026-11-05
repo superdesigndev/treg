@@ -6,6 +6,9 @@ sources:
   - src/treg/application/call/route_rules.py
   - src/treg/application/call/route.py
   - src/treg/application/call_events.py
+  - src/treg/application/call/service.py
+  - src/treg/application/call/types.py
+  - src/treg/infra/upstream/relay.py
   - src/treg/infra/kv.py
   - src/treg/config.py
   - src/treg/models.py
@@ -119,10 +122,12 @@ Every routed parent that reached a plan carries these separate facts in its even
   order would have made, with the rule on or off.
 
 Both are judged attempt by attempt against the providers actually reached. A child has reached
-its provider only when its request passed every local gate and left (`CallContext.reached_provider`,
-set where the service admits the outbound request), or when that provider's archived answer was
-served. A refusal anywhere before that (cost ceiling, allowance, rate limit, the team's policy or
-tool access, money admission) does not count, whatever its error kind. Each order is read from its
+its provider only when its request passed every local check and left, or when that provider's
+archived answer was served (`CallContext.reached_provider`). The relay signals the send through
+its `ON_SEND` context variable, called after its own address check and credential binding and
+immediately before `client.send`; the service sets it around the relay call. A refusal anywhere
+before that (cost ceiling, allowance, rate limit, the team's policy or tool access, money
+admission, the relay's address check) does not count, whatever its error kind. Each order is read from its
 first candidate not yet passed over, and every earlier attempt counts as passed over, reached or
 not. So a rule whose pick was refused, skipped, excluded or already first is `default`.
 - `route_rules_version`: the published set this worker held, whether or not a rule matched; `0`

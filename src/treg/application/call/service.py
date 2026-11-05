@@ -37,6 +37,7 @@ from ...domain.capacity.fair_share import RETRY_AFTER_S as RETRY_AFTER_SHARE_S
 from ...domain.capacity.view import view as capacity_view
 from ...infra.upstream.limiter import limiter as provider_limiter
 from ...infra.upstream.relay import identify_as_treg, relay, scope_shared_idempotency_key, tag_shared_client
+from ...infra.upstream import relay as relay_module
 from .. import asynctasks as async_task_app
 from .. import call_events as call_event_app
 from ...domain import asynctasks as asynctasks_rules
@@ -1529,7 +1530,6 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                             rate_seen = None
                             raise
                     sent = True
-                    request.context.reached_provider = True
 
                 relay_options = {}
                 if ((mk is not None and _quota_targets(request, mk.endpoint_id))
@@ -1538,6 +1538,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 else:
                     await admit_outbound()
                 upstream_started = _now_ms()
+                reached = relay_module.ON_SEND.set(_reached_provider(request.context))
                 try:
                     response = await relay(
                         upstream_request,
@@ -1550,6 +1551,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         **relay_options,
                     )
                 finally:
+                    relay_module.ON_SEND.reset(reached)
                     rate_observe.record(rate_seen, response.status if response is not None else None)
                 upstream_ms = _now_ms() - upstream_started
             streaming_free_result = (mk is not None and mk.streamable_free_result
@@ -2000,6 +2002,12 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
 def _response_retention_forbidden(endpoint_id: str | None) -> bool:
     entry = catalog_store.load().by_id.get(endpoint_id or "")
     return bool(entry and entry.get("response_retention") == "forbidden")
+
+
+def _reached_provider(context: CallContext):
+    def mark() -> None:
+        context.reached_provider = True
+    return mark
 
 
 def _routed_event(request: _ApplicationRequest, ep: dict, status: int, *,

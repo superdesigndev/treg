@@ -426,6 +426,46 @@ async def test_no_provider_reached_records_no_order(clients, enrichment_on, even
         assert "route_order" not in meta and meta["route_rule"] == "r"
 
 
+def _relay_blocking(blocked: set[str], answers: dict, seen: list):
+    """The scripted relay, refusing `blocked` providers locally as the real relay's address check
+    does: before the send, so the provider never sees the request."""
+    from treg.application.call.types import GatewayFailed
+    inner = _relay_by_provider(answers, seen)
+
+    async def _relay(request, upstream_url, *args, **kwargs):
+        if any(b in upstream_url for b in blocked):
+            raise GatewayFailed("ssrf_refused", status_code=502, detail="non-public address")
+        return await inner(request, upstream_url, *args, **kwargs)
+    return _relay
+
+
+@pytest.mark.parametrize("blocked, leadmagic, order", [
+    ({"leadmagic"}, [], "default"),                                   # refused here: never reached
+    (set(), [(503, {"error": "unavailable"})], "rule"),               # reached, failed upstream
+])
+async def test_a_provider_refused_before_the_send_is_not_reached(
+        clients, enrichment_on, events_on, monkeypatch, published, blocked, leadmagic, order):
+    await published(envelope(version=2, rules=[_rule(order=["leadmagic"])]))
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_blocking(
+        blocked, {**copy.deepcopy(TOMBA_HIT), "leadmagic": leadmagic}, seen))
+    meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"})
+    assert [p for p, *_ in seen] == ([] if blocked else ["leadmagic"]) + ["tomba"]
+    assert meta["route_order"] == order
+
+
+async def test_every_provider_refused_before_the_send_records_no_order(
+        clients, enrichment_on, events_on, monkeypatch, published):
+    await published(envelope(version=2, rules=[_rule(order=["leadmagic"])]))
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_blocking({"://"}, {}, seen))
+    routed = await clients.post(f"/call/{ROUTED}", json={"full_name": "Jean Dupont", "domain": "acme.fr"})
+    assert seen == [] and routed.status_code >= 400
+    events = await _flushed(events_on)
+    meta = next(e for e in events if e["call_ref"] == routed.headers["x-treg-call-id"])["input_meta"]
+    assert "route_order" not in meta and meta["route_rule"] == "r"
+
+
 async def test_a_caller_header_is_recorded_as_what_ordered_the_call(
         clients, enrichment_on, events_on, monkeypatch, published):
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(copy.deepcopy(TOMBA_HIT), []))
