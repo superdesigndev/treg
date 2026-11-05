@@ -11,6 +11,10 @@ row's outcome keys in the one path and predicate syntax. It writes today's behav
 one. A row it cannot rewrite that way stays as it is and is listed with the reason; a rewrite that
 reads some answer shape differently is printed with a warning, and the fixture replay is the proof.
 Applying keeps every comment outside the replaced keys; the dry-run names any comment it would drop.
+
+A provider whose endpoint-file header declares `defaults:` has its rows written against them: a key
+equal to the default is left out, one the row lacks is written as `null`, and a `bill` default is
+inherited whole, because it is the batch's translation of the Python branch it deletes.
 """
 
 from __future__ import annotations
@@ -18,12 +22,13 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 
 import yaml
-from treg.domain.catalog.schema import CatalogSchemaError, parse_row
+from treg.domain.catalog.schema import CatalogSchemaError, merge, parse_row, read_yaml, spelling
 from treg.domain.catalog.schema.v2 import cost_type
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -79,33 +84,43 @@ def request_path(path: str) -> str:
 
 
 _LITERAL = re.compile(r"""^(?:'([^']*)'|"([^"]*)"|(-?\d+)|(-?\d+\.\d+)|(true|false))$""")
-_COALESCE = re.compile(r"^coalesce\(\s*([^,()]+?)\s*,\s*\[\]\s*\)$")
 _PATH = re.compile(r"^(?:\.|(?:\[\d+\])?[A-Za-z_][\w-]*(?:\[\d+\])?(?:\.[A-Za-z_][\w-]*(?:\[\d+\])?)*|\[\d+\])$")
 
 
-def predicate(expr: str, warnings: list[str]) -> dict:
+def predicate(expr: str, warnings: list[str]) -> dict | list:
     """An adapter expression's v2 predicate, by the section 4.4 table."""
-    left, op, right = (part.strip() for part in re.split(r"\s*(==|!=)\s*", str(expr).strip(), maxsplit=1)) \
+    left, op, right = (part.strip() for part in re.split(r"(==|!=)", str(expr).strip(), maxsplit=1)) \
         if re.search(r"==|!=", str(expr)) else (str(expr), "", "")
     if op != "==":
         raise Refused(f"`{expr}` has no zero-diff predicate (the predicate has no negation or call)")
-    if (found := _COALESCE.match(left)) and right == "[]":
-        path = response_path(found.group(1))
-        return {"any": [{"path": path, "op": "absent"}, {"path": path, "op": "empty"}]}
+    if left.startswith("coalesce(") and left.endswith(")") and right == "[]":
+        *names, last = (name.strip() for name in left[len("coalesce("):-1].split(","))
+        if last != "[]" or not names or not all(_PATH.match(name) for name in names):
+            raise Refused(f"`{expr}` has no zero-diff predicate")
+        warnings.append(f"`{expr}` becomes absent-or-empty, which also reads {{}} as a miss")
+        return _coalesced([response_path(name) for name in names])
     if not _PATH.match(left):
         raise Refused(f"`{expr}` has no zero-diff predicate")
     path = response_path(left)
     if right == "null":
         return {"path": path, "op": "absent"}
     if right == "[]":
-        warnings.append(f"`{expr}` becomes `empty`, which also reads null, '' and {{}} as a miss")
-        return {"path": path, "op": "empty"}
+        # present: today a null is not `[]`, so it stays a hit
+        warnings.append(f"`{expr}` becomes present and `empty`, which also reads '' and {{}} as a miss")
+        return [{"path": path, "op": "present"}, {"path": path, "op": "empty"}]
     if not (literal := _LITERAL.match(right)):
         raise Refused(f"`{expr}` has no zero-diff predicate")
     single, double, whole, fraction, flag = literal.groups()
     value = (single if single is not None else double if double is not None
              else int(whole) if whole is not None else float(fraction) if fraction is not None else flag == "true")
     return {"path": path, "op": "equals", "value": value}
+
+
+def _coalesced(paths: list[str]) -> dict | list:
+    """`coalesce(p1, ..., pn, []) == []`: today's coalesce skips null, '' and [], so it holds when
+    every path is missing or one of those."""
+    rules = [{"any": [{"path": path, "op": "absent"}, {"path": path, "op": "empty"}]} for path in paths]
+    return rules[0] if len(rules) == 1 else rules
 
 
 def _branches(provider: str, endpoint_id: str) -> str | None:
@@ -147,6 +162,11 @@ def _price(cost: dict, warnings: list[str]) -> dict:
         out["fallback"] = {"value": money(cost["fallback"]["value"]), "note": cost["fallback"]["note"]}
     elif cost.get("value") is not None:
         out["value"] = money(cost["value"])
+        if cost.get("fallback") is not None:
+            # v2 has a fallback only beside a table; beside a value it is the same scalar.
+            if money(cost["fallback"]["value"]) != out["value"]:
+                raise Refused("cost.fallback beside a different cost.value has no v2 spelling")
+            warnings.append("cost.fallback equals cost.value and is dropped; its note joins price.note")
     elif cost.get("type") == "free":
         out["value"] = "0"
     else:
@@ -159,18 +179,119 @@ def _price(cost: dict, warnings: list[str]) -> dict:
                 and int(cost.get("per") or 1) > 1:
             # today's row hold rounds up to whole `per` blocks
             out["round"] = "up"
+    if cost.get("table") is None and (fallback_note := (cost.get("fallback") or {}).get("note")):
+        out["note"] = f"{out['note']} {fallback_note}" if out.get("note") else fallback_note
     if "table_min" in cost:
         warnings.append("cost.table_min is dropped; the loader derives it")
     return out
 
 
-def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
-            adapter: dict | None = None, check_branches: bool = True) -> Rewrite:
+def rewrite(row: dict, *, provider: str, header_expect: dict | None = None, header_async: dict | None = None,
+            adapter: dict | None = None, check_branches: bool = True, defaults: dict | None = None) -> Rewrite:
     """The v2 keys for one row in today's spelling. Raises Refused when there is no rewrite that
     keeps today's behavior."""
     endpoint_id = str(row["id"])
     out = Rewrite(endpoint_id)
-    cost = row.get("cost")
+    if row.get("cost") is None and defaults and not any(k in row for k in (*COST_KEYS, "observed_cost")):
+        # An unpriced row stays unpriced: it opts out of the defaults that describe a price, and its
+        # outcome keys in today's spelling move to v2 as a priced row's do.
+        keys, kind, bill = {k: None for k in COST_KEYS if k in defaults and k != "bill"}, None, {}
+        if spelling({k: row[k] for k in OUTCOME_KEYS if k in row}) == "v2":
+            return _checked(row, out, keys, ("tier",) if "tier" in row else (), defaults)
+    else:
+        keys, kind, bill = _cost(row, provider, out, check_branches)
+    expect = row.get("expect") if row.get("expect") is not None else header_expect
+    if expect is not None:
+        if expect.get("misses"):
+            keys["expect"] = {"path": response_path(expect["json_path"]), "op": "in",
+                              "value": [expect["equals"], *expect["misses"]]}
+        else:
+            keys["expect"] = {"path": response_path(expect["json_path"]), "op": "equals",
+                              "value": expect["equals"]}
+    miss = row.get("miss")
+    adapter_miss = (adapter or {}).get("miss")
+    if adapter_miss and not (adapter or {}).get("verified", True):
+        raise Refused("its adapter is unverified, so nothing judges its miss today")
+    status_miss = isinstance(miss, dict) and 400 <= int(miss.get("status") or 0) < 500
+    if isinstance(miss, dict) and not status_miss:
+        out.warnings.append(f"miss.status {miss.get('status')} is a 2xx and inert today; its means moves to note")
+        if miss.get("means"):
+            keys["note"] = f"{row['note']} {miss['means']}" if row.get("note") else miss["means"]
+    if status_miss and adapter_miss:
+        raise Refused("the row has a status miss and an adapter miss; one `miss` rule holds one")
+    rules = []
+    if expect is not None and expect.get("misses"):
+        rules.append({"path": response_path(expect["json_path"]), "op": "in", "value": list(expect["misses"])})
+    if status_miss:
+        rule = {"status": [int(miss["status"])]}
+        if miss.get("when"):
+            rule["when"] = predicate(miss["when"], out.warnings)
+        rule["means"] = miss["means"]
+        keys["miss"] = rule
+    elif adapter_miss:
+        rules.append(predicate(adapter_miss, out.warnings))
+        out.adapter_miss = True
+    if rules:
+        keys["miss"] = {"when": rules[0] if len(rules) == 1 else {"any": rules}}
+    if adapter_miss and kind == "per_success" and expect is not None:
+        # Today a failed `expect` is free while billing charges a 2xx error envelope unless the
+        # adapter reads it as a miss. One `bill.error` cannot say both, so the envelope stays out of
+        # the error rule: billing and routing read it as today, by the miss rule.
+        out.warnings.append("the error envelope is not an error rule (a failed expect is free, an "
+                            "envelope is charged unless it misses); stats and archive admission "
+                            "stop calling a truthy `error` or `errors` an error")
+    elif adapter_miss:
+        # Today's result judge calls a 2xx carrying `error` or `errors` an error on this row; billing
+        # charges it unless the adapter reads it as a miss.
+        keys["error"] = {"when": ENVELOPE}
+        out.warnings.append("the error envelope is `present`; today it is any truthy `error` or `errors`")
+        if kind == "per_success" and not adapter_miss.strip().startswith("coalesce("):
+            bill["error"] = "charged"
+        elif kind == "per_success":
+            out.warnings.append("an error envelope that also carries results is charged today; v2 judges "
+                                "it an error, which is free")
+    nf = row.get("not_found")
+    if isinstance(nf, dict):
+        rule = {"status": nf["status"] if isinstance(nf["status"], list) else [nf["status"]]}
+        if nf.get("when"):
+            rule["when"] = predicate(nf["when"], out.warnings)
+        rule["means"] = nf["means"]
+        keys["not_found"] = rule
+    if bill:
+        keys["bill"] = bill
+    if defaults and "bill" in defaults:
+        keys.pop("bill", None)
+        bill = defaults["bill"]
+    for key in (*COST_KEYS, *OUTCOME_KEYS):
+        if key not in (defaults or {}) or key == "bill":
+            continue
+        if key not in keys:
+            if key == "expect" and expect is None:
+                # today the row inherits its header's expect, which the batch moves into defaults
+                continue
+            keys[key] = None
+        elif keys[key] == defaults[key]:
+            del keys[key]
+    if row.get("async") is False and "async" in (defaults or {}):
+        # today's opt-out of the header's async block; v2 opts out of the default with null
+        keys["async"] = None
+    elif row.get("async") is False and header_async is not None:
+        raise Refused("its async: false opts out of the header's async block; the batch moves that block "
+                      "into defaults")
+    label = cost_type(keys.get("price"), keys.get("reserve"), keys.get("settle"), bill)
+    if label != kind:
+        out.warnings.append(f"the views will label it {label}; today they say {kind}")
+    order = ("price", "provenance", "reserve", "settle", "bill", "expect", "error", "miss", "not_found", "note",
+             "async")
+    return _checked(row, out, {k: keys[k] for k in order if k in keys},
+                    tuple(k for k in ("cost", "tier", *OUTCOME_KEYS, *(("note",) if "note" in keys else ()),
+                                      *(("async",) if row.get("async") is False else ()))
+                          if k in row), defaults)
+
+
+def _cost(row: dict, provider: str, out: Rewrite, check_branches: bool) -> tuple[dict, str | None, dict]:
+    """A priced row's v2 cost keys, today's `cost.type`, and the bill that type implies."""
+    endpoint_id, cost = out.endpoint_id, row.get("cost")
     if not isinstance(cost, dict):
         raise Refused("the row has no cost to rewrite")
     if row.get("observed_cost") is not None:
@@ -234,71 +355,17 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
         # Today only a per_success row frees a miss or a failed `expect`; the others bill by their
         # settle form whatever the answer says.
         bill = {"miss": "charged", "error": "charged"}
-    expect = row.get("expect") if row.get("expect") is not None else header_expect
-    if expect is not None:
-        if expect.get("misses"):
-            keys["expect"] = {"path": response_path(expect["json_path"]), "op": "in",
-                              "value": [expect["equals"], *expect["misses"]]}
-        else:
-            keys["expect"] = {"path": response_path(expect["json_path"]), "op": "equals",
-                              "value": expect["equals"]}
-    miss = row.get("miss")
-    adapter_miss = (adapter or {}).get("miss")
-    if adapter_miss and not (adapter or {}).get("verified", True):
-        raise Refused("its adapter is unverified, so nothing judges its miss today")
-    status_miss = isinstance(miss, dict) and 400 <= int(miss.get("status") or 0) < 500
-    if isinstance(miss, dict) and not status_miss:
-        out.warnings.append(f"miss.status {miss.get('status')} is a 2xx and inert today; dropped")
-    if status_miss and adapter_miss:
-        raise Refused("the row has a status miss and an adapter miss; one `miss` rule holds one")
-    rules = []
-    if expect is not None and expect.get("misses"):
-        rules.append({"path": response_path(expect["json_path"]), "op": "in", "value": list(expect["misses"])})
-    if status_miss:
-        rule = {"status": [int(miss["status"])]}
-        if miss.get("when"):
-            rule["when"] = predicate(miss["when"], out.warnings)
-        rule["means"] = miss["means"]
-        keys["miss"] = rule
-    elif adapter_miss:
-        rules.append(predicate(adapter_miss, out.warnings))
-        out.adapter_miss = True
-    if rules:
-        keys["miss"] = {"when": rules[0] if len(rules) == 1 else {"any": rules}}
-    if adapter_miss:
-        # Today's result judge calls a 2xx carrying `error` or `errors` an error on this row; billing
-        # charges it unless the adapter reads it as a miss.
-        keys["error"] = {"when": ENVELOPE}
-        out.warnings.append("the error envelope is `present`; today it is any truthy `error` or `errors`")
-        if kind == "per_success" and not adapter_miss.strip().startswith("coalesce("):
-            if expect is not None:
-                raise Refused("today a failed `expect` is free and a 2xx error envelope is charged; "
-                              "v2 bills both as the one error outcome")
-            bill["error"] = "charged"
-        elif kind == "per_success":
-            out.warnings.append("an error envelope that also carries results is charged today; v2 judges "
-                                "it an error, which is free")
-    nf = row.get("not_found")
-    if isinstance(nf, dict):
-        rule = {"status": nf["status"] if isinstance(nf["status"], list) else [nf["status"]]}
-        if nf.get("when"):
-            rule["when"] = predicate(nf["when"], out.warnings)
-        rule["means"] = nf["means"]
-        keys["not_found"] = rule
-    if bill:
-        keys["bill"] = bill
-    label = cost_type(keys["price"], keys.get("reserve"), keys.get("settle"), bill)
-    if label != kind:
-        out.warnings.append(f"the views will label it {label}; today they say {kind}")
-    order = ("price", "provenance", "reserve", "settle", "bill", "expect", "error", "miss", "not_found")
-    out.keys = {k: keys[k] for k in order if k in keys}
-    out.replaced = tuple(k for k in ("cost", "tier", *OUTCOME_KEYS) if k in row)
-    try:
-        parse_row({**{k: v for k, v in row.items() if k not in out.replaced}, **out.keys}, endpoint_id)
-    except CatalogSchemaError as exc:
-        raise Refused(f"the rewritten row does not parse: {str(exc).removeprefix(f'{endpoint_id}: ')}") from None
-    return out
+    return keys, kind, bill
 
+
+def _checked(row: dict, out: Rewrite, keys: dict, replaced: tuple[str, ...], defaults: dict | None) -> Rewrite:
+    """The rewrite, once the row it leaves parses against its provider's defaults."""
+    out.keys, out.replaced = keys, replaced
+    try:
+        parse_row(merge({**{k: v for k, v in row.items() if k not in replaced}, **keys}, defaults), out.endpoint_id)
+    except CatalogSchemaError as exc:
+        raise Refused(f"the rewritten row does not parse: {str(exc).removeprefix(f'{out.endpoint_id}: ')}") from None
+    return out
 
 WIDTH = 110
 
@@ -395,7 +462,7 @@ def apply_rows(text: str, rewrites: dict[str, Rewrite]) -> tuple[str, list[str]]
         change = rewrites.get(row_id)
         if change is None:
             continue
-        spans = sorted(_extent(lines, keys[k]) for k in change.replaced if k in keys)
+        spans = [_extent(lines, keys[k]) for k in change.replaced if k in keys]
         indent = keys["id"].start_mark.column
         new = [part for k, v in change.keys.items() for part in emit(k, v, indent)]
         for n, (start, end) in enumerate(spans):
@@ -426,31 +493,62 @@ def drop_adapter_misses(text: str, endpoint_ids: set[str]) -> str:
     return "".join(lines)
 
 
+def withheld(directory: Path) -> set[Path]:
+    """The endpoint files whose header `defaults:` the codemod loads without: those of a provider
+    with a row still in today's spelling. A batch declares its defaults before the codemod rewrites
+    its rows, and such a row cannot inherit them; a rewritten row needs them."""
+    out = set()
+    for path in directory.glob("*.yaml"):
+        if "\ndefaults:" not in path.read_text(encoding="utf-8"):
+            continue
+        provider = read_yaml(path)["provider"]
+        rows = [row for name in (f"{provider}.yaml", f"{provider}.extended.yaml")
+                if (directory / name).exists() for row in read_yaml(directory / name).get("endpoints") or []]
+        if any(spelling(row) == "legacy" for row in rows):
+            out.add(path)
+    return out
+
+
+def _catalog_before_defaults():
+    """The loaded catalog, with the `defaults:` of a provider still in today's spelling withheld."""
+    from treg.domain.catalog import store
+
+    held = withheld(CATALOG)
+    with tempfile.TemporaryDirectory() as tmp:
+        for path in CATALOG.iterdir():
+            target = Path(tmp) / path.name
+            if path in held:
+                target.write_text(yaml.safe_dump({k: v for k, v in read_yaml(path).items() if k != "defaults"},
+                                                 sort_keys=False, allow_unicode=True))
+            else:
+                target.symlink_to(path)
+        return store.load(directory=Path(tmp))
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("ids", nargs="*")
     parser.add_argument("--provider")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
-    from treg.domain.catalog import schema, store
+    from treg.domain.catalog import schema
 
-    loaded = store.load()
+    loaded = _catalog_before_defaults()
     adapters = {eid: {**a, "verified": loaded.adapters[eid].verified if eid in loaded.adapters else False}
                 for eid, a in ((schema.read_yaml(CATALOG / "adapters.yaml") or {}).get("adapters") or {}).items()}
     wanted = set(args.ids)
     rewrites: dict[Path, dict[str, Rewrite]] = {}
     refused: list[tuple[str, str]] = []
-    for path in sorted(CATALOG.glob("*.yaml")):
-        doc = schema.read_yaml(path)
-        if not isinstance(doc, dict) or not isinstance(doc.get("endpoints"), list):
-            continue
-        provider = doc["provider"]
+    docs = [schema.read_endpoint_file(path) for path in sorted(CATALOG.glob("*.yaml"))
+            if isinstance(doc := schema.read_yaml(path), dict) and isinstance(doc.get("endpoints"), list)]
+    defaults = schema.provider_defaults(docs)
+    for path, provider, doc in ((d.path, d.provider, d.raw) for d in docs):
         for row in doc["endpoints"]:
             if not (row.get("id") in wanted or provider == args.provider):
                 continue
             try:
                 change = rewrite(row, provider=provider, header_expect=doc.get("expect"),
-                                 adapter=adapters.get(row["id"]))
+                                 header_async=doc.get("async"), adapter=adapters.get(row["id"]), defaults=defaults.get(provider))
             except Refused as exc:
                 refused.append((row["id"], str(exc)))
                 continue

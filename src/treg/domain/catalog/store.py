@@ -728,6 +728,7 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         "host": str(raw.get("host") or "").strip().lower(),
         "name": str(raw.get("name") or "").strip(),
         "summary": raw.get("summary") or "",
+        **({"note": note} if (note := str(raw.get("note") or "").strip()) else {}),
         "input": raw.get("input") or {},
         "authorization_method": str(raw.get("authorization_method") or ""),
         "authorization_methods": list(raw.get("authorization_methods") or []),
@@ -882,14 +883,17 @@ def sibling_view(ep: dict, provider_display: str, cat: Catalog) -> dict:
     }
 
 
-def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None) -> dict:
-    """The public JSON shape of one endpoint (the dashboard + CLI render this)."""
+def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None, *,
+                  detail: bool = False) -> dict:
+    """The public JSON shape of one endpoint (the dashboard + CLI render this). `detail` is the
+    endpoint's own page, which alone carries the row's `note`: lists and search leave it out."""
     return {
         "id": ep["id"],
         "provider": ep["provider"],
         "provider_display": provider_display,
         "name": ep.get("name") or "",
         "summary": ep["summary"],
+        **({"note": ep["note"]} if detail and ep.get("note") else {}),
         "method": ep["method"],
         "path": ep["path"],
         "scope": ep["scope"],

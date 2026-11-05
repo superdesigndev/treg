@@ -65,7 +65,6 @@ from ..models import (
     Project,
     RunRecord,
     TagBudget,
-    TagSpend,
     Tool,
     User,
 )
@@ -76,7 +75,6 @@ from .signup_cookies import REFERRAL_COOKIE
 
 
 _day_start_utc = usage_policy._day_start_utc
-count_today = usage_policy.count_today
 _deny_match = access_policy._deny_match
 _org_deny_rules = access_policy._org_deny_rules
 
@@ -838,8 +836,9 @@ async def my_usage(
     caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
 ) -> dict:
     """The caller's own usage today + cap for the active org — so a member sees 'used / cap' without
-    admin access. `cap` is -1 when unlimited."""
-    return {"org": caller.org.slug, "used_today": await count_today(db, caller.org_id, caller.email),
+    admin access. `cap` is -1 when unlimited. Counted as the members list counts it."""
+    used = await _used_today_by_user(db, caller.org_id)
+    return {"org": caller.org.slug, "used_today": used.get(caller.email, 0),
             "cap": caller.membership.daily_call_cap}
 
 
@@ -1412,8 +1411,7 @@ async def list_tag_keys(
     friends from the dashboard even though the API served them fine.
     """
     _require_admin_of(org_id, caller)
-    seen = (await db.execute(
-        select(TagSpend.dim).where(TagSpend.org_id == org_id).distinct())).scalars().all()
+    seen = await ledger.tag_dims(db, org_id)
     declared = _budget_dims_of(caller.org)
     return {"seen": sorted(set(seen)), "budgetable": declared,
             "primary": _primary_dim_of(caller)}

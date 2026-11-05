@@ -59,6 +59,7 @@ sources:
   - src/treg/alembic/versions/0072_callrecord_call_ref_index.py
   - src/treg/alembic/versions/0073_org_flow_control_version.py
   - tests/test_org_flow_control_schema.py
+  - src/treg/alembic/versions/0096_route_rule_version.py
   - src/treg/alembic/versions/0075_ad_click_stash.py
   - src/treg/alembic/versions/0079_enterprise_sso.py
   - src/treg/alembic/versions/0082_oauth_sso_provenance.py
@@ -69,6 +70,7 @@ sources:
   - src/treg/alembic/versions/0088_call_usage_rollup.py
   - src/treg/alembic/versions/0089_ledgerentry_settle_spend_index.py
   - src/treg/alembic/versions/0090_ledgerentry_topup_index.py
+  - src/treg/alembic/versions/0095_ledgerentry_grant_index.py
   - src/treg/application/call_usage_rollup.py
   - src/treg/application/call_usage.py
   - tests/test_call_usage_rollup.py
@@ -192,6 +194,14 @@ updates. `org_id` has no foreign key, keeping the table independent of locks on 
 so `cascade_delete_org` removes this history explicitly, and the writer must validate Org existence
 and coordinate saves with Org deletion. A schema downgrade deletes the saved history.
 
+## Route rule storage
+
+`RouteRuleVersion` is keyed by `version` alone: one global rule set. The schema enforces positive
+versions, a reviewer on every reviewed row, a publisher on every published row, and refuses any
+publication state on a version that is not approved. Allocating versions, validating the rule JSON
+and keeping snapshots immutable are the private admin's job; the call path never reads the table
+([route-rules.md](route-rules.md)). A schema downgrade deletes the saved history.
+
 ## `CallRecord` and `LedgerEntry`: indexes are throughput
 
 `CallRecord` (audit) and `LedgerEntry` (append-only, never pruned) are the largest tables and both
@@ -206,8 +216,22 @@ such scan queues every other query and the API pool empties into `503 treg_satur
   (`spent_today_from_ledger` survives for reconciliation); the per-member call cap reads
   `Membership.calls_today`. A team's busiest rows sit on every page of the day, so even an
   `(org_id, created_at)` index scan is too slow on the money path.
-- Partial indexes (`kind = 'settle'`, `kind = 'topup'`, `kind = 'local_run'`) are matched only
-  when the query states the predicate as a constant, never a parameter.
+- Partial indexes (`kind = 'settle'`, `kind = 'topup'`, `kind = 'grant'`, `kind = 'local_run'`)
+  are matched only when the query states the predicate as a constant, never a parameter. The
+  spend rollup's per-team recount (`key_spend_rollup`) and the billing reads state it with
+  `literal_column`.
+- `SELECT DISTINCT` over a team's rows in a large index reads every one of them: Postgres before 18
+  cannot skip through an index. The distinct values are walked instead, one probe per value
+  (`money.tag_dims`, a recursive CTE asking for the next value after the last).
+- A bound taken from a scalar subquery is unknown to the planner, which then estimates a team's
+  whole history and can spend longer compiling the statement (JIT) than running it. Where the
+  subquery must stay for snapshot consistency, the read turns JIT off for its transaction
+  (`call_usage.rows`). A constant read earlier is no substitute: a rollup rebuild moves the cursor
+  back.
+- Statistics end before today, so a `created_at >= today` bound is estimated at one row and picks
+  the `(org_id, created_at)` index even for a team with a full day behind it. The usage tail
+  (`call_usage.rows`) bounds itself by its UTC day expression instead, leaving `(org_id, id)` to
+  find the rows after the cursor.
 - Watermark walks state the bound as `created_at >= w AND (created_at > w OR id > w_id)`, never as
   one OR: inside an OR Postgres bounds the scan only from above and walks from the oldest row.
 - A database that predates Alembic was stamped at the baseline and may lack baseline indexes

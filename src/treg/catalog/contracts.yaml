@@ -38,6 +38,10 @@ contracts:
     miss: "email == null"
     idempotent: true            # a lookup — error-fallback to the next provider is safe
     one_subject: true           # every variant names one person: cost per hit ranks first
+    # Enrow first where its coverage of French and German company domains leads the other finders.
+    prefer_by_domain_suffix:
+      fr: [enrow]
+      de: [enrow]
     # The provider's own claim, stored per call; a finder with no `verified` output stores none.
     verdict: {from: verified, words: [verified, unverified], map: {true: verified, false: unverified}}
     # Attached as `_treg.advice` when a hit's `verified` is not true. A find is a guess the provider
@@ -352,6 +356,11 @@ contracts:
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
     scoping: [company_domain, title, full_name]   # a child that cannot send one of these answers a different question
+    # A free-text provider (exa, parallel) takes only {q}; without this a {title} request never
+    # reaches it. Built only for a provider that accepts none of the caller's fields. No keywords:
+    # those adapters append them to q themselves. No domain: a text match cannot scope by
+    # company, so a {company_domain} request still skips it.
+    stand_in: {q: "join(full_name, title, location)"}
     output:
       people: {type: list, required: true, note: "one row per person, in the row shape below; the provider's own rows are in raw"}
       count: {type: int}
@@ -367,13 +376,18 @@ contracts:
         company: {type: str, note: "current employer's name"}
         company_domain: {type: str}
         location: {type: str}
-        profile_url: {type: str, note: "the person's profile page, a LinkedIn URL where the provider has one"}
+        profile_url: {type: url, note: "the person's profile page, a LinkedIn URL where the provider has one"}
         email: {type: str, note: "found by the provider, not confirmed deliverable"}
         email_status: {type: str, note: "the provider's own verdict on that email, where it gives one (`valid`, `VERIFIED`); absent = nobody checked it"}
         summary: {type: str, note: "the provider's own words about the person (bio, headline, matching passage), cut to 300 characters: what to check the brief against"}
     miss: "people == []"
     idempotent: true
     prefer: [crawl4ai]
+    # A free-text `q` is a semantic question: ask the semantic searches first.
+    prefer_when:
+      - {sent: [q], prefer: [exa, parallel, crawl4ai]}
+    # A free-text `q` asks for everyone who fits: the caller's `limit` is the row count to reach.
+    fill_limit_when: [[q]]
     # Search rows are directory listings. An email in a row is found, not confirmed deliverable,
     # unless that row's own verification field says so — a team that mailed Hunter domain-search
     # rows unverified (`verification: null`, confidence 10) bounced on 73 of 79 addresses that one
@@ -643,7 +657,7 @@ contracts:
 
   # ---- batch 6: long tail (2026-08-28) ----------------------------------------------------------
   instagram.search.users:
-    summary: "Search Instagram accounts by keyword — provider-native profile rows in `users`"
+    summary: "Search Instagram accounts by keyword — profile rows in `users`; ScrapeCreators rows omit picture and link metadata, `raw` holds the provider's full answer"
     identity:
       - {q: str}
     filters: {}
@@ -651,6 +665,30 @@ contracts:
       users: {type: list, required: true}
       count: {type: int}
       next_cursor: {type: str}
+    # The provider's own field names, minus what no reader of a search result uses: a provider's
+    # picture URLs and link metadata cost more tokens than everything else in its row. `raw` keeps
+    # the full row. Same names as before, so a caller reading `follower_count` reads it still.
+    row:
+      of: users
+      needs: [username, url]
+      fields:
+        id: {type: str}
+        username: {type: str}
+        full_name: {type: str}
+        url: {type: url, note: "the account's Instagram page"}
+        follower_count: {type: int}
+        following_count: {type: int}
+        media_count: {type: int}
+        biography: {type: str, note: "the account's own bio, cut to 300 characters"}
+        category_name: {type: str}
+        external_url: {type: url}
+        is_verified: {type: bool}
+        is_private: {type: bool}
+        is_business_account: {type: bool}
+        is_professional_account: {type: bool}
+        matched_from: {type: str, note: "how the provider found the account (`profile`, a web search)"}
+        google_title: {type: str}
+        google_description: {type: str}
     miss: "users == []"
     idempotent: true
 

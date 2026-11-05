@@ -33,6 +33,7 @@ _LEASE_ATTEMPT_TIMEOUT_S = 1.5
 _LEASE_RETRY_BUDGET_S = 2.5
 _LOCAL_MAX_KEYS = 10_000
 _FLOW_CONTROL_MAX_BYTES = 32768
+ROUTE_RULES_KEY = "treg:route-rules:v1"
 _READ_ORG_FLOW_CONTROL = """
 local kind = redis.call('TYPE', KEYS[1]).ok
 if kind == 'none' then return false end
@@ -260,6 +261,9 @@ class Store(Protocol):
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
         """Bounded JSON or missing (None), distinct from invalid data and transport failure."""
 
+    async def read_route_rules(self) -> FlowControlReadResult:
+        """The published route rule set, read like a flow-control snapshot."""
+
     async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult: ...
 
     async def renew_lease(self, key: str, token: str, ttl_ms: int, *,
@@ -327,6 +331,9 @@ class LocalStore:
         # Local state cannot stand in for published Redis configuration.
         return FlowControlReadFailure.UNAVAILABLE
 
+    async def read_route_rules(self) -> FlowControlReadResult:
+        return FlowControlReadFailure.UNAVAILABLE
+
     async def acquire_lease(self, key: str, token: str, ttl_ms: int) -> AcquireResult:
         return "unavailable"  # Local counters cannot promise cross-process exclusion.
 
@@ -392,10 +399,15 @@ class RedisStore:
     async def read_org_flow_control(self, org_id: int) -> FlowControlReadResult:
         if type(org_id) is not int or not 0 < org_id <= 2147483647:
             return FlowControlReadFailure.INVALID
+        return await self._read_published(f"treg:traffic-control:org:{org_id}")
+
+    async def read_route_rules(self) -> FlowControlReadResult:
+        return await self._read_published(ROUTE_RULES_KEY)
+
+    async def _read_published(self, key: str) -> FlowControlReadResult:
         try:
             async with asyncio.timeout(_OPTIONAL_TIMEOUT_S):
-                value = await self._client.eval(
-                    _READ_ORG_FLOW_CONTROL, 1, f"treg:traffic-control:org:{org_id}")
+                value = await self._client.eval(_READ_ORG_FLOW_CONTROL, 1, key)
             if value is None:
                 return None
             if not isinstance(value, str) or len(value.encode("utf-8")) > _FLOW_CONTROL_MAX_BYTES:

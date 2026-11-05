@@ -12,7 +12,7 @@ from httpx import AsyncClient
 from sqlmodel import select
 
 from treg import audit
-from treg.routers.orgs import count_today
+from treg.domain.governance.usage import count_today
 from treg.timeutil import utcnow_naive as _utcnow_naive
 from treg.infra.db import session_maker
 from treg.models import CallRecord, Membership, RunRecord, User

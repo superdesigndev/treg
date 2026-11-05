@@ -55,6 +55,8 @@ class Signature:
 _TABLE: list[Signature] = [
     Signature("enrow", 402, r"insufficient credits", "balance", tripwire=True),
     Signature("filtrat", 402, r"INSUFFICIENT_CREDITS", "balance", tripwire=True),
+    Signature("corpoapi", 402, r"free_tier_exhausted", "balance", tripwire=True),
+    Signature("corpoapi", 402, r"spend_cap_reached", "balance", tripwire=True),
     Signature("anymailfinder", 402, r"not have enough credits", "balance", tripwire=True),
     Signature("findymail", 402, r"not enough credits", "balance", tripwire=True),
     Signature("leadsforge", 402, r"insufficient_credits", "balance"),

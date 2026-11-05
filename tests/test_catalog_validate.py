@@ -1369,3 +1369,14 @@ def test_the_pilot_v2_rows_pass_the_v2_cost_checks():
 ])
 def test_the_v2_cost_checks_refuse_a_unit_without_a_rate_and_a_path_to_no_declared_field(endpoint_id, keys, message):
     assert any(message in error for error in _v2_cost_errors(endpoint_id, **keys))
+
+
+def test_a_price_may_name_a_credit_rate_declared_unknown_but_never_a_missing_one():
+    provenance = {"source": "docs", "source_url": "https://docs.coingecko.com/", "checked": "2026-08-15",
+                  "confidence": "documented"}
+    assert _v2_cost_errors("coingecko.simple.price", provenance=provenance) == []
+    reported = {"reported": {"path": "response.credits", "unit": "credit"}}
+    assert any("settle.reported.unit 'credit'" in error
+               for error in _v2_cost_errors("coingecko.simple.price", provenance=provenance, settle=reported))
+    assert any("price.currency credit has no fx.yaml rate for 'google-ai'" in error
+               for error in _v2_cost_errors(GEMINI, price={"value": "1", "currency": "credit"}))

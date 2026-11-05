@@ -6190,7 +6190,8 @@ def _catalog_get(endpoint_id: str, cfg, *, limit: int | None = None) -> None:
         _fail_response(r)
     body = r.json()
     e, prov = body["endpoint"], body.get("provider") or {}
-    head = {"id": e["id"], "name": e.get("name") or None, "summary": e.get("summary") or None}
+    head = {"id": e["id"], "name": e.get("name") or None, "summary": e.get("summary") or None,
+            "note": e.get("note") or None}
     if e.get("kind") == "hub":
         _emit(head | _hub_view(e))
         return
@@ -6253,7 +6254,7 @@ def _catalog_get(endpoint_id: str, cfg, *, limit: int | None = None) -> None:
 # and the call; a routed call's options; what to send; the response; the other ways to do the job;
 # where it comes from.
 _GET_GROUPS = [
-    ("id", "name", "summary", "job", "upstream"),
+    ("id", "name", "summary", "note", "job", "upstream"),
     ("price", "native_price", "price_note", "overflow_price", "settle", "access", "call", "requires"),
     ("route_headers",),
     ("params_note", "params_shared", "params", "param_examples"),

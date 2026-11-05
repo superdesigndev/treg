@@ -365,7 +365,7 @@ endpoints:
     test_request:
       queryParams: {platform: "x", handle: "adrian_horning_"}
     cost: {type: per_call, value: 10, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-08-27', confidence: verified}
-    call_note: "Uncharged 503 when every declared link-in-bio page fails and nothing else resolves — retry later rather than treating it as a miss."
+    note: "An uncharged 503 means every declared link-in-bio page failed and nothing else resolved: retry later rather than treat it as a miss."
     verified: '2026-08-27'
     added: '2026-08-26'
     example_response: examples/scrapecreators.creators.socials.connected.json
