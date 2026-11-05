@@ -87,6 +87,10 @@ class LoopStallWatch:
                 self._emit("loop_stall_end", stalled_s=self._ends.popleft())
 
     def _emit(self, event: str, **fields) -> None:
+        # A stopped watch writes nothing: a write it was blocked in can return after its owner
+        # closed `out_fd`, and the number may by then name someone else's descriptor.
+        if self._stop.is_set():
+            return
         try:
             fields = {"event": event, "worker_pid": os.getpid(), **fields,
                       "stalled_s": round(fields["stalled_s"], 3)}
