@@ -1043,8 +1043,10 @@ an invalid extra never disables the primary.
   - 405 and 410 are the provider's own and fall over like a 5xx. Our 5xx/503/429 or a vendor
     5xx/429/402 is an error: next candidate, at most two extra, only for idempotent contracts. A
     child's `tool_access_denied`, `policy_denied` or `capability_pinned` refusal, and a platform
-    child's vendor 401/403 (treg's credential), fall back the same way. Balance and spend-cap
-    refusals are terminal.
+    child's vendor 401/403 (treg's credential), fall back the same way. A child's
+    `insufficient_balance` is skipped like a max-cost miss (specificity can put a priced child
+    ahead of a free one); the route raises that 402 only when every remaining candidate is also
+    skipped. Spend-cap and daily-cap refusals stay terminal.
   - Before planning, each identity field is type-checked (`invalid_identity`, 422, even when another
     complete variant was sent). A `url` must parse as an HTTP URL with a dotted host and no userinfo;
     a scheme-less one gets `https://`. A derived `linkedin_url` is built only from a handle-shaped

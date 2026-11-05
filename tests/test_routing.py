@@ -1025,6 +1025,8 @@ async def test_platform_vendor_401_falls_back_to_the_next_provider(
 async def test_routed_insufficient_balance_still_stops_before_fallback(
     clients: AsyncClient, enrichment_on, monkeypatch,
 ):
+    """When every Prefer'd child needs money the team does not have, 402 still wins — nothing
+    to fall through to. (A free sibling after a priced one is the next test.)"""
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     async with session_maker() as db:
         await ledger.reserve(db, org_id, "drain routed balance", 1_000_000)
@@ -1042,6 +1044,50 @@ async def test_routed_insufficient_balance_still_stops_before_fallback(
     assert response.status_code == 402
     assert response.json()["detail"]["error"] == "insufficient_balance"
     assert seen == []
+    tried = response.json()["detail"].get("tried") or []
+    assert tried and all(t["outcome"] == "skipped" for t in tried)
+    assert any(t.get("detail") == "insufficient balance" for t in tried)
+
+
+async def test_routed_insufficient_balance_falls_through_to_a_free_child(
+    clients: AsyncClient, enrichment_on, monkeypatch,
+):
+    """A priced child that 402s on reserve must not strand a later free sibling — ranking
+    (specificity / Prefer) can put the priced one first, as on treg.web.search with crawl4ai
+    ahead of free tinyfish."""
+    findymail = catalog_store.load().by_id["findymail.search.name"]
+    monkeypatch.setitem(findymail, "cost", {
+        "type": "free", "value": 0, "currency": "USD", "unit": "call",
+        "note": "test free sibling after a priced Prefer",
+    })
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        await ledger.reserve(db, org_id, "drain routed balance", 1_000_000)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "tomba": [(200, {"data": {"email": "should-not-run@example.com"}})],
+        "findymail": [(200, {"contact": {
+            "name": "Patrick Collison", "email": "patrick@stripe.com",
+        }})],
+    }, seen))
+
+    response = await clients.post(
+        f"/call/{ROUTED}",
+        json={"full_name": "Patrick Collison", "domain": "stripe.com"},
+        headers={
+            "X-Treg-Route-Prefer": "tomba,findymail",
+            "X-Treg-Route-Exclude": "hunter,leadmagic,leadsforge,aviato,fiber-ai",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    doc = response.json()
+    assert doc["_treg"]["served_by"] == "findymail.search.name"
+    assert doc["_treg"]["charged_micro"] == 0
+    assert [t["outcome"] for t in doc["_treg"]["tried"]] == ["skipped", "hit"]
+    assert doc["_treg"]["tried"][0]["endpoint_id"].startswith("tomba.")
+    assert doc["_treg"]["tried"][0]["detail"] == "insufficient balance"
+    assert [provider for provider, *_ in seen] == ["findymail"]
 
 
 async def test_waterfall_is_on_by_default_can_be_turned_off_and_respects_max_cost(clients: AsyncClient, enrichment_on, monkeypatch):
