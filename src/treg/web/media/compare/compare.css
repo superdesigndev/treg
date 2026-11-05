@@ -161,7 +161,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 
 
 /* faq */
-.faq { border-top: 1px solid var(--line); }
+.faq { border-top: 0; }
 .faq details { border-bottom: 1px solid var(--line); padding: 18px 2px; }
 .faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 18px; font-family: var(--display); font-weight: 500; font-size: 18px; letter-spacing: -.01em; }
 .faq summary h3 { font: inherit; letter-spacing: inherit; margin: 0; }
