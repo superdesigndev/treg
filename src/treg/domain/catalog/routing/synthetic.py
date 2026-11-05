@@ -42,8 +42,12 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
     variants = " | ".join("{" + ", ".join(v) + "}" for v in contract.identity)
     for variant in contract.identity:
         for k in variant:
-            body.setdefault(k, {"type": contract.identity_types.get(k, "str"), "required": False,
-                                "note": "identity"})
+            note = (contract.identity_notes or {}).get(k) or "identity"
+            example = (contract.identity_examples or {}).get(k, _EXAMPLE_VALUES.get(k))
+            field = {"type": contract.identity_types.get(k, "str"), "required": False, "note": note}
+            if example is not None:
+                field["example"] = example
+            body.setdefault(k, field)
     for k, spec in (contract.filters or {}).items():
         body.setdefault(k, {"type": (spec or {}).get("type", "str"), "required": False,
                             "note": "; ".join(["filter"]
@@ -82,7 +86,10 @@ def routed_endpoint(contract: Contract, children: list[dict], adapters: dict[str
                            + (" X-Treg-Route-Decisive: true counts an answer only when its verdict is "
                               + " or ".join(contract.verdict_decisive) + ", asking up to two more providers (best measured "
                               "first, each at its own price), in _treg.decision." if contract.verdict_decisive else ""))},
-        "test_request": {"body": {k: _EXAMPLE_VALUES.get(k, "…") for k in _best_variant(contract, kids, adapters)}} if contract.identity else {},
+        "test_request": {"body": {
+            k: (contract.identity_examples or {}).get(k, _EXAMPLE_VALUES.get(k, "…"))
+            for k in _best_variant(contract, kids, adapters)
+        }} if contract.identity else {},
         "cost": {"type": "per_success", "value": lo, "currency": "USD", "per": 1, "unit": "call",
                  "source": "inferred", "confidence": "documented", "checked": None,
                  # No single quote is honest when children bill their misses: a $0 floor reads

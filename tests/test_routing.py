@@ -153,6 +153,37 @@ def test_a_route_false_adapter_is_never_routed():
     assert C.parse_adapters({"adapters": {"c.find": {"route": False}}})["c.find"].route is False
 
 
+def test_identity_notes_and_examples_reach_the_routed_catalog_row():
+    """A contract can replace the generic `identity` note and `…` example on one key so callers
+    see a child-required format (e.g. Reddit `t3_`) before they burn a waterfall."""
+    from treg.domain.catalog.routing import contracts as C, synthetic
+
+    doc = {"contracts": {"reddit.post.detail": {
+        "summary": "One Reddit post by its t3_ id",
+        "identity": [{"post_id": "str"}],
+        "identity_notes": {
+            "post_id": "Reddit fullname — t3_ prefix required (e.g. t3_1ojnh50)"},
+        "identity_examples": {"post_id": "t3_1ojnh50"},
+        "output": {"post": {"type": "object", "required": True}},
+        "miss": "post == null"}}}
+    contract = C.parse_contracts(doc)["reddit.post.detail"]
+    assert contract.identity_notes["post_id"].startswith("Reddit fullname")
+    assert contract.identity_examples["post_id"] == "t3_1ojnh50"
+    adapters = {eid: C.Adapter(eid, (("post_id",),), {"post_id": "queryParams.post_id"},
+                               {"post": "data"}, "data == null", verified=True)
+                for eid in ("a.reddit", "b.reddit")}
+    endpoints = [{"id": eid, "provider": eid.split(".")[0], "cost": {"type": "per_success", "usd": 0.001}}
+                 for eid in adapters]
+    row = synthetic.routed_endpoint(contract, endpoints, adapters, lambda cost, provider: cost)
+    assert row["input"]["body"]["post_id"]["note"].startswith("Reddit fullname")
+    assert row["input"]["body"]["post_id"]["example"] == "t3_1ojnh50"
+    assert row["test_request"]["body"] == {"post_id": "t3_1ojnh50"}
+    with pytest.raises(ValueError, match="identity_notes"):
+        C.parse_contracts({"contracts": {"x": {
+            "identity": [{"q": "str"}], "identity_notes": {"nope": "x"},
+            "output": {"rows": {"required": True}}, "miss": "rows == []"}}})
+
+
 def test_a_row_map_puts_every_provider_row_in_the_contract_shape():
     """`row:` reads each provider row into the contract's keys, so an agent reads the same fields
     whoever answered; a row the map cannot read stays the provider's own, never dropped."""
