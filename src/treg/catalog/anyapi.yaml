@@ -992,7 +992,7 @@ endpoints:
     body:
       handle: nasa
   cost:
-    type: per_success
+    type: per_call
     value: 0.002
     currency: USD
     unit: call
@@ -1003,6 +1003,7 @@ endpoints:
     source_url: https://api.getanyapi.com/v1/apis/instagram.user_reels
     checked: '2026-09-11'
     confidence: verified
+    note: "AnyAPI charges a found=false / not_found answer too, so a miss is billed like a hit."
   example_response: examples/anyapi.instagram.user.reels.json
   verified: '2026-09-19'
   added: '2026-09-19'
