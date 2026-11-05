@@ -989,7 +989,8 @@ COMPETITORS: dict[str, dict] = {
             "free_start": "A free key with an email and a code, no card. Some endpoints are priced $0. "
                           "The amount of any free credit is not published.",
             "fees": "The terms say a call costs the provider's price multiplied by FetchAPI's markup "
-                    "in force at the time. The markup rate is not published. Failed calls are free.",
+                    "in force at the time; its llms.txt says calls are charged at the provider's cost. "
+                    "The markup rate is not published. Failed calls are free.",
             "catalog": "388 working endpoints, tested daily, from dozens of providers (catalog page).",
             "data": "Yes: X, TikTok, Instagram, YouTube and Reddit data, company and funding data, "
                     "SEO, web traffic, sports odds and prediction markets.",
@@ -1152,9 +1153,9 @@ COMPETITORS: dict[str, dict] = {
             "free_start": "A free account by magic email link or wallet signature. Some APIs have a "
                           "free monthly quota. A signup credit is not published.",
             "fees": "A 10% default commission, taken from the provider's payout. External x402 calls "
-                    "are charged the provider price plus a markup whose amount is not published.",
+                    "are charged the provider price plus a platform markup, 10% by default.",
             "x402": "Yes: x402 and USDC on Base, and external x402 services paid from credits.",
-            "catalog": "335 services on the marketplace page, 267 of them external x402 services. The "
+            "catalog": "334 services on the marketplace page, 267 of them external x402 services. The "
                        "home page says 75+ external x402 services.",
             "data": "Yes: listed APIs in AI, data, search, finance and trading, media, communication, "
                     "content and travel.",

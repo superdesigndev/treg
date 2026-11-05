@@ -104,6 +104,20 @@ async def test_the_hub_links_every_comparison(clients: AsyncClient):
     assert (await clients.get("/media/compare/compare.css")).status_code == 200
 
 
+async def test_no_comparison_passes_ranking_credit_to_another_product(clients: AsyncClient):
+    """Every link that leaves treg is nofollow, except treg's own code on GitHub."""
+    own = {"treg.to", "www.treg.to", "localhost", "test"}
+    for path in ["/compare", *PAGES]:
+        html = (await clients.get(path)).text
+        for tag in re.findall(r"<a\s[^>]*>", html):
+            href = re.search(r'href="([^"]*)"', tag)
+            host = urlsplit(href.group(1)).hostname if href else None
+            if not host or host in own or href.group(1).startswith("https://github.com/superdesigndev/treg"):
+                continue
+            rel = re.search(r'rel="([^"]*)"', tag)
+            assert rel and "nofollow" in rel.group(1).split(), (path, tag)
+
+
 async def test_each_page_has_a_markdown_twin_kept_out_of_the_index(clients: AsyncClient):
     for key, c in cp.COMPETITORS.items():
         r = await clients.get(f"/compare/{cp.page_slug(key)}.md")
