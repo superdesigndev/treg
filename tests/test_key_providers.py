@@ -587,3 +587,30 @@ async def test_financialdatasets_connect_accepts_only_valid_key_outcomes_without
                     if t["name"] == "financialdatasets")
         assert tool["health_check"] is None
         assert tool["bindings"][0]["name"] == "X-API-KEY"
+
+
+async def test_fraudnova_connect_probes_the_free_balance_route_and_rejects_a_bad_key(
+    clients, monkeypatch,
+):
+    """FraudNova's key is a Bearer token; GET /balance is free and answers 401 with the standard
+    error envelope for a bad key (observed live 2026-11-05), so the connect probe rejects it."""
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/api/v1/balance"
+        if request.headers["authorization"] == "Bearer fn_bad":
+            return httpx.Response(401, json={"success": False,
+                                             "message": "Invalid or revoked API token."})
+        return httpx.Response(200, json={"success": True, "credits_remaining": 25})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post("/connections/token", json={"provider": "fraudnova", "token": "fn_bad"})
+        assert bad.status_code == 422, bad.text
+        assert "rejected" in bad.text
+        good = await clients.post("/connections/token", json={"provider": "fraudnova", "token": "fn_good"})
+        assert good.status_code == 200, good.text
+
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "fraudnova")
+    assert [(b["location"], b["name"], b["format"]) for b in tool["bindings"]] == [
+        ("header", "Authorization", "Bearer {secret}"),
+    ]

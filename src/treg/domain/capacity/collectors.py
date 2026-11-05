@@ -806,6 +806,18 @@ async def _hlrlookup(c, key):
     return {"value": float(balance), "unit": "credits", "note": ""}
 
 
+async def _fraudnova(c, key):
+    # Free. GET /balance answers {"success": true, "credits_remaining": N} (whole prepaid credits,
+    # one per IP, email or phone check) and 401 for a bad key; it never spends a credit.
+    d = await _get(c, "https://fraudnova.com/api/v1/balance",
+                   headers={"Authorization": f"Bearer {key}", "Accept": "application/json"})
+    raw = d.get("credits_remaining") if isinstance(d, dict) and d.get("success") is True else None
+    balance = _finite(raw) if not isinstance(raw, bool) else None
+    if balance is None or balance < 0:
+        raise ValueError("FraudNova balance returned an invalid credit count")
+    return {"value": balance, "unit": "credits", "note": "prepaid credit balance"}
+
+
 async def _predictleads(c, key):
     # The platform slot holds base64("api_key:api_token") for HTTP Basic — pass it straight through.
     d = await _get(c, "https://predictleads.com/api/v3/api_subscription",
@@ -1106,6 +1118,7 @@ BALANCE_ROUTES = {
     "predictleads": _predictleads,
     "tomba": _tomba,
     "hlrlookup": _hlrlookup,
+    "fraudnova": _fraudnova,
     "dataforseo": _dataforseo,
     "tikhub": _tikhub,
     "tinyfish": _tinyfish,

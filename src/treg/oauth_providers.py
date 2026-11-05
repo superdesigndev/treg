@@ -3731,6 +3731,39 @@ ATLY = OAuthProvider(
 )
 
 
+FRAUDNOVA = OAuthProvider(
+    service="fraudnova",
+    display_name="FraudNova",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your FraudNova API key (fn_…)",
+    # The key is a Bearer token in the Authorization header on every route (never in a URL).
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://fraudnova.com/dashboard/api-keys",
+    setup_action_label="Get your FraudNova API key",
+    setup_steps=(
+        "Sign in to FraudNova and open API keys in the dashboard.",
+        "Create a key and copy it — it is shown once.",
+    ),
+    setup_note=(
+        "Every IP, email or phone check spends one prepaid credit; a failed lookup (HTTP 503) is "
+        "refunded. The balance check treg uses to verify the key is free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Fraud scores for IP addresses, email addresses and phone numbers: proxy, VPN, Tor and bot detection, disposable and deliverability checks, carrier and line type.",
+    base_url="https://fraudnova.com/api/v1",
+    docs_url="https://fraudnova.com/docs",
+    # Free. GET /balance answers 200 {"success":true,"credits_remaining":N} for a valid key and
+    # 401 {"success":false,"message":"Invalid or revoked API token."} for a bad one (observed live
+    # 2026-11-05; a missing header answers 401 "API token missing.").
+    probe_path="/balance",
+)
+
+
 INFLUENCERSCLUB = OAuthProvider(
     service="influencersclub",
     display_name="influencers.club",
@@ -4277,6 +4310,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, THEIRSTACK, AVIATO,
         COMPANYENRICH, CORPOAPI, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, ENROW, FILTRAT, DROPCONTACT, BRANDDEV, ICYPEAS, LEADSFORGE,
+        FRAUDNOVA,
         INFLUENCERSCLUB, VILLAGE,
         # Places: intent-scored local search
         ATLY,
