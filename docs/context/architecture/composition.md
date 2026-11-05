@@ -7,6 +7,7 @@ sources:
   - src/treg/bootstrap_http.py
   - src/treg/worker.py
   - src/treg/infra/money_trace_runner.py
+  - src/treg/infra/loop_stall.py
   - src/treg/infra/money_admission_reporting.py
   - src/treg/call_surface.py
   - src/treg/application/connect.py
@@ -72,6 +73,10 @@ operator serving the raw ASGI app must run the upgrade command on every release.
 - `infra.money_trace_runner` runs on every role regardless of analytics settings; it stops after
   money-producing background work drains. Its records are defined in
   [data-model](data-model.md#product-analytics-writer-analyticspy).
+- `infra.loop_stall` runs in every web worker's lifespan: a heartbeat re-arms
+  `faulthandler.dump_traceback_later`, so a loop that stops for `STALL_SECONDS` writes every
+  thread's stack to stderr (from a C thread, so also while the GIL is held), and the returning loop
+  logs one `loop_stall` line with the gap. It never raises into startup or shutdown.
 
 ## HTTP middleware
 

@@ -110,6 +110,10 @@ their timestamp intervals because connections are reused. Read the coverage limi
 [data-model](../architecture/data-model.md#product-analytics-writer-analyticspy) before
 interpreting missing records.
 
+A web worker whose event loop stops for seconds logs `loop_stall` with the gap once it runs again;
+the `Timeout (0:00:05)!` stack dump written to stderr just before it names the code that held the
+loop (`infra/loop_stall.py`).
+
 ### Dashboard reports
 
 Team reports that aggregate whole windows of the audit and ledger tables (`/orgs/{id}/usage`,
