@@ -13,10 +13,7 @@ from . import paths as P
 from .contracts import Adapter, Contract, adapter_accepts
 
 MAX_ERROR_FALLBACKS = 2
-# P(hit|2xx) assumed for a child with no published hit rate (fewer than `stats.MIN_HIT_SAMPLES`
-# judged lookups). Assuming every answer a hit put a child seen a few times ahead of same-priced
-# siblings measured near 1; at a coin flip it leads only at under half a measured sibling's cost
-# per hit.
+# P(hit|2xx) for a child below the `stats.MIN_HIT_SAMPLES` hit-rate publication floor.
 UNMEASURED_HIT_PRIOR = 0.5
 
 
