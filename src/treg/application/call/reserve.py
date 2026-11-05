@@ -73,7 +73,10 @@ async def _enforce_trial_allowance(caller: Caller, provider: str, endpoint_id: s
 
     The count reads every audit row of the team's day, and a busy team has a large day. A day's
     count only grows, so a team found at its allowance is remembered in this process until 00:00
-    UTC and refused without counting again; the calls that still count are the few below it."""
+    UTC and refused without counting again; the calls that still count are the few below it. The
+    team is remembered with its creation time, since SQLite gives a deleted team's id to the next
+    one. `used_today` is the count when the team was found at its allowance: a lower bound, as the
+    audit lag already made it."""
     catalog = catalog_store.load()
     allowance = catalog.trial_pools.get(provider)
     if not allowance:
@@ -87,7 +90,7 @@ async def _enforce_trial_allowance(caller: Caller, provider: str, endpoint_id: s
     ]
     day_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0,
                                                    tzinfo=None)
-    spent_key = (caller.org_id, provider, day_start.date().isoformat())
+    spent_key = (caller.org_id, caller.org.created_at, provider, day_start.date().isoformat())
     used = _spent_trials.get(spent_key, 0)
     if used < allowance:
         used = await _trial_calls_today(caller, provider, paid_endpoint_ids, day_start, db)
@@ -98,20 +101,20 @@ async def _enforce_trial_allowance(caller: Caller, provider: str, endpoint_id: s
             "error": "trial_allowance_reached", "provider": provider,
             "allowance_per_day": allowance, "used_today": int(used),
             "message": (f"this team has used its free {provider} trial for today "
-                        f"({used}/{allowance} calls). It resets at 00:00 UTC — or connect your "
+                        f"(at least {used} of {allowance} calls). It resets at 00:00 UTC — or connect your "
                         f"own {provider} key for unmetered calls at your plan's limits: "
                         "treg connections connect"),
         })
 
 
-_spent_trials: dict[tuple[int, str, str], int] = {}
+_spent_trials: dict[tuple[int, datetime, str, str], int] = {}
 _SPENT_TRIALS_KEPT = 10_000
 
 
-def _remember_spent_trial(key: tuple[int, str, str], used: int) -> None:
+def _remember_spent_trial(key: tuple[int, datetime, str, str], used: int) -> None:
     if len(_spent_trials) >= _SPENT_TRIALS_KEPT:
         _spent_trials.clear()
-    for stale in [k for k in _spent_trials if k[2] != key[2]]:
+    for stale in [k for k in _spent_trials if k[3] != key[3]]:
         del _spent_trials[stale]
     _spent_trials[key] = used
 

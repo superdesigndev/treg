@@ -787,8 +787,9 @@ parser is ever added for one, because drift would then police a price treg set.
 429 `trial_allowance_reached` with a connect-your-own-key hint). Free tools, failed calls and own-key
 calls never burn it; another org's usage never touches this org's pool. A hot pool is the buy signal
 for the provider's commercial tier. The count reads the team's whole audit day, so a team found at
-its allowance is remembered per process until 00:00 UTC and refused without counting again (a
-day's count only grows).
+its allowance is remembered per process until 00:00 UTC, keyed with the team's creation time,
+and refused without counting again (a day's count only grows). Its `used_today` is then a lower
+bound, as the audit lag already made it.
 
 ## Idempotency and retries
 
