@@ -3444,6 +3444,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/aeo", "aeo.html", "0.8"),
     ("/rankings", "rankings.html", "0.8"),
     ("/rea-growth", "rea-growth.html", "0.8"),
+    ("/social", "social-search.html", "0.8"),
     ("/jev", "jev.html", "0.8"),
     ("/terms", "terms.html", "0.2"),
     ("/privacy", "privacy.html", "0.2"),
@@ -3992,6 +3993,15 @@ async def rea_growth_page(request: Request):
     return _static_page("rea-growth.html", request)
 
 
+@app.get("/social", include_in_schema=False)
+async def social_search_page(request: Request):
+    """Social media on autopilot: the agent spots viral posts, tracks their creators, decodes the
+    structure, reads the comments, posts and A/B tests on connected
+    accounts. The page follows the launch film's design. Served
+    like /rea-growth: canonical, in the sitemap, no-cache."""
+    return _static_page("social-search.html", request)
+
+
 @app.get("/rea-growth.md", include_in_schema=False)
 async def rea_growth_md():
     """The full Lovable report behind /rea-growth as Markdown: what the page's "Copy the playbook"
@@ -4165,6 +4175,8 @@ async def jev_xboost_judge(request: Request, db: AsyncSession = Depends(get_sess
 # chronological (newest first), not alphabetical.
 _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
     # (slug, title, date, one-line blurb)
+    ("/social", "Put Your Social Media on Autopilot", "2026-11-04",
+     "Spot what goes viral, decode it, auto-post and A/B test. One treg key."),
     ("/rea-growth", "REA for Growth", "2026-10-29",
      "Name a company; your agent takes its distribution apart and hands you plays to copy."),
     ("/aeo", "How to Get AI to Recommend Your Product", "2026-10-17",
