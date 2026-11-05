@@ -379,7 +379,9 @@ contracts:
         profile_url: {type: url, note: "the person's profile page, a LinkedIn URL where the provider has one"}
         email: {type: str, note: "found by the provider, not confirmed deliverable"}
         email_status: {type: str, note: "the provider's own verdict on that email, where it gives one (`valid`, `VERIFIED`); absent = nobody checked it"}
-        summary: {type: str, note: "the provider's own words about the person (bio, headline, matching passage), cut to 300 characters: what to check the brief against"}
+        # Longer than other row text: it is the evidence an agent checks a brief against, and a
+        # candidate it cannot check is a candidate it drops.
+        summary: {type: str, max: 1000, note: "the provider's own words about the person (bio, headline, matching passage), cut to 1000 characters: what to check the brief against"}
     miss: "people == []"
     idempotent: true
     prefer: [crawl4ai]
