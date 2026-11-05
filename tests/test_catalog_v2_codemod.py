@@ -66,6 +66,26 @@ def test_a_coalesce_miss_reads_as_today_on_every_list_or_missing_value(names):
         assert holds(predicate, {"response": doc}) == bool(evaluate(expr, doc)), (expr, doc)
 
 
+@pytest.mark.parametrize("expr", ["coalesce(" + " ," * 50_000 + ") == []", "coalesce(a," + " " * 50_000 + "x) == []",
+                                  "coalesce(" + ", [" * 30_000 + ") == []", "coalesce(" + "a," * 50_000 + "[]) == []"])
+def test_a_long_adversarial_coalesce_is_judged_in_linear_time(expr):
+    import time
+
+    started = time.perf_counter()
+    try:
+        codemod.predicate(expr, [])
+    except codemod.Refused:
+        pass
+    assert time.perf_counter() - started < 1
+
+
+@pytest.mark.parametrize("expr", ["coalesce(a, [], []) == []", "coalesce(, []) == []", "coalesce([]) == []",
+                                  "coalesce(f(a), []) == []", "coalesce(a, b) == []"])
+def test_a_coalesce_that_is_not_paths_then_an_empty_list_is_refused(expr):
+    with pytest.raises(codemod.Refused):
+        codemod.predicate(expr, [])
+
+
 @pytest.mark.parametrize("expr", ["x != 1", "starts_with(reason, 'No')", "len(items) == 0", "a == b"])
 def test_an_expression_with_no_zero_diff_predicate_is_refused(expr):
     with pytest.raises(codemod.Refused):

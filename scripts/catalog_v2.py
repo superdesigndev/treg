@@ -84,19 +84,18 @@ def request_path(path: str) -> str:
 
 
 _LITERAL = re.compile(r"""^(?:'([^']*)'|"([^"]*)"|(-?\d+)|(-?\d+\.\d+)|(true|false))$""")
-_COALESCE = re.compile(r"^coalesce\(([^()]*),\s*\[\]\s*\)$")
 _PATH = re.compile(r"^(?:\.|(?:\[\d+\])?[A-Za-z_][\w-]*(?:\[\d+\])?(?:\.[A-Za-z_][\w-]*(?:\[\d+\])?)*|\[\d+\])$")
 
 
 def predicate(expr: str, warnings: list[str]) -> dict | list:
     """An adapter expression's v2 predicate, by the section 4.4 table."""
-    left, op, right = (part.strip() for part in re.split(r"\s*(==|!=)\s*", str(expr).strip(), maxsplit=1)) \
+    left, op, right = (part.strip() for part in re.split(r"(==|!=)", str(expr).strip(), maxsplit=1)) \
         if re.search(r"==|!=", str(expr)) else (str(expr), "", "")
     if op != "==":
         raise Refused(f"`{expr}` has no zero-diff predicate (the predicate has no negation or call)")
-    if (found := _COALESCE.match(left)) and right == "[]":
-        names = [name.strip() for name in found.group(1).split(",")]
-        if not all(_PATH.match(name) for name in names):
+    if left.startswith("coalesce(") and left.endswith(")") and right == "[]":
+        *names, last = (name.strip() for name in left[len("coalesce("):-1].split(","))
+        if last != "[]" or not names or not all(_PATH.match(name) for name in names):
             raise Refused(f"`{expr}` has no zero-diff predicate")
         warnings.append(f"`{expr}` becomes absent-or-empty, which also reads {{}} as a miss")
         return _coalesced([response_path(name) for name in names])
