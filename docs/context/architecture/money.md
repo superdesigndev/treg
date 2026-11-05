@@ -484,8 +484,10 @@ does not reverse it on its own: a refund revokes the unspent bonus in proportion
 
 **Reconciliation against Stripe** (`treg-worker billing reconcile`, `billing.reconcile_topups`). The
 webhook is the only door for a paid top-up, so a delivery that keeps failing is money paid and not
-credited, and nothing in the request path notices. The command lists every succeeded PaymentIntent
-created in `[now - grace - hours, now - grace)`, keeps the treg top-ups (the same `_topup_metadata`
+credited, and nothing in the request path notices. The command lists every PaymentIntent that
+succeeded in `[now - grace - hours, now - grace)`, by Stripe's `payment_intent.succeeded` events
+rather than creation time (a bank debit can succeed days after it was created; Stripe keeps events
+30 days), keeps the treg top-ups (the same `_topup_metadata`
 rule as the webhook, so invoice-paid automatic top-ups count) and reports each with no purchased block
 (`not_credited`), a block of another org or amount (`credited_differently`), or a top-up owed a
 bonus with no `topup_bonus` entry (`bonus_missing`). A payment of a team deleted since is skipped:

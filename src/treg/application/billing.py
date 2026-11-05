@@ -2200,16 +2200,17 @@ GAP_BONUS_MISSING = "bonus_missing"
 
 
 async def reconcile_topups(*, since: datetime, until: datetime) -> dict:
-    """Check every top-up Stripe collected in [since, until) (naive UTC) against the ledger. Read-only.
+    """Check every top-up that succeeded in [since, until) (naive UTC) against the ledger. Read-only.
 
     A gap is a paid top-up with no purchased block (`not_credited`), one credited to another org or
     amount (`credited_differently`), or a top-up owed a bonus that has none (`bonus_missing`). A
     payment of a team that has since been deleted is never a gap.
     """
     paid = await _succeeded_payment_intents(since, until)
+    succeeded_at = {pi["id"]: at for pi, at in paid}
     topups: list[tuple[dict, int, int, bool]] = []
     async with _db.session_maker() as db:
-        for pi in paid:
+        for pi, _ in paid:
             meta = await _topup_metadata(db, pi)
             org_id = _org_id_from({"metadata": meta})
             amount_micro = cents_to_micro(pi.get("amount_received") or 0)
@@ -2241,21 +2242,30 @@ async def reconcile_topups(*, since: datetime, until: datetime) -> dict:
         else:
             continue
         gaps.append({"gap": gap, "payment_intent": pi["id"], "org_id": org_id, "amount_micro": amount_micro,
-                     "auto": auto, "paid_at": datetime.fromtimestamp(pi["created"], timezone.utc).isoformat()})
+                     "auto": auto, "paid_at": datetime.fromtimestamp(succeeded_at[pi["id"]], timezone.utc).isoformat()})
     return {"since": since.isoformat(), "until": until.isoformat(), "topups": len(topups), "gaps": gaps}
 
 
-async def _succeeded_payment_intents(since: datetime, until: datetime) -> list[dict]:
+async def _succeeded_payment_intents(since: datetime, until: datetime) -> list[tuple[dict, int]]:
+    """Every PaymentIntent that succeeded in [since, until), with the time it succeeded.
+
+    Listed by Stripe's `payment_intent.succeeded` events rather than by the payment's creation time:
+    a delayed method (a bank debit) can succeed days after it was created, outside any window of
+    creation times. Stripe keeps events for 30 days, longer than any reconcile window."""
     window = {"gte": int(since.replace(tzinfo=timezone.utc).timestamp()),
               "lt": int(until.replace(tzinfo=timezone.utc).timestamp())}
-    found: list[dict] = []
+    found: dict[str, tuple[dict, int]] = {}
     after: dict = {}
     while True:
-        page = await _sdk(stripe_adapter.PAYMENT_INTENT_LIST, created=window, limit=100, **after)
+        page = await _sdk(stripe_adapter.EVENT_LIST, type="payment_intent.succeeded", created=window,
+                          limit=100, **after)
         data = page.get("data") or []
-        found += [pi for pi in data if pi.get("status") == "succeeded"]
+        for event in data:
+            pi = (event.get("data") or {}).get("object") or {}
+            if pi.get("id") and pi.get("status") == "succeeded":
+                found.setdefault(pi["id"], (pi, int(event.get("created") or 0)))
         if not page.get("has_more") or not data:
-            return found
+            return list(found.values())
         after = {"starting_after": data[-1]["id"]}
 
 

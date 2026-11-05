@@ -102,9 +102,19 @@ async def _schema_ok() -> None:
     """The worker's startup schema check, which a test database does not need to pass."""
 
 
+def _event(pi: dict, *, succeeded: int | None = None) -> dict:
+    return {"id": f"evt_{pi['id']}", "type": "payment_intent.succeeded",
+            "created": pi["created"] if succeeded is None else succeeded, "data": {"object": pi}}
+
+
 def _stripe_lists(*pages: list[dict]):
+    """Stripe's `payment_intent.succeeded` events, a page per list; a bare PaymentIntent is wrapped
+    in an event at its creation time."""
+    pages = tuple([item if item.get("object") != "payment_intent" else _event(item) for item in page]
+                  for page in pages)
+
     async def sdk(fn, /, **kw):
-        assert fn == "PaymentIntent.list", fn
+        assert fn == "Event.list" and kw["type"] == "payment_intent.succeeded", (fn, kw)
         index = 0 if "starting_after" not in kw else next(
             i + 1 for i, page in enumerate(pages) if page and page[-1]["id"] == kw["starting_after"])
         return {"data": pages[index], "has_more": index + 1 < len(pages)}
@@ -271,6 +281,18 @@ async def test_reconcile_ignores_a_paid_top_up_of_a_deleted_team(c, monkeypatch)
     until = datetime.now(timezone.utc).replace(tzinfo=None)
     report = await billing.reconcile_topups(since=until - timedelta(hours=48), until=until)
     assert report["gaps"] == []
+
+
+async def test_reconcile_finds_a_delayed_payment_by_when_it_succeeded(c, monkeypatch):
+    """A bank debit created days ago that succeeded an hour ago is in the window."""
+    org_id = await _org(c)
+    now = int(time.time())
+    delayed = _pi(org_id, "pi_ach", 10_000, created=now - 5 * 86_400)
+    monkeypatch.setattr(billing, "_sdk", _stripe_lists([_event(delayed, succeeded=now - 3600)]))
+    until = datetime.now(timezone.utc).replace(tzinfo=None)
+    report = await billing.reconcile_topups(since=until - timedelta(hours=48), until=until)
+    assert [(g["gap"], g["payment_intent"]) for g in report["gaps"]] == [
+        (billing.GAP_NOT_CREDITED, "pi_ach")]
 
 
 async def test_reconcile_flags_a_payment_credited_for_another_amount(c, monkeypatch):
