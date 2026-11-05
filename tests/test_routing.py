@@ -2046,18 +2046,24 @@ def test_a_per_success_endpoint_with_no_adapter_settles_on_the_providers_own_suc
     caller."""
     from test_marketplace_call import _mk
     from treg.application.call import settle as A
+    from treg.application.call.resolve import QueryValues
+    from treg.application.replay.engine import platform_call
     cat = catalog_store.load()
     eid = "justoneapi.x.linkedin-search-user-v1"
     ep = cat.by_id[eid]
     assert (ep.get("cost") or {}).get("type") == "per_success" and cat.adapters.get(eid) is None, \
         "the shape this rule exists for: priced per success, no adapter to ask"
-    assert ep.get("expect") == {"json_path": "code", "equals": 0}, "the loader must carry the rule"
+    assert ep.get("expect") == {"path": "response.code", "op": "equals", "value": 0}, \
+        "the row inherits its provider's rule"
 
-    mk = _mk("justoneapi", endpoint_id=eid, cost_type="per_success")
+    mk = platform_call(ep, QueryValues(()), b"", set(), routed_child=False)
     fail = b'{"code": 301, "data": null, "message": "COLLECT FAILED, SEND REQUEST AGAIN"}'
-    assert A._observed_cost_micro(mk, fail) == 0, "a vendor-side failure the vendor does not bill"
+    decision = A.decide_settle(mk, 200, fail)
+    assert (decision.observed_micro, decision.actual_micro) == (0, 0), \
+        "a vendor-side failure the vendor does not bill"
     ok = b'{"code": 0, "data": {"users": [{"name": "Ada"}]}}'
-    assert A._observed_cost_micro(mk, ok) is None, "a real hit still settles at the estimate"
+    assert A.decide_settle(mk, 200, ok).actual_micro == mk.estimate_micro > 0, \
+        "a real hit still settles at the estimate"
 
     # a nested rule form (dataforseo's task envelope) reads the same way
     dfs = [e for e in cat.by_id.values()

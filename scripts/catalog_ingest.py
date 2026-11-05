@@ -1035,6 +1035,10 @@ JOA_PLATFORM = {
 }
 
 
+def _money(value: float) -> str:
+    return format(Decimal(str(value)).normalize(), "f")
+
+
 def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
     sitemap = fetch("https://docs.justoneapi.com/en/sitemap.xml", "justoneapi_sitemap.xml",
                     refresh=refresh).decode()
@@ -1086,7 +1090,6 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
                 summary = re.split(r"(?<=[.!?])\s+", desc)[0] if desc else spec["info"].get("title", rel)
                 entry = {
                     "id": slug_id("justoneapi", path.replace("/api/", "")),
-                    "tier": "extended",
                     "platform": platform,
                     "method": method,
                     "path": path,
@@ -1099,10 +1102,13 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
                                    summary)
                 if title:
                     entry["name"] = title
+                # The provenance and the success rule are the `defaults:` of justoneapi.yaml.
                 price = joa_prices.get(path)
                 if price is not None:
-                    entry["cost"] = {"type": "per_success", "value": price, "currency": "CNY",
-                                     "note": "billed only on success (code 0); errors free"}
+                    entry["price"] = {"value": _money(price), "currency": "CNY", "per": 1, "unit": "call",
+                                      "note": "billed only on success (code 0); errors free"}
+                else:
+                    entry["provenance"] = None
                 endpoints.append(entry)
 
     source = {
@@ -1143,10 +1149,6 @@ def core_body_models(provider: str, method: str, path: str) -> set[str]:
         if len(values) == 1:
             models.add(str(values[0]))
     return models
-
-
-def _money(value: float) -> str:
-    return format(Decimal(str(value)).normalize(), "f")
 
 
 def _openrouter_price(model: dict) -> dict:
