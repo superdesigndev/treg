@@ -128,6 +128,11 @@ class Contract:
     # people search can answer a `{title}` request). A provider that can take the caller's own
     # fields never sees it, so its request is unchanged.
     stand_in: dict[str, str] = field(default_factory=dict)
+    # Optional per-identity-key catalog note / example on the generated `treg.<capability>` row.
+    # Replaces the one-word `identity` note and the shared placeholder example when set — used where
+    # a child's required format (e.g. Reddit `t3_` fullname) is not obvious from the key name alone.
+    identity_notes: dict[str, str] = field(default_factory=dict)
+    identity_examples: dict[str, object] = field(default_factory=dict)
 
     def prefer_for(self, given) -> tuple[str, ...]:
         """The default provider order for a caller who sent the identity keys `given`."""
@@ -301,7 +306,7 @@ CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
     "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "prefer", "prefer_by_domain_suffix", "check", "confirm",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
-    "prefer_when"})
+    "prefer_when", "identity_notes", "identity_examples"})
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "body_array", "test_identity", "cost_units", "max",
     "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row"})
@@ -340,6 +345,12 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
                 types.update({k: str(t) for k, t in v.items()})
         if stray := sorted(set(c.get("stand_in") or {}) - set(types)):
             raise ValueError(f"contract {cap}: stand_in must name identity keys, got {stray}")
+        identity_notes = {str(k): str(v) for k, v in (c.get("identity_notes") or {}).items()}
+        identity_examples = dict(c.get("identity_examples") or {})
+        if stray := sorted(set(identity_notes) - set(types)):
+            raise ValueError(f"contract {cap}: identity_notes must name identity keys, got {stray}")
+        if stray := sorted(set(identity_examples) - set(types)):
+            raise ValueError(f"contract {cap}: identity_examples must name identity keys, got {stray}")
         scoping = c.get("scoping") or []
         if not isinstance(scoping, list) or any(k not in types for k in scoping):
             # A typo'd key would silently scope nothing; failing the routing load instead makes
@@ -355,7 +366,8 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
                                      f"(filters: value or skip), got {mode!r}")
         out[cap] = Contract(
             capability=cap, summary=str(c.get("summary") or ""), identity=_variants(c.get("identity")),
-            identity_types=types, derive=dict(c.get("derive") or {}),
+            identity_types=types, identity_notes=identity_notes, identity_examples=identity_examples,
+            derive=dict(c.get("derive") or {}),
             filters={k: (v if isinstance(v, dict) else {"type": str(v)}) for k, v in (c.get("filters") or {}).items()},
             output={k: (v if isinstance(v, dict) else {"type": str(v)}) for k, v in (c.get("output") or {}).items()},
             miss=str(c.get("miss") or ""), idempotent=bool(c.get("idempotent", True)),

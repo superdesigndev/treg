@@ -1103,6 +1103,10 @@ contracts:
     summary: "One Reddit post by its t3_ id — the provider's own post object in `post`"
     identity:
       - {post_id: str}
+    identity_notes:
+      post_id: "Reddit fullname — t3_ prefix required (e.g. t3_1ojnh50); a bare id 422s on tikhub and typically misses on justoneapi"
+    identity_examples:
+      post_id: t3_1ojnh50
     filters: {}
     output:
       post: {type: object, required: true}
