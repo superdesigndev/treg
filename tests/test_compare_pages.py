@@ -115,9 +115,9 @@ async def test_every_comparison_shares_its_own_image(clients: AsyncClient):
 
 
 async def test_footers_name_the_same_comparisons(clients: AsyncClient):
-    """The Compare column: the shared footer builds it from cp.FOOTER; three pages write it by hand."""
+    """The Compare column: the shared footer builds it from cp.FOOTER; the hand-written footers list the same."""
     want = [f"/compare/{cp.page_slug(k)}" for k in cp.FOOTER] + ["/compare"]
-    for path in ["/", "/rankings", "/showcase", "/pricing"]:
+    for path in ["/", "/rankings", "/showcase", "/pricing", "/grokbot", "/people-search", "/gtm-engineering", "/aeo"]:
         html = (await clients.get(path)).text
         col = html.split('<div class="lab">Compare</div>', 1)[1].split("</div>", 1)[0]
         assert re.findall(r'href="([^"]+)"', col) == want, path
