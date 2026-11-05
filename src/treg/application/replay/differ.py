@@ -73,6 +73,8 @@ def _value(item: object) -> object:
 
 
 def _kind(value: object) -> object:
+    # Declarations are hand-written YAML integers while replayed JSON money fields can arrive as
+    # floats, so an int and a float compare by value; bool, None and str stay strictly distinct.
     return "number" if isinstance(value, (int, float)) and not isinstance(value, bool) else type(value)
 
 
