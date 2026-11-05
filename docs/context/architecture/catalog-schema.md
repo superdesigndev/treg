@@ -100,14 +100,15 @@ null list stays a hit), and `coalesce(a, b, []) == []`, whose coalesce skips nul
 is one absent-or-empty rule per path. A per_success row with an `expect` keeps its error envelope
 out of the `error` rule: today its failed `expect` is free while an envelope is charged unless it
 misses, which one `bill.error` cannot say, so billing and routing read the envelope by the miss rule
-and stats stop calling it an error. Dry-run (the default) prints each rewrite, warns where it reads
+and stats and archive admission stop calling it an error. Dry-run (the default) prints each rewrite, warns where it reads
 an answer shape differently, and lists the rows it cannot rewrite with the reason (a provider
 decided in Python, a single-provider cost key, a guessed hold, a fallback beside a different
 `value`, a replaced key that defines a YAML anchor another row aliases); every rewritten row it
 prints parses whole. A provider whose header declares `defaults:` is rewritten against them: a key
 equal to its default is left out, one the row lacks is written as `null`, an `expect` the row does
 not declare is inherited (the batch moves the header's `expect` there), `async: false` becomes
-`async: null` beside an `async` default and goes without one, and a `bill` default, the batch's
+`async: null` beside an `async` default and goes without one when neither the header nor the defaults
+declare `async` (beside a header `async` block alone the row is refused), and a `bill` default, the batch's
 translation of the Python branch it deletes, is inherited whole. A fallback equal to its row's
 `value` is dropped, since v2 keeps a fallback only beside a table, and its note joins
 `price.note`. An unpriced row only opts out of the price defaults, and its outcome keys move to v2

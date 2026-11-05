@@ -187,7 +187,7 @@ def _price(cost: dict, warnings: list[str]) -> dict:
     return out
 
 
-def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
+def rewrite(row: dict, *, provider: str, header_expect: dict | None = None, header_async: dict | None = None,
             adapter: dict | None = None, check_branches: bool = True, defaults: dict | None = None) -> Rewrite:
     """The v2 keys for one row in today's spelling. Raises Refused when there is no rewrite that
     keeps today's behavior."""
@@ -239,8 +239,8 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
         # adapter reads it as a miss. One `bill.error` cannot say both, so the envelope stays out of
         # the error rule: billing and routing read it as today, by the miss rule.
         out.warnings.append("the error envelope is not an error rule (a failed expect is free, an "
-                            "envelope is charged unless it misses); stats stop calling a truthy "
-                            "`error` or `errors` an error")
+                            "envelope is charged unless it misses); stats and archive admission "
+                            "stop calling a truthy `error` or `errors` an error")
     elif adapter_miss:
         # Today's result judge calls a 2xx carrying `error` or `errors` an error on this row; billing
         # charges it unless the adapter reads it as a miss.
@@ -276,6 +276,9 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
     if row.get("async") is False and "async" in (defaults or {}):
         # today's opt-out of the header's async block; v2 opts out of the default with null
         keys["async"] = None
+    elif row.get("async") is False and header_async is not None:
+        raise Refused("its async: false opts out of the header's async block; the batch moves that block "
+                      "into defaults")
     label = cost_type(keys.get("price"), keys.get("reserve"), keys.get("settle"), bill)
     if label != kind:
         out.warnings.append(f"the views will label it {label}; today they say {kind}")
@@ -546,7 +549,7 @@ def main(argv: list[str]) -> int:
                 continue
             try:
                 change = rewrite(row, provider=provider, header_expect=doc.get("expect"),
-                                 adapter=adapters.get(row["id"]), defaults=defaults.get(provider))
+                                 header_async=doc.get("async"), adapter=adapters.get(row["id"]), defaults=defaults.get(provider))
             except Refused as exc:
                 refused.append((row["id"], str(exc)))
                 continue

@@ -120,7 +120,7 @@ def test_a_per_success_row_with_an_expect_keeps_its_error_envelope_out_of_the_er
     assert "error" not in change.keys and "bill" not in change.keys
     assert change.keys["expect"] == {"path": "response.base.code", "op": "equals", "value": 0}
     assert change.replaced == ("cost", "expect") and change.adapter_miss and _v2(change)
-    assert any("stats stop calling a truthy `error`" in w for w in change.warnings)
+    assert any("stats and archive admission stop calling a truthy `error`" in w for w in change.warnings)
 
 
 @pytest.mark.parametrize("spec", [{"type": "string"}, {"type": "array[string]"}])
@@ -269,6 +269,12 @@ def test_an_async_opt_out_becomes_null_beside_an_async_default_and_goes_without_
     assert beside.keys["async"] is None and "async" in beside.replaced
     alone = codemod.rewrite(row, provider="demo", check_branches=False)
     assert "async" not in alone.keys and "async" in alone.replaced
+
+
+def test_an_async_opt_out_of_a_header_block_without_an_async_default_is_refused():
+    row = {"id": "demo.x", "async": False, "cost": {"type": "free"}}
+    with pytest.raises(codemod.Refused, match="opts out of the header's async block"):
+        codemod.rewrite(row, provider="demo", check_branches=False, header_async={"id_from": "id"})
 
 
 def test_a_fallback_beside_its_equal_value_folds_its_note_into_the_price():
