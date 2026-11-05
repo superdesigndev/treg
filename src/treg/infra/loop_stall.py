@@ -1,20 +1,25 @@
 """Name the code that holds a process's event loop when it stops running for seconds.
 
-The loop only stamps a heartbeat; it never logs, writes or waits for this diagnostic. A daemon
-thread reads the stamp: once it is `STALL_SECONDS` old, the thread logs `loop_stall` with the
-loop thread's stack, and when the loop beats again it logs `loop_stall_end` with the whole gap,
-both measured from the same last beat. A Python thread cannot run while C code holds the GIL, so
-when the watcher itself woke that late its stack would show where the loop went next, not what
-held it: the line then says `stack_reliable: false`.
+The loop only stamps a heartbeat and, when a beat comes `STALL_SECONDS` or more after the one
+before, appends that gap to a bounded queue; it never logs, writes or waits for this diagnostic.
+Every such gap becomes one `loop_stall_end` line, measured on the loop's own clock, so a stall is
+reported even when nothing caught it in progress. A daemon thread reads the stamp: once it is
+`STALL_SECONDS` old, the thread also writes `loop_stall` with the loop thread's stack.
 
+A Python thread cannot run while C code holds the GIL. When the watcher woke later than its own
+schedule allows, its stack may show where the loop went next rather than what held it, and the
+line says `stack_reliable: false`.
+
+Lines go straight to the process's stderr descriptor, never through `logging`: a full pipe blocks
+only the watcher thread and takes no lock that request logging or interpreter shutdown needs.
 Never raises into the service: a diagnostic that cannot start leaves the service as it was.
 """
 
 from __future__ import annotations
 
 import asyncio
+import collections
 import json
-import logging
 import os
 import sys
 import threading
@@ -22,16 +27,22 @@ import time
 import traceback
 
 STALL_SECONDS = 5.0
-HEARTBEAT_SECONDS = 1.0
+HEARTBEAT_SECONDS = 0.25
 _STACK_FRAMES = 40
-log = logging.getLogger("treg.loop_stall")
+_ENDS_KEPT = 64
+# A pipe write of at most PIPE_BUF bytes is not interleaved with other writers (POSIX).
+_LINE_BYTES = 4096
 
 
 class LoopStallWatch:
-    def __init__(self, *, stall_s: float = STALL_SECONDS, heartbeat_s: float = HEARTBEAT_SECONDS) -> None:
+    def __init__(self, *, stall_s: float = STALL_SECONDS, heartbeat_s: float = HEARTBEAT_SECONDS,
+                 out_fd: int = 2) -> None:
         self.stall_s = stall_s
         self.heartbeat_s = heartbeat_s
+        self.late_tolerance_s = stall_s / 5
+        self.out_fd = out_fd
         self._beat = 0.0
+        self._ends: collections.deque[float] = collections.deque(maxlen=_ENDS_KEPT)
         self._loop_thread = 0
         self._task: asyncio.Task | None = None
         self._stop = threading.Event()
@@ -40,43 +51,51 @@ class LoopStallWatch:
         if self._task is None:
             self._loop_thread = threading.get_ident()
             self._beat = time.monotonic()
-            self._task = asyncio.create_task(self._heartbeat(), name="treg-loop-stall-heartbeat")
             threading.Thread(target=self._watch, name="treg-loop-stall-watch", daemon=True).start()
+            try:
+                self._task = asyncio.create_task(self._heartbeat(), name="treg-loop-stall-heartbeat")
+            except BaseException:
+                self._stop.set()
+                raise
         return self
 
     async def _heartbeat(self) -> None:
         while True:
-            self._beat = time.monotonic()
+            now = time.monotonic()
+            if now - self._beat >= self.stall_s:
+                self._ends.append(now - self._beat)
+            self._beat = now
             await asyncio.sleep(self.heartbeat_s)
 
     def _watch(self) -> None:
         reported_beat = None
-        woke = time.monotonic()
-        while not self._stop.wait(self.heartbeat_s):
+        while True:
+            slept_from = time.monotonic()
+            if self._stop.wait(self.heartbeat_s):
+                return
             now = time.monotonic()
-            watcher_late = now - woke - self.heartbeat_s
-            woke = now
+            late = now - slept_from - self.heartbeat_s
             beat = self._beat
-            if reported_beat is not None:
-                if beat != reported_beat:
-                    self._emit("loop_stall_end", stalled_s=beat - reported_beat)
-                    reported_beat = None
-                continue
-            gap = now - beat
-            if gap >= self.stall_s:
-                reported_beat = beat
+            if beat != reported_beat and now - beat >= self.stall_s:
                 frame = sys._current_frames().get(self._loop_thread)
-                self._emit("loop_stall", stalled_s=gap, stack_reliable=watcher_late < self.stall_s,
-                           stack=traceback.format_stack(frame)[-_STACK_FRAMES:] if frame else [])
-            elif watcher_late >= self.stall_s:
-                # The whole process was held and the loop is already back: a gap, no stack.
-                self._emit("loop_stall", stalled_s=watcher_late, stack_reliable=False, stack=[])
+                if self._beat == beat:
+                    reported_beat = beat
+                    self._emit("loop_stall", stalled_s=now - beat,
+                               stack_reliable=late < self.late_tolerance_s,
+                               stack=traceback.format_stack(frame)[-_STACK_FRAMES:] if frame else [])
+            while self._ends:
+                self._emit("loop_stall_end", stalled_s=self._ends.popleft())
 
     def _emit(self, event: str, **fields) -> None:
         try:
-            log.warning("%s %s", event, json.dumps(
-                {"event": event, "worker_pid": os.getpid(), **fields,
-                 "stalled_s": round(fields["stalled_s"], 3)}, separators=(",", ":")))
+            fields = {"event": event, "worker_pid": os.getpid(), **fields,
+                      "stalled_s": round(fields["stalled_s"], 3)}
+            while True:
+                line = f"{event} {json.dumps(fields, separators=(',', ':'))}\n".encode()
+                if len(line) <= _LINE_BYTES or not fields.get("stack"):
+                    break
+                fields["stack"] = fields["stack"][1:]
+            os.write(self.out_fd, line[:_LINE_BYTES])
         except Exception:  # noqa: BLE001 - see the module docstring
             pass
 

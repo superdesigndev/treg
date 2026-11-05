@@ -1,13 +1,17 @@
-"""A loop that stops running for seconds is named by its stack, and the watch never holds the loop."""
+"""A loop that stops running for seconds is reported, named by its stack, and never held by the watch."""
 
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import json
-import logging
+import os
 import threading
 import time
 
+import pytest
+
+from treg.infra import loop_stall
 from treg.infra.loop_stall import LoopStallWatch
 
 
@@ -15,53 +19,98 @@ def _hold_the_loop(seconds: float) -> None:
     time.sleep(seconds)
 
 
-def _events(caplog) -> list[dict]:
-    return [json.loads(record.getMessage().split(" ", 1)[1]) for record in caplog.records
-            if record.name == "treg.loop_stall"]
+def _hold_the_gil(seconds: float) -> None:
+    ctypes.PyDLL(None).usleep(int(seconds * 1_000_000))
 
 
-async def test_a_stall_logs_the_holding_stack_and_then_the_whole_gap(caplog):
-    caplog.set_level(logging.WARNING, logger="treg.loop_stall")
-    watch = LoopStallWatch(stall_s=0.3, heartbeat_s=0.05).start()
-    await asyncio.sleep(0.1)
-    _hold_the_loop(0.8)
-    for _ in range(100):
-        if len(_events(caplog)) == 2:
-            break
+@pytest.fixture
+def out():
+    read_fd, write_fd = os.pipe()
+    os.set_blocking(read_fd, False)
+    buffer = bytearray()
+
+    def events() -> list[dict]:
+        while True:
+            try:
+                chunk = os.read(read_fd, 65536)
+            except BlockingIOError:
+                break
+            if not chunk:
+                break
+            buffer.extend(chunk)
+        return [json.loads(line.split(" ", 1)[1]) for line in buffer.decode().splitlines()]
+
+    yield write_fd, events
+    os.close(read_fd)
+    os.close(write_fd)
+
+
+async def _until(events, done) -> list[dict]:
+    for _ in range(150):
+        if done(seen := events()):
+            return seen
         await asyncio.sleep(0.02)
+    return events()
+
+
+def _ended(seen: list[dict]) -> bool:
+    return any(e["event"] == "loop_stall_end" for e in seen)
+
+
+async def test_a_stall_logs_the_holding_stack_and_then_the_whole_gap(out):
+    out_fd, events = out
+    watch = LoopStallWatch(stall_s=0.5, heartbeat_s=0.05, out_fd=out_fd).start()
+    await asyncio.sleep(0.1)
+    _hold_the_loop(0.9)
+    seen = await _until(events, _ended)
     await watch.stop()
-    stall, end = _events(caplog)
-    assert stall["event"] == "loop_stall" and stall["stalled_s"] >= 0.3
+    stall, end = seen
+    assert stall["event"] == "loop_stall" and stall["stalled_s"] >= 0.5 and stall["stack_reliable"]
     assert any("_hold_the_loop" in line for line in stall["stack"])
-    assert end["event"] == "loop_stall_end" and end["stalled_s"] >= 0.8
+    assert end["event"] == "loop_stall_end" and end["stalled_s"] >= 0.9
 
 
-async def test_a_blocked_log_handler_never_holds_the_loop(caplog):
-    caplog.set_level(logging.WARNING, logger="treg.loop_stall")
-    release = threading.Event()
+async def test_a_stall_the_watcher_could_not_see_is_still_reported_without_vouching_for_a_stack(out):
+    out_fd, events = out
+    watch = LoopStallWatch(stall_s=0.5, heartbeat_s=0.05, out_fd=out_fd).start()
+    await asyncio.sleep(0.1)
+    _hold_the_gil(0.9)
+    seen = await _until(events, _ended)
+    await watch.stop()
+    assert [e["stalled_s"] >= 0.9 for e in seen if e["event"] == "loop_stall_end"] == [True]
+    assert all(not e["stack_reliable"] for e in seen if e["event"] == "loop_stall")
 
-    class Stuck(logging.Handler):
-        def emit(self, record):
-            release.wait(5)
 
-    stuck = Stuck()
-    logging.getLogger("treg.loop_stall").addHandler(stuck)
+async def test_a_full_output_never_holds_the_loop_or_its_stop(out):
+    out_fd, _ = out
+    os.set_blocking(out_fd, False)
     try:
-        watch = LoopStallWatch(stall_s=0.2, heartbeat_s=0.02).start()
-        await asyncio.sleep(0.05)
-        _hold_the_loop(0.3)
-        started = time.monotonic()
-        await asyncio.sleep(0.05)
-        await watch.stop()
-        assert time.monotonic() - started < 0.2
-    finally:
-        release.set()
-        logging.getLogger("treg.loop_stall").removeHandler(stuck)
+        while True:
+            os.write(out_fd, b"x" * 4096)
+    except BlockingIOError:
+        os.set_blocking(out_fd, True)
+    watch = LoopStallWatch(stall_s=0.2, heartbeat_s=0.02, out_fd=out_fd).start()
+    await asyncio.sleep(0.05)
+    _hold_the_loop(0.3)
+    await asyncio.sleep(0.1)
+    started = time.monotonic()
+    await asyncio.sleep(0.05)
+    await watch.stop()
+    assert time.monotonic() - started < 0.2
 
 
-async def test_a_running_loop_logs_nothing(caplog):
-    caplog.set_level(logging.WARNING, logger="treg.loop_stall")
-    watch = LoopStallWatch(stall_s=0.3, heartbeat_s=0.05).start()
+async def test_a_running_loop_logs_nothing(out):
+    out_fd, events = out
+    watch = LoopStallWatch(stall_s=0.3, heartbeat_s=0.05, out_fd=out_fd).start()
     await asyncio.sleep(0.5)
     await watch.stop()
-    assert not _events(caplog)
+    assert not events()
+
+
+async def test_a_watch_that_cannot_start_leaves_no_heartbeat_behind(monkeypatch):
+    def refuse(self):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(threading.Thread, "start", refuse)
+    assert loop_stall.start_loop_stall_watch() is None
+    assert not [t for t in asyncio.all_tasks() if t.get_name() == "treg-loop-stall-heartbeat"]
