@@ -2692,7 +2692,7 @@ COMPETITORS: dict[str, dict] = {
 
 # The day the pages' copy last changed (titles, FAQ, layout). Move it with every copy change and
 # set it to the launch day when a change ships; facts keep their own `checked` day.
-UPDATED = "2026-11-05"
+UPDATED = "2026-11-06"
 
 # The comparisons a site footer names, by search demand; the hand-written footers (landing, rankings,
 # showcase, grokbot, people-search, gtm-engineering, aeo) list the same ones

@@ -161,11 +161,22 @@ _OG_DEFAULT_ALT = "treg.to: one key for the whole tool catalog, priced per call"
 def og_image(base: str, path: str, alt: str = "") -> tuple[str, str]:
     """The page's share image and its alt text: its own card when `scripts/og_images.py` wrote
     `media/og/<path>.jpg`, else the site-wide `/media/og.png`."""
-    if re.fullmatch(r"/[a-z0-9/-]*", path) and ".." not in path:
-        rel = "og/" + (path.strip("/") or "index") + ".jpg"
-        if (_MEDIA_DIR / rel).is_file():
-            return f"{base}/media/{rel}", alt or _OG_DEFAULT_ALT
+    rel = _og_cards().get(path.rstrip("/") or "/")
+    if rel:
+        return f"{base}/media/{rel}", alt or _OG_DEFAULT_ALT
     return f"{base}/media/og.png", _OG_DEFAULT_ALT
+
+
+@lru_cache(maxsize=1)
+def _og_cards() -> dict[str, str]:
+    """Page path -> `og/<path>.jpg` for every card on disk. The lookup never builds a file path
+    from the request."""
+    root = _MEDIA_DIR / "og"
+    cards = {}
+    for f in sorted(root.rglob("*.jpg")) if root.is_dir() else ():
+        page = f.relative_to(root).with_suffix("").as_posix()
+        cards["/" if page == "index" else "/" + page] = "og/" + f.relative_to(root).as_posix()
+    return cards
 
 
 def _page(title: str, description: str, path: str, body: str, ld: list[dict],
