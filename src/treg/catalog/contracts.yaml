@@ -38,6 +38,10 @@ contracts:
     miss: "email == null"
     idempotent: true            # a lookup — error-fallback to the next provider is safe
     one_subject: true           # every variant names one person: cost per hit ranks first
+    # Enrow first where its coverage of French and German company domains leads the other finders.
+    prefer_by_domain_suffix:
+      fr: [enrow]
+      de: [enrow]
     # The provider's own claim, stored per call; a finder with no `verified` output stores none.
     verdict: {from: verified, words: [verified, unverified], map: {true: verified, false: unverified}}
     # Attached as `_treg.advice` when a hit's `verified` is not true. A find is a guess the provider
@@ -352,6 +356,11 @@ contracts:
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
     scoping: [company_domain, title, full_name]   # a child that cannot send one of these answers a different question
+    # A free-text provider (exa, parallel) takes only {q}; without this a {title} request never
+    # reaches it. Built only for a provider that accepts none of the caller's fields. No keywords:
+    # those adapters append them to q themselves. No domain: a text match cannot scope by
+    # company, so a {company_domain} request still skips it.
+    stand_in: {q: "join(full_name, title, location)"}
     output:
       people: {type: list, required: true, note: "one row per person, in the row shape below; the provider's own rows are in raw"}
       count: {type: int}
@@ -374,6 +383,11 @@ contracts:
     miss: "people == []"
     idempotent: true
     prefer: [crawl4ai]
+    # A free-text `q` is a semantic question: ask the semantic searches first.
+    prefer_when:
+      - {sent: [q], prefer: [exa, parallel, crawl4ai]}
+    # A free-text `q` asks for everyone who fits: the caller's `limit` is the row count to reach.
+    fill_limit_when: [[q]]
     # Search rows are directory listings. An email in a row is found, not confirmed deliverable,
     # unless that row's own verification field says so — a team that mailed Hunter domain-search
     # rows unverified (`verification: null`, confidence 10) bounced on 73 of 79 addresses that one

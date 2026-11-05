@@ -80,8 +80,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    Authorized free final fetches needing no body evidence stream in full.
    `/table/` runs the same call through the same road and returns it as rows and columns; it never
    changes what `/call/` returns (docs/context/architecture/table.md).
-5. Balances change only through money's five entries: grant, topup, reserve, settle, release.
-   There is deliberately no refund or adjustment entry; an ops correction is a grant.
+5. Balances change only through money's six entries: grant, topup, reserve, settle, release,
+   revoke. `revoke` only takes back the unspent credit of one top-up Stripe refunded (and its
+   bonus, in proportion), never another payment's block and never below the unheld balance.
+   There is no adjustment entry; an ops correction is a grant.
 
 **Changing any invariant in this file means editing this file in the same PR.** Routed endpoints
 and overflow once shipped with every other doc updated while this file still said "no router";

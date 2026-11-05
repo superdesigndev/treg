@@ -1158,6 +1158,8 @@ BALANCE_ROUTES = {
 # has a list of what to re-check.
 NO_BALANCE_API = {
     "docuqueue": "no balance endpoint (checked docuqueue.com/redoc-assets/openapi.json 2026-11-03 — GET /api/v1/credits answers 404); billed responses carry credits_remaining and the pack balance is visible in the dashboard",
+    "corpoapi": "GET /v1/usage returns usage totals; the published docs name no remaining-balance "
+                "field; the prepaid USD balance is visible in the Corpo API dashboard",
     "bravesearch": "no API-key-readable balance or usage endpoint in Brave's Search API; prepaid credits and usage are visible in its dashboard",
     "quickenrich": "no balance endpoint, and no response carries the allowance any more: a free "
                    "Contact Finder miss or hit and a billed employee search all return a meta without "

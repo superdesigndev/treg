@@ -4,7 +4,7 @@ source:
   openapi: https://api.leadocean.io/openapi.json
   curated: '2026-11-03'
 pricing_url: https://leadocean.io/pricing
-limits: "25 requests per second; search and enrichment also have account-specific rolling record allowances."
+limits: "Shared account limit: 200 requests per second; search and enrichment also have rolling record allowances."
 cache: forbidden
 endpoints:
   - id: leadocean.people.enrich
@@ -29,7 +29,7 @@ endpoints:
     test_request: {body: {linkedin_url: 'https://www.linkedin.com/in/routing-fixture'}}
     example_response: examples/leadocean.people.enrich.json
     miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
-    cost: &free {type: free, value: 0, currency: USD, unit: call, source: observed, checked: '2026-11-03', confidence: verified, note: 'Treg charges zero; LeadOcean meters matched search/enrichment records on its account. Count requests used no records in live verification.'}
+    cost: &enrich_cost {type: per_success, value: 0.005, currency: USD, unit: call, source: inferred, source_url: 'https://leadocean.io/pricing', checked: '2026-11-05', confidence: documented, note: 'Treg-set price per successful enrichment call, derived from the published monthly plan; LeadOcean does not charge per call. A 404 is free.'}
     verified: '2026-11-03'
     added: '2026-11-03'
     docs_url: https://leadocean.io/docs/enrich
@@ -52,7 +52,7 @@ endpoints:
     test_request: {body: {domain: stripe.com}}
     example_response: examples/leadocean.companies.enrich.json
     miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
-    cost: *free
+    cost: *enrich_cost
     verified: '2026-11-03'
     added: '2026-11-03'
     docs_url: https://leadocean.io/docs/company
@@ -75,11 +75,23 @@ endpoints:
         emailStatus: {type: string, required: false}
         emailType: {type: string, required: false}
         cursor: {type: string, required: false}
-        limit: {type: integer, required: false, default: 25, min: 1, max: 100}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100, note: "On treg's shared key, send an explicit limit from 1 to 10. Your own key keeps LeadOcean's 1-100 range."}
       note: Each returned record consumes search allowance; an empty result consumed none in live verification.
     test_request: {queryParams: {domain: stripe.com, limit: 1}}
     example_response: examples/leadocean.people.search.json
-    cost: *free
+    cost: &search_cost
+      type: per_result
+      value: 0.001
+      currency: USD
+      per: 1
+      unit: record
+      reserve: {rows: {param: queryParams.limit, default: {value: 25, source: docs}, max: 100}}
+      settle: {count: {path: data}}
+      source: inferred
+      source_url: https://leadocean.io/pricing
+      checked: '2026-11-05'
+      confidence: documented
+      note: 'Treg-set price per returned search record, derived from the published monthly plan; empty pages are free. LeadOcean does not charge per record.'
     verified: '2026-11-03'
     added: '2026-11-03'
     docs_url: https://leadocean.io/docs/search
@@ -103,7 +115,7 @@ endpoints:
         limit: {type: integer, required: false, default: 25, min: 1, max: 100}
     test_request: {queryParams: {domain: stripe.com, limit: 1}}
     example_response: examples/leadocean.companies.search.json
-    cost: *free
+    cost: *search_cost
     verified: '2026-11-03'
     added: '2026-11-03'
     docs_url: https://leadocean.io/docs/search
@@ -128,7 +140,7 @@ endpoints:
       note: Pass count=true; the count is in meta.total.
     test_request: {queryParams: {domain: stripe.com, count: true, limit: 1}}
     example_response: examples/leadocean.people.search.count.json
-    cost: *free
+    cost: &count_cost {type: per_success, value: 0.0001, currency: USD, unit: call, source: inferred, source_url: 'https://leadocean.io/pricing', checked: '2026-11-05', confidence: documented, note: 'Treg-set price per successful count; LeadOcean does not count these against its record allowance.'}
     verified: '2026-11-03'
     added: '2026-11-03'
     docs_url: https://leadocean.io/docs/search
@@ -150,7 +162,7 @@ endpoints:
         hqCountry: {type: string, required: false}
     test_request: {queryParams: {domain: stripe.com}}
     example_response: examples/leadocean.companies.count.json
-    cost: *free
+    cost: *count_cost
     verified: '2026-11-03'
     added: '2026-11-03'
     docs_url: https://leadocean.io/docs/search
@@ -172,7 +184,7 @@ endpoints:
     test_request: {queryParams: {linkedin_url: 'https://www.linkedin.com/in/routing-fixture'}}
     example_response: examples/leadocean.people.email.find.work.json
     miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
-    cost: *free
+    cost: *enrich_cost
     verified: '2026-11-03'
     added: '2026-11-03'
     docs_url: https://leadocean.io/docs/contact
@@ -194,7 +206,7 @@ endpoints:
     test_request: {queryParams: {linkedin_url: 'https://www.linkedin.com/in/routing-fixture'}}
     example_response: examples/leadocean.people.email.find.personal.json
     miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
-    cost: *free
+    cost: *enrich_cost
     verified: '2026-11-03'
     added: '2026-11-03'
     docs_url: https://leadocean.io/docs/contact
@@ -215,7 +227,7 @@ endpoints:
     test_request: {queryParams: {linkedin_url: 'https://www.linkedin.com/in/routing-fixture'}}
     example_response: examples/leadocean.people.phone.find.json
     miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
-    cost: *free
+    cost: *enrich_cost
     verified: '2026-11-03'
     added: '2026-11-03'
     docs_url: https://leadocean.io/docs/contact
@@ -236,7 +248,7 @@ endpoints:
     test_request: {queryParams: {email: jane@example.com}}
     example_response: examples/leadocean.people.reverse.json
     miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
-    cost: *free
+    cost: *enrich_cost
     verified: '2026-11-03'
     added: '2026-11-03'
     docs_url: https://leadocean.io/docs/contact
@@ -258,7 +270,7 @@ endpoints:
     test_request: {pathParams: {domain: stripe.com}, queryParams: {limit: 1}}
     example_response: examples/leadocean.companies.people.json
     miss: {status: 404, means: 'No matching record; live verification observed no record use.'}
-    cost: *free
+    cost: *search_cost
     verified: '2026-11-03'
     added: '2026-11-03'
     docs_url: https://leadocean.io/docs/company

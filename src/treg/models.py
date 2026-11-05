@@ -985,12 +985,15 @@ class LedgerEntry(SQLModel, table=True):
                             sqlite_where=text("kind = 'settle'")),
                       Index("ix_ledgerentry_topup_org_id_created_at", "org_id", "created_at",
                             postgresql_where=text("kind = 'topup'"),
-                            sqlite_where=text("kind = 'topup'")))
+                            sqlite_where=text("kind = 'topup'")),
+                      Index("ix_ledgerentry_grant_org_id_created_at", "org_id", "created_at",
+                            postgresql_where=text("kind = 'grant'"),
+                            sqlite_where=text("kind = 'grant'")))
 
     id: str = Field(primary_key=True)  # uuid4 hex
     org_id: int = Field(foreign_key="org.id")
     block_id: str | None = Field(default=None, index=True)
-    # grant | topup | reserve | settle | release
+    # grant | topup | reserve | settle | release | revoke
     kind: str = Field(index=True)
     amount_micro: int  # signed (see docstring)
     call_id: str | None = Field(default=None, index=True)

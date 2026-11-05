@@ -42,7 +42,7 @@ probes unpredictably. `treg host <file>` gives it one.
 - The daily quota is exact under concurrency: the new row is inserted and the team's 24 h sum
   (which includes it) is read in one transaction, serialized per team by a Postgres advisory lock
   (SQLite serializes the insert's write lock), and an upload past the quota rolls back.
-- Not metered. Hosting is a courtesy like polling, so money's five entries stay untouched and the
+- Not metered. Hosting is a courtesy like polling, so money's entries stay untouched and the
   call runtime never touches this table.
 
 ## Where the bytes live

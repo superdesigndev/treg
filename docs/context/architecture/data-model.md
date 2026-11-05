@@ -69,6 +69,7 @@ sources:
   - src/treg/alembic/versions/0088_call_usage_rollup.py
   - src/treg/alembic/versions/0089_ledgerentry_settle_spend_index.py
   - src/treg/alembic/versions/0090_ledgerentry_topup_index.py
+  - src/treg/alembic/versions/0095_ledgerentry_grant_index.py
   - src/treg/application/call_usage_rollup.py
   - src/treg/application/call_usage.py
   - tests/test_call_usage_rollup.py
@@ -206,8 +207,22 @@ such scan queues every other query and the API pool empties into `503 treg_satur
   (`spent_today_from_ledger` survives for reconciliation); the per-member call cap reads
   `Membership.calls_today`. A team's busiest rows sit on every page of the day, so even an
   `(org_id, created_at)` index scan is too slow on the money path.
-- Partial indexes (`kind = 'settle'`, `kind = 'topup'`, `kind = 'local_run'`) are matched only
-  when the query states the predicate as a constant, never a parameter.
+- Partial indexes (`kind = 'settle'`, `kind = 'topup'`, `kind = 'grant'`, `kind = 'local_run'`)
+  are matched only when the query states the predicate as a constant, never a parameter. The
+  spend rollup's per-team recount (`key_spend_rollup`) and the billing reads state it with
+  `literal_column`.
+- `SELECT DISTINCT` over a team's rows in a large index reads every one of them: Postgres before 18
+  cannot skip through an index. The distinct values are walked instead, one probe per value
+  (`money.tag_dims`, a recursive CTE asking for the next value after the last).
+- A bound taken from a scalar subquery is unknown to the planner, which then estimates a team's
+  whole history and can spend longer compiling the statement (JIT) than running it. Where the
+  subquery must stay for snapshot consistency, the read turns JIT off for its transaction
+  (`call_usage.rows`). A constant read earlier is no substitute: a rollup rebuild moves the cursor
+  back.
+- Statistics end before today, so a `created_at >= today` bound is estimated at one row and picks
+  the `(org_id, created_at)` index even for a team with a full day behind it. The usage tail
+  (`call_usage.rows`) bounds itself by its UTC day expression instead, leaving `(org_id, id)` to
+  find the rows after the cursor.
 - Watermark walks state the bound as `created_at >= w AND (created_at > w OR id > w_id)`, never as
   one OR: inside an OR Postgres bounds the scan only from above and walks from the oldest row.
 - A database that predates Alembic was stamped at the baseline and may lack baseline indexes

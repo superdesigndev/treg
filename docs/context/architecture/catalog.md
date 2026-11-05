@@ -185,8 +185,10 @@ conflict on. It is not `verified` and not `source.curated`.
   date.
 - `carry_verification` carries `added` by id from every catalog file BEFORE its method/path check,
   so a moved route keeps its date and only a never-seen id gets today. For a route that still
-  matches it also carries `cost`, `observed_cost`, `expect`, `untestable` and `status`, but not
-  `platform_blocked` once the fresh row declares `resource_ownership.requires`.
+  matches it also carries `cost`, `observed_cost`, `expect`, `untestable` and `status`, and from a
+  row in the v2 spelling its `reserve`, `settle`, `bill`, `error`, `miss` and `not_found`, and a
+  priced row's `price` together with its `provenance` (an absent one stays absent and inherits the
+  provider's default), but not `platform_blocked` once the fresh row declares `resource_ownership.requires`.
 - `scripts/catalog_backfill_added.py` dated existing rows once from main's first-parent history;
   reviewed renames are applied with `--same-tool OLD=NEW`.
 
@@ -960,6 +962,19 @@ returned and never documented as stable. An output field may say where it lands 
   asked for one company's CEO bills title-matched strangers as a hit.
 - `prefer` is the default provider order when the caller sends no `X-Treg-Route-Prefer`. Cost per
   hit ignores time, so a contract may prefer a dearer but faster, more reliable provider.
+- `prefer_by_domain_suffix` maps a suffix of the identity's `domain` to providers asked first, ahead
+  of `prefer`, when the caller sends no `X-Treg-Route-Prefer`; the longest matching suffix wins.
+  Coverage differs by country while cost per hit is one number. The suffix only sees the company
+  domain, so a French company on `.com` is not matched.
+- `prefer_when` lists `{sent: [identity keys], prefer: [providers]}` rules; the first whose keys the
+  caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
+  still wins. One order does not fit every question: `people.search` asks its semantic searches
+  first for a free-text `{q}`, and keeps `prefer` for company lookups that they cannot scope.
+- `fill_limit_when` lists identity key sets (`[[q]]`) on which the caller's own `limit` is a row
+  count to reach, not only a page size. When the caller sent exactly one listed set and a `limit` of
+  2 or more, and neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`, the route acts as if
+  both were sent (`min_results = limit`, merge on). `people.search` lists only `{q}`: a free-text
+  search asks for everyone who fits, while a company lookup stays one provider's answer.
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
   per hit ranks before specificity.
 - `row` gives a list output one row shape whatever provider answered (`people.search`): `of` names
@@ -1038,6 +1053,8 @@ an invalid extra never disables the primary.
     `X-Treg-Route-Waterfall: 0` stops at the first miss. `X-Treg-Route-Min-Results: N` marks a thin
     answer `weak` and continues at most `MAX_WEAK_FALLBACKS` times, returning the fullest answer:
     unbounded, it would pay the whole ladder on lookups whose honest answer is one row.
+    Under `X-Treg-Route-Merge` the distinct rows of every answer so far, not the latest answer
+    alone, are compared with `N`, so the walk stops once the union reaches it.
   - **Holds.** A child that charges nothing releases at once, before the next reserves, or a
     balance covering each child in turn would 402 mid-waterfall. **A billed child never settles its
     own hold**: it leaves a `settle.DeferredSettle` and `run_routed` closes every one exactly once at
@@ -1084,6 +1101,14 @@ an invalid extra never disables the primary.
   `output.next_cursor` only serves a direct call to the serving provider. One longer than
   `CURSOR_MAX` (512 chars; icypeas returns tokens of many KB) is set to null and
   `_treg.next_cursor` names `{chars, in_raw}`, the adapter path where `raw` keeps it whole.
+- **A stand-in reaches a provider the caller's fields cannot**: a contract's `stand_in` maps an
+  identity key to an expression over the identity and filters (people.search:
+  `q = join(full_name, title, location)`). `adapter_accepts` tries the caller's own fields first and
+  builds the stand-in only when an adapter accepts none of them, so exa and parallel (`{q}` only)
+  can answer a `{title}` request while every other provider's request is unchanged. The stand-in
+  never enters the plan's identity; `to_upstream` fills it for the matched variant, and `unscoped`
+  counts the keys inside it as sent. A key left out of the expression keeps its scoping guard
+  (`company_domain`: a text match cannot scope by company).
 - **Free text is a filter, not identity**: a brief's requirements ride in `keywords` (always sent),
   never in `q` alone, or a provider matching the `{title}` variant never sees them. Hard filters
   that broaden or over-constrain measured worse; add one opt-in, and measure it first.

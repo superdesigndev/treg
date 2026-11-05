@@ -85,7 +85,7 @@ async def test_platform_detail_groups_the_same_job_across_providers(clients: Asy
     assert ep["method"] == "GET" and ep["path"].startswith("/")
     assert ep["tier"] == "core", "an endpoint with no explicit tier is core, not hidden"
     assert ep["verified"] and ep["has_example"] is True
-    assert ep["cost"]["type"] == "per_success"
+    assert ep["cost"]["type"] == "per_call", "TikHub bills every 2xx, a miss included"
 
 
 async def test_every_listed_endpoint_carries_its_platform(clients: AsyncClient):
