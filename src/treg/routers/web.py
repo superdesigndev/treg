@@ -204,6 +204,12 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
         + json.dumps(b, separators=(",", ":")).replace("<", "\\u003c")
         + "</script>"
         for b in ld)
+    compare_col = ""
+    if _hosted():
+        from .. import compare_pages as cp
+        compare_col = ('\n      <div class="foot-col"><div class="lab">Compare</div>\n        '
+                       + "".join(f'<a href="/compare/{cp.page_slug(k)}">treg vs {_esc_html(cp.short(k))}</a>'
+                                 for k in cp.FOOTER) + '<a href="/compare">All comparisons →</a></div>')
     def navlink(href: str, label: str, extra: str = "") -> str:
         cur = ' aria-current="page"' if href == nav_current else ""
         return f'<a href="{href}"{cur}{extra}>{label}</a>'
@@ -267,7 +273,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
         ><a href="{_GH}" target="_blank" rel="noopener">GitHub ↗</a></div>
       <div class="foot-col"><div class="lab">Company</div>
         <a href="/resources">Resources</a><a href="/support">Support</a
-        ><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+        ><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>{compare_col}
     </nav>
   </div>
 </footer>

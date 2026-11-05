@@ -2694,6 +2694,10 @@ COMPETITORS: dict[str, dict] = {
 # set it to the launch day when a change ships; facts keep their own `checked` day.
 UPDATED = "2026-11-05"
 
+# The comparisons a site footer names, by search demand; the hand-written footers in landing.html,
+# rankings.html and showcase.html list the same ones (test_footers_name_the_same_comparisons).
+FOOTER = ("clay", "apollo", "composio", "zapier", "apify", "openrouter")
+
 
 def modified(key: str | None = None) -> str:
     """The day a page last changed: its facts' `checked` day or the copy's UPDATED, the later."""

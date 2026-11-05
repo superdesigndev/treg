@@ -114,6 +114,17 @@ async def test_every_comparison_shares_its_own_image(clients: AsyncClient):
         assert (await clients.get(rel)).status_code == 200, path
 
 
+async def test_footers_name_the_same_comparisons(clients: AsyncClient):
+    """The Compare column: the shared footer builds it from cp.FOOTER; three pages write it by hand."""
+    want = [f"/compare/{cp.page_slug(k)}" for k in cp.FOOTER] + ["/compare"]
+    for path in ["/", "/rankings", "/showcase", "/pricing"]:
+        html = (await clients.get(path)).text
+        col = html.split('<div class="lab">Compare</div>', 1)[1].split("</div>", 1)[0]
+        assert re.findall(r'href="([^"]+)"', col) == want, path
+        for k in cp.FOOTER:
+            assert f">treg vs {cp.short(k)}</a>" in col, (path, k)
+
+
 async def test_no_comparison_passes_ranking_credit_to_another_product(clients: AsyncClient):
     """Every link that leaves treg is nofollow, except treg's own code on GitHub."""
     own = {"treg.to", "www.treg.to", "localhost", "test"}

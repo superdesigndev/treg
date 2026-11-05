@@ -302,7 +302,7 @@ def _page_body(key: str, base: str) -> str:
     <div class="medal" aria-hidden="true">vs</div>
     <div class="spec them"><div class="who">{_mono(key)}{_e(short)}<small>{_e(c["site"].split("//")[1].split("/")[0].removeprefix("www."))}</small></div><dl>{spec_rows_them}</dl></div>
   </div>
-  <div class="ctas"><a class="pill dark" href="/app?ref=compare-{cp.page_slug(key)}">Try treg free — $1.00 credit</a><a class="pill" href="#side-by-side">See the side by side ↓</a></div>
+  <div class="ctas"><a class="pill" href="#side-by-side">See the side by side ↓</a><a class="pill dark has-badge" href="/app?ref=compare-{cp.page_slug(key)}">Get started<span class="badge">$1 free</span></a></div>
 </header>
 
 <nav class="toc" id="toc" aria-label="On this page"><ol>
@@ -476,7 +476,7 @@ def _hub_body() -> str:
   <h1>How treg compares</h1>
   <p class="sub">treg is like OpenRouter for tools. Honest, side-by-side comparisons that say where the other product is the better choice.</p>
   <div class="checked"><i></i>Facts last checked {cp.checked_label()}</div>
-  <div class="ctas"><a class="pill dark" href="/app?ref=compare">Start free — $1.00 credit</a><a class="pill" href="/catalog">Browse the catalog</a></div>
+  <div class="ctas"><a class="pill" href="/catalog">Browse the catalog</a><a class="pill dark has-badge" href="/app?ref=compare">Get started<span class="badge">$1 free</span></a></div>
 </header>
 <main class="wrap">
   <div class="method rv">
