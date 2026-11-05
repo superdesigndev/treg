@@ -1,0 +1,228 @@
+# FraudNova scores IP addresses, email addresses and phone numbers for fraud risk on prepaid credit
+# packs: one credit per successful check, whatever the type. Every route returns the same envelope —
+# `{success, data|results, credits_remaining}` on 200, `{success: false, message}` on 401/402/422/429/503.
+# A 503 means the lookup failed upstream and the credit was refunded; the batch routes bill per item
+# and report per-item errors instead. The full documented surface is eight operations; seven are
+# listed here. GET /my-ip (free, unauthenticated, returns the caller's own IP) is left out on purpose:
+# through treg's relay it would only ever answer with treg's egress address.
+# UNVERIFIED by treg: prices below are transcribed from the vendor's docs and pricing section; the
+# vendor's own live run is in the listing PR.
+provider: fraudnova
+source:
+  docs: https://fraudnova.com/docs
+  openapi: https://fraudnova.com/docs/openapi.json
+  curated: '2026-11-05'
+limits: "600 requests/minute per API key and 10 in-flight checks per account (higher per-account limits on request); 429 with the standard error envelope when exceeded."
+pricing_url: https://fraudnova.com/#pricing
+proposed_capabilities:
+  ip.risk.score: "Score an IP address for fraud risk and flag proxy, VPN, Tor, bot and recent-abuse traffic"
+  ip.risk.score.batch: "Score a list of IP addresses for fraud and proxy risk in one request"
+  people.email.verify.batch: "Verify a list of email addresses in one request"
+  people.phone.verify.batch: "Validate a list of phone numbers in one request"
+
+endpoints:
+  - id: fraudnova.ip.risk.score
+    added: '2026-11-05'
+    domain: risk
+    capability: ip.risk.score
+    platform: ip
+    scope: any_account
+    method: GET
+    path: /check
+    name: "Score an IP for fraud, proxy, VPN, Tor and bot risk"
+    summary: "Score a single IP"
+    input:
+      queryParams:
+        ip: {type: string, required: true, example: "8.8.8.8", note: "IPv4 or IPv6 address to score"}
+        strictness: {type: integer, required: false, default: 2, min: 0, max: 3, note: "0 (lenient) to 3 (strict); higher levels flag more addresses"}
+        mobile: {type: boolean, required: false, default: false, note: "true when the visitor is on a mobile connection"}
+        user_agent: {type: string, required: false, note: "the visitor's User-Agent; unlocks operating_system, browser and device fields"}
+        user_language: {type: string, required: false, note: "the visitor's Accept-Language, e.g. en-US"}
+      note: "data carries fraud_score (0–100), proxy, vpn, tor, active_vpn, active_tor, recent_abuse, bot_status, country_code, region, city, ISP, organization and ASN. operating_system, browser, device_brand and device_model are filled only when user_agent is sent."
+    test_request: {queryParams: {ip: "8.8.8.8"}}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://fraudnova.com/docs
+      checked: '2026-11-05'
+      confidence: documented
+      note: "One credit per successful check. A 503 (upstream lookup failed) refunds the credit; 401, 402, 422 and 429 spend nothing. Repeating an address within a short window still costs a credit."
+    docs_url: https://fraudnova.com/docs
+
+  - id: fraudnova.people.email.verify
+    added: '2026-11-05'
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: GET
+    path: /check/email
+    name: "Score an email for fraud, disposable and deliverability"
+    summary: "Score a single email address"
+    input:
+      queryParams:
+        email: {type: string, required: true, example: "support@github.com", note: "the address to check"}
+      note: "data carries valid, fraud_score (0–100), disposable, deliverability (high | medium | low), smtp_score, overall_score, catch_all, generic, common, dns_valid, honeypot, frequent_complainer, suspect, recent_abuse, leaked, spam_trap_score, risky_tld, spf_record, dmarc_record, first_seen, domain_age, result_type and sanitized_email. A syntactically valid but undeliverable address still answers 200 with valid false."
+    test_request: {queryParams: {email: "support@github.com"}}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://fraudnova.com/docs
+      checked: '2026-11-05'
+      confidence: documented
+      note: "One credit per successful check, deliverable or not. A 503 (upstream lookup failed) refunds the credit; 401, 402, 422 and 429 spend nothing."
+    docs_url: https://fraudnova.com/docs
+
+  - id: fraudnova.people.phone.verify
+    added: '2026-11-05'
+    domain: contacts
+    capability: people.phone.verify
+    platform: people
+    scope: any_account
+    method: GET
+    path: /check/phone
+    name: "Score a phone number for fraud, VOIP, prepaid and carrier"
+    summary: "Score a single phone number"
+    input:
+      queryParams:
+        phone: {type: string, required: true, example: "+16502530000", note: "digits with an optional +, spaces, dashes or parentheses; international format or a national number with country"}
+        country: {type: string, required: false, example: "US", note: "ISO-3166 alpha-2 hint for a national-format number"}
+      note: "data carries valid, fraud_score (0–100), recent_abuse, VOIP, prepaid, risky, active, carrier, line_type, country, region, city, timezone, zip_code, dialing_code, do_not_call, leaked, spammer, active_status, formatted and local_format. The subscriber's name is never returned. An invalid number still answers 200 with valid false."
+    test_request: {queryParams: {phone: "+16502530000", country: "US"}}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://fraudnova.com/docs
+      checked: '2026-11-05'
+      confidence: documented
+      note: "One credit per successful check, valid number or not. A 503 (upstream lookup failed) refunds the credit; 401, 402, 422 and 429 spend nothing."
+    docs_url: https://fraudnova.com/docs
+
+  - id: fraudnova.ip.risk.score.batch
+    added: '2026-11-05'
+    domain: risk
+    capability: ip.risk.score.batch
+    platform: ip
+    scope: any_account
+    method: POST
+    path: /check/batch
+    body_allowlist: true
+    name: "Score up to 100 IPs for fraud and proxy risk in one call"
+    summary: "Score up to 100 IPs in one request"
+    input:
+      bodyType: json
+      body:
+        ips: {type: "array[string]", required: true, minItems: 1, maxItems: 100, example: ["8.8.8.8"], note: "1–100 IPv4/IPv6 addresses"}
+        strictness: {type: integer, required: false, default: 2, min: 0, max: 3, note: "applies to the whole batch"}
+        mobile: {type: boolean, required: false, default: false, note: "applies to the whole batch"}
+        user_agent: {type: string, required: false, note: "applies to the whole batch"}
+        user_language: {type: string, required: false, note: "applies to the whole batch"}
+      note: "results has one entry per submitted item, in order: {ip, success, data, error}. data matches the single-IP check; error is invalid_ip, insufficient_credits or upstream_failed. The response is 200 whenever the envelope is valid, even if every item failed; 402 only when the balance was already zero."
+    test_request: {body: {ips: ["8.8.8.8"]}}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: result
+      note: "One credit per IP scored successfully; an item answering error (invalid_ip, upstream_failed, insufficient_credits) is free. results lists every submitted item, so counting it is an upper bound — a batch with failed items is charged less upstream. Once the balance reaches zero mid-batch the remaining items return insufficient_credits."
+    provenance:
+      source: docs
+      source_url: https://fraudnova.com/docs
+      checked: '2026-11-05'
+      confidence: documented
+    reserve: {entities: {from: body.ips, max: 100}}
+    settle: {count: {path: response.results}}
+    docs_url: https://fraudnova.com/docs
+
+  - id: fraudnova.people.email.verify.batch
+    added: '2026-11-05'
+    domain: contacts
+    capability: people.email.verify.batch
+    platform: people
+    scope: any_account
+    method: POST
+    path: /check/email/batch
+    body_allowlist: true
+    name: "Score up to 100 emails for fraud and deliverability"
+    summary: "Score up to 100 emails in one request"
+    input:
+      bodyType: json
+      body:
+        emails: {type: "array[string]", required: true, minItems: 1, maxItems: 100, example: ["support@github.com"], note: "1–100 email addresses"}
+      note: "results has one entry per submitted item, in order: {email, success, data, error}. data matches the single-email check; error is invalid_email, insufficient_credits or upstream_failed. The response is 200 whenever the envelope is valid, even if every item failed; 402 only when the balance was already zero."
+    test_request: {body: {emails: ["support@github.com"]}}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: result
+      note: "One credit per email checked successfully; an item answering error (invalid_email, upstream_failed, insufficient_credits) is free. results lists every submitted item, so counting it is an upper bound — a batch with failed items is charged less upstream."
+    provenance:
+      source: docs
+      source_url: https://fraudnova.com/docs
+      checked: '2026-11-05'
+      confidence: documented
+    reserve: {entities: {from: body.emails, max: 100}}
+    settle: {count: {path: response.results}}
+    docs_url: https://fraudnova.com/docs
+
+  - id: fraudnova.people.phone.verify.batch
+    added: '2026-11-05'
+    domain: contacts
+    capability: people.phone.verify.batch
+    platform: people
+    scope: any_account
+    method: POST
+    path: /check/phone/batch
+    body_allowlist: true
+    name: "Score up to 100 phone numbers for fraud and line type"
+    summary: "Score up to 100 phone numbers in one request"
+    input:
+      bodyType: json
+      body:
+        phones: {type: "array[string]", required: true, minItems: 1, maxItems: 100, example: ["+16502530000"], note: "1–100 phone numbers"}
+        country: {type: string, required: false, example: "US", note: "ISO-3166 alpha-2 hint applied to every national-format number in the batch"}
+      note: "results has one entry per submitted item, in order: {phone, success, data, error}. data matches the single-phone check; error is invalid_phone, insufficient_credits or upstream_failed. The response is 200 whenever the envelope is valid, even if every item failed; 402 only when the balance was already zero."
+    test_request: {body: {phones: ["+16502530000"], country: "US"}}
+    price:
+      value: '1'
+      currency: credit
+      per: 1
+      unit: result
+      note: "One credit per phone number checked successfully; an item answering error (invalid_phone, upstream_failed, insufficient_credits) is free. results lists every submitted item, so counting it is an upper bound — a batch with failed items is charged less upstream."
+    provenance:
+      source: docs
+      source_url: https://fraudnova.com/docs
+      checked: '2026-11-05'
+      confidence: documented
+    reserve: {entities: {from: body.phones, max: 100}}
+    settle: {count: {path: response.results}}
+    docs_url: https://fraudnova.com/docs
+
+  - id: fraudnova.account.usage
+    added: '2026-11-05'
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /balance
+    name: "Get remaining credit balance"
+    summary: "Return the current credit balance (free, does not consume a credit)"
+    input:
+      note: "no parameters — the key rides in the Authorization header"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free — this is the registry's health probe; a bad key answers 401 here"}
+    docs_url: https://fraudnova.com/docs

@@ -314,6 +314,14 @@ def test_icypeas_says_out_of_credits_with_a_200():
     assert S.classify("hunter", 200, None, ICYPEAS_OUT_OF_CREDITS) is None, "a 2xx is only ever read per provider"
 
 
+def test_fraudnova_says_out_of_credit_with_a_402():
+    out = b'{"success":false,"message":"Insufficient credits."}'
+    sig = S.classify("fraudnova", 402, None, out)
+    assert sig is not None and sig.kind == "balance"
+    assert S.classify("fraudnova", 401, None, b'{"success":false,"message":"Invalid or revoked API token."}') is None
+    assert S.classify("fraudnova", 200, None, b'{"success":true,"credits_remaining":0}') is None
+
+
 def test_hlrlookup_says_out_of_credit_with_a_200():
     out = b'{"body":"OK","results":[{"error":"INSUFFICIENT_CREDIT","telephone_number":"447540822872"}]}'
     sig = S.classify("hlrlookup", 200, None, out)

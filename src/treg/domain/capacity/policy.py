@@ -56,6 +56,8 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "trestleiq": ("cash", "auto_recharge", "manual"),
     # Prepaid bundles bought by hand; the free balance route returns the exact credit count.
     "hlrlookup": ("credits", "manual", "api"),
+    # Prepaid credit packs bought by hand; the free balance route returns the exact credit count.
+    "fraudnova": ("credits", "manual", "api"),
     "tavily": ("credits", "manual", "api"),
     "search1api": ("credits", "auto_recharge", "api"),
     "bravesearch": ("cash", "auto_recharge", "manual"),
@@ -150,6 +152,8 @@ _RATE_LIMITS: dict[str, dict] = {
     # network, answering 429 (unbilled) above about 200 requests/s. It publishes no per-second
     # quota, so the shared key keeps a conservative pace; BYOK calls bypass this limiter.
     "hlrlookup": {"limit": 50, "window_s": 1, "source": "policy"},
+    # FraudNova documents 600 requests/minute per key; BYOK calls bypass this limiter.
+    "fraudnova": {"limit": 600, "window_s": 60, "source": "docs"},
     # Search's documented burst allowance is the strictest request-count limit shared by these
     # hosts. Fetch additionally meters URLs and Agent limits concurrency; upstream remains the
     # authority for those differently-shaped limits.
@@ -254,6 +258,8 @@ _CONCURRENCY: dict[str, int] = {
     # The key reports its concurrency room in every answer (usage.remaining_before.concurrent).
     "crawl4ai": 500,
     "hlrlookup": 210,
+    # FraudNova caps each account at 10 in-flight checks (429 above it); raised on request.
+    "fraudnova": 10,
     # The key status API reports its configured concurrency limit.
     "litescrape": 100,
     # treg's own conservative setting for the shared account (catalog row `limits`).
