@@ -1,0 +1,109 @@
+{
+  "task": {
+    "id": "933539ca-0fdb-41db-b082-0f322505b547",
+    "taskType": "CHATGPT",
+    "status": "COMPLETED",
+    "priority": 1,
+    "createdAt": "2026-11-04T08:48:52.531Z",
+    "latencyMs": 54789,
+    "idempotencyKey": null
+  },
+  "credits": {
+    "creditsToCharge": 5,
+    "creditsCharged": 5
+  },
+  "response": {
+    "model": null,
+    "text": "The best project management tools for remote teams in 2026 are Asana, ClickUp, monday.com, Trello, Basecamp, and Jira. The right choice depends on your team size, project complexity, communication style, and budget.\n\nFor remote teams, I'd prioritize tools that make it easy to collaborate asynchronously, assign ownership, track deadlines, share files, and see project progress without constant meetings.\n\nTop 7 project management tools\n\n1. Asana\n\nBest overall\n\nExcellent task assignments and deadlin… [3539 chars total]",
+    "sources": [
+      {
+        "position": 1,
+        "label": "Best Online Project Management Tools Compared for 2026",
+        "url": "https://www.itechguides.com/best-online-project-management-tools-9-picks-by-team-and-workflow/",
+        "footnote": false
+      },
+      {
+        "position": 2,
+        "label": "",
+        "url": "https://asana.com/resources/best-project-management-software",
+        "footnote": false
+      },
+      "… 16 more item(s) truncated"
+    ],
+    "entities": [
+      {
+        "type": "software",
+        "name": "Asana"
+      },
+      {
+        "type": "software",
+        "name": "ClickUp"
+      },
+      "… 5 more item(s) truncated"
+    ],
+    "map": [],
+    "followUpForm": {
+      "questions": [
+        {
+          "label": "1. How large is your remote team?",
+          "type": "radio",
+          "options": [
+            {
+              "label": "1–5 people",
+              "value": "1–5 people",
+              "selected": false
+            },
+            {
+              "label": "6–20 people",
+              "value": "6–20 people",
+              "selected": true
+            },
+            "… 3 more item(s) truncated"
+          ],
+          "name": "size"
+        },
+        {
+          "label": "2. What type of work does your team do?",
+          "type": "radio",
+          "options": [
+            {
+              "label": "Business / operations",
+              "value": "Business / operations",
+              "selected": true
+            },
+            {
+              "label": "Software development / IT",
+              "value": "Software development / IT",
+              "selected": false
+            },
+            "… 3 more item(s) truncated"
+          ],
+          "name": "type"
+        },
+        "… 2 more item(s) truncated"
+      ],
+      "submitLabel": "Find my best project management tools",
+      "followUpPrompt": "Recommend the best remote team project management tools based on these answers: Team size: {size}. Work type: {type}. Priority: {priority}. Budget: {budget}. Compare the top three."
+    },
+    "markdown": "The best project management tools for remote teams in 2026 are Asana, ClickUp, monday.com, Trello, Basecamp, and Jira. The right choice depends on your team size, project complexity, communication style, and budget.\n\nFor remote teams, I'd prioritize tools that make it easy to collaborate asynchronously, assign ownership, track deadlines, share files, and see project progress without constant meetings.\n\n## Top 7 project management tools\n\n1. Asana\n\nBest overall\n\n- Excellent task assignments and de… [4534 chars total]",
+    "citationPills": [
+      {
+        "url": "https://asana.com/resources/best-project-management-software",
+        "label": "Best project management software: 11 tools compared [2026]",
+        "domain": "asana.com",
+        "type": "groupedWebpage",
+        "citationPillId": 0,
+        "position": 2
+      },
+      {
+        "url": "https://resources.rework.com/guides/choosing-software/how-to-choose-pm-software-for-remote-teams",
+        "label": "How to Choose Project Management Software for Remote Teams",
+        "domain": "resources.rework.com",
+        "type": "groupedWebpage",
+        "citationPillId": 0,
+        "position": 3
+      },
+      "… 2 more item(s) truncated"
+    ]
+  }
+}
