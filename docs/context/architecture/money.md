@@ -456,12 +456,15 @@ puts the field on Checkout, and the webhook credits `amount_total`, what Stripe 
 code collects nothing and is dropped as `zero amount`. Grant free balance through `ledger.grant`,
 never a Stripe coupon.
 
-**The top-up bonus is a separate `grant`, manual only.** `topup_bonus_tiers` (`{min_usd: percent}`)
-gives a manual top-up a `bonus` block at the highest tier at or below the amount (`bonus_for_topup`,
-integer arithmetic), granted inside `_credit`'s `fresh` branch so a redelivery grants nothing. It is
-its own block that burns with promo credit, so the purchased block stays exactly what the card paid:
-purchased credit is a refundable liability, the bonus is marketing spend. Automatic refills earn
-nothing (a bonus there would be a permanent margin cut on every refill). A refund or dispute does not
+**The top-up bonus is a separate `grant`, manual and automatic alike.** `topup_bonus_tiers`
+(`{min_usd: percent}`) gives a top-up a `bonus` block at the highest tier at or below the amount
+(`bonus_for_topup`, integer arithmetic). `_grant_topup_bonus` grants it after the purchased credit
+commits, from `_credit`'s `fresh` branch and from the inline auto-top-up credit. An auto top-up
+reaches both doors, so the helper locks the payment's purchased block and grants nothing when a bonus
+for that PaymentIntent already exists. It is its own block that burns with promo credit, so the
+purchased block stays exactly what the card paid: purchased credit is a refundable liability, the
+bonus is marketing spend. The billing page shows the bonus each refill earns and the next tier up,
+so a bigger refill amount is the visible way to earn more. A refund or dispute does not
 reverse it on its own: a refund revokes the unspent bonus in proportion to what was refunded
 (see "Refunds revoke unspent credit"); a dispute only logs it for a human (`bonus_blocks_flagged`). The grant's meta carries `payment_intent`, `pct` and `topup_block_id`, which
 `topup_history` joins to show `bonus_micro`.
