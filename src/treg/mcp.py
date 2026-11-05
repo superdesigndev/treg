@@ -702,13 +702,21 @@ async def _api(token: str, *, client_name: str = "mcp"):
         yield client
 
 
-_UNSAFE_SEGMENTS = frozenset({"", ".", ".."})
+_UNSAFE_SEGMENTS = frozenset({".", ".."})
 
 
 def _leaves_route(endpoint_id: str) -> bool:
-    """Whether a dot or empty segment, at any depth of percent-encoding, could move the call off its
-    route: httpx collapses `..` before the in-process request, and the caller's credential rides it."""
+    """Whether a `.` or `..` segment, at any depth of percent-encoding, could move the call off its
+    route: httpx collapses those before the in-process request, and the caller's credential rides it.
+
+    Empty segments (a mid-path `//`, or `%2F` that only becomes empty after decoding) stay under the
+    route and must pass: own-tool paths carry percent-encoded URLs in a single segment (e.g. a GSC
+    `feedpath` of `https%3A%2F%2F…`), and refusing the empty that appears only after `unquote` blocked
+    them. An empty `endpoint_id` is still refused.
+    """
     path = endpoint_id.partition("?")[0].partition("#")[0]
+    if path == "":
+        return True
     for _ in range(4):
         segments = path.split("/")
         # A trailing slash is a real upstream path (`tool/items/`), not a way out.
@@ -723,7 +731,7 @@ def _leaves_route(endpoint_id: str) -> bool:
     return True
 
 
-_UNSAFE_ID_ERROR = {"error": "endpoint_id may not contain an empty, '.' or '..' path segment",
+_UNSAFE_ID_ERROR = {"error": "endpoint_id may not contain a '.' or '..' path segment",
                     "hint": "pass a catalog id or '<tool-name>/<path>' exactly"}
 
 
