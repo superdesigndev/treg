@@ -733,7 +733,8 @@ row.
   On a 2xx, `bill.free_when` makes the call free; a readable `settle.reported` (after `scale`,
   zero included) is the charge, uncapped; otherwise the outcome picks `bill.error` or `bill.miss`
   (free by default, `charged`, or a number of units at the unit price capped at the hold) and a hit
-  is charged. A charged answer costs its `count` (non-null items) or `plugin` quantity capped at the
+  is charged. A free outcome with no settle evidence observes a charge of 0, as a row in today's
+  spelling records a free miss, so the call record and the stats fallback read it alike. A charged answer costs its `count` (non-null items) or `plugin` quantity capped at the
   hold, its `usage` meters, which may exceed it, or the hold when there is no `settle` or no
   evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
   with `*` or a filter, when any list one of its `*` or filter steps iterates is missing or not a

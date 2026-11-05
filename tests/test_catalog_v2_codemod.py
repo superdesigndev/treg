@@ -31,17 +31,59 @@ def test_a_header_is_never_request_evidence():
 @pytest.mark.parametrize("expr,predicate,widens", [
     ("x == null", {"path": "response.x", "op": "absent"}, False),
     ("coalesce(results, []) == []", {"any": [{"path": "response.results", "op": "absent"},
-                                             {"path": "response.results", "op": "empty"}]}, False),
+                                             {"path": "response.results", "op": "empty"}]}, True),
     ("status == 'NOT_FOUND'", {"path": "response.status", "op": "equals", "value": "NOT_FOUND"}, False),
     ("data[0].found == false", {"path": "response.data.0.found", "op": "equals", "value": False}, False),
     ("code == 404", {"path": "response.code", "op": "equals", "value": 404}, False),
-    (". == []", {"path": "response", "op": "empty"}, True),
-    ("contacts == []", {"path": "response.contacts", "op": "empty"}, True),
+    (". == []", [{"path": "response", "op": "present"}, {"path": "response", "op": "empty"}], True),
+    ("contacts == []", [{"path": "response.contacts", "op": "present"},
+                        {"path": "response.contacts", "op": "empty"}], True),
 ])
 def test_an_adapter_expression_becomes_a_predicate(expr, predicate, widens):
     warnings: list[str] = []
     assert codemod.predicate(expr, warnings) == predicate
     assert bool(warnings) is widens
+
+
+@pytest.mark.parametrize("names", [["results"], ["data.items", "data.videos"], ["a", "b.c", "d.e"]])
+def test_a_coalesce_miss_reads_as_today_on_every_list_or_missing_value(names):
+    import itertools
+
+    from treg.domain.catalog.routing.paths import evaluate
+    from treg.domain.catalog.schema.paths import holds
+
+    expr = f"coalesce({', '.join(names)}, []) == []"
+    predicate = codemod.predicate(expr, [])
+    for values in itertools.product(("missing", None, "", [], [1], 0), repeat=len(names)):
+        doc: dict = {}
+        for name, value in zip(names, values, strict=True):
+            if value != "missing":
+                *parents, last = name.split(".")
+                node = doc
+                for parent in parents:
+                    node = node.setdefault(parent, {})
+                node[last] = value
+        assert holds(predicate, {"response": doc}) == bool(evaluate(expr, doc)), (expr, doc)
+
+
+@pytest.mark.parametrize("expr", ["coalesce(" + " ," * 50_000 + ") == []", "coalesce(a," + " " * 50_000 + "x) == []",
+                                  "coalesce(" + ", [" * 30_000 + ") == []", "coalesce(" + "a," * 50_000 + "[]) == []"])
+def test_a_long_adversarial_coalesce_is_judged_in_linear_time(expr):
+    import time
+
+    started = time.perf_counter()
+    try:
+        codemod.predicate(expr, [])
+    except codemod.Refused:
+        pass
+    assert time.perf_counter() - started < 1
+
+
+@pytest.mark.parametrize("expr", ["coalesce(a, [], []) == []", "coalesce(, []) == []", "coalesce([]) == []",
+                                  "coalesce(f(a), []) == []", "coalesce(a, b) == []"])
+def test_a_coalesce_that_is_not_paths_then_an_empty_list_is_refused(expr):
+    with pytest.raises(codemod.Refused):
+        codemod.predicate(expr, [])
 
 
 @pytest.mark.parametrize("expr", ["x != 1", "starts_with(reason, 'No')", "len(items) == 0", "a == b"])
@@ -91,14 +133,14 @@ def test_a_table_row_with_an_adapter_miss_freezes_its_outcome():
     assert change.adapter_miss and change.replaced == ("cost",) and _v2(change)
 
 
-def test_a_per_success_row_whose_failed_expect_is_free_and_envelope_charged_is_refused():
-    with pytest.raises(codemod.Refused, match="a failed `expect` is free and a 2xx error envelope is charged"):
-        codemod.rewrite(_table_row(expect={"json_path": "base.code", "equals": 0}), provider="demo",
-                        adapter={"miss": "items == null", "verified": True}, check_branches=False)
+@pytest.mark.parametrize("miss", ["items == null", "coalesce(items, []) == []"])
+def test_a_per_success_row_with_an_expect_keeps_its_error_envelope_out_of_the_error_rule(miss):
     change = codemod.rewrite(_table_row(expect={"json_path": "base.code", "equals": 0}), provider="demo",
-                             adapter={"miss": "coalesce(items, []) == []", "verified": True}, check_branches=False)
-    assert "bill" not in change.keys and change.replaced == ("cost", "expect")
-    assert any("carries results is charged today" in w for w in change.warnings)
+                             adapter={"miss": miss, "verified": True}, check_branches=False)
+    assert "error" not in change.keys and "bill" not in change.keys
+    assert change.keys["expect"] == {"path": "response.base.code", "op": "equals", "value": 0}
+    assert change.replaced == ("cost", "expect") and change.adapter_miss and _v2(change)
+    assert any("stats and archive admission stop calling a truthy `error`" in w for w in change.warnings)
 
 
 @pytest.mark.parametrize("spec", [{"type": "string"}, {"type": "array[string]"}])
@@ -234,10 +276,35 @@ def test_a_row_whose_replaced_key_defines_an_anchor_another_row_aliases_is_not_r
     assert [row.get("price") for row in yaml.safe_load(text)["endpoints"]] == [None, {"value": "1"}, {"value": "0"}]
 
 
-def test_a_rewrite_whose_kept_keys_do_not_parse_as_a_v2_row_is_refused():
-    with pytest.raises(codemod.Refused, match="the rewritten row does not parse: async"):
-        codemod.rewrite({"id": "demo.x", "async": False, "cost": {"type": "free"}}, provider="demo",
-                        check_branches=False)
+def test_a_rewrite_that_does_not_parse_as_a_v2_row_is_refused():
+    cost = {"type": "per_success", "value": None, "source": "inferred", "checked": "2026-08-07",
+            "confidence": "unknown", "note": "unpriced"}
+    with pytest.raises(codemod.Refused, match="the rewritten row does not parse: provenance"):
+        codemod.rewrite({"id": "demo.x", "cost": cost}, provider="demo", check_branches=False)
+
+
+def test_an_async_opt_out_becomes_null_beside_an_async_default_and_goes_without_one():
+    row = {"id": "demo.x", "async": False, "cost": {"type": "free"}}
+    beside = codemod.rewrite(row, provider="demo", check_branches=False, defaults={"async": {"id_from": "id"}})
+    assert beside.keys["async"] is None and "async" in beside.replaced
+    alone = codemod.rewrite(row, provider="demo", check_branches=False)
+    assert "async" not in alone.keys and "async" in alone.replaced
+
+
+def test_an_async_opt_out_of_a_header_block_without_an_async_default_is_refused():
+    row = {"id": "demo.x", "async": False, "cost": {"type": "free"}}
+    with pytest.raises(codemod.Refused, match="opts out of the header's async block"):
+        codemod.rewrite(row, provider="demo", check_branches=False, header_async={"id_from": "id"})
+
+
+def test_a_fallback_beside_its_equal_value_folds_its_note_into_the_price():
+    cost = {"type": "per_call", "value": 0.0005, "fallback": {"value": 0.0005, "note": "a small ceiling"},
+            "note": "Settles at usage.cost.", "source": "docs", "source_url": "https://example.com",
+            "checked": "2026-09-23", "confidence": "verified"}
+    change = codemod.rewrite({"id": "demo.x", "cost": cost}, provider="demo", check_branches=False)
+    assert change.keys["price"] == {"value": "0.0005", "note": "Settles at usage.cost. a small ceiling"}
+    with pytest.raises(codemod.Refused, match="cost.fallback beside a different cost.value"):
+        codemod.rewrite({"id": "demo.x", "cost": {**cost, "value": 0.001}}, provider="demo", check_branches=False)
 
 
 @pytest.mark.parametrize("provider", ["hunter", "tikhub"])

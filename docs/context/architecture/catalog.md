@@ -309,8 +309,10 @@ allowances) priced by `unit_rates_usd[provider][unit]`, one row per meter.
 
 Each `credit_rates_usd` / `unit_rates_usd` entry carries `usd` plus `basis`/`source`/`checked`: the
 cheapest PUBLICLY listed tier, so the figure is an upper bound on real spend. `usd: null` is
-deliberate (no published per-credit price): those endpoints keep `cost.usd = null` and display
-natively, because a guessed dollar figure is worse than an honest credit count. Both blocks must stay
+deliberate (no published per-credit price, or an own-key-only provider treg holds no rate for):
+those endpoints keep `cost.usd = null` and display natively, because a guessed dollar figure is
+worse than an honest credit count. A v2 price in credits or a meter needs an entry, a null one
+included; a missing entry fails validation. Both blocks must stay
 ABOVE `rates_to_usd:` - `catalog_fx_update.py` rewrites the file from the text before that key and
 discards everything below it.
 
@@ -834,7 +836,8 @@ bill when treg's own account is out.
 - **An empty answer is a failure where the job demands content.** A contract marked
   `empty_is_failure` counts a 2xx whose `CallRecord.hit` is False as bad (`store.empty_is_failure`),
   including a 2xx naming its own error in the body (`provider_error`). Every tool of those
-  capabilities callable on treg's key needs a verified adapter `miss`; tools outside routing carry a
+  capabilities callable on treg's key needs a verified adapter and a miss (the adapter's, or a v2
+  row's own rule); tools outside routing carry a
   judge-only adapter (`route: false`). A test enforces it.
 - **`miss` semantics ride on the endpoint.** A `miss: {status, means, when?}` block declares an error
   status meaning "asked and answered: no result". Router, arena and hit verdict read it through
