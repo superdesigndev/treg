@@ -147,6 +147,8 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 .both { display: grid; grid-template-columns: 1.1fr 1fr; gap: 34px; align-items: center; background: #1B1B1A; color: #E8E6E1; border-radius: 24px; padding: 34px; }
 .both h2 { color: #fff; }
 .both p { color: #C9C6BF; font-size: 16px; margin: 0; }
+.both .incat { margin-top: 14px; font-size: 14.5px; }
+.both .incat a { color: #fff; }
 .flow { display: grid; gap: 10px; font-family: var(--mono); font-size: 13px; }
 .flow .agent { justify-self: center; background: #2B2B29; border: 1px solid #3D3D3A; border-radius: 12px; padding: 10px 16px; color: #fff; }
 .flow .lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; position: relative; padding-top: 18px; }

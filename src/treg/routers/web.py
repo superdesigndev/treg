@@ -392,8 +392,9 @@ async def catalog_index():
                     'compare the providers that do one job, <a href="/workflows">the workflows</a> '
                     'chain several jobs into one prompt with the price of each step, and '
                     '<a href="/agents">the agent pages</a> show the whole menu for one '
-                    'agent, and <a href="/blog">the blog</a> carries the measured receipts and '
-                    'launch notes.</p>' if _hosted() else "")
+                    'agent, <a href="/blog">the blog</a> carries the measured receipts and '
+                    'launch notes, and <a href="/compare">the comparisons</a> set treg beside other '
+                    'tool gateways for agents.</p>' if _hosted() else "")
                  + "".join(sections)
                  + f"<h2>The providers</h2><p>{len(prov_rows)} vendors serve this catalog, each "
                    f"with its own page: {prov_links}</p>")
@@ -2870,7 +2871,20 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
                               f"measured success rate and speed.</p></a>" for js, jsent in used_in)
                     + "</div></div></section>")
 
-    body = _TOOLS_CSS + hero + flow + setup + tryit + why + tools_sec + used_sec + alt_sec + faq + copy_js
+    cmp_sec = ""
+    if _hosted():
+        from .. import compare_pages as cp
+        if cmp_key := cp.for_provider(svc):
+            cmp_short = _esc_html(cp.short(cmp_key))
+            cmp_sec = (
+                '<section id="compare"><div class="wrap"><div class="seclab">Compare</div>'
+                f"<h2>treg vs {cmp_short}</h2>"
+                f"<p>Calling {esc_d} through treg, or using {cmp_short} on its own? The comparison "
+                "reads both products' public pages side by side: billing, keys, access and limits. "
+                f'<a href="/compare/{cp.page_slug(cmp_key)}">Read treg vs {cmp_short}</a>.</p>'
+                "</div></section>")
+    body = (_TOOLS_CSS + hero + flow + setup + tryit + why + tools_sec + used_sec + alt_sec + cmp_sec
+            + faq + copy_js)
 
     if is_oauth:
         if mcp_intent:

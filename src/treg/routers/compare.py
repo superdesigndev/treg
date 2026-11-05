@@ -14,7 +14,8 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
 from .. import compare_pages as cp
 from ..config import get_settings
-from .web import _GH, _esc_html, _fill_headline, _hosted
+from ..domain.catalog import store as catalog_store
+from .web import _GH, _esc_html, _fill_headline, _hosted, _provider_display
 
 router = APIRouter()
 
@@ -192,11 +193,20 @@ def _cell(key: str, row: str, treg: bool) -> str:
     return c["cells"].get(row, cp.NOT_PUBLISHED)
 
 
-def _others(key: str) -> list[str]:
-    """The other pages, same hub group first, so the related ones lead."""
+def _others(key: str, n: int = 6) -> list[str]:
+    """Half from the page's own hub group, half from the others. Both halves start at an offset
+    that moves with the page, so every comparison is linked from about as many others."""
+    keys = list(cp.COMPETITORS)
     group = cp.COMPETITORS[key]["group"]
-    keys = [k for k in cp.COMPETITORS if k != key]
-    return sorted(keys, key=lambda k: cp.COMPETITORS[k]["group"] != group)
+    ring = keys[keys.index(key) + 1:] + keys[:keys.index(key)]
+    same = [k for k in ring if cp.COMPETITORS[k]["group"] == group]
+    rest = [k for k in keys if cp.COMPETITORS[k]["group"] != group]
+    if rest:
+        pos = [k for k in keys if cp.COMPETITORS[k]["group"] == group].index(key)
+        at = (pos * (n - n // 2)) % len(rest)
+        rest = rest[at:] + rest[:at]
+    picked = same[:n // 2]
+    return picked + rest[:n - len(picked)]
 
 
 def _card(key: str) -> str:
@@ -236,7 +246,13 @@ def _page_body(key: str, base: str) -> str:
     sources = "".join(
         f'<li><a href="{_e(u)}" rel="nofollow noopener" target="_blank">{_e(lab)}</a><small>{_e(u)}</small></li>'
         for lab, u in c["sources"])
-    others = "".join(_card(k) for k in _others(key)[:6])
+    others = "".join(_card(k) for k in _others(key))
+    pid = cp.catalog_provider(key)
+    in_catalog = ""
+    if catalog_store.load().for_provider(pid):
+        shown = _e(_provider_display(pid))
+        in_catalog = (f'<p class="incat">{shown} is in the treg catalog too: '
+                      f'<a href="/tools/{_e(pid)}">see every {shown} tool on treg, with its price</a>.</p>')
 
     return f"""<header class="hero">
   <div class="crumbs"><a href="/">treg</a> / <a href="/compare">Compare</a> / treg vs {_e(short)}</div>
@@ -301,7 +317,7 @@ def _page_body(key: str, base: str) -> str:
 
 <section class="sec" id="both"><div class="wrap">
   <div class="both rv">
-    <div><p class="eyebrow" style="color:#8B8985">Not either-or</p><h2>Using {_e(short)} and treg together</h2><p>{_e(c["both"])}</p></div>
+    <div><p class="eyebrow" style="color:#8B8985">Not either-or</p><h2>Using {_e(short)} and treg together</h2><p>{_e(c["both"])}</p>{in_catalog}</div>
     <div class="flow" aria-hidden="true">
       <div class="agent">your agent</div>
       <div class="lanes">
@@ -355,6 +371,11 @@ def _page_body(key: str, base: str) -> str:
 </section>"""
 
 
+def _treg_app_ld(base: str) -> dict:
+    return {"@type": "SoftwareApplication", "@id": base + "/#software", "name": "treg",
+            "url": base + "/", "applicationCategory": "DeveloperApplication"}
+
+
 def _page_ld(key: str, base: str) -> list[dict]:
     c = cp.COMPETITORS[key]
     url = f"{base}/compare/{cp.page_slug(key)}"
@@ -362,8 +383,9 @@ def _page_ld(key: str, base: str) -> list[dict]:
         {"@context": "https://schema.org", "@type": "WebPage", "name": c["title"], "url": url,
          "description": c["description"], "inLanguage": "en", "dateModified": cp.checked(key),
          "isPartOf": {"@type": "WebSite", "name": "treg", "url": base + "/"},
-         "about": [{"@type": "Thing", "name": "treg", "url": base + "/"},
-                   {"@type": "Thing", "name": c["name"], "url": c["site"]}]},
+         "about": [_treg_app_ld(base),
+                   {"@type": "SoftwareApplication", "name": c["name"], "url": c["site"],
+                    "applicationCategory": "DeveloperApplication"}]},
         _crumbs_ld(base, [("treg", "/"), ("Compare", "/compare"),
                           (f"treg vs {cp.short(key)}", f"/compare/{cp.page_slug(key)}")]),
         {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
@@ -411,7 +433,7 @@ def _hub_body() -> str:
     return f"""<header class="hero">
   <div class="crumbs"><a href="/">treg</a> / Compare</div>
   <h1>How treg compares</h1>
-  <p class="sub">Honest, side-by-side comparisons of treg with the other ways an AI agent gets tools and data. Each one says where the other product is the better choice.</p>
+  <p class="sub">treg is like OpenRouter for tools: one API key and one balance for many paid APIs. These are honest, side-by-side comparisons with the other ways an AI agent gets tools and data, and each one says where the other product is the better choice.</p>
   <div class="checked"><i></i>Each page says the day its facts were read, most recently {cp.checked_label()}</div>
   <div class="ctas"><a class="pill dark" href="/app?ref=compare">Start free — $1.00 credit</a><a class="pill" href="/catalog">Browse the catalog</a></div>
 </header>
@@ -430,9 +452,9 @@ def _hub_body() -> str:
 </section>"""
 
 
-HUB_TITLE = "Compare treg: tool gateways and APIs for AI agents"
-HUB_DESC = ("Honest comparisons of treg with Agentik, Composio, Zapier, Apify, RapidAPI, Clay, Apollo, "
-            "OpenRouter and more: billing, keys, access and limits.")
+HUB_TITLE = "Compare treg: MCP and API gateways for AI agents"
+HUB_DESC = ("treg is like OpenRouter for tools. Honest comparisons with Composio, Zapier MCP, Apify, Clay, "
+            "Apollo, RapidAPI, AnyAPI and more.")
 
 
 @router.get("/compare", include_in_schema=False)
@@ -444,6 +466,7 @@ async def compare_hub(request: Request):
     ld = [
         {"@context": "https://schema.org", "@type": "CollectionPage", "name": HUB_TITLE,
          "url": base + "/compare", "description": HUB_DESC, "dateModified": cp.checked(),
+         "about": _treg_app_ld(base),
          "mainEntity": {"@type": "ItemList", "itemListElement": [
              {"@type": "ListItem", "position": i, "name": f"treg vs {cp.short(k)}",
               "url": f"{base}/compare/{cp.page_slug(k)}"}
