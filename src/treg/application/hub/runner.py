@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 import re
 import time
@@ -28,6 +29,7 @@ import httpx
 from sqlalchemy import select
 
 from ... import audit, jsontext
+from ...config import get_settings
 from ...domain.catalog import store as catalog_store
 from ...domain.hub import graph as hub_graph
 from . import sandbox
@@ -41,6 +43,7 @@ from ..call.types import CallContext, CallFailure, CallInput, ResolutionFailed, 
 from ..call.reserve import reserve_admission
 from ..call.settle import hold_admission_wait_s
 
+_log = logging.getLogger("treg.hub")
 RUN_MAX_COST_HEADER = "X-Treg-Run-Max-Cost"
 DEFAULT_RUN_MAX_COST_MICRO = 1_000_000      # $1.00 for the whole run, seller price included later
 MAX_PARALLEL = 4                            # steps in flight at once inside one run
@@ -789,6 +792,10 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
                                           charges=charges, max_charge_micro=charge_cap)
     except sandbox.SandboxError as exc:
         ms_total = int((time.monotonic() - started) * 1000)
+        if exc.kind in ("protocol", "timeout", "memory"):
+            _log.warning("hub script failed kind=%s tool=%s@%s run=%s engine=%s ms=%d message=%s",
+                        exc.kind, tool.tool_id, tool.version, run_id, get_settings().hub_sandbox,
+                        ms_total, exc.message[:200])
         await _close_price(tool, run_id, price_held, payer_org_id=parent.input.caller.org_id,
                            reserved_at=price_reserved_at, success=False, reason="hub_script_failed")
         detail = {"error": "hub_script_failed", "kind": exc.kind, "message": exc.message,
