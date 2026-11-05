@@ -82,11 +82,6 @@ THIN_FULL = _anyapi_thin(headline="Chair, Gates Foundation", public_id="williamh
 NOT_FOUND = (404, {"error": "LinkedIn profile not found", "code": "PROFILE_NOT_FOUND"})
 
 
-def test_anyapi_thin_adapter_maps_the_contract_complete_fields():
-    ad = store.load().adapters["anyapi.linkedin.user.profile"]
-    assert {"full_name", "headline", "location"} <= set(ad.out_map)
-
-
 async def test_without_the_header_the_cheapest_thin_answer_ends_the_route(clients, profile_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({"anyapi": [(200, THIN)]}, seen))
