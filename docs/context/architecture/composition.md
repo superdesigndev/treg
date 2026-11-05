@@ -73,10 +73,12 @@ operator serving the raw ASGI app must run the upgrade command on every release.
 - `infra.money_trace_runner` runs on every role regardless of analytics settings; it stops after
   money-producing background work drains. Its records are defined in
   [data-model](data-model.md#product-analytics-writer-analyticspy).
-- `infra.loop_stall` runs in every web worker's lifespan: a heartbeat re-arms
-  `faulthandler.dump_traceback_later`, so a loop that stops for `STALL_SECONDS` writes every
-  thread's stack to stderr (from a C thread, so also while the GIL is held), and the returning loop
-  logs one `loop_stall` line with the gap. It never raises into startup or shutdown.
+- `infra.loop_stall` runs in every web worker's lifespan. The loop only stamps a heartbeat; a
+  daemon thread logs `loop_stall` with the loop thread's stack once the stamp is `STALL_SECONDS`
+  old, and `loop_stall_end` with the whole gap when it moves again, so neither logging nor a full
+  stderr can hold the loop. It does not use the process-wide faulthandler timer. While C code holds
+  the GIL the watcher cannot run either: it then logs the gap with `stack_reliable: false`. It never
+  raises into startup or shutdown.
 
 ## HTTP middleware
 

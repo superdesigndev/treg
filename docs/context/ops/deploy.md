@@ -110,9 +110,9 @@ their timestamp intervals because connections are reused. Read the coverage limi
 [data-model](../architecture/data-model.md#product-analytics-writer-analyticspy) before
 interpreting missing records.
 
-A web worker whose event loop stops for seconds logs `loop_stall` with the gap once it runs again;
-the `Timeout (0:00:05)!` stack dump written to stderr just before it names the code that held the
-loop (`infra/loop_stall.py`).
+A web worker whose event loop stops for seconds logs `loop_stall` with the loop thread's stack
+while it is stopped, then `loop_stall_end` with the whole gap (`infra/loop_stall.py`). A stack with
+`stack_reliable: false` was taken after the GIL came back and does not name the holder.
 
 ### Dashboard reports
 
