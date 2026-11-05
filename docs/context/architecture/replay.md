@@ -142,7 +142,9 @@ A declaration is a YAML mapping; a file holds a list of them:
 ```
 
 A changed field is declared when some declaration matches its endpoint or provider, its field, its
-old and new values and its `where`. A list value matches a list field element for element. The
+old and new values and its `where`. A declared value matches only a value of its own kind: a
+boolean never matches a number, null matches only null and a string only a string, while an integer
+and a float compare by value. A list value matches a list field element for element. The
 report names the first matching declaration, but every declaration that matches some change
 counts as exercised.
 
