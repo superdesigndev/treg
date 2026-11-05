@@ -1483,6 +1483,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 cache_diagnostics["cache_price"] = (
                     "free" if not mk.metered else "repeat" if served_repeat else "full")
                 request.context.cached = served_hit
+                request.context.reached_provider = True
                 archive_key_hash, archive_content_hash = served["key_hash"], served["content_hash"]
                 response = _served_response(served, body)
             else:
@@ -1528,6 +1529,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                             rate_seen = None
                             raise
                     sent = True
+                    request.context.reached_provider = True
 
                 relay_options = {}
                 if ((mk is not None and _quota_targets(request, mk.endpoint_id))

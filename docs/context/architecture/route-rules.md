@@ -109,19 +109,22 @@ Every routed parent that reached a plan carries these separate facts in its even
 (one refused before planning, a 422 for a header the contract does not support, carries none)
 ([call-events.md](call-events.md)); its children do not, analysis joins them by `parent_ref`:
 
-- `route_order`: which order the first provider actually called came from: `header`
+- `route_order`: which order the first provider actually reached came from: `header`
   (`X-Treg-Route-Prefer`), `default` (the contract's own order would have called it then too),
-  `rule`, or `quality` (`X-Treg-Route-Quality` moved it). Absent when no provider was called.
+  `rule`, or `quality` (`X-Treg-Route-Quality` moved it). Absent when no provider was reached,
+  whatever the header or rule.
 - `route_retry_order`: the same for the first later call the contract's own order would not have
   made next: `rule`, or `quality` (`X-Treg-Route-Quality`, or `X-Treg-Route-Decisive` ordering the
   providers left after an undecided answer). Absent when every later call is the one the contract's
   order would have made, with the rule on or off.
 
-Both are judged call by call against the providers actually called. Each order is read from its
-first candidate not yet passed over, and every earlier attempt counts as passed over, called or
-not: over the cost ceiling, out of allowance, rate limited, or refused here by the team's policy
-or tool access, which never reaches the provider. So a rule whose pick was refused, skipped,
-excluded or already first is `default`.
+Both are judged attempt by attempt against the providers actually reached. A child has reached
+its provider only when its request passed every local gate and left (`CallContext.reached_provider`,
+set where the service admits the outbound request), or when that provider's archived answer was
+served. A refusal anywhere before that (cost ceiling, allowance, rate limit, the team's policy or
+tool access, money admission) does not count, whatever its error kind. Each order is read from its
+first candidate not yet passed over, and every earlier attempt counts as passed over, reached or
+not. So a rule whose pick was refused, skipped, excluded or already first is `default`.
 - `route_rules_version`: the published set this worker held, whether or not a rule matched; `0`
   when a read found none published. Absent when the feature is off or the worker has not read yet,
   so "no rule under version 8" and "not read" stay distinct.

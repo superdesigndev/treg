@@ -653,7 +653,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
 
     orders: dict[str, list[str]] = {}
     if options.prefer:
-        ranked, route_rule["route_order"] = ordered(options.prefer), "header"
+        ranked = ordered(options.prefer)
     else:
         default = default_prefer(contract, identity, given)
         ranked = ordered(default)
@@ -908,8 +908,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                             quota_pending=parent.quota_pending)
         try:
             response = await execute_child(child, upstream_client)
-            _note_call(parent, plan, cand, tried)
+            _note_call(parent, plan, cand, child, tried)
         except CallFailure as exc:
+            _note_call(parent, plan, cand, child, tried)
             if exc.kind == "route_max_cost":
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0,
                                      "would exceed max cost"))
@@ -932,8 +933,6 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
             ):
                 raise  # the same refusal everywhere; nothing to fall back to
-            if exc.kind not in _CANDIDATE_LOCAL_FAILURES:  # refused here, never sent to the provider
-                _note_call(parent, plan, cand, tried)
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", exc.status_code, 0, str(exc.detail)[:120]))
             if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
@@ -1473,23 +1472,27 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
                                         doc.get("raw"), meta.get("served_by")), cost
 
 
-def _note_call(parent: CallContext, plan: Plan, cand: Candidate, tried: list) -> None:
-    """Which order each provider actually called came from. `route_order` names the first call's;
-    `route_retry_order` the first later call the contract's own order would not have made next.
-    Each order is read from its first candidate not yet passed over: every earlier attempt, called
-    or not (over the cost ceiling, out of allowance, rate limited, refused locally by policy)."""
-    if not plan.orders:
-        return  # the caller's own X-Treg-Route-Prefer order
+def _note_call(parent: CallContext, plan: Plan, cand: Candidate, child: CallContext, tried: list) -> None:
+    """Which order each provider actually reached came from. `route_order` names the first's;
+    `route_retry_order` the first later one the contract's own order would not have reached next.
+    A child counts only when its request left for the provider or its archived answer was served
+    (`reached_provider`), never when a local gate refused it. Each order is read from its first
+    candidate not yet passed over, and every earlier attempt is passed over, reached or not."""
+    if not child.reached_provider:
+        return
     route = dict((parent.route_summary or {}).get("route_rule") or {})
     passed = {t.endpoint_id for t in tried}
     called = cand.endpoint["id"]
 
     def next_in(order: str) -> str | None:
         return next((e for e in plan.orders.get(order, ()) if e not in passed), None)
-    source = "default" if called == next_in("default") else "rule" if called == next_in("rule") else "quality"
+    if not plan.orders:
+        source = "header"  # the caller's own X-Treg-Route-Prefer order
+    else:
+        source = "default" if called == next_in("default") else "rule" if called == next_in("rule") else "quality"
     if "route_order" not in route:
         route["route_order"] = source
-    elif source != "default" and "route_retry_order" not in route:
+    elif source not in ("default", "header") and "route_retry_order" not in route:
         route["route_retry_order"] = source
     else:
         return

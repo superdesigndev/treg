@@ -327,8 +327,8 @@ def _attributed(orders, calls):
     plan = SimpleNamespace(orders=orders)
     tried = []
     for endpoint, called in calls:
-        if called:
-            call_route._note_call(parent, plan, SimpleNamespace(endpoint={"id": endpoint}), tried)
+        call_route._note_call(parent, plan, SimpleNamespace(endpoint={"id": endpoint}),
+                              SimpleNamespace(reached_provider=called), tried)
         tried.append(call_route.Attempt(endpoint, endpoint, "miss" if called else "skipped", None, 0))
     return parent.route_summary["route_rule"]
 
@@ -351,6 +351,9 @@ DEFAULT = ["tomba", "findymail", "hunter"]
     ({"default": DEFAULT}, [("tomba", True), ("hunter", True)],
      {"route_order": "default", "route_retry_order": "quality"}),
     ({"default": DEFAULT}, [], {}),
+    ({"default": DEFAULT}, [("tomba", False), ("findymail", False)], {}),   # nothing reached
+    ({}, [("hunter", False), ("tomba", True)], {"route_order": "header"}),
+    ({}, [("hunter", False)], {}),                                          # header, nothing reached
 ])
 def test_attribution_follows_the_providers_actually_called(orders, calls, want):
     assert _attributed(orders, calls) == {"route_rule": "r", **want}
@@ -374,6 +377,53 @@ async def test_a_rule_pick_refused_by_the_teams_policy_did_not_order_the_call(
     meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"})
     assert [p for p, *_ in seen] == ["tomba"], "leadmagic is refused here and never called"
     assert meta["route_order"] == "default" and "route_retry_order" not in meta
+
+
+@pytest.fixture
+def busy_reserve(monkeypatch):
+    """Money admission times out for the first `n[0]` reserves, before anything leaves."""
+    from contextlib import asynccontextmanager
+
+    from treg.infra import money_admission
+    n, real = [0], money_admission.admit
+
+    @asynccontextmanager
+    async def admit(org_ids, *, operation, **kwargs):
+        if operation == "reserve" and n[0] > 0:
+            n[0] -= 1
+            raise money_admission.ReserveAdmissionTimeout()
+        async with real(org_ids, operation=operation, **kwargs):
+            yield
+    monkeypatch.setattr(money_admission, "admit", admit)
+    return n
+
+
+async def test_a_rule_pick_refused_by_money_admission_did_not_order_the_call(
+        clients, enrichment_on, events_on, monkeypatch, published, busy_reserve):
+    await published(envelope(version=2, rules=[_rule(order=["leadmagic"])]))
+    busy_reserve[0] = 1
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(copy.deepcopy(TOMBA_HIT), seen))
+    meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"})
+    assert [p for p, *_ in seen] == ["tomba"]
+    assert meta["route_order"] == "default"
+
+
+async def test_no_provider_reached_records_no_order(clients, enrichment_on, events_on, monkeypatch,
+                                                     published, busy_reserve):
+    await published(envelope(version=2, rules=[_rule(order=["leadmagic"])]))
+    busy_reserve[0] = 99
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(copy.deepcopy(TOMBA_HIT), seen))
+    routed = await clients.post(f"/call/{ROUTED}", json={"full_name": "Jean Dupont", "domain": "acme.fr"})
+    assert seen == [] and routed.status_code >= 400
+    over = await clients.post(f"/call/{ROUTED}", json={"full_name": "Jean Dupont", "domain": "acme.fr"},
+                              headers={"X-Treg-Route-Prefer": "leadmagic", "X-Treg-Route-Max-Cost": "0.000001"})
+    assert seen == [] and over.status_code >= 400
+    events = await _flushed(events_on)
+    for r in (routed, over):
+        meta = next(e for e in events if e["call_ref"] == r.headers["x-treg-call-id"])["input_meta"]
+        assert "route_order" not in meta and meta["route_rule"] == "r"
 
 
 async def test_a_caller_header_is_recorded_as_what_ordered_the_call(
