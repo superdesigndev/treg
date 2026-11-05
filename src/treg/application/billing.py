@@ -2203,7 +2203,8 @@ async def reconcile_topups(*, since: datetime, until: datetime) -> dict:
     """Check every top-up Stripe collected in [since, until) (naive UTC) against the ledger. Read-only.
 
     A gap is a paid top-up with no purchased block (`not_credited`), one credited to another org or
-    amount (`credited_differently`), or a top-up owed a bonus that has none (`bonus_missing`).
+    amount (`credited_differently`), or a top-up owed a bonus that has none (`bonus_missing`). A
+    payment of a team that has since been deleted is never a gap.
     """
     paid = await _succeeded_payment_intents(since, until)
     topups: list[tuple[dict, int, int, bool]] = []
@@ -2218,12 +2219,19 @@ async def reconcile_topups(*, since: datetime, until: datetime) -> dict:
         blocks = {b.stripe_payment_intent: b for b in (await db.execute(
             select(CreditBlock).where(CreditBlock.stripe_payment_intent.in_(ids))
         )).scalars()} if ids else {}
+        org_ids = {org_id for _, org_id, _, _ in topups}
+        # Team deletion removes a team's blocks and ledger with it, so a payment of a deleted team
+        # has nothing left to match and nothing a resend could credit.
+        live = set((await db.execute(select(Org.id).where(Org.id.in_(org_ids)))).scalars()) \
+            if org_ids else set()
         bonused: set[str] = set()
-        for org_id in {org_id for _, org_id, _, _ in topups}:
+        for org_id in live:
             bonused |= await _bonused_payments(db, org_id)
     gaps = []
     for pi, org_id, amount_micro, auto in topups:
         block = blocks.get(pi["id"])
+        if org_id not in live:
+            continue
         if block is None:
             gap = GAP_NOT_CREDITED
         elif block.org_id != org_id or block.amount_micro != amount_micro:

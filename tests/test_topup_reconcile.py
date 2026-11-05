@@ -259,6 +259,20 @@ async def test_reconcile_reports_every_paid_top_up_the_ledger_does_not_match(c, 
     assert lost_gap["org_id"] == org_id and lost_gap["amount_micro"] == 920_000_000
 
 
+async def test_reconcile_ignores_a_paid_top_up_of_a_deleted_team(c, monkeypatch):
+    org_id = await _org(c)
+    assert (await _deliver(c, _pi(org_id, "pi_gone", 10_000))).status_code == 200
+    from treg.domain.governance.teams import cascade_delete_org
+    from treg.models import Org
+    async with session_maker() as db:
+        await cascade_delete_org(await db.get(Org, org_id), db)
+        await db.commit()
+    monkeypatch.setattr(billing, "_sdk", _stripe_lists([_pi(org_id, "pi_gone", 10_000)]))
+    until = datetime.now(timezone.utc).replace(tzinfo=None)
+    report = await billing.reconcile_topups(since=until - timedelta(hours=48), until=until)
+    assert report["gaps"] == []
+
+
 async def test_reconcile_flags_a_payment_credited_for_another_amount(c, monkeypatch):
     org_id = await _org(c)
     assert (await _deliver(c, _pi(org_id, "pi_amount", 5_000))).status_code == 200

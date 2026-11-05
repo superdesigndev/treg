@@ -488,7 +488,8 @@ credited, and nothing in the request path notices. The command lists every succe
 created in `[now - grace - hours, now - grace)`, keeps the treg top-ups (the same `_topup_metadata`
 rule as the webhook, so invoice-paid automatic top-ups count) and reports each with no purchased block
 (`not_credited`), a block of another org or amount (`credited_differently`), or a top-up owed a
-bonus with no `topup_bonus` entry (`bonus_missing`). It writes nothing: the fix for a gap is a Stripe
+bonus with no `topup_bonus` entry (`bonus_missing`). A payment of a team deleted since is skipped:
+team deletion removes its blocks and ledger, so there is nothing to match or credit. It writes nothing: the fix for a gap is a Stripe
 event resend, which goes through the webhook's idempotency; a hand credit pays twice if Stripe later
 delivers the event. It prints the report as one JSON line and exits 1 when there is a gap. With
 `TREG_OPS_SLACK_WEBHOOK_URL` set it also posts the gaps, or its own failure, to that Slack incoming
