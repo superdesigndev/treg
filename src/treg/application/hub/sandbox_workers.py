@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import logging
 import time
 from typing import Any
 from urllib.parse import urlsplit
@@ -26,6 +27,7 @@ from .sandbox import MAX_LINE_BYTES, MAX_OUTPUT_BYTES, SandboxError, _Host
 _KINDS = {"script", "timeout", "memory", "stack", "output", "refused", "protocol"}
 _MEMORY = ("memory limit", "exceeded memory", "out of memory")
 AUTH_TTL_S = 60
+log = logging.getLogger("treg.hub.sandbox")
 
 
 def sign_run(secret: str, run: str, *, ttl_s: int = AUTH_TTL_S) -> str:
@@ -158,6 +160,9 @@ async def run(host: _Host, script: str, inputs: dict[str, Any], data: Any) -> di
             raise SandboxError("timeout", f"the run passed its {host.wall_s} s wall clock") from None
         if exc.sent is not None and exc.sent.code == CloseCode.MESSAGE_TOO_BIG:
             raise SandboxError("protocol", f"the sandbox wrote a frame over {MAX_LINE_BYTES // (1024 * 1024)} MiB") from None
+        log.warning("hub sandbox closed early sent=%s rcvd=%s left_s=%.1f",
+                    exc.sent and exc.sent.code, exc.rcvd and exc.rcvd.code, host.left())
         raise SandboxError("protocol", "the workers sandbox closed the run without an answer") from exc
     except (InvalidHandshake, InvalidURI, OSError) as exc:
+        log.warning("hub sandbox unreachable %s", type(exc).__name__)
         raise SandboxError("protocol", "the workers sandbox is unreachable") from exc
