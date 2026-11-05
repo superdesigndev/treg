@@ -866,3 +866,154 @@ async def test_an_async_find_whose_usage_is_still_to_come_is_held_not_charged(
     assert int(r.headers["X-Treg-Cost-Micro"]) == d["_treg"]["charged_micro"] == 0
     assert d["_treg"]["tried"][0]["charged_micro"] == 0
     assert before - await _balance(clients) == u["reserved_micro"], "still held for the worker"
+
+
+def _overflow_on(monkeypatch, endpoint_id: str, provider: str, price: int) -> None:
+    monkeypatch.setenv("TREG_OVERFLOW_MODE", "on")
+    monkeypatch.setenv("TREG_OVERFLOW_KEY_MONID", "test-key")
+    monkeypatch.setenv("TREG_OVERFLOW_DAILY_BUDGET_USD", "10")
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_route.capacity_view, "is_exhausted",
+                        lambda p, endpoint_id=None, slot=None, **_: endpoint_id == _overflow_on.target)
+    _overflow_on.target = endpoint_id
+    _overflow_on.row = dict(endpoint_id=endpoint_id, aggregator="monid", provider=provider, agg_slug=provider,
+                            agg_price_micro=price, agg_unit="call", ratio=1, enabled=True)
+
+
+async def _add_overflow_route() -> None:
+    from treg.models import OverflowRoute
+    ep = catalog_store.load().by_id[_overflow_on.row["endpoint_id"]]
+    async with session_maker() as db:
+        db.add(OverflowRoute(method=ep["method"], path=ep["path"], agg_path=ep["path"], **_overflow_on.row))
+        await db.commit()
+    call_route.overflow_routes_view.invalidate()
+
+
+async def test_an_overflow_check_without_a_reported_price_is_still_released_with_a_failed_find(
+    clients: AsyncClient, verifiers_on, monkeypatch,
+):
+    """Monid reports no price, so the check's overflow hold stays open (`:v:r0:overflow`) and is
+    releasable: an invalid verdict then a provider error is the usual 502 that charges nothing."""
+    import httpx
+
+    from treg.application.call import overflow
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tomba,hunter")
+    _overflow_on(monkeypatch, "tomba.people.email.verify", "tomba", 10_000)
+    await _add_overflow_route()
+
+    async def monid_send(client, req):
+        return httpx.Response(200, json={"runId": "run-1", "status": "COMPLETED",
+                                         "output": {"data": {"email": {"status": "invalid", "score": 0}}},
+                                         "providerResponse": {"httpStatus": 200}})
+    monkeypatch.setattr(overflow, "_send", monid_send)
+    monkeypatch.setattr(call_service, "relay", _relay({"tomba": [EX_TOMBA], "hunter": [(500, {"error": "down"})]}, []))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers={**ON, "X-Treg-Route-Prefer": "tomba,hunter"})
+    assert r.status_code == 502, r.text
+    assert r.json()["detail"]["charged_micro"] == 0 and await _balance(clients) == before
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == []
+
+
+async def test_an_async_check_billed_on_submission_by_overflow_is_charged_not_held(
+    clients: AsyncClient, verifiers_on, monkeypatch,
+):
+    """Monid bills BounceBan's `verifying` submission at once: the 202 reports it as charged, not
+    as a reservation, and a replay's original cost matches what the wallet paid."""
+    import httpx
+
+    from treg.application.call import overflow
+    _overflow_on(monkeypatch, "bounceban.people.email.verify", "bounceban", 6_000)
+    await _add_overflow_route()
+    monkeypatch.setattr(call_route, "ROUTED_ASYNC_WAIT_SECONDS", 0.07)
+
+    async def monid_send(client, req):
+        return httpx.Response(200, json={
+            "runId": "run-1", "status": "COMPLETED", "providerResponse": {"httpStatus": 200},
+            "output": {"status": "verifying", "id": "bb-1", "email": "ada@example.com", "try_again_at": 1},
+            "billing": {"reportedCost": {"value": 5_500, "unit": "MICRO_DOLLAR"}}})
+    monkeypatch.setattr(overflow, "_send", monid_send)
+    before = await _balance(clients)
+    h = {"X-Treg-Route-Prefer": "bounceban", "Idempotency-Key": "async-overflow-1"}
+    r = await clients.post(f"/call/{VERIFY}", json={"email": "ada@example.com"}, headers=h)
+    assert r.status_code == 202, r.text
+    t = r.json()["_treg"]
+    paid = before - await _balance(clients)
+    assert paid > 0 and t["reserved_micro"] == 0 and t["charged_micro"] == paid
+    replay = await clients.post(f"/call/{VERIFY}", json={"email": "ada@example.com"}, headers=h)
+    assert replay.headers.get("X-Treg-Idempotent-Replay") == "true"
+    assert int(replay.headers.get("X-Treg-Original-Cost-Micro") or 0) == paid
+    assert before - await _balance(clients) == paid
+
+
+async def test_every_unsettled_hold_of_a_pending_check_counts_against_the_ceiling(
+    clients: AsyncClient, verifiers_on, monkeypatch,
+):
+    """BounceBan reached its terminal state without settling (its hold is left) and Enrow is still
+    running: the check's 202 hands back both holds, and the upgrade is budgeted net of them."""
+    from test_routing import _relay_by_provider
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LIMADATA", "PLATFORM-LIMADATA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ENROW", "PLATFORM-ENROW-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "limadata,bounceban,enrow")
+    get_settings.cache_clear()
+    first, other = "initial@example.com", "different@example.com"
+    seen = []
+    answers = {"limadata": [(200, {"emails": [first]}), (200, {"emails": [other]})],
+               "bounceban": [(200, {"id": "bb-mixed", "status": "verifying"}),
+                             _bb(None, id="bb-mixed", email=first), _bb(None, id="bb-mixed", email=first)],
+               "enrow": [(200, {"id": "en-mixed", "qualification": "ongoing", "credits_used": 0.25}),
+                         (200, {"id": "en-mixed", "qualification": "valid", "credits_used": 0.25})]}
+    monkeypatch.setitem(catalog_store.load().by_id["bounceban.people.email.verify"]["async"], "interval", 0.05)
+    monkeypatch.setattr(call_route, "ROUTED_ASYNC_WAIT_SECONDS", 0.4)
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(answers, seen))
+    observe = call_service.async_task_app.observe_owned_poll
+    failed_once: list = []
+
+    async def settle_times_out_once(call_id, status, raw, **kwargs):
+        if not failed_once:
+            failed_once.append(call_id)
+            raise TimeoutError("transient async settlement DB timeout")
+        return await observe(call_id, status, raw, **kwargs)
+    monkeypatch.setattr(call_service.async_task_app, "observe_owned_poll", settle_times_out_once)
+    cap = 202_175
+    r = await clients.post("/call/treg.people.email.find.personal",
+                           json={"linkedin_url": "https://www.linkedin.com/in/ada-example"},
+                           headers={**ON, "X-Treg-Route-Upgrade": "email", "X-Treg-Route-Max-Cost": "0.202175"})
+    assert r.status_code == 200, r.text
+    for ep, job in (("bounceban.people.email.verify.status", "bb-mixed"), ("enrow.people.email.verify.get", "en-mixed")):
+        assert (await clients.get(f"/call/{ep}", params={"id": job})).status_code == 200
+    async with session_maker() as db:
+        entries = (await db.execute(select(LedgerEntry))).scalars().all()
+    assert sum(-e.amount_micro for e in entries if e.kind == "settle") <= cap
+
+
+async def test_a_nested_checks_records_follow_the_money(clients: AsyncClient, verifiers_on, monkeypatch):
+    """The check's call event waits for the find like its audit row: released with a failed find it
+    says zero, and a batch settle that fails leaves the row at zero, as the wallet."""
+    from treg import call_events as sink
+    from treg.domain import money as ledger_mod
+    events = []
+    monkeypatch.setattr(sink, "enabled", lambda: True)
+    monkeypatch.setattr(sink, "emit", lambda row, *a, **k: events.append(row))
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA], "bounceban": [_bb("undeliverable", email="ada@example.com")],
+         "hunter": [(503, {"error": "busy"})]}, []))
+    r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=ON)
+    assert r.status_code == 502
+    check_events = [e for e in events if e.get("call_ref", "").endswith(":v") and e.get("event_kind") == "call"]
+    assert check_events and all(e.get("cost_charged_micro") == 0 for e in check_events), check_events
+
+    monkeypatch.setattr(call_service, "relay", _relay(
+        {"tomba": [EX_TOMBA], "bounceban": [_bb("deliverable", email="ada@example.com")]}, []))
+    before = await _balance(clients)
+
+    async def fail_batch(*args, **kwargs):
+        raise RuntimeError("test fault: batch transaction failed")
+    with monkeypatch.context() as patch:
+        patch.setattr(ledger_mod, "close_holds_in_transaction", fail_batch)
+        r = await clients.post(f"/call/{FIND}", json=EX_ASK, headers=ON)
+    assert r.status_code == 200, r.text
+    call_ref = r.headers["X-Treg-Call-Id"]
+    rows = {x.call_ref: x for x in await _rows()}
+    assert rows[f"{call_ref}:v"].cost_charged_micro == 0, "the settle never committed"
+    assert await _balance(clients) <= before

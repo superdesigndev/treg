@@ -942,8 +942,10 @@ returned and never documented as stable. An output field may say where it lands 
   routed check (and an upgrade `:u`) hands its holds to the find's `pending`, so a find that fails
   or is cancelled after it charges it nothing. An async check whose task settled on its own cannot
   be released, and neither can an overflow aggregator's charge (it settles at once, outside
-  `pending`): any child or check charge with no entry in `pending` counts
-  (`CallContext.settled_outside_micro`). After that, a later provider error, refusal
+  `pending`): any child or check charge with no hold of its own in `pending` counts (matched by
+  hold id, so `ref:overflow` is the child's; `CallContext.settled_outside_micro`). An async
+  kickoff that left no open hold (overflow bills on submission) is reported charged on its 202,
+  never as a reservation. After that, a later provider error, refusal
   (balance, caller fault) or not-found ends in the null miss that charges what was paid, never a
   zero-charge failure, for any routed call. A cancelled request still pays a settled or still
   running async task, like any async call. `run_routed` leaves `routed_spent_micro` (what it moved;
@@ -951,9 +953,11 @@ returned and never documented as stable. An output field may say where it lands 
   check's hold from the ceiling. An async child whose result came before its task settled (Enrow
   before `credits_used`) is held, not charged: `_treg.unsettled` names it with its hold, the
   worker settles it later from zero to the hold, and the call counts as committed. A nested routed
-  call (the check `:v`, the upgrade `:u`) writes its own audit row through `deferred_audits` once
-  the enclosing call decides: at its charge when the money stands, else at what it could not
-  release.
+  call (the check `:v`, the upgrade `:u`) writes its own audit row and call event through
+  `deferred_audits` once the enclosing call's batch settle committed: at its charge when it did,
+  else (released, failed or cancelled settle) at what it could not release. A pending check's 202
+  hands back every unsettled hold (`unsettled`, with `call_id`) with its own, and all of them are
+  spent from the ceiling.
   A pending check's hold counts against `X-Treg-Route-Max-Cost` for every later call. When an
   upgrade's value is invalid, the answer it replaced is checked and returned, and
   `_treg.upgrade` says `reason: invalid`. With `X-Treg-Route-Confirm`, the off-domain fallback is

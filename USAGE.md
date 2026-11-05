@@ -286,7 +286,9 @@ An address found invalid stays invalid for the whole call, even when another pro
 A call that fails or is cancelled after a synchronous check charges nothing, the check included. A
 check a verifier runs as an asynchronous task (BounceBan's `verifying`) is billed like any async
 call once submitted: if its task already settled, a later provider error or refusal ends in the
-null miss that charges what was paid, and a cancelled request still pays for it; a check still
+null miss that charges what was paid, and a cancelled request still pays for it, settled at the
+task's actual usage. Cancelling also frees the request's `Idempotency-Key`: a retry with the same key
+can submit a second check task, and each submission is billed. A check still
 running counts its hold against `X-Treg-Route-Max-Cost` and settles when the task does. The same
 holds for a provider served through an overflow aggregator, which bills at once. A provider whose
 result came before its final usage figure is named in `_treg.unsettled` with its hold: it is not in

@@ -935,8 +935,18 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         request.state.call_audited = True
         routed_pending = response.status == 202 and routed._header(response, "X-Treg-Route-Outcome") == "pending"
         request.state.call_cost_micro = None if routed_pending else charged
-        _routed_event(request, ep, response.status, charged=None if routed_pending else charged,
-                      response=response)
+        nested = request.context.deferred_audits
+        if nested is not None:
+            # A routed call nested in another (the find's check): its event waits for the
+            # enclosing call, which knows whether this charge stands.
+            ctx = request.context
+            nested.append(lambda stands: _routed_event(
+                request, ep, response.status,
+                charged=None if routed_pending else (charged if stands else ctx.settled_outside_micro),
+                response=response))
+        else:
+            _routed_event(request, ep, response.status, charged=None if routed_pending else charged,
+                          response=response)
         if idem_key:
             try:
                 await _store_idempotent(idem_key, caller, status_code=response.status,
