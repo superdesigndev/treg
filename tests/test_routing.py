@@ -215,21 +215,68 @@ def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
                                                "miss": "a == null", "stand_in": {"nope": "q"}}}})
 
 
-def test_a_free_text_people_search_asks_the_semantic_providers_first():
-    """`prefer_when` replaces the contract's order for a caller who sent its keys: a `{q}` search
-    goes to exa then parallel, while a company lookup keeps the contract's own `prefer`."""
-    from treg.domain.catalog.routing import contracts as C
+@pytest.fixture
+def people_search_on(monkeypatch, platform_on):
+    for p in ("CRAWL4AI", "EXA", "PARALLEL", "ICYPEAS"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,exa,parallel,icypeas")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
-    contract = catalog_store.load().contracts["people.search"]
-    assert contract.prefer_for({"q"}) == ("exa", "parallel", "crawl4ai")
-    assert contract.prefer_for({"q", "title"}) == ("exa", "parallel", "crawl4ai")
-    assert contract.prefer_for({"company_domain", "title"}) == contract.prefer == ("crawl4ai",)
-    assert contract.prefer_for(set()) == ("crawl4ai",)
-    assert C.default_prefer(contract, {"q": "phoenix head of tax"}, {"q"}) == ["exa", "parallel", "crawl4ai"]
-    for bad in ({"sent": ["nope"], "prefer": ["exa"]}, {"sent": ["q"]}, {"sent": ["q"], "prefer": ["exa"], "x": 1}):
-        with pytest.raises(ValueError, match="prefer_when"):
-            C.parse_contracts({"contracts": {"y": {"identity": [{"q": "str"}], "output": {"a": "str"},
-                                                   "miss": "a == null", "prefer_when": [bad]}}})
+
+async def _first_providers(ep_id: str, identity: dict, header: str | None = None, n: int = 2) -> list[str]:
+    options = call_route.RouteOptions.from_headers(
+        lambda key: header if header and key == call_route.PREFER_HEADER else None)
+    caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+    plan = await call_route.build_plan(catalog_store.load().by_id[ep_id], identity, caller, options)
+    return [c.endpoint["provider"] for c in plan.candidates][:n]
+
+
+@pytest.mark.parametrize("identity, header, first", [
+    ({"q": "head of tax in phoenix"}, None, ["parallel", "exa"]),   # sent q: the first matching rule
+    ({"title": "Head of Tax"}, None, ["icypeas"]),                  # a stand-in q is not one the caller sent
+    ({"q": "head of tax in phoenix"}, "exa", ["exa"]),              # the caller's header replaces the rules
+])
+async def test_prefer_when_orders_the_routed_plan_by_the_keys_the_caller_sent(
+        clients, people_search_on, monkeypatch, identity, header, first):
+    import dataclasses
+    cat = catalog_store.load()
+    monkeypatch.setitem(cat.contracts, "people.search", dataclasses.replace(
+        cat.contracts["people.search"], prefer=("icypeas",),
+        prefer_when=((("q",), ("parallel", "exa")), (("q",), ("exa",)))))
+    assert (await _first_providers("treg.people.search", identity, header, len(first))) == first
+    scoped = await _first_providers("treg.people.search", {"q": "head of tax", "title": "Head of Tax"}, n=99)
+    assert not {"parallel", "exa"} & set(scoped), "a {q} rule never reaches past scoping"
+
+
+@pytest.mark.parametrize("domain, first", [
+    ("stripe.fr", ["hunter", "findymail"]),   # the domain suffix goes ahead of the sent-keys rule
+    ("stripe.com", ["findymail"]),
+])
+async def test_a_domain_suffix_rule_goes_ahead_of_prefer_when(clients, enrichment_on, monkeypatch, domain, first):
+    import dataclasses
+    cat = catalog_store.load()
+    monkeypatch.setitem(cat.contracts, "people.email.find", dataclasses.replace(
+        cat.contracts["people.email.find"], prefer_by_domain_suffix={"fr": ("hunter",)},
+        prefer_when=((("full_name",), ("findymail",)),)))
+    got = await _first_providers(ROUTED, {"full_name": "Patrick Collison", "domain": domain}, n=len(first))
+    assert got == first
+
+
+@pytest.mark.parametrize("rule", [
+    {"sent": ["q"], "prefer": "exa"}, {"sent": ["q"], "prefer": []}, {"sent": ["q"], "prefer": [None]},
+    {"sent": ["q"], "prefer": [""]}, {"sent": ["q"], "prefer": ["  "]}, {"sent": ["q"], "prefer": {"exa": 1}},
+    {"sent": ["q"], "prefer": [1]}, {"sent": "q", "prefer": ["exa"]}, {"sent": [], "prefer": ["exa"]},
+    {"sent": ["nope"], "prefer": ["exa"]}, {"sent": ["q"]}, {"sent": ["q"], "prefer": ["exa"], "x": 1}, "q",
+])
+def test_a_malformed_prefer_when_fails_the_load(rule):
+    from treg.domain.catalog.routing.contracts import parse_contracts
+    doc = {"contracts": {"y": {"identity": [{"q": "str"}], "output": {"a": "str"}, "prefer_when": [rule]}}}
+    with pytest.raises(ValueError, match="prefer_when"):
+        parse_contracts(doc)
+    with pytest.raises(ValueError, match="prefer_when"):
+        parse_contracts({"contracts": {"y": {**doc["contracts"]["y"], "prefer_when": {"sent": ["q"], "prefer": ["exa"]}}}})
 
 
 def test_every_shipped_adapter_round_trips_its_fixture():

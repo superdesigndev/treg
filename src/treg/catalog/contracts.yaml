@@ -383,8 +383,7 @@ contracts:
     miss: "people == []"
     idempotent: true
     prefer: [crawl4ai]
-    # A free-text `q` is a semantic question. In live traffic crawl4ai answered 18% of `{q}` calls,
-    # parallel 90% and exa 99%, and exa's rows were judged best on both public people-search sets.
+    # A free-text `q` is a semantic question: ask the semantic searches first.
     prefer_when:
       - {sent: [q], prefer: [exa, parallel, crawl4ai]}
     # Search rows are directory listings. An email in a row is found, not confirmed deliverable,
