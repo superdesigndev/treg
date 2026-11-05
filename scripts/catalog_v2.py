@@ -152,6 +152,11 @@ def _price(cost: dict, warnings: list[str]) -> dict:
         out["fallback"] = {"value": money(cost["fallback"]["value"]), "note": cost["fallback"]["note"]}
     elif cost.get("value") is not None:
         out["value"] = money(cost["value"])
+        if cost.get("fallback") is not None:
+            # v2 has a fallback only beside a table; beside a value it is the same scalar.
+            if money(cost["fallback"]["value"]) != out["value"]:
+                raise Refused("cost.fallback beside a different cost.value has no v2 spelling")
+            warnings.append("cost.fallback equals cost.value and is dropped; its note joins price.note")
     elif cost.get("type") == "free":
         out["value"] = "0"
     else:
@@ -164,6 +169,8 @@ def _price(cost: dict, warnings: list[str]) -> dict:
                 and int(cost.get("per") or 1) > 1:
             # today's row hold rounds up to whole `per` blocks
             out["round"] = "up"
+    if cost.get("table") is None and (fallback_note := (cost.get("fallback") or {}).get("note")):
+        out["note"] = f"{out['note']} {fallback_note}" if out.get("note") else fallback_note
     if "table_min" in cost:
         warnings.append("cost.table_min is dropped; the loader derives it")
     return out
@@ -248,12 +255,17 @@ def rewrite(row: dict, *, provider: str, header_expect: dict | None = None,
             keys[key] = None
         elif keys[key] == defaults[key]:
             del keys[key]
+    if row.get("async") is False and "async" in (defaults or {}):
+        # today's opt-out of the header's async block; v2 opts out of the default with null
+        keys["async"] = None
     label = cost_type(keys.get("price"), keys.get("reserve"), keys.get("settle"), bill)
     if label != kind:
         out.warnings.append(f"the views will label it {label}; today they say {kind}")
-    order = ("price", "provenance", "reserve", "settle", "bill", "expect", "error", "miss", "not_found", "note")
+    order = ("price", "provenance", "reserve", "settle", "bill", "expect", "error", "miss", "not_found", "note",
+             "async")
     return _checked(row, out, {k: keys[k] for k in order if k in keys},
-                    tuple(k for k in ("cost", "tier", *OUTCOME_KEYS, *(("note",) if "note" in keys else ()))
+                    tuple(k for k in ("cost", "tier", *OUTCOME_KEYS, *(("note",) if "note" in keys else ()),
+                                      *(("async",) if row.get("async") is False else ()))
                           if k in row), defaults)
 
 
