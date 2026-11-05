@@ -101,7 +101,7 @@ def _shell(*, title: str, description: str, path: str, here: str, body: str, ld:
 </head>
 <body>
 <nav class="nav" id="nav">
-  <span class="wordmark"><a href="/" aria-label="treg home">{_LOGO} treg</a> <span class="sl">/</span> <a class="here" href="/compare">Compare</a><span class="deep">{here}</span></span>
+  <span class="wordmark{' has-deep' if here else ''}"><a href="/" aria-label="treg home">{_LOGO} treg</a><span class="mid"> <span class="sl">/</span> <a class="here" href="/compare">Compare</a></span><span class="deep">{here}</span></span>
   <span class="nav-r">
     <span class="nav-links">{nav}<a href="/catalog">Catalog</a><a href="/pricing">Pricing</a><a href="{_GH}" target="_blank" rel="noopener">GitHub ↗</a></span>
     <a class="pill dark" href="/app?ref={_e(ref)}">Start free</a>
@@ -255,7 +255,6 @@ def _page_body(key: str, base: str) -> str:
                       f'<a href="/tools/{_e(pid)}">see every {shown} tool on treg, with its price</a>.</p>')
 
     return f"""<header class="hero">
-  <div class="crumbs"><a href="/">treg</a> / <a href="/compare">Compare</a> / treg vs {_e(short)}</div>
   <h1>treg <span class="vs">vs</span> {_e(short)}</h1>
   <p class="sub">{_e(c["sub"])}</p>
   <div class="checked"><i></i>Read from {_e(name)}'s public pages on {cp.checked_label(key)}</div>
@@ -431,7 +430,6 @@ def _hub_body() -> str:
                       f'<p class="lede">{_e(lede)}</p><div class="cards">'
                       + "".join(_card(k) for k in keys) + "</div></section>")
     return f"""<header class="hero">
-  <div class="crumbs"><a href="/">treg</a> / Compare</div>
   <h1>How treg compares</h1>
   <p class="sub">treg is like OpenRouter for tools: one API key and one balance for many paid APIs. These are honest, side-by-side comparisons with the other ways an AI agent gets tools and data, and each one says where the other product is the better choice.</p>
   <div class="checked"><i></i>Each page says the day its facts were read, most recently {cp.checked_label()}</div>

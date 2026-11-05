@@ -25,7 +25,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 /* nav */
 .nav { position: sticky; top: 0; z-index: 90; display: flex; align-items: center; justify-content: space-between; padding: 14px 28px; background: rgba(253,252,251,.86); backdrop-filter: blur(12px); border-bottom: 1px solid transparent; transition: border-color .3s; }
 .nav.scrolled { border-bottom-color: var(--line); }
-.wordmark { display: flex; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 15px; }
+.wordmark { display: flex; min-width: 0; align-items: center; gap: 10px; font-family: var(--display); font-weight: 600; font-size: 15px; }
 .wordmark a { display: inline-flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
 .wordmark svg { width: 22px; height: 22px; border-radius: 6px; }
 .wordmark .sl { color: var(--muted); font-weight: 400; }
@@ -44,9 +44,6 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
     radial-gradient(36% 46% at 80% 26%, var(--them-soft, rgba(99,102,241,.14)), transparent 70%),
     radial-gradient(50% 40% at 50% 90%, rgba(232,200,150,.18), transparent 70%);
   }
-.crumbs { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: .02em; margin-bottom: 22px; }
-.crumbs a { color: var(--muted); text-decoration: none; }
-.crumbs a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .hero h1 { font-family: var(--pixel); font-weight: 400; letter-spacing: -.02em; font-size: clamp(40px, 7vw, 84px); line-height: 1.04; margin: 0 0 18px; text-wrap: balance; }
 .hero h1 .vs { color: var(--muted); font-size: .62em; vertical-align: .14em; margin: 0 .12em; }
 .hero .sub { color: var(--body); font-size: clamp(17px, 2vw, 19px); max-width: 60ch; margin: 0 auto 18px; text-wrap: balance; }
@@ -222,7 +219,14 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .pill { white-space: nowrap; }
 .deep { display: contents; }
-@media (max-width: 600px) { .deep { display: none; } }
+@media (max-width: 600px) {
+  .nav { gap: 12px; }
+  .nav-r { flex: none; }
+  .wordmark { font-size: 14px; gap: 8px; flex: 1 1 auto; overflow: hidden; }
+  .wordmark > a { flex: none; }
+  .wordmark.has-deep .mid { display: none; }
+  .deep { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
 .mono.logo { background: #fff; border: 1px solid var(--line); box-shadow: 0 1px 2px rgba(20,18,12,.06); overflow: hidden; }
 .mono.logo img { width: 72%; height: 72%; object-fit: contain; display: block; }
 .flow .mono.logo { border-color: #3D3D3A; }
