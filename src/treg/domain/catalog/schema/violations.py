@@ -17,7 +17,6 @@ from .common import UNREAD_SPEC_WORDS
 
 VIOLATIONS_FILE = Path(__file__).with_name("violations.yaml")
 SECTIONS = ("endpoint_keys", "cost_keys", "unread_input_words", "rejected", "legacy_holds")
-DEPRECATED_KEYS = {"call_note": "note"}
 
 
 @dataclass(frozen=True)
@@ -132,10 +131,6 @@ def audit(uses: Iterable[Use], headers: Iterable[tuple[str, Mapping[str, Any]]],
     for name, header in headers:
         if words := set(_spec_words(header.get("queryParams"))):
             words_at[name] = words
-    for key, instead in DEPRECATED_KEYS.items():
-        if key in key_users:
-            errors.append(f"{key} is deprecated, write {instead} instead "
-                          f"(used by {', '.join(sorted(key_users[key]))})")
     for section, listed, users in (("endpoint_keys", v.endpoint_keys, key_users),
                                    ("cost_keys", v.cost_keys, cost_users)):
         for key, provider in listed.items():

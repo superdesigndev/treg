@@ -277,15 +277,6 @@ def test_the_violation_audit_refuses_growth_and_stale_entries():
         {"endpoint_keys": {"team_label": {"provider": "crawl4ai"}}})) == []
 
 
-def test_a_deprecated_key_still_loads_as_note_but_fails_validation(tmp_path):
-    cat = _catalog(tmp_path, {"demo.yaml": "provider: demo\nendpoints:\n" + ROW.format(name="a")
-                              + "    call_note: retry later\n"})
-    assert cat.by_id["demo.web.a"]["note"] == "retry later"
-    errors = violations.audit([violations.Use("demo.web.a", "demo", {"call_note": "retry later"})], [], set(),
-                              violations.parse({}))
-    assert errors == ["call_note is deprecated, write note instead (used by demo)"]
-
-
 def test_the_shipped_violation_list_is_exactly_what_the_catalog_still_violates():
     from scripts import catalog_validate
     assert catalog_validate.main([]) == 0

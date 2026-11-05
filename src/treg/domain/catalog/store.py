@@ -728,7 +728,7 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         "host": str(raw.get("host") or "").strip().lower(),
         "name": str(raw.get("name") or "").strip(),
         "summary": raw.get("summary") or "",
-        **({"note": note} if (note := str(raw.get("note") or raw.get("call_note") or "").strip()) else {}),
+        **({"note": note} if (note := str(raw.get("note") or "").strip()) else {}),
         "input": raw.get("input") or {},
         "authorization_method": str(raw.get("authorization_method") or ""),
         "authorization_methods": list(raw.get("authorization_methods") or []),

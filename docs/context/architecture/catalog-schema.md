@@ -133,11 +133,6 @@ validator refuse (each with its reason), and v2 legacy holds. The validator fail
 list does not name and on an entry nothing uses any more; `scripts/catalog_shrink_only.py` fails a
 pull request that adds an entry the base branch lacks. Fix the data; never grow the list.
 
-A key leaving the models stays one pull request as a deprecated key (`violations.DEPRECATED_KEYS`),
-so the base branch's catalog still loads with the head's code for the replay's catalog dump: the
-loader reads it under its new name and the validator refuses any row that uses it. `call_note` is
-one, read as `note`; the next schema change removes it from `RowBase` and from that map.
-
 ## Manifests, plugins and editors
 
 - `schema.Manifest` models a provider manifest (`src/treg/catalog/providers/<slug>.yaml`). The
