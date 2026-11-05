@@ -104,7 +104,7 @@ class RowBase(Model):
     name: str | None = None
     summary: str | None = field(kind="P")
     docs_url: str | None = field(kind="P")
-    note: str | None = None
+    note: str | None = field(kind="P")
     call_note: str | None = field(kind="P")
 
     input: Input | None = field(kind="P")

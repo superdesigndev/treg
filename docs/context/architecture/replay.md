@@ -142,7 +142,9 @@ A declaration is a YAML mapping; a file holds a list of them:
 ```
 
 A changed field is declared when some declaration matches its endpoint or provider, its field, its
-old and new values and its `where`. A list value matches a list field element for element. The
+old and new values and its `where`. A declared value matches only a value of its own kind: a
+boolean never matches a number, null matches only null and a string only a string, while an integer
+and a float compare by value. A list value matches a list field element for element. The
 report names the first matching declaration, but every declaration that matches some change
 counts as exercised.
 
@@ -161,8 +163,11 @@ field of the loaded `Catalog` and each row's cost view, sorted keys; a dataclass
 default is left out, so adding a field nobody sets yet is not a difference) with the base's code and with
 the merge result's code (`--catalog`) and fails on any byte difference, naming the first differing
 path ([catalog-schema](catalog-schema.md)). A pull request that also rewrites rows is held to that
-on its code alone; the replay judges the rows. It needs no body declaration, and a pure catalog
-data pull request skips it. The replay diff still runs and reports
+on its code alone; the replay judges the rows. A pull request that means to change how existing
+rows are served declares the dotted paths it changes in a fenced `dump-declared` block of its body,
+one glob per line with an optional `#` reason (`by_id.*.note`); the report names each glob and how
+many differences it covered, and any other difference still fails. A pure catalog data pull request
+skips it. The replay diff still runs and reports
 when the dump check fails.
 
 A base without the engine skips the comparison. The ordinary test suite also replays the whole

@@ -158,6 +158,23 @@ class Settings(BaseSettings):
                 raise ValueError("enabled org flow control requires a valid Redis kv_url")
         return self
 
+    # Published route rules (docs/context/architecture/route-rules.md); off keeps the YAML order.
+    route_rules_enabled: bool = False
+    route_rules_refresh_s: float = Field(default=30.0, ge=1, le=300)
+
+    @model_validator(mode="after")
+    def _route_rules_configuration(self):
+        if self.route_rules_enabled:
+            try:
+                url = urlsplit(self.kv_url)
+                valid = (url.scheme in {"redis", "rediss"} and bool(url.hostname)
+                         or url.scheme == "unix" and bool(url.path))
+            except ValueError:
+                valid = False
+            if not valid:
+                raise ValueError("enabled route rules require a valid Redis kv_url")
+        return self
+
     # Optional same-org admission in front of a balance session (settlement, reserve, release).
     # A lease expiry or an unavailable store still runs the database path. A reserve or release
     # with no positive org id refuses before checkout; that refusal is not an HTTP 429.

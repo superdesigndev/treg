@@ -179,9 +179,11 @@ async def test_overlapping_runs_never_fold_the_same_rows_twice(clients):
 
 
 async def _used_today(clients, org_id: int, email: str) -> dict[str, int]:
-    """Today's count for `email` as the members list and the agents list each report it."""
+    """Today's count for `email` as the members list and the member's own `/usage/me` report it."""
     members = (await clients.get(f"/orgs/{org_id}/members")).json()
-    return {m["email"]: m["used_today"] for m in members}[email]
+    listed = {m["email"]: m["used_today"] for m in members}[email]
+    assert (await clients.get("/usage/me")).json()["used_today"] == listed
+    return listed
 
 
 async def test_todays_roster_counts_read_the_rollup_and_its_tail_once_caught_up(clients, monkeypatch):
@@ -212,6 +214,7 @@ async def test_todays_roster_counts_read_the_rollup_and_its_tail_once_caught_up(
     assert got == live + 1
     grouped = [sql for sql in statements if "group by" in sql]
     assert grouped and all("callusagecursor" in sql for sql in grouped), statements
+    assert not any("callrecord.user_email =" in sql for sql in statements), statements
 
 
 async def test_the_tail_after_the_cursor_counts_only_from_the_first_day_on(clients):

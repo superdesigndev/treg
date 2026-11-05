@@ -13,7 +13,8 @@ from . import paths as P
 from .contracts import Adapter, Contract, adapter_accepts
 
 MAX_ERROR_FALLBACKS = 2
-MIN_HIT_SAMPLES = 50
+# P(hit|2xx) for a child below the `stats.MIN_HIT_SAMPLES` hit-rate publication floor.
+UNMEASURED_HIT_PRIOR = 0.5
 
 
 def _used_keys(adapter: Adapter) -> set[str]:
@@ -107,7 +108,7 @@ class Candidate:
     variant: tuple[str, ...]
     tier: str                        # tool | credential | anonymous | platform
     price_micro: int | None          # this request, this org (0 on an own key or anonymous route)
-    hit_rate: float | None           # P(hit) when known (≥ MIN_HIT_SAMPLES), else None
+    hit_rate: float | None           # P(hit) when published (≥ stats.MIN_HIT_SAMPLES), else None
     ok_rate: float | None
     p50_ms: int | None
     last_ok_days: int | None
@@ -117,12 +118,14 @@ class Candidate:
 
     @property
     def expected_cost_per_hit(self) -> float:
-        """price × P(billed) / P(hit). Own keys and anonymous routes are free."""
+        """price × P(billed) / P(hit). Own keys and anonymous routes are free. Without a published
+        hit rate, P(hit) is the prior times the ok rate (1.0 while that is unmeasured too)."""
         if self.price_micro is None:
             return float("inf")
         if self.tier != "platform":
             return 0.0
-        p_hit = self.hit_rate if self.hit_rate is not None else (self.ok_rate if self.ok_rate is not None else 1.0)
+        p_hit = self.hit_rate if self.hit_rate is not None else \
+            UNMEASURED_HIT_PRIOR * (self.ok_rate if self.ok_rate is not None else 1.0)
         p_hit = max(p_hit, 0.01)
         cost_type = (self.endpoint.get("cost") or {}).get("type")
         p_billed = p_hit if cost_type == "per_success" else 1.0
@@ -148,6 +151,8 @@ class Plan:
     variant: tuple[str, ...]
     candidates: list[Candidate] = field(default_factory=list)   # ranked, callable only
     dropped: list[dict] = field(default_factory=list)            # {endpoint_id, why}
+    route_rule: dict[str, str] | None = None   # what ordered it (`route_order`, published rule), for the event
+    orders: dict[str, list[str]] = field(default_factory=dict)  # endpoint ids by `default` / `rule` order
 
     def view(self) -> dict:
         return {"capability": self.contract.capability, "identity_variant": list(self.variant),
