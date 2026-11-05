@@ -472,7 +472,9 @@ retry window (`BONUS_HEAL_WINDOW`); an older gap is left to the reconciliation b
 may already have paid it by hand outside the `topup_bonus` entries. A refund recorded before the
 heal could not see the bonus, so the heal applies it to the new block in the same transaction, in the
 same proportion as "Refunds revoke unspent credit"; `revoke_refunded` takes the same purchased-block
-lock before it looks for bonus blocks, so a refund racing a heal is applied either way. It is its own block that burns
+lock before it looks for bonus blocks, so a refund racing a heal is applied either way. It first
+row-locks the purchased block and the org's bonus blocks in id order, the order settlement locks
+blocks in, so it cannot deadlock against a settlement. It is its own block that burns
 with promo credit, so the purchased block stays exactly what the card paid: purchased credit is a
 refundable liability, the bonus is marketing spend. The billing page shows the bonus each refill earns
 and the next tier up, so a bigger refill amount is the visible way to earn more. A refund or dispute

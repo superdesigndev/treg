@@ -172,6 +172,41 @@ async def test_a_full_refund_racing_a_bonus_heal_leaves_no_bonus(c, monkeypatch)
     assert sum(b.remaining_micro for b in blocks) == 0
 
 
+async def test_a_refund_racing_a_settlement_does_not_deadlock(c):
+    """Settlement row-locks an org's blocks in id order. A refund must take its blocks in that order
+    too: when the bonus block sorts first, locking the purchased block first deadlocks."""
+    import asyncio
+
+    if session_maker.kw["bind"].dialect.name != "postgresql":
+        pytest.skip("row-lock order needs an isolated PostgreSQL database via TREG_TEST_DB_URL")
+    org_id = await _org(c)
+    for n in range(64):
+        pi = f"pi_order_{n}"
+        assert (await _deliver(c, _pi(org_id, pi, 10_000))).status_code == 200
+        async with session_maker() as db:
+            purchased = (await money.block_for_payment(db, pi)).id
+            bonus = (await db.execute(select(LedgerEntry.block_id).where(
+                LedgerEntry.org_id == org_id, LedgerEntry.kind == "grant"))).scalars().all()
+        bonus = [b for b in bonus if b != purchased and b < purchased]
+        if bonus:
+            break
+    else:
+        pytest.fail("no bonus block sorted before its purchased block")
+
+    async with session_maker() as settle:
+        await settle.execute(select(CreditBlock.id).where(CreditBlock.id == bonus[0]).with_for_update())
+
+        async def refund():
+            async with session_maker() as db:
+                return await billing.revoke_refunded(db, pi, 100_000_000, source="test")
+
+        refunding = asyncio.create_task(refund())
+        await asyncio.sleep(0.5)
+        await settle.execute(select(CreditBlock.id).where(CreditBlock.id == purchased).with_for_update())
+        await settle.commit()
+    assert (await asyncio.wait_for(refunding, 10))["handled"] is True
+
+
 async def test_two_deliveries_of_one_payment_at_once_grant_one_bonus(c):
     """`checkout.session.completed` and `payment_intent.succeeded` arrive together for every Checkout
     purchase. The lock on the purchased block keeps them to one bonus on Postgres and SQLite alike."""

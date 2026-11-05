@@ -1645,6 +1645,19 @@ async def _lock_purchased_block(db: AsyncSession, block_id: str) -> datetime:
     )).scalar_one()
 
 
+async def _lock_refund_blocks(db: AsyncSession, org_id: int, block_id: str) -> None:
+    """`_lock_purchased_block` for a refund, which goes on to lock the payment's bonus blocks too.
+
+    On PostgreSQL the purchased block and the org's bonus blocks are row-locked in id order first, the
+    order settlement locks blocks in, so a refund racing a settlement cannot deadlock. The no-op
+    UPDATE that follows is then already covered there, and on SQLite it is the write lock."""
+    await db.execute(
+        select(CreditBlock.id).where(CreditBlock.org_id == org_id,
+                                     or_(CreditBlock.id == block_id, CreditBlock.kind == "bonus"))
+        .order_by(CreditBlock.org_id, CreditBlock.id).with_for_update())
+    await _lock_purchased_block(db, block_id)
+
+
 async def _refunded_of(db: AsyncSession, block_id: str) -> int:
     """The cumulative refund recorded against a purchased block: the highest `target_micro` of its
     `revoke` entries, 0 when it was never refunded."""
@@ -1790,7 +1803,7 @@ async def revoke_refunded(db: AsyncSession, pi_id: str, refunded_micro: int, *, 
     # The lock `_grant_topup_bonus` takes, taken before the bonus blocks are looked up: a heal that
     # is granting this payment's bonus right now either commits first (and is found here) or waits
     # and then sees this refund.
-    await _lock_purchased_block(db, block_id)
+    await _lock_refund_blocks(db, org_id, block_id)
     targets = [ledger.RevokeTarget(block_id, refunded)]
     targets += [ledger.RevokeTarget(bid, int(amt) * refunded // paid)
                 for bid, _, amt, _ in await _bonus_blocks_for(db, pi_id, org_id)]
