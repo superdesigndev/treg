@@ -155,6 +155,19 @@ def _serp_desc(text: str, limit: int = 155) -> str:
 _TITLE_MAX = 65
 
 
+_OG_DEFAULT_ALT = "treg.to: one key for the whole tool catalog, priced per call"
+
+
+def og_image(base: str, path: str, alt: str = "") -> tuple[str, str]:
+    """The page's share image and its alt text: its own card when `scripts/og_images.py` wrote
+    `media/og/<path>.jpg`, else the site-wide `/media/og.png`."""
+    if re.fullmatch(r"/[a-z0-9/-]*", path) and ".." not in path:
+        rel = "og/" + (path.strip("/") or "index") + ".jpg"
+        if (_MEDIA_DIR / rel).is_file():
+            return f"{base}/media/{rel}", alt or _OG_DEFAULT_ALT
+    return f"{base}/media/og.png", _OG_DEFAULT_ALT
+
+
 def _page(title: str, description: str, path: str, body: str, ld: list[dict],
           *, nav_current: str = "", head_extra: str = "", css: str = "catalog.css") -> HTMLResponse:
     """The shared shell for every server-rendered page. One place that owns <title>, the meta
@@ -179,6 +192,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
     the app keeps them and opens sign-in in place (see the boot in index.html), and the page that
     produced the signup is recorded."""
     base = get_settings().public_url.rstrip("/")
+    og_url, og_alt = og_image(base, path, title)
     ref = quote(path.strip("/").replace("/", "-") or "home", safe="")
     t, d = _esc_html(title), _esc_html(description)
     url = _esc_html(base + path)  # `path` reaches attribute context — escape it like title/description
@@ -212,14 +226,14 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 <meta property="og:url" content="{url}"/>
 <meta property="og:title" content="{t}"/>
 <meta property="og:description" content="{d}"/>
-<meta property="og:image" content="{base}/media/og.png"/>
+<meta property="og:image" content="{_esc_html(og_url)}"/>
 <meta property="og:image:width" content="1200"/>
 <meta property="og:image:height" content="630"/>
-<meta property="og:image:alt" content="treg.to: one key for the whole tool catalog, priced per call"/>
+<meta property="og:image:alt" content="{_esc_html(og_alt)}"/>
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:title" content="{t}"/>
 <meta name="twitter:description" content="{d}"/>
-<meta name="twitter:image" content="{base}/media/og.png"/>
+<meta name="twitter:image" content="{_esc_html(og_url)}"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&family=Inter:wght@400;450;500;600;650;700&family=DM+Mono:ital,wght@0,400;0,500&display=swap" rel="stylesheet">
@@ -296,6 +310,7 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
     # not a guarantee this function makes. Escape it where it is used, so a future "slug not found →
     # suggestions" page cannot turn a canonical tag into a reflected XSS.
     url = _esc_html(base + path)
+    og_url, _ = og_image(base, path, title)
     blocks = "\n".join(
         '<script type="application/ld+json">'
         + json.dumps(b, separators=(",", ":")).replace("<", "\\u003c") + "</script>"
@@ -310,13 +325,13 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
         f'<meta property="og:url" content="{url}"/>\n'
         f'<meta property="og:title" content="{t}"/>\n'
         f'<meta property="og:description" content="{d}"/>\n'
-        f'<meta property="og:image" content="{base}/media/og.png"/>\n'
+        f'<meta property="og:image" content="{_esc_html(og_url)}"/>\n'
         f'<meta property="og:image:width" content="1200"/>\n'
         f'<meta property="og:image:height" content="630"/>\n'
         f'<meta name="twitter:card" content="summary_large_image"/>\n'
         f'<meta name="twitter:title" content="{t}"/>\n'
         f'<meta name="twitter:description" content="{d}"/>\n'
-        f'<meta name="twitter:image" content="{base}/media/og.png"/>\n'
+        f'<meta name="twitter:image" content="{_esc_html(og_url)}"/>\n'
         + blocks
     )
     html = _dashboard_document(index)

@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from .. import compare_pages as cp
 from ..config import get_settings
 from ..domain.catalog import store as catalog_store
-from .web import _GH, _esc_html, _fill_headline, _hosted, _provider_display
+from .web import _GH, _esc_html, _fill_headline, _hosted, _provider_display, og_image
 
 router = APIRouter()
 
@@ -64,6 +64,7 @@ def _shell(*, title: str, description: str, path: str, here: str, body: str, ld:
     base = get_settings().public_url.rstrip("/")
     url = _e(base + path)
     t, d = _e(title), _e(description)
+    og_url, og_alt = (_e(x) for x in og_image(base, path, title))
     soft = them_color + "24"   # the same colour at ~14% opacity, for the hero wash
     return f"""<!doctype html>
 <html lang="en">
@@ -81,16 +82,16 @@ def _shell(*, title: str, description: str, path: str, here: str, body: str, ld:
 <meta property="og:url" content="{url}"/>
 <meta property="og:title" content="{t}"/>
 <meta property="og:description" content="{d}"/>
-<meta property="og:image" content="{base}/media/og.png"/>
+<meta property="og:image" content="{og_url}"/>
 <meta property="og:image:width" content="1200"/>
 <meta property="og:image:height" content="630"/>
-<meta property="og:image:alt" content="treg.to: one key for the whole tool catalog, priced per call"/>
+<meta property="og:image:alt" content="{og_alt}"/>
 <meta property="article:modified_time" content="{modified}"/>
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:site" content="@treg_ai"/>
 <meta name="twitter:title" content="{t}"/>
 <meta name="twitter:description" content="{d}"/>
-<meta name="twitter:image" content="{base}/media/og.png"/>
+<meta name="twitter:image" content="{og_url}"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -306,7 +307,7 @@ def _page_body(key: str, base: str) -> str:
 <section class="sec" id="side-by-side"><div class="wrap">
   <h2 class="rv">treg vs {_e(short)}, side by side</h2>
   <p class="lede rv">Each {_e(short)} cell restates {_e(name)}'s own public pages on {cp.checked_label(key)}. "Not published" means those pages say nothing about it, not that the feature does not exist.</p>
-  <div class="tablewrap rv"><table class="vs-table">
+  <div class="tablewrap rv"><table class="vs-table" style="--them-logo:url('{_e(c["logo"])}')">
     <thead><tr><th scope="col"><span class="sr">Feature</span></th><th scope="col" class="us"><span>{_treg_mono()}treg</span></th><th scope="col"><span>{_mono(key)}{_e(short)}</span></th></tr></thead>
     <tbody>{"".join(rows)}</tbody>
   </table></div>
@@ -400,7 +401,7 @@ def _page_ld(key: str, base: str) -> list[dict]:
     url = f"{base}/compare/{cp.page_slug(key)}"
     return [
         {"@context": "https://schema.org", "@type": "WebPage", "name": c["title"], "url": url,
-         "description": c["description"], "inLanguage": "en", "dateModified": cp.checked(key),
+         "description": c["description"], "inLanguage": "en", "dateModified": cp.modified(key),
          "isPartOf": {"@type": "WebSite", "name": "treg", "url": base + "/"},
          "about": [_treg_app_ld(base),
                    {"@type": "SoftwareApplication", "name": c["name"], "url": c["site"],
@@ -483,7 +484,7 @@ async def compare_hub(request: Request):
     base = get_settings().public_url.rstrip("/")
     ld = [
         {"@context": "https://schema.org", "@type": "CollectionPage", "name": HUB_TITLE,
-         "url": base + "/compare", "description": HUB_DESC, "dateModified": cp.checked(),
+         "url": base + "/compare", "description": HUB_DESC, "dateModified": cp.modified(),
          "about": _treg_app_ld(base),
          "mainEntity": {"@type": "ItemList", "itemListElement": [
              {"@type": "ListItem", "position": i, "name": f"treg vs {cp.short(k)}",
@@ -492,7 +493,7 @@ async def compare_hub(request: Request):
         _crumbs_ld(base, [("treg", "/"), ("Compare", "/compare")]),
     ]
     html = _shell(title=HUB_TITLE, description=HUB_DESC, path="/compare", here="", body=_hub_body(),
-                  ld=ld, ref="compare", modified=cp.checked(), them_color="#118453",
+                  ld=ld, ref="compare", modified=cp.modified(), them_color="#118453",
                   nav='<a href="#per-call">Paid tools</a><a href="#apps">App actions</a>')
     return _respond(html, request)
 
@@ -514,12 +515,12 @@ async def compare_page(slug: str, request: Request):
     html = _shell(title=c["title"], description=c["description"], path=f"/compare/{cp.page_slug(key)}",
                   here=f' <span class="sl">/</span> <span class="here">vs {_e(cp.short(key))}</span>',
                   body=_page_body(key, base), ld=_page_ld(key, base),
-                  ref=f"compare-{cp.page_slug(key)}", modified=cp.checked(key), them_color=c["mono"],
+                  ref=f"compare-{cp.page_slug(key)}", modified=cp.modified(key), them_color=c["mono"],
                   nav='<a href="#side-by-side">Side by side</a><a href="#faq">FAQ</a>')
     return _respond(html, request)
 
 
 def sitemap_paths() -> list[tuple[str, str]]:
-    """Each page with the day its facts were read, for the sitemap's lastmod."""
-    return [("/compare", cp.checked())] + [(f"/compare/{cp.page_slug(k)}", cp.checked(k))
+    """Each page with the day it last changed, for the sitemap's lastmod."""
+    return [("/compare", cp.modified())] + [(f"/compare/{cp.page_slug(k)}", cp.modified(k))
                                            for k in cp.COMPETITORS]

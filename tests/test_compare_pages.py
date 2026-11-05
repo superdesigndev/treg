@@ -91,7 +91,7 @@ async def test_structured_data_matches_the_visible_page(clients: AsyncClient):
         assert [(q["name"], q["acceptedAnswer"]["text"]) for q in faq] == c["faq"]
         for q, a in c["faq"]:
             assert q in text and a in text, (key, q)
-        assert blocks["WebPage"]["dateModified"] == cp.checked(key)
+        assert blocks["WebPage"]["dateModified"] == cp.modified(key) >= cp.checked(key)
 
 
 async def test_the_hub_links_every_comparison(clients: AsyncClient):
@@ -102,6 +102,16 @@ async def test_the_hub_links_every_comparison(clients: AsyncClient):
     (collection,) = [b for b in _ld(r.text) if b["@type"] == "CollectionPage"]
     assert len(collection["mainEntity"]["itemListElement"]) == len(PAGES)
     assert (await clients.get("/media/compare/compare.css")).status_code == 200
+
+
+async def test_every_comparison_shares_its_own_image(clients: AsyncClient):
+    """`scripts/og_images.py --group compare` made a card for each page; a new page needs one."""
+    for path in ["/compare", *PAGES]:
+        html = (await clients.get(path)).text
+        (img,) = re.findall(r'<meta property="og:image" content="([^"]+)"', html)
+        rel = urlsplit(img).path
+        assert rel == f"/media/og{path}.jpg", (path, img)
+        assert (await clients.get(rel)).status_code == 200, path
 
 
 async def test_no_comparison_passes_ranking_credit_to_another_product(clients: AsyncClient):

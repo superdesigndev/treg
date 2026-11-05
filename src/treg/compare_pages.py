@@ -2690,6 +2690,16 @@ COMPETITORS: dict[str, dict] = {
 }
 
 
+# The day the pages' copy last changed (titles, FAQ, layout). Move it with every copy change and
+# set it to the launch day when a change ships; facts keep their own `checked` day.
+UPDATED = "2026-11-05"
+
+
+def modified(key: str | None = None) -> str:
+    """The day a page last changed: its facts' `checked` day or the copy's UPDATED, the later."""
+    return max(checked(key), UPDATED)
+
+
 def checked(key: str | None = None) -> str:
     """The day a page's facts were read; for the hub, the latest of them."""
     if key is None:
