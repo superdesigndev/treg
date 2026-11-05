@@ -50,7 +50,8 @@ def is_agent_email(email: str) -> bool:
 
 def is_machine_email(email: str) -> bool:
     normalized = email.strip().lower()
-    return is_agent_email(normalized) or normalized.endswith("@public-demo.treg.local")
+    return is_agent_email(normalized) or normalized.endswith(
+        ("@public-demo.treg.local", "@payers.treg.local"))
 
 
 def mint_secret() -> tuple[str, str, str]:

@@ -450,6 +450,7 @@ PUBLIC_DEMO_DOMAIN = "public-demo.treg.local"  # unroutable — the public ident
 # The words collide, the concepts don't; kept apart deliberately.
 AGENT_DOMAIN = "agents.treg.local"  # unroutable — an agent acts only by its token
 SANDBOX_DOMAIN = "sandbox.treg.local"  # landing sandbox visitors; the sandbox is closed
+PAYER_DOMAIN = "payers.treg.local"  # unroutable — an agent payer acts only by a verified payment
 SANDBOX_CLOSED = "the demo sandbox is closed — sign in at treg.to to use treg"
 
 
@@ -464,7 +465,8 @@ def _refuse_sandbox_visitor(user: User | None) -> None:
 
 def _is_machine_email(email: str) -> bool:
     """An identity minted by an admin for a machine — never a person who can sign in."""
-    return _is_agent_email(email) or _norm_email(email).endswith(f"@{PUBLIC_DEMO_DOMAIN}")
+    return _is_agent_email(email) or _norm_email(email).endswith(
+        (f"@{PUBLIC_DEMO_DOMAIN}", f"@{PAYER_DOMAIN}"))
 
 
 # Entirely configuration: `TREG_BLOCKED_EMAIL_DOMAINS` and nothing else. An unset variable blocks

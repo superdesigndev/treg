@@ -221,6 +221,16 @@ name, so nothing gates on it. Scoping a detected agent means minting it a token.
   (NFKC, lookalike letters, leetspeak, separators stripped). Checked at `create_org` and `rename_org`; a superadmin may bypass.
 - **Uniqueness races** on membership or slug return 409, never 500.
 
+## Agent payer teams
+
+`governance.teams.make_payer_team` creates the team of one agent-payments wallet address: a
+machine user `<address>@payers.treg.local` (`identity.access.PAYER_DOMAIN`, counted by
+`_is_machine_email` and `api_keys.is_machine_email`, so no sign-in door and no signup credit), one
+`member` membership with an empty `token_hash`, and the `AgentPayer` row. No token or session can
+reach it; `routers.call._paid_call` acts for it only after a verified payment from that address
+([agent payments](agent-payments.md)). `AgentPayer` and `AgentPayment` are in
+`ORG_SCOPED_MODELS`, so a deleted payer team takes them with it.
+
 ## Enterprise SSO
 
 WorkOS handles the customer's SAML or OIDC connection; treg keeps its own users, memberships, roles,

@@ -198,6 +198,11 @@ bodies on unmetered paths are kept for evidence only when `Content-Length` is de
 `evidence._ERROR_CALLER_BODY_MAX`; larger or chunked uploads keep streaming. Redaction order,
 access and retention: [data-model](data-model.md#audit-writer-auditpy).
 
+A keyless agent-payments call is the one case where treg removes a non-`x-treg-` header the caller
+sent: its payment credential (`Authorization: Payment …`, `PAYMENT-SIGNATURE`, `X-PAYMENT`), through
+`routers.call._paid_call` and `agent_payments.consumes`. A request with any treg credential relays
+those headers unchanged.
+
 ## Connection discipline: a call in flight holds no DB connection
 
 Resolution, authorization and reservation own short sessions. `service._execute_call` commits the
@@ -209,6 +214,10 @@ from token-endpoint I/O. Holding the request transaction through relay deadlocks
 (each request holds a slot while its settlement waits for another);
 `tests/test_call_pool_discipline.py` checks occupancy at the network boundary. Pool sizing:
 [deploy](../ops/deploy.md).
+
+A keyless agent-payments call verifies and settles its payment with the chain or facilitator before
+the call starts and with no session open; the database work around it is short sessions of its own
+([agent payments](agent-payments.md)).
 
 ## Tool resolution (`application.call.resolve`)
 

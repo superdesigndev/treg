@@ -34,6 +34,7 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "api.py": {API}, "mcp.py": {API}, "routers/resources.py": {API},
     # The CLI's judged search: the caller and the hub's reader in short sessions, closed before the judge.
     "routers/catalog.py": {API},
+    "application/agent_payments.py": {API},
     "application/auth.py": {API}, "application/billing.py": {API}, "application/connect.py": {API},
     # SSO reads/writes close before WorkOS and Stripe requests; the callback and webhook use
     # short API-pool transactions on the request path.

@@ -10,6 +10,8 @@ from sqlalchemy.orm import aliased
 from sqlmodel import select
 
 from ...models import (
+    AgentPayer,
+    AgentPayment,
     ShowcaseApp,
     ShowcaseAppEvent,
     ShowcaseAppKey,
@@ -72,7 +74,7 @@ from ...models import (
 )
 from ..identity import session as sess
 from ..identity import api_keys as managed_keys
-from ..identity.access import _membership_by_token, _resolve_org, lock_user
+from ..identity.access import PAYER_DOMAIN, _membership_by_token, _resolve_org, lock_user
 
 
 MAX_OWNED_TEAMS = 10
@@ -208,6 +210,23 @@ async def _make_org_membership(
     return org, token
 
 
+async def make_payer_team(db: AsyncSession, address: str) -> Org:
+    """Stage the team of one agent payer wallet (docs/context/architecture/agent-payments.md): a
+    machine user on the unroutable payer domain, a `member` membership with no token, and the
+    address binding. No signup credit. Caller commits; a concurrent create loses on the
+    `AgentPayer` primary key."""
+    user = User(email=f"{address}@{PAYER_DOMAIN}", onboarded=True)
+    db.add(user)
+    await db.flush()
+    org = Org(name=f"Payer {address[:10]}", slug=await _unique_slug(f"payer-{address[2:12]}", db))
+    db.add(org)
+    await db.flush()
+    db.add(Membership(user_id=user.id, org_id=org.id, role="member", token_hash=""))
+    db.add(AgentPayer(address=address, org_id=org.id))
+    await db.flush()
+    return org
+
+
 async def list_user_orgs(
     *, user_id: int, x_treg_token: str, x_treg_org: str, db: AsyncSession,
 ) -> list[dict]:
@@ -281,6 +300,7 @@ ORG_SCOPED_MODELS = (
     Media,        # hosted reference files expire on their own; a deleted team's go now
     AdConversion,  # pending Google Ads conversions belong to the team they'd be attributed to
     EnterpriseSSOIdentity, EnterpriseSSOBlock, EnterpriseDirectoryUser, EnterpriseSSOAudit, EnterpriseSSO,
+    AgentPayment, AgentPayer,  # an agent payer's proofs and its address binding
     Membership,   # last: it is what makes the caller a member of the org being deleted
 )
 

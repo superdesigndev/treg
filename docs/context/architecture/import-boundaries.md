@@ -71,6 +71,9 @@ domain edges. This fragment records only what the contracts and tests cannot say
   uses its terminal classification) so the CLI awaiter and the settlement worker cannot disagree
   about what "done" means. It is on the lightness list as well as under its contract.
 - The R2 SDK (`obstore`) ships only in `[server]`; `infra.object_store.open_r2` loads it lazily.
+- The payment protocol SDK (`mpp` from `pympp`) ships only in `[server]` and may be imported only by
+  `treg.infra.agent_payments.tempo` and `treg.infra.agent_payments.x402`; bootstrap builds the
+  concrete rails ([agent payments](agent-payments.md)).
 
 ## Why some contracts look stricter than needed
 

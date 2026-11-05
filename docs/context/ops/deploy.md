@@ -211,6 +211,19 @@ secret stable: changing it breaks every join across the change.
 ready to read the header, and keep the secret stable: changing it gives every team a new code at
 every provider.
 
+**Agent payments.** `TREG_AGENT_PAYMENTS_ENABLED` lets a caller with no treg credential pay a
+catalog call with MPP or x402. It needs `TREG_AGENT_PAYMENTS_SECRET` (32+ characters), at least one
+of `TREG_AGENT_PAYMENTS_MPP_ENABLED` / `TREG_AGENT_PAYMENTS_X402_ENABLED`, and each enabled rail's
+recipient address; the defaults are testnets, and startup names every missing setting in one error.
+On mainnet the x402 facilitator is Coinbase's
+(`TREG_AGENT_PAYMENTS_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402`) and needs
+`TREG_AGENT_PAYMENTS_X402_CDP_API_KEY_ID` and `_SECRET`, plus Base mainnet USDC as
+`TREG_AGENT_PAYMENTS_X402_ASSET` with `TREG_AGENT_PAYMENTS_X402_ASSET_NAME="USD Coin"`.
+`TREG_AGENT_PAYMENTS_SETTLEMENT` is `wallet` (the recipients are treg's own wallet) or `stripe` (they
+are Stripe deposit addresses from `treg-worker agentpay stripe-address`; needs
+`TREG_STRIPE_SECRET_KEY` and an explicit `TREG_AGENT_PAYMENTS_TEMPO_CURRENCY`). See
+[agent payments](../architecture/agent-payments.md).
+
 ## Optional money admission
 
 Org pause, rate and concurrency admission is separate: see
@@ -345,3 +358,9 @@ job's credentials. `treg-worker --help` lists them; what follows is what a sched
   (spending the maker's balance); health is derived from the last three runs.
 - **`jev xboost`** needs `TREG_JEV_TREG_TOKEN` (a member token, so its spend is an ordinary bill) and
   `TREG_AI_GATEWAY_API_KEY`, also set on the web service for the visitor judge endpoint.
+- **`agentpay reconcile`** resolves agent payments whose settlement went unanswered (older than
+  `TREG_AGENT_PAYMENTS_RECONCILE_MIN_AGE_S`, default 300) from the chain, and with settlement
+  `stripe` records settled payments to Stripe. Run it every few minutes when agent payments are on;
+  it exits at once when they are off. **`agentpay stripe-address --network tempo|base`** creates one
+  reusable Stripe crypto deposit address and prints it (setup for settlement `stripe`; run once per
+  network).
