@@ -386,6 +386,8 @@ contracts:
     # A free-text `q` is a semantic question: ask the semantic searches first.
     prefer_when:
       - {sent: [q], prefer: [exa, parallel, crawl4ai]}
+    # A free-text `q` asks for everyone who fits: the caller's `limit` is the row count to reach.
+    fill_limit_when: [[q]]
     # Search rows are directory listings. An email in a row is found, not confirmed deliverable,
     # unless that row's own verification field says so — a team that mailed Hunter domain-search
     # rows unverified (`verification: null`, confidence 10) bounced on 73 of 79 addresses that one

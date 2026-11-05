@@ -970,6 +970,11 @@ returned and never documented as stable. An output field may say where it lands 
   caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
   still wins. One order does not fit every question: `people.search` asks its semantic searches
   first for a free-text `{q}`, and keeps `prefer` for company lookups that they cannot scope.
+- `fill_limit_when` lists identity key sets (`[[q]]`) on which the caller's own `limit` is a row
+  count to reach, not only a page size. When the caller sent exactly one listed set and a `limit` of
+  2 or more, and neither `X-Treg-Route-Min-Results` nor `X-Treg-Route-Merge`, the route acts as if
+  both were sent (`min_results = limit`, merge on). `people.search` lists only `{q}`: a free-text
+  search asks for everyone who fits, while a company lookup stays one provider's answer.
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
   per hit ranks before specificity.
 - `row` gives a list output one row shape whatever provider answered (`people.search`): `of` names
@@ -1048,6 +1053,8 @@ an invalid extra never disables the primary.
     `X-Treg-Route-Waterfall: 0` stops at the first miss. `X-Treg-Route-Min-Results: N` marks a thin
     answer `weak` and continues at most `MAX_WEAK_FALLBACKS` times, returning the fullest answer:
     unbounded, it would pay the whole ladder on lookups whose honest answer is one row.
+    Under `X-Treg-Route-Merge` the distinct rows of every answer so far, not the latest answer
+    alone, are compared with `N`, so the walk stops once the union reaches it.
   - **Holds.** A child that charges nothing releases at once, before the next reserves, or a
     balance covering each child in turn would 402 mid-waterfall. **A billed child never settles its
     own hold**: it leaves a `settle.DeferredSettle` and `run_routed` closes every one exactly once at

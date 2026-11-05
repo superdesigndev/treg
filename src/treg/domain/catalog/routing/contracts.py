@@ -86,6 +86,11 @@ class Contract:
     # One order does not fit every question - a free-text `{q}` is answered best by a semantic
     # search that a `{company_domain, title}` lookup can never reach.
     prefer_when: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = ()
+    # Identity key sets on which the caller's own `limit` is a target, not a cap: when the caller
+    # sent exactly one of these sets and a `limit`, the route defaults to `X-Treg-Route-Min-Results:
+    # <limit>` plus `X-Treg-Route-Merge: 1`, so a short answer goes on to the next provider and the
+    # rows add up. A free-text `{q}` people search is a "find as many as fit" question.
+    fill_limit_when: tuple[tuple[str, ...], ...] = ()
     # The per-call verdict word (`CallRecord.verdict`): `verdict_from` names the output field it is
     # read from, `verdict_words` the only words a call may be stored with, and `verdict_map` turns a
     # value of that field into one (`true` -> `verified`). Each adapter adds its provider's own
@@ -132,6 +137,17 @@ class Contract:
     def prefer_for(self, given) -> tuple[str, ...]:
         """The default provider order for a caller who sent the identity keys `given`."""
         return next((order for sent, order in self.prefer_when if set(sent) <= set(given or ())), self.prefer)
+
+    def fill_target(self, given) -> int | None:
+        """The row count a routed answer should reach for the request body `given`: its `limit`,
+        when the identity keys it sent are exactly one of `fill_limit_when`, else None."""
+        if not self.fill_limit_when or not isinstance(given, dict):
+            return None
+        limit = given.get("limit")
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 2:
+            return None
+        sent = {k for k, v in given.items() if k in self.identity_types and v not in (None, "")}
+        return limit if any(sent == set(keys) for keys in self.fill_limit_when) else None
 
     @property
     def required_output(self) -> tuple[str, ...]:
@@ -301,7 +317,7 @@ CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
     "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "prefer", "prefer_by_domain_suffix", "check", "confirm",
     "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
-    "prefer_when"})
+    "prefer_when", "fill_limit_when"})
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "body_array", "test_identity", "cost_units", "max",
     "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row"})
@@ -368,6 +384,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
             prefer_by_domain_suffix=_parse_prefer_by_domain_suffix(cap, c.get("prefer_by_domain_suffix"), types),
             prefer_when=_parse_prefer_when(cap, c.get("prefer_when"), types),
+            fill_limit_when=_parse_fill_limit_when(cap, c.get("fill_limit_when"), types, c),
             check=_parse_check(cap, c.get("check"), c.get("output") or {}),
             confirm=_parse_confirm(cap, c.get("confirm"), c.get("output") or {}),
             empty_is_failure=bool(c.get("empty_is_failure", False)),
@@ -396,6 +413,19 @@ def _parse_prefer_when(cap: str, raw, types: dict) -> tuple[tuple[tuple[str, ...
                              f"prefer: [provider names]}}, got {rule!r}")
         out.append((tuple(k.strip() for k in rule["sent"]), tuple(p.strip().lower() for p in rule["prefer"])))
     return tuple(out)
+
+
+def _parse_fill_limit_when(cap: str, raw, types: dict, c: dict) -> tuple[tuple[str, ...], ...]:
+    if raw is None:
+        return ()
+    lists = [k for k, v in (c.get("output") or {}).items() if isinstance(v, dict) and v.get("type") == "list" and v.get("required")]
+    if (not isinstance(raw, list) or not raw or "limit" not in (c.get("filters") or {}) or not lists
+            or any(not isinstance(keys, list) or not keys or any(not isinstance(k, str) or k.strip() not in types
+                                                                 for k in keys) for keys in raw)):
+        # A set that can never match would quietly leave every request at one provider's answer.
+        raise ValueError(f"contract {cap}: fill_limit_when lists identity key sets ([[q]]) and needs a "
+                         f"`limit` filter and a list output, got {raw!r}")
+    return tuple(tuple(k.strip() for k in keys) for keys in raw)
 
 
 def _parse_prefer_by_domain_suffix(cap: str, raw, types: dict) -> dict[str, tuple[str, ...]]:
