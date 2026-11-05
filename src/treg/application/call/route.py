@@ -738,6 +738,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     contract = catalog_store.load().contracts.get(ep["capability"])
     options = RouteOptions.from_headers(
         get_header, int(round(contract.default_max_cost_usd * 1_000_000)) if contract and contract.default_max_cost_usd else None)
+    if (contract and options.waterfall and not get_header(MIN_RESULTS_HEADER) and not get_header(MERGE_HEADER)
+            and (target := contract.fill_target(given))):
+        # `fill_limit_when`: the caller's `limit` is how many rows it wants, so a shorter answer
+        # goes on to the next provider and the rows add up, within MAX_WEAK_FALLBACKS and the cost cap.
+        options.min_results, options.merge = target, True
     if options.verify and (contract is None or contract.check is None):
         # Refused before anything is planned or held: an agent must not believe a check ran.
         checked = sorted(f"treg.{cap}" for cap, c in catalog_store.load().contracts.items() if c.check)
@@ -1074,7 +1079,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
         # how many rows make an answer; below it the waterfall keeps going and the best result so
         # far is kept, so a weak first provider can still win if nothing better turns up.
         n_rows = outcome.rows
-        weak = options.waterfall and n_rows < options.min_results
+        # Under a merge the distinct rows of every answer so far are what the caller gets, so
+        # they, not this answer alone, decide whether to keep looking.
+        have = (len(_merge_rows(lf, [*answers, (cand, doc, core, raw)]))
+                if options.merge and (lf := _list_field(plan.contract)) else n_rows)
+        weak = options.waterfall and have < options.min_results
         # `X-Treg-Route-Complete`: an answer carrying under half the contract's output fields is
         # weak like a short list (the fullest one wins if nothing better turns up), and an answer
         # whose subject identifier differs from the one asked waits for another provider to report
@@ -1086,7 +1095,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 n_rows = _filled(plan.contract, core)   # the fullest weak answer wins
             else:
                 other = _other_subject(plan.contract, plan.identity, core)
-        detail = (f"{n_rows} < min_results {options.min_results}" if weak else f"thin answer: {thin}" if thin
+        detail = (f"{have} < min_results {options.min_results}" if weak else f"thin answer: {thin}" if thin
                   else "reports another subject; needs a second provider" if other else "")
         tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "weak" if weak or thin or other else "hit",
                              response.status, charged, detail, ignored=ignored))
