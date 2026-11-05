@@ -309,8 +309,10 @@ allowances) priced by `unit_rates_usd[provider][unit]`, one row per meter.
 
 Each `credit_rates_usd` / `unit_rates_usd` entry carries `usd` plus `basis`/`source`/`checked`: the
 cheapest PUBLICLY listed tier, so the figure is an upper bound on real spend. `usd: null` is
-deliberate (no published per-credit price): those endpoints keep `cost.usd = null` and display
-natively, because a guessed dollar figure is worse than an honest credit count. Both blocks must stay
+deliberate (no published per-credit price, or an own-key-only provider treg holds no rate for):
+those endpoints keep `cost.usd = null` and display natively, because a guessed dollar figure is
+worse than an honest credit count. A v2 price in credits or a meter needs an entry, a null one
+included; a missing entry fails validation. Both blocks must stay
 ABOVE `rates_to_usd:` - `catalog_fx_update.py` rewrites the file from the text before that key and
 discards everything below it.
 
@@ -834,7 +836,8 @@ bill when treg's own account is out.
 - **An empty answer is a failure where the job demands content.** A contract marked
   `empty_is_failure` counts a 2xx whose `CallRecord.hit` is False as bad (`store.empty_is_failure`),
   including a 2xx naming its own error in the body (`provider_error`). Every tool of those
-  capabilities callable on treg's key needs a verified adapter `miss`; tools outside routing carry a
+  capabilities callable on treg's key needs a verified adapter and a miss (the adapter's, or a v2
+  row's own rule); tools outside routing carry a
   judge-only adapter (`route: false`). A test enforces it.
 - **`miss` semantics ride on the endpoint.** A `miss: {status, means, when?}` block declares an error
   status meaning "asked and answered: no result". Router, arena and hit verdict read it through
@@ -1003,6 +1006,9 @@ returned and never documented as stable. An output field may say where it lands 
   of `prefer`, when the caller sends no `X-Treg-Route-Prefer`; the longest matching suffix wins.
   Coverage differs by country while cost per hit is one number. The suffix only sees the company
   domain, so a French company on `.com` is not matched.
+- A published route rule ([route-rules.md](route-rules.md)) goes ahead of all three when one matches
+  the call's recorded segment and the caller sent no `X-Treg-Route-Prefer`; it changes without a
+  deploy and, like them, only reorders.
 - `prefer_when` lists `{sent: [identity keys], prefer: [providers]}` rules; the first whose keys the
   caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
   still wins. One order does not fit every question: `people.search` asks its semantic searches
@@ -1014,11 +1020,13 @@ returned and never documented as stable. An output field may say where it lands 
   search asks for everyone who fits, while a company lookup stays one provider's answer.
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
   per hit ranks before specificity.
-- `row` gives a list output one row shape whatever provider answered (`people.search`): `of` names
+- `row` gives a list output one row shape whatever provider answered (`people.search`,
+  `instagram.search.users`): `of` names
   the list field, `fields` the keys a row may carry, `needs` the keys of which a row must fill one.
   Each adapter's `row:` maps one provider row into it; a row it cannot read stays the provider's own
   rather than vanish from a paid answer, and an adapter without `row:` keeps its provider's rows.
-  Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads.
+  Text is cut to `ROW_TEXT_MAX` characters, because an agent pays tokens for every row it reads; a
+  field of type `url` is kept whole, since a cut link points at another resource.
 - List the most complete identity variant first: the first variant a caller fills is the one every
   field rides on.
 
@@ -1062,8 +1070,13 @@ an invalid extra never disables the primary.
   price and unit. A child treg would not call on its key ranks last with a `skipped` reason.
 - **Ranking** (`routing/plan.py`): own keys first at cost 0, then the anonymous tier, then
   `expected_cost_per_hit = cost_at(request) x P(billed) / P(hit)`, where `cost_at` prices this
-  request at its requested size and `P(hit)` is the published hit rate, else `ok_rate`, else 1.0
-  (`unmeasured`). Among one tier, a candidate that uses more of the keys the caller SENT outranks a
+  request at its requested size and `P(hit)` is the published hit rate. Below the publication floor
+  (`stats.MIN_HIT_SAMPLES` judged lookups) it is `UNMEASURED_HIT_PRIOR` (0.5) times `ok_rate`, or
+  the prior alone while `ok_rate` is unmeasured too: assuming every unproven answer a hit put a child
+  seen a few times ahead of same-priced siblings measured near 1. A per-success child bills no miss, so
+  its cost per hit is its price either way; an unmeasured per-call child leads only below half a
+  measured sibling's cost per hit, which still lets a much cheaper newcomer be tried and measured.
+  Among one tier, a candidate that uses more of the keys the caller SENT outranks a
   cheaper one (never counting keys reached through `derive`), and one that ignores a sent filter
   ranks below every one that can express it (`ignored_filters()`, computed at planning so ranking and
   report agree; `limit` and contract defaults never count). An exhausted platform provider with an

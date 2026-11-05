@@ -1399,16 +1399,19 @@ def check_v2_row(ep: dict, provider: str, tier: str, adapters: dict, where: str,
         fail(errors, where, "a row that names a plugin needs an example_response")
 
 
-def _v2_rated(provider: str, currency: str, unit: object = None) -> bool:
+def _v2_rated(provider: str, currency: str, unit: object = None, *, unknown: bool = False) -> bool:
     """A v2 money unit resolves to a USD rate: usd itself, the provider's credit, its meter `unit`,
-    or a currency's fx rate."""
+    or a currency's fx rate. With `unknown`, a credit or meter rate declared `usd: null` (no
+    published price, so the row stays native and treg's key never serves it) also counts."""
     if currency in ("usd", "USD"):
         return True
-    if currency == "credit":
-        return _finite_number(_credit_rate(provider))
-    if currency == "unit":
-        return _finite_number(_unit_rate(provider, unit))
     fx = yaml.safe_load((CATALOG / "fx.yaml").read_text()) or {}
+    if currency in ("credit", "unit"):
+        entries = (fx.get("credit_rates_usd") if currency == "credit"
+                   else (fx.get("unit_rates_usd") or {}).get(provider)) or {}
+        key = provider if currency == "credit" else str(unit or "")
+        rate = _credit_rate(provider) if currency == "credit" else _unit_rate(provider, unit)
+        return _finite_number(rate) or (unknown and key in entries and rate is None)
     return _finite_number((fx.get("rates_to_usd") or {}).get(currency))
 
 
@@ -1423,7 +1426,7 @@ def check_v2_cost(row: schema.V2Row, ep: dict, provider: str, where: str, errors
     inp = ep.get("input") or {}
     fields = _input_fields(inp)
     price, settle, reserve = row.price, row.settle, row.reserve
-    if price is not None and not _v2_rated(provider, price.currency, price.unit):
+    if price is not None and not _v2_rated(provider, price.currency, price.unit, unknown=True):
         fail(errors, where, f"price.currency {price.currency}"
                             f"{f' (unit {price.unit})' if price.currency == 'unit' else ''} has no "
                             f"fx.yaml rate for '{provider}'")

@@ -733,7 +733,8 @@ row.
   On a 2xx, `bill.free_when` makes the call free; a readable `settle.reported` (after `scale`,
   zero included) is the charge, uncapped; otherwise the outcome picks `bill.error` or `bill.miss`
   (free by default, `charged`, or a number of units at the unit price capped at the hold) and a hit
-  is charged. A charged answer costs its `count` (non-null items) or `plugin` quantity capped at the
+  is charged. A free outcome with no settle evidence observes a charge of 0, as a row in today's
+  spelling records a free miss, so the call record and the stats fallback read it alike. A charged answer costs its `count` (non-null items) or `plugin` quantity capped at the
   hold, its `usage` meters, which may exceed it, or the hold when there is no `settle` or no
   evidence. A `count` path is unreadable, so the hold, when it does not select a list: for a path
   with `*` or a filter, when any list one of its `*` or filter steps iterates is missing or not a
@@ -786,7 +787,10 @@ parser is ever added for one, because drift would then police a price treg set.
 `_enforce_trial_allowance` (successful platform calls with a non-free catalog cost only, fail-closed,
 429 `trial_allowance_reached` with a connect-your-own-key hint). Free tools, failed calls and own-key
 calls never burn it; another org's usage never touches this org's pool. A hot pool is the buy signal
-for the provider's commercial tier.
+for the provider's commercial tier. The count reads the team's whole audit day, so a team found at
+its allowance is remembered per process until 00:00 UTC, keyed with the team's creation time,
+and refused without counting again (a day's count only grows). Its `used_today` is then a lower
+bound, as the audit lag already made it.
 
 ## Idempotency and retries
 
