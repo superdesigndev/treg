@@ -190,7 +190,29 @@ def _shell(*, title: str, description: str, path: str, here: str, body: str, ld:
   }}
 }})();
 </script>
+<div class="scrim" id="signin-scrim">
+  <div class="smodal" role="dialog" aria-modal="true" aria-label="Sign in">
+    <button class="cls" id="signinClose" aria-label="Close">✕</button>
+    <h3>Sign in to treg</h3>
+    <p>first sign-in creates your account · $1.00 free</p>
+    <a class="pill dark" href="/auth/github" style="text-decoration:none">Continue with GitHub</a>
+    <a class="pill" href="/auth/google" style="text-decoration:none">Continue with Google</a>
+    <div class="div">or email a code</div>
+    <div id="em-step1">
+      <input id="em-input" type="email" data-captcha="email_start" placeholder="you@work.com"/>
+      <button class="pill" id="em-btn1">Email me a sign-in code</button>
+    </div>
+    <div id="em-step2" style="display:none">
+      <input id="em-code" inputmode="numeric" placeholder="6-digit code"/>
+      <button class="pill dark" id="em-btn2">Sign in</button>
+    </div>
+    <div class="err" id="em-err"></div>
+  </div>
+</div>
+<script src="/captcha.js" defer></script>
+<script src="/media/compare/signin.js" defer></script>
 <script src="/sitetrack.js"></script>
+<script src="/media/signin-sso.js" defer></script>
 <script src="/adtrack.js"></script>
 <script src="/gtag.js"></script>
 </body>

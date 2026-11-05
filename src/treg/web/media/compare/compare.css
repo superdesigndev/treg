@@ -284,3 +284,18 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
   .toc a.cur::before { background: #118453; }
 }
 @media (prefers-reduced-motion: reduce) { .toc, .toc a::before { transition: none; } }
+
+/* sign-in dialog (the same one as /rankings and /grokbot) */
+.scrim { position: fixed; inset: 0; background: rgba(26,26,26,.55); display: none; place-items: center; z-index: 200; padding: 20px; backdrop-filter: blur(6px); }
+.scrim.open { display: grid; }
+.smodal { width: min(400px, 94vw); background: #fff; border-radius: 20px; padding: 30px 28px; text-align: center; position: relative; box-shadow: 0 30px 90px -38px rgba(20,18,12,.4); }
+.smodal .cls { position: absolute; top: 12px; right: 15px; background: none; border: 0; color: var(--muted); font-size: 16px; cursor: pointer; }
+.smodal .cls:hover { color: var(--ink); }
+.smodal h3 { font-family: var(--display); font-weight: 600; font-size: 22px; margin: 4px 0 6px; letter-spacing: -.015em; }
+.smodal p { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 0 0 18px; }
+.smodal .pill { width: 100%; justify-content: center; margin-top: 9px; }
+.smodal .div { display: flex; align-items: center; gap: 10px; margin: 16px 0 6px; color: var(--muted); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
+.smodal .div::before, .smodal .div::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.smodal input { width: 100%; margin-top: 9px; background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 11px 13px; font-family: var(--mono); font-size: 13px; outline: none; }
+.smodal input:focus { border-color: var(--ink); }
+.smodal .err { color: #C0362F; font-size: 11.5px; margin-top: 10px; min-height: 14px; }
