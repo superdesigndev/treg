@@ -22,15 +22,6 @@ _LOGO = ('<svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height
          'fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/>'
          '<rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg>')
 
-# What the "Start" section asks the catalog for, by hub group: a job that group's reader knows.
-_TRY = {
-    "per-call": "backlinks for a domain",
-    "apps": "monthly search volume for a keyword",
-    "gtm": "work email for a person at a company",
-    "models": "trending TikTok videos for a topic",
-}
-
-
 def _e(s: str) -> str:
     return _esc_html(s)
 
@@ -145,15 +136,40 @@ def _shell(*, title: str, description: str, path: str, here: str, body: str, ld:
     var io = new IntersectionObserver(function (es) {{ es.forEach(function (e) {{ if (e.isIntersecting) {{ e.target.classList.add('in'); io.unobserve(e.target); }} }}); }}, {{ rootMargin: '0px 0px -8% 0px' }});
     els.forEach(function (el) {{ io.observe(el); }});
   }}
-  document.querySelectorAll('.copy').forEach(function (b) {{
+  document.querySelectorAll('.cmd-tabs button').forEach(function (b) {{
     b.addEventListener('click', function () {{
-      var src = document.getElementById(b.getAttribute('data-for'));
-      if (!src || !navigator.clipboard) return;
-      navigator.clipboard.writeText(src.getAttribute('data-copy')).then(function () {{
-        b.textContent = 'Copied'; setTimeout(function () {{ b.textContent = 'Copy'; }}, 1600);
-      }});
+      var dev = b.getAttribute('data-tab') === 'dev';
+      document.querySelectorAll('.cmd-tabs button').forEach(function (o) {{ o.setAttribute('aria-selected', String(o === b)); }});
+      document.getElementById('cmdLine').hidden = dev; document.getElementById('cmdDev').hidden = !dev;
     }});
   }});
+  var copy = document.getElementById('cmdCopy');
+  if (copy) copy.addEventListener('click', function () {{
+    var line = document.querySelector('.cmd .cline:not([hidden])');
+    if (!line || !navigator.clipboard) return;
+    navigator.clipboard.writeText(line.textContent.trim()).then(function () {{
+      copy.textContent = 'copied ✓'; setTimeout(function () {{ copy.textContent = 'copy'; }}, 1600);
+    }});
+  }});
+  /* the 0% band types its equation once when it scrolls in; the markup ships written out for
+     crawlers and readers without JS */
+  var band = document.getElementById('zeroband'), eq = document.getElementById('zeqtxt');
+  if (band && eq && 'IntersectionObserver' in window && !matchMedia('(prefers-reduced-motion: reduce)').matches) {{
+    var segs = [['provider rate ', 0], ['+ $0.000 markup', 1], [' = your price', 0]];
+    var total = segs.reduce(function (n, x) {{ return n + x[0].length; }}, 0);
+    var render = function (n) {{
+      var h = '', c = 0;
+      segs.forEach(function (x) {{ var t = x[0].slice(0, Math.max(0, Math.min(x[0].length, n - c))); h += x[1] ? '<b>' + t + '</b>' : t; c += x[0].length; }});
+      eq.innerHTML = h;
+    }};
+    render(0);
+    var bio = new IntersectionObserver(function (es) {{ es.forEach(function (e) {{
+      if (!e.isIntersecting) return;
+      bio.disconnect();
+      var n = 0, tick = setInterval(function () {{ render(++n); if (n >= total) clearInterval(tick); }}, 38);
+    }}); }}, {{ threshold: .5 }});
+    bio.observe(band);
+  }}
 }})();
 </script>
 <script src="/sitetrack.js"></script>
@@ -220,8 +236,6 @@ def _page_body(key: str, base: str) -> str:
     sources = "".join(
         f'<li><a href="{_e(u)}" rel="nofollow noopener" target="_blank">{_e(lab)}</a><small>{_e(u)}</small></li>'
         for lab, u in c["sources"])
-    job = _TRY[c["group"]]
-    cmd = (f'curl -fsSL {base}/install.sh | sh\ntreg login\ntreg catalog search "{job}"')
     others = "".join(_card(k) for k in _others(key)[:6])
 
     return f"""<header class="hero">
@@ -292,17 +306,26 @@ def _page_body(key: str, base: str) -> str:
   </div>
 </div></section>
 
-<section class="sec" id="start"><div class="wrap start">
-  <div class="rv">
-    <h2>Try treg in a minute</h2>
-    <p>Install the CLI and the treg skill into the agents on your machine, sign in, and search the catalog by the job you need done. New verified accounts get $1.00 of credit, with no card.</p>
-    <p>In Claude or ChatGPT, add <code>{_e(base)}/mcp/</code> as a custom connector instead.</p>
+<section class="zeroband rv" id="zeroband">
+  <h2>0% <i>additional fee.</i></h2>
+  <div class="zeq"><span class="ps">$</span><code id="zeqtxt">provider rate <b>+ $0.000 markup</b> = your price</code><span class="zcaret"></span></div>
+  <div class="zsub">we earn on volume pricing with vendors - not on you</div>
+</section>
+
+<section class="setup rv" id="setup">
+  <h2>Give your agent<br>every tool in the catalog.</h2>
+  <div class="cmd-tabs" role="tablist">
+    <button type="button" role="tab" aria-selected="true" data-tab="agent"><span class="ct-ico"><img src="/media/people-search/claude-code.png" alt="" width="18" height="18"><img src="/media/people-search/codex.png" alt="" width="18" height="18"><img src="/media/people-search/openclaw.png" alt="" width="18" height="18"></span>Connect to your agent</button>
+    <button type="button" role="tab" aria-selected="false" data-tab="dev">Developers</button>
   </div>
-  <div class="rv"><div class="term" id="cmd" data-copy="{_e(cmd)}"><div class="dots"><i></i><i></i><i></i></div><code><span class="p">$</span> curl -fsSL {_e(base)}/install.sh | sh
-<span class="p">$</span> treg login
-<span class="p">$</span> treg catalog search "{_e(job)}"
-<span class="c"># tools that do the job, each with its price</span></code><br><button class="copy" type="button" data-for="cmd">Copy</button></div></div>
-</div></section>
+  <div class="cmd">
+    <span class="ps">$</span>
+    <span class="cline" id="cmdLine">set up treg — <a href="{_e(base)}/llms.txt">{_e(base)}/llms.txt</a></span>
+    <span class="cline" id="cmdDev" hidden>Read <a href="{_e(base)}/integrate.md">{_e(base)}/integrate.md</a> and integrate treg into our product, including per-customer usage tracking and billing.</span>
+    <button id="cmdCopy" type="button">copy</button>
+  </div>
+  <div class="ctas"><a class="pill dark" href="/app?ref=compare-{cp.page_slug(key)}-setup">Get started</a></div>
+</section>
 
 <section class="sec" id="faq"><div class="wrap narrow">
   <h2 class="rv">Questions</h2>
