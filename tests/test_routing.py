@@ -1156,6 +1156,30 @@ async def test_identity_not_of_its_declared_type_is_422_before_any_call(clients:
     assert r.json()["detail"]["invalid"] == [{"field": "linkedin_url", "type": "url", "value": "N/A"}]
 
 
+@pytest.mark.parametrize("placeholder", ["https://www.linkedin.com/in/N/A", "linkedin.com/in/N/A", "https://www.linkedin.com/in/-/"])
+async def test_linkedin_url_with_a_placeholder_profile_path_is_422_before_any_call(
+        clients: AsyncClient, enrichment_on, monkeypatch, placeholder):
+    """A well-formed URL whose `/in/` handle is a placeholder names no profile; one provider answers
+    every such lookup with the same unrelated person, so it must not reach any child."""
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"tomba": [(200, {})]}, seen))
+    r = await clients.post(f"/call/{ROUTED}", json={"linkedin_url": placeholder})
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "invalid_identity" and seen == []
+    assert r.json()["detail"]["invalid"] == [{"field": "linkedin_url", "type": "LinkedIn profile URL", "value": placeholder}]
+
+
+@pytest.mark.parametrize("url, ok", [
+    ("https://www.linkedin.com/in/N/A", False), ("https://linkedin.com/in/", False), ("https://www.linkedin.com/in/--", False),
+    ("https://uk.linkedin.com/in/ab", False),
+    ("https://www.linkedin.com/in/patrickcollison", True), ("https://www.linkedin.com/in/patrickcollison/details/", True),
+    ("https://www.linkedin.com/in/ACwAAAC8m8wBexample", True), ("https://www.linkedin.com/in/%E5%BC%A0%E4%B8%89-1a2b3c", True),
+    ("https://www.linkedin.com/sales/lead/ACwAAexample,NAME_SEARCH,x", True), ("https://example.com/in/N/A", True),
+])
+def test_linkedin_profile_path_needs_a_handle_linkedin_could_issue(url, ok):
+    from treg.domain.catalog.routing.contracts import _linkedin_profile_ok
+    assert _linkedin_profile_ok(url) is ok
+
+
 async def test_access_check_plans_a_url_row_from_its_own_example(clients: AsyncClient):
     """The type check guards what a caller sends; the access view plans from the row's placeholder."""
     r = await clients.get("/catalog/endpoints/treg.web.extract/access")
@@ -1461,7 +1485,7 @@ async def test_routed_call_and_access_name_the_providers_dropped_for_this_deploy
         {"tomba": [(200, {"data": {"email": None, "score": None, "verification": {"status": None}}})],
          "findymail": [(200, {"contact": {"name": "x", "email": None}})],
          "leadsforge": [(200, {"email": None, "status": "failed"})]}, seen))
-    r = await clients.post(f"/call/{ROUTED}", json={"linkedin_url": "https://www.linkedin.com/in/x"}, headers={"X-Treg-Route-Max-Cost": "0.03"})
+    r = await clients.post(f"/call/{ROUTED}", json={"linkedin_url": "https://www.linkedin.com/in/someone"}, headers={"X-Treg-Route-Max-Cost": "0.03"})
     assert r.status_code == 200 and r.json()["_treg"]["outcome"] == "miss"
     dropped = r.json()["_treg"]["dropped"]
     assert any(d["endpoint_id"] == "aviato.people.email.find" and "no aviato key" in d["why"] for d in dropped)
