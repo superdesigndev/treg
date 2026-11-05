@@ -70,6 +70,9 @@ def test_a_rule_must_be_able_to_take_effect():
     check = lambda rule: R.check_against(  # noqa: E731
         R.parse(envelope(rules=[rule])), contracts, reader_app._servers_of, ev.segment_checks)
     check(_rule())
+    # a call recorded as name + domain may also carry a LinkedIn URL, which this finder takes
+    check(_rule(match={"input_type": "domain+full_name"}, order=["aviato"]))
+    check(_rule(match={"tld": "中国"}))
     for rule, why in (
             (_rule(capability="no.such"), "no contract"),
             (_rule(match={"seniority": "vp"}), "records no seniority"),
@@ -83,6 +86,10 @@ def test_a_rule_must_be_able_to_take_effect():
             # a variant spelled in another order is never recorded
             (_rule(match={"input_type": "full_name+domain"}), "never records input_type=full_name"),
             (_rule(match={"domain_class": "startup"}), "never records domain_class"),
+            # `{q}` comes first, so a call carrying both is always recorded as `q`
+            (_rule(capability="google.serp.organic", match={"input_type": "ai_overview+q"}, order=["x"]),
+             "never records input_type=ai_overview"),
+            (_rule(match={"tld": "FR"}), "never records tld"),
             # a finder that takes a name and a domain cannot answer a LinkedIn-only call
             (_rule(match={"input_type": "linkedin_url"}, order=["hunter"]), "hunter cannot serve .* for linkedin_url"),
     ):
@@ -95,7 +102,8 @@ def test_segment_checks_are_what_the_event_can_record():
     find = ev.segment_checks(contracts["people.email.find"])
     assert {"input_type", "tld", "domain_class"} <= set(find)
     assert find["input_type"]("domain+full_name") and not find["input_type"]("full_name+domain")
-    assert find["tld"]("fr") and not find["tld"]("FR") and not find["tld"](".fr")
+    assert find["tld"]("fr") and find["tld"]("中国") and not find["tld"]("FR") and not find["tld"](".fr")
+    assert ev.segment(contracts["people.email.find"], {"full_name": "A B", "domain": "example.中国"})[1]["tld"] == "中国"
     assert set(ev.segment_checks(contracts["people.phone.verify"])) == {"input_type"}
 
 
@@ -253,8 +261,9 @@ async def _parent_meta(clients, events_on, body, headers=None):
     assert routed.status_code == 200, routed.text
     events = await _flushed(events_on)
     ref = routed.headers["x-treg-call-id"]
-    child = next(e for e in events if e["call_ref"] == ref + ":r0")
-    assert "route_order" not in (child.get("input_meta") or {}), "children join by parent_ref"
+    children = [e for e in events if e.get("parent_ref") == ref]
+    assert children and not any("route_order" in (c.get("input_meta") or {}) for c in children), \
+        "children join by parent_ref"
     return next(e for e in events if e["call_ref"] == ref)["input_meta"]
 
 
@@ -297,6 +306,17 @@ async def test_a_rule_whose_provider_the_caller_excluded_did_not_order_the_call(
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(copy.deepcopy(TOMBA_HIT), []))
     meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"},
                               {"X-Treg-Route-Exclude": "leadmagic"})
+    assert meta["route_order"] == "default" and meta["route_rule"] == "r"
+
+
+async def test_a_rule_pick_skipped_by_the_cost_ceiling_did_not_order_the_call(
+        clients, enrichment_on, events_on, monkeypatch, published):
+    await published(envelope(version=2, rules=[_rule(order=["leadmagic"])]))
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(copy.deepcopy(TOMBA_HIT), seen))
+    meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"},
+                              {"X-Treg-Route-Max-Cost": "0.019"})
+    assert [p for p, *_ in seen] == ["tomba"], "leadmagic is over the ceiling and never called"
     assert meta["route_order"] == "default" and meta["route_rule"] == "r"
 
 

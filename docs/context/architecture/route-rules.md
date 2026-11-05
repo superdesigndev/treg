@@ -66,11 +66,14 @@ envelope:
 - At most 50 rules per capability, 200 in all, 32 KB.
 - `enabled: false` publishes "no rules" as a version, the kill switch.
 - On read, every rule must be able to take effect: it names a routed contract; segment keys and
-  values that contract's calls can record (`call_events.segment_checks`: `input_type` one of the
-  contract's identity variants spelled as recorded, `domain_class` one of its four words, no `tld`
-  for a capability with no domain or email in its identity); and providers among its routed
-  endpoint's children whose adapter accepts the matched variant after the contract's derivations
-  (a name-and-domain finder cannot serve a `linkedin_url` rule). Unknown fields, duplicate keys and
+  values that contract's calls can record (`call_events.segment_checks`, built on the same
+  `segment` the event uses: `input_type` a variant some call is recorded as, so one an earlier
+  variant always shadows is refused; `domain_class` one of its four words; `tld` a lower-cased last
+  label, an internationalized one in its own script; no `tld` for a capability with no domain or
+  email in its identity); and providers among its routed endpoint's children whose adapter accepts
+  the widest call recorded as the matched variant, after the contract's derivations (a
+  name-and-domain call may also carry a LinkedIn URL, so a LinkedIn finder can serve it; a
+  name-and-domain finder cannot serve a `linkedin_url` rule). Unknown fields, duplicate keys and
   wrong types are rejected.
 
 | Refresh result | Plan behavior |
@@ -102,13 +105,16 @@ it keeps the previous one. They never carry rule content.
 
 ## What each call records
 
-Every routed parent's event carries three separate facts in `input_meta`
+Every routed parent that reached a plan carries these separate facts in its event's `input_meta`
+(one refused before planning, a 422 for a header the contract does not support, carries none)
 ([call-events.md](call-events.md)); its children do not, analysis joins them by `parent_ref`:
 
-- `route_order`: what decided the first provider asked, judged after candidate filtering,
-  `X-Treg-Route-Exclude` and `complete`: `header` (`X-Treg-Route-Prefer`), `rule` (the rule changed
-  the first candidate), `quality` (`X-Treg-Route-Quality` changed it) or `default`. A rule that
-  matched but left the first candidate where it was is `default`.
+- `route_order`: which order the first provider actually called came from: `header`
+  (`X-Treg-Route-Prefer`), `default` (the contract's order would have called it first too),
+  `rule`, or `quality` (`X-Treg-Route-Quality` moved it). Each order is read from its first
+  candidate that was not passed over (over the cost ceiling, out of allowance, rate limited), so a
+  rule whose pick was skipped, excluded or already first is `default`. Absent when no provider was
+  called.
 - `route_retry_order`: present when something changed the order of the providers after the first:
   `rule`, or `quality` (`X-Treg-Route-Quality`, or `X-Treg-Route-Decisive` ordering the providers
   left after an undecided answer).

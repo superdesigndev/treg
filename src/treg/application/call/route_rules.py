@@ -40,28 +40,18 @@ def _store():
     return kv.store()
 
 
-# Placeholder values a variant is filled with, so a contract's derivations (a LinkedIn handle
-# from its URL, a full name from its parts) run before asking which adapters accept it.
-_SAMPLE = {"linkedin_url": "https://www.linkedin.com/in/example-person", "email": "ann.lee@example.com",
-           "domain": "example.com", "company_domain": "example.com", "website": "https://example.com",
-           "url": "https://example.com", "phone": "+14155550100", "full_name": "Ann Lee",
-           "first_name": "Ann", "last_name": "Lee"}
-_SAMPLE_BY_TYPE = {"bool": True, "list": ["example"], "object": {}}
-
-
 def _servers_of(capability: str, input_type: str | None) -> set[str]:
     """Providers a routed plan for this capability can ask: its routed endpoint's children, and of
-    those, for an identity variant, the ones whose adapter accepts it."""
+    those, for an identity variant, the ones whose adapter accepts some call recorded as it (the
+    widest such call, after the contract's derivations)."""
     cat = catalog_store.load()
     contract = cat.contracts.get(capability)
     identity = None
-    if input_type and contract is not None:
-        sample = {k: _SAMPLE.get(k, _SAMPLE_BY_TYPE.get(str(contract.identity_types.get(k)), "example"))
-                  for k in input_type.split("+")}
-        try:
-            identity, _ = canonical_identity(contract, sample)
-        except Exception:  # noqa: BLE001 - a placeholder that does not derive still names its keys
-            identity = sample
+    if input_type is not None:
+        fields = call_events.recorded_variants(contract).get(input_type) if contract else None
+        if fields is None:
+            return set()
+        identity, _ = canonical_identity(contract, fields)
     out = set()
     for e in cat.for_capability(capability):
         if e.get("kind") != "routed":

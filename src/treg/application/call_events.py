@@ -218,17 +218,49 @@ def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str]
     return ("+".join(variant) if variant else None), meta, norm
 
 
-_TLD = re.compile(r"^[a-z0-9-]{1,63}$")
 _DOMAIN_CLASSES = frozenset({"company", "webmail", "edu", "gov"})
+# Placeholder values for asking which variant a call carrying some identity fields is recorded as.
+_SAMPLE = {"linkedin_url": "https://www.linkedin.com/in/example-person", "email": "ann.lee@example.com",
+           "domain": "example.com", "company_domain": "example.com", "website": "https://example.com",
+           "url": "https://example.com", "phone": "+14155550100", "full_name": "Ann Lee",
+           "first_name": "Ann", "last_name": "Lee"}
+_SAMPLE_BY_TYPE = {"bool": True, "list": ["example"], "object": {"type": "object"}}
+
+
+def _sample(contract: Contract, key: str):
+    return _SAMPLE.get(key, _SAMPLE_BY_TYPE.get(str(contract.identity_types.get(key)), "example"))
+
+
+def recorded_variants(contract: Contract) -> dict[str, dict]:
+    """Each `input_type` this contract's calls can be recorded as, with the widest identity a call
+    recorded as it can carry. A variant an earlier one always shadows (`{ai_overview, q}` behind
+    `{q}`) is never recorded and is absent."""
+    out: dict[str, dict] = {}
+    for variant in contract.identity:
+        name = "+".join(variant)
+        fields = {k: _sample(contract, k) for k in variant}
+        if segment(contract, fields)[0] != name:
+            continue
+        for key in contract.identity_types:
+            if key not in fields and segment(contract, {**fields, key: _sample(contract, key)})[0] == name:
+                fields[key] = _sample(contract, key)
+        out[name] = fields
+    return out
+
+
+def _tld(value: str) -> bool:
+    # The last label of a lower-cased host, as `segment` records it: an internationalized name
+    # stays in its own script.
+    return 0 < len(value) <= 63 and value == value.lower() and "." not in value \
+        and not any(c.isspace() for c in value)
 
 
 def segment_checks(contract: Contract) -> dict:
     """Every key `segment` can produce for this contract's calls, each with a test of a value it
-    can take: an identity variant for `input_type`, a lowercase label for `tld`."""
-    variants = {"+".join(v) for v in contract.identity}
-    checks: dict = {"input_type": variants.__contains__}
+    can record: a recorded variant for `input_type`, a lower-cased label for `tld`."""
+    checks: dict = {"input_type": recorded_variants(contract).__contains__}
     if any(k in contract.identity_types for k in (*_DOMAIN_KEYS, "email")):
-        checks["tld"] = lambda v: bool(_TLD.fullmatch(v))
+        checks["tld"] = _tld
         checks["domain_class"] = _DOMAIN_CLASSES.__contains__
     for k, spec in (contract.filters or {}).items():
         if (spec or {}).get("analytics") == "value":

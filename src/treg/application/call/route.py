@@ -651,22 +651,21 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                   [c for c in out if not _can_answer_fully(contract, c.adapter)]
         return out
 
+    orders: dict[str, list[str]] = {}
     if options.prefer:
         ranked, route_rule["route_order"] = ordered(options.prefer), "header"
     else:
         default = default_prefer(contract, identity, given)
         ranked = ordered(default)
-        route_rule["route_order"] = "default"
+        orders["default"] = _endpoints(ranked)
         if rule is not None:
             ruled = ordered([*rule.order, *(p for p in default if p not in rule.order)])
-            # What the rule decided is what it changed, after filtering, exclusions and `complete`.
-            if _endpoints(ruled[:1]) != _endpoints(ranked[:1]):
-                route_rule["route_order"] = "rule"
+            orders["rule"] = _endpoints(ruled)
             if _endpoints(ruled[1:]) != _endpoints(ranked[1:]):
                 route_rule["route_retry_order"] = "rule"
             ranked = ruled
     return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped,
-                route_rule=route_rule)
+                route_rule=route_rule, orders=orders)
 
 
 def _endpoints(cands) -> list[str]:
@@ -917,6 +916,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                             quota_pending=parent.quota_pending)
         try:
             response = await execute_child(child, upstream_client)
+            _note_first_call(parent, plan, cand, tried)
         except CallFailure as exc:
             if exc.kind == "route_max_cost":
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0,
@@ -940,6 +940,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
             ):
                 raise  # the same refusal everywhere; nothing to fall back to
+            _note_first_call(parent, plan, cand, tried)
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", exc.status_code, 0, str(exc.detail)[:120]))
             if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
@@ -1480,12 +1481,26 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
 
 
 def _note_quality_order(parent: CallContext, before: list[str], after: list[str]) -> None:
-    """`route_order` / `route_retry_order` become `quality` only where quality changed them."""
-    route = dict((parent.route_summary or {}).get("route_rule") or {})
-    if after[:1] != before[:1]:
-        route["route_order"] = "quality"
+    """`route_retry_order` becomes `quality` only where quality changed the later attempts."""
     if after[1:] != before[1:]:
-        route["route_retry_order"] = "quality"
+        route = dict((parent.route_summary or {}).get("route_rule") or {})
+        _summarize(parent, route_rule={**route, "route_retry_order": "quality"})
+
+
+def _note_first_call(parent: CallContext, plan: Plan, cand: Candidate, tried: list) -> None:
+    """`route_order`: which order the first provider actually called came from. The candidates
+    passed over before it (over the cost ceiling, out of allowance, rate limited, an adapter that
+    failed) were never called, so each order is read from its first candidate not passed over."""
+    route = dict((parent.route_summary or {}).get("route_rule") or {})
+    if "route_order" in route:
+        return
+    passed = {t.endpoint_id for t in tried}
+    called = cand.endpoint["id"]
+
+    def first(order: str) -> str | None:
+        return next((e for e in plan.orders.get(order, ()) if e not in passed), None)
+    route["route_order"] = ("default" if called == first("default")
+                            else "rule" if called == first("rule") else "quality")
     _summarize(parent, route_rule=route)
 
 
