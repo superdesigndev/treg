@@ -265,3 +265,21 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 .cmd button:hover { background: #313130; }
 .setup .ctas { justify-content: center; }
 @media (max-width: 640px) { .zeroband { padding-top: 70px; } .setup { padding-top: 70px; } .cmd .cline, .cmd .ps { font-size: 14px; } }
+
+/* on-this-page outline: wide screens only, after the hero */
+.toc { display: none; }
+@media (min-width: 1400px) {
+  .toc { display: block; position: fixed; left: 20px; top: 50%; z-index: 40; opacity: 0; pointer-events: none;
+    transform: translate(-6px, -50%); transition: opacity .25s ease, transform .25s ease; }
+  .toc.on { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
+  .toc ol { list-style: none; margin: 0; padding: 8px 4px; border: 1px solid var(--line); border-radius: 14px;
+    background: rgba(253,252,251,.82); backdrop-filter: blur(8px); }
+  .toc a { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 8px; font-size: 12.5px;
+    color: var(--muted); text-decoration: none; white-space: nowrap; }
+  .toc a::before { content: ""; flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--line);
+    transition: background .2s ease; }
+  .toc a:hover { color: var(--ink); }
+  .toc a.cur { color: var(--ink); }
+  .toc a.cur::before { background: #118453; }
+}
+@media (prefers-reduced-motion: reduce) { .toc, .toc a::before { transition: none; } }

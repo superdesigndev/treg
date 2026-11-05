@@ -171,6 +171,22 @@ def _shell(*, title: str, description: str, path: str, here: str, body: str, ld:
     }}); }}, {{ threshold: .5 }});
     bio.observe(band);
   }}
+  var toc = document.getElementById('toc'), hero = document.querySelector('.hero');
+  if (toc && hero) {{
+    var links = [].slice.call(toc.querySelectorAll('a'));
+    var secs = links.map(function (a) {{ return document.getElementById(a.getAttribute('href').slice(1)); }});
+    var end = document.querySelector('.final');
+    var spy = function () {{
+      var past = hero.getBoundingClientRect().bottom < 0;
+      var done = end && end.getBoundingClientRect().top < innerHeight * .6;
+      toc.classList.toggle('on', past && !done);
+      var cur = -1;
+      secs.forEach(function (sec, i) {{ if (sec && sec.getBoundingClientRect().top < innerHeight * .35) cur = i; }});
+      links.forEach(function (a, i) {{ a.classList.toggle('cur', i === cur); }});
+    }};
+    addEventListener('scroll', spy, {{ passive: true }});
+    spy();
+  }}
 }})();
 </script>
 <script src="/sitetrack.js"></script>
@@ -266,6 +282,11 @@ def _page_body(key: str, base: str) -> str:
   <div class="ctas"><a class="pill dark" href="/app?ref=compare-{cp.page_slug(key)}">Try treg free — $1.00 credit</a><a class="pill" href="#side-by-side">See the side by side ↓</a></div>
 </header>
 
+<nav class="toc" id="toc" aria-label="On this page"><ol>
+  <li><a href="#answer">Short answer</a></li><li><a href="#fit">Which one fits</a></li>
+  <li><a href="#side-by-side">Side by side</a></li><li><a href="#tradeoff">Trade-offs</a></li>
+  <li><a href="#both">Using both</a></li><li><a href="#faq">FAQ</a></li><li><a href="#sources">Sources</a></li>
+</ol></nav>
 
 <main>
 <section class="sec" id="answer"><div class="wrap">
