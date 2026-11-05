@@ -327,6 +327,23 @@ async def test_the_worker_alerts_slack_when_the_check_itself_fails(c, monkeypatc
     assert posted == ["treg-worker billing reconcile failed: StripeDown: Stripe is down"]
 
 
+async def test_the_worker_alerts_slack_when_the_database_check_fails(c, monkeypatch):
+    monkeypatch.setattr(get_settings(), "ops_slack_webhook_url", "https://hooks.slack.test/ops", raising=False)
+    posted: list[str] = []
+
+    async def post(url, text, **kw):
+        posted.append(text)
+
+    async def schema_behind() -> None:
+        raise RuntimeError("schema is behind")
+
+    monkeypatch.setattr(slack, "post", post)
+    monkeypatch.setattr(infra_db, "verify_db", schema_behind)
+    with pytest.raises(RuntimeError):
+        await worker._billing_reconcile(argparse.Namespace(hours=48, grace_minutes=30))
+    assert posted == ["treg-worker billing reconcile failed: RuntimeError: schema is behind"]
+
+
 async def test_slack_post_sends_the_text_as_an_incoming_webhook_message():
     seen: list[httpx.Request] = []
 

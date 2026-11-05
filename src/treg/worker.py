@@ -454,10 +454,10 @@ async def _billing_reconcile(args) -> int:
     from .infra import slack
     from .infra.db import verify_db
 
-    await verify_db()
-    until = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=args.grace_minutes)
     webhook = get_settings().ops_slack_webhook_url
+    until = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=args.grace_minutes)
     try:
+        await verify_db()
         report = await billing.reconcile_topups(since=until - timedelta(hours=args.hours), until=until)
     except Exception as exc:
         if webhook:

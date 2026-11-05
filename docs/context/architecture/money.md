@@ -492,7 +492,7 @@ bonus with no `topup_bonus` entry (`bonus_missing`). A payment of a team deleted
 team deletion removes its blocks and ledger, so there is nothing to match or credit. It writes nothing: the fix for a gap is a Stripe
 event resend, which goes through the webhook's idempotency; a hand credit pays twice if Stripe later
 delivers the event. It prints the report as one JSON line and exits 1 when there is a gap. With
-`TREG_OPS_SLACK_WEBHOOK_URL` set it also posts the gaps, or its own failure, to that Slack incoming
+`TREG_OPS_SLACK_WEBHOOK_URL` set it also posts the gaps, or its own failure (a database it cannot verify included), to that Slack incoming
 webhook (`infra/slack.py`). Overlapping windows report an unfixed gap again on the next run.
 
 **The preselected amount** (`next_default_usd`) is the first preset above the org's last *manual*
