@@ -98,6 +98,16 @@ async def test_a_full_output_never_holds_the_loop_or_its_stop(out):
     assert time.monotonic() - started < 0.2
 
 
+async def test_a_stopped_watch_writes_nothing(out):
+    """A watcher blocked writing to a full pipe wakes after the pipe is closed; by then its fd
+    number can name the next owner's pipe, which then read a stray `loop_stall_end` (CI, Linux)."""
+    out_fd, events = out
+    watch = LoopStallWatch(stall_s=0.2, heartbeat_s=0.02, out_fd=out_fd)
+    watch._stop.set()
+    watch._emit("loop_stall_end", stalled_s=0.31)
+    assert not events()
+
+
 async def test_a_running_loop_logs_nothing(out):
     out_fd, events = out
     watch = LoopStallWatch(stall_s=1.0, heartbeat_s=0.05, out_fd=out_fd).start()
