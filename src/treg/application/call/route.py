@@ -630,7 +630,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             else:
                 kept.append(c)
         cands = kept
-    ranked = rank(cands, prefer=options.prefer or default_prefer(contract, identity), exclude=options.exclude,
+    ranked = rank(cands, prefer=options.prefer or default_prefer(contract, identity, given), exclude=options.exclude,
                   given=given, derive=contract.derive, one_subject=contract.one_subject)
     if options.complete:  # stable: price order within each group
         ranked = [c for c in ranked if _can_answer_fully(contract, c.adapter)] + \

@@ -215,6 +215,23 @@ def test_a_stand_in_q_lets_a_free_text_provider_answer_a_title_request():
                                                "miss": "a == null", "stand_in": {"nope": "q"}}}})
 
 
+def test_a_free_text_people_search_asks_the_semantic_providers_first():
+    """`prefer_when` replaces the contract's order for a caller who sent its keys: a `{q}` search
+    goes to exa then parallel, while a company lookup keeps the contract's own `prefer`."""
+    from treg.domain.catalog.routing import contracts as C
+
+    contract = catalog_store.load().contracts["people.search"]
+    assert contract.prefer_for({"q"}) == ("exa", "parallel", "crawl4ai")
+    assert contract.prefer_for({"q", "title"}) == ("exa", "parallel", "crawl4ai")
+    assert contract.prefer_for({"company_domain", "title"}) == contract.prefer == ("crawl4ai",)
+    assert contract.prefer_for(set()) == ("crawl4ai",)
+    assert C.default_prefer(contract, {"q": "phoenix head of tax"}, {"q"}) == ["exa", "parallel", "crawl4ai"]
+    for bad in ({"sent": ["nope"], "prefer": ["exa"]}, {"sent": ["q"]}, {"sent": ["q"], "prefer": ["exa"], "x": 1}):
+        with pytest.raises(ValueError, match="prefer_when"):
+            C.parse_contracts({"contracts": {"y": {"identity": [{"q": "str"}], "output": {"a": "str"},
+                                                   "miss": "a == null", "prefer_when": [bad]}}})
+
+
 def test_every_shipped_adapter_round_trips_its_fixture():
     cat = catalog_store.load()
     bad = {eid: a.verify_note for eid, a in cat.adapters.items() if not a.verified}

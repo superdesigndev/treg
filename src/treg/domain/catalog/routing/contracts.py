@@ -82,6 +82,10 @@ class Contract:
     # ahead of `prefer`. Cost per hit is one number for every domain, but a finder's coverage
     # differs by country.
     prefer_by_domain_suffix: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # (sent keys, provider order) pairs: the first whose keys the caller all sent replaces `prefer`.
+    # One order does not fit every question - a free-text `{q}` is answered best by a semantic
+    # search that a `{company_domain, title}` lookup can never reach.
+    prefer_when: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = ()
     # The per-call verdict word (`CallRecord.verdict`): `verdict_from` names the output field it is
     # read from, `verdict_words` the only words a call may be stored with, and `verdict_map` turns a
     # value of that field into one (`true` -> `verified`). Each adapter adds its provider's own
@@ -124,6 +128,10 @@ class Contract:
     # people search can answer a `{title}` request). A provider that can take the caller's own
     # fields never sees it, so its request is unchanged.
     stand_in: dict[str, str] = field(default_factory=dict)
+
+    def prefer_for(self, given) -> tuple[str, ...]:
+        """The default provider order for a caller who sent the identity keys `given`."""
+        return next((order for sent, order in self.prefer_when if set(sent) <= set(given or ())), self.prefer)
 
     @property
     def required_output(self) -> tuple[str, ...]:
@@ -292,7 +300,8 @@ def _variants(raw) -> tuple[tuple[str, ...], ...]:
 CONTRACT_KEYS = frozenset({
     "summary", "identity", "derive", "filters", "output", "miss", "idempotent", "default_max_cost_usd",
     "advice_unverified", "advice_domain_mismatch", "routed", "scoping", "prefer", "prefer_by_domain_suffix", "check", "confirm",
-    "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in"})
+    "empty_is_failure", "one_subject", "complete", "verdict", "question_miss", "row", "stand_in",
+    "prefer_when"})
 ADAPTER_KEYS = frozenset({
     "accepts", "in", "in_expr", "body_array", "test_identity", "cost_units", "max",
     "additional_capabilities", "route", "const", "out", "miss", "verdict", "verdicts", "row"})
@@ -331,6 +340,15 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
                 types.update({k: str(t) for k, t in v.items()})
         if stray := sorted(set(c.get("stand_in") or {}) - set(types)):
             raise ValueError(f"contract {cap}: stand_in must name identity keys, got {stray}")
+        prefer_when = []
+        for rule in c.get("prefer_when") or []:
+            sent = rule.get("sent") if isinstance(rule, dict) else None
+            order = rule.get("prefer") if isinstance(rule, dict) else None
+            if (set(rule) - {"sent", "prefer"} if isinstance(rule, dict) else True) or not sent or not order \
+                    or any(k not in types for k in sent):
+                raise ValueError(f"contract {cap}: prefer_when takes {{sent: [identity keys], prefer: [providers]}}, "
+                                 f"got {rule!r}")
+            prefer_when.append((tuple(str(k) for k in sent), tuple(str(p).lower() for p in order)))
         scoping = c.get("scoping") or []
         if not isinstance(scoping, list) or any(k not in types for k in scoping):
             # A typo'd key would silently scope nothing; failing the routing load instead makes
@@ -358,6 +376,7 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             scoping=tuple(str(k) for k in scoping),
             prefer=tuple(str(p).lower() for p in c.get("prefer") or ()),
             prefer_by_domain_suffix=_parse_prefer_by_domain_suffix(cap, c.get("prefer_by_domain_suffix"), types),
+            prefer_when=tuple(prefer_when),
             check=_parse_check(cap, c.get("check"), c.get("output") or {}),
             confirm=_parse_confirm(cap, c.get("confirm"), c.get("output") or {}),
             empty_is_failure=bool(c.get("empty_is_failure", False)),
@@ -387,9 +406,10 @@ def _parse_prefer_by_domain_suffix(cap: str, raw, types: dict) -> dict[str, tupl
     return out
 
 
-def default_prefer(contract: Contract, identity: dict[str, Any]) -> list[str]:
+def default_prefer(contract: Contract, identity: dict[str, Any], given=None) -> list[str]:
     """The provider order a caller who sent no `X-Treg-Route-Prefer` gets: the providers named for
-    the longest suffix of the identity's `domain`, then the contract's `prefer`."""
+    the longest suffix of the identity's `domain`, then the contract's `prefer` for the identity
+    keys `given` (`prefer_when`)."""
     first: tuple[str, ...] = ()
     domain = identity.get("domain")
     if contract.prefer_by_domain_suffix and isinstance(domain, str):
@@ -397,7 +417,7 @@ def default_prefer(contract: Contract, identity: dict[str, Any]) -> list[str]:
         matches = [s for s in contract.prefer_by_domain_suffix if host == s or host.endswith("." + s)]
         if matches:
             first = contract.prefer_by_domain_suffix[max(matches, key=len)]
-    return [*first, *(p for p in contract.prefer if p not in first)]
+    return [*first, *(p for p in contract.prefer_for(given) if p not in first)]
 
 
 def _parse_row(cap: str, raw, output: dict) -> dict:

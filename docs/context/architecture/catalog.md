@@ -966,6 +966,11 @@ returned and never documented as stable. An output field may say where it lands 
   of `prefer`, when the caller sends no `X-Treg-Route-Prefer`; the longest matching suffix wins.
   Coverage differs by country while cost per hit is one number. The suffix only sees the company
   domain, so a French company on `.com` is not matched.
+- `prefer_when` lists `{sent: [identity keys], prefer: [providers]}` rules; the first whose keys the
+  caller all sent replaces `prefer`. A matching domain suffix still goes first, and a caller's header
+  still wins. One order does not fit every question: `people.search` asks exa, then parallel, first
+  for a free-text `{q}`, where crawl4ai rarely answers, and keeps `prefer` for company lookups that
+  exa cannot scope.
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
   per hit ranks before specificity.
 - `row` gives a list output one row shape whatever provider answered (`people.search`): `of` names
