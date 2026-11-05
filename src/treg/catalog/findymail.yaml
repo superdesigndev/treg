@@ -93,7 +93,7 @@ endpoints:
       checked: '2026-08-20'
       confidence: documented
       note: "1 finder credit on a hit; nothing on a miss"
-    note: "not live-tested to preserve trial credits — the finder allowance on the verification account was 25 credits and was reserved for /search/name and /technologies"
+    # not live-tested: the trial account's 25 finder credits went to /search/name and /technologies
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.domain
@@ -132,7 +132,6 @@ endpoints:
     bill: {miss: charged, error: charged}
     error: {when: {any: [{path: response.error, op: present}, {path: response.errors, op: present}]}}
     miss: {when: {path: response.contacts, op: empty}}
-    note: "not live-tested to preserve trial credits; also marked deprecated upstream, so /search/employees is the route to verify first when credits allow"
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.employees
@@ -167,7 +166,6 @@ endpoints:
       checked: '2026-10-28'
       confidence: documented
       note: "1 finder credit per contact found; free when none. `count` caps the spend"
-    note: "not live-tested to preserve trial credits"
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.company
@@ -202,7 +200,7 @@ endpoints:
       checked: '2026-08-20'
       confidence: documented
       note: "1 finder credit when a company record is returned; nothing on a miss"
-    note: "not live-tested to preserve trial credits"
+    # not live-tested, to preserve trial credits
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.phone
@@ -232,7 +230,7 @@ endpoints:
       checked: '2026-08-20'
       confidence: documented
       note: "TEN finder credits per phone found — the most expensive route here by an order of magnitude. Nothing is charged on a miss."
-    note: "not live-tested: at 10 credits it would have consumed 40% of the verification account's entire finder allowance"
+    # not live-tested: at 10 credits a call it would have spent 40% of the trial account's finder allowance
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.reverse-email
@@ -265,7 +263,6 @@ endpoints:
       checked: '2026-08-20'
       confidence: documented
       note: "1 finder credit for the profile URL, 2 when with_profile=true. Nothing on a miss. The 1-vs-2 split is stated in the API docs, not on the pricing page (which only publishes the flat 1 credit = 1 verified email rate)."
-    note: "not live-tested to preserve trial credits"
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.verify
@@ -385,7 +382,7 @@ endpoints:
       checked: '2026-10-28'
       confidence: documented
       note: "1 finder credit per 10 companies returned, rounded up; free when none. The response reports `credits_used`."
-    note: "not live-tested to preserve trial credits"
+    # not live-tested, to preserve trial credits
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.intellimatch.search
@@ -417,7 +414,7 @@ endpoints:
       checked: '2026-08-20'
       confidence: unknown
       note: "Findymail documents the cost as varying with `limit` and `config` (enrichment level) and publishes no single rate, so no value is asserted. Budget by reading GET /credits before and after."
-    note: "not live-tested to preserve trial credits — an unknown-cost async job was the wrong thing to point at a 25-credit account"
+    # not live-tested: an unknown-cost async job on a 25-credit trial account
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.intellimatch.status
@@ -460,7 +457,7 @@ endpoints:
     test_request:
       queryParams: {hash: "abc123", per_page: 10}
     cost: {type: free, value: 0, currency: USD, unit: call}
-    note: "not live-tested: there is no completed job hash to read, because the paid search that produces one was skipped to preserve trial credits"
+    # not live-tested: no completed job hash to read, since the paid search that makes one was skipped
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.signals

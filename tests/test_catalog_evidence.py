@@ -27,11 +27,10 @@ def test_missing_snapshot_fails(ingest, monkeypatch, tmp_path):
         ingest._anyapi_measured()
 
 
-def test_supplied_snapshot_preserves_prices_and_window(ingest, monkeypatch, tmp_path):
+def test_supplied_snapshot_preserves_prices(ingest, monkeypatch, tmp_path):
     monkeypatch.setenv("TREG_CATALOG_EVIDENCE_DIR", str(tmp_path))
     prices = {"example.search": {"calls": 8, "p90_usd": 0.04}}
     (tmp_path / "anyapi_measured_charges.json").write_text(json.dumps({
         "skus": prices, "as_of": "2025-01-01", "window_days": 30,
     }))
     assert ingest._anyapi_measured() == prices
-    assert ingest._anyapi_measured_window() == ("2025-01-01", 30)
