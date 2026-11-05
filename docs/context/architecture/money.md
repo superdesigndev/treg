@@ -204,6 +204,13 @@ queries, so slow-transaction snapshots can tie a PostgreSQL blocker PID to an op
 ([data-model](data-model.md#product-analytics-writer-analyticspy)). Tracing changes neither lock
 order nor accounting.
 
+Lock order does bound which rows wait, not for how long. Every transaction a `money_session` begins
+sets `idle_in_transaction_session_timeout` (`IDLE_IN_TRANSACTION_TIMEOUT`): a process that stops
+running between two statements (an event-loop stall) is disconnected by Postgres, its transaction
+rolls back and the team's org and credit-block rows are free again. The stalled request then fails
+as on any database error; a rolled-back settle leaves its hold open for the reaper, so each hold is
+still closed exactly once by its claim.
+
 ### Optional admission before the settlement session
 
 `infra.money_admission.admit` optionally queues same-org balance work by payer Org before the
