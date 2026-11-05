@@ -1608,8 +1608,7 @@ async def _grant_topup_bonus(db: AsyncSession, org_id: int, pi_id: str, block_id
     the payment rather than on "first delivery", so a delivery after a failed grant completes it. The
     lock on the purchased block serializes every door that reaches one payment (the two webhook
     deliveries of a Checkout, the inline auto-top-up credit and its webhook), so the check and the
-    grant cannot interleave. The lock is a no-op UPDATE: a row lock on PostgreSQL and the write lock
-    on SQLite, which ignores SELECT FOR UPDATE.
+    grant cannot interleave. `revoke_refunded` takes the same lock before it looks for bonus blocks.
 
     A refund recorded before this grant (a delivery that heals after the refund was processed) is
     applied to the new bonus in the same transaction, in the proportion `revoke_refunded` uses, since
@@ -1618,10 +1617,7 @@ async def _grant_topup_bonus(db: AsyncSession, org_id: int, pi_id: str, block_id
     bonus_micro, bonus_pct = bonus_for_topup(amount_micro)
     if bonus_micro <= 0:
         return 0, 0
-    created_at = (await db.execute(
-        update(CreditBlock).where(CreditBlock.id == block_id).values(id=CreditBlock.id)
-        .returning(CreditBlock.created_at).execution_options(synchronize_session=False)
-    )).scalar_one()
+    created_at = await _lock_purchased_block(db, block_id)
     if _now() - created_at > BONUS_HEAL_WINDOW or pi_id in await _bonused_payments(db, org_id):
         await db.rollback()
         return 0, 0
@@ -1637,6 +1633,16 @@ async def _grant_topup_bonus(db: AsyncSession, org_id: int, pi_id: str, block_id
         bonus_micro -= sum(r.revoked_micro for r in revoked)
     await db.commit()
     return bonus_micro, bonus_pct
+
+
+async def _lock_purchased_block(db: AsyncSession, block_id: str) -> datetime:
+    """Serialize every bonus grant and refund of one payment until the caller commits; returns the
+    block's `created_at`. A no-op UPDATE: a row lock on PostgreSQL and the write lock on SQLite,
+    which ignores SELECT FOR UPDATE."""
+    return (await db.execute(
+        update(CreditBlock).where(CreditBlock.id == block_id).values(id=CreditBlock.id)
+        .returning(CreditBlock.created_at).execution_options(synchronize_session=False)
+    )).scalar_one()
 
 
 async def _refunded_of(db: AsyncSession, block_id: str) -> int:
@@ -1781,6 +1787,10 @@ async def revoke_refunded(db: AsyncSession, pi_id: str, refunded_micro: int, *, 
     refunded = max(0, min(int(refunded_micro), paid))
     if refunded == 0:
         return {"handled": True, "revoked_micro": 0, "shortfall_micro": 0, "held_micro": 0}
+    # The lock `_grant_topup_bonus` takes, taken before the bonus blocks are looked up: a heal that
+    # is granting this payment's bonus right now either commits first (and is found here) or waits
+    # and then sees this refund.
+    await _lock_purchased_block(db, block_id)
     targets = [ledger.RevokeTarget(block_id, refunded)]
     targets += [ledger.RevokeTarget(bid, int(amt) * refunded // paid)
                 for bid, _, amt, _ in await _bonus_blocks_for(db, pi_id, org_id)]

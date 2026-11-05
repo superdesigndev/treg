@@ -151,6 +151,27 @@ async def test_a_bonus_healed_after_a_refund_keeps_only_the_unrefunded_share(c, 
         assert bonus.remaining_micro == 5_000_000, "the same refund again takes nothing twice"
 
 
+async def test_a_full_refund_racing_a_bonus_heal_leaves_no_bonus(c, monkeypatch):
+    """Whichever of the refund and the healing redelivery takes the payment's lock first, a fully
+    refunded purchase keeps none of its bonus."""
+    import asyncio
+
+    org_id = await _org(c)
+    _fail_bonus_grants(monkeypatch, times=1)
+    pi = _pi(org_id, "pi_refund_race", 10_000)
+    assert (await _deliver(c, pi)).status_code == 500
+
+    async def refund():
+        async with session_maker() as db:
+            await billing.revoke_refunded(db, "pi_refund_race", 100_000_000, source="test")
+
+    await asyncio.gather(refund(), _deliver(c, pi))
+    async with session_maker() as db:
+        blocks = (await db.execute(select(CreditBlock).where(
+            CreditBlock.org_id == org_id, CreditBlock.kind == "bonus"))).scalars().all()
+    assert sum(b.remaining_micro for b in blocks) == 0
+
+
 async def test_two_deliveries_of_one_payment_at_once_grant_one_bonus(c):
     """`checkout.session.completed` and `payment_intent.succeeded` arrive together for every Checkout
     purchase. The lock on the purchased block keeps them to one bonus on Postgres and SQLite alike."""
