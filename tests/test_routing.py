@@ -2737,3 +2737,66 @@ def test_routed_miss_count_includes_a_per_success_child_that_bills_a_miss():
     assert free_row["miss_billed_by"] == []
     assert "misses are free" in free_row["cost"]["note"]
     assert free_row["cost"].get("varies") is not True
+
+
+# ---- people.email.find: a provider first by the domain's suffix ------------------------------------
+@pytest.mark.parametrize("domain, first", [
+    ("acme.fr", ["enrow"]), ("Paris.Acme.FR.", ["enrow"]), ("acme.de", ["enrow"]),
+    ("acme.com", []), ("frenchco.com", []), ("acme.fr.example.com", []), ("acme.es", []),
+])
+def test_email_find_prefers_enrow_on_french_and_german_domains(domain, first):
+    from treg.domain.catalog.routing.contracts import default_prefer
+    contract = catalog_store.load().contracts["people.email.find"]
+    ident, _ = canonical_identity(contract, {"full_name": "Jean Dupont", "domain": domain})
+    assert default_prefer(contract, ident) == first
+    linkedin, _ = canonical_identity(contract, {"linkedin_url": "https://www.linkedin.com/in/x"})
+    assert default_prefer(contract, linkedin) == [], "no domain, no suffix rule"
+
+
+def test_prefer_by_domain_suffix_takes_the_longest_suffix_then_the_contract_prefer():
+    from treg.domain.catalog.routing.contracts import default_prefer, parse_contracts
+    doc = {"contracts": {"x.find": {
+        "identity": [{"full_name": "str", "domain": "str"}], "output": {"email": {"type": "str"}},
+        "prefer": ["tomba", "hunter"], "prefer_by_domain_suffix": {".uk": ["hunter"], "co.uk": ["enrow"]}}}}
+    contract = parse_contracts(doc)["x.find"]
+    assert default_prefer(contract, {"domain": "acme.co.uk"}) == ["enrow", "tomba", "hunter"]
+    assert default_prefer(contract, {"domain": "acme.org.uk"}) == ["hunter", "tomba"]
+    assert default_prefer(contract, {"domain": "acme.com"}) == ["tomba", "hunter"]
+
+
+@pytest.mark.parametrize("rule", [{"fr": []}, {"fr": "enrow"}, ["fr"]])
+def test_a_malformed_prefer_by_domain_suffix_fails_the_load(rule):
+    from treg.domain.catalog.routing.contracts import parse_contracts
+    doc = {"contracts": {"x.find": {"identity": [{"full_name": "str", "domain": "str"}],
+                                    "output": {"email": {"type": "str"}}, "prefer_by_domain_suffix": rule}}}
+    with pytest.raises(ValueError, match="prefer_by_domain_suffix"):
+        parse_contracts(doc)
+
+
+def test_prefer_by_domain_suffix_needs_a_domain_identity():
+    from treg.domain.catalog.routing.contracts import parse_contracts
+    doc = {"contracts": {"x.find": {"identity": [{"linkedin_url": "url"}], "output": {"email": {"type": "str"}},
+                                    "prefer_by_domain_suffix": {"fr": ["enrow"]}}}}
+    with pytest.raises(ValueError, match="domain"):
+        parse_contracts(doc)
+
+
+@pytest.mark.parametrize("domain, header, order", [
+    ("stripe.fr", None, ["hunter"]),                   # the suffix rule puts hunter ahead of cheaper tomba
+    ("stripe.com", None, ["tomba"]),         # any other domain keeps cost per hit
+    ("stripe.fr", "tomba", ["tomba"]),       # the caller's own preference replaces the rule
+])
+async def test_a_routed_find_asks_the_suffix_provider_first(clients, enrichment_on, monkeypatch, domain, header, order):
+    import dataclasses
+    cat = catalog_store.load()
+    monkeypatch.setitem(cat.contracts, "people.email.find", dataclasses.replace(
+        cat.contracts["people.email.find"], prefer_by_domain_suffix={"fr": ("hunter",)}))
+    seen = []
+    miss_tomba = (200, {"data": {"email": None}})
+    hit = (200, {"data": {"email": f"p@{domain}", "score": 90, "verification": {"status": "valid"}}})
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [miss_tomba], "findymail": [(200, {"contact": {"name": "P C", "email": None}})], "hunter": [hit]}, seen))
+    r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison", "domain": domain},
+                           headers={"X-Treg-Route-Prefer": header} if header else {})
+    assert r.status_code == 200, r.text
+    assert [p for p, *_ in seen][:len(order)] == order and r.json()["_treg"]["served_by"] == "hunter.people.email.find"

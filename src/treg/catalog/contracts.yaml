@@ -38,6 +38,13 @@ contracts:
     miss: "email == null"
     idempotent: true            # a lookup — error-fallback to the next provider is safe
     one_subject: true           # every variant names one person: cost per hit ranks first
+    # Enrow first on French and German company domains. 2026-10-29 to 11-04 live calls, all at route
+    # position 2: Enrow hit 25.9% on .fr (3,710 calls) against 13.6-18.2% for trykitt, tomba and
+    # filtrat, and 31.8% on .de (1,884) against 13.4-28.8%. On .uk, .nl and .es it did not lead, so
+    # those stay on cost per hit. The 2026-10-25 controlled country test put it first in France.
+    prefer_by_domain_suffix:
+      fr: [enrow]
+      de: [enrow]
     # The provider's own claim, stored per call; a finder with no `verified` output stores none.
     verdict: {from: verified, words: [verified, unverified], map: {true: verified, false: unverified}}
     # Attached as `_treg.advice` when a hit's `verified` is not true. A find is a guess the provider

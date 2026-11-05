@@ -962,6 +962,11 @@ returned and never documented as stable. An output field may say where it lands 
   asked for one company's CEO bills title-matched strangers as a hit.
 - `prefer` is the default provider order when the caller sends no `X-Treg-Route-Prefer`. Cost per
   hit ignores time, so a contract may prefer a dearer but faster, more reliable provider.
+- `prefer_by_domain_suffix` maps a suffix of the identity's `domain` to providers asked first, ahead
+  of `prefer`, when the caller sends no `X-Treg-Route-Prefer`; the longest matching suffix wins.
+  Coverage differs by country while cost per hit is one number: `people.email.find` puts Enrow first
+  on `.fr` and `.de`. The suffix only sees the company domain, so a French company on `.com` is not
+  matched.
 - `one_subject: true` (person finds): every identity variant names the same person, so expected cost
   per hit ranks before specificity.
 - `row` gives a list output one row shape whatever provider answered (`people.search`): `of` names
