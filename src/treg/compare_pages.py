@@ -129,8 +129,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Agentik: an Agentik alternative with no top-up fee",
         "description": "Looking for an Agentik alternative? treg gives an AI agent paid tools from one "
                        "prepaid balance, with 0% markup and no top-up fee.",
-        "sub": "Both give your agent paid tools from one balance. treg adds no fee and uses your own "
-               "keys first.",
+        "sub": "No top-up fee, and your own keys win. treg and Agentik both bill paid tools to an "
+               "agent from one balance.",
         "their_words": "The tool gateway for your agents.",
         "tldr": "Agentik and treg do the same job: one connection, one prepaid balance, many paid "
                 "tools and no provider signup. treg is like OpenRouter for tools: one API key and one "
@@ -262,8 +262,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Firecrawl Alexandria: Firecrawl pricing compared",
         "description": "Firecrawl pricing for Alexandria is credits from a monthly plan. treg bills "
                        "each data call from a prepaid balance at 0% markup.",
-        "sub": "Both give your agent data from many sources on one key. treg centres on commercial "
-               "data APIs and your own accounts.",
+        "sub": "SEO, people and ad data per call, with no plan. Alexandria centres on public records "
+               "and Firecrawl's own indexes.",
         "their_words": "The knowledge library for superintelligence.",
         "tldr": "Both give an agent data from many providers through one key. treg is like OpenRouter "
                 "for tools: one API key and one balance for many paid APIs. treg is a catalog of "
@@ -394,8 +394,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs AIsa: an AIsa alternative for paid data APIs",
         "description": "Looking for an AIsa alternative? treg relays each provider's own answer at 0% "
                        "markup, with own keys and team roles on every account.",
-        "sub": "Both sell data to agents per call. treg relays each provider's own answer, with every "
-               "field it returns.",
+        "sub": "Each provider's own answer, with every field it returns. AIsa reshapes answers into "
+               "one schema, sourced per value.",
         "their_words": "The resource layer for AI agents.",
         "tldr": "Both sell data to agents per call from a prepaid balance. treg is like OpenRouter for "
                 "tools: one API key and one balance for many paid APIs. treg relays each provider's "
@@ -521,8 +521,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Locus: a Locus alternative with no subscription",
         "description": "Looking for a Locus alternative? treg gives AI agents paid APIs from a prepaid "
                        "balance, with no subscription and 0% markup.",
-        "sub": "Both give agents paid APIs from one balance. treg is built around your team's own "
-               "keys, accounts and tools.",
+        "sub": "Your team's own keys, accounts and tools, beside the catalog. Locus is built to resell "
+               "paid tools to your customers.",
         "their_words": "Agent tools, billed per user.",
         "tldr": "Both give agents paid APIs from a prepaid balance through a remote MCP server. treg "
                 "is like OpenRouter for tools: one API key and one balance for many paid APIs. treg "
@@ -645,8 +645,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Monid: two tool catalogs for AI agents",
         "description": "Monid and treg both give agents paid tools from a prepaid balance. treg adds "
                        "0% markup in its terms and your own keys, never metered.",
-        "sub": "Both give agents paid tools from a prepaid balance. treg puts 0% markup in its terms "
-               "and uses your own keys first.",
+        "sub": "0% markup in the terms, and your own keys first. Like Monid, treg sells paid tools "
+               "from a prepaid balance.",
         "their_words": "Connect your agent to every tool it needs.",
         "tldr": "Monid and treg both give agents a catalog of paid tools from a prepaid balance, with "
                 "$1 to start and no subscription. treg is like OpenRouter for tools: one API key and "
@@ -770,8 +770,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs AnyAPI: an AnyAPI alternative for AI agents",
         "description": "AnyAPI routes data APIs per request with failover. treg's catalog includes "
                        "AnyAPI's endpoints beside many other providers.",
-        "sub": "Both give your agent paid data APIs on one key. AnyAPI's endpoints are also in the "
-               "treg catalog.",
+        "sub": "AnyAPI's endpoints are in the treg catalog, beside SEO, people and ad data on one key "
+               "and one balance.",
         "their_words": "We route you to the cheapest, most reliable data.",
         "tldr": "Like OpenRouter for models, AnyAPI and treg both give an agent one API key and one "
                 "prepaid balance for many paid data APIs, priced per call in US dollars. AnyAPI's "
@@ -970,8 +970,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs FetchAPI: a FetchAPI alternative for AI agents",
         "description": "FetchAPI routes data API calls to the cheapest working provider. treg bills "
                        "paid tools at 0% markup. MCP, keys and caps compared.",
-        "sub": "Both give an agent one key and prepaid credit for many data APIs. treg bills each tool "
-               "at its provider's own rate.",
+        "sub": "Every tool at its provider's own rate, 0% markup in the terms. FetchAPI routes jobs to "
+               "the cheapest working provider.",
         "their_words": "One key for every data API.",
         "tldr": "FetchAPI and treg both give an agent one key, prepaid credit and an MCP server for "
                 "many paid data APIs. Like OpenRouter for models, both give an agent one API key and "
@@ -1142,8 +1142,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs APIHub: an APIHub alternative for AI agents",
         "description": "APIHub sells APIs to agents for USDC credits. treg bills paid tools from one "
                        "balance at 0% markup. Fees, MCP, keys and caps compared.",
-        "sub": "Both give an agent one key, one balance and one MCP server. treg relays each "
-               "provider's API at its own rate.",
+        "sub": "Card top-ups at 0% markup, and your own keys win. APIHub sells listed APIs to agents "
+               "for USDC credits or x402.",
         "their_words": "The API marketplace built for agents.",
         "tldr": "Like OpenRouter for models, APIHub and treg both give an agent one API key, one "
                 "prepaid balance and one MCP server for many paid APIs. treg bills each call at the "
@@ -1318,8 +1318,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs RapidAPI: RapidAPI pricing vs one prepaid balance",
         "description": "RapidAPI pricing is a plan per API, set by its provider. treg bills each tool "
                        "from one prepaid balance at 0% markup, on one MCP server.",
-        "sub": "Both put many APIs behind one key. treg bills every call from one prepaid balance at "
-               "0% markup.",
+        "sub": "A single prepaid balance at 0% markup for every tool. On RapidAPI, each API has its "
+               "own plan.",
         "their_words": "Nokia API Hub is more than just a catalog for APIs.",
         "tldr": "RapidAPI and treg both put many APIs behind one key. treg is like OpenRouter for "
                 "tools: one API key and one balance for many paid APIs. treg bills every call from one "
@@ -1451,8 +1451,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Apify: Apify MCP, pricing and an alternative",
         "description": "Apify MCP reaches 109,000+ scraping Actors. treg's MCP server gives agents "
                        "data APIs per call at 0% markup. Pricing and caps compared.",
-        "sub": "Both give your agent paid tools through one MCP server. treg returns each data API's "
-               "own answer in the same call.",
+        "sub": "Data APIs that answer in the same call, at 0% markup. Apify runs Actors that scrape "
+               "almost any site.",
         "their_words": "Apify is a marketplace of ready-to-run tools for AI that automate work on the web.",
         "tldr": "Apify and treg both give your agent paid tools through one MCP server. treg is like "
                 "OpenRouter for tools: one API key and one balance for many paid APIs. treg is a "
@@ -1589,8 +1589,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Composio: Composio MCP for apps, treg for paid data",
         "description": "Composio MCP connects agents to 1,000+ apps in each user's own accounts. treg "
                        "gives agents paid data per call at 0% markup.",
-        "sub": "Both give an agent tools over MCP. treg gives it paid data with no vendor accounts, at "
-               "each provider's own rate.",
+        "sub": "Paid data with no vendor accounts, at each provider's rate. Composio connects agents "
+               "to apps in each user's accounts.",
         "their_words": "Give your AI secure access to 1,500+ apps in minutes.",
         "tldr": "Both give an agent tools through one MCP server, with your own keys welcome. treg is "
                 "like OpenRouter for tools: one API key and one balance for many paid APIs. treg gives "
@@ -1715,8 +1715,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Zapier MCP: data tools or app actions for agents",
         "description": "Zapier MCP lets an agent act in 9,000+ apps you connect. treg gives an agent "
                        "paid data per call in dollars at 0% markup.",
-        "sub": "Both connect an agent over remote MCP. treg gives it paid data with no vendor "
-               "accounts, priced in dollars per call.",
+        "sub": "Dollars per call, not tasks, for data with no vendor accounts. Zapier MCP lets an "
+               "agent act in the apps you connect.",
         "their_words": "Go from AI chat to AI action.",
         "tldr": "Both connect an agent through a remote MCP server. treg is like OpenRouter for tools: "
                 "one API key and one balance for many paid APIs. treg gives your agent paid data from "
@@ -1835,8 +1835,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Pipedream Connect, now part of Workday",
         "description": "Pipedream Connect, now part of Workday, gives the agents you build 10,000+ "
                        "tools. treg gives agents paid data per call at 0% markup.",
-        "sub": "Both reach an agent over remote MCP. treg gives your agent paid data with no vendor "
-               "accounts, billed per call.",
+        "sub": "Billed in dollars per call, for data you hold no account for. Pipedream Connect lets "
+               "agents act in your users' apps.",
         "their_words": "The integration layer for AI agents.",
         "tldr": "Both reach an agent through remote MCP servers and keep credentials out of the model. "
                 "treg is like OpenRouter for tools: one API key and one balance for many paid APIs. "
@@ -1959,8 +1959,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Smithery: an MCP directory vs a hosted MCP server",
         "description": "Smithery is now a free MCP directory; its hosted proxy shut down on 31 October "
                        "2026. treg is one token for paid tools, at 0% markup.",
-        "sub": "Both help an agent reach many tools. treg is one token for paid tools, with treg "
-               "holding the provider accounts.",
+        "sub": "One token for paid tools from many vendors. Smithery is now a free directory of MCP "
+               "servers that links to each vendor.",
         "their_words": "Connect agents to thousands of tools and services.",
         "tldr": "Both help an agent reach many tools. treg is like OpenRouter for tools: one API key "
                 "and one balance for many paid APIs. treg is one token for {ENDPOINTS} tools across "
@@ -2079,8 +2079,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Arcade.dev: an Arcade.dev alternative for AI agents",
         "description": "Arcade.dev gives the agents you build 8,000+ tools that act in each user's own "
                        "apps. treg gives agents paid data per call at 0% markup.",
-        "sub": "Both reach an agent over MCP and accept your own keys. treg adds paid data with no "
-               "vendor accounts, at 0% markup.",
+        "sub": "Spend limits in dollars and paid data with no vendor accounts. Arcade.dev lets your "
+               "agents act in each user's apps.",
         "their_words": "Arcade is the actions runtime between your agents and every system they reach.",
         "tldr": "Both reach an agent over MCP, and both accept your own keys. treg is like OpenRouter "
                 "for tools: one API key and one balance for many paid APIs. treg gives your agent paid "
@@ -2222,8 +2222,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Nango: a Nango alternative for AI agents",
         "description": "Need a Nango alternative? Nango connects your product to APIs in each user's "
                        "own accounts; treg gives agents paid data at 0% markup.",
-        "sub": "Both reach an agent over MCP. treg gives your agent paid data with no vendor accounts "
-               "and no plan.",
+        "sub": "Per-call data with no plan and no vendor accounts. Nango connects your product to APIs "
+               "in your users' own accounts.",
         "their_words": "Integrations for your products & agents.",
         "tldr": "Both reach an agent over MCP. treg is like OpenRouter for tools: one API key and one "
                 "balance for many paid APIs. treg gives your agent paid data from many providers on "
@@ -2361,8 +2361,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Clay: a Clay alternative with no plan or seats",
         "description": "Looking for a Clay alternative for AI agents? treg gives your agent enrichment "
                        "and other data APIs per call at 0% markup, no seats.",
-        "sub": "Both give you people and company data from many vendors. treg gives it to your agent "
-               "per call, no plan or seats.",
+        "sub": "Enrichment for your agent per call, with no plan and no seats. Clay gives GTM teams "
+               "tables, waterfalls and CRM sync.",
         "their_words": "Build systems to grow revenue.",
         "tldr": "Both give you people and company data from many vendors under one account, and both "
                 "accept your own keys. treg is like OpenRouter for tools: one API key and one balance "
@@ -2484,8 +2484,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Apollo.io: Apollo MCP, API and pricing compared",
         "description": "Apollo MCP and API reach Apollo's own 240M+ contacts. treg gives an agent "
                        "Apollo and other people data providers per call, no seats.",
-        "sub": "Both give you people and company data. treg gives your agent Apollo and other data "
-               "providers through one token.",
+        "sub": "Apollo and many other data providers on one token, with no seats. Apollo.io adds its "
+               "own database, outreach and a CRM.",
         "their_words": "Grow revenue with one connected GTM system.",
         "tldr": "Both give you people and company data, and Apollo's API is in the treg catalog. treg "
                 "is like OpenRouter for tools: one API key and one balance for many paid APIs. treg "
@@ -2613,8 +2613,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs OpenRouter API: one routes models, one routes tools",
         "description": "OpenRouter pricing and API: 600+ language models, on credits with a 5.5% "
                        "purchase fee. treg is one token for paid tools at 0% markup.",
-        "sub": "Both put one key and one balance in front of many providers. treg does it for tools, "
-               "with 0% markup.",
+        "sub": "OpenRouter's idea, for tools: one key and one balance at 0% markup. OpenRouter does "
+               "the same for language models.",
         "their_words": "A unified API for every major LLM.",
         "tldr": "OpenRouter and treg share one idea: one key and one balance in front of many "
                 "providers. treg applies it to the tools an agent calls: paid data and generation APIs "
