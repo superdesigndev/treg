@@ -129,8 +129,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Agentik: an Agentik alternative with no top-up fee",
         "description": "Looking for an Agentik alternative? treg gives an AI agent paid tools from one "
                        "prepaid balance, with 0% markup and no top-up fee.",
-        "sub": "Both give your agent paid tools through one connection and one balance. treg adds no "
-               "fee, uses your own keys first and runs your team's own tools beside the catalog.",
+        "sub": "Both give your agent paid tools from one balance. treg adds no fee and uses your own "
+               "keys first.",
         "their_words": "The tool gateway for your agents.",
         "tldr": "Agentik and treg do the same job: one connection, one prepaid balance, many paid "
                 "tools and no provider signup. treg is like OpenRouter for tools: one API key and one "
@@ -218,26 +218,29 @@ COMPETITORS: dict[str, dict] = {
                  "prepaid balance and many paid tools for an agent. treg also puts your team's own "
                  "APIs, CLIs and skills behind the same token, and calls on your connected Google "
                  "Analytics, Search Console, Google Ads and Meta Ads accounts are never metered."),
-            ("Is treg cheaper than Agentik?",
-                 "On fees, yes. Agentik and treg both bill tools at the provider's price, but Agentik "
-                 "adds a 5.5% platform fee (minimum $0.80) to each top-up after a first top-up of $10 "
-                 "or less. treg adds 0% markup, a commitment in its terms, and no top-up fee."),
             ("How much does Agentik cost?",
                  "Agentik pricing is pay per call from a prepaid balance, with no plan. Agentik gives "
                  "eligible new Google and GitHub accounts $5 of credit for 14 days, and its free "
-                 "public-data tools allow 50 to 1,000 free runs a day. treg gives $1.00 of credit once "
-                 "per new verified account, with no card."),
+                 "public-data tools allow 50 to 1,000 free runs a day."),
             ("Can I use my own API keys with Agentik?",
                  "No. Agentik holds the provider accounts, while treg accepts your team's own keys on "
                  "every account. On treg, your team's key always wins over treg's, and those calls are "
                  "never metered."),
-            ("Can I set a spending limit on Agentik?",
-                 "Yes. Agentik keys carry hourly, daily, lifetime and per-tool spending caps and a "
-                 "tool allowlist, while treg sets limits for the team. treg has a team daily spend "
-                 "cap, a per-call cost ceiling and per-member daily call caps."),
-            ("Can I self-host Agentik?",
-                 "No. Agentik is a hosted service, while treg's code is on GitHub under Apache 2.0 "
-                 "with added terms. You can self-host treg for your own team."),
+            ("Agentik vs treg: which is cheaper for an AI agent?",
+                 "On fees, treg. Agentik and treg both bill tools at the provider's price, but Agentik "
+                 "adds a 5.5% platform fee (minimum $0.80) to each top-up after a first top-up of $10 "
+                 "or less. treg adds 0% markup, a commitment in its terms, and no top-up fee."),
+            ("Can I use Agentik and treg together?",
+                 "Yes. Agentik and treg both speak MCP, so one agent can hold both connections. A team "
+                 "could keep Agentik for capped keys and its Amazon Ads and Reddit connections, and "
+                 "use treg for its own keys, its team's tools and the wider catalog."),
+            ("How does treg set spending limits compared with Agentik?",
+                 "treg sets limits for the team: a team daily spend cap, a per-call cost ceiling and "
+                 "per-member daily call caps. Agentik sets limits on each key, with hourly, daily, "
+                 "lifetime and per-tool caps and a tool allowlist."),
+            ("Can I self-host treg?",
+                 "Yes. treg's code is on GitHub under Apache 2.0 with added terms, and you can "
+                 "self-host treg for your own team. Agentik is a hosted service."),
         ],
         "sources": [
             ("Agentik home page", "https://www.agentik.cc"),
@@ -259,9 +262,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Firecrawl Alexandria: Firecrawl pricing compared",
         "description": "Firecrawl pricing for Alexandria is credits from a monthly plan. treg bills "
                        "each data call from a prepaid balance at 0% markup.",
-        "sub": "Both give your agent data from many sources through one key. Alexandria centres on "
-               "public records and its own indexes; treg centres on commercial data APIs and your own "
-               "accounts.",
+        "sub": "Both give your agent data from many sources on one key. treg centres on commercial "
+               "data APIs and your own accounts.",
         "their_words": "The knowledge library for superintelligence.",
         "tldr": "Both give an agent data from many providers through one key. treg is like OpenRouter "
                 "for tools: one API key and one balance for many paid APIs. treg is a catalog of "
@@ -346,30 +348,34 @@ COMPETITORS: dict[str, dict] = {
                  "data: SEO and SERP data, backlinks, people and company enrichment, social profiles "
                  "and ad libraries. Firecrawl Alexandria has deep public-records coverage, so a team "
                  "can use Firecrawl Alexandria and treg side by side."),
-            ("Firecrawl Alexandria vs treg: what is the difference?",
-                 "The main difference is the answer format. Firecrawl Alexandria returns structured "
-                 "results through Firecrawl's search and scrape endpoints, mixing the live web, "
-                 "Firecrawl's own indexes and official providers in one query. treg relays each "
-                 "provider's own answer unchanged, so every field the provider returns reaches the "
-                 "agent."),
             ("How much does Firecrawl Alexandria cost?",
                  "Firecrawl Alexandria pricing depends on the Firecrawl plan: tools run at their "
-                 "listed price in Firecrawl credits, the free plan gives 1,000 credits a month, and "
-                 "paid plans cost $19, $99, $399 or $749 a month. treg has no plan: a prepaid balance "
-                 "pays each call at the provider's rate, with 0% markup."),
-            ("Can I use my own API keys with Firecrawl Alexandria?",
-                 "Firecrawl does not publish whether Firecrawl Alexandria takes your own provider "
-                 "keys. treg accepts your team's keys on every account: your own key for a provider "
-                 "always wins over treg's, and those calls are never metered."),
-            ("Does Firecrawl Alexandria have an MCP server?",
-                 "Yes. Firecrawl Alexandria works through a remote MCP server (OAuth or API key), a "
-                 "local MCP server and a plugin for ChatGPT and Codex. treg has a remote MCP server "
-                 "with OAuth or a token header, plus an HTTP API, a CLI and an agent skill."),
+                 "listed price in Firecrawl credits. The free plan gives 1,000 credits a month with no "
+                 "card, and paid plans cost $19, $99, $399 or $749 a month. Credits roll over only on "
+                 "Scale and Enterprise."),
             ("Can I self-host Firecrawl Alexandria?",
                  "It depends on the part. Firecrawl's core is AGPL-3.0 and can be self-hosted, but "
                  "Firecrawl does not publish whether Firecrawl Alexandria runs on a self-hosted "
                  "install. treg's code is on GitHub under Apache 2.0 with added terms, and you can "
                  "self-host treg for your own team."),
+            ("Firecrawl Alexandria vs treg: what is the difference?",
+                 "The main difference is the answer. Firecrawl Alexandria returns structured results "
+                 "through Firecrawl's search and scrape endpoints, mixing the live web, Firecrawl's "
+                 "own indexes and official providers in one query. treg relays each provider's own "
+                 "answer unchanged, so every field the provider returns reaches the agent."),
+            ("Can I use Firecrawl Alexandria and treg together?",
+                 "Yes. Firecrawl's scrape, crawl and search tools are in the treg catalog too, billed "
+                 "per call on treg's Firecrawl account. A team can use Firecrawl Alexandria for public "
+                 "records and research, and treg for SEO, enrichment, social and ads."),
+            ("How does treg pricing work compared with Firecrawl Alexandria?",
+                 "treg has no plan: a prepaid team balance pays each call at the provider's rate, with "
+                 "0% markup in its terms and no top-up fee. treg gives $1.00 of credit once per new "
+                 "verified account, with no card. Firecrawl Alexandria uses Firecrawl credits from a "
+                 "monthly plan."),
+            ("Can I use my own API keys with treg?",
+                 "Yes. treg accepts your team's keys on every account: your own key for a provider "
+                 "always wins over treg's, and those calls are never metered. Firecrawl does not "
+                 "publish whether Firecrawl Alexandria takes your own provider keys."),
         ],
         "sources": [
             ("Alexandria", "https://firecrawl.dev/alexandria"),
@@ -388,8 +394,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs AIsa: an AIsa alternative for paid data APIs",
         "description": "Looking for an AIsa alternative? treg relays each provider's own answer at 0% "
                        "markup, with own keys and team roles on every account.",
-        "sub": "Both sell data to agents per call. AIsa reshapes every answer into one schema; treg "
-               "relays each provider's own answer, with every field it returns.",
+        "sub": "Both sell data to agents per call. treg relays each provider's own answer, with every "
+               "field it returns.",
         "their_words": "The resource layer for AI agents.",
         "tldr": "Both sell data to agents per call from a prepaid balance. treg is like OpenRouter for "
                 "tools: one API key and one balance for many paid APIs. treg relays each provider's "
@@ -470,28 +476,33 @@ COMPETITORS: dict[str, dict] = {
                  "balance, plus your connected accounts and the tools your team registers. treg "
                  "connects your Google Analytics, Search Console, Google Ads and Meta Ads accounts, "
                  "and those calls are never metered."),
+            ("How much does AIsa cost?",
+                 "AIsa pricing starts free: AIsa gives $1 of free balance every month, and unused free "
+                 "balance expires each month. After that, AIsa bills per result from $0.001 times a "
+                 "plan multiplier, and empty responses and failed prechecks are free."),
+            ("Can I use my own API keys with AIsa?",
+                 "On Enterprise. AIsa lists your own vendor keys on its Enterprise plan, while treg "
+                 "accepts your team's keys on every account. On treg, your team's key always wins and "
+                 "those calls are never metered."),
             ("AIsa vs treg: what is the difference?",
                  "The main difference is the response. AIsa returns its own normalized schema with "
                  "each value labeled by source, while treg relays the provider's own answer unchanged. "
                  "With treg, every field a provider returns reaches the agent, including fields the "
                  "vendor adds later."),
-            ("How much does AIsa cost?",
-                 "AIsa pricing starts free: AIsa gives $1 of free balance every month and then bills "
-                 "per result from $0.001 times a plan multiplier, with empty responses free. treg "
-                 "bills the provider's own rate with 0% markup and no top-up fee, and gives $1.00 of "
-                 "credit once per new verified account, with no card."),
-            ("Can I use my own API keys with AIsa?",
-                 "On Enterprise. AIsa lists your own vendor keys on its Enterprise plan, while treg "
-                 "accepts your team's keys on every account. On treg, your team's key always wins and "
-                 "those calls are never metered."),
-            ("Can my team share one AIsa account?",
-                 "On Enterprise. AIsa's Starter and Developer plans have 1 seat and Enterprise has "
-                 "unlimited seats, while treg teams work on every account. treg has owner, admin, "
-                 "member and viewer roles, and tool access per member."),
-            ("Does AIsa have an MCP server?",
-                 "Yes. AIsa has a remote MCP server with OAuth 2.1 or an API key, plus one endpoint "
-                 "per module, and treg has a remote MCP server with OAuth or a token header. treg "
-                 "works in Claude, ChatGPT, Claude Code, Codex, Cursor and others."),
+            ("Can I use AIsa and treg together?",
+                 "Yes. AIsa and treg are both remote MCP servers, so one agent can hold both "
+                 "connections. If the agent needs one schema for commerce or social data, AIsa does "
+                 "that work; if it needs a vendor's full response, your own keys or your own accounts, "
+                 "treg fits."),
+            ("How does treg pricing work compared with AIsa?",
+                 "treg bills each call at the provider's own rate with 0% markup, a commitment in its "
+                 "terms, and no top-up fee. treg gives $1.00 of credit once per new verified account, "
+                 "with no card. AIsa prices calls with a per-plan multiplier and does not publish a "
+                 "markup over the provider price."),
+            ("Can my team share one treg account?",
+                 "Yes. treg teams work on every account, with owner, admin, member and viewer roles "
+                 "and tool access per member. AIsa's Starter and Developer plans have 1 seat, and AIsa "
+                 "Enterprise has unlimited seats."),
         ],
         "sources": [
             ("AIsa home page", "https://aisa.one"),
@@ -510,8 +521,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Locus: a Locus alternative with no subscription",
         "description": "Looking for a Locus alternative? treg gives AI agents paid APIs from a prepaid "
                        "balance, with no subscription and 0% markup.",
-        "sub": "Both give agents paid APIs from one balance. Locus is built to resell tools to your "
-               "customers; treg is built around your team's own keys, accounts and tools.",
+        "sub": "Both give agents paid APIs from one balance. treg is built around your team's own "
+               "keys, accounts and tools.",
         "their_words": "Agent tools, billed per user.",
         "tldr": "Both give agents paid APIs from a prepaid balance through a remote MCP server. treg "
                 "is like OpenRouter for tools: one API key and one balance for many paid APIs. treg "
@@ -593,26 +604,27 @@ COMPETITORS: dict[str, dict] = {
                  "social and ad-library data."),
             ("How much does Locus cost?",
                  "Locus pricing is a set of monthly plans for Locus Pro: Free at $0 with no included "
-                 "credit, Plus at $20, Enterprise at $200 and Enterprise Plus at $1,000 a month. treg "
-                 "has no subscription: you top up a balance and pay per call. treg's free start is "
-                 "$1.00 of credit, with no card."),
-            ("Does Locus charge a markup?",
-                 "Locus does not publish a markup. Locus runs tools at catalog base price with a card "
-                 "processing fee on top-ups, while treg bills the provider's own rate with 0% markup, "
-                 "a commitment in its terms, and no top-up fee."),
+                 "credit, Plus at $20, Enterprise at $200 and Enterprise Plus at $1,000 a month. Locus "
+                 "runs tools at catalog base price, does not publish a markup, and adds a card "
+                 "processing fee on top-ups."),
             ("Can I use my own API keys with Locus?",
                  "On Enterprise. Locus connects your own provider credential to custom API actions in "
                  "an Enterprise workspace, while treg accepts your team's keys on every account. On "
                  "treg, your key always wins and those calls are never metered."),
-            ("Can I set a spending limit on Locus?",
-                 "Yes. Locus sets a tool allowlist, a maximum per call, a budget per run and an expiry "
-                 "on each agent connection, plus a monthly workspace cap, while treg sets limits for "
-                 "the team. treg has a team daily spend cap, a per-call cost ceiling and per-member "
-                 "daily call caps."),
-            ("Does Locus need a crypto wallet?",
-                 "No. Locus Pro does not require a crypto wallet, and treg top-ups are by card, with "
-                 "each call paid from the team balance. Pay With Locus is a separate USDC wallet on "
-                 "Base."),
+            ("Locus vs treg: what is the difference?",
+                 "The main difference is who each one is built for. Locus is built to resell tools to "
+                 "your customers, with per-customer balances, your own markup and an embedded billing "
+                 "widget. treg is built around your team: your connected Google Analytics, Search "
+                 "Console, Meta Ads, LinkedIn or Slack accounts, and your team's own tools."),
+            ("Can I use Locus and treg together?",
+                 "Yes. Locus and treg are both remote MCP servers, so one agent can hold both "
+                 "connections. A platform that resells tools to its customers may want Locus's billing "
+                 "layer, and a team whose agent needs GTM data and its own accounts may want treg."),
+            ("How does treg pricing work compared with Locus?",
+                 "treg has no subscription: you top up a team balance and pay per call at the "
+                 "provider's rate, with 0% markup in its terms and no top-up fee. treg gives $1.00 of "
+                 "credit once per new verified account, with no card. Locus Pro's paid plans run from "
+                 "$20 to $1,000 a month."),
         ],
         "sources": [
             ("Locus home page", "https://paywithlocus.com"),
@@ -633,8 +645,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Monid: two tool catalogs for AI agents",
         "description": "Monid and treg both give agents paid tools from a prepaid balance. treg adds "
                        "0% markup in its terms and your own keys, never metered.",
-        "sub": "Both give agents a catalog of paid tools from a prepaid balance, with $1 to start. treg "
-               "also puts 0% markup in its terms, uses your own keys and accounts, and caps team spend.",
+        "sub": "Both give agents paid tools from a prepaid balance. treg puts 0% markup in its terms "
+               "and uses your own keys first.",
         "their_words": "Connect your agent to every tool it needs.",
         "tldr": "Monid and treg both give agents a catalog of paid tools from a prepaid balance, with "
                 "$1 to start and no subscription. treg is like OpenRouter for tools: one API key and "
@@ -714,24 +726,30 @@ COMPETITORS: dict[str, dict] = {
                  "CLIs and skills behind the same token, beside the catalog."),
             ("How much does Monid cost?",
                  "Monid pricing is per call or per result from a prepaid wallet, for example $0.003 a "
-                 "call, with $1 to start and no subscription. Monid does not publish a markup. treg "
-                 "bills each call at the provider's own rate, with 0% markup written into its terms "
-                 "and no top-up fee."),
+                 "call, with $1 to start and no subscription. Monid shows prices in its discover, "
+                 "inspect and run responses."),
             ("Can I use my own API keys with Monid?",
                  "Monid does not publish this for its hosted service; the open-source Monid engine can "
                  "run a connector locally with your own vendor key. On treg, your team's key for a "
                  "provider always wins and is never metered, on every account."),
-            ("Can my agent use my own Google Analytics or ad accounts through Monid?",
-                 "Monid does not publish a way to connect your own accounts. treg connects Google "
-                 "Analytics, Search Console, Google Ads, Meta Ads, LinkedIn, Slack and YouTube by "
-                 "OAuth, and treg never meters those calls."),
-            ("Can I set a spending limit on Monid?",
-                 "Monid does not publish spend caps. treg has a team daily spend cap, a per-call cost "
-                 "ceiling and per-member daily call caps, with owner, admin, member and viewer roles."),
-            ("Is Monid open source?",
-                 "Partly. Monid's connector layer and engine are MIT-licensed on GitHub; Monid does "
-                 "not publish its hosted platform. treg's code is on GitHub under Apache 2.0 with "
-                 "added terms, and you can self-host treg for your own team."),
+            ("Monid vs treg: what is the difference?",
+                 "The main difference is what each one adds. Monid offers MIT-licensed connectors, "
+                 "agent email and phone tools, and discovery ranked by fit and price. treg connects "
+                 "your Google Analytics, Search Console, Google Ads, Meta Ads, LinkedIn, Slack and "
+                 "YouTube accounts, never metered, and sets a team daily spend cap, a per-call cost "
+                 "ceiling and per-member daily call caps."),
+            ("Can I use Monid and treg together?",
+                 "Yes. Monid and treg are both remote MCP servers with an API, a CLI and an agent "
+                 "skill, so one agent can hold both connections. Search Monid and treg for the tools "
+                 "you need, and compare the price of the calls you will make."),
+            ("How does treg pricing work compared with Monid?",
+                 "treg bills each call at the provider's own rate, with 0% markup written into its "
+                 "terms and no top-up fee. treg gives $1.00 of credit once per new verified account, "
+                 "with no card. Monid does not publish a markup."),
+            ("Can I self-host treg?",
+                 "Yes. treg's code is on GitHub under Apache 2.0 with added terms, and you can "
+                 "self-host treg for your own team. Monid's connector layer and engine are "
+                 "MIT-licensed on GitHub; Monid does not publish its hosted platform."),
         ],
         "sources": [
             ("Monid home page", "https://monid.ai"),
@@ -752,8 +770,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs AnyAPI: an AnyAPI alternative for AI agents",
         "description": "AnyAPI routes data APIs per request with failover. treg's catalog includes "
                        "AnyAPI's endpoints beside many other providers.",
-        "sub": "Both give your agent many paid data APIs on one key and one balance. AnyAPI's "
-               "endpoints are also in the treg catalog, so you can use AnyAPI directly or through treg.",
+        "sub": "Both give your agent paid data APIs on one key. AnyAPI's endpoints are also in the "
+               "treg catalog.",
         "their_words": "We route you to the cheapest, most reliable data.",
         "tldr": "Like OpenRouter for models, AnyAPI and treg both give an agent one API key and one "
                 "prepaid balance for many paid data APIs, priced per call in US dollars. AnyAPI's "
@@ -870,34 +888,39 @@ COMPETITORS: dict[str, dict] = {
                 "your agent's AnyAPI calls run on your AnyAPI wallet, never metered by treg.",
         "faq": [
             ("Is there an AnyAPI alternative for AI agents?",
-                 "Yes. treg gives an agent a catalog of paid tools through one MCP server, an HTTP API "
-                 "and a CLI, billed per call from one prepaid balance at the provider's rate. AnyAPI "
-                 "focuses on scraping and data APIs with failover across sources, while treg adds SEO, "
-                 "people data, ad library and generation tools and your connected accounts."),
+                 "Yes. treg is an AnyAPI alternative that gives an agent a catalog of paid tools from "
+                 "one prepaid balance. AnyAPI focuses on scraping and data APIs with failover across "
+                 "sources, while treg adds SEO, people data, ad library and generation tools and your "
+                 "connected accounts."),
             ("How much does AnyAPI cost?",
                  "AnyAPI pricing is per request in US dollars from a prepaid wallet, with no "
-                 "subscription, seat or minimum, while treg bills each call at the provider's rate "
-                 "with 0% markup. AnyAPI prices most APIs per result returned, and every AnyAPI "
-                 "response reports its exact charge as costUsd. AnyAPI adds no top-up fee."),
-            ("Can I use AnyAPI through treg?",
-                 "Yes. AnyAPI's endpoints are in the treg catalog, so an agent can call AnyAPI on "
-                 "treg's balance through the same token as every other provider. A team that connects "
-                 "its own AnyAPI key to treg has those calls run on its AnyAPI wallet, never metered "
-                 "by treg."),
+                 "subscription, seat or minimum, and no top-up fee. AnyAPI prices most APIs per result "
+                 "returned, and every AnyAPI response reports its exact charge as costUsd."),
             ("Does AnyAPI have an MCP server?",
                  "Yes. AnyAPI has a remote MCP server at api.getanyapi.com/mcp that takes an AnyAPI "
                  "key as a Bearer token, and treg has a remote MCP server with OAuth or a token "
                  "header. AnyAPI also publishes a local stdio package and lists its server in the "
                  "official MCP Registry."),
-            ("Can I set a spending limit on AnyAPI?",
-                 "Yes. AnyAPI lets you give each API key a USD spend limit that resets daily, weekly, "
-                 "monthly or never, and treg has a team daily spend cap, a per-call cost ceiling and "
-                 "per-member daily call caps. AnyAPI also takes a max_cost_usd ceiling on each request."),
-            ("Is AnyAPI open source?",
-                 "Partly. AnyAPI publishes its CLI, MCP server, agent skills and n8n node on GitHub "
-                 "under MIT or Apache 2.0, while the AnyAPI gateway itself is hosted. treg's code is "
-                 "on GitHub under Apache 2.0 with added terms, and a team can self-host treg for its "
-                 "own team."),
+            ("AnyAPI vs treg: what is the difference?",
+                 "The main difference is routing. AnyAPI routes each request to the cheapest of "
+                 "several sources, fails over on its own and returns one schema for every source. treg "
+                 "relays each provider's own answer unchanged and adds your connected accounts, such "
+                 "as Google Analytics, Search Console, Google Ads and Slack, through the same token, "
+                 "never metered."),
+            ("Can I use AnyAPI through treg?",
+                 "Yes. AnyAPI's endpoints are in the treg catalog, so an agent can call AnyAPI on "
+                 "treg's balance through the same token as every other provider. A team that connects "
+                 "its own AnyAPI key to treg has those calls run on its AnyAPI wallet, never metered "
+                 "by treg."),
+            ("How does treg pricing work compared with AnyAPI?",
+                 "treg bills each catalog call at the provider's rate with 0% markup, a commitment in "
+                 "its terms, and no top-up fee. Each tool's price shows with its source and checked "
+                 "date before the call, and treg gives $1.00 of credit once per new verified account. "
+                 "AnyAPI also shows each endpoint's price in its public catalog."),
+            ("Can I set a spending limit on treg?",
+                 "Yes. treg has a team daily spend cap, a per-call cost ceiling and per-member daily "
+                 "call caps. AnyAPI sets a USD spend limit on each API key that resets daily, weekly, "
+                 "monthly or never, and takes a max_cost_usd ceiling on each request."),
         ],
         "sources": [
             ("AnyAPI home page",
@@ -947,8 +970,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs FetchAPI: a FetchAPI alternative for AI agents",
         "description": "FetchAPI routes data API calls to the cheapest working provider. treg bills "
                        "paid tools at 0% markup. MCP, keys and caps compared.",
-        "sub": "Both give an agent one key and prepaid credit for many paid data APIs. FetchAPI routes "
-               "each job to the cheapest working provider; treg bills each tool at its provider's rate.",
+        "sub": "Both give an agent one key and prepaid credit for many data APIs. treg bills each tool "
+               "at its provider's own rate.",
         "their_words": "One key for every data API.",
         "tldr": "FetchAPI and treg both give an agent one key, prepaid credit and an MCP server for "
                 "many paid data APIs. Like OpenRouter for models, both give an agent one API key and "
@@ -1058,27 +1081,30 @@ COMPETITORS: dict[str, dict] = {
                  "one prepaid balance at the provider's rate. FetchAPI also gives one key for many "
                  "data APIs, and routes each job to the cheapest working provider."),
             ("How much does FetchAPI cost?",
-                 "FetchAPI pricing is prepaid credit, bought through Stripe in top-ups of $5 to "
-                 "$1,000, charged per successful call. FetchAPI's terms set the price as the "
-                 "provider's charge multiplied by its markup, and the markup rate is not published. "
-                 "Failed calls are free. treg adds 0% markup and no top-up fee."),
-            ("FetchAPI vs treg: what is the difference?",
-                 "It depends on the job. FetchAPI routes a job to the cheapest provider that passed "
-                 "its daily test and focuses on social, company, SEO and odds data. treg adds "
-                 "connected accounts such as Google Ads or Slack, your team's own APIs and skills "
-                 "behind the same token, and its code on GitHub."),
-            ("Does FetchAPI have an MCP server?",
-                 "Yes. FetchAPI has a remote MCP server at fetchapi.co/api/mcp with tools to search "
-                 "endpoints, read their docs and call them with a Bearer key. treg also has a remote "
-                 "MCP server, with OAuth or a token header, for Claude, ChatGPT, Cursor and others."),
+                 "FetchAPI pricing is prepaid credit, bought through Stripe in top-ups of $5 to $1,000 "
+                 "and charged per successful call. Failed FetchAPI calls are free. FetchAPI shows a "
+                 "price per call on every endpoint, and its terms call that price a guide."),
             ("Can I use my own API keys with FetchAPI?",
-                 "Only by request. FetchAPI's home page says to talk to them about routing your own "
-                 "provider account through the gateway. On treg you register your key yourself on "
-                 "every account, and your team's key always wins and is never metered."),
-            ("Can I set a spending limit on FetchAPI?",
-                 "Yes. FetchAPI gives each key a monthly spending cap and a per-minute rate limit, and "
-                 "its terms say FetchAPI sets these limits. treg has a team daily spend cap, a "
-                 "per-call cost ceiling and per-member daily call caps."),
+                 "By request. FetchAPI's home page says to talk to FetchAPI about routing your own "
+                 "provider account through the gateway. On treg, your team registers its own key on "
+                 "every account, and that key always wins and is never metered."),
+            ("FetchAPI vs treg: which is cheaper for an AI agent?",
+                 "It depends on the markup and the route. treg bills each tool at the provider's own "
+                 "rate, with 0% markup in its terms and no top-up fee. FetchAPI's terms multiply the "
+                 "provider's price by a markup whose rate is not published, and FetchAPI routes "
+                 "standard jobs to the cheapest provider that passed its daily test."),
+            ("Can I use FetchAPI and treg together?",
+                 "Yes. An agent can hold both FetchAPI and treg. A team could use FetchAPI for "
+                 "cheapest-route social data, sports odds or a page turned into an API, and use treg "
+                 "for its own keys, its connected accounts, the wider catalog and team spend caps."),
+            ("Does treg have an MCP server?",
+                 "Yes. treg has a remote MCP server with OAuth or a token header, for Claude, ChatGPT, "
+                 "Claude Code, Codex, Cursor and others, beside an HTTP API, a CLI and an agent skill. "
+                 "FetchAPI also has a remote MCP server, with a Bearer key."),
+            ("Can I set a spending limit on treg?",
+                 "Yes. treg has a team daily spend cap, a per-call cost ceiling and per-member daily "
+                 "call caps, all set by your team. FetchAPI gives each key a monthly spending cap and "
+                 "a per-minute rate limit, and its terms say FetchAPI sets these limits."),
         ],
         "sources": [
             ("FetchAPI home page",
@@ -1116,9 +1142,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs APIHub: an APIHub alternative for AI agents",
         "description": "APIHub sells APIs to agents for USDC credits. treg bills paid tools from one "
                        "balance at 0% markup. Fees, MCP, keys and caps compared.",
-        "sub": "Both give an agent one key, one balance and one MCP server for many paid APIs. APIHub "
-               "lists APIs that providers sell through it; treg relays each provider's own API at its "
-               "own rate.",
+        "sub": "Both give an agent one key, one balance and one MCP server. treg relays each "
+               "provider's API at its own rate.",
         "their_words": "The API marketplace built for agents.",
         "tldr": "Like OpenRouter for models, APIHub and treg both give an agent one API key, one "
                 "prepaid balance and one MCP server for many paid APIs. treg bills each call at the "
@@ -1222,27 +1247,32 @@ COMPETITORS: dict[str, dict] = {
                  "through one MCP server, an HTTP API and a CLI, billed per call from one prepaid "
                  "balance. treg also connects your own Google Analytics, Search Console and ad "
                  "accounts, and those calls are never metered."),
-            ("APIHub vs treg: what is the difference?",
-                 "The main difference is who sets the price. On APIHub each provider sets a price per "
-                 "call and sells through APIHub, while treg relays each provider's own API at the "
-                 "provider's own rate. treg returns the provider's own answer, unchanged."),
             ("How much does APIHub cost?",
                  "APIHub pricing is per call: each provider sets a price, from $0.001 to $10+ per "
-                 "request, and APIHub keeps a 10% default commission from the provider's payout. "
-                 "APIHub credits start at $5. treg adds 0% markup and no top-up fee, and gives $1.00 "
-                 "of credit once per new verified account, with no card."),
-            ("Does APIHub have an MCP server?",
-                 "Yes. APIHub has a remote MCP server at mcp.apihub.io with a Bearer key and 9 tools "
-                 "to search, call, top up and check the balance. treg has a remote MCP server with "
-                 "OAuth or a token header, for Claude, ChatGPT, Claude Code, Codex, Cursor and others."),
+                 "request. APIHub credits are bought in USDC on Base and start at $5. Some APIs on "
+                 "APIHub have a free monthly quota."),
             ("Can I use my own API keys with APIHub?",
                  "APIHub does not publish a way to use your own provider key; providers add their own "
                  "upstream credential. treg accepts your team's keys on every account, uses them first "
                  "and never meters those calls."),
-            ("Can I set a spending limit on APIHub?",
-                 "APIHub does not publish a spend cap. APIHub publishes rate limits of 100 requests a "
-                 "minute, or 1,000 with a credit balance. treg has a team daily spend cap, a per-call "
-                 "cost ceiling and per-member daily call caps."),
+            ("APIHub vs treg: what is the difference?",
+                 "The main difference is who sets the price. On APIHub each provider sets a price per "
+                 "call and sells through APIHub, while treg relays each provider's own API at the "
+                 "provider's own rate. treg returns the provider's own answer, unchanged."),
+            ("Can I use APIHub and treg together?",
+                 "Yes. An agent can hold both APIHub and treg. A team could keep APIHub for x402 "
+                 "services, wallet-paid calls or to sell its own API, and use treg for the tools it "
+                 "calls often, its own keys, its connected accounts and one team balance."),
+            ("How does treg pricing work compared with APIHub?",
+                 "treg bills each call at the provider's own rate from a prepaid balance, with 0% "
+                 "markup in its terms and no top-up fee. treg gives $1.00 of credit once per new "
+                 "verified account, with no card. APIHub keeps a 10% default commission from each "
+                 "provider's payout."),
+            ("Can I set a spending limit on treg?",
+                 "Yes. treg has a team daily spend cap, a per-call cost ceiling and per-member daily "
+                 "call caps, and shows each tool's price with its source before the call. APIHub does "
+                 "not publish a spend cap; APIHub publishes rate limits of 100 requests a minute, or "
+                 "1,000 with a credit balance."),
         ],
         "sources": [
             ("APIHub home page",
@@ -1288,8 +1318,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs RapidAPI: RapidAPI pricing vs one prepaid balance",
         "description": "RapidAPI pricing is a plan per API, set by its provider. treg bills each tool "
                        "from one prepaid balance at 0% markup, on one MCP server.",
-        "sub": "Both put many APIs behind one key. RapidAPI sells a plan for each API; treg bills "
-               "each call from one balance.",
+        "sub": "Both put many APIs behind one key. treg bills every call from one prepaid balance at "
+               "0% markup.",
         "their_words": "Nokia API Hub is more than just a catalog for APIs.",
         "tldr": "RapidAPI and treg both put many APIs behind one key. treg is like OpenRouter for "
                 "tools: one API key and one balance for many paid APIs. treg bills every call from one "
@@ -1371,29 +1401,33 @@ COMPETITORS: dict[str, dict] = {
                  "Yes. treg is a RapidAPI alternative for AI agents that bills every call from one "
                  "prepaid balance at the provider's own rate. On RapidAPI, you subscribe to each API "
                  "on a plan that its provider sets."),
-            ("Does RapidAPI have an MCP server?",
-                 "Yes, per API. RapidAPI's docs describe an MCP host at mcp.rapidapi.com that turns an "
-                 "API's endpoints into tools where the API provider enables MCP, with access set by "
-                 "your subscription to that API. treg has one remote MCP server, with OAuth or a token "
-                 "header, for every tool in the catalog."),
             ("How much does RapidAPI cost?",
-                 "RapidAPI pricing depends on the API: each provider sets the plans, and many APIs "
-                 "have a free BASIC plan with a quota. RapidAPI team seats cost $10 a month after the "
-                 "first 5. treg gives $1.00 of credit with no card to each new verified account, with "
-                 "no subscription and no seats."),
-            ("What fee does RapidAPI take?",
-                 "25%. RapidAPI says Rapid takes a flat 25% marketplace fee on all payments made "
-                 "through the hub, from the provider's payout. treg adds 0% markup, a commitment in "
-                 "its terms, and no top-up fee."),
+                 "RapidAPI pricing depends on the API: each provider sets the plans, such as monthly, "
+                 "pay per use or tiers, with quotas and overage. Many RapidAPI APIs have a free BASIC "
+                 "plan with a quota. RapidAPI team seats cost $10 a month after the first 5."),
             ("Is RapidAPI now part of Nokia?",
                  "Yes. RapidAPI's site says Nokia acquired the technology and R&D unit of Rapid at the "
                  "end of 2024, and the hub is now called Nokia API Hub. treg's code is on GitHub, and "
                  "a team can self-host treg for its own use."),
-            ("Can I cap what I spend on RapidAPI?",
-                 "Partly. RapidAPI limits come from each API's plan, with a hard limit or billed "
-                 "overage, and alerts at 85% and 100% of quota; a spend cap you set yourself is not "
-                 "published. treg has a team daily spend cap, a per-call cost ceiling and per-member "
-                 "daily call caps."),
+            ("RapidAPI vs treg: which is cheaper for an AI agent?",
+                 "It depends on the APIs and how often the agent calls them. RapidAPI prices come from "
+                 "each provider's plan, and Rapid keeps a flat 25% marketplace fee from the provider's "
+                 "payout. treg bills each call at the provider's own rate with 0% markup and no top-up "
+                 "fee, from one balance with no subscription per API."),
+            ("Can I use RapidAPI and treg together?",
+                 "Yes. An agent can hold both RapidAPI and treg. A team could keep RapidAPI for an API "
+                 "it alone lists, or to sell its own API, and use treg for the tools it calls often, "
+                 "its own keys and one balance."),
+            ("Does treg have an MCP server?",
+                 "Yes. treg has one remote MCP server, with OAuth or a token header, for every tool in "
+                 "the catalog. RapidAPI's MCP host at mcp.rapidapi.com turns an API's endpoints into "
+                 "tools where the provider enables MCP, with access set by your subscription to that "
+                 "API."),
+            ("Can I set a spending limit on treg?",
+                 "Yes. treg has a team daily spend cap, a per-call cost ceiling and per-member daily "
+                 "call caps. RapidAPI limits come from each API's plan, with a hard limit or billed "
+                 "overage and alerts at 85% and 100% of quota; a spend cap you set yourself is not "
+                 "published."),
         ],
         "sources": [
             ("RapidAPI home page", "https://rapidapi.com"),
@@ -1417,8 +1451,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Apify: Apify MCP, pricing and an alternative",
         "description": "Apify MCP reaches 109,000+ scraping Actors. treg's MCP server gives agents "
                        "data APIs per call at 0% markup. Pricing and caps compared.",
-        "sub": "Both give your agent paid tools through one MCP server. Apify runs Actors that scrape "
-               "and automate the web; treg relays calls to data APIs.",
+        "sub": "Both give your agent paid tools through one MCP server. treg returns each data API's "
+               "own answer in the same call.",
         "their_words": "Apify is a marketplace of ready-to-run tools for AI that automate work on the web.",
         "tldr": "Apify and treg both give your agent paid tools through one MCP server. treg is like "
                 "OpenRouter for tools: one API key and one balance for many paid APIs. treg is a "
@@ -1507,27 +1541,30 @@ COMPETITORS: dict[str, dict] = {
                  "data, enrichment, ad libraries and image, video and voice generation, billed per "
                  "call. Apify is the choice for a site with no API, with 109,000+ Actors in Apify "
                  "Store."),
-            ("Does Apify have an MCP server?",
-                 "Yes. Apify runs a remote MCP server at mcp.apify.com with OAuth or a token, and a "
-                 "local stdio version. treg also has a remote MCP server with OAuth or a token header, "
-                 "beside an HTTP API, a CLI and an agent skill."),
             ("How much does Apify cost?",
                  "Apify pricing starts free, with $5 of usage a month and no card. Paid Apify plans "
-                 "cost $19, $199 and $999 a month with the same amount of usage, and unused usage "
-                 "expires. treg bills each call from a prepaid balance at the provider's rate, with 0% "
-                 "markup."),
+                 "cost $19, $199 and $999 a month with the same amount of usage, and Actors bill per "
+                 "event or per compute unit. Apify keeps 20% of an Actor's revenue."),
+            ("Does Apify have an MCP server?",
+                 "Yes. Apify runs a remote MCP server at mcp.apify.com with OAuth or a token, a local "
+                 "stdio version and plugins for coding agents. Apify's MCP server is open source under "
+                 "MIT."),
             ("Apify vs treg: what is the difference?",
                  "The main difference is what a call returns. An Apify call starts an Actor run, and "
                  "you read its dataset with a second call, in the shape the Actor's developer chose. A "
                  "treg call returns the provider's own answer, unchanged, in the same call."),
-            ("Can I set a spending limit on Apify?",
-                 "Yes. Apify paid plans have a monthly usage limit, at most $100 of overage on "
-                 "Starter, and a maximum charge per run. treg has a team daily spend cap, a per-call "
-                 "cost ceiling and per-member daily call caps."),
-            ("Can I self-host Apify?",
-                 "Apify does not publish a way to self-host its platform. Apify open-sources Crawlee "
-                 "and its CLI under Apache 2.0, and its MCP server under MIT. treg's code is on "
-                 "GitHub, and you can self-host treg for your own team."),
+            ("Can I use Apify and treg together?",
+                 "Yes. Apify and treg are both MCP servers, so one agent can hold both. A team could "
+                 "use Apify to scrape a site without an API, and treg for SEO, enrichment and ad data, "
+                 "its own keys and its connected accounts."),
+            ("How does treg pricing work compared with Apify?",
+                 "treg bills each call from a prepaid balance at the provider's own rate, with 0% "
+                 "markup, no top-up fee, no plan and no seats. treg gives $1.00 of credit once per new "
+                 "verified account. On Apify, unused monthly usage expires."),
+            ("Can I self-host treg?",
+                 "Yes. treg's code is on GitHub under Apache 2.0 with added terms, and you can "
+                 "self-host treg for your own team. Apify does not publish a way to self-host its "
+                 "platform; Apify open-sources Crawlee and its CLI under Apache 2.0."),
         ],
         "sources": [
             ("Apify home page", "https://apify.com"),
@@ -1552,8 +1589,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Composio: Composio MCP for apps, treg for paid data",
         "description": "Composio MCP connects agents to 1,000+ apps in each user's own accounts. treg "
                        "gives agents paid data per call at 0% markup.",
-        "sub": "Composio lets your agent act inside each user's apps. treg gives your agent paid data "
-               "from providers you have no account with, at each provider's own rate.",
+        "sub": "Both give an agent tools over MCP. treg gives it paid data with no vendor accounts, at "
+               "each provider's own rate.",
         "their_words": "Give your AI secure access to 1,500+ apps in minutes.",
         "tldr": "Both give an agent tools through one MCP server, with your own keys welcome. treg is "
                 "like OpenRouter for tools: one API key and one balance for many paid APIs. treg gives "
@@ -1631,33 +1668,33 @@ COMPETITORS: dict[str, dict] = {
             ("Is there a Composio alternative for AI agents?",
                  "It depends on the job. Composio connects an agent to 1,000+ apps in each user's own "
                  "accounts, with managed OAuth and triggers. treg gives an agent paid data from "
-                 "providers you have no account with, and many agents use Composio and treg together."),
-            ("Does Composio have an MCP server?",
-                 "Yes. Composio has a remote MCP server and one-click plugins for ChatGPT, Claude, "
-                 "Claude Code and others, and treg is a remote MCP server with OAuth or a token "
-                 "header. An agent on treg's MCP server calls the catalog's paid data tools beside "
-                 "your connected accounts."),
+                 "providers you have no account with, billed per call at each provider's own rate."),
             ("How much does Composio cost?",
                  "Composio pricing starts with the Hobby plan at $0 and 100,000 tool calls a month; "
-                 "Pro is $29 a month with usage after that, and Enterprise is custom. treg bills each "
-                 "call at the provider's own rate from a prepaid balance, with 0% markup, no plan and "
-                 "no seats."),
+                 "Pro is $29 a month with usage after that, and Enterprise is custom. The Composio "
+                 "Hobby plan needs no card and includes $2 of Instant Tools credit."),
             ("Can I get SEO or enrichment data from Composio without a vendor account?",
                  "Partly. Composio's Instant Tools, off by default, run some search, scraping and maps "
                  "tools on Composio's accounts; Composio does not list SEO metrics, enrichment or ad "
                  "data there. treg's catalog has SEO and SERP data, backlinks, people and company "
                  "enrichment and ad libraries on treg's accounts."),
-            ("Can I set a spending limit on Composio?",
-                 "It depends on the tool. Composio lists spend caps on Pro, but its Instant Tools docs "
-                 "say that spend cannot be capped by amount. treg has a team daily spend cap, a "
-                 "per-call cost ceiling and per-member daily call caps."),
-            ("Can I use my own API keys with Composio?",
-                 "Yes. Composio takes your own OAuth app or API keys. On treg, your own key for a "
-                 "provider wins over treg's and is never metered, and your connected Google Analytics, "
-                 "Search Console, Google Ads and Meta Ads accounts are never metered."),
-            ("Can I self-host Composio?",
-                 "Yes, on Enterprise. Composio's platform self-hosts on the Enterprise plan, and its "
-                 "SDKs are MIT. treg's code is on GitHub, and you can self-host treg for your own team."),
+            ("Composio vs treg: which is cheaper for an AI agent?",
+                 "It depends on the job. For app calls, Composio charges $0.0003 per call on your own "
+                 "apps after the free allowance, and $0.0005 to $0.01 on managed apps. For paid data, "
+                 "treg bills each call at the provider's own rate with 0% markup and no plan; "
+                 "Composio's Instant Tools add the tool-call charge."),
+            ("Can I use Composio and treg together?",
+                 "Yes. Composio and treg are both MCP servers, so one agent can hold both. Composio "
+                 "can send the email, update the CRM and listen for events; treg can find the keyword "
+                 "volume, the work email and the competitor's ads."),
+            ("Can I use my own API keys with treg?",
+                 "Yes. treg uses your team's own key for a provider instead of its own and never "
+                 "meters it. Your connected Google Analytics, Search Console, Google Ads and Meta Ads "
+                 "accounts on treg are never metered either. Composio also takes your own OAuth app or "
+                 "API keys."),
+            ("Can I self-host treg?",
+                 "Yes. treg's code is on GitHub, and you can self-host treg for your own team. "
+                 "Composio's platform self-hosts on the Enterprise plan, and Composio's SDKs are MIT."),
         ],
         "sources": [
             ("Composio home page", "https://composio.dev"),
@@ -1678,8 +1715,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Zapier MCP: data tools or app actions for agents",
         "description": "Zapier MCP lets an agent act in 9,000+ apps you connect. treg gives an agent "
                        "paid data per call in dollars at 0% markup.",
-        "sub": "Zapier MCP lets your agent act in the apps you connect. treg gives your agent paid data "
-               "from vendors you have no account with, priced in dollars per call.",
+        "sub": "Both connect an agent over remote MCP. treg gives it paid data with no vendor "
+               "accounts, priced in dollars per call.",
         "their_words": "Go from AI chat to AI action.",
         "tldr": "Both connect an agent through a remote MCP server. treg is like OpenRouter for tools: "
                 "one API key and one balance for many paid APIs. treg gives your agent paid data from "
@@ -1753,31 +1790,31 @@ COMPETITORS: dict[str, dict] = {
                  "volume, backlinks, work emails or ad libraries from vendors you have no account "
                  "with. Zapier MCP's pages describe actions in the apps you connect with your own "
                  "accounts."),
-            ("Zapier MCP vs treg: what is the difference?",
-                 "The job differs. Zapier MCP lets an agent take actions in 9,000+ apps you connect, "
-                 "and Zaps and triggers run without the agent. treg gives an agent the catalog's data "
-                 "tools, writes in connected accounts such as Google Ads and Slack, and your team's "
-                 "own APIs, CLIs and skills behind one token."),
             ("How much does Zapier MCP cost?",
                  "Zapier MCP pricing comes from your Zapier plan: Zapier MCP is included on every "
                  "plan, Free included. The Free plan has 100 tasks a month, Pro starts at $19.99 a "
-                 "month and Team at $69 a month (annual), and each successful tool call uses 2 tasks. "
-                 "treg bills each catalog call at the provider's own rate, with 0% markup and no "
-                 "subscription."),
+                 "month and Team at $69 a month (annual), and each successful tool call uses 2 tasks."),
             ("What happens when my Zapier tasks run out?",
                  "It depends on pay-per-task. With pay-per-task off, Zapier stops usage at your task "
                  "limit; with it on, overage costs 1.25x to 2.5x the base rate and pauses at 3x your "
                  "plan. treg bills from a prepaid team balance, with a team daily spend cap and a "
                  "per-call cost ceiling you set."),
-            ("Can I use my own API keys with Zapier MCP?",
-                 "Yes, as app accounts you connect. Zapier MCP acts through the apps connected to your "
-                 "Zapier account, and credentials stay in Zapier's managed connection layer. treg "
-                 "accepts your own keys on every account, and your team's key always wins over treg's "
-                 "and is never metered."),
-            ("Can I self-host Zapier?",
-                 "No. Zapier is a hosted service and does not publish a self-host option. treg's code "
-                 "is on GitHub under Apache 2.0 with added terms, and you can self-host treg for your "
-                 "own team."),
+            ("Zapier MCP vs treg: what is the difference?",
+                 "The job differs. Zapier MCP lets an agent take actions in 9,000+ apps you connect, "
+                 "and Zaps and triggers run without the agent. treg gives an agent the catalog's data "
+                 "tools, writes in connected accounts such as Google Ads and Slack, and your team's "
+                 "own APIs, CLIs and skills behind one token."),
+            ("Can I use Zapier MCP and treg together?",
+                 "Yes. Use Zapier MCP for the actions in your apps and treg for the data. For example, "
+                 "treg finds the decision maker's work email, and Zapier MCP adds the lead to your CRM."),
+            ("Can I use my own API keys with treg?",
+                 "Yes. treg accepts your own keys on every account, and your team's key always wins "
+                 "over treg's and is never metered. Zapier MCP acts through the app accounts connected "
+                 "to your Zapier account, and credentials stay in Zapier's managed connection layer."),
+            ("Can I self-host treg?",
+                 "Yes. treg's code is on GitHub under Apache 2.0 with added terms, and you can "
+                 "self-host treg for your own team. Zapier is a hosted service and does not publish a "
+                 "self-host option."),
         ],
         "sources": [
             ("Zapier MCP", "https://zapier.com/mcp"),
@@ -1798,8 +1835,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Pipedream Connect, now part of Workday",
         "description": "Pipedream Connect, now part of Workday, gives the agents you build 10,000+ "
                        "tools. treg gives agents paid data per call at 0% markup.",
-        "sub": "Pipedream Connect lets the agents you build act in each user's own accounts. treg gives "
-               "your agent paid data from providers you have no account with, billed per call.",
+        "sub": "Both reach an agent over remote MCP. treg gives your agent paid data with no vendor "
+               "accounts, billed per call.",
         "their_words": "The integration layer for AI agents.",
         "tldr": "Both reach an agent through remote MCP servers and keep credentials out of the model. "
                 "treg is like OpenRouter for tools: one API key and one balance for many paid APIs. "
@@ -1876,28 +1913,33 @@ COMPETITORS: dict[str, dict] = {
                  "data, enrichment, social profiles or ad libraries from vendors you have no account "
                  "with. Pipedream Connect gives the agents you build 10,000+ tools that act in each "
                  "end user's own accounts."),
-            ("Did the Workday acquisition change Pipedream Connect?",
-                 "No, according to Pipedream's docs. Pipedream says Pipedream Connect, its API, MCP "
-                 "servers and API proxy are not affected, while Pipedream Workflows and String shut "
-                 "down on 31 March 2027. treg's code is on GitHub under Apache 2.0 with added terms, "
-                 "and you can self-host treg for your own team."),
             ("How much does Pipedream Connect cost?",
                  "Pipedream Connect pricing is free for development; Startup costs $99 a month "
                  "(annual) with 100 external users and 10,000 credits, then $2 per user and $0.012 per "
                  "credit. One credit is 30 seconds of compute. treg bills each catalog call at the "
                  "provider's own rate, with 0% markup and no per-user fee."),
-            ("Is Pipedream free for production use?",
-                 "No. Pipedream's free plan covers development and personal MCP use, and production "
-                 "needs Startup or Business. treg gives each new verified account $1.00 of credit with "
-                 "no card, then runs on a prepaid team balance with no plan."),
-            ("Can my agent get paid API data through Pipedream without my own vendor account?",
-                 "Pipedream does not publish that. Pipedream's docs describe end users connecting "
-                 "their own OAuth accounts or API keys. treg runs catalog calls on treg's own "
-                 "accounts, and your team's own key always wins and is never metered."),
-            ("Does Pipedream have an MCP server?",
-                 "Yes. Pipedream runs remote MCP servers at mcp.pipedream.com, one per app or one "
-                 "endpoint for all tools. treg has one remote MCP server with OAuth or a token header, "
-                 "plus an HTTP API, a CLI and an agent skill."),
+            ("Did the Workday acquisition change Pipedream Connect?",
+                 "No, according to Pipedream's docs. Pipedream says Pipedream Connect, its API, MCP "
+                 "servers and API proxy are not affected, while Pipedream Workflows and String shut "
+                 "down on 31 March 2027. treg's code is on GitHub under Apache 2.0 with added terms, "
+                 "and you can self-host treg for your own team."),
+            ("Pipedream vs treg: what is the difference?",
+                 "Pipedream Connect runs tools in the accounts your product's users connect, while "
+                 "treg runs catalog calls on treg's own accounts for your agent. Pipedream adds "
+                 "triggers, a raw API proxy and per-user managed OAuth. treg adds a team daily spend "
+                 "cap, a per-call cost ceiling and each tool's price before the call."),
+            ("Can I use Pipedream and treg together?",
+                 "Yes. A product can use Pipedream Connect for actions in its users' apps and treg for "
+                 "the data its agent needs from vendors nobody has an account with. Both Pipedream and "
+                 "treg reach an agent over remote MCP."),
+            ("Can I use my own API keys with treg?",
+                 "Yes. treg accepts your own keys on every account, and your team's key always wins "
+                 "over treg's and is never metered. On Pipedream Connect, your users connect their own "
+                 "keys or OAuth accounts."),
+            ("Does treg have an MCP server?",
+                 "Yes. treg is a remote MCP server with OAuth or a token header, beside an HTTP API, a "
+                 "CLI and an agent skill. Pipedream runs remote MCP servers at mcp.pipedream.com, one "
+                 "per app or one endpoint for all tools."),
         ],
         "sources": [
             ("Pipedream home page", "https://pipedream.com"),
@@ -1917,8 +1959,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Smithery: an MCP directory vs a hosted MCP server",
         "description": "Smithery is now a free MCP directory; its hosted proxy shut down on 31 October "
                        "2026. treg is one token for paid tools, at 0% markup.",
-        "sub": "Smithery is now a free directory of MCP servers. treg is one token for a catalog of paid "
-               "tools, with treg holding the provider accounts.",
+        "sub": "Both help an agent reach many tools. treg is one token for paid tools, with treg "
+               "holding the provider accounts.",
         "their_words": "Connect agents to thousands of tools and services.",
         "tldr": "Both help an agent reach many tools. treg is like OpenRouter for tools: one API key "
                 "and one balance for many paid APIs. treg is one token for {ENDPOINTS} tools across "
@@ -1989,11 +2031,6 @@ COMPETITORS: dict[str, dict] = {
         "both": "Smithery's directory is a good place to find a vendor's official MCP server. When your "
                 "agent needs paid data from many vendors through one connection, treg does that job.",
         "faq": [
-            ("Is Smithery shutting down?",
-                 "Partly. Smithery's MCP proxy, managed identity, hosted URLs, CLI, SDKs, accounts and "
-                 "API keys stopped working on 31 October 2026, after Arcade.dev acquired Smithery in "
-                 "August 2026. Smithery remains a public MCP directory that does not proxy calls. treg "
-                 "is a hosted option: a remote MCP server with OAuth, an HTTP API and a CLI."),
             ("What is a good Smithery alternative for hosted MCP tools?",
                  "It depends on the job. treg is a Smithery alternative when an agent needs paid data "
                  "from many providers through one token, with treg holding the provider accounts. "
@@ -2004,19 +2041,24 @@ COMPETITORS: dict[str, dict] = {
                  "Smithery's paid plans ended, and paying users were refunded charges since 5 August "
                  "2026. treg bills each catalog call at the provider's own rate from a prepaid "
                  "balance, with 0% markup."),
-            ("Do I need an account at every vendor with Smithery?",
-                 "Yes. Smithery no longer proxies calls, so each server is reached at its vendor's MCP "
-                 "URL with your own account there. With treg, catalog calls run on treg's accounts, so "
-                 "your agent does not sign up at each vendor."),
+            ("Is Smithery shutting down?",
+                 "Partly. Smithery's MCP proxy, managed identity, hosted URLs, CLI, SDKs, accounts and "
+                 "API keys stopped working on 31 October 2026, after Arcade.dev acquired Smithery in "
+                 "August 2026. Smithery remains a public MCP directory that does not proxy calls. treg "
+                 "is a hosted option: a remote MCP server with OAuth, an HTTP API and a CLI."),
             ("Smithery vs treg: what is the difference?",
-                 "They do different jobs. Smithery is a free directory of 214 MCP servers, including "
-                 "documentation search and developer tools, where verified entries link to the vendor. "
-                 "treg is one token for a catalog of paid tools plus your team's own keys, APIs, CLIs "
-                 "and skills, with a team daily spend cap and a per-call cost ceiling."),
-            ("Can I self-host Smithery?",
-                 "Smithery does not publish a self-host option, and Smithery's GitHub organization has "
-                 "no public repositories. treg's code is on GitHub under Apache 2.0 with added terms, "
-                 "and you can self-host treg for your own team."),
+                 "They do different jobs. Smithery is a free directory of 214 MCP servers, where "
+                 "verified entries link to the vendor and you use your own account there. treg is one "
+                 "token for a catalog of paid tools plus your team's own keys, APIs, CLIs and skills, "
+                 "with a team daily spend cap and a per-call cost ceiling."),
+            ("Can I use Smithery and treg together?",
+                 "Yes. Smithery's directory is a good place to find a vendor's official MCP server. "
+                 "When your agent needs paid data from many vendors through one connection, treg does "
+                 "that job."),
+            ("Can I self-host treg?",
+                 "Yes. treg's code is on GitHub under Apache 2.0 with added terms, and you can "
+                 "self-host treg for your own team. Smithery does not publish a self-host option, and "
+                 "Smithery's GitHub organization has no public repositories."),
         ],
         "sources": [
             ("Smithery directory", "https://smithery.ai/servers"),
@@ -2037,8 +2079,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Arcade.dev: an Arcade.dev alternative for AI agents",
         "description": "Arcade.dev gives the agents you build 8,000+ tools that act in each user's own "
                        "apps. treg gives agents paid data per call at 0% markup.",
-        "sub": "Arcade lets your agents act in each user's own apps, under your security policies. treg "
-               "gives your agent paid data from many providers, with no vendor accounts and 0% markup.",
+        "sub": "Both reach an agent over MCP and accept your own keys. treg adds paid data with no "
+               "vendor accounts, at 0% markup.",
         "their_words": "Arcade is the actions runtime between your agents and every system they reach.",
         "tldr": "Both reach an agent over MCP, and both accept your own keys. treg is like OpenRouter "
                 "for tools: one API key and one balance for many paid APIs. treg gives your agent paid "
@@ -2133,30 +2175,30 @@ COMPETITORS: dict[str, dict] = {
                  "The Arcade.dev Team plan is $25 a month plus $0.01 per tool call, and Enterprise is "
                  "custom, with annual bundles of tool calls. treg bills each catalog call at the "
                  "provider's own rate, with 0% markup and no monthly fee."),
-            ("Does Arcade.dev have an MCP server?",
-                 "Yes. Arcade.dev has MCP gateways for ChatGPT, Claude, Claude Code, Cursor, VS Code "
-                 "and Copilot, plus a hosted MCP server and agent plugins. treg is a remote MCP server "
-                 "with OAuth or a token header, for Claude, ChatGPT, Claude Code, Codex, Cursor and "
-                 "others."),
-            ("Does Arcade.dev need my own SerpApi or Firecrawl key?",
-                 "Yes. Arcade's Google News toolkit asks for your own SerpApi key and its Firecrawl "
-                 "toolkit for your own Firecrawl key, and usage counts against your plan with that "
-                 "vendor. treg runs search and scraping calls on treg's own accounts."),
             ("Can I self-host Arcade.dev?",
                  "Yes. Arcade self-hosts with a Helm chart on your own Kubernetes or runs as a managed "
                  "app in your Azure account, and Arcade's pricing lists VPC and air-gapped deployment "
                  "on Enterprise. treg's code is on GitHub, and you can self-host treg for your own "
                  "team."),
-            ("Can I set a spending limit on Arcade.dev?",
-                 "Not in dollars: Arcade does not publish dollar spend caps. Arcade's rate limits cap "
-                 "the number of calls per tool, toolkit or all tools, from per second to per month. "
-                 "treg has a team daily spend cap, a per-call cost ceiling and per-member daily call "
-                 "caps."),
-            ("Do users see the Arcade.dev brand when they connect an app?",
-                 "Yes, with Arcade's own auth providers: the consent screen shows Arcade's name and "
-                 "logo, and rate limits are shared with other Arcade customers. Your own OAuth app "
-                 "takes precedence, and Arcade recommends it for production. On treg, your team's own "
-                 "key always wins over treg's and is never metered."),
+            ("Arcade.dev vs treg: what is the difference?",
+                 "Arcade.dev acts in each user's own apps, with sign-in through your identity provider "
+                 "and policies checked before each action, while treg runs paid data calls on treg's "
+                 "own accounts. Arcade's SerpApi and Firecrawl toolkits ask for your own key with that "
+                 "vendor. treg runs search and scraping calls on treg's accounts."),
+            ("Can I use Arcade.dev and treg together?",
+                 "Yes. Arcade.dev can send the email, update the CRM and open the ticket as the user, "
+                 "and treg can find the keyword volume, the work email and the competitor's ads. "
+                 "Arcade.dev and treg are both MCP servers, so one agent can hold both."),
+            ("Can I set a dollar spending limit with treg?",
+                 "Yes. treg has a team daily spend cap, a per-call cost ceiling and per-member daily "
+                 "call caps, and shows each tool's rate before the call. Arcade.dev does not publish "
+                 "dollar spend caps; its rate limits cap the number of calls per tool, toolkit or all "
+                 "tools."),
+            ("Can I use my own API keys with treg?",
+                 "Yes. treg accepts your own keys on every account, your team's key always wins over "
+                 "treg's, and calls on your own keys and connected accounts are never metered. "
+                 "Arcade.dev accepts your own OAuth apps, which Arcade recommends for production, and "
+                 "your own API keys as secrets."),
         ],
         "sources": [
             ("Arcade home page", "https://www.arcade.dev"),
@@ -2180,8 +2222,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Nango: a Nango alternative for AI agents",
         "description": "Need a Nango alternative? Nango connects your product to APIs in each user's "
                        "own accounts; treg gives agents paid data at 0% markup.",
-        "sub": "Nango lets the product and agents you build act in each user's own accounts. treg gives "
-               "your agent paid data from many providers, with no vendor accounts and no plan.",
+        "sub": "Both reach an agent over MCP. treg gives your agent paid data with no vendor accounts "
+               "and no plan.",
         "their_words": "Integrations for your products & agents.",
         "tldr": "Both reach an agent over MCP. treg is like OpenRouter for tools: one API key and one "
                 "balance for many paid APIs. treg gives your agent paid data from many providers on "
@@ -2268,36 +2310,36 @@ COMPETITORS: dict[str, dict] = {
                  "It depends on the job: treg is a Nango alternative when your agent needs paid data, "
                  "and Nango fits when your product acts in each user's own apps. treg gives an agent "
                  "SEO and SERP data, people and company enrichment, social, ad libraries and image, "
-                 "video and voice generation, with no vendor accounts. A product can use Nango and "
-                 "treg together."),
+                 "video and voice generation, with no vendor accounts."),
+            ("How much does Nango cost?",
+                 "Nango pricing has a hard-capped Free plan and a Pay-as-you-go plan at $50 a month "
+                 "with $50 of credit, while treg has no plan and bills each catalog call at the "
+                 "provider's own rate with 0% markup. Nango charges $0.29 per connection a month, "
+                 "$0.72 per compute hour and $0.50 per GB sent."),
+            ("Is Nango open source, and can I self-host Nango for free?",
+                 "Partly: free self-hosted Nango is for hobby projects and is limited to auth and "
+                 "proxy, while treg's code is on GitHub and you can self-host treg for your own team. "
+                 "Nango's code is under the Elastic License 2.0, and full self-hosting and BYOC are on "
+                 "the Nango Enterprise plan."),
             ("Nango vs treg: what is the difference?",
                  "Nango connects the product and agents you build to 1,000+ APIs in each user's own "
                  "accounts, while treg gives your agent paid tools from many providers on treg's "
                  "accounts. Nango adds managed OAuth, TypeScript functions, syncs and webhooks. treg "
                  "adds a team daily spend cap, a per-call cost ceiling, per-member call caps and each "
                  "tool's rate before the call."),
-            ("How much does Nango cost?",
-                 "Nango pricing has a hard-capped Free plan and a Pay-as-you-go plan at $50 a month "
-                 "with $50 of credit, while treg has no plan and bills each catalog call at the "
-                 "provider's own rate with 0% markup. Nango charges $0.29 per connection a month, "
-                 "$0.72 per compute hour and $0.50 per GB sent. Each Nango run is rounded up to one "
-                 "second."),
-            ("Is Nango open source, and can I self-host Nango for free?",
-                 "Partly: free self-hosted Nango is for hobby projects and covers auth and proxy only, "
-                 "while treg's code is on GitHub and you can self-host treg for your own team. Nango's "
-                 "code is under the Elastic License 2.0, and full self-hosting and BYOC are on the "
-                 "Nango Enterprise plan. treg's code is under Apache 2.0 with added terms."),
-            ("Does Nango have an MCP server?",
-                 "Yes. Nango gives each agent session an MCP URL and token, and treg is a remote MCP "
-                 "server with OAuth or a token header. Your backend creates the Nango session, names "
-                 "the connections and actions the agent may use, and the session expires. treg works "
-                 "with Claude, ChatGPT, Claude Code, Codex, Cursor and others."),
-            ("Can I use Nango-managed OAuth apps in production?",
-                 "Yes. Nango calls its managed OAuth apps production-ready, and treg connects your "
-                 "Google Analytics, Search Console, Google Ads and Meta Ads accounts with calls never "
-                 "metered. Nango's docs list the trade-offs: the consent screen shows Nango, scopes "
-                 "are fixed, and only your own app lets you export tokens and leave Nango without "
-                 "users connecting again."),
+            ("Can I use Nango and treg together?",
+                 "Yes. A product can use Nango for auth, syncs and actions in its users' apps, and "
+                 "treg for the data its agent needs from vendors nobody has an account with. Nango and "
+                 "treg both reach an agent over MCP."),
+            ("Can I use my own API keys with treg?",
+                 "Yes. treg accepts your own keys on every account, your team's key always wins over "
+                 "treg's, and calls on your connected Google Analytics, Search Console, Google Ads and "
+                 "Meta Ads accounts are never metered. On Nango, your users connect their own keys or "
+                 "OAuth accounts."),
+            ("Does treg have an MCP server?",
+                 "Yes. treg is a remote MCP server with OAuth or a token header, for Claude, ChatGPT, "
+                 "Claude Code, Codex, Cursor and others. Nango gives each agent session its own MCP "
+                 "URL and token, scoped to the connections and actions your backend names."),
         ],
         "sources": [
             ("Nango home page", "https://www.nango.dev"),
@@ -2319,8 +2361,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Clay: a Clay alternative with no plan or seats",
         "description": "Looking for a Clay alternative for AI agents? treg gives your agent enrichment "
                        "and other data APIs per call at 0% markup, no seats.",
-        "sub": "Clay is built for GTM teams that work in tables. treg gives your agent people and company "
-               "data, SEO, social and ad data by API, billed per call.",
+        "sub": "Both give you people and company data from many vendors. treg gives it to your agent "
+               "per call, no plan or seats.",
         "their_words": "Build systems to grow revenue.",
         "tldr": "Both give you people and company data from many vendors under one account, and both "
                 "accept your own keys. treg is like OpenRouter for tools: one API key and one balance "
@@ -2399,30 +2441,29 @@ COMPETITORS: dict[str, dict] = {
                  "Launch is from $167 a month and Growth from $446 a month on Clay's plan cards. The "
                  "FAQ on Clay's pricing page lists $185 and $495, so check Clay's page for the current "
                  "price. treg has no plan and no seats."),
-            ("Do I pay Clay twice, in Actions and Data Credits?",
-                 "Yes. Clay bills two meters, Actions for orchestration and Data Credits for "
-                 "third-party data, while treg bills one price per call at the provider's rate with 0% "
-                 "markup. Clay Data Credits start at $0.05 each and Actions cost under $0.01 each. "
-                 "Top-ups on the Clay Launch and Growth plans cost 30% more."),
             ("Does Clay have an API?",
                  "Partly. Clay tables can make HTTP API calls and take webhooks on Growth and up, and "
                  "Clay's own API is on Enterprise; Clay does not publish a CLI or SDKs. treg has an "
                  "HTTP API that passes the method, path, query and body to the provider unchanged, "
                  "beside a CLI and an agent skill."),
-            ("Does Clay have an MCP server?",
-                 "Yes. Clay MCP works with ChatGPT, Claude and Codex on Launch and up, and treg is a "
-                 "remote MCP server with OAuth or a token header. Clay admins publish Functions for "
-                 "reps to use there and can set per-rep credit limits."),
-            ("Can I use my own API keys with Clay?",
-                 "Yes. Clay and treg both accept your own provider keys, but on Clay an Action is "
-                 "still used. Clay says your key removes the Data Credit cost. On treg, your team's "
-                 "own key always wins over treg's and is never metered."),
-            ("Clay vs Apollo: which fits an AI agent?",
-                 "It depends on the job. Clay fits a team that builds waterfall enrichment across many "
-                 "data vendors in tables and shares it through Clay MCP, while Apollo.io fits an agent "
-                 "that searches Apollo's own 240M+ contacts and writes CRM records and sequences "
-                 "through about 60 MCP actions. treg gives an agent Apollo's API beside many other "
-                 "people and company data providers."),
+            ("Clay vs treg: which is cheaper for an AI agent?",
+                 "It depends on the job: treg bills one price per call at the provider's own rate with "
+                 "0% markup, while Clay bills two meters on a plan. Clay Actions cost under $0.01 "
+                 "each, Data Credits start at $0.05 each, and top-ups on Launch and Growth cost 30% "
+                 "more. Clay charges nothing when an enrichment finds nothing."),
+            ("Can I use Clay and treg together?",
+                 "Yes. A RevOps team can keep Clay for its tables, sequences and CRM sync, and give "
+                 "its agents treg for ad hoc research, SEO and social data, and quick enrichment "
+                 "outside a table."),
+            ("Does treg work in Google Sheets?",
+                 "Yes. The treg add-on for Google Sheets fills cells from the catalog and shows each "
+                 "run's cost first. Clay's table is a spreadsheet of its own, where people who do not "
+                 "code build, inspect and fix enrichment."),
+            ("Does treg have an MCP server?",
+                 "Yes. treg is a remote MCP server with OAuth or a token header, for Claude, ChatGPT, "
+                 "Claude Code, Codex, Cursor and others, beside an HTTP API and a CLI. Clay MCP works "
+                 "with ChatGPT, Claude and Codex on Launch and up, where admins publish Functions for "
+                 "reps."),
         ],
         "sources": [
             ("Clay home page", "https://www.clay.com"),
@@ -2443,8 +2484,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs Apollo.io: Apollo MCP, API and pricing compared",
         "description": "Apollo MCP and API reach Apollo's own 240M+ contacts. treg gives an agent "
                        "Apollo and other people data providers per call, no seats.",
-        "sub": "Apollo is a sales platform with its own database. treg gives your agent Apollo and many "
-               "other people and company data providers through one token, per call.",
+        "sub": "Both give you people and company data. treg gives your agent Apollo and other data "
+               "providers through one token.",
         "their_words": "Grow revenue with one connected GTM system.",
         "tldr": "Both give you people and company data, and Apollo's API is in the treg catalog. treg "
                 "is like OpenRouter for tools: one API key and one balance for many paid APIs. treg "
@@ -2523,38 +2564,35 @@ COMPETITORS: dict[str, dict] = {
                  "It depends: treg gives your agent Apollo.io's people search and enrichment beside "
                  "many other people and company data providers through one token, while Apollo.io is a "
                  "full sales platform. Apollo.io has its own database of 240M+ contacts and 30M+ "
-                 "companies, sequences, a dialer and a CRM for reps. treg adds SEO, social, ad library "
-                 "and generation tools beside the people data."),
+                 "companies, sequences, a dialer and a CRM for reps."),
             ("How much does Apollo.io cost?",
                  "Apollo.io pricing is a free plan plus per-seat paid plans, while treg has no seats "
                  "and bills each call at the provider's rate with 0% markup. Apollo's own article of "
                  "17 September 2026 lists Basic at $49, Professional at $79 and Organization at $119 "
-                 "per user a month, billed annually. Apollo.io credits reset each billing cycle and do "
-                 "not roll over."),
-            ("How many credits does one enriched contact cost on Apollo.io?",
-                 "One to nine: Apollo.io charges 1 to 9 credits to enrich a person, plus 8 when a "
-                 "mobile number comes back, while treg shows each tool's price per call before you run "
-                 "it. Many other Apollo.io API endpoints use no credits."),
-            ("Does Apollo.io have an API?",
-                 "Yes. Apollo.io has a REST API with an OpenAPI spec and a CLI, and Apollo.io's API is "
-                 "also in the treg catalog. On 3 November 2026 the Apollo.io pricing page said API "
-                 "access is on Custom plans, while Apollo's docs published rate limits for Free "
-                 "through Organization, so check with Apollo.io."),
+                 "per user a month, billed annually."),
             ("Does Apollo.io have an MCP server?",
                  "Yes. Apollo.io has a first-party remote MCP server with OAuth or an API key, and "
                  "treg is a remote MCP server with OAuth or a token header. The Apollo.io server lists "
                  "about 60 actions, including CRM records, lists, sequences and one-off email. Free "
                  "Apollo.io accounts on a personal email cannot search or enrich by MCP."),
-            ("Can I use my own Apollo.io API key with treg?",
-                 "Yes. Connect your own Apollo.io key to treg, and your agent's Apollo calls use your "
-                 "Apollo credits, with no charge from treg. Your team's own key always wins over "
-                 "treg's key, beside every other provider in the catalog."),
-            ("Apollo.io vs Clay: which should my AI agent use?",
-                 "It depends on where the data comes from. Apollo.io searches its own database of "
-                 "240M+ contacts and 30M+ companies on per-seat plans, while Clay buys data from 150+ "
-                 "vendors with waterfall enrichment in its tables, billed in Actions and Data Credits. "
-                 "treg lets an agent call Apollo.io beside other people and company data providers, "
-                 "per call with no seats."),
+            ("Does Apollo.io have an API?",
+                 "Yes. Apollo.io has a REST API with an OpenAPI spec and a CLI, and Apollo.io's API is "
+                 "also in the treg catalog. On 3 November 2026 the Apollo.io pricing page said API "
+                 "access is on Custom plans, while Apollo's docs published rate limits for Free "
+                 "through Organization, so check with Apollo.io."),
+            ("Apollo.io vs treg: which is cheaper for an AI agent?",
+                 "It depends on the call: Apollo.io charges 1 to 9 credits to enrich a person, plus 8 "
+                 "when a mobile number comes back, while treg bills each call at the provider's rate "
+                 "and shows the price before you run it. Many other Apollo.io API endpoints use no "
+                 "credits, and Apollo.io credits do not roll over."),
+            ("Can I use Apollo.io and treg together?",
+                 "Yes. Apollo.io's API is in the treg catalog: keep Apollo.io for your reps' sequences "
+                 "and CRM, and connect your Apollo key to treg. Your agent's Apollo calls then use "
+                 "your Apollo credits, with no charge from treg, beside the other data providers."),
+            ("Does treg try another provider when Apollo.io misses an email?",
+                 "Yes, on routed tools. treg's routed tools try the next people data provider when one "
+                 "misses an email or phone, and say so in the answer. Apollo.io adds waterfall email "
+                 "and phone from other vendors, billed in Apollo credits."),
         ],
         "sources": [
             ("Apollo home page", "https://www.apollo.io"),
@@ -2575,8 +2613,8 @@ COMPETITORS: dict[str, dict] = {
         "title": "treg vs OpenRouter API: one routes models, one routes tools",
         "description": "OpenRouter pricing and API: 600+ language models, on credits with a 5.5% "
                        "purchase fee. treg is one token for paid tools at 0% markup.",
-        "sub": "OpenRouter gives one API for many language models. treg is the same idea for the tools an "
-               "agent calls.",
+        "sub": "Both put one key and one balance in front of many providers. treg does it for tools, "
+               "with 0% markup.",
         "their_words": "A unified API for every major LLM.",
         "tldr": "OpenRouter and treg share one idea: one key and one balance in front of many "
                 "providers. treg applies it to the tools an agent calls: paid data and generation APIs "
@@ -2647,39 +2685,34 @@ COMPETITORS: dict[str, dict] = {
             ("What is a good OpenRouter alternative for tools and data APIs?",
                  "treg applies OpenRouter's idea to tools: one key and one balance for SEO and SERP "
                  "data, enrichment, social, ad libraries, scraping and image, video and voice "
-                 "generation. OpenRouter routes language-model calls to 600+ models from 80+ "
-                 "providers. Many agents use OpenRouter for the model and treg for the tools the model "
-                 "calls."),
+                 "generation. OpenRouter routes language-model calls to 600+ models from 80+ providers."),
             ("How does OpenRouter pricing work?",
                  "OpenRouter pricing is prepaid credits, with inference billed at each provider's list "
                  "price and a fee when you buy credits: 5.5% on Standard and 8% on Business. "
                  "OpenRouter does not charge model tokens for failed attempts. treg charges no top-up "
                  "fee and 0% markup on calls."),
-            ("What is the OpenRouter API?",
-                 "The OpenRouter API is an OpenAI-compatible REST API for 600+ language models from "
-                 "80+ providers, with TypeScript and Python SDKs. treg's HTTP API reaches tools "
-                 "instead: the method, path, query and body reach the provider unchanged, beside a CLI "
-                 "and an agent skill."),
-            ("Is OpenRouter free?",
-                 "Partly. OpenRouter has 25+ free models with limits of 20 requests a minute and 50 a "
-                 "day, and treg gives $1.00 of credit once per new verified account, with no card. "
-                 "OpenRouter raises the free-model limit to 1,000 requests a day after you buy at "
-                 "least $10 of credits."),
             ("Can I use my own API keys with OpenRouter?",
                  "Yes. OpenRouter is free on your own keys up to $25,000 a month of inference and then "
                  "charges 5%, and treg never meters a call on your team's own key. OpenRouter tries "
                  "your keys in order and can fall back to shared capacity. On treg, your team's key "
                  "always wins over treg's."),
-            ("Does OpenRouter have an MCP server?",
-                 "Yes, but the OpenRouter MCP server gives coding assistants OpenRouter data and docs, "
-                 "not model calls as tools. treg is a remote MCP server whose catalog tools your agent "
-                 "calls, with OAuth or a token header, from Claude, ChatGPT, Claude Code, Codex, "
-                 "Cursor and others."),
-            ("Can I set a spending limit on OpenRouter?",
-                 "Yes. OpenRouter has budgets per key and per member that reset daily, weekly or "
-                 "monthly, and treg has a team daily spend cap, a per-call cost ceiling and per-member "
-                 "daily call caps. OpenRouter also has a strict max_price setting that blocks a "
-                 "request above your price."),
+            ("Can I set a spending limit on OpenRouter and treg?",
+                 "Yes, on both. OpenRouter has budgets per key and per member that reset daily, weekly "
+                 "or monthly, plus a strict max_price setting. treg has a team daily spend cap, a "
+                 "per-call cost ceiling and per-member daily call caps."),
+            ("Can I use OpenRouter and treg together?",
+                 "Yes. Use OpenRouter for the model and treg for the tools the model calls. treg's "
+                 "catalog also includes OpenRouter endpoints, such as video generation, through treg's "
+                 "own OpenRouter account."),
+            ("Does treg have an MCP server?",
+                 "Yes. treg is a remote MCP server whose catalog tools your agent calls, with OAuth or "
+                 "a token header, from Claude, ChatGPT, Claude Code, Codex, Cursor and others. The "
+                 "OpenRouter MCP server gives coding assistants OpenRouter data and docs, not model "
+                 "calls as tools."),
+            ("Is treg free to start?",
+                 "Yes. treg gives $1.00 of credit once per new verified account, with no card, then "
+                 "runs on a prepaid team balance. OpenRouter has 25+ free models with limits of 20 "
+                 "requests a minute and 50 a day."),
         ],
         "sources": [
             ("OpenRouter home page", "https://openrouter.ai"),
