@@ -198,6 +198,9 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
     the top of a proven request would drop the stamp on the next ingest and re-bill the call to
     learn what the file already knew. `--refresh` re-fetches the docs; re-verifying is what
     replaces a proven request, not re-ingesting.
+
+    A generated `cost.note` is the exception inside a carried `cost`: it describes today's rate
+    card (AnyAPI's sources and failover ceiling), so the fresh one is written over the carried one.
     """
     old_file = CATALOG / f"{provider}.extended.yaml"
     old = ({ep["id"]: ep for ep in (yaml.safe_load(old_file.read_text()) or {}).get("endpoints") or []}
@@ -244,6 +247,7 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
             carried_fields.append("input")
         if carry_capability:
             carried_fields.append("capability")
+        fresh_cost_note = ep["cost"].get("note") if isinstance(ep.get("cost"), dict) else None
         for field in carried_fields:
             if field == "platform_blocked" and (ep.get("resource_ownership") or {}).get("requires"):
                 # The block stood in for ownership the row could not express; declared ownership
@@ -251,6 +255,8 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
                 continue
             if prev.get(field) is not None:
                 ep[field] = prev[field]
+        if fresh_cost_note and isinstance(ep.get("cost"), dict):
+            ep["cost"] = {**ep["cost"], "note": fresh_cost_note}
         if carry_capability and prev.get("capability") is not None and prev.get("platform"):
             # the reviewed platform (capability's first segment) wins over the ingest guess
             ep["platform"] = prev["platform"]

@@ -192,7 +192,7 @@ conflict on. It is not `verified` and not `source.curated`.
   date.
 - `carry_verification` carries `added` by id from every catalog file BEFORE its method/path check,
   so a moved route keeps its date and only a never-seen id gets today. For a route that still
-  matches it also carries `cost`, `observed_cost`, `expect`, `untestable`, `status` and a reviewer's
+  matches it also carries `cost` (under a freshly generated `cost.note`), `observed_cost`, `expect`, `untestable`, `status` and a reviewer's
   row `note` (no ingest writes one), and from a
   row in the v2 spelling its `reserve`, `settle`, `bill`, `error`, `miss` and `not_found`, and a
   priced row's `price` together with its `provenance` (an absent one stays absent and inherits the
