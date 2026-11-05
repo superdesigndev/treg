@@ -147,7 +147,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 10, example: ["https://example.com"], note: "A URL that fails is listed in errors[] with its own code while the other URLs still return. invalid_url means TinyFish refused the URL before fetching it, which may happen to well-formed public URLs too, so changing the scheme or query string will not help."}
+        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 10, example: ["https://example.com"], note: "Each failing URL is listed in errors[] while the others return. invalid_url covers a non-http(s) scheme, a private address or a hostname that does not resolve, so check the host exists. A URL without a scheme fails the whole call with 400 naming it as urls.N; drop it and resend."}
         purpose: {type: string, required: false}
         format: {type: string, required: false, default: markdown, enum: [html, markdown, json], note: "markdown (default) for LLM consumption; html returns cleaned semantic HTML, not the page source — head scripts (including application/ld+json), forms, mailto targets and many attributes are removed; json returns a structured document tree. TinyFish has no raw/source-HTML format on this route; for HTML as the browser received it (head and scripts intact), use anyapi.web.scrape with formats including html."}
         links: {type: boolean, required: false, default: false}
