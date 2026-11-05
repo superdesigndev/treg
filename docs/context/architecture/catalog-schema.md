@@ -94,23 +94,34 @@ reason `provider_error`, a 204 a miss with `adapter_miss`. A v2 row's adapter on
 
 The codemod rewrites rows in today's spelling by the section 4.4 table and writes today's
 behavior, not a wished one: a per_result or per_call row bills misses and errors, a result-aware
-row gets today's error envelope as an `error` rule, an adapter's `miss` moves to the row. Dry-run
-(the default) prints each rewrite, warns where it reads an answer shape differently, and lists the
-rows it cannot rewrite with the reason (a provider decided in Python, a single-provider cost key, a
-guessed hold, a per_success row whose failed `expect` is free while its error envelope is charged,
-which one `bill.error` cannot say, a replaced key that defines a YAML anchor another row aliases);
-every rewritten row it prints parses whole. A provider whose header declares `defaults:` is
-rewritten against them: a key equal to its default is left out, one the row lacks is written as
-`null`, and a `bill` default, the batch's translation of the Python branch it deletes, is inherited
-whole. An unpriced row only opts out of the price defaults, and its outcome keys move to v2 as a
-priced row's do. The codemod loads the catalog with a provider's `defaults:` withheld while one of
-its rows is still in today's spelling, and with them once its rows are v2. An inert `miss.status` on
-a 2xx is dropped and its `means` joins the row's `note`. `--apply` edits the files in place and
-keeps every comment outside the replaced keys. The fixture replay is the proof that a rewrite
-changes nothing.
+row gets today's error envelope as an `error` rule, an adapter's `miss` moves to the row. Two
+adapter spellings are read as today's evaluator reads them: `x == []` is `x` present and empty (a
+null list stays a hit), and `coalesce(a, b, []) == []`, whose coalesce skips null, `''` and `[]`,
+is one absent-or-empty rule per path. A per_success row with an `expect` keeps its error envelope
+out of the `error` rule: today its failed `expect` is free while an envelope is charged unless it
+misses, which one `bill.error` cannot say, so billing and routing read the envelope by the miss rule
+and stats and archive admission stop calling it an error. Dry-run (the default) prints each rewrite, warns where it reads
+an answer shape differently, and lists the rows it cannot rewrite with the reason (a provider
+decided in Python, a single-provider cost key, a guessed hold, a fallback beside a different
+`value`, a replaced key that defines a YAML anchor another row aliases); every rewritten row it
+prints parses whole. A provider whose header declares `defaults:` is rewritten against them: a key
+equal to its default is left out, one the row lacks is written as `null`, an `expect` the row does
+not declare is inherited (the batch moves the header's `expect` there), `async: false` becomes
+`async: null` beside an `async` default and goes without one when neither the header nor the defaults
+declare `async` (beside a header `async` block alone the row is refused), and a `bill` default, the batch's
+translation of the Python branch it deletes, is inherited whole. A fallback equal to its row's
+`value` is dropped, since v2 keeps a fallback only beside a table, and its note joins
+`price.note`. An unpriced row only opts out of the price defaults, and its outcome keys move to v2
+as a priced row's do. The codemod loads the catalog with a provider's `defaults:` withheld while one
+of its rows is still in today's spelling, and with them once its rows are v2. An inert
+`miss.status` on a 2xx is dropped and its `means` joins the row's `note`. `--apply` edits the files
+in place and keeps every comment outside the replaced keys. The fixture replay is the proof that a
+rewrite changes nothing.
 
 The validator checks a v2 row's cost beyond its model: `price.currency`, `settle.reported.unit`
-and `settle.usage.unit` resolve to a rate in `fx.yaml`, usage `terms` are in USD, and the request
+and `settle.usage.unit` resolve to a rate in `fx.yaml` (a price may name a credit or meter rate
+declared `usd: null`, which keeps the row off treg's key; a settle may not), usage `terms` are in
+USD, and the request
 paths of `reserve.rows.param`, `reserve.entities.from` and `price.table` (`when` and `times`) name
 declared input fields; an equality-only table also meets today's table checks (required or
 defaulted fields, enum and range, a bounded `times`, a fallback at least every row's maximum). A
