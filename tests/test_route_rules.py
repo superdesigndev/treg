@@ -281,7 +281,7 @@ async def test_the_routed_event_records_the_version_the_rule_and_what_ordered_it
     meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"})
     assert seen[0][0] == "leadmagic"
     assert meta == {"domain_class": "company", "tld": "fr", "route_order": "rule",
-                    "route_retry_order": "rule", "route_rules_version": "2", "route_rule": "r"}
+                    "route_rules_version": "2", "route_rule": "r"}
 
 
 async def test_a_rule_that_names_the_default_first_did_not_order_the_call(
@@ -318,6 +318,62 @@ async def test_a_rule_pick_skipped_by_the_cost_ceiling_did_not_order_the_call(
                               {"X-Treg-Route-Max-Cost": "0.019"})
     assert [p for p, *_ in seen] == ["tomba"], "leadmagic is over the ceiling and never called"
     assert meta["route_order"] == "default" and meta["route_rule"] == "r"
+
+
+def _attributed(orders, calls):
+    """Run the calls ((endpoint, called?) in attempt order) through the attribution."""
+    from treg.application.call import route as call_route
+    parent = SimpleNamespace(route_summary={"route_rule": {"route_rule": "r"}})
+    plan = SimpleNamespace(orders=orders)
+    tried = []
+    for endpoint, called in calls:
+        if called:
+            call_route._note_call(parent, plan, SimpleNamespace(endpoint={"id": endpoint}), tried)
+        tried.append(call_route.Attempt(endpoint, endpoint, "miss" if called else "skipped", None, 0))
+    return parent.route_summary["route_rule"]
+
+
+DEFAULT = ["tomba", "findymail", "hunter"]
+
+
+@pytest.mark.parametrize("orders, calls, want", [
+    # the rule's pick refused locally (policy, allowance, ceiling): the default first was called
+    ({"default": DEFAULT, "rule": ["leadmagic", *DEFAULT]},
+     [("leadmagic", False), ("tomba", True), ("findymail", True)], {"route_order": "default"}),
+    # the same retries with the rule on as off: nothing to attribute to it
+    ({"default": DEFAULT, "rule": ["tomba", "hunter", "findymail"]},
+     [("tomba", True), ("findymail", True)], {"route_order": "default"}),
+    ({"default": DEFAULT}, [("tomba", True), ("findymail", True)], {"route_order": "default"}),
+    # the rule moved the first call, then a retry
+    ({"default": DEFAULT, "rule": ["leadmagic", "hunter", "tomba", "findymail"]},
+     [("leadmagic", True), ("hunter", True)], {"route_order": "rule", "route_retry_order": "rule"}),
+    # neither order would have made this retry next: quality reordered it
+    ({"default": DEFAULT}, [("tomba", True), ("hunter", True)],
+     {"route_order": "default", "route_retry_order": "quality"}),
+    ({"default": DEFAULT}, [], {}),
+])
+def test_attribution_follows_the_providers_actually_called(orders, calls, want):
+    assert _attributed(orders, calls) == {"route_rule": "r", **want}
+
+
+async def test_a_rule_pick_refused_by_the_teams_policy_did_not_order_the_call(
+        clients, enrichment_on, events_on, monkeypatch, published):
+    from treg.application.call import authorize
+    from treg.domain.governance import access
+
+    real = access.enforce_deny
+
+    async def deny_leadmagic(caller, url, *args, **kwargs):
+        if "leadmagic" in url:
+            raise access.AccessPolicyError("blocked by this team's policy")
+        return await real(caller, url, *args, **kwargs)
+    monkeypatch.setattr(authorize.access_policy, "enforce_deny", deny_leadmagic)
+    await published(envelope(version=2, rules=[_rule(order=["leadmagic"])]))
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(copy.deepcopy(TOMBA_HIT), seen))
+    meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"})
+    assert [p for p, *_ in seen] == ["tomba"], "leadmagic is refused here and never called"
+    assert meta["route_order"] == "default" and "route_retry_order" not in meta
 
 
 async def test_a_caller_header_is_recorded_as_what_ordered_the_call(

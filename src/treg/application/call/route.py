@@ -661,8 +661,6 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         if rule is not None:
             ruled = ordered([*rule.order, *(p for p in default if p not in rule.order)])
             orders["rule"] = _endpoints(ruled)
-            if _endpoints(ruled[1:]) != _endpoints(ranked[1:]):
-                route_rule["route_retry_order"] = "rule"
             ranked = ruled
     return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped,
                 route_rule=route_rule, orders=orders)
@@ -865,11 +863,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     # the unrated behind in price order. A caller's own X-Treg-Route-Prefer order stands.
     if options.quality and not options.prefer and quality:
         try:
-            before = [c.endpoint["id"] for _, c in queue]
             queue = route_quality.by_quality(queue, lambda item: item[1].endpoint["id"], quality,
                                              route_quality.variant_slice(plan.variant))
             ordered_on = route_quality.variant_slice(plan.variant)
-            _note_quality_order(parent, before, [c.endpoint["id"] for _, c in queue])
         except Exception:  # a bad number keeps the price order
             log.warning("route quality ordering failed", exc_info=True)
     while queue:
@@ -878,11 +874,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             on = "catch_all" if "catch_all" in undecided_words else "all"
             if on != ordered_on:
                 try:
-                    before = [c.endpoint["id"] for _, c in queue]
                     queue = route_quality.by_quality(queue, lambda item: item[1].endpoint["id"], quality, on)
-                    if [c.endpoint["id"] for _, c in queue] != before:
-                        _summarize(parent, route_rule={**(parent.route_summary or {}).get("route_rule", {}),
-                                                       "route_retry_order": "quality"})
                 except Exception:  # quality only orders the fallback; a bad number keeps the order it had
                     log.warning("route quality ordering failed", exc_info=True)
                     quality = None
@@ -916,7 +908,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                             quota_pending=parent.quota_pending)
         try:
             response = await execute_child(child, upstream_client)
-            _note_first_call(parent, plan, cand, tried)
+            _note_call(parent, plan, cand, tried)
         except CallFailure as exc:
             if exc.kind == "route_max_cost":
                 tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0,
@@ -940,7 +932,8 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
             ):
                 raise  # the same refusal everywhere; nothing to fall back to
-            _note_first_call(parent, plan, cand, tried)
+            if exc.kind not in _CANDIDATE_LOCAL_FAILURES:  # refused here, never sent to the provider
+                _note_call(parent, plan, cand, tried)
             errors += 1
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", exc.status_code, 0, str(exc.detail)[:120]))
             if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
@@ -1480,27 +1473,26 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
                                         doc.get("raw"), meta.get("served_by")), cost
 
 
-def _note_quality_order(parent: CallContext, before: list[str], after: list[str]) -> None:
-    """`route_retry_order` becomes `quality` only where quality changed the later attempts."""
-    if after[1:] != before[1:]:
-        route = dict((parent.route_summary or {}).get("route_rule") or {})
-        _summarize(parent, route_rule={**route, "route_retry_order": "quality"})
-
-
-def _note_first_call(parent: CallContext, plan: Plan, cand: Candidate, tried: list) -> None:
-    """`route_order`: which order the first provider actually called came from. The candidates
-    passed over before it (over the cost ceiling, out of allowance, rate limited, an adapter that
-    failed) were never called, so each order is read from its first candidate not passed over."""
+def _note_call(parent: CallContext, plan: Plan, cand: Candidate, tried: list) -> None:
+    """Which order each provider actually called came from. `route_order` names the first call's;
+    `route_retry_order` the first later call the contract's own order would not have made next.
+    Each order is read from its first candidate not yet passed over: every earlier attempt, called
+    or not (over the cost ceiling, out of allowance, rate limited, refused locally by policy)."""
+    if not plan.orders:
+        return  # the caller's own X-Treg-Route-Prefer order
     route = dict((parent.route_summary or {}).get("route_rule") or {})
-    if "route_order" in route:
-        return
     passed = {t.endpoint_id for t in tried}
     called = cand.endpoint["id"]
 
-    def first(order: str) -> str | None:
+    def next_in(order: str) -> str | None:
         return next((e for e in plan.orders.get(order, ()) if e not in passed), None)
-    route["route_order"] = ("default" if called == first("default")
-                            else "rule" if called == first("rule") else "quality")
+    source = "default" if called == next_in("default") else "rule" if called == next_in("rule") else "quality"
+    if "route_order" not in route:
+        route["route_order"] = source
+    elif source != "default" and "route_retry_order" not in route:
+        route["route_retry_order"] = source
+    else:
+        return
     _summarize(parent, route_rule=route)
 
 
