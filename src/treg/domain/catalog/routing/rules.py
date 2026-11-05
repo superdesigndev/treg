@@ -94,25 +94,34 @@ def parse(raw: str) -> RuleSet:
     return RuleSet(version, config["enabled"], tuple(rules), canonical)
 
 
-def check_against(rules: RuleSet, contracts: dict, providers_of, segment_keys_of) -> None:
-    """Every rule can take effect: it names a routed contract, segment keys that contract's calls
-    record (`segment_keys_of(contract)`), and providers its routed plan can ask
-    (`providers_of(capability)`). Each lookup runs once per capability."""
-    providers: dict[str, set[str]] = {}
-    keys: dict[str, set[str]] = {}
+def check_against(rules: RuleSet, contracts: dict, servers_of, segment_checks_of) -> None:
+    """Every rule can take effect: it names a routed contract, segment values that contract's calls
+    can record (`segment_checks_of(contract)`: key -> a test of one value), and providers whose
+    routed endpoint can serve the matched identity variant (`servers_of(capability, input_type)`,
+    input_type None for any). Each lookup runs once per capability and variant."""
+    servers: dict[tuple[str, str | None], set[str]] = {}
+    checks: dict[str, dict] = {}
     for rule in rules.rules:
         contract = contracts.get(rule.capability)
         if contract is None:
             raise ValueError(f"rule {rule.id}: no contract {rule.capability}")
-        if rule.capability not in keys:
-            keys[rule.capability] = set(segment_keys_of(contract))
-            providers[rule.capability] = set(providers_of(rule.capability))
-        if not providers[rule.capability]:
+        if rule.capability not in checks:
+            checks[rule.capability] = segment_checks_of(contract)
+        for key, value in rule.match:
+            test = checks[rule.capability].get(key)
+            if test is None:
+                raise ValueError(f"rule {rule.id}: {rule.capability} records no {key}")
+            if not test(value):
+                raise ValueError(f"rule {rule.id}: {rule.capability} never records {key}={value}")
+        variant = dict(rule.match).get("input_type")
+        for key in {(rule.capability, None), (rule.capability, variant)} - set(servers):
+            servers[key] = set(servers_of(*key))
+        if not servers[(rule.capability, None)]:
             raise ValueError(f"rule {rule.id}: {rule.capability} is not routed")
-        if unknown := sorted({k for k, _ in rule.match} - keys[rule.capability]):
-            raise ValueError(f"rule {rule.id}: {rule.capability} records no {', '.join(unknown)}")
-        if missing := [p for p in rule.order if p not in providers[rule.capability]]:
-            raise ValueError(f"rule {rule.id}: {', '.join(missing)} cannot serve routed {rule.capability}")
+        serving = servers[(rule.capability, variant)]
+        if missing := [p for p in rule.order if p not in serving]:
+            on = f" for {variant}" if variant else ""
+            raise ValueError(f"rule {rule.id}: {', '.join(missing)} cannot serve routed {rule.capability}{on}")
 
 
 def match(rules: RuleSet | None, capability: str, segment: dict[str, Any]) -> Rule | None:

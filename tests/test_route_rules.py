@@ -68,7 +68,7 @@ def test_a_malformed_rule_set_is_refused(raw):
 def test_a_rule_must_be_able_to_take_effect():
     contracts = catalog_store.load().contracts
     check = lambda rule: R.check_against(  # noqa: E731
-        R.parse(envelope(rules=[rule])), contracts, reader_app._providers_of, ev.segment_keys)
+        R.parse(envelope(rules=[rule])), contracts, reader_app._servers_of, ev.segment_checks)
     check(_rule())
     for rule, why in (
             (_rule(capability="no.such"), "no contract"),
@@ -76,18 +76,27 @@ def test_a_rule_must_be_able_to_take_effect():
             # a provider with an email finder in the catalog but no routed child for the capability
             (_rule(order=["tomba", "anyapi"]), "anyapi cannot serve routed"),
             # a capability with no routed endpoint
-            (_rule(capability="people.phone.verify", order=["twilio"]), "is not routed"),
+            (_rule(capability="people.phone.verify", match={"input_type": "phone"}, order=["twilio"]),
+             "is not routed"),
             # a web search never records a domain segment
             (_rule(capability="web.search", order=["exa"]), "records no tld"),
+            # a variant spelled in another order is never recorded
+            (_rule(match={"input_type": "full_name+domain"}), "never records input_type=full_name"),
+            (_rule(match={"domain_class": "startup"}), "never records domain_class"),
+            # a finder that takes a name and a domain cannot answer a LinkedIn-only call
+            (_rule(match={"input_type": "linkedin_url"}, order=["hunter"]), "hunter cannot serve .* for linkedin_url"),
     ):
         with pytest.raises(ValueError, match=why):
             check(rule)
 
 
-def test_segment_keys_are_what_the_event_can_record():
+def test_segment_checks_are_what_the_event_can_record():
     contracts = catalog_store.load().contracts
-    assert ev.segment_keys(contracts["people.email.find"]) >= {"input_type", "tld", "domain_class"}
-    assert ev.segment_keys(contracts["people.phone.verify"]) == {"input_type"}
+    find = ev.segment_checks(contracts["people.email.find"])
+    assert {"input_type", "tld", "domain_class"} <= set(find)
+    assert find["input_type"]("domain+full_name") and not find["input_type"]("full_name+domain")
+    assert find["tld"]("fr") and not find["tld"]("FR") and not find["tld"](".fr")
+    assert set(ev.segment_checks(contracts["people.phone.verify"])) == {"input_type"}
 
 
 def test_the_most_specific_rule_wins_then_the_first_listed():
@@ -112,7 +121,7 @@ def snapshot_env(monkeypatch):
     store = SimpleNamespace(read_route_rules=AsyncMock(return_value=None))
     monkeypatch.setattr(reader_app, "_clock", lambda: clock[0])
     monkeypatch.setattr(reader_app, "_store", lambda: store)
-    monkeypatch.setattr(reader_app, "_providers_of", lambda cap: {"tomba", "hunter", "enrow"})
+    monkeypatch.setattr(reader_app, "_servers_of", lambda cap, variant: {"tomba", "hunter", "enrow"})
     return reader_app.Reader(), store, clock
 
 
@@ -230,9 +239,11 @@ async def test_a_published_rule_goes_ahead_of_the_yaml_order(clients, enrichment
 
 
 async def test_off_by_default_the_published_set_is_never_read(clients, enrichment_on, monkeypatch):
+    from treg.application.call import route as call_route
     reader_app.reset()
     store = SimpleNamespace(read_route_rules=AsyncMock(return_value=envelope()))
     monkeypatch.setattr(reader_app, "_store", lambda: store)
+    monkeypatch.setattr(call_route.call_events, "segment", lambda *a: pytest.fail("segmented while off"))
     await _first_providers(ROUTED, {"full_name": "Jean Dupont", "domain": "acme.fr"})
     assert store.read_route_rules.await_count == 0 and reader_app._reader.task is None
 
@@ -253,10 +264,22 @@ TOMBA_HIT = {"tomba": [(200, {"data": {"email": "j.dupont@acme.fr", "score": 96,
 
 async def test_the_routed_event_records_the_version_the_rule_and_what_ordered_it(
         clients, enrichment_on, events_on, monkeypatch, published):
+    from test_routing import _example
+    await published(envelope(version=2, rules=[_rule(order=["leadmagic"])]))
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"leadmagic": [(200, _example("leadmagic.people.email.find"))], "*": [(200, {})] * 5}, seen))
+    meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"})
+    assert seen[0][0] == "leadmagic"
+    assert meta == {"domain_class": "company", "tld": "fr", "route_order": "rule",
+                    "route_retry_order": "rule", "route_rules_version": "2", "route_rule": "r"}
+
+
+async def test_a_rule_that_names_the_default_first_did_not_order_the_call(
+        clients, enrichment_on, events_on, monkeypatch, published):
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(copy.deepcopy(TOMBA_HIT), []))
     meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"})
-    assert meta == {"domain_class": "company", "tld": "fr", "route_order": "rule",
-                    "route_rules_version": "1", "route_rule": "find-fr"}
+    assert meta["route_order"] == "default" and meta["route_rule"] == "find-fr"
 
 
 async def test_a_segment_no_rule_matches_still_records_the_version(
@@ -268,6 +291,15 @@ async def test_a_segment_no_rule_matches_still_records_the_version(
     assert "route_rule" not in meta
 
 
+async def test_a_rule_whose_provider_the_caller_excluded_did_not_order_the_call(
+        clients, enrichment_on, events_on, monkeypatch, published):
+    await published(envelope(version=2, rules=[_rule(order=["leadmagic"])]))
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(copy.deepcopy(TOMBA_HIT), []))
+    meta = await _parent_meta(clients, events_on, {"full_name": "Jean Dupont", "domain": "acme.fr"},
+                              {"X-Treg-Route-Exclude": "leadmagic"})
+    assert meta["route_order"] == "default" and meta["route_rule"] == "r"
+
+
 async def test_a_caller_header_is_recorded_as_what_ordered_the_call(
         clients, enrichment_on, events_on, monkeypatch, published):
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(copy.deepcopy(TOMBA_HIT), []))
@@ -276,8 +308,13 @@ async def test_a_caller_header_is_recorded_as_what_ordered_the_call(
     assert meta["route_order"] == "header" and meta["route_rule"] == "find-fr"
 
 
-async def test_quality_ordering_is_recorded_over_the_rule(clients, platform_on, events_on, monkeypatch, published):
-    from test_route_quality_upgrade import HARVEST_FIRST, LINKEDIN, _Reader
+@pytest.mark.parametrize("rated_on, first, provider, order", [
+    ("linkedin_url", "blitzapi", "harvest", "quality"),   # quality moved the rule's pick down
+    ("email", "harvestapi", "harvest", "rule"),           # no rating for this variant: the rule decided
+])
+async def test_what_ordered_the_first_attempt_is_what_changed_it(
+        clients, platform_on, events_on, monkeypatch, published, rated_on, first, provider, order):
+    from test_route_quality_upgrade import LINKEDIN, _Reader, _rated
     from test_routing import _example
     from treg.application.call import route as call_route
     from treg.config import get_settings
@@ -287,18 +324,54 @@ async def test_quality_ordering_is_recorded_over_the_rule(clients, platform_on, 
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "blitzapi,harvestapi")
     get_settings.cache_clear()
     await published(envelope(version=2, rules=[_rule(id="enrich-li", capability="people.enrich",
-                                          match={"input_type": "linkedin_url"}, order=["blitzapi"])]))
+                                                     match={"input_type": "linkedin_url"}, order=[first])]))
     seen = []
-    monkeypatch.setattr(call_route, "_route_quality_reader", _Reader(HARVEST_FIRST))
+    snapshot = _rated({"harvestapi.linkedin.user.profile": (0.78, 0.99),
+                       "blitzapi.people.enrich": (0.8, 0.8)}, rated_on)
+    monkeypatch.setattr(call_route, "_route_quality_reader", _Reader(snapshot))
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
         {"harvest": [(200, _example("harvestapi.linkedin.user.profile"))]}, seen))
     routed = await clients.post("/call/treg.people.enrich", json=LINKEDIN, headers={"X-Treg-Route-Quality": "1"})
     assert routed.status_code == 200, routed.text
-    assert [s[0] for s in seen] == ["harvest"]
+    assert [s[0] for s in seen] == [provider]
     events = await _flushed(events_on)
-    parent = next(e for e in events if e["call_ref"] == routed.headers["x-treg-call-id"])
-    assert parent["input_meta"]["route_order"] == "quality"
-    assert parent["input_meta"]["route_rule"] == "enrich-li"
+    meta = next(e for e in events if e["call_ref"] == routed.headers["x-treg-call-id"])["input_meta"]
+    assert meta["route_order"] == order and meta["route_rule"] == "enrich-li"
+    get_settings.cache_clear()
+
+
+async def test_a_decisive_reordering_of_the_providers_left_is_recorded(
+        clients, platform_on, events_on, monkeypatch, published):
+    from test_route_decisive import ADDRESS, ON, VERIFY, _Reader, _quality, _word
+    from test_route_verify import _bb, _relay
+    from treg.application.call import route as call_route
+    from treg.config import get_settings
+
+    for p in ("BOUNCEBAN", "TOMBA", "HUNTER"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TOMBA_SECRET", "PLATFORM-TOMBA-SECRET")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "bounceban,tomba,hunter")
+    get_settings.cache_clear()
+    await published(envelope(version=2, rules=[_rule(id="verify-co", capability="people.email.verify",
+                                                     match={"domain_class": "company"}, order=["bounceban"])]))
+    retry = []
+    for best, other in (("hunter", "tomba"), ("tomba", "hunter")):
+        seen = []
+        monkeypatch.setattr(call_route, "_route_quality_reader", _Reader(_quality(
+            {f"{best}.people.email.verify": (0.95, 0.99), f"{other}.people.email.verify": (0.6, 0.9)})))
+        monkeypatch.setattr(call_service, "relay", _relay(
+            {"bounceban": [_bb("unknown")], f"{best}-verify": [_word("invalid")],
+             f"{other}-verify": [_word("valid")]}, seen))
+        events_on.clear()
+        r = await clients.post(f"/call/{VERIFY}", json=ADDRESS, headers=ON)
+        assert r.status_code == 200, r.text
+        assert seen == ["bounceban", f"{best}-verify"]
+        meta = next(e for e in await _flushed(events_on)
+                    if e["call_ref"] == r.headers["x-treg-call-id"])["input_meta"]
+        assert meta["route_rule"] == "verify-co"
+        retry.append(meta.get("route_retry_order"))
+    # One of the two ratings matches the price order of the providers left, the other changes it.
+    assert sorted(retry, key=str) == sorted(["quality", None], key=str)
     get_settings.cache_clear()
 
 

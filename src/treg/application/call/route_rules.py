@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from ...config import get_settings
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import rules as route_rules
+from ...domain.catalog.routing.contracts import adapter_accepts, canonical_identity
 from ...infra import kv
 from .. import call_events
 
@@ -39,12 +40,39 @@ def _store():
     return kv.store()
 
 
-def _providers_of(capability: str) -> set[str]:
-    """Providers a routed plan for this capability can ask: its routed endpoint's children."""
+# Placeholder values a variant is filled with, so a contract's derivations (a LinkedIn handle
+# from its URL, a full name from its parts) run before asking which adapters accept it.
+_SAMPLE = {"linkedin_url": "https://www.linkedin.com/in/example-person", "email": "ann.lee@example.com",
+           "domain": "example.com", "company_domain": "example.com", "website": "https://example.com",
+           "url": "https://example.com", "phone": "+14155550100", "full_name": "Ann Lee",
+           "first_name": "Ann", "last_name": "Lee"}
+_SAMPLE_BY_TYPE = {"bool": True, "list": ["example"], "object": {}}
+
+
+def _servers_of(capability: str, input_type: str | None) -> set[str]:
+    """Providers a routed plan for this capability can ask: its routed endpoint's children, and of
+    those, for an identity variant, the ones whose adapter accepts it."""
     cat = catalog_store.load()
-    return {cat.by_id[child]["provider"]
-            for e in cat.for_capability(capability) if e.get("kind") == "routed"
-            for child in e.get("routed_children") or () if child in cat.by_id}
+    contract = cat.contracts.get(capability)
+    identity = None
+    if input_type and contract is not None:
+        sample = {k: _SAMPLE.get(k, _SAMPLE_BY_TYPE.get(str(contract.identity_types.get(k)), "example"))
+                  for k in input_type.split("+")}
+        try:
+            identity, _ = canonical_identity(contract, sample)
+        except Exception:  # noqa: BLE001 - a placeholder that does not derive still names its keys
+            identity = sample
+    out = set()
+    for e in cat.for_capability(capability):
+        if e.get("kind") != "routed":
+            continue
+        for child in e.get("routed_children") or ():
+            ad = cat.adapters.get(child)
+            if child not in cat.by_id or ad is None:
+                continue
+            if identity is None or adapter_accepts(ad, identity) is not None:
+                out.add(cat.by_id[child]["provider"])
+    return out
 
 
 @dataclass(frozen=True)
@@ -101,7 +129,7 @@ class Reader:
             return
         try:
             parsed = route_rules.parse(raw)
-            route_rules.check_against(parsed, cat.contracts, _providers_of, call_events.segment_keys)
+            route_rules.check_against(parsed, cat.contracts, _servers_of, call_events.segment_checks)
         except (ValueError, TypeError, RecursionError, OverflowError):
             self._failed("invalid_config")
             return
@@ -135,6 +163,10 @@ def reset() -> None:
         except RuntimeError:  # its loop already closed (between isolated tests)
             pass
     _reader = Reader()
+
+
+def enabled() -> bool:
+    return get_settings().route_rules_enabled
 
 
 def decide(capability: str, segment: dict) -> Decision | None:

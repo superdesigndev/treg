@@ -632,26 +632,45 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             else:
                 kept.append(c)
         cands = kept
-    input_type, meta, _ = call_events.segment(contract, identity_given)
-    decision = route_rules_app.decide(contract.capability, {**meta, "input_type": input_type})
+    decision = None
+    if route_rules_app.enabled():
+        input_type, meta, _ = call_events.segment(contract, identity_given)
+        decision = route_rules_app.decide(contract.capability, {**meta, "input_type": input_type})
     rule = decision.rule if decision else None
-    route_rule = {"route_order": "header" if options.prefer else "rule" if rule else "default"}
+    route_rule: dict[str, str] = {}
     if decision is not None:
         route_rule["route_rules_version"] = str(decision.version)
     if rule is not None:
         route_rule["route_rule"] = rule.id
-    prefer = options.prefer
-    if not prefer:
-        prefer = default_prefer(contract, identity, given)
+
+    def ordered(prefer):
+        out = rank(cands, prefer=prefer, exclude=options.exclude,
+                   given=given, derive=contract.derive, one_subject=contract.one_subject)
+        if options.complete:  # stable: price order within each group
+            out = [c for c in out if _can_answer_fully(contract, c.adapter)] + \
+                  [c for c in out if not _can_answer_fully(contract, c.adapter)]
+        return out
+
+    if options.prefer:
+        ranked, route_rule["route_order"] = ordered(options.prefer), "header"
+    else:
+        default = default_prefer(contract, identity, given)
+        ranked = ordered(default)
+        route_rule["route_order"] = "default"
         if rule is not None:
-            prefer = [*rule.order, *(p for p in prefer if p not in rule.order)]
-    ranked = rank(cands, prefer=prefer, exclude=options.exclude,
-                  given=given, derive=contract.derive, one_subject=contract.one_subject)
-    if options.complete:  # stable: price order within each group
-        ranked = [c for c in ranked if _can_answer_fully(contract, c.adapter)] + \
-                 [c for c in ranked if not _can_answer_fully(contract, c.adapter)]
+            ruled = ordered([*rule.order, *(p for p in default if p not in rule.order)])
+            # What the rule decided is what it changed, after filtering, exclusions and `complete`.
+            if _endpoints(ruled[:1]) != _endpoints(ranked[:1]):
+                route_rule["route_order"] = "rule"
+            if _endpoints(ruled[1:]) != _endpoints(ranked[1:]):
+                route_rule["route_retry_order"] = "rule"
+            ranked = ruled
     return Plan(contract=contract, identity=identity, variant=variant, candidates=ranked, dropped=dropped,
                 route_rule=route_rule)
+
+
+def _endpoints(cands) -> list[str]:
+    return [c.endpoint["id"] for c in cands]
 
 
 def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
@@ -800,8 +819,7 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     if get_settings().overflow_mode != "off":
         await overflow_routes_view.load()
     plan = await build_plan(ep, given, parent.input.caller, options)
-    if plan.route_rule:
-        _summarize(parent, route_rule=plan.route_rule)
+    _summarize(parent, route_rule=plan.route_rule)
     if not plan.candidates:
         # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
         # caller's own choice and answers 422 (nothing was charged either way)
@@ -848,10 +866,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     # the unrated behind in price order. A caller's own X-Treg-Route-Prefer order stands.
     if options.quality and not options.prefer and quality:
         try:
+            before = [c.endpoint["id"] for _, c in queue]
             queue = route_quality.by_quality(queue, lambda item: item[1].endpoint["id"], quality,
                                              route_quality.variant_slice(plan.variant))
             ordered_on = route_quality.variant_slice(plan.variant)
-            _summarize(parent, route_rule={**(plan.route_rule or {}), "route_order": "quality"})
+            _note_quality_order(parent, before, [c.endpoint["id"] for _, c in queue])
         except Exception:  # a bad number keeps the price order
             log.warning("route quality ordering failed", exc_info=True)
     while queue:
@@ -860,7 +879,11 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
             on = "catch_all" if "catch_all" in undecided_words else "all"
             if on != ordered_on:
                 try:
+                    before = [c.endpoint["id"] for _, c in queue]
                     queue = route_quality.by_quality(queue, lambda item: item[1].endpoint["id"], quality, on)
+                    if [c.endpoint["id"] for _, c in queue] != before:
+                        _summarize(parent, route_rule={**(parent.route_summary or {}).get("route_rule", {}),
+                                                       "route_retry_order": "quality"})
                 except Exception:  # quality only orders the fallback; a bad number keeps the order it had
                     log.warning("route quality ordering failed", exc_info=True)
                     quality = None
@@ -1454,6 +1477,16 @@ async def _run_upgrade(parent: CallContext, ep: dict, key: str, output: dict, re
         return {**view, "upgraded": False, "reason": "other_name"}, None, cost
     return {**view, "upgraded": True}, ({**output, **{k: v for k, v in found.items() if v is not None}},
                                         doc.get("raw"), meta.get("served_by")), cost
+
+
+def _note_quality_order(parent: CallContext, before: list[str], after: list[str]) -> None:
+    """`route_order` / `route_retry_order` become `quality` only where quality changed them."""
+    route = dict((parent.route_summary or {}).get("route_rule") or {})
+    if after[:1] != before[:1]:
+        route["route_order"] = "quality"
+    if after[1:] != before[1:]:
+        route["route_retry_order"] = "quality"
+    _summarize(parent, route_rule=route)
 
 
 def _summarize(parent: CallContext, **outcome) -> None:

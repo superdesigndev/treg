@@ -218,13 +218,22 @@ def segment(contract: Contract, given: dict) -> tuple[str | None, dict[str, str]
     return ("+".join(variant) if variant else None), meta, norm
 
 
-def segment_keys(contract: Contract) -> set[str]:
-    """Every key `segment` can produce for this contract's calls."""
-    keys = {"input_type"}
+_TLD = re.compile(r"^[a-z0-9-]{1,63}$")
+_DOMAIN_CLASSES = frozenset({"company", "webmail", "edu", "gov"})
+
+
+def segment_checks(contract: Contract) -> dict:
+    """Every key `segment` can produce for this contract's calls, each with a test of a value it
+    can take: an identity variant for `input_type`, a lowercase label for `tld`."""
+    variants = {"+".join(v) for v in contract.identity}
+    checks: dict = {"input_type": variants.__contains__}
     if any(k in contract.identity_types for k in (*_DOMAIN_KEYS, "email")):
-        keys |= {"tld", "domain_class"}
-    return keys | {k for k, spec in (contract.filters or {}).items()
-                   if (spec or {}).get("analytics") == "value"}
+        checks["tld"] = lambda v: bool(_TLD.fullmatch(v))
+        checks["domain_class"] = _DOMAIN_CLASSES.__contains__
+    for k, spec in (contract.filters or {}).items():
+        if (spec or {}).get("analytics") == "value":
+            checks[k] = lambda v: True
+    return checks
 
 
 def input_columns(contract: Contract, given: dict) -> tuple[dict, dict]:
