@@ -2739,14 +2739,21 @@ def test_routed_miss_count_includes_a_per_success_child_that_bills_a_miss():
     assert free_row["cost"].get("varies") is not True
 
 
-# ---- people.email.find: a provider first by the domain's suffix ------------------------------------
+# ---- a provider first by the domain's suffix (`prefer_by_domain_suffix`) ---------------------------
+def _suffix_contract(rule, **extra):
+    from treg.domain.catalog.routing.contracts import parse_contracts
+    return parse_contracts({"contracts": {"x.find": {
+        "identity": [{"full_name": "str", "domain": "str"}, {"linkedin_url": "url"}],
+        "output": {"email": {"type": "str"}}, "prefer_by_domain_suffix": rule, **extra}}})["x.find"]
+
+
 @pytest.mark.parametrize("domain, first", [
-    ("acme.fr", ["enrow"]), ("Paris.Acme.FR.", ["enrow"]), ("acme.de", ["enrow"]),
-    ("acme.com", []), ("frenchco.com", []), ("acme.fr.example.com", []), ("acme.es", []),
+    ("acme.fr", ["alpha"]), ("Paris.Acme.FR.", ["alpha"]), (" acme.fr ", ["alpha"]),
+    ("acme.com", []), ("frenchco.com", []), ("acme.fr.example.com", []),
 ])
-def test_email_find_prefers_enrow_on_french_and_german_domains(domain, first):
+def test_a_suffix_rule_matches_whole_labels_at_the_end_of_the_domain(domain, first):
     from treg.domain.catalog.routing.contracts import default_prefer
-    contract = catalog_store.load().contracts["people.email.find"]
+    contract = _suffix_contract({"fr": ["Alpha"]})
     ident, _ = canonical_identity(contract, {"full_name": "Jean Dupont", "domain": domain})
     assert default_prefer(contract, ident) == first
     linkedin, _ = canonical_identity(contract, {"linkedin_url": "https://www.linkedin.com/in/x"})
@@ -2764,7 +2771,10 @@ def test_prefer_by_domain_suffix_takes_the_longest_suffix_then_the_contract_pref
     assert default_prefer(contract, {"domain": "acme.com"}) == ["tomba", "hunter"]
 
 
-@pytest.mark.parametrize("rule", [{"fr": []}, {"fr": "enrow"}, ["fr"]])
+@pytest.mark.parametrize("rule", [
+    {"fr": []}, {"fr": "enrow"}, ["fr"], {"fr": [None]}, {"fr": [""]}, {"fr": ["  "]}, {"fr": [1]},
+    {"": ["enrow"]}, {".": ["enrow"]}, {}, [], False, "fr",
+])
 def test_a_malformed_prefer_by_domain_suffix_fails_the_load(rule):
     from treg.domain.catalog.routing.contracts import parse_contracts
     doc = {"contracts": {"x.find": {"identity": [{"full_name": "str", "domain": "str"}],
