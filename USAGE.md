@@ -269,7 +269,7 @@ returns `{output, raw, _treg: {served_by, tried, charged_micro}}` plus `X-Treg-S
 vendor 4xx is your request's fault and stops. A **miss** tries the next provider too (the waterfall,
 on by default), cheapest first, within `X-Treg-Route-Max-Cost` (default $1 per call); every
 attempt settles at its real price and misses on per-success providers are free. `X-Treg-Route-Waterfall: 0`
-stops at the first miss. `X-Treg-Route-Prefer` / `X-Treg-Route-Exclude` name providers. A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` (and `_treg.ignored_filters`); `X-Treg-Route-Strict-Filters: 1` refuses such a call with a 422 (unbilled) instead. When you sent a `domain` and the hit has an email, `X-Treg-Domain-Match` / `_treg.domain_match` says whether the mailbox domain matches — a LinkedIn-only provider often returns a former employer; the hit is still billed and the address is not altered. Vendor endpoints are still relayed verbatim; only `treg.*` rows model an API.
+stops at the first miss. `X-Treg-Route-Prefer` / `X-Treg-Route-Exclude` name providers. A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` (and `_treg.ignored_filters`); `X-Treg-Route-Strict-Filters: 1` refuses such a call with a 422 (unbilled) instead. When you sent a `domain` and the hit has an email, `X-Treg-Domain-Match` / `_treg.domain_match` says whether the mailbox domain matches — a LinkedIn-only provider often returns a former employer. An off-domain hit is billed but weak: treg asks the next provider and returns an on-domain address when one turns up; the off-domain one comes back (flagged `false`) only when none does. Vendor endpoints are still relayed verbatim; only `treg.*` rows model an API.
 
 `X-Treg-Route-Verify: true` on `treg.people.email.find` checks a hit with `treg.people.email.verify`
 in the same call: your own verifier key first, then BounceBan, then the usual order. The check is
@@ -277,7 +277,12 @@ its own call with its own charge, inside the same `X-Treg-Route-Max-Cost`; `X-Tr
 find plus check. The answer adds `_treg.verification: {verdict, checked, served_by, cost_micro}`
 (`valid` / `invalid` / `catch_all` / `risky` / `unknown`). `checked: false` and a `reason`
 (`no_hit`, `over_cost_limit`, `checker_failed`, `no_checker`, `not_allowed`, `spend_limit`) mean
-no check ran and it cost nothing. A miss is never checked: its reason is `no_hit`. Other routed tools refuse the header (422, unbilled).
+no check ran and it cost nothing. A miss is never checked: its reason is `no_hit`. A hit the check
+calls `invalid` is never returned: treg drops it and asks the next provider, each find and check
+billed at its own price, inside `X-Treg-Route-Max-Cost`. When every hit is invalid the answer is a
+miss (all output fields null) whose `_treg.verification` holds the last invalid verdict and
+`withheld` (how many hits were dropped); `_treg.checks` lists every check when more than one ran.
+Other routed tools refuse the header (422, unbilled).
 
 `X-Treg-Route-Confirm: true` on `treg.people.email.find` counts a hit only once a second provider
 returns the same address. The waterfall goes on after the first hit, each attempt at its own price

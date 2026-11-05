@@ -922,7 +922,7 @@ returned and never documented as stable. An output field may say where it lands 
   contact is not a confirmed one); a search contract has no `verified` output, so its advice
   attaches to every hit. treg never chains a verify call by default.
 - `check` (opt-in via `X-Treg-Route-Verify`): after a hit `_run_check` runs the check endpoint as an
-  ordinary linked child `:v` through `execute_call`, with its own hold and charge, the cost ceiling
+  ordinary linked child `:v` (then `:v2`, `:v3`) through `execute_call`, with its own hold and charge, the cost ceiling
   the find left, and `prefer` applying to that call only (below the team's own key). A check that
   does not fit, is refused or fails never fails the find (`checked: false` with a `reason`, cost 0;
   `no_hit` when the find missed). A direct (non-routed) check leaves its hold in the find's
@@ -932,8 +932,12 @@ returned and never documented as stable. An output field may say where it lands 
   other than `valid` on a `verified: true` hit attaches `disagree_advice`; `output.verified` itself
   is never altered. A check's `when` and `skip_reason` skip a hit before any call (a phone not in
   international form is `not_international`, because HLR reads national digits as a country code),
-  and its `skip_advice` replaces the find's advice. The header on a contract without `check` is a
-  422 before planning.
+  and its `skip_advice` replaces the find's advice. A completed `invalid` verdict drops the hit: a
+  plain hit is checked inside the waterfall, becomes a `miss` in `tried` and the next candidate is
+  asked; a winner chosen after the loop (weak, unconfirmed, undecided, off-domain, upgraded) is
+  checked there and, if invalid, the call answers a 200 miss with null output, `verification.withheld`
+  and every check in `_treg.checks` (when more than one ran). Each find and check still settles.
+  The header on a contract without `check` is a 422 before planning.
 - `confirm` (opt-in via `X-Treg-Route-Confirm`) names the field two DIFFERENT providers must agree on
   (trimmed, case-folded); two endpoints of one provider never confirm each other. The earlier hit is
   the answer; with no agreement before candidates or ceiling run out, the first hit returns marked
@@ -1085,8 +1089,9 @@ an invalid extra never disables the primary.
   publishing them must keep the hit floor and use corrected terminal evidence.
 - **Domain match on email finds**: with a caller `domain` (or `company_domain` / `website`) and an
   `email` hit, `_treg.domain_match` / `X-Treg-Domain-Match` disclose whether the mailbox host
-  matches (as call events store `answer_flags.domain_match`); `advice_domain_mismatch` names it. The
-  hit is still billed and unaltered.
+  matches (as call events store `answer_flags.domain_match`); `advice_domain_mismatch` names it.
+  On a contract that names that advice, an off-domain hit is billed but `weak`: the waterfall goes on
+  and an on-domain hit wins; the first off-domain one returns, flagged, only when none turns up.
 - **The answer says what it ignored**: `ignored_filters` on `_treg` and `X-Treg-Ignored-Filters`.
   `X-Treg-Route-Strict-Filters: 1` drops candidates that cannot express a sent filter
   (`strict: true` in `dropped`) and answers 422 `route_no_candidate`, unbilled, when none is left; a
