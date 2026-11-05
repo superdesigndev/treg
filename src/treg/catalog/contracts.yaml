@@ -657,7 +657,7 @@ contracts:
 
   # ---- batch 6: long tail (2026-08-28) ----------------------------------------------------------
   instagram.search.users:
-    summary: "Search Instagram accounts by keyword — profile rows in `users` (picture and link metadata only in `raw`, the provider's full answer)"
+    summary: "Search Instagram accounts by keyword — profile rows in `users`; ScrapeCreators rows omit picture and link metadata, `raw` holds the provider's full answer"
     identity:
       - {q: str}
     filters: {}
