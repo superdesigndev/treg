@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from cli_go_harness import PYTHON_CLI, Canned, normalize, run, same_stdout, write_config
+from .cli_go_harness import PYTHON_CLI, Canned, normalize, run, same_stdout, write_config
 
 ASYNC = json.dumps({"id_from": "id", "poll": {"endpoint": "x.poll", "param": "id"},
                     "status": {"path": "status", "success": ["done"], "failure": ["failed"]},
