@@ -40,6 +40,8 @@ func Root(env *Env) *cobra.Command {
 		logoutCmd(env),
 		whoamiCmd(env),
 		callCmd(env),
+		updateCmd(env),
+		backgroundUpdateCmd(env),
 	)
 	return root
 }

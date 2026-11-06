@@ -22,6 +22,10 @@ type Config struct {
 	ActiveOrg  string
 	Identity   bool
 	AdminToken string
+	// Channel is the release channel this binary follows: "stable" (empty) or "beta".
+	Channel string
+	// NoAutoUpdate turns off background updates for this machine.
+	NoAutoUpdate bool
 
 	// Fields this version does not know, kept in their original order so a newer writer's
 	// additions survive a save by this one.
@@ -41,6 +45,7 @@ type saved struct {
 
 var known = map[string]bool{
 	"base_url": true, "token": true, "email": true, "active_org": true, "identity": true, "admin_token": true,
+	"channel": true, "auto_update": true,
 }
 
 // Path is TREG_CONFIG when set, else ~/.treg/config.json.
@@ -107,6 +112,11 @@ func Load() *Config {
 		cfg.extra = without(cfg.extra, "orgs")
 		return cfg
 	}
+	cfg.Channel = str(values["channel"])
+	var auto bool
+	if json.Unmarshal(values["auto_update"], &auto) == nil && !auto {
+		cfg.NoAutoUpdate = true
+	}
 	cfg.Token = str(values["token"])
 	var identity bool
 	if json.Unmarshal(values["identity"], &identity) == nil {
@@ -140,6 +150,12 @@ func (c *Config) Save() error {
 		{"active_org", nullable(active)},
 		{"identity", boolean(c.Identity)},
 		{"admin_token", nullable(c.AdminToken)},
+	}
+	if c.Channel != "" {
+		fields = append(fields, field{"channel", quoted(c.Channel)})
+	}
+	if c.NoAutoUpdate {
+		fields = append(fields, field{"auto_update", boolean(false)})
 	}
 	body, err := encodeObject(append(fields, c.extra...))
 	if err != nil {

@@ -35,7 +35,7 @@ func versionCmd(env *Env) *cobra.Command {
 }
 
 func configCmd(env *Env) *cobra.Command {
-	var baseURL string
+	var baseURL, channel string
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Show or set the registry this CLI talks to (base URL).",
@@ -44,20 +44,33 @@ func configCmd(env *Env) *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
 			cfg := env.Cfg
-			if baseURL != "" {
-				cfg.BaseURL = baseURL
+			if channel != "" && channel != "stable" && channel != "beta" {
+				return output.Fail("treg: --channel is stable or beta")
+			}
+			if baseURL != "" || channel != "" {
+				if baseURL != "" {
+					cfg.BaseURL = baseURL
+				}
+				if channel != "" {
+					cfg.Channel = channel
+				}
 				if err := env.Save(); err != nil {
 					return err
 				}
 			}
-			env.Out.ShowJSON(ordered{
+			view := ordered{
 				{"base_url", cfg.BaseURL}, {"email", nullable(cfg.Email)},
 				{"active_org", nullable(cfg.ActiveOrg)}, {"logged_in", cfg.Token != ""},
-			})
+			}
+			if cfg.Channel != "" {
+				view = append(view, pair{"channel", cfg.Channel})
+			}
+			env.Out.ShowJSON(view)
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "point the CLI at this registry URL")
+	cmd.Flags().StringVar(&channel, "channel", "", "the release channel `treg update` follows: stable or beta")
 	return cmd
 }
 
