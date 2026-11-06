@@ -292,7 +292,7 @@ endpoints:
     added: '2026-07-28'
     example_response: examples/dataforseo.google.serp.organic.json
     docs_url: https://docs.dataforseo.com/v3/serp/google/organic/live/regular
-    note: "Organic items may carry domain=google.com and a google.com/goto?url=... wrapper or a bare CAES... token as url. The real host is then often only in breadcrumb; when breadcrumb is not a URL, the destination is unknown."
+    note: "When an organic item's domain is google.com, its url is a google.com/goto wrapper, not the destination. A breadcrumb that starts with https:// starts with the destination host; any other breadcrumb means the answer does not hold it."
 
   # re-run catalog_verify.py once verified
   - id: dataforseo.google.keywords.volume
