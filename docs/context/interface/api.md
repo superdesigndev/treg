@@ -92,7 +92,8 @@ explained in [seo](seo.md).
 `require_member()` resolves a membership token, a team Default key, a legacy identity bearer plus
 `X-Treg-Org`, or a session cookie plus `X-Treg-Org`, and returns a `Caller`. A 401 keeps `detail`
 and adds a top-level `hint`, because scripts and older CLIs print it verbatim. Open by design:
-`POST /invites/accept`, `GET /oauth/callback` (protected by `state`). Identity and
+`GET /oauth/callback` (protected by `state`). `POST /invites/accept` requires the invitee's own
+identity: the code names the invite and the signed-in email must match it. Identity and
 session validation live in `domain.identity.session`, authorization in `domain.identity.access`;
 org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
 
@@ -120,8 +121,8 @@ org scoping and roles are in [multi-tenancy](../architecture/multi-tenancy.md).
   `TREG_BLOCKED_EMAIL_DOMAINS` (subdomains included) are refused at every door with the same 403.
   `expose_dev_code` permits OTP disclosure only on guarded local SQLite. `TREG_FIXED_LOGIN_CODES`
   issues a configured code hash for an account with no inbox (a directory reviewer's demo
-  account); limits are unchanged. The invite code is join-only; the separate `email_token`
-  authenticates once and never appears in a JSON response.
+  account); limits are unchanged. The invite code is join-only and needs the invitee signed
+  in; the separate `email_token` authenticates once and never appears in a JSON response.
 - `require_managed_cli`'s 426 update response carries `X-Treg-Error: 1` and `no-store`, and runs
   before any login or team mutation.
 

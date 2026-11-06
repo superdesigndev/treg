@@ -368,6 +368,40 @@ def test_team_create_and_join_replace_the_saved_bootstrap(monkeypatch):
     assert cfg["token"] == "joined-default" and cfg["active_org"] == "joined"
 
 
+def test_join_with_an_env_token_keeps_the_saved_login(monkeypatch):
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, path, json):
+            return type("R", (), {"status_code": 200, "text": "{}",
+                                  "json": lambda self: {"token": "bob-team", "org": "bobs"}})()
+
+    saved = []
+    monkeypatch.setenv("TREG_TOKEN", "bob-identity")
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client())
+    monkeypatch.setattr(cli, "_show", lambda response: None)
+    monkeypatch.setattr(cli, "_save_config", lambda cfg: saved.append(dict(cfg)))
+    cfg = {"token": "alice-identity", "email": "alice@example.com", "identity": True}
+    cli.cmd_org_join(type("A", (), {"code": "inv", "email": ""})(), cfg)
+    assert saved == [] and cfg["token"] == "alice-identity"
+
+
+def test_join_for_another_email_still_shows_the_server_answer(monkeypatch, capsys):
+    refused = type("R", (), {"status_code": 403, "text": '{"detail": "this invite is for a different email"}'})()
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, path, json): return refused
+
+    shown = []
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client())
+    monkeypatch.setattr(cli, "_show", shown.append)
+    cli.cmd_org_join(type("A", (), {"code": "inv", "email": ""})(), {"token": "t"})
+    assert shown == [refused]
+    assert "treg login" in capsys.readouterr().err
+
+
 class _FakeResp:
     status_code = 200
     def json(self): return {}

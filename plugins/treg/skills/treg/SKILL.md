@@ -71,7 +71,7 @@ or the CLI is enough, and having both is fine.
    (or `--skills all`).
 
 Everything runs in the **active team**. Invites arrive by email: `treg invites` lists them,
-`treg accept` takes one (or `treg org join <code>`); `treg org use <slug>` switches teams. A new
+`treg accept` takes one (or `treg org join <code>`, signed in as the invited email); `treg org use <slug>` switches teams. A new
 verified account gets $1.00 of credit once, on its first eligible team; aliases of one inbox (`+tag`,
 Gmail dots) share it.
 

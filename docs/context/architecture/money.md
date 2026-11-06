@@ -265,7 +265,7 @@ rolls everything back. Meta records `source=signup` and the `user_id`. The per-o
 `grant(once=True)` check is not a concurrency arbiter.
 
 `User.email_verified_at` is set only by successful OTP, verified social login or an inbox-only
-invitation link; legacy `/users` and admin-visible invite codes prove nothing. An unverified account
+invitation link; legacy `/users` and accounts the invite-code door created before it required sign-in prove nothing. An unverified account
 may create teams with zero credit. The sign-in that first verifies it
 (`find_or_create_user(..., proven=)`, then `signup.grant_signup_promo_on_proof` after that commit)
 offers the claim to the oldest eligible team it owns, or its first eligible team, without a second
