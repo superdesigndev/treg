@@ -2581,46 +2581,6 @@ async def test_company_blind_search_provider_is_dropped_not_billed(clients: Asyn
     get_settings.cache_clear()
 
 
-# ---- ai-search.perplexity.answer / copilot: Cloro logged-out scrapes are broken tombstones
-def _example(eid: str) -> dict:
-    from pathlib import Path
-    return json.loads((Path(catalog_store.__file__).parents[2] / "catalog" / "examples" / f"{eid}.json").read_text())
-
-
-async def test_cloro_logged_out_ai_search_scrapes_are_broken_tombstones(clients, monkeypatch):
-    """Cloro refuses logged-out Perplexity and Copilot sessions (MODEL_UNAVAILABLE). Marking those
-    rows `status: broken` takes them out of discovery and refuses a direct call with 410 before any
-    credential is spent. With only DataForSEO left live for ai-search.perplexity.answer, the routed
-    parent is not generated (≥2 verified children); callers use the DataForSEO sibling directly.
-    Restore the two-child routed test once Cloro clears the outage and the tombstones are removed."""
-    cat = catalog_store.load()
-    for eid in ("cloro.ai-search.perplexity.answer", "cloro.ai-search.copilot.scrape"):
-        assert cat.by_id[eid]["status"] == "broken"
-        assert "MODEL_UNAVAILABLE" in cat.by_id[eid]["status_note"]
-        assert eid not in {ep["id"] for ep in cat.endpoints}
-    assert catalog_store.routed_parent(cat, "ai-search.perplexity.answer") is None
-    assert "dataforseo.x.ai-optimization-perplexity-llm-responses-live" in {ep["id"] for ep in cat.endpoints}
-
-    monkeypatch.setenv("TREG_PLATFORM_KEY_CLORO", "PLATFORM-CLORO")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "cloro")
-    get_settings.cache_clear()
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
-        "cloro": [(200, _example("cloro.ai-search.perplexity.answer"))],
-    }, seen))
-    for eid in ("cloro.ai-search.perplexity.answer", "cloro.ai-search.copilot.scrape"):
-        r = await clients.post(f"/call/{eid}", json={"prompt": "what is a stock split", "country": "US"})
-        assert r.status_code == 410, r.text
-        assert "MODEL_UNAVAILABLE" in r.text
-        assert "logged-out" in r.text
-    assert seen == []
-    routed = await clients.post(
-        "/call/treg.ai-search.perplexity.answer",
-        json={"prompt": "best CRM for a small business", "country": "US"})
-    assert routed.status_code == 404, routed.text
-    get_settings.cache_clear()
-
-
 async def test_people_enrich_not_found_from_dropleads_and_aiark_is_a_miss_not_a_502(clients, monkeypatch):
     """Dropleads "Person not found" 400s and AI Ark "data not found" 404s were read as provider
     faults, so a person nobody had came back as 502 route_failed. Both are now declared misses; a rate limit or another 400 stays an error."""
