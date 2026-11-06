@@ -361,6 +361,23 @@
     "methods": [
       "POST"
     ],
+    "name": "cli_events",
+    "path": "/cli/events"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "cli_latest",
+    "path": "/cli/latest"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
     "name": "publish_hub_tool",
     "path": "/hub/tools"
   },
@@ -745,6 +762,15 @@
     ],
     "name": "install_sh",
     "path": "/install.sh"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "install_ps1",
+    "path": "/install.ps1"
   },
   {
     "kind": "APIRoute",

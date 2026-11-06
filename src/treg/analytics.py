@@ -199,6 +199,23 @@ def capture(distinct_id: str, event: str, properties: dict | None = None,
         pass
 
 
+def relay(distinct_id: str, event: str, properties: dict, *, timestamp: str,
+          uuid: str | None = None) -> None:
+    """Queue one event a CLI sent through `/cli/events`. Unlike `capture` it carries no server build
+    or archive configuration: the event describes the client. `uuid` lets PostHog drop a resend."""
+    try:
+        if not enabled() or len(_queue) >= _MAX_PENDING:
+            return
+        item = {"event": event, "distinct_id": distinct_id,
+                "properties": {**properties, "$lib": "treg-cli"}, "timestamp": timestamp}
+        if uuid:
+            item["uuid"] = uuid
+        _queue.append(item)
+        _ensure_flusher()
+    except Exception:  # noqa: BLE001 — analytics must never surface into a caller's path
+        pass
+
+
 def capture_quota_fail_open(targets: tuple[tuple[int, str], ...]) -> None:
     """Count one logical admission of trusted canonical targets; never block on I/O or raise."""
     global _quota_window

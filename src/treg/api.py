@@ -65,6 +65,7 @@ from .routers import call as call_routes
 from .routers import catalog as catalog_routes
 from .routers import connections as connection_routes
 from .routers import enterprise_sso as enterprise_sso_routes
+from .routers import cli_client as cli_client_routes
 from .routers import feedback as feedback_routes
 from .routers import hub as hub_routes
 from .routers import media as media_routes
@@ -314,6 +315,7 @@ async def create_tool_request(
 
 
 router.routes.extend(feedback_routes.app.routes)
+router.routes.extend(cli_client_routes.app.routes)
 router.routes.extend(hub_routes.app.routes)
 router.routes.extend(media_routes.app.routes)
 router.routes.extend(auth_routes.social_router.routes)
