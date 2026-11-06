@@ -1821,10 +1821,9 @@ endpoints:
     summary: 'The employee reviews on one page of a company''s Glassdoor reviews, one row per review: id, title, overall
       rating, date, the reviewer''s job title, whether they still work there, pros, cons, advice to management, whether
       they recommend the company, location and the review''s link. `company` is the reviews page''s path part, like
-      Microsoft-Reviews-E1651, or its URL. Without an account Glassdoor shows only page 1 (about 3 reviews); `page`
-      ≥ 2 is refused and needs a signed-in Glassdoor session; `limit` caps the rows. Glassdoor answers a browser only:
-      about a minute, two when www.glassdoor.com refuses and the page is read from www.glassdoor.co.uk. Columns: id,
-      title, rating, date, job_title, current, pros, cons, advice, recommends, location, url.'
+      Microsoft-Reviews-E1651, or its URL; `limit` caps the rows. Glassdoor answers a browser only: about a minute,
+      two when www.glassdoor.com refuses and the page is read from www.glassdoor.co.uk. Columns: id, title, rating,
+      date, job_title, current, pros, cons, advice, recommends, location, url.'
     body_allowlist: true
     input:
       bodyType: json
@@ -1841,7 +1840,7 @@ endpoints:
         page:
           type: integer
           required: false
-          note: 'default 1; without an account only page 1 works (about 3 reviews); page ≥ 2 is refused (needs a signed-in Glassdoor session)'
+          note: 'default 1. Only page 1 works: Glassdoor shows no other page without an account, so page ≥ 2 is refused with a free 400.'
           example: 1
     cost:
       type: per_success
