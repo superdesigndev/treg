@@ -156,7 +156,7 @@ def test_an_entity_hold_counts_the_one_declared_entity_field(spec):
     ({"cost": {"type": "per_success", "value": 1, "settle": "modifiers"}}, "plugin"),
     ({"cost": {"type": "per_result", "value": 1}}, "a person picks its reserve"),
     ({"cost": {"type": "per_success", "value": 1, "tavily_rates": {}}}, "single-provider key"),
-    ({"observed_cost": 0.1}, "no cost"),
+    ({"observed_cost": 0.1}, "a priced row needs provenance"),
     ({"cost": {"type": "per_success", "value": 1}, "miss": {"status": 404, "means": "x"}}, "one `miss` rule"),
 ])
 def test_a_row_with_no_zero_diff_rewrite_stays_as_it_is(row, reason):
@@ -189,6 +189,49 @@ def test_a_row_is_written_against_its_providers_defaults():
     ruled = codemod.rewrite({"id": "demo.w", "tier": "extended", "expect": {"path": "response.ok", "op": "present"}},
                             provider="demo", check_branches=False, defaults=DEFAULTS)
     assert ruled.keys == {"provenance": None} and ruled.replaced == ("tier",)
+
+
+BRANCH = {"expect": {"path": "response.tasks.0.status_code", "op": "equals", "value": 20000},
+          "settle": {"reported": {"path": "response.cost", "unit": "usd"}},
+          "bill": {"miss": "charged", "error": "charged"}}
+OBSERVED = {"source": "observed", "checked": "2026-07-28", "confidence": "verified"}
+
+
+def test_a_row_priced_by_its_observed_cost_is_written_at_the_price_served_today():
+    observed = codemod.rewrite({"id": "demo.x", "tier": "extended", "observed_cost": 0.0102,
+                                "verified": "2026-07-28", "expect": {"json_path": "tasks.0.status_code",
+                                                                     "equals": 20000}},
+                               provider="demo", check_branches=False, defaults=BRANCH)
+    assert observed.keys == {"price": {"value": "0.0102", "currency": "USD", "per": 1, "unit": "call",
+                                       "note": "price observed at live verification (provider-reported charge)"},
+                             "provenance": OBSERVED}
+    assert observed.replaced == ("observed_cost", "tier", "expect")
+    free = codemod.rewrite({"id": "demo.y", "observed_cost": 0, "verified": "2026-07-28"}, provider="demo",
+                           check_branches=False, defaults=BRANCH)
+    assert free.keys["price"]["value"] == "0" and free.keys["provenance"] == OBSERVED
+    beside = codemod.rewrite({"id": "demo.z", "observed_cost": 0.1, "verified": "2026-07-28",
+                              "cost": {"type": "per_call", "value": 0.15, **PROVENANCE}},
+                             provider="demo", check_branches=False, defaults=BRANCH)
+    assert beside.keys["price"] == {"value": "0.15"} and "observed_cost" in beside.replaced
+    assert any("observed_cost beside a cost" in w for w in beside.warnings)
+
+
+def test_a_settle_default_is_inherited_and_a_row_without_its_own_expect_opts_out():
+    cost = {"type": "per_call", "value": 0.002, **PROVENANCE}
+    inherits = codemod.rewrite({"id": "demo.x", "cost": cost, "expect": {"json_path": "tasks.0.status_code",
+                                                                         "equals": 20000}},
+                               provider="demo", check_branches=False, defaults=BRANCH)
+    assert inherits.keys == {"price": {"value": "0.002"}, "provenance": PROVENANCE}
+    posted = codemod.rewrite({"id": "demo.x", "cost": cost, "expect": {"json_path": "tasks.0.status_code",
+                                                                       "equals": 20100}},
+                             provider="demo", check_branches=False, defaults=BRANCH)
+    assert posted.keys["expect"] == {"path": "response.tasks.0.status_code", "op": "equals", "value": 20100}
+    ruleless = codemod.rewrite({"id": "demo.x", "cost": {"type": "free"}}, provider="demo",
+                               check_branches=False, defaults=BRANCH)
+    assert ruleless.keys == {"price": {"value": "0"}, "expect": None}
+    unpriced = codemod.rewrite({"id": "demo.x", "tier": "extended"}, provider="demo",
+                               check_branches=False, defaults=BRANCH)
+    assert unpriced.keys == {"price": None, "expect": None} and _v2(unpriced)
 
 
 def test_an_unpriced_row_moves_its_outcome_keys_to_v2_with_its_opt_out():

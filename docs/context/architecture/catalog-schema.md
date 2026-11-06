@@ -105,14 +105,20 @@ an answer shape differently, and lists the rows it cannot rewrite with the reaso
 decided in Python, a single-provider cost key, a guessed hold, a fallback beside a different
 `value`, a replaced key that defines a YAML anchor another row aliases); every rewritten row it
 prints parses whole. A provider whose header declares `defaults:` is rewritten against them: a key
-equal to its default is left out, one the row lacks is written as `null`, an `expect` the row does
-not declare is inherited (the batch moves the header's `expect` there), `async: false` becomes
+equal to its default is left out, one the row lacks is written as `null`, a row without an `expect`
+takes its header's (a batch keeps the header's `expect` beside the defaults until the codemod has
+run) and with none opts out with `null`, `async: false` becomes
 `async: null` beside an `async` default and goes without one when neither the header nor the defaults
 declare `async` (beside a header `async` block alone the row is refused), and a `bill` default, the batch's
-translation of the Python branch it deletes, is inherited whole. A fallback equal to its row's
+translation of the Python branch it deletes, is inherited whole, as a `settle` default is by every
+row without a settle form of its own. A row priced by its `observed_cost` is rewritten at the price
+the catalog serves for it today (`_effective_cost`: the figure as a per-call USD price, `provenance:
+{source: observed, confidence: verified}` checked on its `verified` day); an `observed_cost` beside
+a `cost` is dropped, since nothing reads it. A fallback equal to its row's
 `value` is dropped, since v2 keeps a fallback only beside a table, and its note joins
-`price.note`. An unpriced row only opts out of the price defaults, and its outcome keys move to v2
-as a priced row's do. The codemod loads the catalog with a provider's `defaults:` withheld while one
+`price.note`. An unpriced row opts out of the price and provenance defaults (`price: null` when
+there are none), inherits the settle and bill rules, which price nothing without a price, and its
+outcome keys move to v2 as a priced row's do. The codemod loads the catalog with a provider's `defaults:` withheld while one
 of its rows is still in today's spelling, and with them once its rows are v2. An inert
 `miss.status` on a 2xx is dropped and its `means` joins the row's `note`. `--apply` edits the files
 in place and keeps every comment outside the replaced keys. The fixture replay is the proof that a
