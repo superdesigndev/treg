@@ -1,5 +1,5 @@
 // Package prompt holds the terminal interactions: a spinner for slow steps, line and hidden input,
-// and a checkbox list. Each asks only on a terminal; without one the caller decides, so an agent's
+// a yes/no and a checkbox list. Each asks only on a terminal; without one the caller decides, so an agent's
 // idle pipe is never read.
 package prompt
 
@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -87,15 +89,97 @@ func Line(promptText string) (string, error) {
 	return strings.TrimRight(line, "\r\n"), nil
 }
 
-// Hidden reads a secret from the terminal without echo, the prompt on stderr.
+// Hidden is Python's getpass.getpass(): the prompt and the newline after the answer go to the
+// controlling terminal, the typed text is not echoed, and Ctrl-C or Ctrl-D on an empty line is
+// ErrEOF.
 func Hidden(promptText string) (string, error) {
-	fmt.Fprint(os.Stderr, promptText)
-	raw, err := xterm.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Fprintln(os.Stderr)
+	in, out := os.Stdin, os.Stderr
+	var opened *os.File
+	if runtime.GOOS != "windows" {
+		if f, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
+			opened, in, out = f, f, f
+		}
+	}
+	fd := int(in.Fd())
+	fmt.Fprint(out, promptText)
+	state, err := xterm.GetState(fd)
 	if err != nil {
 		return "", ErrEOF
 	}
-	return string(raw), nil
+	interrupted := make(chan os.Signal, 1)
+	signal.Notify(interrupted, os.Interrupt)
+	defer signal.Stop(interrupted)
+	type result struct {
+		secret []byte
+		err    error
+	}
+	done := make(chan result, 1)
+	go func() {
+		secret, err := readHidden(fd)
+		done <- result{secret, err}
+	}()
+	select {
+	case r := <-done:
+		if opened != nil {
+			defer opened.Close()
+		}
+		if r.err != nil {
+			return "", ErrEOF
+		}
+		fmt.Fprintln(out)
+		return string(r.secret), nil
+	case <-interrupted:
+		// The read is still blocked on the terminal, and closing it would wait for that read, so
+		// the descriptor is left to the process exit.
+		_ = xterm.Restore(fd, state)
+		return "", ErrEOF
+	}
+}
+
+// Confirm is questionary.confirm with default no: y or n answers at once, enter takes the
+// default, Ctrl-C is ErrEOF. It needs a terminal on stdin and stdout.
+func Confirm(message string) (bool, error) {
+	fd := int(os.Stdin.Fd())
+	state, err := xterm.MakeRaw(fd)
+	if err != nil {
+		return false, ErrEOF
+	}
+	p := term.Colors()
+	question := fmt.Sprintf("%s?%s %s%s%s", p.Accent, p.Reset, p.Bold, message, p.Reset)
+	fmt.Fprintf(os.Stdout, "%s (y/N) ", question)
+	answer, cancelled := false, false
+	buf := make([]byte, 64)
+read:
+	for {
+		n, err := os.Stdin.Read(buf)
+		if err != nil || n == 0 {
+			cancelled = true
+			break
+		}
+		for _, key := range keys(buf[:n]) {
+			switch key {
+			case "\x03", "\x04":
+				cancelled = true
+				break read
+			case "y", "Y":
+				answer = true
+				break read
+			case "n", "N", "\r", "\n":
+				break read
+			}
+		}
+	}
+	_ = xterm.Restore(fd, state)
+	if cancelled {
+		fmt.Fprintln(os.Stdout)
+		return false, ErrEOF
+	}
+	word := "No"
+	if answer {
+		word = "Yes"
+	}
+	fmt.Fprintf(os.Stdout, "\r\x1b[2K%s %s%s%s\n", question, p.Accent, word, p.Reset)
+	return answer, nil
 }
 
 // Choice is one checkbox row.
@@ -140,45 +224,61 @@ func Checkbox(message string, choices []Choice) (picked []int, ok bool) {
 	fmt.Fprint(out, "\x1b[?25l")
 	defer fmt.Fprint(out, "\x1b[?25h")
 	draw(true)
-	buf := make([]byte, 8)
+	buf := make([]byte, 64)
 	for {
 		n, err := os.Stdin.Read(buf)
 		if err != nil || n == 0 {
 			return nil, false
 		}
-		key := string(buf[:n])
-		switch key {
-		case "\x1b[A", "\x1bOA", "k":
-			cursor = (cursor - 1 + len(choices)) % len(choices)
-		case "\x1b[B", "\x1bOB", "j":
-			cursor = (cursor + 1) % len(choices)
-		case " ":
-			checked[cursor] = !checked[cursor]
-		case "a":
-			all := true
-			for _, c := range checked {
-				all = all && c
-			}
-			for i := range checked {
-				checked[i] = !all
-			}
-		case "i":
-			for i := range checked {
-				checked[i] = !checked[i]
-			}
-		case "\r", "\n":
-			for i, c := range checked {
-				if c {
-					picked = append(picked, i)
+		for _, key := range keys(buf[:n]) {
+			switch key {
+			case "\x1b[A", "\x1bOA", "k":
+				cursor = (cursor - 1 + len(choices)) % len(choices)
+			case "\x1b[B", "\x1bOB", "j":
+				cursor = (cursor + 1) % len(choices)
+			case " ":
+				checked[cursor] = !checked[cursor]
+			case "a":
+				all := true
+				for _, c := range checked {
+					all = all && c
 				}
+				for i := range checked {
+					checked[i] = !all
+				}
+			case "i":
+				for i := range checked {
+					checked[i] = !checked[i]
+				}
+			case "\r", "\n":
+				for i, c := range checked {
+					if c {
+						picked = append(picked, i)
+					}
+				}
+				fmt.Fprintf(out, "\x1b[%dA\r\x1b[J%s?%s %s%s%s %s(%d selected)%s\r\n", len(choices)+1,
+					p.Accent, p.Reset, p.Bold, message, p.Reset, p.Muted, len(picked), p.Reset)
+				return picked, true
+			case "\x03", "\x04", "\x1b":
+				fmt.Fprintf(out, "\x1b[%dA\r\x1b[J%sCancelled by user%s\r\n", len(choices)+1, p.Muted, p.Reset)
+				return nil, false
 			}
-			fmt.Fprintf(out, "\x1b[%dA\r\x1b[J%s?%s %s%s%s %s(%d selected)%s\r\n", len(choices)+1,
-				p.Accent, p.Reset, p.Bold, message, p.Reset, p.Muted, len(picked), p.Reset)
-			return picked, true
-		case "\x03", "\x04", "\x1b":
-			fmt.Fprintf(out, "\x1b[%dA\r\x1b[J%sCancelled by user%s\r\n", len(choices)+1, p.Muted, p.Reset)
-			return nil, false
 		}
 		draw(false)
 	}
+}
+
+// keys splits what one read returned into key presses: a paste or fast typing delivers several
+// at once, and an arrow key is an escape sequence of three bytes.
+func keys(b []byte) []string {
+	var out []string
+	for i := 0; i < len(b); i++ {
+		if b[i] == 0x1b && i+2 < len(b) && (b[i+1] == '[' || b[i+1] == 'O') {
+			out = append(out, string(b[i:i+3]))
+			i += 2
+			continue
+		}
+		out = append(out, string(b[i]))
+	}
+	return out
 }
