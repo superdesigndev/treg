@@ -197,6 +197,8 @@ endpoints:
     example_response: examples/cloro.ai-search.task.status.json
 
   - id: cloro.ai-search.copilot.scrape
+    status: broken
+    status_note: "Cloro cannot reach Copilot with logged-out sessions right now (MODEL_UNAVAILABLE). treg does not offer this scrape until Cloro restores access."
     domain: copilot
     capability: ai-search.copilot.scrape
     platform: ai-search
@@ -240,6 +242,8 @@ endpoints:
     docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-copilot
 
   - id: cloro.ai-search.perplexity.answer
+    status: broken
+    status_note: "Cloro cannot reach Perplexity with logged-out sessions right now (MODEL_UNAVAILABLE). treg does not offer this scrape until Cloro restores access; use another ai-search.perplexity.answer tool."
     domain: perplexity
     capability: ai-search.perplexity.answer
     platform: ai-search
