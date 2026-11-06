@@ -193,9 +193,10 @@ conflict on. It is not `verified` and not `source.curated`.
   so a moved route keeps its date and only a never-seen id gets today. For a route that still
   matches it also carries `cost` (under a freshly generated `cost.note`), `observed_cost`, `expect`, `untestable`, `status` and a reviewer's
   row `note` (no ingest writes one), and from a
-  row in the v2 spelling its `reserve`, `settle`, `bill`, `error`, `miss` and `not_found`, and a
+  row in the v2 spelling its `reserve`, `settle`, `bill`, `error`, `miss` and `not_found`, a
   priced row's `price` together with its `provenance` (an absent one stays absent and inherits the
-  provider's default), but not `platform_blocked` once the fresh row declares `resource_ownership.requires`.
+  provider's default), and a `null` that opts the row out of a default, but not `platform_blocked`
+  once the fresh row declares `resource_ownership.requires`.
 - `scripts/catalog_backfill_added.py` dated existing rows once from main's first-parent history;
   reviewed renames are applied with `--same-tool OLD=NEW`.
 
@@ -486,8 +487,9 @@ The `verified:` stamp is not required: a broken route fails unbilled under succe
 in-band reporters settle at 0, and caps bound the rest. Eligibility alone enables nothing: a
 normal platform call also needs a configured key and the provider allow-list (`platform_key_for`).
 A missing or unknown price reads as "refuse", never as free, so unpriced extended routes need no
-annotation. A row with only `observed_cost` gets a synthesized block from `_effective_cost`
-(`source: observed, confidence: verified`, `checked` = verify date). Whether a provider's plan
+annotation. A row in today's spelling with only `observed_cost` gets a synthesized block from
+`_effective_cost` (`source: observed, confidence: verified`, `checked` = verify date); in v2 the
+verifier writes that price as the row's `price` and `provenance`. Whether a provider's plan
 licence lets treg serve other teams decides whether it gets an `fx.yaml` rate at all; the provider
 file's header records that judgement.
 
@@ -747,8 +749,9 @@ TREG_CATALOG_CRED='<secret>' uv run python scripts/catalog_verify_extended.py <s
 The run goes cheapest first and stops before a call that would pass `--budget`; results are written
 back after every run and verified rows are skipped, so an interrupted run resumes.
 
-- **A missing `cost` reads as free and silently disables `--budget`.** `observed_cost` (the charge the
-  provider states in its response, written at verify time) budgets the next run. `observed_time` is
+- **A missing price reads as free and silently disables `--budget`.** Where a provider states the
+  charge in its response (DataForSEO), a row no rate card prices is priced at it when verified
+  (`price` with `provenance: {source: observed}`), which budgets the next run. `observed_time` is
   measured wall-clock, never read from the body (a provider's `time` field may be a timestamp).
 - **Spend accounting assumes per-success billing.** On a per-call provider compare the printed
   balance delta with the estimate before trusting a large run.
