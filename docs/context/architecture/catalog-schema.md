@@ -136,6 +136,51 @@ in at most one of the provider's two files. Per top-level key: a row's value win
 (`cache`, `expect`, `async`, `ceiling_param`, `response_retention`) in either of the provider's
 files.
 
+## Summary and note
+
+A row has two prose fields, and each caveat has one home.
+
+- **`summary`** says what the tool does, in positive terms. It is searched and shown in lists.
+- **`note`** holds caveats about the whole tool or its answer that have no more specific home. Only
+  the endpoint's own detail shows it; it is not searched.
+- **A caveat goes to its most specific home first:** a parameter's `input.*.note`, then the charge's
+  `cost.note` (`price.note` on a v2 row), then the row's `note`. Maintainer context is a YAML
+  comment; evidence (dates, sample sizes, how a price was measured) is the pull request body.
+
+What the validator says about them is warnings for the author to weigh, never errors:
+
+- **Length is the token limits, and only them:** `SUMMARY_TOKENS` (50) and `NOTE_TOKENS` (75) in
+  `scripts/catalog_validate.py`, about 200 and 300 English characters. No tokenizer is a
+  dependency, so a token is a run of letters and digits or one CJK character; punctuation is not
+  counted.
+- **The reflection word list** (`scripts/catalog_text_reflect.txt`): every entry found in a row's
+  summary, note, parameter notes or charge notes warns with the entry and its reason. An entry is
+  a word or phrase matched case-insensitive on word boundaries, or a `re:` regular expression;
+  hedges, words that argue with an earlier text, evidence, dates, sample sizes and
+  maintainer reasoning are seeded. A new word worth a second look is one more line there.
+
+A plain run warns on every row. `--base REF`, which `catalog-added.yml` runs on every pull request,
+warns only on the rows added or changed against REF, so an author sees the rows they touched. The
+one error is the spelling: a row written in today's `cost` on the base and in v2 `price` on the
+head, or back, fails unless the pull request carries the `catalog-migration` label.
+
+The writing rules no check can judge:
+
+- **Most callers need it.** A sentence earns its place when most callers of the tool's main use meet
+  it and it changes how they call or read the answer. A failure only some callers hit belongs in
+  the error they get at that moment, and nothing is written when that error already explains it.
+  Correcting a false statement always qualifies.
+- **Write what the probes show.** No hedging: a sentence that needs "may" or "often" stays out until
+  probes confirm it, and a confirmed behaviour that holds only in some cases names the case ("when
+  X, Y").
+- **Summary.** Lead with verb + object + key outputs; the first ~100 characters stand alone (CLI
+  search shows 100). Positive only: a limit or trap goes to a note, because a negation in a searched
+  field matches the query it denies. No parameter or output-column lists.
+- **Note.** Each sentence a fact and its consequence for the caller. Nothing that fits a more
+  specific home. No price derivation.
+- **Both.** State the present fact; never argue with an earlier version. Do not contradict another
+  field. Say each thing once.
+
 ## The shrink-only violation list
 
 `schema/violations.yaml` lists the violations the catalog still carries: keys only one provider

@@ -1,8 +1,10 @@
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
+from scripts import catalog_added
 from scripts import catalog_validate as validator
 from treg.domain.catalog import store as catalog_store
 from treg.application.call import resolve
@@ -1380,3 +1382,143 @@ def test_a_price_may_name_a_credit_rate_declared_unknown_but_never_a_missing_one
                for error in _v2_cost_errors("coingecko.simple.price", provenance=provenance, settle=reported))
     assert any("price.currency credit has no fx.yaml rate for 'google-ai'" in error
                for error in _v2_cost_errors(GEMINI, price={"value": "1", "currency": "credit"}))
+
+
+
+def _text_warnings(**row):
+    warnings: list[str] = []
+    validator.check_row_text({"id": "example.one", **row}, "example.yaml:example.one", warnings,
+                             validator.reflect_entries())
+    return warnings
+
+
+def test_tokens_count_word_runs_and_each_cjk_character():
+    assert validator.tokens("Find a company's work emails - name, title") == 8
+    assert validator.tokens("抖音 profile by sec_uid") == 6
+
+
+@pytest.mark.parametrize("row", [
+    {"summary": "Find a company's work emails by domain - address, name, title and confidence"},
+    {"summary": " ".join(["word"] * 50), "note": " ".join(["word"] * 75)},
+    {"summary": "Search posts", "note": "When the account is private, the answer is empty.",
+     "input": {"queryParams": {"q": {"type": "string", "note": "a hashtag without #"}}},
+     "cost": {"type": "per_call", "note": "charged on every 2xx"}},
+    {"summary": "Mayan calendar dates for a day, in a mayday format"},
+])
+def test_row_text_passes_a_row_that_says_what_the_tool_does(row):
+    assert _text_warnings(**row) == []
+
+
+@pytest.mark.parametrize("row, message", [
+    ({"summary": " ".join(["word"] * 51)}, "summary is 51 tokens, over 50"),
+    ({"summary": "Search posts", "note": " ".join(["word"] * 76)}, "note is 76 tokens, over 75"),
+    ({"summary": "Search posts; results May lag"}, "summary says 'May' (may): a hedge"),
+    ({"summary": "Search posts", "note": "It no\n  longer returns views."},
+     "note says 'no\\n  longer' (no longer): argues with an earlier text"),
+    ({"summary": "Search posts", "note": "Billed per_call so a miss is paid."}, "note says 'per_call so' (per_call so)"),
+    ({"summary": "Search posts. Live 2026-09-08 it returned ten."}, "summary says '2026-09-08'"),
+    ({"summary": "Search posts", "note": "Across 40 calls the answer was stale."}, "note says '40 calls'"),
+    ({"summary": "Search posts", "input": {"queryParams": {"q": {"type": "string", "note": "often a hashtag"}}}},
+     "input.queryParams.q.note says 'often'"),
+    ({"summary": "Search posts", "input": {"body": {"type": "object", "properties": {
+        "filter": {"type": "object", "properties": {"tag": {"type": "string", "note": "usually empty"}}}}}}},
+     "input.body.filter.tag.note says 'usually'"),
+    ({"summary": "Search posts", "input": {"note": "one of q | tag, probed weekly"}}, "input.note says 'probed'"),
+    ({"summary": "Search posts", "cost": {"type": "per_call", "note": "a retry might be charged"}},
+     "cost.note says 'might'"),
+    ({"summary": "Search posts", "price": {"value": "0.01", "note": "typically one credit"}},
+     "price.note says 'typically'"),
+])
+def test_row_text_warns_once_per_match_and_names_the_entry(row, message):
+    warnings = _text_warnings(**row)
+    assert len(warnings) == 1 and message in warnings[0], warnings
+
+
+def test_the_reflection_list_reads_phrases_regexes_reasons_and_comments(tmp_path):
+    words = tmp_path / "words.txt"
+    words.write_text("# a comment\n\nso that  # maintainer reasoning\nre:\\bv\\d+\\b\nobserved\n")
+    entries = validator.reflect_entries(words)
+    assert [(entry, reason) for entry, _, reason in entries] == [
+        ("so that", "maintainer reasoning"), (r"re:\bv\d+\b", ""), ("observed", "")]
+    assert entries[0][1].search("set so  that paging works") and not entries[0][1].search("also thatch")
+    assert entries[1][1].search("moved to V2")
+
+
+def _git(cwd, *args):
+    subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=t", *args],
+                   cwd=cwd, check=True, capture_output=True)
+
+
+def test_the_base_names_rows_added_or_changed_and_rows_respelt(tmp_path, monkeypatch):
+    catalog = tmp_path / "src" / "treg" / "catalog"
+    catalog.mkdir(parents=True)
+    (catalog / "example.yaml").write_text(
+        "provider: example\nendpoints:\n- id: example.old\n  summary: Old\n"
+        "- id: example.moved\n  summary: Moved\n- id: example.edited\n  summary: Edited\n")
+    (catalog / "other.yaml").write_text("provider: other\nendpoints: []\n")
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "base")
+    monkeypatch.setattr(catalog_added, "ROOT", tmp_path)
+    monkeypatch.setattr(validator, "CATALOG", catalog)
+
+    (catalog / "example.yaml").write_text(
+        "provider: example\nendpoints:\n- id: example.old\n  summary: Old\n"
+        "- id: example.edited\n  summary: Edited\n  added: '2026-10-01'\n- id: example.new\n  summary: New\n")
+    (catalog / "other.yaml").write_text("provider: other\nendpoints:\n- id: example.moved\n  summary: Moved\n")
+    assert validator.compare_with_base("main") == ({"example.edited", "example.new"}, [])
+
+    (catalog / "other.yaml").write_text(
+        "provider: other\nendpoints:\n- id: example.moved\n  summary: Moved\n  price: {value: '0.01'}\n")
+    changed, respelt = validator.compare_with_base("main")
+    assert changed == {"example.edited", "example.new", "example.moved"}
+    assert respelt == ["example.moved: written in the legacy spelling on main, now v2"]
+
+
+def test_validator_with_a_base_judges_the_text_of_touched_rows_only(tmp_path, monkeypatch, capsys):
+    catalog = tmp_path / "src" / "treg" / "catalog"
+    catalog.mkdir(parents=True)
+    (catalog / "capabilities.yaml").write_text("platforms: {tiktok: TikTok}\n"
+                                               "capabilities: {tiktok.user.profile: Profile}\n")
+    (catalog / "fx.yaml").write_text("credit_rates_usd: {}\n")
+    row = ("provider: tikhub\nsource: {docs: https://example.com/docs}\nendpoints:\n"
+           "  - id: tikhub.tiktok.user.profile\n    capability: tiktok.user.profile\n"
+           "    platform: tiktok\n    method: GET\n    path: /profile\n"
+           "    summary: Public TikTok profile by username, observed weekly\n    added: '2026-09-01'\n"
+           "    cost: {type: free, value: 0, currency: USD, unit: call}\n")
+    (catalog / "tikhub.yaml").write_text(row)
+    _git(tmp_path, "init", "-q", "-b", "main")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "base")
+    monkeypatch.setattr(catalog_added, "ROOT", tmp_path)
+    monkeypatch.setattr(validator, "CATALOG", catalog)
+    warning = "WARN tikhub.yaml:tikhub.tiktok.user.profile: summary says 'observed' (observed)"
+
+    assert validator.main(["tikhub"]) == 0
+    assert any(line.startswith(warning) for line in capsys.readouterr().out.splitlines())
+    assert validator.main(["--base", "main", "tikhub"]) == 0
+    assert not any(line.startswith(warning) for line in capsys.readouterr().out.splitlines())
+
+    (catalog / "tikhub.yaml").write_text(row.replace("path: /profile", "path: /v2/profile"))
+    assert validator.main(["--base", "main", "tikhub"]) == 0
+    assert any(line.startswith(warning) for line in capsys.readouterr().out.splitlines())
+
+
+def test_a_respelt_row_fails_unless_the_migration_label_allows_it(tmp_path, monkeypatch, capsys):
+    catalog = tmp_path / "src" / "treg" / "catalog"
+    catalog.mkdir(parents=True)
+    (catalog / "capabilities.yaml").write_text("platforms: {tiktok: TikTok}\ncapabilities: {}\n")
+    (catalog / "fx.yaml").write_text("credit_rates_usd: {}\n")
+    (catalog / "tikhub.extended.yaml").write_text(
+        "provider: tikhub\nsource: {spec_urls: [https://example.com/openapi.json]}\nendpoints:\n"
+        "  - id: tikhub.x.profile\n    platform: tiktok\n    method: GET\n    path: /profile\n"
+        "    summary: Public TikTok profile\n    added: '2026-09-01'\n")
+    monkeypatch.setattr(validator, "CATALOG", catalog)
+    line = "example.one: written in the legacy spelling on main, now v2"
+    monkeypatch.setattr(validator, "compare_with_base", lambda base: (set(), [line]))
+
+    assert validator.main(["--base", "main", "tikhub"]) == 1
+    assert f"{line}; keep the row's spelling, or label a migration batch `catalog-migration`" \
+        in capsys.readouterr().out.splitlines()
+    assert validator.main(["--base", "main", "--allow-respelling", "tikhub"]) == 0
+    assert f"WARN {line} (catalog-migration)" in capsys.readouterr().out.splitlines()

@@ -264,9 +264,11 @@ so parallel runs and side-by-side runs never share one.
   goes in the PR body, never into a fragment or a comment. A fragment moves only when a mechanism
   changes; `drift.sh` naming one is a prompt to check it, not an obligation to write. No dated
   per-provider sections in `docs/context/architecture/catalog.md`: a provider's quirk lives on
-  its row as a `note`. No per-endpoint tests: the round-trip test over every shipped adapter and
-  the validator already judge the rows, and a test that restates a list of declarations is
-  deleted, not extended. Code a data change needs ships in the same PR as its first rows.
+  its row, in the most specific note. Write and review every summary and note against
+  `docs/context/architecture/catalog-schema.md` ("Summary and note"). No per-endpoint tests: the
+  round-trip test over every shipped adapter and the validator already judge the rows, and a test
+  that restates a list of declarations is deleted, not extended. Code a data change needs ships in
+  the same PR as its first rows.
 
 ## When writing user-facing copy
 
