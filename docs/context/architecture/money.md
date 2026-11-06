@@ -753,6 +753,8 @@ row.
   row's `settle.reported` is the charge the provider reported on the submission, when it billed the
   task (DataForSEO's task_post); the terminal answer's own figure is never read, as a row in today's
   spelling settles an `observed` basis. Without a submission figure the outcome and `bill` decide.
+  This refines the settlement order for async rows: step 3 reads the submission's report, so a
+  provider that reports its charge only on the terminal answer needs its own declared change.
 - The served `cost` of a `rates` row carries the reserve `max` as its `fallback`, the most one
   call is held at, so eligibility on treg's key reads a price for it.
 - `MarketplaceCall.unit_micro` is one `price.value` (a table's fallback) and
