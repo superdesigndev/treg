@@ -808,6 +808,10 @@ class Settings(BaseSettings):
     # ingestion key (safe to expose to the browser); host defaults to EU cloud.
     posthog_key: str = ""
     posthog_host: str = "https://eu.i.posthog.com"
+    # The CLI release a registry tells older CLIs about (client_notice.py). PyPI publishing is separate
+    # from deploying, so the operator sets these after the release is on PyPI. Empty = no notice.
+    cli_latest_version: str = ""
+    cli_min_version: str = ""
     # Call events (call_events.py, docs/context/architecture/call-events.md): one structured,
     # pseudonymous event per catalog call, POSTed in batches to an HTTP stream (a Cloudflare
     # Pipelines stream writing an Iceberg table). OFF unless the URL and the HMAC secret are both

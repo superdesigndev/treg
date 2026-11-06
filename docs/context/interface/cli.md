@@ -10,6 +10,7 @@ sources:
   - src/treg/routers/auth_helpers.py
   - src/treg/cli_analytics.py
   - src/treg/web/install.sh
+  - src/treg/client_notice.py
   - src/treg/cli_session.py
   - src/treg/convert.py
   - src/treg/agents.py
@@ -120,6 +121,11 @@ is self-teaching. This fragment holds only what the code and help cannot say.
   `X-Treg-Key-Protocol: 1`; the legacy hint is the released CLI's `python-httpx/` User-Agent plus
   `ngrok-skip-browser-warning: 1` without that marker. It is a compatibility check, not an
   authorization boundary: omitting or forging it never relaxes token restrictions.
+- **Version notice.** When the operator sets `cli_latest_version` or `cli_min_version`,
+  `bootstrap_http._ClientNoticeMiddleware` answers any request carrying `X-Treg-Client-Version`
+  with `X-Treg-Client-Notice`, worded by `client_notice.notice` ("available", or "no longer
+  supported" below the minimum). The CLI prints the header as-is on stderr, once a day per notice
+  (`client-notice` beside the config) and never under `--json`; it holds no release logic itself.
   `test_released_cli_compat` checks that refusal preserves config bytes and the prior team.
 
 ## Calls
