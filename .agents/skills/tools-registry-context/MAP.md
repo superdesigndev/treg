@@ -272,6 +272,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/showcase.py` | architecture/showcase.md |
 | `src/treg/application/signup.py` | architecture/ads-conversions.md, architecture/money.md, architecture/multi-tenancy.md, architecture/policy-extensions.md, interface/api.md |
 | `src/treg/application/table.py` | architecture/table.md |
+| `src/treg/application/view_context.py` | interface/api.md |
 | `src/treg/application/web_arena.py` | interface/web-arena.md |
 | `src/treg/application/web_arena_calls.py` | interface/web-arena.md |
 | `src/treg/application/web_arena_publications.py` | interface/web-arena.md |
@@ -300,7 +301,6 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/cli.py` | architecture/hub.md, architecture/instagram-oauth.md, interface/cli.md, interface/onboarding.md, interface/shell.md |
 | `src/treg/cli_analytics.py` | interface/cli.md |
 | `src/treg/cli_session.py` | interface/cli.md |
-| `src/treg/cli_view.py` | interface/cli.md |
 | `src/treg/client_identity.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/client_ip.py` | architecture/multi-tenancy.md |
 | `src/treg/client_notice.py` | interface/cli.md |
@@ -480,6 +480,11 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/routers/showcase.py` | architecture/showcase.md |
 | `src/treg/routers/signup_cookies.py` | interface/api.md |
 | `src/treg/routers/table.py` | architecture/org-traffic.md, architecture/table.md |
+| `src/treg/routers/view.py` | interface/api.md |
+| `src/treg/routers/views/__init__.py` | interface/cli.md |
+| `src/treg/routers/views/account.py` | interface/cli.md |
+| `src/treg/routers/views/catalog.py` | interface/cli.md |
+| `src/treg/routers/views/toon.py` | interface/cli.md |
 | `src/treg/routers/web.py` | architecture/composition.md, architecture/hub.md, interface/api.md, interface/dashboard.md, interface/seo.md, interface/skill.md |
 | `src/treg/routers/web_arena.py` | interface/web-arena.md |
 | `src/treg/runner.py` | interface/api.md |
@@ -757,8 +762,8 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/super-admin.md` | `api.py`, `admin.py`, `evidence_retention.py`, `access.py`, `config.py` |
 | `architecture/table.md` | `__init__.py`, `table.py`, `table.py`, `call.py`, `call_surface.py`, `config.py`, `mcp_oauth.py`, `auth.py`, `auth.py`, `test_table.py`, `test_table_oauth.py` |
 | `architecture/workbench-storage.md` | `models.py`, `0077_workbench_table_metadata.py`, `teams.py`, `test_workbench_table_schema.py`, `workbench_store.py`, `test_workbench_store.py`, `test_workbench_store_lifecycle.py` |
-| `interface/api.md` | `key_spend.py`, `media.py`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `sandbox.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `sandbox.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `sandbox.py`, `sandbox_identity.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py`, `test_cli_pairing.py` |
-| `interface/cli.md` | `cli.py`, `cli_view.py`, `home.py`, `test_released_cli_compat.py`, `test_cli_key_compatibility.py`, `auth_helpers.py`, `cli_analytics.py`, `install.sh`, `client_notice.py`, `cli_session.py`, `convert.py`, `agents.py`, `api_keys.py`, `test_api_keys.py` |
+| `interface/api.md` | `key_spend.py`, `media.py`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `sandbox.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `view.py`, `view_context.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `sandbox.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `sandbox.py`, `sandbox_identity.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py`, `test_cli_pairing.py` |
+| `interface/cli.md` | `cli.py`, `__init__.py`, `toon.py`, `catalog.py`, `account.py`, `home.py`, `test_released_cli_compat.py`, `test_cli_key_compatibility.py`, `auth_helpers.py`, `cli_analytics.py`, `install.sh`, `client_notice.py`, `cli_session.py`, `convert.py`, `agents.py`, `api_keys.py`, `test_api_keys.py` |
 | `interface/dashboard.md` | `App.vue`, `TeamShowcase.vue`, `TeamAvatar.vue`, `UserAvatarDialog.vue`, `Avatar.vue`, `images.ts`, `views.ts`, `controller.js`, `agents.js`, `agentsComputed.js`, `credentialIssues.js`, `data.js`, `keys.js`, `session.js`, `team.js`, `TeamPage.vue`, `agents.test.ts`, `agents.spec.ts`, `catalog.js`, `boot.js`, `SignedOutPage.vue`, `base.css`, `layout.spec.ts`, `dashboard.css`, `web.py`, `tutorial.js`, `tour.js`, `TryEndpointDialog.vue`, `tryTool.js`, `TikTokPostForm.vue`, `tiktokPost.ts` |
 | `interface/enrich-arena.md` | `arena.py`, `arena.py`, `arena.py`, `models.py`, `0027_enrich_arena.py`, `teams.py`, `auth.py`, `bootstrap.py`, `enrich-arena.html`, `arena.js`, `bench.js`, `arena.css`, `index.ts`, `arena_verification_insights.py`, `0029_arena_verification_snapshot.py`, `import_arena_verification.py`, `test_arena_verification_insights.py`, `arena_insights.py`, `arena_insights.py`, `0028_arena_insights.py`, `test_arena_insights.py`, `apollo.svg`, `branddev.svg`, `companyenrich.svg`, `findymail.svg`, `hunter.svg`, `icypeas.svg`, `leadmagic.svg`, `leadsforge.svg`, `lusha.svg`, `pdl.svg`, `predictleads.svg`, `thecompaniesapi.svg`, `tomba.svg`, `sitetrack.js`, `test_enrich_arena.py` |
 | `interface/env-import.md` | `providers.py`, `skills.py` |

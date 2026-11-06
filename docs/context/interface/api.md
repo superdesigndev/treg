@@ -45,6 +45,8 @@ sources:
   - src/treg/routers/resources.py
   - src/treg/routers/referrals.py
   - src/treg/routers/signup_cookies.py
+  - src/treg/routers/view.py
+  - src/treg/application/view_context.py
   - src/treg/routers/web.py
   - src/treg/domain/identity/access.py
   - src/treg/domain/identity/api_keys.py
@@ -344,6 +346,29 @@ cookie-authenticated mutation.
 **Client notice**: `_ClientNoticeMiddleware` adds `X-Treg-Client-Notice` to any answer, `/call/`
 included, for a request whose `X-Treg-Client-Version` is behind the operator's CLI release
 ([cli](cli.md), "Version notice"). It reads only that request header and never touches the body.
+
+## Views
+
+A route that has a view (`routers.view.renders`) answers a request carrying `X-Treg-View: 1` with
+`{"data": <its own body, byte for byte>, "text": <what the CLI prints>}`, its own status and
+headers, plus `X-Treg-View: 1`. Without the header, for a HEAD, for a non-JSON answer or on a
+route without a view, the answer is untouched. `bootstrap._include_routes` wraps each route's ASGI
+app (`view.wrap`), which captures the whole answer first, so a refusal raised before the handler
+runs (a rejected token) or by an exception handler is rendered too. Routes with views: `/home`,
+`/catalog/platforms`, `/catalog/platforms/{slug}`, `/catalog/search`, `/catalog/endpoints/{id}`,
+`POST /tool-requests`, `/orgs/{id}/balance`, `/feedback/{id}`.
+
+- The text comes from `routers/views/`, which the Python CLI also prints from. Open catalog routes
+  render for whoever the request names (`view.optional_caller`; an unresolvable token renders as
+  anonymous): `own_key` from the caller's connections, `access` from the endpoint access use case,
+  and a capability pin hides the providers it refuses in `catalog get`. Each is best-effort
+  (`view.quietly`), as the extra requests the CLI made for them were.
+- What the CLI asked for in a second request, a view asks the router for in process (`view.get`:
+  same headers, no view). `catalog get <job>` 404s as an endpoint; with the header it answers 200,
+  as the job's routed endpoint (that route's body is `data`) or as every provider of the job
+  (`data` is that view's JSON). `limit` on `/catalog/endpoints/{id}` is read only by its view.
+- `/home`'s text leaves out the client's own lines: `treg:` (version and path) and `registry:`.
+  `/feedback/{id}`'s refusal text never repeats the refusal body.
 
 ## Public pages and agent files
 

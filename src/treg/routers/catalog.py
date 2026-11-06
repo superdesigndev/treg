@@ -13,11 +13,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..application import catalog_find as find
 from ..application import feedback as feedback_app
+from ..application import view_context
 from ..config import get_settings
 from ..infra.db import get_session
 from ..domain.capacity.routes_view import view as overflow_routes_view
 from ..domain.catalog import store as catalog_store
 from ..domain.catalog import stats as endpoint_stats
+from . import view
+from .views import account as account_views
+from .views import catalog as catalog_views
+from .views import toon
 
 
 app = APIRouter()
@@ -830,3 +835,107 @@ async def _hub_endpoint_view(endpoint_id: str, db: AsyncSession,
         "provider": {"display_name": org.slug if org else "", "kind": "hub maker"},
         "siblings": siblings,
     }
+
+
+def _refusal_text(answer: view.Answer) -> str:
+    return catalog_views.failure_text(
+        catalog_views.refusal(answer.status, answer.object(), answer.body.decode("utf-8", "replace")))
+
+
+async def _held(request: Request) -> set[str]:
+    caller = await view.quietly(view.caller_of(request))
+    if caller is None:
+        return set()
+    return await view.quietly(view_context.connected_providers(caller), set())
+
+
+def _limit(request: Request) -> int | None:
+    try:
+        return int(request.query_params["limit"])
+    except (KeyError, ValueError):
+        return None
+
+
+@view.renders(catalog_platforms)
+async def _platforms_view(answer: view.Answer) -> str:
+    if answer.status != 200:
+        return _refusal_text(answer)
+    return toon.printed(*catalog_views.platforms(answer.object()))
+
+
+@view.renders(catalog_platform)
+async def _platform_view(answer: view.Answer) -> str:
+    if answer.status != 200:
+        return _refusal_text(answer)
+    return toon.printed(*catalog_views.platform(answer.object(), await _held(answer.request)))
+
+
+@view.renders(catalog_search)
+async def _search_view(answer: view.Answer) -> str:
+    if answer.status != 200:
+        return _refusal_text(answer)
+    params, body = answer.request.query_params, answer.object()
+    days = params.get("added_within_days")
+    held = await _held(answer.request) if body.get("results") else set()
+    return toon.printed(*catalog_views.search(body, query=params.get("q", ""), days=None if days is None else int(days),
+                                              sort=params.get("sort") or "best", connected=lambda: held))
+
+
+@view.renders(catalog_endpoint)
+async def _endpoint_view(answer: view.Answer) -> str | view.Rendered:
+    request = answer.request
+    endpoint_id = request.path_params["endpoint_id"]
+    if answer.status == 404:
+        job = await _job_view(request, endpoint_id, _limit(request))
+        return job or catalog_views.failure_text(catalog_views.unknown_endpoint(endpoint_id, answer.object()))
+    if answer.status != 200:
+        return _refusal_text(answer)
+    return await _endpoint_text(request, answer.object(), endpoint_id, _limit(request))
+
+
+async def _endpoint_text(request: Request, body: dict, endpoint_id: str, limit: int | None) -> str:
+    e = body["endpoint"]
+    if e.get("kind") == "hub":
+        return toon.printed(catalog_views.head(e) | catalog_views.hub(e))
+
+    async def facts(db: AsyncSession, caller) -> tuple[str | None, str | None]:
+        access = None if e.get("kind") == "routed" else \
+            await view.quietly(view_context.endpoint_access(db, caller, endpoint_id))
+        return access, await view.quietly(view_context.pinned_provider(db, caller, e.get("capability")))
+
+    access, pin = await view.quietly(view.with_caller(request, facts)) or (None, None)
+    page, help_lines = catalog_views.endpoint(body, access=access, pinned=lambda capability: pin, limit=limit,
+                                              base_url=get_settings().public_url)
+    return toon.printed(page, help_lines, catalog_views.GET_GROUPS)
+
+
+async def _job_view(request: Request, job_id: str, limit: int | None) -> view.Rendered | None:
+    """`catalog get <job>`, the way the CLI resolved a job before the registry rendered it: the
+    job's routed id answers as that endpoint; a job without one lists every provider of it."""
+    status, raw = await view.get(request, f"/catalog/platforms/{job_id.split('.', 1)[0]}", "include_hidden=1")
+    capabilities = (json.loads(raw).get("capabilities") or []) if status == 200 else []
+    cap = next((x for x in capabilities if x.get("id") == job_id), None)
+    if not cap or not cap.get("endpoints"):
+        return None
+    if routed := catalog_views.routed_member(cap):
+        status, raw = await view.get(request, f"/catalog/endpoints/{routed}")
+        if status != 200:
+            return None
+        return view.Rendered(await _endpoint_text(request, json.loads(raw), routed, limit), raw, 200)
+    status, raw = await view.get(request, f"/catalog/endpoints/{cap['endpoints'][0]['id']}")
+    if status != 200:
+        return None
+
+    async def pin(db: AsyncSession, caller) -> str | None:
+        return await view_context.pinned_provider(db, caller, job_id)
+
+    page, help_lines = catalog_views.job(job_id, cap.get("description"), json.loads(raw),
+                                         await view.quietly(view.with_caller(request, pin)))
+    return view.Rendered(toon.printed(page, help_lines), toon.render_json(page, help_lines).encode(), 200)
+
+
+async def tool_request_view(answer: view.Answer) -> str:
+    """`POST /tool-requests`'s view; the route itself lives in the legacy API module."""
+    if answer.status != 200:
+        return account_views.as_json(answer.json())
+    return catalog_views.tool_request((json.loads(answer.sent).get("capability") or "").strip())

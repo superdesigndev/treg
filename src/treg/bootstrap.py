@@ -42,6 +42,7 @@ from .infra.catalog_observations import (
     PostgresEndpointObservationReader,
 )
 from .routers import call as call_routes
+from .routers import view as view_routes
 
 
 AppRole = Literal["all", "dataplane", "control"]
@@ -546,7 +547,7 @@ def _include_routes(app: FastAPI, routes: Sequence[APIRoute]) -> None:
     for route in routes:
         cloned = copy(route)
         cloned.dependency_overrides_provider = app
-        cloned.app = request_response(cloned.get_route_handler())
+        cloned.app = view_routes.wrap(cloned.endpoint, request_response(cloned.get_route_handler()))
         app.router.routes.append(cloned)
 
 

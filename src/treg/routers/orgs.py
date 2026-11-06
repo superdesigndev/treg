@@ -71,8 +71,11 @@ from ..models import (
 )
 from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
+from . import view
 from .auth_helpers import _is_https, require_managed_cli
 from .signup_cookies import REFERRAL_COOKIE
+from .views import account as account_views
+from .views import toon
 
 
 _day_start_utc = usage_policy._day_start_utc
@@ -473,6 +476,22 @@ async def home(
         caller, user = None, await require_identity(request, x_treg_token, x_treg_org, treg_session, db)
     count = len(await _visible_orgs(user.id, x_treg_token, x_treg_org, treg_session, db))
     return await home_app.summary(db, user.email, caller, teams=count)
+
+
+@view.renders(home)
+async def _home_view(answer: view.Answer) -> str:
+    """Bare `treg` after the CLI's own `treg:` and `registry:` lines."""
+    status = answer.status
+    if status == 200:
+        state = answer.object()
+    elif status in (401, 403):
+        state = (account_views.credential_refused(status, answer.object()) if view.credentials_sent(answer.request)
+                 else {"account": None})
+    elif status >= 500:
+        state = {"registry_error": f"HTTP {status} from /home"}
+    else:
+        state = {"unavailable": f"HTTP {status} from /home is not a treg answer"}
+    return toon.printed(*account_views.home(state))
 
 
 app = APIRouter()

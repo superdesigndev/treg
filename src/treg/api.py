@@ -74,6 +74,7 @@ from .routers import provider_resources as provider_resource_routes
 from .routers import referrals as referral_routes
 from .routers import resources as resources_routes
 from .routers import table as table_routes
+from .routers import view as view_routes
 from .routers import web as web_routes
 from .routers.auth import _client_ip
 from .routers.auth_helpers import _same_origin
@@ -312,6 +313,8 @@ async def create_tool_request(
     return {"id": row.id, "status": "received",
             "note": "logged — requests steer which provider gets keyed next"}
 
+
+view_routes.renders(create_tool_request)(catalog_routes.tool_request_view)
 
 router.routes.extend(feedback_routes.app.routes)
 router.routes.extend(hub_routes.app.routes)

@@ -47,7 +47,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | Fragment | Status | Covers |
 |---|---|---|
 | [The API — the only brain (FastAPI)](interface/api.md) | shipped | key_spend.py, media.py, sitetrack.js, api.py, … |
-| [The CLI (treg) + skill scaffolding](interface/cli.md) | shipped | cli.py, cli_view.py, home.py, test_released_cli_compat.py, … |
+| [The CLI (treg) + skill scaffolding](interface/cli.md) | shipped | cli.py, __init__.py, toon.py, catalog.py, … |
 | [The web dashboard (served from FastAPI)](interface/dashboard.md) | shipped | App.vue, TeamShowcase.vue, TeamAvatar.vue, UserAvatarDialog.vue, … |
 | [Enrich Arena - paid comparisons, one-click feedback, and visible waterfalls](interface/enrich-arena.md) | shipped | arena.py, arena.py, arena.py, models.py, … |
 | [Import - scan a .env, a skills dir or the machine's CLIs and register them as tools](interface/env-import.md) | shipped | providers.py, skills.py |
