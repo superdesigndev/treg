@@ -424,6 +424,9 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/archive/body', ('GET',), 'admin_archive_body'),
     ('/admin/archive/panel', ('GET',), 'admin_archive_panel'),
     ('/admin/referrals', ('GET',), 'admin_referrals'),
+    ('/admin/referrals/users', ('GET',), 'admin_referral_user_by_email'),
+    ('/admin/referrals/users/{user_id}', ('GET',), 'admin_referral_user'),
+    ('/admin/referrals/users/{user_id}/affiliate', ('PUT',), 'admin_set_referral_affiliate'),
     ('/catalog/endpoints/{endpoint_id}/access', ('GET',), 'catalog_endpoint_access'),
     ('/run', ('POST',), 'run_tool_server'),
 })

@@ -22,8 +22,6 @@ export default {
       return (usd*1000000 >= o.remaining_micro) ? o.referred_micro : 0; },
 // Amounts come from /meta (config only), never from GET /referrals, which has side effects.
     // Falls back to the plain label while /meta loads or when either side earns nothing.
-    // The top bar's entry says Referral: it leads to two programs, and the friend credit is a small
-    // pull for an affiliate with an audience. The credit offer rides along on hover and for screen readers.
     refEntryTitle(){ const r=this.meta&&this.meta.referral;
       if(!r || !(r.referrer_micro>0) || !(r.referred_micro>0)) return 'Refer a friend, or become an affiliate partner';
       const usd=m=>m%1000000===0 ? '$'+m/1000000 : this.money(m);
