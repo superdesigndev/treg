@@ -625,7 +625,7 @@ async def catalog_endpoint(
         # Out of search while paused, but a held id is told why instead of "unknown endpoint".
         raise HTTPException(status_code=503, detail=oauth_providers.paused_detail(
             ep["provider"], endpoint_id))
-    view = (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat)
+    view = (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat, detail=True)
             | catalog_store.endpoint_context(ep, cat))
     if ep.get("team_label") or ep.get("caller_email"):
         personal = await _your_values(request, db, ep)

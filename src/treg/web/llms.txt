@@ -149,6 +149,8 @@ catalog search. Over MCP: `hub_create`. The skill below has the whole guide.
 <!--hosted-->
 - [GTM engineering playbook]({BASE}/gtm-engineering.md): from ICP to rollout, each chapter with a
   prompt and a rule.
+- [Comparisons]({BASE}/compare): treg beside other tool gateways, app connectors and data
+  platforms, each read from that product's own pages and dated.
 <!--/hosted-->
 - [README](https://github.com/superdesigndev/treg/blob/main/README.md): overview and architecture.
 - [CLI reference](https://github.com/superdesigndev/treg/blob/main/USAGE.md): every command, with

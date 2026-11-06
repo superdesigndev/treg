@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Full square fill so the icon renders edge-to-edge in marketplace cards
+       and other contexts where it sits next to square provider logos.
+       Google's SERP circular crop will trim the corners of this square,
+       but corners are background-only so no content is lost. The important
+       brand mark (A + accent dot) sits inside the inscribed circle's safe
+       zone (radius ~16 from center 16,16) so SERP cropping doesn't touch it. -->
+  <rect width="32" height="32" fill="#121212"/>
+  <text x="14" y="23" font-family="system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" fill="#fafafa" text-anchor="middle">A</text>
+  <circle cx="22" cy="21" r="2" fill="#3b82f6"/>
+</svg>

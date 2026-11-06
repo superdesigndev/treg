@@ -279,6 +279,12 @@ One concept, one word. Settled deliberately - mixed vocabulary is how the old fr
 now do, not what we store. Never use a count of endpoints or providers in this file; the catalog
 changes weekly and every stale number is a lie.
 
+**A new public page: offer it a share image.** When you add a public page, ask the person driving
+the session whether it should get its own `og:image` from `scripts/og_images.py` (add the page to a
+group in `GROUPS`, then run the script for that one page). Tell them that if they do not like the
+current look, a new style is one more template in `LAYOUTS`. Without a card the page keeps the
+site-wide `/media/og.png`. `docs/context/interface/seo.md` ("The social card") has the details.
+
 **Do not document what is not built.** An agent that believes a feature exists fails in a way
 nobody can debug. Provider choice is the easiest thing to overstate: treg compares providers, and
 chooses only in the two disclosed cases of non-negotiable 4.

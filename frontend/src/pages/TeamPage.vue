@@ -402,9 +402,13 @@ export default {
                         </span>
                       </label>
                       <p class="sub" style="margin:8px 0 0">
-                        <template v-if="billing.autotopup.enabled">On - we add {{money(billing.autotopup.amount_micro)}} whenever the balance drops below {{money(billing.autotopup.threshold_micro)}}, up to {{billing.autotopup.per_hour}} times per hour. This month: {{money(billing.autotopup.month_spend_micro)}} of the {{money(billing.autotopup.monthly_cap_micro)}} monthly limit.
+                        <template v-if="billing.autotopup.enabled">On - we add {{money(billing.autotopup.amount_micro)}}<span v-if="tierBonus(billing.autotopup.amount_micro/1e6)" style="color:var(--green)"> + {{money(tierBonus(billing.autotopup.amount_micro/1e6))}} bonus</span> whenever the balance drops below {{money(billing.autotopup.threshold_micro)}}, up to {{billing.autotopup.per_hour}} times per hour. This month: {{money(billing.autotopup.month_spend_micro)}} of the {{money(billing.autotopup.monthly_cap_micro)}} monthly limit.
                           <a href="#" @click.prevent="autoOpen=!autoOpen;autoConsent=false">{{autoOpen?'Cancel':'Edit'}}</a></template>
-                        <template v-else>Keep agents running without watching the balance. We charge your saved card only when it dips below your threshold.</template>
+                        <template v-else>Keep agents running without watching the balance. We charge your saved card only when it dips below your threshold.<template v-if="maxBonusPct"> Bigger refills earn bonus credit, up to +{{maxBonusPct}}% on every refill.</template></template>
+                      </p>
+                      <p v-if="billing.autotopup.enabled&&!autoOpen&&nextBonusTier(billing.autotopup.amount_micro/1e6)" class="sub" style="margin:4px 0 0">
+                        Refill <b>${{nextBonusTier(billing.autotopup.amount_micro/1e6).usd}}</b> or more to earn <span style="color:var(--green)">+{{nextBonusTier(billing.autotopup.amount_micro/1e6).pct}}% bonus</span> on every refill.
+                        <a href="#" @click.prevent="autoOpen=true;autoConsent=false">Change amount</a>
                       </p>
                       <!-- The same panel edits a running policy (Edit link above) and arms a new one:
                            either way the numbers change, so the mandate is re-agreed and re-stamped. -->
@@ -418,6 +422,10 @@ export default {
                           <input class="msel" style="width:56px" type="number" min="1" max="60" v-model.number="autoPerHour"/>
                           <span class="sub" style="margin:0">times per hour</span>
                         </div>
+                        <p class="sub" style="margin:8px 0 0">
+                          <template v-if="tierBonus(autoAmount)">Each refill adds <b>{{money(autoAmount*1e6+tierBonus(autoAmount))}}</b> ({{money(autoAmount*1e6)}} + <span style="color:var(--green)">{{money(tierBonus(autoAmount))}} bonus</span>).</template>
+                          <template v-if="nextBonusTier(autoAmount)"> Refill <a href="#" @click.prevent="autoAmount=nextBonusTier(autoAmount).usd;autoConsent=false">${{nextBonusTier(autoAmount).usd}}</a> or more for <span style="color:var(--green)">+{{nextBonusTier(autoAmount).pct}}% bonus</span> on every refill.</template>
+                        </p>
                         <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;cursor:pointer">
                           <input type="checkbox" v-model="autoConsent" style="margin-top:3px"/>
                           <!-- The mandate text. Not decoration: an off-session charge with no recorded
