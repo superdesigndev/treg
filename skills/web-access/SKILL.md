@@ -1,6 +1,8 @@
 ---
 name: web-access
-description: Use whenever a task needs something from the live web — search the web or the news, read a URL, map or crawl a site, pull structured fields from a page, or get data from a platform (X, LinkedIn, Reddit, TikTok, Instagram, YouTube, Xiaohongshu, Amazon, app stores, Google Maps, papers). Picks the right tool for the job, starts free, and lets treg fall back to the next vendor when one fails. No local scrapers, browsers or cookies.
+description: Use only when the agent's own web tools can't do the job. Use what you already have first (built-in web search and fetch, a browser, MCP servers the user installed); come here when none of them covers it, such as a page they can't read, structured data from a platform they have no tool for (X, LinkedIn, Reddit, TikTok, Instagram, YouTube, Xiaohongshu, Amazon, app stores, Google Maps, papers), or when the user asks for treg. Not for localhost, staging, internal pages or public docs your own fetch can read. Starts free, and treg falls back to the next vendor when one fails.
+metadata:
+  summary: Reaches the web data your own tools can't. Pages a normal fetch can't read, and structured data from platforms like X, LinkedIn, Reddit, YouTube and Amazon, starting with free tools.
 ---
 
 # Web access
@@ -10,10 +12,23 @@ pages and platforms a free fetch can't reach. Nothing runs on this machine: no b
 no burner accounts. treg calls the vendor and, on a routed job, tries the next one when a vendor
 comes back empty or blocked.
 
+## When to use this
+
+Your own tools come first. Whenever the built-in web search or fetch, a browser, or an MCP server the
+user installed can do the job, use it and leave this skill alone. Come here only when none can:
+
+- a page your own fetch can't read (blocked, needs JavaScript, rate-limited)
+- structured data from a platform you have no tool for (posts, profiles, products, reviews, places)
+- the user asked for treg
+
+Never send localhost, staging, an intranet or anything behind the user's login through treg: it
+cannot reach them, and they are not public.
+
 Runs on treg, through its MCP tools or the `treg` CLI; either is enough. Over MCP, each command
 below maps onto a tool: `treg catalog search` is `catalog_search`, `treg catalog get` is
-`catalog_get`, `treg call` is `call`. With neither, treg is not set up: https://treg.to/llms.txt says how.
-Install only if the human asked you to; otherwise tell them how and stop.
+`catalog_get`, `treg call` is `call`. With neither, treg is not set up: don't install it on your
+own. Tell the user what it would add and ask; with their yes, follow https://treg.to/llms.txt to install
+and sign in.
 
 ## Pick the job
 

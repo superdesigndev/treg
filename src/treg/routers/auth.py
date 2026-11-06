@@ -50,6 +50,7 @@ class EmailStartIn(BaseModel):
 class EmailVerifyIn(BaseModel):
     email: str
     code: str
+    cli_pairing: bool = False  # sent by the /login?cli= page: this sign-in completes a `treg login`
 
 
 _EMAIL_HTTP_ERRORS = {
@@ -120,8 +121,11 @@ async def auth_email_verify(
     (same path as GitHub login) — one endpoint serves both clients."""
     require_managed_cli(request)
     try:
+        client = _client(request)
+        if client == "browser" and body.cli_pairing:
+            client = "cli_browser"
         verified = await auth_use_cases.verify_email_login(body.email, body.code,
-            entry_surface=request.cookies.get("treg_entry_surface", ""), client=_client(request))
+            entry_surface=request.cookies.get("treg_entry_surface", ""), client=client)
     except auth_use_cases.EmailAuthError as exc:
         raise _email_http_error(exc) from exc
     # Only a proven email: stashing at /start would let anyone tie their click to any address.
@@ -217,6 +221,7 @@ _SOCIAL_PAGE_ERRORS = {
     "suspended": ("Account suspended", "This account has been suspended.", False, 403),
     # A page, like `suspended`: a human is in the browser. Names no list and no domain.
     "blocked_domain": ("Sign-in refused", "This address cannot be used to sign in.", False, 403),
+    "check_expired": ("Sign-in expired", "Please start the sign-in again.", False, 400),
 }
 
 
@@ -322,8 +327,80 @@ async def auth_github_callback(
         return _social_login_failure(auth_use_cases.SocialLoginError("callback_failed"))
     except auth_use_cases.SocialLoginError as exc:
         return _social_login_failure(exc)
+    return await _after_social_proof(request, proof)
+
+
+_SOCIAL_CHECK_COOKIE = "treg_social_check"
+_SOCIAL_NAMES = {"github": "GitHub", "google": "Google"}
+
+
+async def _after_social_proof(request: Request, proof):
+    if isinstance(proof, auth_use_cases.SocialCheckPending):
+        resp = RedirectResponse("/auth/social/check", status_code=303)
+        resp.set_cookie(_SOCIAL_CHECK_COOKIE, proof.nonce, httponly=True, max_age=600,
+                        samesite="lax", secure=_is_https(request))
+        return resp
     await signup.stash_ad_click(proof.user.email, request.cookies.get("treg_ad", ""))
-    return _finish_oauth_login(request, proof.user, proof.cli_state)
+    resp = _finish_oauth_login(request, proof.user, proof.cli_state)
+    resp.delete_cookie(_SOCIAL_CHECK_COOKIE)
+    return resp
+
+
+_SOCIAL_CHECK_JS = """(function(){
+var f=document.getElementById('go'),b=document.getElementById('btn'),m=document.getElementById('msg'),busy=false,tries=0;
+function go(e){
+  if(e)e.preventDefault();
+  if(busy)return;
+  if(!window.tregCaptcha){f.submit();return;}
+  busy=true;b.disabled=true;tries++;
+  window.tregCaptcha.token('social_start').then(function(t){
+    if(t.charAt(0)==='!'&&tries<2){
+      busy=false;b.disabled=false;
+      m.textContent=t==='!pending'?'Finish the check below, then press Continue.'
+        :'The browser check did not load. Allow challenges.cloudflare.com, then press Continue.';
+      return;
+    }
+    f.captcha_token.value=t;f.submit();
+  });
+}
+f.addEventListener('submit',go);
+b.focus();
+go();
+})();"""
+
+
+@app.get("/auth/social/check")
+async def auth_social_check_page(request: Request):
+    """A provider proved an address no verified user holds yet: run the browser check, then post
+    its token to finish signing in. Without a waiting login (Back after signing in) go on to /app.
+    A check with no token is offered once more, then the sign-in finishes without credit; without
+    script the button finishes it at once."""
+    door = await auth_use_cases.social_check_door(request.cookies.get(_SOCIAL_CHECK_COOKIE, ""))
+    if door is None:
+        return RedirectResponse("/app", status_code=302)
+    name = _SOCIAL_NAMES[door]
+    html = (
+        f"{_AUTH_HEAD.replace('</style>', '.pbtn:disabled{opacity:.55;cursor:progress}</style>')}"
+        f'<body><div class="wrap"><form class="card" id="go" method="post" action="/auth/social/check">'
+        f'<div class="logo">▚ tools-registry</div><h1>Almost there</h1>'
+        f'<input type="hidden" name="captcha_token" value="">'
+        f'<p id="msg" style="margin-bottom:18px">{name} confirmed your address. One quick browser check finishes signing you in.</p>'
+        f'<button class="pbtn" id="btn" type="submit" data-captcha="social_start">Continue</button></form></div>'
+        f'<script src="/captcha.js"></script><script>{_SOCIAL_CHECK_JS}</script></body></html>'
+    )
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/auth/social/check")
+async def auth_social_check(request: Request, captcha_token: str = Form("")):
+    try:
+        proof = await auth_use_cases.finish_social_check(
+            request.cookies.get(_SOCIAL_CHECK_COOKIE, ""), captcha_token, _client_ip(request))
+    except auth_use_cases.CliPairingError:
+        return _social_login_failure(auth_use_cases.SocialLoginError("callback_failed"))
+    except auth_use_cases.SocialLoginError as exc:
+        return _social_login_failure(exc)
+    return await _after_social_proof(request, proof)
 
 
 @app.get("/auth/google")
@@ -357,8 +434,7 @@ async def auth_google_callback(
         return _social_login_failure(auth_use_cases.SocialLoginError("callback_failed"))
     except auth_use_cases.SocialLoginError as exc:
         return _social_login_failure(exc)
-    await signup.stash_ad_click(proof.user.email, request.cookies.get("treg_ad", ""))
-    return _finish_oauth_login(request, proof.user, proof.cli_state)
+    return await _after_social_proof(request, proof)
 
 
 app = APIRouter()
@@ -453,20 +529,28 @@ async def auth_cli_approve(
 
 
 @app.get("/login", include_in_schema=False)
-async def login_page(request: Request, cli: str = "", treg_session: str = Cookie(default="")):
+async def login_page(request: Request, cli: str = "", ad: str = "", treg_session: str = Cookie(default="")):
     """The universal sign-in page `treg login` opens: reuses an existing dashboard session with one
     click ("Continue as …"), else offers every configured door — GitHub, Google, email one-time code.
-    The email door is always present, so login works even with no OAuth app configured."""
+    The email door is always present, so login works even with no OAuth app configured.
+
+    `ad` is the short install link's code (`architecture/ads-conversions.md`, "Capture")."""
     if not cli:
-        return RedirectResponse("/app" + ("?" + request.url.query if request.url.query else ""),
+        resp = RedirectResponse("/app" + ("?" + request.url.query if request.url.query else ""),
                                 status_code=302)  # preserve incoming attribution for the SPA
-    if not _LOGIN_ID_RE.fullmatch(cli):
+    elif not _LOGIN_ID_RE.fullmatch(cli):
         return _auth_page("Login failed", "Bad login link. Run <code>treg login</code> again.", ok=False, status=400)
-    s = get_settings()
-    session_email = await auth_use_cases.cli_session_email(treg_session)
-    return HTMLResponse(_login_page_html(
-        cli, session_email=session_email,
-        github=bool(s.github_client_id), google=bool(s.google_client_id)))
+    else:
+        s = get_settings()
+        session_email = await auth_use_cases.cli_session_email(treg_session)
+        resp = HTMLResponse(_login_page_html(
+            cli, session_email=session_email,
+            github=bool(s.github_client_id), google=bool(s.google_client_id)))
+    restored, max_age = await signup.redeem_ad_link(ad)
+    if restored and not request.cookies.get("treg_ad"):
+        resp.set_cookie("treg_ad", restored, max_age=max_age, path="/", samesite="lax",
+                        secure=_is_https(request), httponly=False)
+    return resp
 
 
 def _login_page_html(login_id: str, *, session_email: str | None, github: bool, google: bool) -> str:
@@ -622,7 +706,7 @@ async function sendCode(){err('');const em=document.getElementById('em').value.t
  }catch(e){err(e.message)}finally{b.disabled=false}}
 async function verifyCode(){err('');const em=document.getElementById('em').value.trim(),co=document.getElementById('code').value.trim();
  if(!co)return err('enter the code');
- try{await post('/auth/email/verify',{email:em,code:co});
+ try{await post('/auth/email/verify',{email:em,code:co,cli_pairing:true});
   // The email door just set a session cookie — hide the doors and show the team picker.
   const d=document.getElementById('doors');if(d)d.style.display='none';
   const o=document.getElementById('other-acct');if(o)o.style.display='none';

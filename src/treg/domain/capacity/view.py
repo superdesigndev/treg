@@ -16,7 +16,7 @@ from ...infra.db import session_maker
 from ...models import Ephemeral
 from ...timeutil import utcnow_naive
 from .marks import LOCK_NS, Lock, lock_key
-from .policy import _CONCURRENCY, _ENDPOINT_RATE_LIMITS, _RATE_LIMITS, LatestState
+from .policy import _CONCURRENCY, _ENDPOINT_CONCURRENCY, _ENDPOINT_RATE_LIMITS, _RATE_LIMITS, LatestState
 from .sweep import STATE_NS, state_key
 
 TTL_S = 60.0
@@ -98,6 +98,15 @@ class LatestStateView:
     def concurrency(self, provider: str) -> int:
         """Calls in progress the provider allows on its platform key, or 0 when unknown (no gate)."""
         return _CONCURRENCY.get(provider, 0)
+
+    def concurrency_pool(self, provider: str, endpoint_id: str | None) -> tuple[str, int]:
+        """(places key, calls in progress allowed) for this platform call; the limit is 0 when
+        unknown (no gate). An endpoint family with its own allowance (`_ENDPOINT_CONCURRENCY`) has
+        its own places; every other endpoint shares the provider's. Sync, I/O-free."""
+        for family, row in _ENDPOINT_CONCURRENCY.items():
+            if endpoint_id in row["endpoints"]:
+                return family, int(row["limit"])
+        return provider, self.concurrency(provider)
 
     def invalidate(self) -> None:
         self._loaded_at = -1.0

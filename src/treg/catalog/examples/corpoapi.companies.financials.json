@@ -1,0 +1,50 @@
+{
+  "datapoint_status": "ok",
+  "data": [
+    {
+      "id": "fs_nobcadf24be256dae6cf5e3c53",
+      "document_ref": "no_rr:923609016:7192429",
+      "currency": "USD",
+      "accounting_standard": "IFRS",
+      "statement_type": "consolidated",
+      "period": {
+        "start": "2025-01-01",
+        "end": "2025-12-31"
+      },
+      "approval_date": null,
+      "filed_date": null,
+      "is_ai": false,
+      "facts": [
+        {
+          "section": "assets",
+          "line_item": "inventory",
+          "amount": 3330000000.0,
+          "previous_amount": null,
+          "local_name": "sumVarer",
+          "is_ai": false,
+          "confidence": 1.0,
+          "unit": null,
+          "column": null
+        },
+        {
+          "section": "assets",
+          "line_item": "receivables",
+          "amount": 14704000000.0,
+          "previous_amount": null,
+          "local_name": "sumFordringer",
+          "is_ai": false,
+          "confidence": 1.0,
+          "unit": null,
+          "column": null
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "limit": 1,
+    "next_cursor": "eyJvIjogMX0",
+    "has_more": true,
+    "total_estimate": 6,
+    "returned": 1
+  }
+}

@@ -17,6 +17,7 @@ from .. import oauth_providers
 from .. import providers as _providers
 from ..application import call_usage, key_spend
 from ..application import enterprise_sso
+from ..application import home as home_app
 from ..application import images
 from ..application.onboard import demo as demo_seed
 from ..application import archive_erasure
@@ -39,6 +40,7 @@ from ..domain.governance.teams import _slugify
 from ..domain.identity.access import (
     AGENT_DOMAIN,
     PUBLIC_DEMO_DOMAIN,
+    NoTeam,
     Caller,
     _is_agent_email,
     _is_machine_email,
@@ -63,7 +65,6 @@ from ..models import (
     Project,
     RunRecord,
     TagBudget,
-    TagSpend,
     Tool,
     User,
 )
@@ -74,7 +75,6 @@ from .signup_cookies import REFERRAL_COOKIE
 
 
 _day_start_utc = usage_policy._day_start_utc
-count_today = usage_policy.count_today
 _deny_match = access_policy._deny_match
 _org_deny_rules = access_policy._org_deny_rules
 
@@ -82,11 +82,6 @@ _org_deny_rules = access_policy._org_deny_rules
 INVITE_TTL_DAYS = 7  # invite codes are one-time AND expire after this many days
 
 sys.modules.setdefault("treg.routers.providers", _providers)
-
-
-class UserIn(BaseModel):
-    email: str
-    webhook_url: str | None = None
 
 
 class OrgIn(BaseModel):
@@ -245,7 +240,7 @@ async def _usage_rollup(db: AsyncSession, org_id: int, since: datetime,
                         folded: list[call_usage.UsageRow] | None) -> dict:
     """Aggregate usage since `since` into by-user (with a per-kind split), by-tool, by-day, and totals.
     CallRecord carries `kind` ("call"/"local_run"); every RunRecord is a "server_run". Pure GROUP BY —
-    no request/response bodies are read (we don't store them). See docs/USAGE-METERING-PLAN.md.
+    no request/response bodies are read (we don't store them).
 
     The call side comes from `folded`, the daily rollup's rows (`application/call_usage.py`). Only
     when the rollup worker has never run is it None, and the audit table is aggregated here: ONE
@@ -379,10 +374,7 @@ def _deny_view(r: DenyRule) -> dict:
 
 
 _SIGNUP_HTTP_ERRORS = {
-    "machine_identity": (403, "this address cannot be used to sign in"),
     "blocked_domain": (403, "this address cannot be used to sign in"),  # same words: leaks no list
-    "unsafe_webhook": (422, "webhook_url must be a public http(s) URL"),
-    "email_exists": (409, "email already registered"),
     "sandbox_user": (403, (
         "the demo sandbox can't create a real team — sign in with GitHub, Google, or email to make one"
     )),
@@ -406,24 +398,6 @@ def _signup_http_error(exc: signup_use_cases.SignupError) -> HTTPException:
 
 app = APIRouter()
 signup_router = app
-
-
-@app.post("/users")
-async def register_user(body: UserIn, request: Request, response: Response) -> dict:
-    try:
-        result = await signup_use_cases.register_user(
-            email=body.email,
-            webhook_url=body.webhook_url,
-            ad_cookie=request.cookies.get("treg_ad") or "",
-            utm_cookie=request.cookies.get("treg_utm") or "",
-            referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
-        )
-        response.headers["Cache-Control"] = "no-store"
-        return result
-    except signup_use_cases.SignupError as exc:
-        raise _signup_http_error(exc) from exc
-    except teams.OwnedTeamLimitReached as exc:
-        raise _owned_team_limit_error() from exc
 
 
 @app.post("/orgs")
@@ -456,6 +430,15 @@ app = APIRouter()
 org_entry_router = app
 
 
+async def _visible_orgs(user_id: int, x_treg_token: str, x_treg_org: str, treg_session: str,
+                        db: AsyncSession) -> list[dict]:
+    """The caller's memberships, narrowed to its one team when it signed in through that team's SSO."""
+    orgs = await teams.list_user_orgs(user_id=user_id, x_treg_token=x_treg_token, x_treg_org=x_treg_org, db=db)
+    sso_org_id = ((identity_session.read_identity_claims(x_treg_token) or {}).get("sso_org_id")
+                  if x_treg_token else (identity_session.read_session_claims(treg_session) or {}).get("sso_org_id"))
+    return orgs if sso_org_id is None else [org for org in orgs if org["org_id"] == sso_org_id]
+
+
 @app.get("/orgs")
 async def list_orgs(
     user: User = Depends(require_identity),
@@ -464,19 +447,31 @@ async def list_orgs(
     treg_session: str = Cookie(default=""),
     db: AsyncSession = Depends(get_session),
 ) -> list[dict]:
-    orgs = await teams.list_user_orgs(
-        user_id=user.id,
-        x_treg_token=x_treg_token,
-        x_treg_org=x_treg_org,
-        db=db,
-    )
-    sso_org_id = ((identity_session.read_identity_claims(x_treg_token) or {}).get("sso_org_id")
-                  if x_treg_token else (identity_session.read_session_claims(treg_session) or {}).get("sso_org_id"))
-    if sso_org_id is not None:
-        orgs = [org for org in orgs if org["org_id"] == sso_org_id]
+    orgs = await _visible_orgs(user.id, x_treg_token, x_treg_org, treg_session, db)
     for o in orgs:  # the team's picture as a URL (None = initials); the key stays internal
         o["avatar_url"] = images.public_url(o.pop("avatar_key", None))
     return orgs
+
+
+@app.get("/home")
+async def home(
+    request: Request,
+    x_treg_token: str = Header(default=""),
+    x_treg_org: str = Header(default=""),
+    treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Bare `treg` in one round trip. A member (an agent key included) answers in full; a signed-in
+    user whose team does not resolve (none created or chosen yet, or one they have left) answers
+    with `team: null`; every other refusal (an invalid token, a suspended account or team, SSO) is
+    refused as everywhere else, so the CLI can say which."""
+    try:
+        caller = await require_member(request, x_treg_token, x_treg_org, treg_session, db)
+        user = caller.user
+    except NoTeam:
+        caller, user = None, await require_identity(request, x_treg_token, x_treg_org, treg_session, db)
+    count = len(await _visible_orgs(user.id, x_treg_token, x_treg_org, treg_session, db))
+    return await home_app.summary(db, user.email, caller, teams=count)
 
 
 app = APIRouter()
@@ -841,8 +836,9 @@ async def my_usage(
     caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
 ) -> dict:
     """The caller's own usage today + cap for the active org — so a member sees 'used / cap' without
-    admin access. `cap` is -1 when unlimited."""
-    return {"org": caller.org.slug, "used_today": await count_today(db, caller.org_id, caller.email),
+    admin access. `cap` is -1 when unlimited. Counted as the members list counts it."""
+    used = await _used_today_by_user(db, caller.org_id)
+    return {"org": caller.org.slug, "used_today": used.get(caller.email, 0),
             "cap": caller.membership.daily_call_cap}
 
 
@@ -1415,8 +1411,7 @@ async def list_tag_keys(
     friends from the dashboard even though the API served them fine.
     """
     _require_admin_of(org_id, caller)
-    seen = (await db.execute(
-        select(TagSpend.dim).where(TagSpend.org_id == org_id).distinct())).scalars().all()
+    seen = await ledger.tag_dims(db, org_id)
     declared = _budget_dims_of(caller.org)
     return {"seen": sorted(set(seen)), "budgetable": declared,
             "primary": _primary_dim_of(caller)}

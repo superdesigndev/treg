@@ -1,0 +1,13 @@
+{
+  "key_id": "EXAMPLE1",
+  "label": "treg PR 820 test",
+  "tier": "unverified",
+  "quota": {
+    "limit": 500,
+    "remaining": 498,
+    "resets_at": "2026-11-03T00:00:00.000Z",
+    "window": "day"
+  },
+  "doc_notes": "Quota resets at resets_at. Searches, place lookups and this call carry quota headers.",
+  "call_id": "83d30f22-7e62-42db-aa6c-09ed9dc90724"
+}

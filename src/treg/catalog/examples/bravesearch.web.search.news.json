@@ -1,0 +1,13 @@
+{
+  "type": "news",
+  "query": {
+    "original": "example"
+  },
+  "results": [
+    {
+      "title": "Example news",
+      "url": "https://example.com/news",
+      "description": "Example article"
+    }
+  ]
+}

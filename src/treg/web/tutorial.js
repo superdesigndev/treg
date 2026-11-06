@@ -1,7 +1,7 @@
 /* tools-registry - the interactive tutorial, as data.
  *
  * SINGLE SOURCE OF TRUTH for the walkthrough. Both the in-dashboard Help view
- * (src/treg/web/index.html) and the standalone page (docs/tutorial.html) render
+ * (frontend/src/pages/HelpPage.vue) and the standalone page (src/treg/web/tutorial.html) render
  * from `window.TREG_TUTORIAL` and highlight with `window.tregHL`, so they never drift.
  *
  * Each step: { part, who, title, explain, cmd, out, notice }.

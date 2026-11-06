@@ -516,6 +516,23 @@
       "GET",
       "HEAD"
     ],
+    "name": "auth_social_check_page",
+    "path": "/auth/social/check"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "auth_social_check",
+    "path": "/auth/social/check"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "auth_google",
     "path": "/auth/google"
   },
@@ -735,6 +752,23 @@
       "GET",
       "HEAD"
     ],
+    "name": "install_sh_linked",
+    "path": "/i/{code}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "ad_link_mint",
+    "path": "/i"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "selfhost_sh",
     "path": "/selfhost.sh"
   },
@@ -854,6 +888,15 @@
     ],
     "name": "jev_memory_skill_md",
     "path": "/skills/jev-memory/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_growth_skill_md",
+    "path": "/skills/rea-growth/SKILL.md"
   },
   {
     "kind": "APIRoute",
@@ -1034,6 +1077,33 @@
     ],
     "name": "aeo_page",
     "path": "/aeo"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_growth_page",
+    "path": "/rea-growth"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "social_search_page",
+    "path": "/social"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "rea_growth_md",
+    "path": "/rea-growth.md"
   },
   {
     "kind": "APIRoute",
@@ -1445,14 +1515,6 @@
     "methods": [
       "POST"
     ],
-    "name": "register_user",
-    "path": "/users"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "POST"
-    ],
     "name": "create_org",
     "path": "/orgs"
   },
@@ -1481,6 +1543,15 @@
     ],
     "name": "list_orgs",
     "path": "/orgs"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "home",
+    "path": "/home"
   },
   {
     "kind": "APIRoute",
@@ -3262,6 +3333,24 @@
     ],
     "name": "rankings_board",
     "path": "/rankings/data/{board}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "compare_hub",
+    "path": "/compare"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "compare_page",
+    "path": "/compare/{slug}"
   },
   {
     "kind": "APIRoute",

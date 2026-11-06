@@ -1785,7 +1785,7 @@ async def test_change_observation_failure_preserves_record(clients, shadow, monk
 @pytest.mark.parametrize('at_header', [False, True])
 def test_catalog_rejects_invalid_ignore_paths(tmp_path, paths, at_header):
     import yaml
-    doc = {'provider': 'test', 'endpoints': [{'id': 'test.read', 'kind': 'read'}]}
+    doc = {'provider': 'test', 'endpoints': [{'id': 'test.read'}]}
     target = doc if at_header else doc['endpoints'][0]
     target['cache'] = {'mode': 'transient', 'ignore_paths': paths}
     (tmp_path / 'test.yaml').write_text(yaml.safe_dump(doc))

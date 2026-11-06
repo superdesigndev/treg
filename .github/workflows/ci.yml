@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
 
 # A new push supersedes the running build of the same branch or PR: the outdated run is cancelled
 # instead of holding a runner and queueing the new one behind it (two overlapped runs were live
@@ -30,8 +31,8 @@ jobs:
       - name: Detect a docs-only push
         id: docs
         # Direct pushes that change only docs/ and *.md skip the suite — half of one week's runs
-        # bought nothing. PULL REQUESTS ALWAYS RUN: the branch-protection check must report, and a
-        # skipped required check would block the merge forever.
+        # bought nothing. PULL REQUESTS AND MERGE QUEUE BUILDS ALWAYS RUN: the branch-protection check
+        # must report, and a skipped required check would block the merge forever.
         run: |
           ONLY=false
           if [ "${{ github.event_name }}" = "push" ]; then
@@ -58,6 +59,11 @@ jobs:
       - name: Install dependencies
         if: steps.docs.outputs.only != 'true'
         run: uv sync --locked
+      - name: Install disposable Redis test dependency
+        if: steps.docs.outputs.only != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server
       - name: Verify pause context documentation
         if: steps.docs.outputs.only != 'true'
         run: |
@@ -141,7 +147,9 @@ jobs:
           tests/test_money_admission.py
           tests/test_money_admission_application.py
           tests/test_money_admission_postgres.py
+          tests/test_money_session_postgres.py
           tests/test_money_admission_reporting.py
+          tests/test_money_bigint.py
           tests/test_kv.py
           tests/test_kv_release_retry.py
           tests/test_kv_lease_diagnostics.py
@@ -151,6 +159,8 @@ jobs:
           tests/test_org_flow_control_reader.py
           tests/test_org_flow_control_redis.py
           tests/test_org_rate_limit_redis.py
+          tests/test_provider_concurrency_redis.py
+          tests/test_capacity_rate_observe.py
           tests/test_money_trace.py
           tests/test_money_trace_postgres.py
           tests/test_money_trace_runner.py

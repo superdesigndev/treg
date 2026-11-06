@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 
 from dataclasses import dataclass, field
@@ -11,7 +13,8 @@ from . import paths as P
 from .contracts import Adapter, Contract, adapter_accepts
 
 MAX_ERROR_FALLBACKS = 2
-MIN_HIT_SAMPLES = 50
+# P(hit|2xx) for a child below the `stats.MIN_HIT_SAMPLES` hit-rate publication floor.
+UNMEASURED_HIT_PRIOR = 0.5
 
 
 def _used_keys(adapter: Adapter) -> set[str]:
@@ -63,6 +66,10 @@ def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> 
     dropped, not ranked down: a `{title}`-only people search asked for `{company_domain, title}`
     returns the same title-matched strangers for every company, and each one bills as a hit."""
     used = _used_keys(adapter)
+    # A stand-in this adapter sends carries the caller's keys inside it (`q` from `title`)
+    for k, expr in (getattr(adapter, "_stand_in", None) or {}).items():
+        if k in used and identity.get(k) in (None, ""):
+            used |= set(re.findall(r"[A-Za-z_]\w*", expr))
     return tuple(k for k in contract.scoping if identity.get(k) not in (None, "") and k not in used)
 
 
@@ -101,7 +108,7 @@ class Candidate:
     variant: tuple[str, ...]
     tier: str                        # tool | credential | anonymous | platform
     price_micro: int | None          # this request, this org (0 on an own key or anonymous route)
-    hit_rate: float | None           # P(hit) when known (≥ MIN_HIT_SAMPLES), else None
+    hit_rate: float | None           # P(hit) when published (≥ stats.MIN_HIT_SAMPLES), else None
     ok_rate: float | None
     p50_ms: int | None
     last_ok_days: int | None
@@ -111,12 +118,14 @@ class Candidate:
 
     @property
     def expected_cost_per_hit(self) -> float:
-        """price × P(billed) / P(hit). Own keys and anonymous routes are free."""
+        """price × P(billed) / P(hit). Own keys and anonymous routes are free. Without a published
+        hit rate, P(hit) is the prior times the ok rate (1.0 while that is unmeasured too)."""
         if self.price_micro is None:
             return float("inf")
         if self.tier != "platform":
             return 0.0
-        p_hit = self.hit_rate if self.hit_rate is not None else (self.ok_rate if self.ok_rate is not None else 1.0)
+        p_hit = self.hit_rate if self.hit_rate is not None else \
+            UNMEASURED_HIT_PRIOR * (self.ok_rate if self.ok_rate is not None else 1.0)
         p_hit = max(p_hit, 0.01)
         cost_type = (self.endpoint.get("cost") or {}).get("type")
         p_billed = p_hit if cost_type == "per_success" else 1.0
@@ -142,10 +151,25 @@ class Plan:
     variant: tuple[str, ...]
     candidates: list[Candidate] = field(default_factory=list)   # ranked, callable only
     dropped: list[dict] = field(default_factory=list)            # {endpoint_id, why}
+    route_rule: dict[str, str] | None = None   # what ordered it (`route_order`, published rule), for the event
+    orders: dict[str, list[str]] = field(default_factory=dict)  # endpoint ids by `default` / `rule` order
 
     def view(self) -> dict:
         return {"capability": self.contract.capability, "identity_variant": list(self.variant),
                 "plan": [c.view() for c in self.candidates], "dropped": self.dropped}
+
+
+def sampled_provider_allowed(provider: str, percentages: dict[str, int], *, org_id: int | None,
+                             capability: str, identity: dict[str, Any]) -> bool:
+    """Stable per question, so retries and plan previews choose the same candidate set."""
+    percent = percentages.get(provider)
+    if percent is None or percent == 100:
+        return True
+    if percent == 0:
+        return False
+    question = json.dumps([provider, org_id, capability, identity], sort_keys=True, separators=(",", ":"), default=str)
+    bucket = int.from_bytes(hashlib.sha256(question.encode()).digest()[:8], "big") % 10_000
+    return bucket < percent * 100
 
 
 def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclude: list[str] | None = None,

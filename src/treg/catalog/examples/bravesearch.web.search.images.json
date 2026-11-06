@@ -1,0 +1,12 @@
+{
+  "type": "images",
+  "query": {
+    "original": "example"
+  },
+  "results": [
+    {
+      "title": "Example image",
+      "url": "https://example.com/image.jpg"
+    }
+  ]
+}

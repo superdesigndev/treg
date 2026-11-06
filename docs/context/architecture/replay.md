@@ -1,6 +1,6 @@
 ---
 title: Replay - recorded exchanges re-run through one checkout's billing, outcome and routing code
-status: building
+status: shipped
 sources:
   - src/treg/application/replay/__init__.py
   - src/treg/application/replay/__main__.py
@@ -9,6 +9,8 @@ sources:
   - src/treg/application/replay/fixtures.py
   - src/treg/application/replay/differ.py
   - tests/test_replay.py
+  - scripts/catalog_dump.py
+  - tests/test_catalog_dump.py
 related:
   - architecture/money.md
   - architecture/proxy-model.md
@@ -39,24 +41,18 @@ the path that still calls it:
 | `call.route.child_outcome` | the routed child loop in `_run_routed` | `declared_miss`, `not_found`, `rejected`, `error`, `adapter_error`, `miss` (with its reasons) or `hit` (with its rows) |
 | `call.service.submission_state` | the call use case, before settling | whether a `when: terminal` 2xx is a pending task, and why one is not an accepted submission |
 | `asynctasks.terminal_judgement` | `_finish_terminal` | the hit and verdict word a terminal outcome records |
+| `call.cost.settle_terminal` | the worker's `_finish` | what a `success` or `billed_failure` terminal answer settles at, by the frozen basis or a v2 row's frozen terms |
 
 The engine itself only mirrors the call site's arguments (the `provider_failed_<status>` reason,
 the observed override of a rejected submission) and composes the existing pure functions below.
 
 ## What one replay runs
 
-| Output group | Production function | Fields |
-|---|---|---|
-| `reserve` | `price_call`, `money.with_margin` | `estimate_micro`, `hold_micro`, `unit_micro`, `reported_charge_unit_micro`, the basis's `when`, kind, reserve and fallback, and a digest of the whole basis |
-| `settle` | `submission_state`, `decide_settle` | `deferred`, `billable`, `reason`, `observed_micro`, `actual_micro`, `charged_micro` |
-| `outcome` | `results.classify`, `results.verdict` | `state`, `reason`, `hit`, `verdict` |
-| `adapter` | `Adapter.from_upstream`, `Adapter.is_miss` | whether the body is JSON, the adapter miss, a digest of the mapped core, the empty required fields |
-| `routing` | `child_outcome` (verified, routable adapters only) | `kind`, `why`, `rows` |
-| `stats` | `stats.Tally.fold` | whether the row counts, and which counters it moves |
-| `async` | `asynctasks.classify_terminal`, `settlement.settle`, `terminal_judgement` | terminal `outcome`, `settled_micro`, `charged_micro`, `hit`, `verdict` |
-
+One output record per input, grouped as `reserve`, `settle`, `outcome`, `adapter`, `routing`,
+`stats` and `async` (`engine.py`), each from the production function that decides it.
 Every call is replayed as a call on treg's own key (`tier: platform`), with the settings of the
-process running it. A step that cannot apply is `null`; a step that raises reports only the
+process running it and a v2 row's frozen cost terms as the call site carries them. A step that
+cannot apply is `null`; a step that raises reports only the
 exception's type and typed kind, never its message, which may quote the body. An accepted async
 submission is `settle.deferred` with no outcome, adapter or routing: it settles, is judged and is
 routed on its terminal answer, which an `async_terminal` record carries. That record settles on its
@@ -88,11 +84,21 @@ or IP.
 
 `fixtures` writes a corpus from the checkout's own catalog, for every priced endpoint (a positive
 price, a request table or a usage meter; routed parents excluded): the committed example answer,
-an answer the adapter judges a miss (the example blanked along the adapter's own miss paths), the
-declared miss status, a 2xx error envelope, a 400 and a 500, and for an async endpoint terminal
-success, failure and billed-failure documents. Requests come from `test_request`, so a record's
+an answer the adapter judges a miss (the example blanked along the adapter's own miss paths, or a
+v2 row's `miss` rule paths), the declared miss status, a 2xx error envelope, a 400 and a 500, and
+for an async endpoint terminal success, failure and billed-failure documents. Requests come from `test_request`, so a record's
 request fidelity is `reconstructed` and its response carries no headers. Nothing in it is
 customer data, and it is generated, never committed.
+
+## The production corpus
+
+Records from real traffic are extracted by a private operator script, run where production's
+database and archive are reachable, that writes this record shape to a temporary location deleted
+after the replay. It reuses treg's own readers rather than copying them:
+`arena_insights._evidence_pointers` (the exact snapshot each call received, with its media type,
+under the `replay` read path), `archive_bodies.read`, `archive.load_terminal_snapshots` (a task's
+terminal answer and its status), the archive opt-out state, the credential renderings of
+`call.evidence`, and `records.line` for each line it writes.
 
 ## Running it
 
@@ -136,7 +142,9 @@ A declaration is a YAML mapping; a file holds a list of them:
 ```
 
 A changed field is declared when some declaration matches its endpoint or provider, its field, its
-old and new values and its `where`. A list value matches a list field element for element. The
+old and new values and its `where`. A declared value matches only a value of its own kind: a
+boolean never matches a number, null matches only null and a string only a string, while an integer
+and a float compare by value. A list value matches a list field element for element. The
 report names the first matching declaration, but every declaration that matches some change
 counts as exercised.
 
@@ -147,6 +155,20 @@ counts as exercised.
 undeclared difference. The declarations are the pull request body's fenced `replay-declared`
 blocks, so they belong to the change that needs them and never accumulate in the repository;
 editing the body re-runs the job. The report goes to the job summary.
+
+When a pull request changes loader, schema or validator source (anything under
+`src/treg/domain/catalog/`, `scripts/catalog_validate.py`, `scripts/catalog_dump.py` or the Replay
+workflow), the same job also dumps the base checkout's catalog (`scripts/catalog_dump.py`: every
+field of the loaded `Catalog` and each row's cost view, sorted keys; a dataclass field at its
+default is left out, so adding a field nobody sets yet is not a difference) with the base's code and with
+the merge result's code (`--catalog`) and fails on any byte difference, naming the first differing
+path ([catalog-schema](catalog-schema.md)). A pull request that also rewrites rows is held to that
+on its code alone; the replay judges the rows. A pull request that means to change how existing
+rows are served declares the dotted paths it changes in a fenced `dump-declared` block of its body,
+one glob per line with an optional `#` reason (`by_id.*.note`); the report names each glob and how
+many differences it covered, and any other difference still fails. A pure catalog data pull request
+skips it. The replay diff still runs and reports
+when the dump check fails.
 
 A base without the engine skips the comparison. The ordinary test suite also replays the whole
 fixture corpus, so a seam that starts raising fails every pull request, not only those that differ.

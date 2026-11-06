@@ -225,11 +225,20 @@ def _quote_skip(ep: dict, cat) -> str | None:
     return None
 
 
-def _plan_row(c) -> dict:
+def _route_max_cost(contract) -> float:
+    """The ceiling a routed call gets without `X-Treg-Route-Max-Cost`, as `route.py` applies it."""
+    from ..application.call.route import DEFAULT_MAX_COST_MICRO
+    return (contract.default_max_cost_usd if contract and contract.default_max_cost_usd
+            else DEFAULT_MAX_COST_MICRO / 1_000_000)
+
+
+def _plan_row(c, cat) -> dict:
     """One quote line, token-frugal: what an agent needs to pick or set a ceiling. Measured rates
-    ride only when they exist; the unmeasured case says nothing rather than four nulls."""
+    ride only when they exist; the unmeasured case says nothing rather than four nulls. `cost` says
+    per what the child bills, so a per-success one reads as billing no miss."""
     row = {"endpoint_id": c.endpoint["id"], "accepts": [list(v) for v in c.adapter.accepts],
-           "usd": (c.price_micro / 1_000_000) if c.price_micro is not None else None}
+           "usd": (c.price_micro / 1_000_000) if c.price_micro is not None else None,
+           "cost": catalog_store.quote_cost(catalog_store.cost_row(c.endpoint, cat))}
     if c.hit_rate is not None:
         row["hit_rate"] = c.hit_rate
         row["usd_per_hit"] = c.expected_cost_per_hit / 1_000_000
@@ -341,7 +350,7 @@ async def catalog_search(request: Request, q: str = "", limit: int = 25,
     ranked, total, tie_truncated = catalog_store.rank_band(q, cat, min(100, limit * 4))
     stats = await _observed_or_empty(observations, [ep["id"] for ep, _ in ranked])
     ranked = catalog_store.rerank(ranked, stats, cat)
-    # Listed hub tools (docs/hub-listing-decisions.md): scored with the same tokens and idf, merged
+    # Listed hub tools: scored with the same tokens and idf, merged
     # by score with no boost; their evidence is the 30-day ok rate of runs by others.
     from ..application import hub as hub_app
     from .hub_gate import reader
@@ -376,7 +385,7 @@ async def catalog_search(request: Request, q: str = "", limit: int = 25,
     else:
         top = results[0]
         # A hub tool has no catalog row and no provider key: its call line is the tool id, and the
-        # maker's own keys serve its steps (docs/hub-listing-decisions.md).
+        # maker's own keys serve its steps.
         run_hint = (f"treg call {top['id']} --data '{{...}}'   # run it — the maker's keys serve it"
                     if top.get("kind") == "hub"
                     else _run_hint(cat.by_id.get(top['id'], ranked[0][0])))
@@ -616,7 +625,7 @@ async def catalog_endpoint(
         # Out of search while paused, but a held id is told why instead of "unknown endpoint".
         raise HTTPException(status_code=503, detail=oauth_providers.paused_detail(
             ep["provider"], endpoint_id))
-    view = (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat)
+    view = (catalog_store.endpoint_view(ep, _provider_display(ep["provider"]), cat, detail=True)
             | catalog_store.endpoint_context(ep, cat))
     if ep.get("team_label") or ep.get("caller_email"):
         personal = await _your_values(request, db, ep)
@@ -638,7 +647,7 @@ async def catalog_endpoint(
         except (OSError, ValueError):
             example = None
     # What the calls we have already served say about this endpoint and its alternatives — the half
-    # of "compare providers" that only treg can answer (see endpoint_stats + CAPABILITY-CHOICE-PLAN).
+    # of "compare providers" that only treg can answer (see endpoint_stats).
     # Attached to the SAME response because the choice is made here; a second round-trip to compare
     # reliability is a round-trip an agent will skip.
     observed_ids = [endpoint_id] + [s["id"] for s in siblings]
@@ -649,8 +658,7 @@ async def catalog_endpoint(
     verdicts = await _verdicts_or_empty()
     view = _with_reviews(view | {"observed": stats.get(endpoint_id)} | overflow, verdicts)
     siblings = [_with_reviews(s | {"observed": stats.get(s["id"])}, verdicts, quotes=False) for s in siblings]
-    # Hub tools treg approved for this job sit beside its providers (docs/hub-listing-decisions.md
-    # round 3), with a seeded success rate while they are new. Shown for comparison only: they are
+    # Hub tools treg approved for this job sit beside its providers, with a seeded success rate while they are new. Shown for comparison only: they are
     # never a routed child (AGENTS.md non-negotiable 4).
     from ..application import hub as hub_app
     from .hub_gate import reader
@@ -680,21 +688,26 @@ async def catalog_endpoint(
                          "miss": contract.miss, "derive": contract.derive} if contract else None,
             # A child the router would not call on treg's key (`route.py` drops it the same way)
             # stays in the plan for its `accepts`, ranked after the rest and saying why.
-            "plan": [_plan_row(c) for c in rank([c for c in cands if not _quote_skip(c.endpoint, cat)])]
-                    + [_plan_row(c) | {"skipped": _quote_skip(c.endpoint, cat)}
+            "plan": [_plan_row(c, cat) for c in rank([c for c in cands if not _quote_skip(c.endpoint, cat)])]
+                    + [_plan_row(c, cat) | {"skipped": _quote_skip(c.endpoint, cat)}
                        for c in rank([c for c in cands if _quote_skip(c.endpoint, cat)])],
             # The same job from providers whose adapter is not (yet) verified: not chosen by the
             # router, still callable by id — the search page groups them under this row, so the
             # page it points at must name them too.
-            "also": [{"endpoint_id": s["id"], "usd": ((s.get("cost") or {}).get("usd"))}
+            "also": [{"endpoint_id": s["id"], "usd": ((s.get("cost") or {}).get("usd")), "cost": catalog_store.quote_cost(s.get("cost"))}
                      for s in siblings if s["id"] not in set(ep.get("routed_children") or [])],
+            "max_cost_usd": _route_max_cost(contract),
             "headers": {"X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
-                        "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
-                        "X-Treg-Route-Prefer": "provider[,…]", "X-Treg-Route-Exclude": "provider[,…]",
+                        "X-Treg-Route-Max-Cost": f"USD ceiling for the whole call (default {_route_max_cost(contract):.2f})",
+                        "X-Treg-Route-Prefer": "provider[,…], the name before an id's first dot (quickenrich), not an endpoint id",
+                        "X-Treg-Route-Exclude": "provider[,…], the name before an id's first dot (quickenrich), not an endpoint id",
                         "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default — the answer names what was ignored in X-Treg-Ignored-Filters",
                         **({"X-Treg-Route-Verify": f"true = check a hit with {contract.check.endpoint} in the same call, at its own price, "
                                                    "inside X-Treg-Route-Max-Cost; the answer is _treg.verification "
-                                                   "{verdict, checked, served_by, cost_micro}"} if contract and contract.check else {}),
+                                                   "{verdict, checked, served_by, cost_micro}; when the check is still "
+                                                   "running also pending, call_id and async (task_id + poll) — "
+                                                   "cost_micro is then a hold settled later (GET /calls/{{call_id}})"}
+                           if contract and contract.check else {}),
                         **({"X-Treg-Route-Confirm": f"true = a hit counts only once a second provider returns the same {contract.confirm}; "
                                                     "each attempt at its own price, inside X-Treg-Route-Max-Cost; the answer is "
                                                     "_treg.confirmation {field, confirmed, confirmed_by}"} if contract and contract.confirm else {}),
@@ -742,7 +755,7 @@ async def _hub_endpoint_view(endpoint_id: str, db: AsyncSession,
                              *, org_slug: str | None = None, email: str | None = None) -> dict | None:
     """The public contract of one hub tool, in the shape `treg catalog get` and `catalog_get`
     already print: `endpoint` (with `kind: "hub"`), `provider` (the maker's team). Hides the
-    script, the maker's tools and every key (docs/HUB-DECISIONS.md round 4 q4, round 5 q7)."""
+    script, the maker's tools and every key."""
     from ..application import hub as hub_app
     from ..domain.hub import PAY_NOTE as HUB_PAY_NOTE, fees_label as hub_fees_label, price_label as hub_price_label
     from ..models import HubListing, Org

@@ -1,6 +1,6 @@
 """The tool hub use cases: publish a tool, find the version that serves an id.
 
-Phase 1 of the hub (docs/HUB-DECISIONS.md, `.arcterm` plan): a tool is validated and STORED here,
+Phase 1 of the hub (`.arcterm` plan): a tool is validated and STORED here,
 nothing runs yet. The check run that turns `unchecked` into `live` arrives with the runner, so
 every row this phase writes stays `unchecked` and the call road answers 501 for it — the honest
 shape until the runner exists (CLAUDE.md: never document, or serve, what is not built).
@@ -100,8 +100,8 @@ async def _tool_for(db: AsyncSession, rest: str, *, live_only: bool = True,
                     caller_org_id: int | None = None, caller_slug: str | None = None,
                     caller_email: str | None = None) -> HubTool | None:
     """The version that serves `rest`: the newest `live` one, or `@N` pinned. A pinned version may
-    also be the one UNDER CHECK (the check run pins it: HUB-DECISIONS round 2 q10), and a pinned
-    old version stays callable for OLD_VERSION_DAYS after a newer live one exists (round 4 q8)."""
+    also be the one UNDER CHECK (the check run pins it), and a pinned
+    old version stays callable for OLD_VERSION_DAYS after a newer live one exists."""
     # The public views (catalog get, the share page) pass no caller and get the plain flag: a
     # contract is readable. A CALL names its caller's team and goes through the allow-list.
     if not visible_to(caller_slug, caller_email) or not is_hub_id_shape(rest):
@@ -216,7 +216,7 @@ async def publish(
 
 
 async def run_check(db: AsyncSession, row: HubTool, *, maker_headers: dict[str, str], app: Any) -> dict[str, Any]:
-    """The check run (HUB-DECISIONS round 2 q10, round 3 q6): `check.json`'s sample inputs, run
+    """The check run: `check.json`'s sample inputs, run
     ONCE for real as the maker over the real call road (`POST /call/<id>@<version>` in-process
     with the maker's own identity headers), charged to the maker's balance at the normal step
     prices, seller price not charged. Pass ⇒ `live`; fail ⇒ `failed`, with the reason on the row.
@@ -454,7 +454,7 @@ async def _apply_price(db: AsyncSession, row: HubTool, price_usd: float) -> HubT
 async def search_listed(db: AsyncSession, query: str, cat: Any, *, org_slug: str | None = None,
                         email: str | None = None, everything: bool = False,
                         ) -> tuple[list[tuple[dict, float]], dict[str, dict]]:
-    """The listed live hub tools that match `query` (docs/hub-listing-decisions.md, decision 2):
+    """The listed live hub tools that match `query`:
     the newest live version of every tool with `listed` on, scored by `catalog_store.score_extra`
     (the catalog's own tokens, idf and gate, no boost). Returns `([(row, score)], stats)`; `stats`
     is keyed by id with the 30-day ok rate and sample count of runs by OTHERS, the same shape the
@@ -522,7 +522,7 @@ async def search_listed(db: AsyncSession, query: str, cat: Any, *, org_slug: str
 
 async def set_flags(db: AsyncSession, *, org_id: int, tool_id: str, maker_email: str = "",
                     listed: bool | None = None, public_log: bool | None = None) -> HubTool | None:
-    """The maker's two distribution switches (docs/hub-listing-decisions.md), no version bump.
+    """The maker's two distribution switches, no version bump.
     `public_log` is on the newest live version. `listed` is the tool's HubListing row: True asks for
     a place in search (a new request, or a rejected one asked again; an approved or pending one is
     left alone), False takes the tool out and withdraws any request. A switch given as None is left
@@ -620,7 +620,7 @@ async def decide_listing(db: AsyncSession, *, tool_id: str, approve: bool, reaso
 async def capability_siblings(db: AsyncSession, capability: str, *, exclude: str = "", org_slug: str | None = None,
                               email: str | None = None) -> list[dict[str, Any]]:
     """The approved, live hub tools that do `capability`, as the sibling rows catalog_get shows
-    beside that job's providers (docs/hub-listing-decisions.md round 3). Each carries the public
+    beside that job's providers. Each carries the public
     contract's price and a seeded `observed` (`seeded_observed`), from runs by other teams in the
     last 30 days. Never routed to: an agent compares and picks (AGENTS.md non-negotiable 4)."""
     if not visible_to(org_slug, email) or not capability:
@@ -671,7 +671,7 @@ async def approved_capability(db: AsyncSession, tool_id: str) -> str:
     return lst.capability if lst is not None and lst.state == "approved" else ""
 
 
-# Updates to an approved tool wait for review (docs/hub-listing-decisions.md): a new version
+# Updates to an approved tool wait for review: a new version
 # and a price change. The approved version and price keep serving until treg decides.
 
 async def _hold_for_review(db: AsyncSession, row: HubTool) -> None:
