@@ -2325,7 +2325,7 @@ endpoints:
         location:
           type: string
           required: false
-          note: 'a US city, state or Remote; empty = anywhere in the US. There is no country parameter: every location is searched on www.indeed.com.'
+          note: 'default '
           example: Remote
         query:
           type: string
