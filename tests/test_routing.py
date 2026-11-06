@@ -3026,6 +3026,41 @@ def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
     assert wrong == []
 
 
+@pytest.mark.parametrize("limit", [1, 3])
+def test_a_whole_request_miss_is_ranked_at_the_hold_the_routed_request_reserves(limit):
+    """A per-result child that settles a miss at its whole hold must be ranked at that hold for
+    the request its adapter actually sends: a fixed page size (`const`) or a list the caller sent
+    sets the units, not the contract's `limit` alone. Two keywords, a fixed ten-row page and a
+    limit of 1 or 3 all have to agree with what `/call` reserves and settles."""
+    from treg.application.call.resolve import QueryValues, price_call
+    from treg.domain.catalog.routing.contracts import canonical_identity
+    from treg.domain.catalog.routing.plan import miss_charge_micro
+
+    cat = catalog_store.load()
+    examples = {"domain": "stripe.com", "company_domain": "stripe.com", "url": "https://stripe.com"}
+    wrong = []
+    for row in (r for r in cat.by_id.values() if r.get("kind") == "routed"):
+        contract = cat.contracts[row["capability"]]
+        for eid in row["routed_children"]:
+            ep = cat.by_id[eid]
+            cost = ep.get("cost") or {}
+            if cost.get("type") != "per_result" or cost.get("bills_miss") is not True or cost.get("miss_units"):
+                continue
+            adapter = cat.adapters[eid]
+            ident = {k: (["alpha", "beta"] if contract.identity_types.get(k) == "list" else examples.get(k, "alpha"))
+                     for k in adapter.accepts[0]}
+            if "limit" in (contract.filters or {}):
+                ident["limit"] = limit
+            ident, _ = canonical_identity(contract, ident)
+            query, body = adapter.to_upstream(ident)
+            hold = price_call(ep, QueryValues(tuple((str(k), str(v)) for k, v in (query or {}).items())),
+                              json.dumps(body).encode() if body else b"", set()).estimate_micro
+            ranked = miss_charge_micro(cat.cost_view(cost, ep["provider"]), ident, adapter)
+            if ranked != hold:
+                wrong.append((eid, ranked, hold))
+    assert wrong == []
+
+
 @pytest.fixture
 def findymail_and_prospeo_on(monkeypatch, platform_on):
     for p in ("FINDYMAIL", "PROSPEO"):
