@@ -1601,19 +1601,8 @@ BONUS_HEAL_WINDOW = timedelta(days=3)
 
 async def _grant_topup_bonus(db: AsyncSession, org_id: int, pi_id: str, block_id: str,
                              amount_micro: int) -> tuple[int, int]:
-    """Grant a top-up's tiered bonus, manual or automatic, unless this payment already has one;
-    commits.
-
-    Returns what THIS call granted, `(0, 0)` when nothing was owed or it was already granted. Keyed on
-    the payment rather than on "first delivery", so a delivery after a failed grant completes it. The
-    lock on the purchased block serializes every door that reaches one payment (the two webhook
-    deliveries of a Checkout, the inline auto-top-up credit and its webhook), so the check and the
-    grant cannot interleave. `revoke_refunded` takes the same lock before it looks for bonus blocks.
-
-    A refund recorded before this grant (a delivery that heals after the refund was processed) is
-    applied to the new bonus in the same transaction, in the proportion `revoke_refunded` uses, since
-    that refund could not see a block that did not exist yet. Returns the bonus net of that.
-    """
+    """Grant a top-up's bonus unless this payment already has one; commits. Returns what this call
+    granted, net of a refund recorded before it."""
     bonus_micro, bonus_pct = bonus_for_topup(amount_micro)
     if bonus_micro <= 0:
         return 0, 0
@@ -1636,9 +1625,7 @@ async def _grant_topup_bonus(db: AsyncSession, org_id: int, pi_id: str, block_id
 
 
 async def _lock_purchased_block(db: AsyncSession, block_id: str) -> datetime:
-    """Serialize every bonus grant and refund of one payment until the caller commits; returns the
-    block's `created_at`. A no-op UPDATE: a row lock on PostgreSQL and the write lock on SQLite,
-    which ignores SELECT FOR UPDATE."""
+    """A no-op UPDATE, because SQLite ignores SELECT FOR UPDATE. Returns the block's `created_at`."""
     return (await db.execute(
         update(CreditBlock).where(CreditBlock.id == block_id).values(id=CreditBlock.id)
         .returning(CreditBlock.created_at).execution_options(synchronize_session=False)
@@ -1646,11 +1633,6 @@ async def _lock_purchased_block(db: AsyncSession, block_id: str) -> datetime:
 
 
 async def _lock_refund_blocks(db: AsyncSession, org_id: int, block_id: str) -> None:
-    """`_lock_purchased_block` for a refund, which goes on to lock the payment's bonus blocks too.
-
-    On PostgreSQL the purchased block and the org's bonus blocks are row-locked in id order first, the
-    order settlement locks blocks in, so a refund racing a settlement cannot deadlock. The no-op
-    UPDATE that follows is then already covered there, and on SQLite it is the write lock."""
     await db.execute(
         select(CreditBlock.id).where(CreditBlock.org_id == org_id,
                                      or_(CreditBlock.id == block_id, CreditBlock.kind == "bonus"))
@@ -1659,8 +1641,6 @@ async def _lock_refund_blocks(db: AsyncSession, org_id: int, block_id: str) -> N
 
 
 async def _refunded_of(db: AsyncSession, block_id: str) -> int:
-    """The cumulative refund recorded against a purchased block: the highest `target_micro` of its
-    `revoke` entries, 0 when it was never refunded."""
     metas = (await db.execute(
         select(LedgerEntry.meta).where(LedgerEntry.kind == "revoke", LedgerEntry.block_id == block_id)
     )).scalars().all()
@@ -1668,7 +1648,6 @@ async def _refunded_of(db: AsyncSession, block_id: str) -> int:
 
 
 async def _bonused_payments(db: AsyncSession, org_id: int) -> set[str]:
-    """PaymentIntents that already earned this org a top-up bonus (the grant entry's meta)."""
     metas = (await db.execute(
         select(LedgerEntry.meta).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "grant")
     )).scalars().all()
@@ -1800,9 +1779,6 @@ async def revoke_refunded(db: AsyncSession, pi_id: str, refunded_micro: int, *, 
     refunded = max(0, min(int(refunded_micro), paid))
     if refunded == 0:
         return {"handled": True, "revoked_micro": 0, "shortfall_micro": 0, "held_micro": 0}
-    # The lock `_grant_topup_bonus` takes, taken before the bonus blocks are looked up: a heal that
-    # is granting this payment's bonus right now either commits first (and is found here) or waits
-    # and then sees this refund.
     await _lock_refund_blocks(db, org_id, block_id)
     targets = [ledger.RevokeTarget(block_id, refunded)]
     targets += [ledger.RevokeTarget(bid, int(amt) * refunded // paid)
@@ -2200,12 +2176,7 @@ GAP_BONUS_MISSING = "bonus_missing"
 
 
 async def reconcile_topups(*, since: datetime, until: datetime) -> dict:
-    """Check every top-up that succeeded in [since, until) (naive UTC) against the ledger. Read-only.
-
-    A gap is a paid top-up with no purchased block (`not_credited`), one credited to another org or
-    amount (`credited_differently`), or a top-up owed a bonus that has none (`bonus_missing`). A
-    payment of a team that has since been deleted is never a gap.
-    """
+    """Check every top-up that succeeded in [since, until) (naive UTC) against the ledger. Read-only."""
     paid = await _succeeded_payment_intents(since, until)
     succeeded_at = {pi["id"]: at for pi, at in paid}
     topups: list[tuple[dict, int, int, bool]] = []
@@ -2221,8 +2192,6 @@ async def reconcile_topups(*, since: datetime, until: datetime) -> dict:
             select(CreditBlock).where(CreditBlock.stripe_payment_intent.in_(ids))
         )).scalars()} if ids else {}
         org_ids = {org_id for _, org_id, _, _ in topups}
-        # Team deletion removes a team's blocks and ledger with it, so a payment of a deleted team
-        # has nothing left to match and nothing a resend could credit.
         live = set((await db.execute(select(Org.id).where(Org.id.in_(org_ids)))).scalars()) \
             if org_ids else set()
         bonused: set[str] = set()
@@ -2247,11 +2216,8 @@ async def reconcile_topups(*, since: datetime, until: datetime) -> dict:
 
 
 async def _succeeded_payment_intents(since: datetime, until: datetime) -> list[tuple[dict, int]]:
-    """Every PaymentIntent that succeeded in [since, until), with the time it succeeded.
-
-    Listed by Stripe's `payment_intent.succeeded` events rather than by the payment's creation time:
-    a delayed method (a bank debit) can succeed days after it was created, outside any window of
-    creation times. Stripe keeps events for 30 days, longer than any reconcile window."""
+    """Every PaymentIntent that succeeded in [since, until), with the time it succeeded. Stripe keeps
+    events for 30 days."""
     window = {"gte": int(since.replace(tzinfo=timezone.utc).timestamp()),
               "lt": int(until.replace(tzinfo=timezone.utc).timestamp())}
     found: dict[str, tuple[dict, int]] = {}

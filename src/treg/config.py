@@ -599,8 +599,6 @@ class Settings(BaseSettings):
     # so an unconfigured deploy exposes no unauthenticated POST surface (same posture as the demo).
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
-    # A Slack incoming-webhook URL for operator alerts (`treg-worker billing reconcile`). Empty = the
-    # alert is only the command's output and exit status.
     ops_slack_webhook_url: str = ""
     # Enterprise SSO uses WorkOS only as a federation bridge; treg remains the account,
     # membership, session, and authorization authority. Empty keys disable setup and login.
