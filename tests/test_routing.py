@@ -822,6 +822,29 @@ async def test_routed_plan_keeps_per_success_hit_fallback_from_the_cache(
     assert tomba.hit_rate == pytest.approx(2 / 3, abs=1e-3)
 
 
+async def test_an_overflow_candidate_pays_its_route_price_on_a_miss(clients: AsyncClient, monkeypatch):
+    """Overflow replaces a direct per-result child's price with the aggregator's, and the
+    aggregator bills that price for an empty answer too: the direct row's free miss no longer
+    applies, so unmeasured it costs twice its price per hit."""
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "ICYPEAS-KEY")
+    monkeypatch.setenv("TREG_OVERFLOW_MODE", "on")
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_route.capacity_view, "is_exhausted",
+                        lambda provider, endpoint_id=None, slot=None, **_: provider == "icypeas")
+    route = SimpleNamespace(aggregator="orthogonal", agg_price_micro=10_000)
+    monkeypatch.setattr(call_route.overflow_routes_view, "for_endpoint",
+                        lambda endpoint_id: [route] if endpoint_id == "icypeas.people.search" else [])
+    caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
+    plan = await call_route.build_plan(catalog_store.load().by_id["treg.people.search"],
+                                       {"title": "CTO", "limit": 1}, caller,
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    icypeas = next(c for c in plan.candidates if c.endpoint["id"] == "icypeas.people.search")
+    assert icypeas.hit_rate is None and icypeas.ok_rate is None
+    assert icypeas.price_micro == icypeas.miss_micro == 10_000
+    assert icypeas.expected_cost_per_hit == 20_000
+
+
 async def test_routed_plan_keeps_an_exhausted_provider_when_its_overflow_route_is_enabled(
     clients: AsyncClient, monkeypatch,
 ):
@@ -2890,25 +2913,61 @@ async def test_a_provider_that_caps_a_filter_is_skipped_above_the_cap(clients: A
 
 def test_a_per_result_child_is_ranked_free_on_a_miss_unless_its_cost_bills_one():
     """A per-result price bills the rows a provider returns, so an empty answer is free and the
-    expected cost per hit is the hit price, as for per-success. `bills_miss` (a minimum charge on
-    an empty page) and per-call prices keep paying for misses; a `call_fee` alone bills its fee."""
+    expected cost per hit is the hit price, as for per-success. A `call_fee` bills every run, hit
+    or miss; `bills_miss` bills the whole request on a miss, or `miss_units` rows of it."""
     from treg.domain.catalog.routing import contracts as C, plan as RP
 
-    def cand(cost, price=1_000):
+    def view(cost):
+        return {"usd": 0.001, "per": 1, **cost}
+
+    def cand(cost, limit=1):
+        cv, req = view(cost), {"limit": limit}
+        price = RP.cost_at(cv, req)
         return RP.Candidate(endpoint={"id": "x.find", "provider": "x", "cost": cost},
                             adapter=C.Adapter("x.find", (("q",),), {"q": "body.q"}, {}, "rows == []"),
                             variant=("q",), tier="platform", price_micro=price, hit_rate=0.25,
-                            ok_rate=None, p50_ms=None, last_ok_days=None)
+                            ok_rate=None, p50_ms=None, last_ok_days=None,
+                            miss_micro=RP.miss_charge_micro(cv, req, None, price))
 
     assert cand({"type": "per_result"}).expected_cost_per_hit == 1_000
     assert cand({"type": "per_success"}).expected_cost_per_hit == 1_000
     assert cand({"type": "per_result", "bills_miss": True}).expected_cost_per_hit == 4_000
     assert cand({"type": "per_call"}).expected_cost_per_hit == 4_000
-    assert cand({"type": "per_result", "call_fee": 0.0002}).expected_cost_per_hit == 1_600
+    # The start fee is in the hit price too: 1,000 + 200 a hit, 200 for each of three misses.
+    fee = cand({"type": "per_result", "call_fee": 0.0002})
+    assert fee.price_micro == 1_200 and fee.miss_micro == 200 and fee.expected_cost_per_hit == 1_800
+    # A one-row minimum on an empty page bills one row, not the twenty asked for.
+    floor = cand({"type": "per_result", "bills_miss": True, "miss_units": 1}, limit=20)
+    assert floor.price_micro == 20_000 and floor.miss_micro == 1_000
+    assert floor.expected_cost_per_hit == 23_000
     # A per-success partial miss charge is settled from the provider's report and ranked free.
     assert cand({"type": "per_success", "bills_miss": True}).expected_cost_per_hit == 1_000
     assert RP.bills_miss({"type": "per_success", "bills_miss": True})
     assert not RP.bills_miss({"type": "per_result"})
+
+
+def test_a_routed_per_result_child_ranked_free_on_a_miss_settles_from_the_answer():
+    """Ranking may call a per-result child's miss free only when settlement reads the answer: a
+    child that settles an empty answer at the hold (no row count, no reported charge) bills its
+    misses and must say so with `bills_miss`. Each child's synthetic miss is replayed through
+    settlement; `observed_micro` None means it fell back to the estimate."""
+    from treg.application.replay import engine, fixtures
+    from treg.domain.catalog.routing.plan import bills_miss
+
+    cat = catalog_store.load()
+    kids = {c for r in cat.by_id.values() if r.get("kind") == "routed" for c in r["routed_children"]}
+    free = {e for e in kids if (cat.by_id[e].get("cost") or {}).get("type") == "per_result"
+            and not bills_miss(cat.by_id[e].get("cost"))}
+    # Settled from evidence the synthetic body cannot carry: a response header, or a charge field
+    # the example fixture redacts.
+    reported_elsewhere = {
+        "crustdata.companies.jobs.search", "crustdata.companies.search", "crustdata.people.search",
+        "fiber-ai.companies.search",
+    }
+    estimate = sorted(rec["endpoint_id"] for rec in fixtures.generate()
+                      if rec["endpoint_id"] in free - reported_elsewhere and rec["rid"].endswith(":miss")
+                      and (engine.replay(rec)["settle"] or {}).get("observed_micro") is None)
+    assert estimate == []
 
 
 @pytest.fixture

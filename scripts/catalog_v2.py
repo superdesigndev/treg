@@ -38,7 +38,7 @@ CATALOG = ROOT / "src" / "treg" / "catalog"
 BRANCH_SOURCES = (ROOT / "src/treg/application/call/settle.py", ROOT / "src/treg/application/call/resolve.py",
                   ROOT / "src/treg/domain/catalog/results.py")
 PROVIDER_KEYS = ("call_fee", "call_fee_per", "contactout", "sumble", "enrichlayer", "octen_rates",
-                 "tavily_rates", "bills_miss", "ceiling_param")
+                 "tavily_rates", "bills_miss", "miss_units", "ceiling_param")
 PLUGIN_SETTLES = ("quantity", "base", "modifiers", "terminal_presence")
 # The 2xx error envelope today's result judge reads on every result-aware row (`results.classify`).
 ENVELOPE = {"any": [{"path": "response.error", "op": "present"}, {"path": "response.errors", "op": "present"}]}

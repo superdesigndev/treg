@@ -113,6 +113,7 @@ class Cost(Model):
     quantity: Quantity | None = None
     ceiling_param: CeilingParam | None = field(kind="P")
     bills_miss: bool | None = None
+    miss_units: int | None = None
     source: str | None = field(kind="C")
     source_url: str | None = field(kind="C")
     checked: str | None = field(kind="C")

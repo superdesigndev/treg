@@ -116,6 +116,7 @@ endpoints:
       currency: credit
       per: 1
       unit: keyword
+      bills_miss: true
       source: docs
       source_url: https://seranking.com/pricing.html
       checked: '2026-07-28'
@@ -336,6 +337,7 @@ endpoints:
       currency: credit
       per: 1
       unit: row
+      bills_miss: true
       source: docs
       source_url: https://seranking.com/pricing.html
       checked: '2026-07-28'
@@ -404,6 +406,7 @@ endpoints:
       currency: credit
       per: 1
       unit: row
+      bills_miss: true
       source: docs
       source_url: https://seranking.com/pricing.html
       checked: '2026-07-28'

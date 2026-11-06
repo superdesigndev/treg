@@ -80,11 +80,12 @@ def cost_at(cost_view: dict | None, request: dict | None = None, adapter: Adapte
     if not cost_view or cost_view.get("usd") is None:
         return None
     usd = float(cost_view["usd"])
+    fee = _call_fee_micro(cost_view)
     if adapter and adapter.cost_units:
         units = P.evaluate(adapter.cost_units, request or {})
         if type(units) is not int or units < 0:
             return None
-        return int(round(usd * units * 1_000_000))
+        return int(round(usd * units * 1_000_000)) + fee
     t = cost_view.get("type")
     per = cost_view.get("per") or 1
     if t in ("per_result", "quota_rows"):
@@ -98,7 +99,14 @@ def cost_at(cost_view: dict | None, request: dict | None = None, adapter: Adapte
             usd = usd * per * (-(-n // per))
         else:
             usd = usd * n
-    return int(round(usd * 1_000_000))
+    return int(round(usd * 1_000_000)) + fee
+
+
+def _call_fee_micro(cost: dict | None) -> int:
+    """An Apify-style `call_fee` (USD) that every run bills on top of its rows, hit or miss.
+    Settlement multiplies it by each `call_fee_per` list's length; ranking prices one."""
+    fee = (cost or {}).get("call_fee")
+    return int(round(float(fee) * 1_000_000)) if isinstance(fee, (int, float)) and fee > 0 else 0
 
 
 def bills_miss(cost: dict | None) -> bool:
@@ -114,18 +122,24 @@ def bills_miss(cost: dict | None) -> bool:
     return cost.get("bills_miss") is True or bool(cost.get("call_fee"))
 
 
-def miss_charge_micro(cost: dict | None, price_micro: int) -> int:
-    """What ranking assumes one miss costs. A `call_fee` alone bills just the run's fee. A
-    per-success `bills_miss` charge is a fraction of the price that the provider reports and treg
-    settles, so ranking keeps it free rather than charging the whole price for it. Any other miss
-    that bills is charged at the full price."""
-    cost = cost or {}
+def miss_charge_micro(cost_view: dict | None, request: dict | None = None,
+                      adapter: Adapter | None = None, price_micro: int | None = None) -> int:
+    """What ranking assumes one miss of this request costs, from the child's priced cost view.
+    A `call_fee` alone bills just the run's fee. A per-success `bills_miss` charge is a fraction of
+    the price that the provider reports and treg settles, so ranking keeps it free rather than
+    charging the whole price for it. A per-result `bills_miss` with `miss_units` bills that many
+    rows (CompanyEnrich's one-row minimum on an empty page); without it, the whole request, which
+    is what settlement charges when nothing in the answer lowers the hold."""
+    cost = cost_view or {}
     if not bills_miss(cost):
         return 0
-    if cost.get("bills_miss") is not True and cost.get("type") in ("per_success", "per_result"):
-        return int(round(float(cost["call_fee"]) * 1_000_000))
-    if cost.get("type") == "per_success":
-        return 0
+    if cost.get("type") in ("per_success", "per_result") and (
+            cost.get("bills_miss") is not True or cost.get("type") == "per_success"):
+        return _call_fee_micro(cost)
+    if isinstance(cost.get("miss_units"), int):
+        return cost_at(cost_view, {"limit": cost["miss_units"]}) or 0
+    if price_micro is None:
+        price_micro = cost_at(cost_view, request, adapter) or 0
     return price_micro
 
 
@@ -143,12 +157,15 @@ class Candidate:
     exhausted: bool = False
     note: str = ""
     ignored: tuple[str, ...] = ()     # caller filters this adapter cannot express (ranks it down)
+    # What one miss costs (`miss_charge_micro`, or an overflow route's price). None: the full
+    # price when the child's cost bills a miss, else 0.
+    miss_micro: int | None = None
 
     @property
     def expected_cost_per_hit(self) -> float:
         """(P(hit) × price + P(miss) × miss charge) / P(hit). Own keys and anonymous routes are
         free. Without a published hit rate, P(hit) is the prior times the ok rate (1.0 while that is
-        unmeasured too). A miss is free unless the child's cost bills it (`bills_miss`)."""
+        unmeasured too). A miss is free unless the child's cost bills it (`miss_micro`)."""
         if self.price_micro is None:
             return float("inf")
         if self.tier != "platform":
@@ -156,7 +173,8 @@ class Candidate:
         p_hit = self.hit_rate if self.hit_rate is not None else \
             UNMEASURED_HIT_PRIOR * (self.ok_rate if self.ok_rate is not None else 1.0)
         p_hit = max(p_hit, 0.01)
-        miss = miss_charge_micro(self.endpoint.get("cost"), self.price_micro)
+        miss = self.miss_micro if self.miss_micro is not None else \
+            (self.price_micro if bills_miss(self.endpoint.get("cost")) else 0)
         return self.price_micro + miss * (1.0 - p_hit) / p_hit
 
     @property

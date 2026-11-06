@@ -1056,8 +1056,12 @@ an invalid extra never disables the primary.
   the prior alone while `ok_rate` is unmeasured too: assuming every unproven answer a hit put a child
   seen a few times ahead of same-priced siblings measured near 1. A per-success or per-result child
   bills no miss, so its cost per hit is its price either way, unless its cost bills one
-  (`plan.bills_miss`: `cost.bills_miss`, such as a minimum charge on an empty page, or an Apify
-  `call_fee`, which a miss pays alone); the routed row's `miss_billed_by` uses the same rule. An
+  (`plan.bills_miss`); the routed row's `miss_billed_by` uses the same rule. A per-result child is
+  free on a miss only when settlement reads the answer (a row count or the provider's reported
+  charge); one that settles an empty answer at the hold carries `cost.bills_miss`, and a test
+  replays every routed child's miss fixture to hold that. A billed miss costs the whole request,
+  `miss_units` rows of it (a minimum charge on an empty page), or an Apify `call_fee` alone, which
+  `cost_at` also adds to the hit price. An overflow candidate pays its route's price on a miss. An
   unmeasured per-call child leads only below half a
   measured sibling's cost per hit, which still lets a much cheaper newcomer be tried and measured.
   Among one tier, a candidate that uses more of the keys the caller SENT outranks a
