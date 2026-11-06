@@ -25,6 +25,7 @@ import (
 const usageError = 2
 
 func Main(argv []string, stderr io.Writer) int {
+	api.UseSystemProxy()
 	argv = append([]string(nil), argv...)
 	started := time.Now()
 	org, argv, err := popOrg(argv)

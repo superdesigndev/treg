@@ -405,7 +405,7 @@ func secretID(body []byte) any {
 }
 
 func (e *Env) post(c *api.Client, path string, body any) (*api.Response, error) {
-	return e.do(c, api.Request{Method: "POST", Path: path, Body: []byte(pyjson.Dumps(body, pyjson.Options{Indent: -1})), Header: jsonHeader})
+	return e.do(c, api.Request{Method: "POST", Path: path, Body: []byte(pyjson.Dumps(body, pyjson.Body)), Header: jsonHeader})
 }
 
 func (e *Env) remove(c *api.Client, path string) error {
@@ -714,7 +714,7 @@ func llmChat(base, token, model, system, user string) (string, error) {
 	body := pyjson.Ordered("model", model, "temperature", 0, "messages", []any{
 		pyjson.Ordered("role", "system", "content", system), pyjson.Ordered("role", "user", "content", user)})
 	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(base, "/")+"/chat/completions",
-		strings.NewReader(pyjson.Dumps(body, pyjson.Options{Indent: -1})))
+		strings.NewReader(pyjson.Dumps(body, pyjson.Body)))
 	if err != nil {
 		return "", err
 	}
