@@ -10,19 +10,6 @@ import (
 	"github.com/superdesigndev/treg/cli/internal/output"
 )
 
-func feedbackCmd(env *Env) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "feedback",
-		Short: "Submit or retrieve private team feedback.",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return cmd.Help()
-		},
-	}
-	cmd.AddCommand(feedbackGetCmd(env))
-	return cmd
-}
-
 func feedbackGetCmd(env *Env) *cobra.Command {
 	return &cobra.Command{
 		Use:     "get <feedback_id>",
@@ -43,11 +30,11 @@ func feedbackGetCmd(env *Env) *cobra.Command {
 // the same JSON in both output modes.
 func (e *Env) feedbackGet(id int) error {
 	if id < 1 {
-		return feedbackGetError("invalid_id", "Feedback ID must be a positive integer from a submission receipt.")
+		return feedbackError("invalid_id", "Feedback ID must be a positive integer from a submission receipt.", nil)
 	}
 	resp, err := e.Client().Do(api.Request{Path: fmt.Sprintf("/feedback/%d", id), Header: [][2]string{api.WithView}})
 	if err != nil {
-		return feedbackGetError("request_failed", "Could not retrieve feedback. Check connectivity and retry.")
+		return feedbackError("request_failed", "Could not retrieve feedback. Check connectivity and retry.", nil)
 	}
 	v, ok := resp.View()
 	if !ok {
@@ -58,9 +45,4 @@ func (e *Env) feedbackGet(id int) error {
 		return &output.Exit{Code: 1}
 	}
 	return nil
-}
-
-func feedbackGetError(code, message string) error {
-	outln(pyDumps(ordered{{"error", code}, {"message", message}}))
-	return &output.Exit{Code: 1}
 }

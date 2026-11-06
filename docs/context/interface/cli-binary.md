@@ -23,6 +23,13 @@ sources:
   - cli/internal/output/call.go
   - cli/internal/commands/call.go
   - cli/internal/commands/update.go
+  - cli/internal/commands/pyargs.go
+  - cli/internal/commands/secret.go
+  - cli/internal/commands/connections.go
+  - cli/internal/commands/topup.go
+  - cli/internal/pyjson/pyjson.go
+  - cli/internal/pymime/pymime.go
+  - cli/internal/prompt/prompt.go
   - cli/internal/telemetry/telemetry.go
   - cli/internal/update/update.go
   - cli/internal/update/method.go
@@ -83,10 +90,25 @@ same files. It is not the default install yet: `/install.sh` installs the Python
   registry cannot know: the `treg:` line (version and path) and a `registry:` line off treg.to.
 - **`call --await`** follows the registry's task (`/tasks/{call_id}`, [tasks](../architecture/tasks.md))
   and never reads `X-Treg-Async` itself; a registry without the task endpoint gets exit 1 naming it.
+- **Bodies and files.** `internal/pyjson` decodes JSON keeping key order and number spelling and
+  encodes it as Python does: a request body as httpx's `json=` (compact, UTF-8 kept), the
+  `treg.json` that `secret add --dir` rewrites as `json.dumps(indent=2)`. A JSON argument that does
+  not parse is refused in Python's own `JSONDecodeError` wording. Arguments are typed as argparse
+  types them (`int()`, `float()`, `choices`), so the same command line sends the same bytes.
+  `treg host` guesses the media type from CPython's `mimetypes` table and the machine's
+  `mime.types` files, which is what the Python CLI read.
+- **Prompts.** A command asks only where the Python CLI asks, and only a person at a terminal
+  (`internal/prompt`): the tool-access checklist of `org agent-new`, a pasted key read without echo
+  from the controlling terminal, the auto top-up consent. Without a terminal the access is every
+  tool, a pasted-key connect needs `--key-stdin`, and the consent is no, even for a `y` piped in;
+  no command reads an agent's idle pipe.
+- **Crashes.** Where the Python CLI dies with a traceback (a `--file` that does not exist), the
+  binary prints the exception's last line and exits 1.
 - **Parity suite.** `tests/cli_go` runs both CLIs against a fake registry (canned status, headers
   and body) and a live one (`python -m treg` on a fresh sqlite database, a signed-up team, an echo
   upstream registered as its own tool) and compares exit status, stdout (JSON parsed), stderr,
-  config writes and the request each sent. It runs with `TREG_GO_BIN` (or `TREG_GO_BUILD=1`); the
+  config writes and the request each sent; prompts run on a pseudo-terminal that is each CLI's
+  controlling terminal, answered key by key. It runs with `TREG_GO_BIN` (or `TREG_GO_BUILD=1`); the
   `cli-go` CI job runs it, and Go's vet and unit tests on Linux, macOS and Windows.
 
 ## Commands that write outside treg

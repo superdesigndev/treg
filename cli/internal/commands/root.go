@@ -45,9 +45,22 @@ func Root(env *Env) *cobra.Command {
 		backgroundUpdateCmd(env),
 		catalogCmd(env),
 		balanceCmd(env),
+		healthCmd(env),
+		orgCmd(env),
+		toolCmd(env),
+		secretCmd(env),
+		connectionsCmd(env),
+		oauthCmd(env),
+		resourcesCmd(env),
+		auditCmd(env),
+		callsCmd(env),
+		reviewCmd(env),
 		feedbackCmd(env),
 		skillCmd(env),
 		mcpCmd(env),
+		hostCmd(env),
+		usageCmd(env),
+		topupCmd(env),
 	)
 	root.AddCommand(uploadCmds(env)...)
 	return root
