@@ -822,17 +822,17 @@ async def test_routed_plan_keeps_per_success_hit_fallback_from_the_cache(
     assert tomba.hit_rate == pytest.approx(2 / 3, abs=1e-3)
 
 
-async def test_an_overflow_candidate_pays_its_route_price_on_a_miss(clients: AsyncClient, monkeypatch):
-    """Overflow replaces a direct per-result child's price with the aggregator's, and the
-    aggregator bills that price for an empty answer too: the direct row's free miss no longer
-    applies, so unmeasured it costs twice its price per hit."""
+async def test_an_overflow_candidate_prices_a_miss_by_its_route_unit(clients: AsyncClient, monkeypatch):
+    """Overflow replaces a direct per-result child's price with the aggregator's. An aggregator
+    priced per call bills that price for an empty answer too, so unmeasured it costs twice its
+    price per hit; one priced per result charges nothing for an empty answer."""
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "ICYPEAS-KEY")
     monkeypatch.setenv("TREG_OVERFLOW_MODE", "on")
     get_settings.cache_clear()
     monkeypatch.setattr(call_route.capacity_view, "is_exhausted",
                         lambda provider, endpoint_id=None, slot=None, **_: provider == "icypeas")
-    route = SimpleNamespace(aggregator="orthogonal", agg_price_micro=10_000)
+    route = SimpleNamespace(aggregator="orthogonal", agg_price_micro=10_000, agg_unit="call")
     monkeypatch.setattr(call_route.overflow_routes_view, "for_endpoint",
                         lambda endpoint_id: [route] if endpoint_id == "icypeas.people.search" else [])
     caller = SimpleNamespace(org_id=1, org=SimpleNamespace(id=1, platform_overflow_disabled=False))
@@ -843,6 +843,14 @@ async def test_an_overflow_candidate_pays_its_route_price_on_a_miss(clients: Asy
     assert icypeas.hit_rate is None and icypeas.ok_rate is None
     assert icypeas.price_micro == icypeas.miss_micro == 10_000
     assert icypeas.expected_cost_per_hit == 20_000
+
+    # A route priced per result reports no rows on a miss and charges nothing for it.
+    route.agg_unit = "result"
+    plan = await call_route.build_plan(catalog_store.load().by_id["treg.people.search"],
+                                       {"title": "CTO", "limit": 1}, caller,
+                                       call_route.RouteOptions.from_headers(lambda key: None))
+    icypeas = next(c for c in plan.candidates if c.endpoint["id"] == "icypeas.people.search")
+    assert icypeas.miss_micro == 0 and icypeas.expected_cost_per_hit == 10_000
 
 
 async def test_routed_plan_keeps_an_exhausted_provider_when_its_overflow_route_is_enabled(
@@ -2946,28 +2954,76 @@ def test_a_per_result_child_is_ranked_free_on_a_miss_unless_its_cost_bills_one()
     assert not RP.bills_miss({"type": "per_result"})
 
 
-def test_a_routed_per_result_child_ranked_free_on_a_miss_settles_from_the_answer():
-    """Ranking may call a per-result child's miss free only when settlement reads the answer: a
-    child that settles an empty answer at the hold (no row count, no reported charge) bills its
-    misses and must say so with `bills_miss`. Each child's synthetic miss is replayed through
-    settlement; `observed_micro` None means it fell back to the estimate."""
-    from treg.application.replay import engine, fixtures
-    from treg.domain.catalog.routing.plan import bills_miss
+def _with_page_size(record: dict, n: int) -> dict:
+    """A replay record whose request body asks for `n` rows wherever it names a page size."""
+    import base64
 
+    request = dict(record["request"])
+    body = json.loads(base64.b64decode(request["body_b64"]))
+    for key in ("pageSize", "limit", "size", "count", "per_page"):
+        if key in body:
+            body[key] = n
+    request["body_b64"] = base64.b64encode(json.dumps(body).encode()).decode()
+    return {**record, "request": request}
+
+
+def test_a_routed_per_result_child_settles_a_miss_at_what_ranking_assumes():
+    """Each routed per-result child's synthetic miss is replayed through settlement. A child ranked
+    free on a miss must settle it at zero; one that bills a miss must settle it at the charge
+    ranking prices (`miss_units` rows, else the whole hold). A synthetic miss keeps the hit
+    example's reported charge, so a child that settles on the provider's own report cannot show
+    its zero here: those are listed with the evidence that an empty answer reports zero."""
+    from treg.application.replay import engine, fixtures
+    from treg.domain.catalog.routing.plan import bills_miss, cost_at
+
+    reported_zero = {
+        "blitzapi.companies.search": "fair_usage.records_used; empty pages use zero records",
+        "blitzapi.people.search": "fair_usage.records_used; empty pages use zero records",
+        "crustdata.companies.jobs.search": "X-Credits-Used header; empty results consume none",
+        "crustdata.companies.search": "X-Credits-Used header; charged per company returned",
+        "crustdata.people.search": "X-Credits-Used header; charged per profile returned",
+        "dropleads.companies.enrich": "credits.creditsDeducted; charged per returned company",
+        "dropleads.companies.search": "credits.creditsDeducted; empty results are free",
+        "fiber-ai.companies.search": "chargeInfo.creditsCharged; charged per company returned",
+        "fiber-ai.people.search": "chargeInfo.creditsCharged; charged per profile returned",
+        "leadmagic.x.companies-search-v3": "credits_consumed; free if zero matches",
+        "leadmagic.x.employee-finder": "credits_consumed; free if no results",
+        "lusha.companies.search": "billing.creditsCharged; an unmatched search charges 0",
+        "lusha.people.search": "billing.creditsCharged; an unmatched search charges 0",
+        "oceanio.companies.lookalike": "creditsUsed; charged per result",
+        "oceanio.companies.search": "creditsUsed; charged per result",
+        "oceanio.people.search": "creditsUsed; charged per result",
+        "quickenrich.companies.search": "meta.credits_used; empty results free",
+        "quickenrich.people.search.domain": "meta.credits_used; empty pages are free",
+        "sumble.organizations": "credits_used; unmatched inputs free",
+    }
     cat = catalog_store.load()
     kids = {c for r in cat.by_id.values() if r.get("kind") == "routed" for c in r["routed_children"]}
-    free = {e for e in kids if (cat.by_id[e].get("cost") or {}).get("type") == "per_result"
-            and not bills_miss(cat.by_id[e].get("cost"))}
-    # Settled from evidence the synthetic body cannot carry: a response header, or a charge field
-    # the example fixture redacts.
-    reported_elsewhere = {
-        "crustdata.companies.jobs.search", "crustdata.companies.search", "crustdata.people.search",
-        "fiber-ai.companies.search",
-    }
-    estimate = sorted(rec["endpoint_id"] for rec in fixtures.generate()
-                      if rec["endpoint_id"] in free - reported_elsewhere and rec["rid"].endswith(":miss")
-                      and (engine.replay(rec)["settle"] or {}).get("observed_micro") is None)
-    assert estimate == []
+    wrong = []
+    for rec in fixtures.generate():
+        eid = rec["endpoint_id"]
+        cost = cat.by_id[eid].get("cost") or {} if eid in kids else {}
+        if not rec["rid"].endswith(":miss") or cost.get("type") != "per_result" or eid in reported_zero:
+            continue
+        line = engine.replay(rec)
+        if (line.get("routing") or {}).get("kind") != "miss":
+            continue
+        charged = (line["settle"] or {}).get("charged_micro")
+        cv = cat.cost_view(cost, cat.by_id[eid]["provider"])
+        if not bills_miss(cost):
+            expected = 0
+        elif cost.get("bills_miss") is not True:
+            continue  # a call_fee alone: the fee, checked where the run body is a dataset list
+        elif cost.get("miss_units"):
+            # The floor holds at any page size: ask for twenty rows and still pay `miss_units`.
+            line = engine.replay(_with_page_size(rec, 20))
+            charged = (line["settle"] or {}).get("charged_micro")
+            expected = cost_at(cv, {"limit": cost["miss_units"]})
+        else:
+            expected = line["reserve"]["hold_micro"]
+        if charged != expected:
+            wrong.append((eid, charged, expected))
+    assert wrong == []
 
 
 @pytest.fixture

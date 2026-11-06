@@ -1058,10 +1058,11 @@ an invalid extra never disables the primary.
   bills no miss, so its cost per hit is its price either way, unless its cost bills one
   (`plan.bills_miss`); the routed row's `miss_billed_by` uses the same rule. A per-result child is
   free on a miss only when settlement reads the answer (a row count or the provider's reported
-  charge); one that settles an empty answer at the hold carries `cost.bills_miss`, and a test
-  replays every routed child's miss fixture to hold that. A billed miss costs the whole request,
-  `miss_units` rows of it (a minimum charge on an empty page), or an Apify `call_fee` alone, which
-  `cost_at` also adds to the hit price. An overflow candidate pays its route's price on a miss. An
+  charge); one that settles an empty answer at a charge carries `cost.bills_miss`, and a test
+  replays every routed child's miss fixture to hold ranking's miss charge equal to settlement's. A
+  billed miss costs the whole request, `miss_units` rows of it (a minimum charge settlement floors
+  at), or an Apify `call_fee` alone, which `cost_at` also adds to the hit price. Through overflow, a
+  miss pays the route's price when it bills per call and nothing when it bills per result. An
   unmeasured per-call child leads only below half a
   measured sibling's cost per hit, which still lets a much cheaper newcomer be tried and measured.
   Among one tier, a candidate that uses more of the keys the caller SENT outranks a

@@ -595,8 +595,10 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         miss = 0 if tier != "platform" else miss_charge_micro(cv, identity, ad, price)
         if overflow_route is not None:
             # The aggregator settles on its own envelope or its reserve, not on the direct row's
-            # count, so an empty answer there pays the route's price.
-            price = miss = overflow_route.agg_price_micro
+            # count: one priced per call bills an empty answer too, one priced per result
+            # reports no rows and charges nothing for it.
+            price = overflow_route.agg_price_micro
+            miss = price if getattr(overflow_route, "agg_unit", "call") == "call" else 0
         c = Candidate(endpoint=e, adapter=ad, variant=v, tier=tier, price_micro=price, hit_rate=st.get("hit_rate"),
                       ok_rate=st.get("ok_rate"), p50_ms=st.get("p50_ms"), last_ok_days=st.get("last_ok_days"),
                       exhausted=direct_exhausted and overflow_route is None,
