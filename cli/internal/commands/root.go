@@ -43,6 +43,7 @@ func Root(env *Env) *cobra.Command {
 		callCmd(env),
 		updateCmd(env),
 		backgroundUpdateCmd(env),
+		skillCmd(env),
 	)
 	return root
 }
